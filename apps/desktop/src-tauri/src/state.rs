@@ -174,6 +174,24 @@ impl AppState {
             }
         }
 
+        // Phase 5: artifact remote allowlist. Each entry must be an absolute
+        // http(s) URL; the stored value is the origin (`scheme://host[:port]`),
+        // with path/query/fragment stripped to match the frontend's
+        // `validateAllowedOrigin`. A single bad entry rejects the whole update
+        // so the renderer never silently drops or accepts a malformed origin.
+        if let Some(allowlist) = patch.artifact_remote_allowlist {
+            let mut validated: Vec<String> = Vec::with_capacity(allowlist.len());
+            for raw in allowlist {
+                let trimmed = raw.trim();
+                let origin = validate_artifact_origin(trimmed)
+                    .ok_or_else(|| format!("Invalid artifact allowlist entry: {trimmed}"))?;
+                if !validated.contains(&origin) {
+                    validated.push(origin);
+                }
+            }
+            settings.artifact_remote_allowlist = validated;
+        }
+
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())
     }
@@ -186,6 +204,31 @@ fn read_settings(paths: &AppPaths) -> Result<AppSettings, String> {
 
     let raw = fs::read_to_string(&paths.settings_file).map_err(|error| error.to_string())?;
     serde_json::from_str(&raw).map_err(|error| error.to_string())
+}
+
+/// Validate an artifact remote-allowlist entry and normalize it to an origin
+/// (`scheme://host[:port]`). Accepts only absolute `http(s)` URLs with a
+/// non-empty host and no whitespace; path/query/fragment are stripped. Returns
+/// `None` for anything else so the caller can reject the whole update.
+fn validate_artifact_origin(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let (scheme, rest) = trimmed
+        .strip_prefix("https://")
+        .map(|r| ("https", r))
+        .or_else(|| trimmed.strip_prefix("http://").map(|r| ("http", r)))?;
+    if scheme.is_empty() || rest.is_empty() {
+        return None;
+    }
+    // An origin has no whitespace and no path/query/fragment — cut at the first
+    // `/`, `?`, or `#`. The remainder is `host[:port]`.
+    let host_end = rest
+        .find(|c: char| matches!(c, '/' | '?' | '#'))
+        .unwrap_or(rest.len());
+    let host = &rest[..host_end];
+    if host.is_empty() || host.chars().any(char::is_whitespace) {
+        return None;
+    }
+    Some(format!("{scheme}://{host}"))
 }
 
 fn write_settings(paths: &AppPaths, settings: &AppSettings) -> Result<(), String> {
@@ -287,5 +330,51 @@ mod tests {
             Some("claude-opus-4")
         );
         assert_eq!(read_encryption_tier(&paths), EncryptionTier::On);
+    }
+
+    #[test]
+    fn read_settings_defaults_missing_allowlist_to_empty() {
+        // An older settings file (no `artifactRemoteAllowlist`) deserializes
+        // with the serde default — empty Vec — so the renderer stays offline.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(dir.path());
+        fs::write(
+            &paths.settings_file,
+            r#"{
+  "activeProvider": "anthropic",
+  "activeModel": "claude-sonnet-4",
+  "localOnly": true,
+  "diagnosticsEnabled": true,
+  "theme": "system",
+  "providerEndpoints": {}
+}"#,
+        )
+        .unwrap();
+        let settings = read_settings(&paths).unwrap();
+        assert!(settings.artifact_remote_allowlist.is_empty());
+    }
+
+    #[test]
+    fn validate_artifact_origin_strips_path_and_rejects_bad_schemes() {
+        assert_eq!(
+            validate_artifact_origin("https://fonts.example.com/style.css"),
+            Some("https://fonts.example.com".to_string())
+        );
+        assert_eq!(
+            validate_artifact_origin("http://localhost:8080"),
+            Some("http://localhost:8080".to_string())
+        );
+        // Whitespace is trimmed, path/query/fragment stripped.
+        assert_eq!(
+            validate_artifact_origin("  https://cdn.example.com/x?y=1#z  "),
+            Some("https://cdn.example.com".to_string())
+        );
+        // Rejected: bad scheme, bare host, empty, whitespace in host.
+        assert_eq!(validate_artifact_origin("javascript:alert(1)"), None);
+        assert_eq!(validate_artifact_origin("data:text/html,x"), None);
+        assert_eq!(validate_artifact_origin("fonts.example.com"), None);
+        assert_eq!(validate_artifact_origin("https://"), None);
+        assert_eq!(validate_artifact_origin("https://a b"), None);
+        assert_eq!(validate_artifact_origin(""), None);
     }
 }

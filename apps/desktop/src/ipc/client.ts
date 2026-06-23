@@ -4,6 +4,10 @@ import type {
   AddLocalConnectorResult,
   AppPaths,
   AppSettings,
+  Artifact,
+  ArtifactContent,
+  ArtifactExportResult,
+  Attachment,
   CancelChatStreamRequest,
   ConnectorCapability,
   ConnectorDefinition,
@@ -17,6 +21,7 @@ import type {
   CredentialRequest,
   CredentialSummary,
   DiagnosticsExport,
+  FileState,
   InvokeConnectorToolRequest,
   Message,
   MockStreamRequest,
@@ -172,4 +177,88 @@ export async function revokeConnectorGrant(
 
 export async function addLocalConnector(request: AddLocalConnectorRequest): Promise<AddLocalConnectorResult> {
   return invoke<AddLocalConnectorResult>('add_local_connector', { request });
+}
+
+// =============================================================================
+// Phase 5 — Artifacts (single-payload model) + attachments
+// =============================================================================
+
+/// Create an artifact row with no payload. Follow up with `setArtifactContent`
+/// to write the payload. `kind` is the `ArtifactKind` string; `sourceMessageId`
+/// links the artifact back to the assistant message that produced it.
+export async function createArtifact(
+  conversationId: string,
+  kind: string,
+  title?: string,
+  sourceMessageId?: string,
+): Promise<Artifact> {
+  return invoke<Artifact>('create_artifact', { conversationId, kind, title, sourceMessageId });
+}
+
+/// List a conversation's artifacts, newest-first. Payload metadata is included
+/// but inline content is NOT — fetch via `getArtifact` or `getArtifactContentBytes`.
+export async function listArtifacts(conversationId: string): Promise<Artifact[]> {
+  return invoke<Artifact[]>('list_artifacts', { conversationId });
+}
+
+/// Fetch a single payload-bearing artifact (inline content decrypted).
+export async function getArtifact(artifactId: string): Promise<Artifact | null> {
+  return invoke<Artifact | null>('get_artifact', { artifactId });
+}
+
+/// Overwrite the artifact's single payload in place (no version history). For
+/// `File` content the bytes are written as an encrypted blob; inline `Text`/`Json`
+/// are encrypted in the artifact row. Returns the updated artifact.
+export async function setArtifactContent(
+  artifactId: string,
+  content: ArtifactContent,
+  mimeType?: string,
+): Promise<Artifact> {
+  return invoke<Artifact>('set_artifact_content', { artifactId, mimeType, content });
+}
+
+/// Read the artifact's content as raw bytes (inline content as UTF-8; File-content
+/// as the decrypted blob). Capped at 5 MiB for preview — larger File-content must
+/// use `exportArtifact`.
+export async function getArtifactContentBytes(artifactId: string): Promise<number[]> {
+  return invoke<number[]>('get_artifact_content_bytes', { artifactId });
+}
+
+/// File-state machine for File-content artifacts. `noFileContent` for inline
+/// (non-file) payloads; otherwise the on-disk blob hash is compared to
+/// `content_hash` → `ok` | `modified` | `missing`.
+export async function checkArtifactFileState(artifactId: string): Promise<FileState> {
+  return invoke<FileState>('check_artifact_file_state', { artifactId });
+}
+
+/// Export the artifact's current payload to disk, with an optional `.conduit.json`
+/// metadata sidecar. (M5.)
+export async function exportArtifact(
+  artifactId: string,
+  includeMetadata: boolean,
+): Promise<ArtifactExportResult> {
+  return invoke<ArtifactExportResult>('export_artifact', { artifactId, includeMetadata });
+}
+
+// --- Attachments -----------------------------------------------------------
+
+export async function saveAttachment(
+  conversationId: string,
+  bytes: number[],
+  mimeType: string,
+  origin?: string,
+): Promise<Attachment> {
+  return invoke<Attachment>('save_attachment', { conversationId, bytes, mimeType, origin });
+}
+
+export async function listAttachments(conversationId: string): Promise<Attachment[]> {
+  return invoke<Attachment[]>('list_attachments', { conversationId });
+}
+
+export async function deleteAttachment(attachmentId: string): Promise<void> {
+  await invoke('delete_attachment', { attachmentId });
+}
+
+export async function getAttachmentBytes(attachmentId: string): Promise<number[]> {
+  return invoke<number[]>('get_attachment_bytes', { attachmentId });
 }

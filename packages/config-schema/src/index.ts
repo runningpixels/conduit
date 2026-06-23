@@ -37,7 +37,6 @@ export type { ToolCallRecord } from './generated/tool_call_record';
 // Artifacts
 export type { ArtifactKind } from './generated/artifact_kind';
 export type { Artifact } from './generated/artifact';
-export type { ArtifactVersion } from './generated/artifact_version';
 
 // Attachments
 export type { RetentionState } from './generated/retention_state';

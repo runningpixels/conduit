@@ -155,3 +155,75 @@ export interface ConnectorServerInfo {
   name: string;
   version: string;
 }
+
+// =============================================================================
+// Phase 5 — Artifacts (single-payload model)
+//
+// These mirror the repo structs in `src-tauri/src/db/repository/{artifacts,
+// attachments}.rs` (serde `camelCase`), NOT the ts-rs-generated types. The repo
+// `Attachment`/`Artifact` diverge from the ts-rs schema structs: `size_bytes` is
+// `i64` (serializes as a JSON number, not the ts-rs `bigint`), and the repo
+// `Attachment.retention_state` is a `String` (not the optional `RetentionState`
+// enum). `ArtifactVersion` is gone — there is no version history (user-directed
+// override of ADR-002); saving overwrites the single payload in place.
+// =============================================================================
+
+/// Artifact kind. `html` renders in a sandboxed iframe (M6). The `kind` column
+/// is TEXT and `create_artifact` takes `kind: string`, so unknown kinds are
+/// tolerated by the backend; the renderer falls back to plain text.
+export type ArtifactKind = 'markdown' | 'text' | 'code' | 'json' | 'html';
+
+/// Content payload for `set_artifact_content`. Tagged (`kind`) to match the
+/// Rust `ArtifactContent` enum (`#[serde(tag = "kind")]`). `File` payloads are
+/// written as encrypted content-addressed blobs; inline `Text`/`Json` are
+/// encrypted in their artifact-row columns.
+export type ArtifactContent =
+  | { kind: 'text'; text: string }
+  | { kind: 'json'; json: unknown }
+  | { kind: 'file'; bytes: number[]; filename: string };
+
+/// File-state machine for File-content artifacts (`check_artifact_file_state`).
+/// `noFileContent` = inline (non-file) payload; the rest compare the on-disk
+/// blob hash against `content_hash`.
+export type FileState = 'ok' | 'missing' | 'modified' | 'noFileContent';
+
+/// A single-payload artifact (payload-bearing when read via `get_artifact`).
+/// `list_artifacts` returns these WITHOUT inline content (contentText/contentJson
+/// are absent); fetch via `get_artifact` or `get_artifact_content_bytes`.
+export interface Artifact {
+  id: string;
+  conversationId: string;
+  kind: ArtifactKind;
+  title?: string;
+  sourceMessageId?: string;
+  cloudShareId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt?: string;
+  mimeType?: string;
+  contentText?: string;
+  contentJson?: unknown;
+  contentPath?: string;
+  contentHash?: string;
+  sizeBytes?: number;
+}
+
+/// Result of `export_artifact` (M5): the exported file path + bytes written.
+export interface ArtifactExportResult {
+  exportedTo: string;
+  bytesWritten: number;
+}
+
+/// An attachment row (repo struct). `retentionState` is the raw string column
+/// (`active` | `deleted` | `redacted`); `sizeBytes` is the plaintext byte count.
+export interface Attachment {
+  id: string;
+  conversationId: string;
+  path: string;
+  mimeType: string;
+  sizeBytes: number;
+  hash?: string;
+  origin?: string;
+  retentionState: string;
+  createdAt: string;
+}

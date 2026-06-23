@@ -7,7 +7,6 @@
  * The renderer only DISPLAYS these — no provider/MCP/tenant logic lives here.
  */
 
-export type FileState = 'ok' | 'modified' | 'missing';
 export type ConnectorHealth = 'live' | 'warn' | 'off';
 export type ConnectorChannel = 'stable' | 'beta' | 'auth' | 'off';
 
@@ -20,14 +19,6 @@ export interface HistoryRow {
   active?: boolean;
   tone?: 'warn';
   toneLabel?: string;
-}
-
-export interface ArtifactRow {
-  id: string;
-  name: string;
-  subtitle: string;
-  state: FileState;
-  stateLabel: string;
 }
 
 export interface ConnectorRow {
@@ -54,12 +45,6 @@ export interface ModelRow {
   tone?: 'ok' | 'local';
   toneLabel?: string;
   rightLabel?: string;
-}
-
-export interface DocFileTab {
-  name: string;
-  state: FileState;
-  subtitle: string;
 }
 
 export const HISTORY_ROWS: HistoryRow[] = [
@@ -92,30 +77,6 @@ export const HISTORY_ROWS: HistoryRow[] = [
     subtitle: 'models and provider behavior',
     ago: '3d',
     meta: 'local',
-  },
-];
-
-export const ARTIFACT_ROWS: ArtifactRow[] = [
-  {
-    id: 'a1',
-    name: 'triage-note.md',
-    subtitle: 'modified outside Conduit - current file',
-    state: 'modified',
-    stateLabel: 'changed',
-  },
-  {
-    id: 'a2',
-    name: 'changelog.md',
-    subtitle: 'saved locally - version 3',
-    state: 'ok',
-    stateLabel: 'saved',
-  },
-  {
-    id: 'a3',
-    name: 'schema-notes.json',
-    subtitle: 'catalog entry exists - payload missing',
-    state: 'missing',
-    stateLabel: 'missing',
   },
 ];
 
@@ -196,12 +157,6 @@ export const MODEL_ROWS: ModelRow[] = [
     tone: 'local',
     toneLabel: 'local',
   },
-];
-
-export const DOC_FILE_TABS: DocFileTab[] = [
-  { name: 'triage-note.md', state: 'modified', subtitle: 'modified outside Conduit - 2 min ago' },
-  { name: 'changelog.md', state: 'ok', subtitle: 'saved locally - version 3' },
-  { name: 'schema-notes.json', state: 'missing', subtitle: 'file missing from workspace' },
 ];
 
 /** Connector availability pills shown in the composer caps row. */

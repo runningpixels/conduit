@@ -22,13 +22,13 @@ async fn off_data_encrypted_when_tier_flips_on() {
     let art = artifacts::create(&pool, &conv.id, "document", Some("d"), None)
         .await
         .unwrap();
-    artifacts::add_version(
+    artifacts::set_content(
         &pool,
         dir.path(),
         &off,
         &art.id,
         Some("text/markdown"),
-        &artifacts::VersionContent::Text { text: "plain body".into() },
+        &artifacts::ArtifactContent::Text { text: "plain body".into() },
     )
     .await
     .unwrap();
@@ -54,7 +54,7 @@ async fn off_data_encrypted_when_tier_flips_on() {
             .unwrap()
     );
     let raw_text: (Option<String>,) = sqlx::query_as(
-        "SELECT content_text FROM artifact_versions WHERE artifact_id = ?",
+        "SELECT content_text FROM artifacts WHERE id = ?",
     )
     .bind(&art.id)
     .fetch_one(&pool)
@@ -75,14 +75,14 @@ async fn off_data_encrypted_when_tier_flips_on() {
             .unwrap()
     );
     let stamped: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM artifact_versions WHERE enc_key_version = 1",
+        "SELECT COUNT(*) FROM artifacts WHERE enc_key_version = 1",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(stamped.0, 1);
     let raw_text: (Option<String>,) = sqlx::query_as(
-        "SELECT content_text FROM artifact_versions WHERE artifact_id = ?",
+        "SELECT content_text FROM artifacts WHERE id = ?",
     )
     .bind(&art.id)
     .fetch_one(&pool)
@@ -99,8 +99,8 @@ async fn off_data_encrypted_when_tier_flips_on() {
     );
 
     // The On key decrypts back to the original plaintext.
-    let versions = artifacts::get_versions(&pool, &on, &art.id).await.unwrap();
-    assert_eq!(versions[0].content_text.as_deref(), Some("plain body"));
+    let got = artifacts::get(&pool, &on, &art.id).await.unwrap().unwrap();
+    assert_eq!(got.content_text.as_deref(), Some("plain body"));
     let cfg = tenant_cache::get_tenant_config(&pool, &on, "t1").await.unwrap().unwrap();
     assert_eq!(cfg.config_json, json!({"tier": "pro"}));
 

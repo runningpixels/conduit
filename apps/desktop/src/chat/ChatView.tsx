@@ -12,6 +12,9 @@ import {
   startChatStream,
 } from '../ipc/client';
 import { AssistantMessage } from './AssistantMessage';
+import { AssistantArtifactStrip } from './ArtifactRefChip';
+import type { ArtifactCandidate } from './artifactCandidates';
+import type { Artifact, FileState } from '../ipc/contracts';
 import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
@@ -45,6 +48,16 @@ interface ChatViewProps {
   /// Active conversation id (owned by App; the history rail drives selection).
   /// `null` only briefly during boot before App ensures a conversation exists.
   conversationId: string | null;
+  /// M2: the conversation's artifacts, for in-chat reference chips + promote
+  /// affordances at the end of each assistant turn.
+  artifacts: Artifact[];
+  /// M2: per-artifact file-state, for the chip state dots.
+  fileStateMap: Record<string, FileState>;
+  /// M2: promote a detected fenced-block candidate to an artifact (App owns the
+  /// create + setContent + open flow).
+  onPromoteArtifact: (messageId: string, candidate: ArtifactCandidate) => void;
+  /// M2: open an existing artifact in the DocumentPanel (chip click).
+  onOpenArtifact: (artifactId: string) => void;
 }
 
 function messageToTurn(message: Message): ChatTurn {
@@ -107,7 +120,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
-export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) {
+export function ChatView({ settings, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onOpenArtifact }: ChatViewProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -453,7 +466,16 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
                 </div>
               </div>
             ) : turn.streamState ? (
-              <AssistantMessage key={turn.id} state={turn.streamState} modelId={turn.modelId ?? settings.activeModel} />
+              <AssistantMessage
+                key={turn.id}
+                state={turn.streamState}
+                modelId={turn.modelId ?? settings.activeModel}
+                messageId={turn.id}
+                artifacts={artifacts}
+                fileStateMap={fileStateMap}
+                onPromoteArtifact={onPromoteArtifact}
+                onOpenArtifact={onOpenArtifact}
+              />
             ) : (
               <div key={turn.id} className="msg enter">
                 <div className="av-role bot" />
@@ -463,6 +485,17 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
                     <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
                   </div>
                   {turn.interrupted && <div className="interrupted-banner">Generation was interrupted.</div>}
+                  {/* M2: promote candidates + reference chips for this turn. The
+                      plain (DB-loaded) turn carries the real message id, so
+                      chips linked via `sourceMessageId` match across sessions. */}
+                  <AssistantArtifactStrip
+                    messageId={turn.id}
+                    artifacts={artifacts}
+                    fileStateMap={fileStateMap}
+                    content={turn.content}
+                    onPromote={onPromoteArtifact}
+                    onOpenArtifact={onOpenArtifact}
+                  />
                 </div>
               </div>
             ),

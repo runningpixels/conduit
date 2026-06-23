@@ -2,4 +2,9 @@
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { Theme } from "./theme";
 
-export type SettingsPatch = { activeProvider?: string, activeModel?: string, localOnly?: boolean, diagnosticsEnabled?: boolean, theme?: Theme, providerEndpoints?: { [key in string]?: ProviderEndpointConfig }, };
+export type SettingsPatch = { activeProvider?: string, activeModel?: string, localOnly?: boolean, diagnosticsEnabled?: boolean, theme?: Theme, providerEndpoints?: { [key in string]?: ProviderEndpointConfig }, 
+/**
+ * Replace the artifact remote allowlist. Each entry must be an absolute
+ * http(s) URL or the whole update is rejected.
+ */
+artifactRemoteAllowlist?: Array<string>, };

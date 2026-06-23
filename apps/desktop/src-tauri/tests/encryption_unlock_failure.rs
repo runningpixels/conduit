@@ -22,13 +22,13 @@ async fn fallback_to_off_when_no_encrypted_data() {
     let art = artifacts::create(&pool, &conv.id, "document", Some("d"), None)
         .await
         .unwrap();
-    artifacts::add_version(
+    artifacts::set_content(
         &pool,
         dir.path(),
         &enc,
         &art.id,
         Some("text/plain"),
-        &artifacts::VersionContent::Text { text: "v0".into() },
+        &artifacts::ArtifactContent::Text { text: "v0".into() },
     )
     .await
     .unwrap();
@@ -56,13 +56,13 @@ async fn refuses_when_encrypted_data_exists() {
     let art = artifacts::create(&pool, &conv.id, "document", Some("d"), None)
         .await
         .unwrap();
-    artifacts::add_version(
+    artifacts::set_content(
         &pool,
         dir.path(),
         &on,
         &art.id,
         Some("text/plain"),
-        &artifacts::VersionContent::Text { text: "v0".into() },
+        &artifacts::ArtifactContent::Text { text: "v0".into() },
     )
     .await
     .unwrap();

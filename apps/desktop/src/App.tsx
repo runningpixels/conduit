@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { AppPaths, AppSettings } from './ipc/contracts';
+import { useCallback, useEffect, useState } from 'react';
+import type { AppPaths, AppSettings, Artifact, ArtifactContent, FileState } from './ipc/contracts';
+import type { ArtifactCandidate } from './chat/artifactCandidates';
 import {
+  checkArtifactFileState,
+  createArtifact,
   createConversation,
+  exportArtifact,
   getAppPaths,
+  getArtifact,
   getSettings,
+  listArtifacts,
   listConversations,
+  setArtifactContent,
   updateSettings,
 } from './ipc/client';
 import { ChatView } from './chat/ChatView';
@@ -16,8 +23,6 @@ import { DocumentPanel } from './workspace/DocumentPanel';
 import { SettingsPanel } from './workspace/SettingsPanel';
 import { useColumnResize, useRailExpand } from './workspace/useLayout';
 import { PlusIcon } from './icons';
-import type { ArtifactRow, FileState } from './mock/workspace';
-import { DOC_FILE_TABS } from './mock/workspace';
 
 const TAB_TITLES: Record<WorkspaceTab, [string, string]> = {
   chat: ['Chat session', 'Repo triage note - github, slack'],
@@ -35,6 +40,7 @@ const defaultSettings: AppSettings = {
   diagnosticsEnabled: true,
   theme: 'system',
   providerEndpoints: {},
+  artifactRemoteAllowlist: [],
 };
 
 export default function App() {
@@ -43,9 +49,15 @@ export default function App() {
   const [status, setStatus] = useState('Booting desktop shell');
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('chat');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeArtifact, setActiveArtifact] = useState<ArtifactRow | null>(null);
+  // Phase 5: real artifact state. `artifacts` is the conversation's list
+  // (metadata-only; inline content is NOT included — fetch via `getArtifact`).
+  // `activeArtifact` is payload-bearing (the one open in DocumentPanel).
+  // `fileStateMap` carries the per-artifact file-state machine for the rail +
+  // doc-tab state dots.
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
+  const [fileStateMap, setFileStateMap] = useState<Record<string, FileState>>({});
   const [docTab, setDocTab] = useState<'preview' | 'source' | 'file'>('preview');
-  const [fileState, setFileState] = useState<FileState>('modified');
   // Phase 3: the active conversation id, owned here so the chat view and the
   // history rail stay in sync. `null` only until boot ensures a conversation.
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -102,6 +114,134 @@ export default function App() {
     setActiveConversationId(id);
   }, []);
 
+  // Phase 5: refresh the active conversation's artifact list + per-artifact
+  // file-state. Re-run when the conversation changes (and on demand via
+  // `refreshArtifacts`). `listArtifacts` is metadata-only; file-state is fetched
+  // in parallel for every artifact (inline payloads return `noFileContent`).
+  const refreshArtifacts = useCallback(async (conversationId: string) => {
+    try {
+      const listed = await listArtifacts(conversationId);
+      setArtifacts(listed);
+      const states = await Promise.all(
+        listed.map(async (a) => {
+          try {
+            return [a.id, await checkArtifactFileState(a.id)] as const;
+          } catch {
+            return [a.id, 'missing' as FileState] as const;
+          }
+        }),
+      );
+      setFileStateMap(Object.fromEntries(states));
+    } catch {
+      setArtifacts([]);
+      setFileStateMap({});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    void refreshArtifacts(activeConversationId);
+  }, [activeConversationId, refreshArtifacts]);
+
+  // Phase 5: open an artifact in the DocumentPanel — fetch the payload-bearing
+  // row + its file-state, then show Preview (or File for a missing payload).
+  const handleOpenArtifact = useCallback(async (artifactId: string) => {
+    try {
+      const got = await getArtifact(artifactId);
+      if (!got) return;
+      setActiveArtifact(got);
+      const state = await checkArtifactFileState(artifactId);
+      setFileStateMap((current) => ({ ...current, [artifactId]: state }));
+      setDocTab(state === 'missing' ? 'file' : 'preview');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to open artifact');
+    }
+  }, []);
+
+  // M3: overwrite the artifact's single payload (no version history). The
+  // DocumentPanel Source tab edits inline text; saving calls this. After the
+  // write, the returned payload-bearing artifact becomes active and the
+  // conversation's artifact list + file-state are refreshed so the rail, the
+  // doc-tab state dot, and the preview all reflect the new payload.
+  const handleSaveContent = useCallback(
+    async (artifactId: string, content: ArtifactContent, mimeType?: string) => {
+      try {
+        const updated = await setArtifactContent(artifactId, content, mimeType);
+        setActiveArtifact(updated);
+        if (activeConversationId) {
+          await refreshArtifacts(activeConversationId);
+        }
+        const state = await checkArtifactFileState(artifactId);
+        setFileStateMap((current) => ({ ...current, [artifactId]: state }));
+        setStatus('Saved artifact');
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Failed to save artifact');
+        throw error;
+      }
+    },
+    [activeConversationId, refreshArtifacts],
+  );
+
+  // M5: export the artifact's current payload to the app's exports directory,
+  // optionally with a curated `.conduit.json` metadata sidecar. The destination
+  // path is surfaced via the status line.
+  const handleExport = useCallback(
+    async (artifactId: string, includeMetadata: boolean) => {
+      try {
+        const result = await exportArtifact(artifactId, includeMetadata);
+        setStatus(`Exported to ${result.exportedTo}`);
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Failed to export artifact');
+      }
+    },
+    [],
+  );
+
+  // Phase 5: poll the active artifact's file-state every 5s while it is
+  // File-content (on-disk blob can change outside the app). Inline payloads are
+  // `noFileContent` and never change, so the poll is cheap and harmless.
+  useEffect(() => {
+    if (!activeArtifact) return;
+    const id = window.setInterval(() => {
+      void (async () => {
+        try {
+          const state = await checkArtifactFileState(activeArtifact.id);
+          setFileStateMap((current) => ({ ...current, [activeArtifact.id]: state }));
+        } catch {
+          /* keep last known state */
+        }
+      })();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [activeArtifact]);
+
+  // M2: promote a fenced-block candidate from an assistant message into a new
+  // artifact. The candidate carries its resolved kind + title + mimeType; the
+  // body is written as inline text content (the renderer resolves kind via the
+  // mimeType override, so json/html/markdown/code all preview correctly). The
+  // new artifact is linked back to the message via `sourceMessageId` so the
+  // in-chat chip can find it, then opened in the DocumentPanel.
+  const handlePromoteArtifact = useCallback(
+    async (messageId: string, candidate: ArtifactCandidate) => {
+      if (!activeConversationId) return;
+      try {
+        const created = await createArtifact(
+          activeConversationId,
+          candidate.kind,
+          candidate.title,
+          messageId,
+        );
+        await setArtifactContent(created.id, { kind: 'text', text: candidate.body }, candidate.mimeType);
+        await refreshArtifacts(activeConversationId);
+        await handleOpenArtifact(created.id);
+        setStatus('Promoted to artifact');
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Failed to promote artifact');
+      }
+    },
+    [activeConversationId, refreshArtifacts, handleOpenArtifact],
+  );
+
   // Theme: apply on mount + whenever settings.theme changes; follow the OS
   // preference while in 'system' mode.
   const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>(() => resolveTheme(settings.theme));
@@ -118,12 +258,6 @@ export default function App() {
 
   const [panelTitle, panelSubtitle] = TAB_TITLES[activeTab];
 
-  const handleOpenArtifact = useCallback((row: ArtifactRow) => {
-    setActiveArtifact(row);
-    setFileState(row.state);
-    setDocTab(row.state === 'missing' ? 'file' : 'preview');
-  }, []);
-
   const handleToggleTheme = useCallback(() => {
     setSettings((current) => {
       const next: AppSettings = {
@@ -136,13 +270,8 @@ export default function App() {
     });
   }, [effectiveTheme]);
 
-  // The document panel reflects the active artifact tab (or the default mock file).
-  const docFile = useMemo(() => {
-    if (activeArtifact) {
-      return DOC_FILE_TABS.find((t) => t.name === activeArtifact.name) ?? DOC_FILE_TABS[0];
-    }
-    return DOC_FILE_TABS[0];
-  }, [activeArtifact]);
+  // The document panel reflects the active artifact (or an empty state).
+  const activeFileState = activeArtifact ? fileStateMap[activeArtifact.id] ?? 'noFileContent' : 'noFileContent';
 
   return (
     <div className="app" id="app">
@@ -181,10 +310,16 @@ export default function App() {
               settings={settings}
               onStatus={setStatusMessage}
               conversationId={activeConversationId}
+              artifacts={artifacts}
+              fileStateMap={fileStateMap}
+              onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
+              onOpenArtifact={(id) => void handleOpenArtifact(id)}
             />
             <RailPanes
               active={activeTab}
-              onOpenArtifact={handleOpenArtifact}
+              artifacts={artifacts}
+              fileStateMap={fileStateMap}
+              onOpenArtifact={(id) => void handleOpenArtifact(id)}
               activeConversationId={activeConversationId}
               onSelectConversation={handleSelectConversation}
               onNewChat={() => void handleNewChat()}
@@ -202,13 +337,16 @@ export default function App() {
         />
 
         <DocumentPanel
-          activeName={docFile.name}
-          activeState={docFile.state}
-          activeSubtitle={docFile.subtitle}
+          artifact={activeArtifact}
+          artifacts={artifacts}
+          fileStateMap={fileStateMap}
+          activeFileState={activeFileState}
+          allowlist={settings.artifactRemoteAllowlist}
           docTab={docTab}
-          fileState={fileState}
           onSelectTab={setDocTab}
-          onSetFileState={setFileState}
+          onOpenArtifact={(id) => void handleOpenArtifact(id)}
+          onSaveContent={(artifactId, content, mimeType) => handleSaveContent(artifactId, content, mimeType)}
+          onExport={(artifactId, includeMetadata) => handleExport(artifactId, includeMetadata)}
         />
       </main>
 

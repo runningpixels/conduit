@@ -35,28 +35,32 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
     let dir = tempfile::tempdir().unwrap();
     let v1 = Encryption::on_with_key(encryption::generate_key(), 1);
 
-    // Seed one row in each targeted table, encrypted under v1.
+    // Seed one row in each targeted table, encrypted under v1. Two artifacts
+    // (one text, one json) exercise both inline artifact columns.
     let conv = conversations::create(&pool, None).await.unwrap();
-    let art = artifacts::create(&pool, &conv.id, "document", Some("d"), None)
+    let art_text = artifacts::create(&pool, &conv.id, "document", Some("d1"), None)
         .await
         .unwrap();
-    artifacts::add_version(
+    artifacts::set_content(
         &pool,
         dir.path(),
         &v1,
-        &art.id,
+        &art_text.id,
         Some("text/markdown"),
-        &artifacts::VersionContent::Text { text: "v0 body".into() },
+        &artifacts::ArtifactContent::Text { text: "v0 body".into() },
     )
     .await
     .unwrap();
-    artifacts::add_version(
+    let art_json = artifacts::create(&pool, &conv.id, "json", Some("d2"), None)
+        .await
+        .unwrap();
+    artifacts::set_content(
         &pool,
         dir.path(),
         &v1,
-        &art.id,
+        &art_json.id,
         Some("application/json"),
-        &artifacts::VersionContent::Json { json: json!({"k": "v"}) },
+        &artifacts::ArtifactContent::Json { json: json!({"k": "v"}) },
     )
     .await
     .unwrap();
@@ -79,7 +83,7 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
 
     // All seeded rows are at version 1.
     let v1_rows: (i64,) = sqlx::query_as(
-        "SELECT (SELECT COUNT(*) FROM artifact_versions WHERE enc_key_version = 1) \
+        "SELECT (SELECT COUNT(*) FROM artifacts WHERE enc_key_version = 1) \
          + (SELECT COUNT(*) FROM tenant_config_cache WHERE enc_key_version = 1) \
          + (SELECT COUNT(*) FROM licenses WHERE enc_key_version = 1)",
     )
@@ -95,7 +99,7 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
 
     // Every targeted row is now stamped at version 2; none remain at 1.
     let v2_rows: (i64,) = sqlx::query_as(
-        "SELECT (SELECT COUNT(*) FROM artifact_versions WHERE enc_key_version = 2) \
+        "SELECT (SELECT COUNT(*) FROM artifacts WHERE enc_key_version = 2) \
          + (SELECT COUNT(*) FROM tenant_config_cache WHERE enc_key_version = 2) \
          + (SELECT COUNT(*) FROM licenses WHERE enc_key_version = 2)",
     )
@@ -104,7 +108,7 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
     .unwrap();
     assert_eq!(v2_rows.0, 4, "all rows at version 2");
     let v1_remaining: (i64,) = sqlx::query_as(
-        "SELECT (SELECT COUNT(*) FROM artifact_versions WHERE enc_key_version = 1) \
+        "SELECT (SELECT COUNT(*) FROM artifacts WHERE enc_key_version = 1) \
          + (SELECT COUNT(*) FROM tenant_config_cache WHERE enc_key_version = 1) \
          + (SELECT COUNT(*) FROM licenses WHERE enc_key_version = 1)",
     )
@@ -114,10 +118,10 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
     assert_eq!(v1_remaining.0, 0, "no rows left at version 1");
 
     // The v2 key decrypts every row back to the original plaintext.
-    let versions = artifacts::get_versions(&pool, &v2, &art.id).await.unwrap();
-    assert_eq!(versions.len(), 2);
-    assert_eq!(versions[0].content_text.as_deref(), Some("v0 body"));
-    assert_eq!(versions[1].content_json, Some(json!({"k": "v"})));
+    let got_text = artifacts::get(&pool, &v2, &art_text.id).await.unwrap().unwrap();
+    assert_eq!(got_text.content_text.as_deref(), Some("v0 body"));
+    let got_json = artifacts::get(&pool, &v2, &art_json.id).await.unwrap().unwrap();
+    assert_eq!(got_json.content_json, Some(json!({"k": "v"})));
 
     let cfg = tenant_cache::get_tenant_config(&pool, &v2, "t1").await.unwrap().unwrap();
     assert_eq!(cfg.config_json, json!({"tier": "pro"}));
@@ -127,6 +131,6 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
 
     // The old v1 key can no longer decrypt the rotated rows (the stored values
     // were re-encrypted under v2).
-    let stale = artifacts::get_versions(&pool, &v1, &art.id).await;
+    let stale = artifacts::get(&pool, &v1, &art_text.id).await;
     assert!(stale.is_err(), "v1 key cannot read v2 rows");
 }

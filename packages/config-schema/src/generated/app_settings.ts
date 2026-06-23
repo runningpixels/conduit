@@ -2,4 +2,12 @@
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { Theme } from "./theme";
 
-export type AppSettings = { activeProvider: string, activeModel: string, localOnly: boolean, diagnosticsEnabled: boolean, theme: Theme, providerEndpoints: { [key in string]?: ProviderEndpointConfig }, };
+export type AppSettings = { activeProvider: string, activeModel: string, localOnly: boolean, diagnosticsEnabled: boolean, theme: Theme, providerEndpoints: { [key in string]?: ProviderEndpointConfig }, 
+/**
+ * Phase 5: origins a rendered HTML/JS artifact may load passive resources
+ * (images/fonts/styles) from. Default empty → fully offline artifacts
+ * (`connect-src 'none'`, no remote scripts regardless). Validated as
+ * absolute http(s) URLs on save. See `buildArtifactCsp` + the artifact
+ * rendering security decision record.
+ */
+artifactRemoteAllowlist: Array<string>, };

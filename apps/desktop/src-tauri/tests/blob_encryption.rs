@@ -68,13 +68,13 @@ async fn artifact_file_blob_is_ciphertext_on_disk() {
         .await
         .unwrap();
     let payload = b"\x89PNG\r\n\x1a\n secret render bytes".to_vec();
-    let v = artifacts::add_version(
+    let after = artifacts::set_content(
         &pool,
         &artifacts_dir,
         &on,
         &art.id,
         Some("image/png"),
-        &artifacts::VersionContent::File {
+        &artifacts::ArtifactContent::File {
             bytes: payload.clone(),
             filename: "render.png".into(),
         },
@@ -83,7 +83,7 @@ async fn artifact_file_blob_is_ciphertext_on_disk() {
     .unwrap();
 
     // The on-disk blob is ciphertext, not the plaintext payload.
-    let blob = artifacts::resolve_version_path(&artifacts_dir, v.content_path.as_deref().unwrap());
+    let blob = artifacts::resolve_artifact_path(&artifacts_dir, after.content_path.as_deref().unwrap());
     assert!(blob.exists());
     let on_disk = std::fs::read(&blob).unwrap();
     assert_ne!(on_disk, payload);

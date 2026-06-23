@@ -11,7 +11,7 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AppSettings, Artifact, ArtifactKind, ArtifactVersion, Attachment, ConnectorDefinition,
+    AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition,
     ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt,
     Conversation, ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls,
     GrantScope, GrantStatus, LicenseClaims, Message, MessagePart, MessagePartKind, MessageRole,
@@ -49,7 +49,6 @@ fn main() {
     // Artifacts
     ArtifactKind::export().expect("export ArtifactKind");
     Artifact::export().expect("export Artifact");
-    ArtifactVersion::export().expect("export ArtifactVersion");
 
     // Attachments
     RetentionState::export().expect("export RetentionState");

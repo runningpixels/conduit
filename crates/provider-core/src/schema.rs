@@ -399,6 +399,7 @@ pub enum ArtifactKind {
     Text,
     Code,
     Json,
+    Html,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -410,7 +411,6 @@ pub enum ArtifactKind {
 pub struct Artifact {
     pub id: String,
     pub conversation_id: String,
-    pub current_version_id: String,
     pub kind: ArtifactKind,
     #[ts(optional)]
     pub title: Option<String>,
@@ -421,18 +421,8 @@ pub struct Artifact {
     #[ts(optional, type = "Record<string, unknown>")]
     pub metadata: Option<serde_json::Value>,
     pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(
-    export,
-    export_to = "../packages/config-schema/src/generated/artifact_version.ts"
-)]
-pub struct ArtifactVersion {
-    pub id: String,
-    pub artifact_id: String,
-    pub index: u32,
+    #[ts(optional)]
+    pub updated_at: Option<String>,
     #[ts(optional)]
     pub mime_type: Option<String>,
     #[ts(optional)]
@@ -441,7 +431,10 @@ pub struct ArtifactVersion {
     pub content_json: Option<serde_json::Value>,
     #[ts(optional)]
     pub content_path: Option<String>,
-    pub created_at: String,
+    #[ts(optional)]
+    pub content_hash: Option<String>,
+    #[ts(optional)]
+    pub size_bytes: Option<i64>,
 }
 
 // =============================================================================
@@ -809,6 +802,13 @@ pub struct AppSettings {
     pub theme: Theme,
     #[serde(default)]
     pub provider_endpoints: HashMap<String, ProviderEndpointConfig>,
+    /// Phase 5: origins a rendered HTML/JS artifact may load passive resources
+    /// (images/fonts/styles) from. Default empty → fully offline artifacts
+    /// (`connect-src 'none'`, no remote scripts regardless). Validated as
+    /// absolute http(s) URLs on save. See `buildArtifactCsp` + the artifact
+    /// rendering security decision record.
+    #[serde(default)]
+    pub artifact_remote_allowlist: Vec<String>,
 }
 
 impl Default for AppSettings {
@@ -820,6 +820,7 @@ impl Default for AppSettings {
             diagnostics_enabled: true,
             theme: Theme::System,
             provider_endpoints: HashMap::new(),
+            artifact_remote_allowlist: Vec::new(),
         }
     }
 }
@@ -843,6 +844,10 @@ pub struct SettingsPatch {
     pub theme: Option<Theme>,
     #[ts(optional)]
     pub provider_endpoints: Option<HashMap<String, ProviderEndpointConfig>>,
+    /// Replace the artifact remote allowlist. Each entry must be an absolute
+    /// http(s) URL or the whole update is rejected.
+    #[ts(optional)]
+    pub artifact_remote_allowlist: Option<Vec<String>>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

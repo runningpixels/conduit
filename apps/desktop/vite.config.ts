@@ -16,4 +16,12 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  test: {
+    // M6: artifact renderer tests need a DOM. Pure-function tests (escape,
+    // buildArtifactCsp, selectRenderer dispatch) also pass under jsdom.
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+  },
 });

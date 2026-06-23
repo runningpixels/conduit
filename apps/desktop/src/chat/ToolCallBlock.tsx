@@ -118,6 +118,15 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
       {toolCall.complete && consent !== 'denied' && (
         <div className="tool-result">
           <b>Tool call complete.</b> {toolCall.error ? toolCall.error : 'Result stored locally.'}
+          {/* M2 seam — "Promote to artifact" on a succeeded tool call: deferred.
+              The tool-result content is not present in `ToolCallState` (the
+              runtime's `toolCallFinished` carries only `size_bytes`/`mime_hints`,
+              and `messageToTurn` flattens message parts into a joined string,
+              discarding the `tool_call_id` → result linkage). A functional
+              promote needs either a `get_tool_call_result(tool_call_id)` IPC or
+              threading the toolResult part content from `getConversationMessages`
+              into the tool-call state — out of scope for this milestone. The
+              fenced-block promote flow (AssistantMessage) is the primary path. */}
         </div>
       )}
     </div>

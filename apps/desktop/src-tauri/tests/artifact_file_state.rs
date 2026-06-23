@@ -1,9 +1,10 @@
-//! M4: the artifact file-state machine (spec §8.3) — Ok / Missing / Modified.
+//! Phase 5: the artifact file-state machine (spec §8.3) — Ok / Missing /
+//! Modified — over the single-payload model.
 
 mod common;
 
 use conduit_desktop::db::repository::{
-    artifacts::{self, FileState, VersionContent},
+    artifacts::{self, ArtifactContent, FileState},
     conversations,
 };
 
@@ -18,13 +19,13 @@ async fn file_state_ok_missing_modified() {
     let art = artifacts::create(&pool, &conv.id, "image", None, None)
         .await
         .unwrap();
-    let v = artifacts::add_version(
+    let after = artifacts::set_content(
         &pool,
         &artifacts_dir,
         &enc,
         &art.id,
         Some("image/png"),
-        &VersionContent::File {
+        &ArtifactContent::File {
             bytes: b"\x89PNG\r\n\x1a\n fake png bytes".to_vec(),
             filename: "render.png".into(),
         },
@@ -32,8 +33,8 @@ async fn file_state_ok_missing_modified() {
     .await
     .unwrap();
 
-    // The blob is on disk under artifacts/<artifact_id>/<version_id>/<filename>.
-    let blob = artifacts::resolve_version_path(&artifacts_dir, v.content_path.as_deref().unwrap());
+    // The blob is on disk under artifacts/<artifact_id>/<filename>.
+    let blob = artifacts::resolve_artifact_path(&artifacts_dir, after.content_path.as_deref().unwrap());
     assert!(blob.exists());
 
     // Ok: file present + hash matches.

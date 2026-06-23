@@ -2,7 +2,7 @@ use crate::{
     credentials::{CredentialStore, CredentialSummary},
     connector_runtime::{execution, ConnectorRuntimeManager},
     db::repository::{
-        artifacts::{self, Artifact, ArtifactVersion, FileState, VersionContent},
+        artifacts::{self, Artifact, ArtifactContent, ArtifactExportResult, FileState},
         attachments::{self, Attachment},
         connectors::{
             self, ConnectorCapability, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeState,
@@ -336,23 +336,23 @@ pub async fn list_artifacts(
 }
 
 #[tauri::command]
-pub async fn get_artifact_versions(
+pub async fn get_artifact(
     state: State<'_, AppState>,
     artifact_id: String,
-) -> Result<Vec<ArtifactVersion>, String> {
-    artifacts::get_versions(&state.db, &state.encryption, &artifact_id)
+) -> Result<Option<Artifact>, String> {
+    artifacts::get(&state.db, &state.encryption, &artifact_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn add_artifact_version(
+pub async fn set_artifact_content(
     state: State<'_, AppState>,
     artifact_id: String,
     mime_type: Option<String>,
-    content: VersionContent,
-) -> Result<ArtifactVersion, String> {
-    if let VersionContent::File { bytes, .. } = &content {
+    content: ArtifactContent,
+) -> Result<Artifact, String> {
+    if let ArtifactContent::File { bytes, .. } = &content {
         if bytes.len() > ATTACHMENT_INLINE_CAP_BYTES {
             return Err(format!(
                 "Artifact payload too large for inline IPC ({} > {} bytes)",
@@ -361,7 +361,7 @@ pub async fn add_artifact_version(
             ));
         }
     }
-    artifacts::add_version(
+    artifacts::set_content(
         &state.db,
         &state.paths.artifacts,
         &state.encryption,
@@ -371,6 +371,32 @@ pub async fn add_artifact_version(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+/// Read an artifact's payload bytes for in-app preview. Capped at 5 MiB; larger
+/// payloads should be exported to disk instead of pulled across IPC.
+#[tauri::command]
+pub async fn get_artifact_content_bytes(
+    state: State<'_, AppState>,
+    artifact_id: String,
+) -> Result<Vec<u8>, String> {
+    const ARTIFACT_PREVIEW_CAP_BYTES: usize = 5 * 1024 * 1024;
+    let bytes = artifacts::read_content_bytes(
+        &state.db,
+        &state.paths.artifacts,
+        &state.encryption,
+        &artifact_id,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    if bytes.len() > ARTIFACT_PREVIEW_CAP_BYTES {
+        return Err(format!(
+            "Artifact payload too large for inline preview ({} > {} bytes); use Export",
+            bytes.len(),
+            ARTIFACT_PREVIEW_CAP_BYTES
+        ));
+    }
+    Ok(bytes)
 }
 
 #[tauri::command]
@@ -383,15 +409,27 @@ pub async fn check_artifact_file_state(
         .map_err(|e| e.to_string())
 }
 
+/// Export the artifact's current payload to the app's `exports` directory,
+/// optionally with a `.conduit.json` metadata sidecar. Returns the absolute
+/// path written + bytes written. (M5.) The destination is app-local; a future
+/// Tauri dialog plugin can let the user pick a folder.
 #[tauri::command]
-pub async fn restore_artifact_version(
+pub async fn export_artifact(
     state: State<'_, AppState>,
     artifact_id: String,
-    version_id: String,
-) -> Result<(), String> {
-    artifacts::restore_version(&state.db, &artifact_id, &version_id)
-        .await
-        .map_err(|e| e.to_string())
+    include_metadata: bool,
+) -> Result<ArtifactExportResult, String> {
+    let out_dir = state.paths.root.join("exports");
+    artifacts::export(
+        &state.db,
+        &state.paths.artifacts,
+        &state.encryption,
+        &artifact_id,
+        &out_dir,
+        include_metadata,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // --- M5: connector / license / tenant-cache (shell display state) ------------

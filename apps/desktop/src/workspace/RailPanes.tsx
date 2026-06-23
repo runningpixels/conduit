@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { WorkspaceTab } from './Rail';
-import type { ConnectorCapability, ConversationSummary, ConnectorRuntimeSnapshot } from '../ipc/contracts';
+import type {
+  Artifact,
+  ArtifactKind,
+  ConnectorCapability,
+  ConnectorRuntimeSnapshot,
+  ConversationSummary,
+  FileState,
+} from '../ipc/contracts';
 import {
   discoverConnector,
   getConnectorRuntimeStates,
@@ -11,10 +18,7 @@ import {
 } from '../ipc/client';
 import {
   ACTIVITY_ROWS,
-  ARTIFACT_ROWS,
   MODEL_ROWS,
-  type ArtifactRow,
-  type FileState,
 } from '../mock/workspace';
 import { InfoCard, SearchBox, SectionLabel, StatusPill } from '@conduit/ui';
 import {
@@ -29,7 +33,12 @@ import {
 
 interface RailPanesProps {
   active: WorkspaceTab;
-  onOpenArtifact: (row: ArtifactRow) => void;
+  /// Artifacts for the active conversation (metadata-only list from `listArtifacts`).
+  artifacts: Artifact[];
+  /// Per-artifact file-state for the rail state dots.
+  fileStateMap: Record<string, FileState>;
+  /// Open an artifact in the DocumentPanel by id.
+  onOpenArtifact: (id: string) => void;
   /// Active conversation id (drives the highlighted row in the history pane).
   activeConversationId: string | null;
   /// Switch the chat view to an existing conversation.
@@ -129,32 +138,73 @@ function HistoryPane({
   );
 }
 
-function artifactsPane(onOpen: (row: ArtifactRow) => void) {
+/// Human label for each artifact kind, shown in the rail subtitle + doc-head.
+const KIND_LABEL: Record<ArtifactKind, string> = {
+  markdown: 'Markdown',
+  text: 'Text',
+  code: 'Code',
+  json: 'JSON',
+  html: 'HTML',
+};
+
+/// File-state → `StatusPill` tone + short label for the rail.
+function fileStatePill(state: FileState): { tone: 'ok' | 'warn' | 'bad' | 'hold'; label: string } {
+  switch (state) {
+    case 'ok':
+      return { tone: 'ok', label: 'saved' };
+    case 'modified':
+      return { tone: 'warn', label: 'changed' };
+    case 'missing':
+      return { tone: 'bad', label: 'missing' };
+    case 'noFileContent':
+      return { tone: 'hold', label: 'inline' };
+  }
+}
+
+function ArtifactsPane({
+  artifacts,
+  fileStateMap,
+  onOpenArtifact,
+}: {
+  artifacts: Artifact[];
+  fileStateMap: Record<string, FileState>;
+  onOpenArtifact: (id: string) => void;
+}) {
   return (
     <section className="tab-pane" data-pane="artifacts" aria-label="Files and artifacts">
       <div className="tab-list scroll">
         <InfoCard title="Files stay first-class">
-          Artifacts are local workspace files indexed locally, so this tab is a lightweight file switcher instead of a separate document database.
+          Artifacts are local workspace records indexed locally, so this tab is a lightweight file switcher instead of a separate document database.
         </InfoCard>
-        <SectionLabel left="Open artifacts" right="Documents/Conduit" />
-        {ARTIFACT_ROWS.map((r) => (
-          <button
-            key={r.id}
-            className="list-row"
-            type="button"
-            data-file-state-target={r.state as FileState}
-            onClick={() => onOpen(r)}
-          >
-            <FileIcon className="row-icon" />
-            <span className="meta">
-              <b>{r.name}</b>
-              <small>{r.subtitle}</small>
-            </span>
-            <StatusPill tone={r.state === 'ok' ? 'ok' : r.state === 'modified' ? 'warn' : 'bad'}>
-              {r.stateLabel}
-            </StatusPill>
-          </button>
-        ))}
+        {artifacts.length === 0 ? (
+          <SectionLabel left="No artifacts yet" right="local" />
+        ) : (
+          <>
+            <SectionLabel left="Open artifacts" right={`${artifacts.length} local`} />
+            {artifacts.map((a) => {
+              const state = fileStateMap[a.id] ?? 'noFileContent';
+              const pill = fileStatePill(state);
+              const name = a.title ?? 'Untitled artifact';
+              const subtitle = `${KIND_LABEL[a.kind] ?? a.kind}${a.updatedAt ? ` · ${relativeFromIso(a.updatedAt)}` : ''}`;
+              return (
+                <button
+                  key={a.id}
+                  className="list-row"
+                  type="button"
+                  data-file-state-target={state}
+                  onClick={() => onOpenArtifact(a.id)}
+                >
+                  <FileIcon className="row-icon" />
+                  <span className="meta">
+                    <b>{name}</b>
+                    <small>{subtitle}</small>
+                  </span>
+                  <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
+                </button>
+              );
+            })}
+          </>
+        )}
         <SectionLabel left="Cloud state" />
         <button className="list-row" type="button">
           <ShareIcon className="row-icon" />
@@ -162,7 +212,7 @@ function artifactsPane(onOpen: (row: ArtifactRow) => void) {
             <b>Artifact share is off</b>
             <small>Opt in only. Local users remain invisible by default.</small>
           </span>
-          <span className="row-right">v2</span>
+          <span className="row-right">local</span>
         </button>
       </div>
     </section>
@@ -382,6 +432,8 @@ function modelsPane() {
 
 export function RailPanes({
   active,
+  artifacts,
+  fileStateMap,
   onOpenArtifact,
   activeConversationId,
   onSelectConversation,
@@ -397,7 +449,11 @@ export function RailPanes({
         onSelectConversation={onSelectConversation}
         onNewChat={onNewChat}
       />
-      {artifactsPane(onOpenArtifact)}
+      <ArtifactsPane
+        artifacts={artifacts}
+        fileStateMap={fileStateMap}
+        onOpenArtifact={onOpenArtifact}
+      />
       <ConnectorsPane />
       {activityPane()}
       {modelsPane()}

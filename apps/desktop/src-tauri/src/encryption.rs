@@ -347,15 +347,15 @@ pub fn resolve_key_unavailable(
 
 /// Whether any encrypted data already exists in the local store. This covers
 /// both inline encrypted columns (`enc_key_version IS NOT NULL`) and encrypted
-/// blob files (attachments + file-backed artifact versions with the `CDENC1`
-/// magic). Drives the non-silent-downgrade decision at startup.
+/// blob files (attachments + file-backed artifacts with the `CDENC1` magic).
+/// Drives the non-silent-downgrade decision at startup.
 pub async fn encrypted_data_exists(
     pool: &SqlitePool,
     attachments_dir: &Path,
     artifacts_dir: &Path,
 ) -> Result<bool, DbError> {
     let row: (i64,) = sqlx::query_as(
-        "SELECT (SELECT COUNT(*) FROM artifact_versions WHERE enc_key_version IS NOT NULL) \
+        "SELECT (SELECT COUNT(*) FROM artifacts WHERE enc_key_version IS NOT NULL) \
          + (SELECT COUNT(*) FROM tenant_config_cache WHERE enc_key_version IS NOT NULL) \
          + (SELECT COUNT(*) FROM licenses WHERE enc_key_version IS NOT NULL)",
     )
@@ -376,7 +376,7 @@ pub async fn encrypted_data_exists(
     }
 
     let artifact_paths: Vec<(String,)> =
-        sqlx::query_as("SELECT content_path FROM artifact_versions WHERE content_path IS NOT NULL")
+        sqlx::query_as("SELECT content_path FROM artifacts WHERE content_path IS NOT NULL")
             .fetch_all(pool)
             .await?;
     Ok(artifact_paths
@@ -405,9 +405,9 @@ pub async fn encrypt_existing_plaintext(
     let version = enc.key_version() as i64;
     let mut count = 0u64;
 
-    // artifact_versions: two inline columns (content_text, content_json).
+    // artifacts: two inline columns (content_text, content_json).
     let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT id, content_text, content_json FROM artifact_versions \
+        "SELECT id, content_text, content_json FROM artifacts \
          WHERE enc_key_version IS NULL",
     )
     .fetch_all(pool)
@@ -419,7 +419,7 @@ pub async fn encrypt_existing_plaintext(
             None => None,
         };
         sqlx::query(
-            "UPDATE artifact_versions SET content_text = ?, content_json = ?, \
+            "UPDATE artifacts SET content_text = ?, content_json = ?, \
              enc_key_version = ? WHERE id = ?",
         )
         .bind(&etext)
@@ -485,7 +485,7 @@ pub async fn rotate(
     let mut count = 0u64;
 
     let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT id, content_text, content_json FROM artifact_versions WHERE enc_key_version = ?",
+        "SELECT id, content_text, content_json FROM artifacts WHERE enc_key_version = ?",
     )
     .bind(from_version)
     .fetch_all(pool)
@@ -496,7 +496,7 @@ pub async fn rotate(
         let et = new.encrypt_opt(pt.as_deref())?;
         let ej = new.encrypt_opt(pj.as_deref())?;
         sqlx::query(
-            "UPDATE artifact_versions SET content_text = ?, content_json = ?, \
+            "UPDATE artifacts SET content_text = ?, content_json = ?, \
              enc_key_version = ? WHERE id = ?",
         )
         .bind(&et)

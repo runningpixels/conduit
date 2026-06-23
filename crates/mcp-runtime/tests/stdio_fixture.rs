@@ -97,6 +97,15 @@ async fn stdio_config_rejects_shell_dash_c() {
 }
 
 #[tokio::test]
+async fn stdio_config_rejects_powershell_shells() {
+    for command in ["powershell", "powershell.exe", "pwsh", "pwsh.exe"] {
+        let raw = json!({ "command": command, "args": ["-Command", "Write-Host ok"] });
+        let err = StdioConfig::from_value(&raw).expect_err("must reject");
+        assert_eq!(err.category, mcp_runtime::ErrorCategory::Protocol, "{command}");
+    }
+}
+
+#[tokio::test]
 async fn stdio_child_dies_when_transport_dropped() {
     let cancel = CancellationToken::new();
     let mut t = StdioTransport::spawn(

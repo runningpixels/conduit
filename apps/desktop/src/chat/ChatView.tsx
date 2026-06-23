@@ -2,12 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { AppSettings, Message, MessageRole, ProviderRequest } from '@conduit/config-schema';
 import {
   cancelChatStream,
+  discoverConnector,
+  getConnectorRuntimeStates,
   getConversationMessages,
+  invokeConnectorTool,
+  listConnectorCapabilities,
   loadProviderCredentialReference,
+  startConnector,
   startChatStream,
 } from '../ipc/client';
 import { AssistantMessage } from './AssistantMessage';
 import {
+  applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
   markInterrupted,
@@ -15,6 +21,14 @@ import {
 } from './streamState';
 import { AttachIcon, ModelIcon, SendIcon, StopIcon, LockIcon } from '../icons';
 import { COMPOSER_CAPS } from '../mock/workspace';
+import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
+import type { ToolDefinition } from '@conduit/config-schema';
+import {
+  buildConnectorToolCatalog,
+  isConnectorCallable,
+  makeInvokeConnectorToolRequest,
+  type ConnectorToolBinding,
+} from './connectorTools';
 
 interface ChatTurn {
   id: string;
@@ -51,6 +65,7 @@ function buildProviderRequest(
   prompt: string,
   history: ChatTurn[],
   conversationId: string,
+  toolDefinitions: ToolDefinition[],
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
@@ -77,7 +92,7 @@ function buildProviderRequest(
     modelId: settings.activeModel,
     messages,
     systemPrompt: 'You are a helpful assistant in the Conduit desktop shell.',
-    toolDefinitions: [],
+    toolDefinitions,
   };
 }
 
@@ -102,6 +117,10 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
   const taRef = useRef<HTMLTextAreaElement>(null);
   const currentConversationIdRef = useRef<string | null>(conversationId);
   const activeRequestRef = useRef<{ requestId: string; conversationId: string } | null>(null);
+  const activeStreamRef = useRef<AssistantStreamState | null>(null);
+  const toolBindingsRef = useRef<Record<string, ConnectorToolBinding>>({});
+  const providerToolByCallIdRef = useRef<Record<string, string>>({});
+  const pendingRuntimeCallsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId;
@@ -153,6 +172,10 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
     };
   }, [settings.activeProvider]);
 
+  useEffect(() => {
+    activeStreamRef.current = activeStream;
+  }, [activeStream]);
+
   // Autosize the composer textarea.
   useEffect(() => {
     const ta = taRef.current;
@@ -167,6 +190,130 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, activeStream]);
 
+  async function loadToolDefinitions(): Promise<ToolDefinition[]> {
+    try {
+      const snapshots = await getConnectorRuntimeStates();
+      const callable = snapshots.filter(isConnectorCallable);
+      const capabilityEntries = await Promise.all(
+        callable.map(async (snapshot) => {
+          let caps: ConnectorCapability[] = [];
+          try {
+            caps = await listConnectorCapabilities(snapshot.connectorVersionId);
+            if (caps.length === 0 && snapshot.running) {
+              caps = await discoverConnector(snapshot.connectorVersionId);
+            }
+          } catch {
+            caps = [];
+          }
+          return [snapshot.connectorVersionId, caps] as const;
+        }),
+      );
+      const catalog = buildConnectorToolCatalog(
+        snapshots,
+        Object.fromEntries(capabilityEntries),
+      );
+      toolBindingsRef.current = catalog.bindings;
+      return catalog.toolDefinitions;
+    } catch {
+      toolBindingsRef.current = {};
+      return [];
+    }
+  }
+
+  function applyRuntimeEventToActiveStream(
+    requestId: string,
+    targetConversationId: string,
+    event: ConnectorRuntimeEvent,
+  ) {
+    const active = activeRequestRef.current;
+    if (
+      !active ||
+      active.requestId !== requestId ||
+      currentConversationIdRef.current !== targetConversationId
+    ) {
+      return;
+    }
+    if (event.kind === 'toolCallFinished') {
+      pendingRuntimeCallsRef.current.delete(event.tool_call_id);
+    }
+    setActiveStream((current) =>
+      applyConnectorRuntimeEvent(current ?? createAssistantStreamState(requestId), event),
+    );
+  }
+
+  function recordRuntimeFailure(
+    requestId: string,
+    targetConversationId: string,
+    toolCallId: string,
+    message: string,
+  ) {
+    pendingRuntimeCallsRef.current.delete(toolCallId);
+    applyRuntimeEventToActiveStream(requestId, targetConversationId, {
+      kind: 'toolCallFinished',
+      tool_call_id: toolCallId,
+      status: 'failed',
+      size_bytes: 0n,
+      mime_hints: [],
+      error: message,
+    });
+  }
+
+  async function handoffConnectorTool(
+    requestId: string,
+    targetConversationId: string,
+    toolCallId: string,
+    args: Record<string, unknown>,
+  ) {
+    const providerToolName = providerToolByCallIdRef.current[toolCallId];
+    const binding = providerToolName ? toolBindingsRef.current[providerToolName] : undefined;
+    if (!binding) {
+      recordRuntimeFailure(
+        requestId,
+        targetConversationId,
+        toolCallId,
+        'No connector binding matched this provider tool call.',
+      );
+      return;
+    }
+
+    pendingRuntimeCallsRef.current.add(toolCallId);
+    const runtimeRequest = makeInvokeConnectorToolRequest(binding, requestId, toolCallId, args);
+    try {
+      try {
+        await invokeConnectorTool(runtimeRequest, (event) =>
+          applyRuntimeEventToActiveStream(requestId, targetConversationId, event),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes('not running')) {
+          throw error;
+        }
+        await startConnector(binding.connectorVersionId);
+        await invokeConnectorTool(runtimeRequest, (event) =>
+          applyRuntimeEventToActiveStream(requestId, targetConversationId, event),
+        );
+      }
+    } catch (error) {
+      recordRuntimeFailure(
+        requestId,
+        targetConversationId,
+        toolCallId,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  async function waitForPendingRuntimeCalls(requestId: string) {
+    const deadline = Date.now() + 30000;
+    while (
+      activeRequestRef.current?.requestId === requestId &&
+      pendingRuntimeCallsRef.current.size > 0 &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+  }
+
   async function handleSend() {
     const trimmed = prompt.trim();
     if (!trimmed || activeRequestId || !conversationId) return;
@@ -179,10 +326,13 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
     const history = [...turns, userTurn];
     setTurns(history);
     setPrompt('');
-    onStatus('Streaming provider response');
+    onStatus('Loading connector tools');
 
-    const request = buildProviderRequest(settings, trimmed, history, conversationId);
+    const toolDefinitions = await loadToolDefinitions();
+    const request = buildProviderRequest(settings, trimmed, history, conversationId, toolDefinitions);
     const initialStream = createAssistantStreamState(request.requestId);
+    providerToolByCallIdRef.current = {};
+    pendingRuntimeCallsRef.current = new Set();
     activeRequestRef.current = {
       requestId: request.requestId,
       conversationId,
@@ -204,18 +354,35 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
           const base = current ?? createAssistantStreamState(request.requestId);
           return applyProviderEvent(base, event);
         });
+        if (event.kind === 'toolCallStart') {
+          providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
+        } else if (event.kind === 'toolCallComplete') {
+          void handoffConnectorTool(
+            request.requestId,
+            conversationId,
+            event.toolCallId,
+            event.arguments,
+          );
+        }
       });
+      await waitForPendingRuntimeCalls(request.requestId);
       onStatus('Stream complete');
     } catch (error) {
       onStatus(error instanceof Error ? error.message : 'Stream failed');
     } finally {
-      try {
-        const messages = await getConversationMessages(conversationId);
-        if (currentConversationIdRef.current === conversationId) {
-          setTurns(messages.map(messageToTurn));
-        }
-      } catch {
-        /* keep existing turns if reload fails */
+      const finalState = activeStreamRef.current;
+      if (currentConversationIdRef.current === conversationId && finalState) {
+        setTurns((current) => [
+          ...current,
+          {
+            id: `assistant-${request.requestId}`,
+            role: 'assistant',
+            content: finalState.blocks.map((block) => block.content).join(''),
+            streamState: { ...finalState, streaming: false },
+            interrupted: finalState.interrupted,
+            modelId: settings.activeModel,
+          },
+        ]);
       }
       if (activeRequestRef.current?.requestId === request.requestId) {
         activeRequestRef.current = null;
@@ -224,6 +391,8 @@ export function ChatView({ settings, onStatus, conversationId }: ChatViewProps) 
         setActiveStream(null);
         setActiveRequestId(null);
       }
+      providerToolByCallIdRef.current = {};
+      pendingRuntimeCallsRef.current = new Set();
     }
   }
 

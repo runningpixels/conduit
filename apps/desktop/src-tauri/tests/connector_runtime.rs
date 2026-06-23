@@ -69,7 +69,7 @@ async fn seed_connector(
     support_state: Option<&str>,
     grant_status: &str,
 ) -> String {
-    seed_connector_with(pool, support_state, grant_status, None).await
+    seed_connector_with(pool, support_state, grant_status, None, None).await
 }
 
 async fn seed_connector_with(
@@ -77,6 +77,7 @@ async fn seed_connector_with(
     support_state: Option<&str>,
     grant_status: &str,
     allowlist: Option<&[&str]>,
+    env: Option<serde_json::Value>,
 ) -> String {
     let def = ConnectorDefinition {
         id: "echo".into(),
@@ -97,11 +98,12 @@ async fn seed_connector_with(
     let bin = echo_bin().to_string_lossy().to_string();
     let capability_allowlist = allowlist
         .map(|names| serde_json::Value::Array(names.iter().map(|n| json!(n)).collect()));
+    let transport_env = env.unwrap_or_else(|| json!({}));
     let version = ConnectorVersion {
         id: "echo:1.0.0".into(),
         connector_id: "echo".into(),
         version: "1.0.0".into(),
-        transport_config: json!({ "command": bin, "args": [], "env": {} }),
+        transport_config: json!({ "command": bin, "args": [], "env": transport_env }),
         scope_grants: None,
         capability_allowlist,
         rollout_channel: None,
@@ -260,6 +262,10 @@ async fn repeated_crashes_hit_cap_and_go_down() {
     );
     let s = runtime_state(&pool, &vid).await.unwrap();
     assert!(s.restart_count >= RESTART_MAX as i64, "restart_count={}", s.restart_count);
+    assert!(
+        mgr.active_connector(&vid).is_none(),
+        "restart-capped connector should be removed from the active registry"
+    );
 }
 
 #[tokio::test]
@@ -353,7 +359,7 @@ async fn discovery_filters_through_allowlist() {
     let dir = tempfile::tempdir().unwrap();
     let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
     let mgr = test_manager();
-    let vid = seed_connector_with(&pool, None, "active", Some(&["echo", "read_time"])).await;
+    let vid = seed_connector_with(&pool, None, "active", Some(&["echo", "read_time"]), None).await;
 
     mgr.start_connector(&state, &vid).await.unwrap();
     let caps = mgr.discover_capabilities(&state, &vid).await.expect("discover");
@@ -363,4 +369,101 @@ async fn discovery_filters_through_allowlist() {
     assert!(names.contains(&"read_time"));
     assert!(!names.contains(&"post_message"));
     mgr.stop_connector(&state, &vid).await.unwrap();
+}
+
+#[tokio::test]
+async fn discovery_empty_result_clears_stale_cached_capabilities() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let mgr = test_manager();
+    let vid = seed_connector_with(&pool, None, "active", Some(&["does_not_exist"]), None).await;
+
+    connectors::upsert_capabilities(
+        &pool,
+        &vid,
+        &[connectors::new_capability(&vid, "tool", "stale_tool", Some(json!({})))],
+    )
+    .await
+    .unwrap();
+
+    mgr.start_connector(&state, &vid).await.unwrap();
+
+    let cached = connectors::list_capabilities(&pool, &vid).await.unwrap();
+    assert!(cached.is_empty(), "empty discovery should clear stale cached rows");
+}
+
+#[tokio::test]
+async fn initialize_timeout_marks_connector_down() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let mgr = test_manager();
+    let vid = seed_connector_with(
+        &pool,
+        None,
+        "active",
+        None,
+        Some(json!({ "ECHO_CONNECTOR_INITIALIZE_DELAY_MS": "2000" })),
+    )
+    .await;
+
+    let err = mgr.start_connector(&state, &vid).await.expect_err("initialize should time out");
+    assert!(err.contains("initialize exceeded"), "got {err}");
+    assert_eq!(runtime_state(&pool, &vid).await.unwrap().health, "down");
+}
+
+#[tokio::test]
+async fn discovery_timeout_is_reported() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let mgr = test_manager();
+    let vid = seed_connector_with(
+        &pool,
+        None,
+        "active",
+        None,
+        Some(json!({ "ECHO_CONNECTOR_LIST_TOOLS_DELAY_MS": "2000" })),
+    )
+    .await;
+
+    mgr.start_connector(&state, &vid).await.unwrap();
+    let err = mgr
+        .discover_capabilities(&state, &vid)
+        .await
+        .expect_err("manual discovery should time out");
+    assert!(err.contains("discovery exceeded"), "got {err}");
+}
+
+#[tokio::test]
+async fn consent_classification_timeout_is_reported() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let mgr = test_manager();
+    let vid = seed_connector_with(
+        &pool,
+        None,
+        "active",
+        None,
+        Some(json!({ "ECHO_CONNECTOR_LIST_TOOLS_DELAY_MS": "2000" })),
+    )
+    .await;
+
+    mgr.start_connector(&state, &vid).await.unwrap();
+    let err = match mgr
+        .request_consent(
+            &state,
+            &vid,
+            "tc-timeout",
+            "post_message",
+            &json!({ "channel": "general", "text": "hello" }),
+        )
+        .await
+    {
+        Ok(_) => panic!("consent classification should time out"),
+        Err(err) => err,
+    };
+    assert!(err.contains("consent classification"), "got {err}");
 }

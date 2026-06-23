@@ -2,7 +2,7 @@
 //! bounded backoff. Runs as a detached task per active connector; exits when
 //! the connector's `CancellationToken` fires (stop / shutdown_all / revocation).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use mcp_runtime::McpError;
@@ -14,17 +14,19 @@ use crate::db::DbPool;
 /// Spawn the watch loop for a connector.
 pub fn spawn(
     conn: Arc<ActiveConnector>,
+    active: Arc<StdMutex<std::collections::HashMap<String, Arc<ActiveConnector>>>>,
     pool: DbPool,
     version_id: String,
     liveness_interval: Duration,
 ) {
     tokio::spawn(async move {
-        supervise(conn, pool, version_id, liveness_interval).await;
+        supervise(conn, active, pool, version_id, liveness_interval).await;
     });
 }
 
 async fn supervise(
     conn: Arc<ActiveConnector>,
+    active: Arc<StdMutex<std::collections::HashMap<String, Arc<ActiveConnector>>>>,
     pool: DbPool,
     version_id: String,
     liveness_interval: Duration,
@@ -65,6 +67,10 @@ async fn supervise(
                 false,
             )
             .await;
+            conn.cancel.cancel();
+            if let Ok(mut guard) = active.lock() {
+                guard.remove(&version_id);
+            }
             break;
         }
         restart_times.push(Instant::now());

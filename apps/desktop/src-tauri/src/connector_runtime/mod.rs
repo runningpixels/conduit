@@ -128,7 +128,7 @@ impl ConnectorRuntimeManager {
         let active = self
             .active_connector(connector_version_id)
             .ok_or_else(|| "connector is not running".to_string())?;
-        discovery::discover(&active, &pool, &version).await
+        discovery::discover(&active, &pool, &version, self.call_timeout).await
     }
 
     /// Classify a pending tool call against the connector's live declaration
@@ -155,17 +155,32 @@ impl ConnectorRuntimeManager {
         let active = self
             .active_connector(connector_version_id)
             .ok_or_else(|| "connector is not running".to_string())?;
-        consent::request_consent(
-            &active,
-            &self.pending,
-            &version,
-            &definition,
-            tool_call_id,
-            tool_name,
-            arguments,
+        tokio::time::timeout(
+            self.call_timeout,
+            consent::request_consent(
+                &active,
+                &self.pending,
+                &version,
+                &definition,
+                tool_call_id,
+                tool_name,
+                arguments,
+            ),
         )
         .await
+        .map_err(|_| {
+            format!(
+                "consent classification for tool '{tool_name}' exceeded the {:?} timeout",
+                self.call_timeout
+            )
+        })?
         .map_err(|e| e.message)
+    }
+
+    pub(crate) fn active_registry(
+        &self,
+    ) -> Arc<StdMutex<HashMap<String, Arc<ActiveConnector>>>> {
+        self.active.clone()
     }
 
     /// Fulfill a pending consent decision (approve/deny IPC command).
@@ -306,12 +321,18 @@ impl ConnectorRuntimeManager {
 
         // M4.3: discover capabilities and cache them (replace-batch). Best-effort
         // — a discovery failure leaves the connector healthy with an empty cache.
-        if let Err(e) = discovery::discover(&active, &pool, &version).await {
+        if let Err(e) = discovery::discover(&active, &pool, &version, self.call_timeout).await {
             warn!(target: "mcp_connector", %connector_version_id, error = %e, "discovery failed");
         }
 
         // Start the supervision watch loop (restart/backoff on crash).
-        supervisor::spawn(active, pool, connector_version_id.to_string(), self.liveness_interval);
+        supervisor::spawn(
+            active,
+            self.active_registry(),
+            pool,
+            connector_version_id.to_string(),
+            self.liveness_interval,
+        );
 
         Ok(server)
     }

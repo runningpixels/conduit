@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ToolCallState } from './streamState';
 import { approveConnectorToolCall, denyConnectorToolCall } from '../ipc/client';
+import { splitToolDisplayName } from './connectorTools';
 import { GithubIcon, SlackIcon } from '../icons';
 
 interface ToolCallBlockProps {
@@ -35,7 +36,8 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
     : toolCall.complete ? 'ran'
     : 'running';
 
-  const toolIcon = toolCall.name.startsWith('slack') ? <SlackIcon /> : <GithubIcon />;
+  const toolIcon = toolCall.name.toLowerCase().startsWith('slack') ? <SlackIcon /> : <GithubIcon />;
+  const displayName = splitToolDisplayName(toolCall.name);
 
   async function resolve(decision: 'approved' | 'denied') {
     setResolving(true);
@@ -58,7 +60,7 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
       <div className="tool-head">
         <span className="tico">{toolIcon}</span>
         <span className="tname">
-          {toolCall.name.split('.')[0]} - <span>{toolCall.name.split('.').slice(1).join('.') || toolCall.toolId}</span>
+          {displayName.connector} - <span>{displayName.tool || toolCall.toolId}</span>
         </span>
         <span className={`pill ${statusTone}`}>{statusLabel}</span>
       </div>

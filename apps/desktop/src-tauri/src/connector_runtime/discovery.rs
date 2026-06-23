@@ -7,6 +7,7 @@
 //! connector version or grant changes.
 
 use tracing::warn;
+use std::time::Duration;
 
 use super::ActiveConnector;
 use crate::db::repository::connectors::{self, ConnectorCapability, ConnectorVersion};
@@ -20,19 +21,22 @@ pub async fn discover(
     active: &std::sync::Arc<ActiveConnector>,
     pool: &DbPool,
     version: &ConnectorVersion,
+    timeout: Duration,
 ) -> Result<Vec<ConnectorCapability>, String> {
     let cancel = active.cancel.clone();
     let (tools, resources, prompts) = {
         let mut t = active.transport.lock().await;
-        // Apply the runtime call timeout to discovery as well to prevent hung connectors.
+        // Apply the runtime manager's timeout to discovery as well so a hung
+        // connector cannot block startup or manual refresh forever.
         let lists = async {
             let tools = t.list_tools(&cancel).await.map_err(|e| e.message)?;
             let resources = t.list_resources(&cancel).await.map_err(|e| e.message)?;
             let prompts = t.list_prompts(&cancel).await.map_err(|e| e.message)?;
             Ok::<_, String>((tools, resources, prompts))
         };
-        // Note: using a longer effective window; in practice the manager timeout applies at higher level.
-        tokio::time::timeout(std::time::Duration::from_secs(30), lists).await.map_err(|_| "discovery timeout".to_string())??
+        tokio::time::timeout(timeout, lists)
+            .await
+            .map_err(|_| format!("discovery exceeded the {:?} timeout", timeout))??
     };
 
     let version_id = &version.id;

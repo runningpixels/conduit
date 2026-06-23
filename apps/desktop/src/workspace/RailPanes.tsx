@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { WorkspaceTab } from './Rail';
-import type { ConversationSummary, ConnectorRuntimeSnapshot } from '../ipc/contracts';
+import type { ConnectorCapability, ConversationSummary, ConnectorRuntimeSnapshot } from '../ipc/contracts';
 import {
+  discoverConnector,
   getConnectorRuntimeStates,
+  listConnectorCapabilities,
   listConversations,
   startConnector,
   stopConnector,
@@ -195,14 +197,28 @@ function connectorStatus(s: ConnectorRuntimeSnapshot): {
 
 function ConnectorsPane() {
   const [rows, setRows] = useState<ConnectorRuntimeSnapshot[]>([]);
+  const [capabilities, setCapabilities] = useState<Record<string, ConnectorCapability[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [refreshingDiscovery, setRefreshingDiscovery] = useState<string | null>(null);
 
   const refresh = () => {
     void (async () => {
       try {
-        setRows(await getConnectorRuntimeStates());
+        const nextRows = await getConnectorRuntimeStates();
+        setRows(nextRows);
+        const capabilityEntries = await Promise.all(
+          nextRows.map(async (row) => {
+            try {
+              return [row.connectorVersionId, await listConnectorCapabilities(row.connectorVersionId)] as const;
+            } catch {
+              return [row.connectorVersionId, []] as const;
+            }
+          }),
+        );
+        setCapabilities(Object.fromEntries(capabilityEntries));
       } catch {
         setRows([]);
+        setCapabilities({});
       }
     })();
   };
@@ -229,6 +245,17 @@ function ConnectorsPane() {
     }
   }
 
+  async function refreshDiscovery(s: ConnectorRuntimeSnapshot) {
+    setRefreshingDiscovery(s.connectorVersionId);
+    try {
+      const next = await discoverConnector(s.connectorVersionId);
+      setCapabilities((current) => ({ ...current, [s.connectorVersionId]: next }));
+      refresh();
+    } finally {
+      setRefreshingDiscovery(null);
+    }
+  }
+
   return (
     <section className="tab-pane" data-pane="connectors" aria-label="Connectors">
       <div className="tab-list scroll">
@@ -246,6 +273,7 @@ function ConnectorsPane() {
                 s.lastError && (st.tone === 'bad' || st.tone === 'warn')
                   ? s.lastError
                   : `${s.transport} · v${s.version}`;
+              const toolCaps = (capabilities[s.connectorVersionId] ?? []).filter((cap) => cap.kind === 'tool');
               const canToggle =
                 s.grantStatus === 'active' &&
                 s.supportState !== 'adminDisabled' &&
@@ -258,9 +286,20 @@ function ConnectorsPane() {
                   <span className="meta">
                     <b>{s.connectorName}</b>
                     <small>{subtitle}</small>
+                    <small>
+                      Tools: {toolCaps.length > 0 ? toolCaps.map((cap) => cap.name).join(', ') : 'none discovered'}
+                    </small>
                   </span>
                   <span className="row-right">
                     <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                    <button
+                      className="btn ghost"
+                      type="button"
+                      disabled={refreshingDiscovery === s.connectorVersionId || !s.running}
+                      onClick={() => void refreshDiscovery(s)}
+                    >
+                      Refresh tools
+                    </button>
                     {canToggle && (
                       <button
                         className="btn ghost"

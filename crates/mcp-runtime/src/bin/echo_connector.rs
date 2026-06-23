@@ -18,6 +18,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 fn tools_list() -> Value {
+    maybe_sleep_env("ECHO_CONNECTOR_LIST_TOOLS_DELAY_MS");
     json!([
         {
             "name": "echo",
@@ -60,6 +61,18 @@ fn tools_list() -> Value {
             "permissionLevel": "readOnly"
         }
     ])
+}
+
+fn maybe_sleep_env(name: &str) {
+    let Ok(raw) = std::env::var(name) else {
+        return;
+    };
+    let Ok(ms) = raw.parse::<u64>() else {
+        return;
+    };
+    if ms > 0 {
+        std::thread::sleep(Duration::from_millis(ms));
+    }
 }
 
 fn call_tool(name: &str, args: &Value) -> (Value, bool) {
@@ -139,11 +152,14 @@ fn main() {
         let id = id.unwrap();
 
         let result: Option<Value> = match method.as_str() {
-            "initialize" => Some(json!({
-                "protocolVersion": "2024-11-05",
-                "serverInfo": { "name": "echo-connector", "version": "0.1.0" },
-                "capabilities": { "tools": {} }
-            })),
+            "initialize" => {
+                maybe_sleep_env("ECHO_CONNECTOR_INITIALIZE_DELAY_MS");
+                Some(json!({
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": { "name": "echo-connector", "version": "0.1.0" },
+                    "capabilities": { "tools": {} }
+                }))
+            }
             "tools/list" => Some(json!({ "tools": tools_list() })),
             "resources/list" => Some(json!({ "resources": [] })),
             "prompts/list" => Some(json!({ "prompts": [] })),

@@ -764,14 +764,25 @@ pub async fn revoke_connector_grant(
     grant_id: String,
     _connector_version_id: Option<String>,
 ) -> Result<(), String> {
+    revoke_connector_grant_inner(state.inner(), runtime.inner(), &grant_id).await
+}
+
+pub async fn revoke_connector_grant_inner(
+    state: &AppState,
+    runtime: &ConnectorRuntimeManager,
+    grant_id: &str,
+) -> Result<(), String> {
     // Always resolve the version from the grant so revocation guarantees stop
     // even if the renderer omits connector_version_id.
     let grants = connectors::list_grants(&state.db, None).await.map_err(|e| e.to_string())?;
-    let vid = grants.iter().find(|g| g.id == grant_id).map(|g| g.connector_version_id.clone());
+    let vid = grants
+        .iter()
+        .find(|g| g.id == grant_id)
+        .map(|g| g.connector_version_id.clone());
     if let Some(vid) = vid.as_deref() {
-        let _ = runtime.stop_connector(state.inner(), vid).await;
+        let _ = runtime.stop_connector(state, vid).await;
     }
-    connectors::revoke_grant(&state.db, &grant_id, None)
+    connectors::revoke_grant(&state.db, grant_id, None)
         .await
         .map_err(|e| e.to_string())
 }

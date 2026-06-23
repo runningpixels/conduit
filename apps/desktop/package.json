@@ -1,0 +1,27 @@
+{
+  "name": "@conduit/desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:web": "vite",
+    "build:web": "tsc -b && vite build",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "check": "tsc -b"
+  },
+  "dependencies": {
+    "@conduit/config-schema": "workspace:*",
+    "@conduit/ui": "workspace:*",
+    "@tauri-apps/api": "*",
+    "react": "*",
+    "react-dom": "*"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "@vitejs/plugin-react": "*",
+    "typescript": "*",
+    "vite": "*"
+  }
+}

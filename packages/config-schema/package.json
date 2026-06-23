@@ -1,0 +1,11 @@
+{
+  "name": "@conduit/config-schema",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "cd ../.. && cargo run --example export_ts -p provider-core",
+    "check": "cd ../.. && cargo run --example export_ts -p provider-core && git diff --exit-code packages/config-schema/src/generated"
+  }
+}

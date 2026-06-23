@@ -1,0 +1,340 @@
+/*
+ * @conduit/ui — v5 design tokens, scale tokens, locally bundled fonts,
+ * and the shared primitive component classes. Implements ADR-005.
+ *
+ * Source of truth for the visual tokens:
+ *   docs/design/conduit-chat-v5.html (:root dark + [data-theme="light"] blocks).
+ *
+ * Scale tokens (spacing / radius / typography) are introduced here so the
+ * primitive classes below reference a named scale instead of re-literalizing
+ * the per-rule values the v5 mockup hard-codes.
+ */
+
+/* ───────────────────────── Fonts (bundled locally; CSP stays 'self') ───────────────────────── */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Geist-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/Geist-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/Geist-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Geist-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/GeistMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/GeistMono-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/GeistMono-SemiBold.woff2") format("woff2");
+}
+
+/* ───────────────────────── v5 token set (dark, default) ───────────────────────── */
+:root {
+  --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --r-xs: 5px;
+  --r-sm: 7px;
+  --r: 10px;
+  --r-lg: 15px;
+  --r-pill: 999px;
+  --tap: .14s cubic-bezier(.2,.6,.2,1);
+  --rail-w: 52px;
+  --chat-w: 43vw;
+  --doc-w: 57vw;
+
+  --bg: #0c0d0f;
+  --panel: #101214;
+  --surface: #131517;
+  --surface-2: #191c1f;
+  --surface-3: #202428;
+  --border: #24282d;
+  --border-soft: #1c1f23;
+  --border-strong: #323840;
+  --text: #e9ebed;
+  --text-2: #969da4;
+  --text-3: #656c73;
+  --accent: #2dd4bf;
+  --accent-text: #5eead4;
+  --accent-weak: rgba(45,212,191,.13);
+  --accent-line: rgba(45,212,191,.55);
+  --success: #34d399;
+  --warn: #f4bf4f;
+  --danger: #f87171;
+  --shadow: 0 20px 48px -28px rgba(0,0,0,.85);
+  --glow: 0 0 0 1px var(--accent-weak), 0 0 22px -8px var(--accent-line);
+  color-scheme: dark;
+
+  /* ── Scale tokens: spacing (named once, referenced by primitives) ── */
+  --space-0: 0;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 5px;
+  --space-4: 6px;
+  --space-5: 7px;
+  --space-6: 8px;
+  --space-7: 9px;
+  --space-8: 10px;
+  --space-9: 11px;
+  --space-10: 12px;
+  --space-11: 13px;
+  --space-12: 14px;
+  --space-14: 16px;
+  --space-16: 18px;
+  --space-20: 22px;
+  --space-24: 28px;
+  --space-32: 38px;
+
+  /* ── Scale tokens: typography ── */
+  --fs-xs: 10px;
+  --fs-sm: 10.5px;
+  --fs-md: 11px;
+  --fs-lg: 11.5px;
+  --fs-xl: 12px;
+  --fs-2xl: 12.5px;
+  --fs-3xl: 13px;
+  --fs-4xl: 13.5px;
+  --fs-5xl: 14px;
+  --fs-6xl: 14.5px;
+  --fs-7xl: 25px;
+
+  /* ── Primitive sizing (derived from the scales above) ── */
+  --cu-icon-sm: 17px;
+  --cu-icon-md: 18px;
+  --cu-tap: var(--tap);
+}
+
+[data-theme="light"] {
+  --bg: #f5f6f7;
+  --panel: #fbfbfc;
+  --surface: #ffffff;
+  --surface-2: #f1f3f5;
+  --surface-3: #e9edf1;
+  --border: #e4e7ea;
+  --border-soft: #eceef0;
+  --border-strong: #d3d8dd;
+  --text: #15181b;
+  --text-2: #59616a;
+  --text-3: #8a929b;
+  --accent: #0d9488;
+  --accent-text: #0f766e;
+  --accent-weak: rgba(13,148,136,.10);
+  --accent-line: rgba(13,148,136,.45);
+  --success: #0f9d63;
+  --warn: #c98a13;
+  --danger: #dc4b4b;
+  --shadow: 0 18px 38px -24px rgba(20,30,40,.30);
+  --glow: 0 0 0 1px var(--accent-weak), 0 0 18px -8px var(--accent-line);
+  color-scheme: light;
+}
+
+[data-rail="expanded"] { --rail-w: 184px; }
+
+/* ───────────────────────── Base reset ───────────────────────── */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-4xl);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, textarea { font-family: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: var(--space-2); border-radius: var(--r-xs); }
+textarea:focus-visible { outline: none; }
+::selection { background: var(--accent-weak); }
+.scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.scroll::-webkit-scrollbar { width: var(--space-6); height: var(--space-6); }
+.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--r-pill); border: var(--space-3) solid transparent; background-clip: padding-box; }
+.scroll::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: padding-box; }
+
+/* ───────────────────────── Primitives (token + scale driven) ────────────
+ * These are v5's shared component classes, extracted here so React primitives
+ * (<Button/>, <IconButton/>, <StatusPill/>, <Chip/>, <SearchBox/>, <InfoCard/>,
+ * <SectionLabel/>, <Avatar/>) and the workspace share one source of truth.
+ * No hard-coded radii or spacing — radii come from --r-*, spacing from
+ * --space-*, type from --fs-*. Ported from v5 and routed through the scale. */
+
+/* Button — .btn (default / .primary / .ghost) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-5);
+  border: var(--space-1) solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: var(--space-5) var(--space-11);
+  font-size: var(--fs-2xl);
+  font-weight: 550;
+  transition: var(--tap);
+}
+.btn:hover { border-color: var(--border-strong); }
+.btn.primary { background: var(--accent); color: #04140f; border-color: transparent; }
+[data-theme="light"] .btn.primary { color: #fff; }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* IconButton — .icon-btn */
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  border: var(--space-1) solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  transition: var(--tap);
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.icon-btn.on { color: var(--accent-text); background: var(--accent-weak); }
+.icon-btn svg { width: 17px; height: 17px; }
+
+/* Pill (tool status) — .pill.ran/.hold/.local */
+.pill {
+  margin-left: auto;
+  font: 600 var(--fs-xs)/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: var(--space-4) var(--space-7);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+.pill.ran { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.pill.hold { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pill.local { color: var(--accent-text); background: var(--accent-weak); }
+
+/* StatusPill — .status-pill.ok/.warn/.bad */
+.status-pill {
+  font: 600 var(--fs-xs)/1 var(--font-mono);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--r-pill);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  flex: none;
+}
+.status-pill.ok { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.status-pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.status-pill.bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* Chip — generic label chip (.cu-chip; titlebar chips keep their own classes) */
+.cu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-5);
+  border-radius: var(--r-pill);
+  border: var(--space-1) solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 var(--fs-lg)/1 var(--font-ui);
+  padding: var(--space-6) var(--space-8);
+  white-space: nowrap;
+}
+
+/* SearchBox — .search-box */
+.search-box { position: relative; margin-bottom: var(--space-10); }
+.search-box svg {
+  position: absolute;
+  left: var(--space-9);
+  top: 50%;
+  width: var(--cu-icon-sm);
+  height: var(--cu-icon-sm);
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+.search-box input {
+  width: 100%;
+  border: var(--space-1) solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--text);
+  padding: var(--space-9) var(--space-9) var(--space-9) 34px;
+  font: 500 var(--fs-2xl)/1 var(--font-ui);
+}
+.search-box input::placeholder { color: var(--text-3); }
+.search-box input:focus { border-color: var(--border-strong); box-shadow: var(--glow); }
+
+/* InfoCard — .info-card */
+.info-card {
+  border: var(--space-1) solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  border-radius: var(--r-lg);
+  padding: var(--space-10);
+  margin: 0 0 var(--space-10);
+  box-shadow: var(--shadow);
+}
+.info-card h3 { margin: 0 0 var(--space-6); font-size: var(--fs-3xl); font-weight: 620; }
+.info-card p { margin: 0; color: var(--text-2); line-height: 1.5; }
+
+/* SectionLabel — .section-label */
+.section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 var(--fs-sm)/1 var(--font-mono);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: var(--space-8) 0;
+}
+.section-label:first-child { margin-top: 0; }
+
+/* Avatar / Role — .av-role.you/.bot */
+.av-role {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: var(--fs-xs);
+  flex: none;
+}
+.av-role.you { background: var(--surface-2); border: var(--space-1) solid var(--border); color: var(--text-2); }
+.av-role.bot { background: var(--accent-weak); color: var(--accent-text); }
+.av-role.bot svg { width: 16px; height: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

@@ -1,0 +1,29 @@
+[package]
+name = "mcp-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.40", features = ["process", "io-util", "time", "sync", "macros", "rt"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+uuid = { version = "1.11", features = ["v4"] }
+# PermissionLevel (the consent tier enum) is the canonical schema, owned by
+# provider-core. mcp-runtime re-exports it so consent classification has one
+# source of truth; the transport/protocol layer otherwise stays independent of
+# the provider stack.
+provider-core = { path = "../provider-core" }
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "time"] }
+
+# Fixture connector binary used by the transport integration test
+# (`tests/stdio_fixture.rs`). Built via `CARGO_BIN_EXE_echo_connector`.
+[[bin]]
+name = "echo_connector"
+path = "src/bin/echo_connector.rs"

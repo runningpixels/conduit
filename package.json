@@ -1,0 +1,10 @@
+{
+  "name": "conduit",
+  "private": true,
+  "packageManager": "pnpm@10.34.4",
+  "scripts": {
+    "dev": "pnpm --dir apps/desktop dev",
+    "build": "pnpm --dir apps/desktop build",
+    "check": "pnpm --dir apps/desktop check"
+  }
+}

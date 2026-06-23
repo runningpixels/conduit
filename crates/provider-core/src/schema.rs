@@ -1,0 +1,885 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use ts_rs::TS;
+
+// =============================================================================
+// Message and Content Types
+// =============================================================================
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/message_role.ts"
+)]
+pub enum MessageRole {
+    System,
+    Developer,
+    User,
+    Assistant,
+    Tool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/message_part_kind.ts"
+)]
+pub enum MessagePartKind {
+    Text,
+    ToolResult,
+    ArtifactReference,
+    AttachmentReference,
+    Reasoning,
+    Image,
+    File,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/message_part.ts"
+)]
+pub struct MessagePart {
+    pub id: String,
+    pub message_id: String,
+    pub index: u32,
+    pub kind: MessagePartKind,
+    #[ts(optional)]
+    pub content: Option<String>,
+    #[ts(optional)]
+    pub mime_type: Option<String>,
+    #[ts(optional)]
+    pub tool_call_id: Option<String>,
+    #[ts(optional)]
+    pub artifact_id: Option<String>,
+    #[ts(optional)]
+    pub attachment_id: Option<String>,
+    #[ts(optional)]
+    pub blob_ref: Option<String>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/message.ts"
+)]
+pub struct Message {
+    pub id: String,
+    pub conversation_id: String,
+    pub role: MessageRole,
+    #[ts(optional)]
+    pub author_label: Option<String>,
+    #[ts(optional)]
+    pub provider_message_id: Option<String>,
+    // `interrupted_at` is nullable (always emitted, `null` when uninterrupted)
+    // rather than merely optional — the shell distinguishes "field absent" from
+    // "message was never interrupted".
+    #[ts(optional)]
+    pub interrupted_at: Option<String>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub metadata: Option<serde_json::Value>,
+    pub parts: Vec<MessagePart>,
+    pub created_at: String,
+}
+
+/// A conversation row. Phase 3 local persistence; `cloud_id` and `sync_state`
+/// are nullable so local-only operation never depends on cloud concepts
+/// (Phase 7 fills them).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/conversation.ts"
+)]
+pub struct Conversation {
+    pub id: String,
+    #[ts(optional)]
+    pub title: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    #[ts(optional)]
+    pub cloud_id: Option<String>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// A history-rail entry: a conversation plus enough derived state (message
+/// count, last message preview) to render without a second round-trip.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/conversation_summary.ts"
+)]
+pub struct ConversationSummary {
+    pub id: String,
+    #[ts(optional)]
+    pub title: Option<String>,
+    pub updated_at: String,
+    pub message_count: u32,
+    #[ts(optional)]
+    pub last_message_preview: Option<String>,
+}
+
+// =============================================================================
+// Provider Request/Response Types
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "type"
+)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/tool_choice.ts"
+)]
+pub enum ToolChoice {
+    Auto,
+    None,
+    Required,
+    Specific { tool_id: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/generation_controls.ts"
+)]
+pub struct GenerationControls {
+    #[ts(optional)]
+    pub temperature: Option<f32>,
+    #[ts(optional)]
+    pub top_p: Option<f32>,
+    #[ts(optional)]
+    pub max_tokens: Option<u32>,
+    #[ts(optional)]
+    pub stop_sequences: Option<Vec<String>>,
+    #[ts(optional)]
+    pub tool_choice: Option<ToolChoice>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/response_format_hint.ts"
+)]
+pub struct ResponseFormatHint {
+    pub kind: String, // "text" | "json" | "structured"
+    #[ts(optional)]
+    pub schema_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/provider_request.ts"
+)]
+pub struct ProviderRequest {
+    pub request_id: String,
+    pub conversation_id: String,
+    pub model_id: String,
+    pub messages: Vec<Message>,
+    #[ts(optional)]
+    pub system_prompt: Option<String>,
+    #[ts(optional)]
+    pub developer_prompt: Option<String>,
+    #[ts(optional)]
+    pub attachments: Option<Vec<String>>,
+    pub tool_definitions: Vec<ToolDefinition>,
+    #[ts(optional)]
+    pub generation_controls: Option<GenerationControls>,
+    #[ts(optional)]
+    pub response_format: Option<ResponseFormatHint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/provider_usage.ts"
+)]
+pub struct ProviderUsage {
+    #[ts(optional)]
+    pub input_tokens: Option<u64>,
+    #[ts(optional)]
+    pub output_tokens: Option<u64>,
+    #[ts(optional)]
+    pub cache_tokens: Option<u64>,
+    #[ts(optional)]
+    pub cost_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/provider_error.ts"
+)]
+pub struct ProviderError {
+    #[ts(optional)]
+    pub provider_code: Option<String>,
+    pub retryable: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/provider_event.ts"
+)]
+pub enum ProviderEvent {
+    MessageStart {
+        request_id: String,
+        index: usize,
+    },
+    ContentBlockStart {
+        request_id: String,
+        block_id: String,
+        index: usize,
+        block_kind: String,
+    },
+    ContentDelta {
+        request_id: String,
+        block_id: String,
+        index: usize,
+        content: String,
+    },
+    ReasoningDelta {
+        request_id: String,
+        block_id: String,
+        index: usize,
+        content: String,
+    },
+    ContentBlockStop {
+        request_id: String,
+        block_id: String,
+        index: usize,
+    },
+    ToolCallStart {
+        request_id: String,
+        tool_call_id: String,
+        index: usize,
+        tool_id: String,
+        name: String,
+    },
+    ToolCallDelta {
+        request_id: String,
+        tool_call_id: String,
+        index: usize,
+        content: String,
+    },
+    ToolCallComplete {
+        request_id: String,
+        tool_call_id: String,
+        index: usize,
+        #[ts(type = "Record<string, unknown>")]
+        arguments: serde_json::Value,
+    },
+    Usage {
+        request_id: String,
+        usage: ProviderUsage,
+    },
+    Ping {
+        request_id: String,
+    },
+    MessageComplete {
+        request_id: String,
+        index: usize,
+        finish_reason: String,
+    },
+    Error {
+        request_id: String,
+        error: ProviderError,
+    },
+}
+
+// =============================================================================
+// Tool Types
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/permission_level.ts"
+)]
+pub enum PermissionLevel {
+    ReadOnly,
+    SideEffectful,
+    Sensitive,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/tool_definition.ts"
+)]
+pub struct ToolDefinition {
+    pub tool_id: String,
+    pub name: String,
+    pub description: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub input_schema: serde_json::Value,
+    #[ts(optional)]
+    pub permission_level: Option<PermissionLevel>,
+    #[ts(optional)]
+    pub display_group: Option<String>,
+    #[ts(optional)]
+    pub tenant_scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/tool_call_status.ts"
+)]
+pub enum ToolCallStatus {
+    Pending,
+    Approved,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/tool_call_record.ts"
+)]
+pub struct ToolCallRecord {
+    pub id: String,
+    pub tool_id: String,
+    pub request_id: String,
+    pub status: ToolCallStatus,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub arguments: Option<serde_json::Value>,
+    #[ts(optional, type = "unknown")]
+    pub result: Option<serde_json::Value>,
+    #[ts(optional)]
+    pub error: Option<String>,
+    #[ts(optional)]
+    pub approved_at: Option<String>,
+    #[ts(optional)]
+    pub completed_at: Option<String>,
+}
+
+// =============================================================================
+// Artifact Types
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/artifact_kind.ts"
+)]
+pub enum ArtifactKind {
+    Markdown,
+    Text,
+    Code,
+    Json,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/artifact.ts"
+)]
+pub struct Artifact {
+    pub id: String,
+    pub conversation_id: String,
+    pub current_version_id: String,
+    pub kind: ArtifactKind,
+    #[ts(optional)]
+    pub title: Option<String>,
+    #[ts(optional)]
+    pub source_message_id: Option<String>,
+    #[ts(optional)]
+    pub cloud_share_id: Option<String>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/artifact_version.ts"
+)]
+pub struct ArtifactVersion {
+    pub id: String,
+    pub artifact_id: String,
+    pub index: u32,
+    #[ts(optional)]
+    pub mime_type: Option<String>,
+    #[ts(optional)]
+    pub content_text: Option<String>,
+    #[ts(optional, type = "unknown")]
+    pub content_json: Option<serde_json::Value>,
+    #[ts(optional)]
+    pub content_path: Option<String>,
+    pub created_at: String,
+}
+
+// =============================================================================
+// Attachment Types
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/retention_state.ts"
+)]
+pub enum RetentionState {
+    Active,
+    Deleted,
+    Redacted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/attachment.ts"
+)]
+pub struct Attachment {
+    pub id: String,
+    pub conversation_id: String,
+    pub path: String,
+    pub mime_type: String,
+    pub size_bytes: u64,
+    #[ts(optional)]
+    pub hash: Option<String>,
+    #[ts(optional)]
+    pub origin: Option<String>,
+    #[ts(optional)]
+    pub retention_state: Option<RetentionState>,
+    pub created_at: String,
+}
+
+// =============================================================================
+// Tenant and Connector Types
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/tenant_identity.ts"
+)]
+pub struct TenantIdentity {
+    pub app_name: String,
+    pub display_name: String,
+    #[ts(optional)]
+    pub accent_color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/model_policy.ts"
+)]
+pub struct ModelPolicy {
+    pub default_model_id: String,
+    pub allowed_model_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/tenant_config.ts"
+)]
+pub struct TenantConfig {
+    pub id: String,
+    pub version: String,
+    pub identity: TenantIdentity,
+    pub model_policy: ModelPolicy,
+    pub feature_flags: Vec<String>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub connector_policy: Option<serde_json::Value>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub license_policy: Option<serde_json::Value>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub audit_policy: Option<serde_json::Value>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub cloud_policy: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/transport.ts"
+)]
+pub enum Transport {
+    Stdio,
+    HttpSse,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/connector_definition.ts"
+)]
+pub struct ConnectorDefinition {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub transport: Transport,
+    pub owner: String,
+    #[ts(optional)]
+    pub icon: Option<String>,
+    #[ts(optional)]
+    pub support_url: Option<String>,
+    #[ts(optional)]
+    pub consent_copy: Option<String>,
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub policy_metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/rollout_channel.ts"
+)]
+pub enum RolloutChannel {
+    Stable,
+    Beta,
+    Pinned,
+    TenantSpecific,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/support_state.ts"
+)]
+pub enum SupportState {
+    Available,
+    Degraded,
+    AdminDisabled,
+    Revoked,
+    Unsupported,
+    AuthRequired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/connector_version.ts"
+)]
+pub struct ConnectorVersion {
+    pub id: String,
+    pub connector_id: String,
+    pub version: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub transport_config: serde_json::Value,
+    #[ts(optional)]
+    pub scope_grants: Option<Vec<String>>,
+    #[ts(optional)]
+    pub capability_allowlist: Option<Vec<String>>,
+    #[ts(optional)]
+    pub rollout_channel: Option<RolloutChannel>,
+    #[ts(optional)]
+    pub support_state: Option<SupportState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/grant_scope.ts"
+)]
+pub enum GrantScope {
+    Tenant,
+    Team,
+    Seat,
+    User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/grant_status.ts"
+)]
+pub enum GrantStatus {
+    Provisioned,
+    Active,
+    Revoked,
+    Pending,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/connector_grant.ts"
+)]
+pub struct ConnectorGrant {
+    pub id: String,
+    pub connector_version_id: String,
+    pub scope: GrantScope,
+    pub status: GrantStatus,
+    #[ts(optional)]
+    pub credential_ref: Option<String>,
+    #[ts(optional)]
+    pub approved_by: Option<String>,
+    #[ts(optional)]
+    pub revoked_at: Option<String>,
+    #[ts(optional)]
+    pub notes: Option<String>,
+}
+
+// =============================================================================
+// Phase 4 — MCP runtime / consent IPC shapes
+// =============================================================================
+
+/// A user's decision on a pending tool-consent prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/consent_decision.ts"
+)]
+pub enum ConsentDecision {
+    Approved,
+    Denied,
+}
+
+/// The payload rendered in a tool-consent prompt. Carried by
+/// `ConnectorRuntimeEvent::ConsentRequested`. All tenant-authored text
+/// (`consent_copy`) and connector output (`arguments`, `data_summary`) is
+/// untrusted display data — redacted before it reaches the renderer.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/consent_prompt.ts"
+)]
+pub struct ConsentPrompt {
+    pub tool_call_id: String,
+    pub connector_version_id: String,
+    pub connector_name: String,
+    pub tool_name: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub arguments: serde_json::Value,
+    pub expected_effect: String,
+    pub data_summary: String,
+    #[ts(optional)]
+    pub consent_copy: Option<String>,
+}
+
+/// Streamed runtime events for a connector lifecycle / tool execution, sent
+/// over a per-request Tauri `Channel<ConnectorRuntimeEvent>` (the Phase 1
+/// "connector runtime status" + "tool execution status" channel uses).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/connector_runtime_event.ts"
+)]
+pub enum ConnectorRuntimeEvent {
+    ConnectorStarted {
+        connector_version_id: String,
+        server_name: String,
+    },
+    ConnectorHealthChanged {
+        connector_version_id: String,
+        health: String,
+        #[ts(optional)]
+        last_error: Option<String>,
+    },
+    ConnectorRevoked {
+        connector_version_id: String,
+    },
+    ConsentRequested {
+        prompt: ConsentPrompt,
+    },
+    ToolCallFinished {
+        tool_call_id: String,
+        status: ToolCallStatus,
+        #[ts(optional)]
+        is_error: Option<bool>,
+        size_bytes: u64,
+        mime_hints: Vec<String>,
+        #[ts(optional)]
+        error: Option<String>,
+    },
+}
+
+// =============================================================================
+// License Types
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/license_claims.ts"
+)]
+pub struct LicenseClaims {
+    pub tenant_id: String,
+    pub seat_id: String,
+    pub tier: String,
+    pub exp: u64,
+    pub config_version: String,
+    #[ts(optional)]
+    pub feature_flags: Option<Vec<String>>,
+    #[ts(optional)]
+    pub offline_grace_deadline: Option<u64>,
+    #[ts(optional)]
+    pub key_set_version: Option<String>,
+    #[ts(optional)]
+    pub issued_at: Option<u64>,
+}
+
+// =============================================================================
+// App Shell Configuration (IPC schema shared with the renderer)
+// =============================================================================
+//
+// These are the data shapes that cross the Tauri IPC boundary for settings and
+// credentials. They live in the shared schema crate so the renderer's TS is
+// generated from the same source as the desktop's Rust (C1). Behavior (defaults,
+// validation, keychain access) stays in the desktop crate.
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../packages/config-schema/src/generated/theme.ts")]
+pub enum Theme {
+    System,
+    Dark,
+    Light,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/provider_endpoint_config.ts"
+)]
+pub struct ProviderEndpointConfig {
+    #[ts(optional)]
+    pub base_url: Option<String>,
+    #[ts(optional)]
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_settings.ts"
+)]
+pub struct AppSettings {
+    pub active_provider: String,
+    pub active_model: String,
+    pub local_only: bool,
+    pub diagnostics_enabled: bool,
+    pub theme: Theme,
+    #[serde(default)]
+    pub provider_endpoints: HashMap<String, ProviderEndpointConfig>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            active_provider: "anthropic".to_string(),
+            active_model: "claude-sonnet-4".to_string(),
+            local_only: true,
+            diagnostics_enabled: true,
+            theme: Theme::System,
+            provider_endpoints: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/settings_patch.ts"
+)]
+pub struct SettingsPatch {
+    #[ts(optional)]
+    pub active_provider: Option<String>,
+    #[ts(optional)]
+    pub active_model: Option<String>,
+    #[ts(optional)]
+    pub local_only: Option<bool>,
+    #[ts(optional)]
+    pub diagnostics_enabled: Option<bool>,
+    #[ts(optional)]
+    pub theme: Option<Theme>,
+    #[ts(optional)]
+    pub provider_endpoints: Option<HashMap<String, ProviderEndpointConfig>>,
+}
+
+/// A model offered by a provider. Returned by `list_models` over IPC.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/model_info.ts"
+)]
+pub struct ModelInfo {
+    pub id: String,
+    #[ts(optional)]
+    pub display_name: Option<String>,
+}
+
+/// Request body for storing a provider secret in the OS keychain.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/credential_request.ts"
+)]
+pub struct CredentialRequest {
+    pub provider_id: String,
+    pub secret: String,
+}
+
+/// Result of a credential lookup/store — never carries the secret itself,
+/// only a `keychain://` reference. M2: the keychain is the sole source of truth.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/credential_summary.ts"
+)]
+pub struct CredentialSummary {
+    pub provider_id: String,
+    pub credential_ref: String,
+    pub stored_in_keychain: bool,
+}

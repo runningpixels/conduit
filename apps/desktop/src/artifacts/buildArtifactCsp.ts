@@ -38,6 +38,7 @@ export function validateAllowedOrigin(raw: string): string | null {
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username || url.password) return null;
   // Drop any path/query/fragment — an allowlist entry is an origin, not a URL.
   // `url.host` includes the port if present (e.g. `host:port`).
   return `${url.protocol}//${url.host}`;

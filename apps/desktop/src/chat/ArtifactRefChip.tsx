@@ -106,7 +106,7 @@ interface AssistantArtifactStripProps {
   content: string;
   /// Hide promote affordances while the turn is still streaming.
   streaming?: boolean;
-  onPromote: (messageId: string, candidate: ArtifactCandidate) => void;
+  onPromote: (messageId: string, candidate: ArtifactCandidate) => void | Promise<void>;
   onOpenArtifact: (artifactId: string) => void;
 }
 
@@ -141,20 +141,22 @@ export function AssistantArtifactStrip({
   const visibleCandidates = candidates.filter((c) => !promotedKeys.has(c.key));
   if (visibleCandidates.length === 0 && promoted.length === 0) return null;
 
-  function handlePromote(candidate: ArtifactCandidate) {
+  async function handlePromote(candidate: ArtifactCandidate) {
     if (pending.has(candidate.key)) return;
     setPending((current) => new Set(current).add(candidate.key));
-    setPromotedKeys((current) => new Set(current).add(candidate.key));
-    onPromote(messageId, candidate);
-    // `pending` is cleared on unmount/turn change; the chip arriving via props
-    // is the durable confirmation. We clear the pending flag optimistically so
-    // a failed promote could be retried — but the button is already hidden by
-    // promotedKeys, which is the intended UX (avoid double-promote).
-    setPending((current) => {
-      const next = new Set(current);
-      next.delete(candidate.key);
-      return next;
-    });
+    try {
+      await onPromote(messageId, candidate);
+      // Success: mark as promoted so the button hides and chip shows.
+      setPromotedKeys((current) => new Set(current).add(candidate.key));
+    } catch {
+      // Failure: allow retry by not adding to promotedKeys.
+    } finally {
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(candidate.key);
+        return next;
+      });
+    }
   }
 
   return (

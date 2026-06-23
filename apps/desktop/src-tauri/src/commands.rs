@@ -399,6 +399,24 @@ pub async fn get_artifact_content_bytes(
     Ok(bytes)
 }
 
+/// Read an artifact's full file payload bytes without the preview size cap.
+/// Intended only for the "Use disk" recovery flow on modified File-content
+/// artifacts. Callers must ensure the payload is not abused for preview.
+#[tauri::command]
+pub async fn read_artifact_file_bytes(
+    state: State<'_, AppState>,
+    artifact_id: String,
+) -> Result<Vec<u8>, String> {
+    artifacts::read_content_bytes(
+        &state.db,
+        &state.paths.artifacts,
+        &state.encryption,
+        &artifact_id,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn check_artifact_file_state(
     state: State<'_, AppState>,

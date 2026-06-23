@@ -8,9 +8,10 @@ import { DocumentPanel } from './DocumentPanel';
 /// client; mock it so no Tauri bridge is touched.
 vi.mock('../ipc/client', () => ({
   getArtifactContentBytes: vi.fn().mockResolvedValue([]),
+  readArtifactFileBytes: vi.fn().mockResolvedValue([]),
 }));
 
-import { getArtifactContentBytes } from '../ipc/client';
+import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
 
 const baseArtifact: Artifact = {
   id: 'a1',
@@ -84,7 +85,7 @@ describe('DocumentPanel Source tab (M3)', () => {
       fileStateMap: { a2: 'modified' as FileState },
       activeFileState: 'modified',
     });
-    (getArtifactContentBytes as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([10, 20, 30]);
+    (readArtifactFileBytes as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([10, 20, 30]);
 
     const useDiskBtn = await screen.findByRole('button', { name: 'Use disk' });
     fireEvent.click(useDiskBtn);

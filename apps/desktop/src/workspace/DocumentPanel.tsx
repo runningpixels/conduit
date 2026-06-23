@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
-import { getArtifactContentBytes } from '../ipc/client';
+import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
 import { CopyIcon, ExternalIcon, FilePlainIcon, CheckIcon, AlertIcon } from '../icons';
 
@@ -228,7 +228,8 @@ export function DocumentPanel({
     if (!artifact || !artifact.contentPath || saving) return;
     setSaving(true);
     try {
-      const bytes = await getArtifactContentBytes(artifact.id);
+      // Use the uncapped recovery reader so large modified files can be re-accepted.
+      const bytes = await readArtifactFileBytes(artifact.id);
       const path = artifact.contentPath;
       const filename = path.includes('/') ? path.split('/').slice(1).join('/') : path;
       await onSaveContent(artifact.id, { kind: 'file', bytes, filename }, artifact.mimeType);

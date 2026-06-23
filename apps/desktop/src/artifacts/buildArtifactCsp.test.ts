@@ -32,6 +32,10 @@ describe('validateAllowedOrigin', () => {
   it('rejects a bare host with no scheme', () => {
     expect(validateAllowedOrigin('fonts.example.com')).toBeNull();
   });
+  it('rejects userinfo (prevents spoofing)', () => {
+    expect(validateAllowedOrigin('https://trusted.example@attacker.example')).toBeNull();
+    expect(validateAllowedOrigin('https://user:pass@example.com')).toBeNull();
+  });
 });
 
 describe('buildArtifactCsp', () => {

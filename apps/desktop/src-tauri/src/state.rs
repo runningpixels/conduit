@@ -210,25 +210,25 @@ fn read_settings(paths: &AppPaths) -> Result<AppSettings, String> {
 /// (`scheme://host[:port]`). Accepts only absolute `http(s)` URLs with a
 /// non-empty host and no whitespace; path/query/fragment are stripped. Returns
 /// `None` for anything else so the caller can reject the whole update.
+/// Uses `url::Url` for correct parsing (rejects userinfo, etc.).
 fn validate_artifact_origin(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
-    let (scheme, rest) = trimmed
-        .strip_prefix("https://")
-        .map(|r| ("https", r))
-        .or_else(|| trimmed.strip_prefix("http://").map(|r| ("http", r)))?;
-    if scheme.is_empty() || rest.is_empty() {
+    if trimmed.is_empty() {
         return None;
     }
-    // An origin has no whitespace and no path/query/fragment — cut at the first
-    // `/`, `?`, or `#`. The remainder is `host[:port]`.
-    let host_end = rest
-        .find(|c: char| matches!(c, '/' | '?' | '#'))
-        .unwrap_or(rest.len());
-    let host = &rest[..host_end];
-    if host.is_empty() || host.chars().any(char::is_whitespace) {
+    let parsed = url::Url::parse(trimmed).ok()?;
+    if parsed.username() != "" || parsed.password().is_some() {
         return None;
     }
-    Some(format!("{scheme}://{host}"))
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return None;
+    }
+    let host = parsed.host_str()?;
+    if host.is_empty() {
+        return None;
+    }
+    let port = parsed.port().map(|p| format!(":{}", p)).unwrap_or_default();
+    Some(format!("{}://{}{}", parsed.scheme(), host, port))
 }
 
 fn write_settings(paths: &AppPaths, settings: &AppSettings) -> Result<(), String> {
@@ -376,5 +376,14 @@ mod tests {
         assert_eq!(validate_artifact_origin("https://"), None);
         assert_eq!(validate_artifact_origin("https://a b"), None);
         assert_eq!(validate_artifact_origin(""), None);
+        // Userinfo is rejected (prevents spoofing like trusted@attacker).
+        assert_eq!(
+            validate_artifact_origin("https://trusted.example@attacker.example"),
+            None
+        );
+        assert_eq!(
+            validate_artifact_origin("https://user:pass@example.com"),
+            None
+        );
     }
 }

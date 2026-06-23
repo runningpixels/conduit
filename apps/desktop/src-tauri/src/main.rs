@@ -57,6 +57,7 @@ fn main() {
             get_artifact,
             set_artifact_content,
             get_artifact_content_bytes,
+            read_artifact_file_bytes,
             check_artifact_file_state,
             export_artifact,
             list_connector_definitions,

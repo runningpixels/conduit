@@ -224,6 +224,12 @@ export async function getArtifactContentBytes(artifactId: string): Promise<numbe
   return invoke<number[]>('get_artifact_content_bytes', { artifactId });
 }
 
+/// Read full File-content bytes for recovery ("Use disk"). Not capped; only for
+/// the modified-file recovery path.
+export async function readArtifactFileBytes(artifactId: string): Promise<number[]> {
+  return invoke<number[]>('read_artifact_file_bytes', { artifactId });
+}
+
 /// File-state machine for File-content artifacts. `noFileContent` for inline
 /// (non-file) payloads; otherwise the on-disk blob hash is compared to
 /// `content_hash` → `ok` | `modified` | `missing`.

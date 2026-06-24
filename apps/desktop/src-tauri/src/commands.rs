@@ -876,17 +876,14 @@ pub async fn invoke_connector_tool(
     });
 
     tauri::async_runtime::spawn(async move {
-        let _ = execution::execute_tool_call(
-            &state,
-            &mgr,
-            &connector_version_id,
-            &tcid,
-            &request_id,
-            &tool_name,
-            &arguments,
-            &sink,
-        )
-        .await;
+        let req = execution::ToolCallRequest {
+            connector_version_id: &connector_version_id,
+            tool_call_id: &tcid,
+            request_id: &request_id,
+            tool_name: &tool_name,
+            arguments: &arguments,
+        };
+        let _ = execution::execute_tool_call(&state, &mgr, &req, &sink).await;
     });
 
     Ok(StreamHandle {

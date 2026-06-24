@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Duration;
 
 use conduit_desktop::connector_runtime::execution::{
-    execute_tool_call, EventSink, MAX_OUTPUT_BYTES,
+    execute_tool_call, EventSink, ToolCallRequest, MAX_OUTPUT_BYTES,
 };
 use conduit_desktop::connector_runtime::ConnectorRuntimeManager;
 use conduit_desktop::db::repository::{connectors, conversations, messages, tool_calls};
@@ -188,18 +188,16 @@ async fn auto_tool_runs_and_persists() {
     let (events, sink) = recorder();
     let tcid = Uuid::new_v4().to_string();
 
-    let outcome = execute_tool_call(
-        &state,
-        &mgr,
-        &vid,
-        &tcid,
-        "req-1",
-        "echo",
-        &json!({ "text": "hi there" }),
-        &sink,
-    )
-    .await
-    .expect("auto tool completes");
+    let req = ToolCallRequest {
+        connector_version_id: &vid,
+        tool_call_id: &tcid,
+        request_id: "req-1",
+        tool_name: "echo",
+        arguments: &json!({ "text": "hi there" }),
+    };
+    let outcome = execute_tool_call(&state, &mgr, &req, &sink)
+        .await
+        .expect("auto tool completes");
 
     assert_eq!(outcome.record.status, ToolCallStatus::Completed);
     assert_eq!(outcome.output.unwrap().text_summary(), "hi there");
@@ -237,17 +235,14 @@ async fn side_effectful_tool_blocks_then_approves() {
     let vid_for_task = vid.clone();
     let tcid_for_task = tcid.clone();
     let task = tokio::spawn(async move {
-        execute_tool_call(
-            &state_for_task,
-            &mgr_for_task,
-            &vid_for_task,
-            &tcid_for_task,
-            "req-2",
-            "post_message",
-            &json!({ "channel": "general", "text": "hello" }),
-            &sink_for_task,
-        )
-        .await
+        let req = ToolCallRequest {
+            connector_version_id: &vid_for_task,
+            tool_call_id: &tcid_for_task,
+            request_id: "req-2",
+            tool_name: "post_message",
+            arguments: &json!({ "channel": "general", "text": "hello" }),
+        };
+        execute_tool_call(&state_for_task, &mgr_for_task, &req, &sink_for_task).await
     });
 
     // Wait for the consent prompt, then approve.
@@ -291,17 +286,14 @@ async fn denial_records_cancelled_and_does_not_invoke() {
     let state_for_task = state_arc.clone();
     let mgr_for_task = mgr_arc.clone();
     let task = tokio::spawn(async move {
-        execute_tool_call(
-            &state_for_task,
-            &mgr_for_task,
-            &vid_for_task,
-            &tcid_for_task,
-            "req-3",
-            "post_message",
-            &json!({ "channel": "general", "text": "hello" }),
-            &sink_for_task,
-        )
-        .await
+        let req = ToolCallRequest {
+            connector_version_id: &vid_for_task,
+            tool_call_id: &tcid_for_task,
+            request_id: "req-3",
+            tool_name: "post_message",
+            arguments: &json!({ "channel": "general", "text": "hello" }),
+        };
+        execute_tool_call(&state_for_task, &mgr_for_task, &req, &sink_for_task).await
     });
 
     assert!(wait_for_consent(&events, &tcid, Duration::from_secs(5)).await);
@@ -336,7 +328,14 @@ async fn oversized_output_fails() {
     let (events, sink) = recorder();
     let tcid = Uuid::new_v4().to_string();
 
-    let res = execute_tool_call(&state, &mgr, &vid, &tcid, "req-4", "big", &json!({}), &sink).await;
+    let req = ToolCallRequest {
+        connector_version_id: &vid,
+        tool_call_id: &tcid,
+        request_id: "req-4",
+        tool_name: "big",
+        arguments: &json!({}),
+    };
+    let res = execute_tool_call(&state, &mgr, &req, &sink).await;
 
     // `big` is readOnly → auto-invoked; output exceeds the cap → failed.
     assert!(res.is_err(), "oversized output should fail");
@@ -369,18 +368,16 @@ async fn redaction_strips_secret_in_persisted_result() {
     let (_events, sink) = recorder();
     let tcid = Uuid::new_v4().to_string();
 
-    execute_tool_call(
-        &state,
-        &mgr,
-        &vid,
-        &tcid,
-        "req-5",
-        "secret_leak",
-        &json!({}),
-        &sink,
-    )
-    .await
-    .expect("secret_leak completes");
+    let req = ToolCallRequest {
+        connector_version_id: &vid,
+        tool_call_id: &tcid,
+        request_id: "req-5",
+        tool_name: "secret_leak",
+        arguments: &json!({}),
+    };
+    execute_tool_call(&state, &mgr, &req, &sink)
+        .await
+        .expect("secret_leak completes");
 
     let (result, _) = tool_calls::latest_tool_result(&pool, &state.encryption, &tcid)
         .await
@@ -400,17 +397,14 @@ async fn unknown_tool_is_refused_before_invoke() {
     let (_events, sink) = recorder();
     let tcid = Uuid::new_v4().to_string();
 
-    let res = execute_tool_call(
-        &state,
-        &mgr,
-        &vid,
-        &tcid,
-        "req-6",
-        "does_not_exist",
-        &json!({}),
-        &sink,
-    )
-    .await;
+    let req = ToolCallRequest {
+        connector_version_id: &vid,
+        tool_call_id: &tcid,
+        request_id: "req-6",
+        tool_name: "does_not_exist",
+        arguments: &json!({}),
+    };
+    let res = execute_tool_call(&state, &mgr, &req, &sink).await;
     assert!(res.is_err());
     assert!(res.unwrap_err().contains("not available"));
 }
@@ -458,18 +452,16 @@ async fn tool_output_not_reinjected_into_messages() {
     // Execute a tool whose output carries a unique marker.
     let marker = "MARKER_RESULT_9f3a";
     let tcid = Uuid::new_v4().to_string();
-    execute_tool_call(
-        &state,
-        &mgr,
-        &vid,
-        &tcid,
-        "req-7",
-        "echo",
-        &json!({ "text": marker }),
-        &sink,
-    )
-    .await
-    .expect("echo completes");
+    let req = ToolCallRequest {
+        connector_version_id: &vid,
+        tool_call_id: &tcid,
+        request_id: "req-7",
+        tool_name: "echo",
+        arguments: &json!({ "text": marker }),
+    };
+    execute_tool_call(&state, &mgr, &req, &sink)
+        .await
+        .expect("echo completes");
 
     // The marker is in tool_results.
     let (result, _) = tool_calls::latest_tool_result(&pool, &state.encryption, &tcid)

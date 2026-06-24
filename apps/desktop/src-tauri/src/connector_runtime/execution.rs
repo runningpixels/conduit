@@ -56,6 +56,18 @@ pub struct ExecutionOutcome {
     pub output: Option<ToolOutput>,
 }
 
+/// The per-call inputs to [`execute_tool_call`], grouped to keep the
+/// orchestration entry point's signature narrow (under clippy's
+/// `too_many_arguments` threshold). Mirrors the IPC `InvokeConnectorToolRequest`
+/// payload — the five fields that identify + parameterize one tool invocation.
+pub struct ToolCallRequest<'a> {
+    pub connector_version_id: &'a str,
+    pub tool_call_id: &'a str,
+    pub request_id: &'a str,
+    pub tool_name: &'a str,
+    pub arguments: &'a serde_json::Value,
+}
+
 /// Orchestrate one MCP tool call end-to-end. See the module docs for the
 /// ordered trust-boundary steps. Errors are returned as human-readable strings
 /// for the IPC layer; the persisted record + emitted event reflect the
@@ -63,13 +75,14 @@ pub struct ExecutionOutcome {
 pub async fn execute_tool_call(
     state: &AppState,
     mgr: &ConnectorRuntimeManager,
-    connector_version_id: &str,
-    tool_call_id: &str,
-    request_id: &str,
-    tool_name: &str,
-    arguments: &serde_json::Value,
+    req: &ToolCallRequest<'_>,
     sink: &EventSink,
 ) -> Result<ExecutionOutcome, String> {
+    let connector_version_id = req.connector_version_id;
+    let tool_call_id = req.tool_call_id;
+    let request_id = req.request_id;
+    let tool_name = req.tool_name;
+    let arguments = req.arguments;
     // 1. Resolve capability — refuse tools the runtime never discovered
     //    (allowlist-filtered or absent).
     let cap = conn_repo::get_capability_by_name(&state.db, connector_version_id, tool_name)

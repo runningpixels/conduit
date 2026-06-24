@@ -34,7 +34,8 @@ async fn file_state_ok_missing_modified() {
     .unwrap();
 
     // The blob is on disk under artifacts/<artifact_id>/<filename>.
-    let blob = artifacts::resolve_artifact_path(&artifacts_dir, after.content_path.as_deref().unwrap());
+    let blob =
+        artifacts::resolve_artifact_path(&artifacts_dir, after.content_path.as_deref().unwrap());
     assert!(blob.exists());
 
     // Ok: file present + hash matches.

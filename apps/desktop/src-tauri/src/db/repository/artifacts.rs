@@ -19,11 +19,7 @@ use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::{
-    db::DbError,
-    encryption::Encryption,
-    time::now_iso8601,
-};
+use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,7 +78,10 @@ pub async fn create(
 ) -> Result<Artifact, DbError> {
     let id = Uuid::new_v4().to_string();
     let now = now_iso8601();
-    let title = title.map(|t| t.trim()).filter(|t| !t.is_empty()).map(|s| s.to_string());
+    let title = title
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .map(|s| s.to_string());
     sqlx::query(
         "INSERT INTO artifacts \
          (id, conversation_id, kind, title, source_message_id, created_at) \
@@ -201,14 +200,21 @@ pub async fn set_content(
 /// List artifacts for a conversation, newest-first by `updated_at` (falling
 /// back to `created_at` for payload-less artifacts). Inline content is **not**
 /// decrypted here — use [`get`] for a payload-bearing artifact.
-pub async fn list(
-    pool: &SqlitePool,
-    conversation_id: &str,
-) -> Result<Vec<Artifact>, DbError> {
+pub async fn list(pool: &SqlitePool, conversation_id: &str) -> Result<Vec<Artifact>, DbError> {
     let rows: Vec<(
-        String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, Option<i64>,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
     )> = sqlx::query_as(
         "SELECT id, conversation_id, kind, title, source_message_id, cloud_share_id, \
                 metadata, created_at, updated_at, mime_type, content_path, content_hash, \
@@ -223,15 +229,39 @@ pub async fn list(
 
     Ok(rows
         .into_iter()
-        .map(|(
-            id, conversation_id, kind, title, source_message_id, cloud_share_id, metadata,
-            created_at, updated_at, mime_type, content_path, content_hash, size_bytes,
-        )| Artifact {
-            id, conversation_id, kind, title, source_message_id, cloud_share_id,
-            metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
-            created_at, updated_at, mime_type, content_text: None, content_json: None,
-            content_path, content_hash, size_bytes,
-        })
+        .map(
+            |(
+                id,
+                conversation_id,
+                kind,
+                title,
+                source_message_id,
+                cloud_share_id,
+                metadata,
+                created_at,
+                updated_at,
+                mime_type,
+                content_path,
+                content_hash,
+                size_bytes,
+            )| Artifact {
+                id,
+                conversation_id,
+                kind,
+                title,
+                source_message_id,
+                cloud_share_id,
+                metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
+                created_at,
+                updated_at,
+                mime_type,
+                content_text: None,
+                content_json: None,
+                content_path,
+                content_hash,
+                size_bytes,
+            },
+        )
         .collect())
 }
 
@@ -243,9 +273,21 @@ pub async fn get(
     artifact_id: &str,
 ) -> Result<Option<Artifact>, DbError> {
     let row: Option<(
-        String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, Option<String>, Option<String>, Option<i64>,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
     )> = sqlx::query_as(
         "SELECT id, conversation_id, kind, title, source_message_id, cloud_share_id, \
                 metadata, created_at, updated_at, mime_type, content_text, content_json, \
@@ -257,9 +299,21 @@ pub async fn get(
     .await?;
 
     let Some((
-        id, conversation_id, kind, title, source_message_id, cloud_share_id, metadata,
-        created_at, updated_at, mime_type, content_text, content_json, content_path,
-        content_hash, size_bytes,
+        id,
+        conversation_id,
+        kind,
+        title,
+        source_message_id,
+        cloud_share_id,
+        metadata,
+        created_at,
+        updated_at,
+        mime_type,
+        content_text,
+        content_json,
+        content_path,
+        content_hash,
+        size_bytes,
     )) = row
     else {
         return Ok(None);
@@ -275,10 +329,21 @@ pub async fn get(
     };
 
     Ok(Some(Artifact {
-        id, conversation_id, kind, title, source_message_id, cloud_share_id,
+        id,
+        conversation_id,
+        kind,
+        title,
+        source_message_id,
+        cloud_share_id,
         metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
-        created_at, updated_at, mime_type, content_text, content_json,
-        content_path, content_hash, size_bytes,
+        created_at,
+        updated_at,
+        mime_type,
+        content_text,
+        content_json,
+        content_path,
+        content_hash,
+        size_bytes,
     }))
 }
 

@@ -5,7 +5,9 @@ use std::sync::OnceLock;
 
 use conduit_desktop::commands::revoke_connector_grant_inner;
 use conduit_desktop::connector_runtime::ConnectorRuntimeManager;
-use conduit_desktop::db::repository::connectors::{self, ConnectorDefinition, ConnectorGrant, ConnectorVersion};
+use conduit_desktop::db::repository::connectors::{
+    self, ConnectorDefinition, ConnectorGrant, ConnectorVersion,
+};
 use conduit_desktop::paths::AppPaths;
 use conduit_desktop::state::AppState;
 use serde_json::json;
@@ -25,7 +27,10 @@ fn echo_bin() -> &'static Path {
             .status()
             .expect("failed to invoke cargo to build echo_connector");
         assert!(status.success(), "cargo build echo_connector failed");
-        assert!(exe.exists(), "echo_connector not found at {exe:?} after build");
+        assert!(
+            exe.exists(),
+            "echo_connector not found at {exe:?} after build"
+        );
         exe
     })
 }
@@ -110,7 +115,9 @@ async fn revoke_command_resolves_version_from_grant_and_stops_connector() {
         .expect("revoke succeeds");
 
     assert!(runtime.active_connector(&version_id).is_none());
-    let grants = connectors::list_grants(&pool, Some("revoked")).await.unwrap();
+    let grants = connectors::list_grants(&pool, Some("revoked"))
+        .await
+        .unwrap();
     assert_eq!(grants.len(), 1);
     assert_eq!(grants[0].id, "grant-echo");
     let runtime_state = connectors::get_runtime_state(&pool, &version_id)

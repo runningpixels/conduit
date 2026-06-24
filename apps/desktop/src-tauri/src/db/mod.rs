@@ -17,14 +17,14 @@ pub mod reconcile;
 pub mod recover;
 pub mod repository;
 
-pub use migrations::{open_with_migrations, reconcile_on_startup, run_migrations, MigrationRecovery, MIGRATOR};
+pub use migrations::{
+    open_with_migrations, reconcile_on_startup, run_migrations, MigrationRecovery, MIGRATOR,
+};
 
 use std::{path::Path, str::FromStr, time::Duration};
 
-use sqlx::{
-    sqlite::{
-        SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous, SqlitePool, SqlitePoolOptions,
-    },
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
 };
 use thiserror::Error;
 

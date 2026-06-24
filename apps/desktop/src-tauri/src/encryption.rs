@@ -439,21 +439,22 @@ pub async fn encrypt_existing_plaintext(
     .await?;
     for (id, json) in rows {
         let ejson = enc.encrypt_opt(json.as_deref())?;
-        sqlx::query("UPDATE tenant_config_cache SET config_json = ?, enc_key_version = ? WHERE id = ?")
-            .bind(&ejson)
-            .bind(version)
-            .bind(&id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE tenant_config_cache SET config_json = ?, enc_key_version = ? WHERE id = ?",
+        )
+        .bind(&ejson)
+        .bind(version)
+        .bind(&id)
+        .execute(pool)
+        .await?;
         count += 1;
     }
 
     // licenses: one inline column (token).
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT id, token FROM licenses WHERE enc_key_version IS NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT id, token FROM licenses WHERE enc_key_version IS NULL")
+            .fetch_all(pool)
+            .await?;
     for (id, token) in rows {
         let etoken = enc.encrypt_opt(token.as_deref())?;
         sqlx::query("UPDATE licenses SET token = ?, enc_key_version = ? WHERE id = ?")
@@ -472,11 +473,7 @@ pub async fn encrypt_existing_plaintext(
 /// `new.key_version()`: decrypt with `old`, re-encrypt with `new`, stamp the new
 /// version. Rows at other versions (including NULL/plaintext) are left alone —
 /// call `encrypt_existing_plaintext` first to bring plaintext up to `old`.
-pub async fn rotate(
-    pool: &SqlitePool,
-    old: &Encryption,
-    new: &Encryption,
-) -> Result<u64, DbError> {
+pub async fn rotate(pool: &SqlitePool, old: &Encryption, new: &Encryption) -> Result<u64, DbError> {
     if !old.is_on() || !new.is_on() {
         return Ok(0);
     }
@@ -508,30 +505,30 @@ pub async fn rotate(
         count += 1;
     }
 
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT id, config_json FROM tenant_config_cache WHERE enc_key_version = ?",
-    )
-    .bind(from_version)
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT id, config_json FROM tenant_config_cache WHERE enc_key_version = ?")
+            .bind(from_version)
+            .fetch_all(pool)
+            .await?;
     for (id, json) in rows {
         let plain = old.decrypt_opt(json.as_deref())?;
         let ejson = new.encrypt_opt(plain.as_deref())?;
-        sqlx::query("UPDATE tenant_config_cache SET config_json = ?, enc_key_version = ? WHERE id = ?")
-            .bind(&ejson)
-            .bind(to_version)
-            .bind(&id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE tenant_config_cache SET config_json = ?, enc_key_version = ? WHERE id = ?",
+        )
+        .bind(&ejson)
+        .bind(to_version)
+        .bind(&id)
+        .execute(pool)
+        .await?;
         count += 1;
     }
 
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT id, token FROM licenses WHERE enc_key_version = ?",
-    )
-    .bind(from_version)
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT id, token FROM licenses WHERE enc_key_version = ?")
+            .bind(from_version)
+            .fetch_all(pool)
+            .await?;
     for (id, token) in rows {
         let plain = old.decrypt_opt(token.as_deref())?;
         let etoken = new.encrypt_opt(plain.as_deref())?;

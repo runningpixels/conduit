@@ -86,7 +86,10 @@ fn call_tool(name: &str, args: &Value) -> (Value, bool) {
             false,
         ),
         "post_message" => {
-            let channel = args.get("channel").and_then(|v| v.as_str()).unwrap_or("general");
+            let channel = args
+                .get("channel")
+                .and_then(|v| v.as_str())
+                .unwrap_or("general");
             let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
             (
                 json!([{ "type": "text", "text": format!("posted to {channel}: {text}") }]),
@@ -108,10 +111,7 @@ fn call_tool(name: &str, args: &Value) -> (Value, bool) {
         }
         // Makes the connector process exit after responding, so the supervisor
         // test can simulate a crash/exit without needing the child PID.
-        "exit" => (
-            json!([{ "type": "text", "text": "bye" }]),
-            false,
-        ),
+        "exit" => (json!([{ "type": "text", "text": "bye" }]), false),
         other => (
             json!([{ "type": "text", "text": format!("unknown tool: {other}") }]),
             true,
@@ -185,7 +185,11 @@ fn main() {
                 None
             }
             "shutdown" => {
-                let _ = writeln!(out, "{}", json!({ "jsonrpc": "2.0", "id": id, "result": Value::Null }));
+                let _ = writeln!(
+                    out,
+                    "{}",
+                    json!({ "jsonrpc": "2.0", "id": id, "result": Value::Null })
+                );
                 let _ = out.flush();
                 break;
             }
@@ -205,7 +209,11 @@ fn main() {
         };
 
         if let Some(result) = result {
-            let _ = writeln!(out, "{}", json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+            let _ = writeln!(
+                out,
+                "{}",
+                json!({ "jsonrpc": "2.0", "id": id, "result": result })
+            );
             let _ = out.flush();
         }
     }

@@ -13,9 +13,13 @@ use conduit_desktop::db::{init_pool, migrations};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/db/0001_initial_schema.sqlite")
-    });
+    let out = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/db/0001_initial_schema.sqlite")
+        });
 
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;

@@ -115,7 +115,11 @@ pub struct McpTool {
     #[serde(rename = "inputSchema")]
     pub input_schema: Value,
     /// Optional consent tier declared by the connector. Not part of base MCP.
-    #[serde(rename = "permissionLevel", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "permissionLevel",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub permission_level: Option<PermissionLevel>,
 }
 
@@ -144,9 +148,14 @@ pub struct McpPrompt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum ToolContent {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     /// Any other content type — preserved verbatim as untrusted data.
-    Other { #[serde(flatten)] raw: Value },
+    Other {
+        #[serde(flatten)]
+        raw: Value,
+    },
 }
 
 /// The typed result of a `tools/call`. `size_bytes` and `mime_hints` are

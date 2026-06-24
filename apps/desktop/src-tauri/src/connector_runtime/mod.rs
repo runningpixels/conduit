@@ -56,7 +56,10 @@ pub enum TransportSpec {
 }
 
 impl TransportSpec {
-    fn from_definition(transport: &str, transport_config: &serde_json::Value) -> Result<Self, McpError> {
+    fn from_definition(
+        transport: &str,
+        transport_config: &serde_json::Value,
+    ) -> Result<Self, McpError> {
         match transport {
             "stdio" => Ok(Self::Stdio(StdioConfig::from_value(transport_config)?)),
             "httpSse" => Ok(Self::HttpSse(HttpSseConfig::from_value(transport_config)?)),
@@ -87,10 +90,7 @@ pub struct ConnectorRuntimeManager {
 
 impl ConnectorRuntimeManager {
     pub fn new() -> Self {
-        Self::new_with(
-            DEFAULT_LIVENESS_INTERVAL,
-            DEFAULT_CALL_TIMEOUT,
-        )
+        Self::new_with(DEFAULT_LIVENESS_INTERVAL, DEFAULT_CALL_TIMEOUT)
     }
 
     /// Test entry point with tighter supervision timings.
@@ -177,9 +177,7 @@ impl ConnectorRuntimeManager {
         .map_err(|e| e.message)
     }
 
-    pub(crate) fn active_registry(
-        &self,
-    ) -> Arc<StdMutex<HashMap<String, Arc<ActiveConnector>>>> {
+    pub(crate) fn active_registry(&self) -> Arc<StdMutex<HashMap<String, Arc<ActiveConnector>>>> {
         self.active.clone()
     }
 
@@ -295,13 +293,22 @@ impl ConnectorRuntimeManager {
         let server = match tokio::time::timeout(self.call_timeout, init_fut).await {
             Ok(Ok(s)) => s,
             Ok(Err(e)) => {
-                let _ = persist_health(&pool, connector_version_id, "down", Some(&e.message), 0, false).await;
+                let _ = persist_health(
+                    &pool,
+                    connector_version_id,
+                    "down",
+                    Some(&e.message),
+                    0,
+                    false,
+                )
+                .await;
                 return Err(e.message);
             }
             Err(_) => {
                 cancel.cancel();
                 let msg = format!("initialize exceeded the {:?} timeout", self.call_timeout);
-                let _ = persist_health(&pool, connector_version_id, "down", Some(&msg), 0, false).await;
+                let _ =
+                    persist_health(&pool, connector_version_id, "down", Some(&msg), 0, false).await;
                 return Err(msg);
             }
         };
@@ -408,9 +415,15 @@ impl Default for ConnectorRuntimeManager {
 }
 
 /// Build (but do not initialize) a transport from a spec.
-fn build_transport(spec: &TransportSpec, client: &ClientInfo) -> Result<Box<dyn McpTransport>, McpError> {
+fn build_transport(
+    spec: &TransportSpec,
+    client: &ClientInfo,
+) -> Result<Box<dyn McpTransport>, McpError> {
     match spec {
-        TransportSpec::Stdio(cfg) => Ok(Box::new(StdioTransport::spawn(cfg.clone(), client.clone())?)),
+        TransportSpec::Stdio(cfg) => Ok(Box::new(StdioTransport::spawn(
+            cfg.clone(),
+            client.clone(),
+        )?)),
         TransportSpec::HttpSse(cfg) => Ok(Box::new(HttpSseTransport::new(cfg.clone()))),
     }
 }

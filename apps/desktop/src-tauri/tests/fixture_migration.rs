@@ -10,7 +10,10 @@ use sqlx::sqlite::SqlitePoolOptions;
 use std::{fs, path::PathBuf};
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("db")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("db")
 }
 
 #[tokio::test]
@@ -71,7 +74,9 @@ async fn every_fixture_migrates_and_is_internally_consistent() {
 async fn previous_tag_db_migrates_forward() {
     let dir = fixtures_dir();
     if !dir.exists() {
-        eprintln!("previous_tag_db_migrates_forward: no fixtures dir — skipping (Phase 6 manual item)");
+        eprintln!(
+            "previous_tag_db_migrates_forward: no fixtures dir — skipping (Phase 6 manual item)"
+        );
         return;
     }
 
@@ -98,7 +103,11 @@ async fn previous_tag_db_migrates_forward() {
     }
 
     // Highest semver wins (the immediately-previous release).
-    tag_fixtures.sort_by(|a, b| semver_loose(&a.0).unwrap().cmp(&semver_loose(&b.0).unwrap()));
+    tag_fixtures.sort_by(|a, b| {
+        semver_loose(&a.0)
+            .unwrap()
+            .cmp(&semver_loose(&b.0).unwrap())
+    });
     let (tag, path) = tag_fixtures.last().unwrap();
 
     // Baseline: a fresh DB migrated to current codegen.
@@ -146,9 +155,7 @@ async fn previous_tag_db_migrates_forward() {
          but current codegen produces {fresh_count}; the previous release's DB did \
          not reach the current schema"
     );
-    eprintln!(
-        "previous_tag_db_migrates_forward: {tag} → {tag_count} migrations (matches current)"
-    );
+    eprintln!("previous_tag_db_migrates_forward: {tag} → {tag_count} migrations (matches current)");
 }
 
 /// Parse a loose semver from a tag stem like `v0.1.0` or `v0.1.0-beta.1`.

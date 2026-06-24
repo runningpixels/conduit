@@ -19,11 +19,11 @@ pub mod stdio;
 pub mod transport;
 
 pub use consent::{classify, expected_effect, ConsentDecision, ConsentKind};
+pub use httpsse::{HttpSseConfig, HttpSseTransport};
 pub use protocol::{
     ClientInfo, McpPrompt, McpResource, McpTool, PermissionLevel, ServerInfo, ToolContent,
     ToolOutput,
 };
-pub use transport::{ErrorCategory, McpError, McpTransport};
 pub use reinject::{validate_reinjection, ReinjectionRisk};
 pub use stdio::{StdioConfig, StdioTransport};
-pub use httpsse::{HttpSseConfig, HttpSseTransport};
+pub use transport::{ErrorCategory, McpError, McpTransport};

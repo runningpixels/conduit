@@ -43,17 +43,24 @@ fn version(connector_id: &str, ver: &str) -> ConnectorVersion {
 #[tokio::test]
 async fn definition_upsert_preserves_created_at() {
     let pool = common::setup_pool().await;
-    connectors::upsert_definition(&pool, &def("c1")).await.unwrap();
+    connectors::upsert_definition(&pool, &def("c1"))
+        .await
+        .unwrap();
 
     // Update with a new updated_at + name.
     let mut updated = def("c1");
     updated.name = "Renamed".into();
     updated.updated_at = "2026-06-23T00:00:00Z".into();
-    connectors::upsert_definition(&pool, &updated).await.unwrap();
+    connectors::upsert_definition(&pool, &updated)
+        .await
+        .unwrap();
 
     let fetched = connectors::get(&pool, "c1").await.unwrap().unwrap();
     assert_eq!(fetched.name, "Renamed");
-    assert_eq!(fetched.created_at, "2026-06-22T00:00:00Z", "created_at preserved");
+    assert_eq!(
+        fetched.created_at, "2026-06-22T00:00:00Z",
+        "created_at preserved"
+    );
     assert_eq!(fetched.updated_at, "2026-06-23T00:00:00Z");
     assert_eq!(connectors::list_definitions(&pool).await.unwrap().len(), 1);
 }
@@ -61,7 +68,9 @@ async fn definition_upsert_preserves_created_at() {
 #[tokio::test]
 async fn versions_are_immutable() {
     let pool = common::setup_pool().await;
-    connectors::upsert_definition(&pool, &def("c1")).await.unwrap();
+    connectors::upsert_definition(&pool, &def("c1"))
+        .await
+        .unwrap();
     connectors::insert_version(&pool, &version("c1", "1.0.0"))
         .await
         .unwrap();
@@ -81,7 +90,9 @@ async fn versions_are_immutable() {
 #[tokio::test]
 async fn grant_revoke_and_runtime_state() {
     let pool = common::setup_pool().await;
-    connectors::upsert_definition(&pool, &def("c1")).await.unwrap();
+    connectors::upsert_definition(&pool, &def("c1"))
+        .await
+        .unwrap();
     connectors::insert_version(&pool, &version("c1", "1.0.0"))
         .await
         .unwrap();
@@ -118,7 +129,10 @@ async fn grant_revoke_and_runtime_state() {
         .await
         .unwrap();
     assert_eq!(revoked.len(), 1);
-    assert_eq!(revoked[0].revoked_at.as_deref(), Some("2026-06-24T00:00:00Z"));
+    assert_eq!(
+        revoked[0].revoked_at.as_deref(),
+        Some("2026-06-24T00:00:00Z")
+    );
 
     // Runtime state upserts.
     let state = ConnectorRuntimeState {
@@ -128,11 +142,15 @@ async fn grant_revoke_and_runtime_state() {
         last_error: None,
         restart_count: 0,
     };
-    connectors::upsert_runtime_state(&pool, &state).await.unwrap();
+    connectors::upsert_runtime_state(&pool, &state)
+        .await
+        .unwrap();
     let mut state2 = state.clone();
     state2.health = "degraded".into();
     state2.restart_count = 3;
-    connectors::upsert_runtime_state(&pool, &state2).await.unwrap();
+    connectors::upsert_runtime_state(&pool, &state2)
+        .await
+        .unwrap();
     let got = connectors::get_runtime_state(&pool, "c1:1.0.0")
         .await
         .unwrap()
@@ -144,7 +162,9 @@ async fn grant_revoke_and_runtime_state() {
 #[tokio::test]
 async fn capabilities_replace_batch() {
     let pool = common::setup_pool().await;
-    connectors::upsert_definition(&pool, &def("c1")).await.unwrap();
+    connectors::upsert_definition(&pool, &def("c1"))
+        .await
+        .unwrap();
     connectors::insert_version(&pool, &version("c1", "1.0.0"))
         .await
         .unwrap();
@@ -153,7 +173,9 @@ async fn capabilities_replace_batch() {
         connectors::new_capability("c1:1.0.0", "tool", "search", Some(json!({}))),
         connectors::new_capability("c1:1.0.0", "resource", "docs", None),
     ];
-    connectors::upsert_capabilities(&pool, "c1:1.0.0", &caps1).await.unwrap();
+    connectors::upsert_capabilities(&pool, "c1:1.0.0", &caps1)
+        .await
+        .unwrap();
 
     // A second discovery replaces the first batch entirely (no orphans).
     let caps2 = vec![connectors::new_capability(
@@ -162,7 +184,9 @@ async fn capabilities_replace_batch() {
         "search",
         Some(json!({"v": 2})),
     )];
-    connectors::upsert_capabilities(&pool, "c1:1.0.0", &caps2).await.unwrap();
+    connectors::upsert_capabilities(&pool, "c1:1.0.0", &caps2)
+        .await
+        .unwrap();
 
     let rows: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM connector_capabilities WHERE connector_version_id = ?",

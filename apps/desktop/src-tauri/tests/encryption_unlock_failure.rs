@@ -77,7 +77,10 @@ async fn refuses_when_encrypted_data_exists() {
     // downgrade to Off (which would orphan the encrypted rows).
     let err = EncryptionInitError::KeyUnavailable("backend locked".into());
     let refused = encryption::resolve_key_unavailable(err, true);
-    assert!(refused.is_err(), "refuses to start when encrypted data exists");
+    assert!(
+        refused.is_err(),
+        "refuses to start when encrypted data exists"
+    );
 }
 
 #[tokio::test]

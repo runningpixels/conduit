@@ -12,10 +12,7 @@ use uuid::Uuid;
 use crate::{db::DbError, time::now_iso8601};
 
 /// Create a conversation row with a fresh UUID id. Returns the full row.
-pub async fn create(
-    pool: &SqlitePool,
-    title: Option<&str>,
-) -> Result<Conversation, DbError> {
+pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversation, DbError> {
     let id = Uuid::new_v4().to_string();
     let now = now_iso8601();
     let title = title.map(|t| t.trim()).filter(|t| !t.is_empty());
@@ -59,26 +56,34 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, updated_at, message_count, last_message_preview)| ConversationSummary {
-            id,
-            title,
-            updated_at,
-            message_count: message_count.max(0) as u32,
-            last_message_preview,
-        })
+        .map(
+            |(id, title, updated_at, message_count, last_message_preview)| ConversationSummary {
+                id,
+                title,
+                updated_at,
+                message_count: message_count.max(0) as u32,
+                last_message_preview,
+            },
+        )
         .collect())
 }
 
 /// Fetch one conversation, or `None` if it does not exist.
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Conversation>, DbError> {
-    let row: Option<(String, Option<String>, String, String, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            "SELECT id, title, created_at, updated_at, cloud_id, metadata \
+    let row: Option<(
+        String,
+        Option<String>,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT id, title, created_at, updated_at, cloud_id, metadata \
              FROM conversations WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
 
     Ok(row.map(
         |(id, title, created_at, updated_at, cloud_id, metadata)| Conversation {

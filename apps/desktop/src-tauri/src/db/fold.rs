@@ -51,7 +51,10 @@ pub fn fold(
                 // The message row's id is `message_id`; nothing to append.
             }
             ProviderEvent::ContentBlockStart {
-                block_id, index, block_kind, ..
+                block_id,
+                index,
+                block_kind,
+                ..
             } => {
                 parts.push(MessagePart {
                     id: format!("{message_id}/{block_id}"),
@@ -72,8 +75,12 @@ pub fn fold(
                     created_at: now.to_string(),
                 });
             }
-            ProviderEvent::ContentDelta { block_id, content, .. }
-            | ProviderEvent::ReasoningDelta { block_id, content, .. } => {
+            ProviderEvent::ContentDelta {
+                block_id, content, ..
+            }
+            | ProviderEvent::ReasoningDelta {
+                block_id, content, ..
+            } => {
                 // Part ids are `{message_id}/{block_id}` (see ContentBlockStart),
                 // so match the delta to its part by the prefixed id.
                 let part_id = format!("{message_id}/{block_id}");
@@ -83,7 +90,10 @@ pub fn fold(
                 }
             }
             ProviderEvent::ToolCallStart {
-                tool_call_id, index, name, ..
+                tool_call_id,
+                index,
+                name,
+                ..
             } => {
                 parts.push(MessagePart {
                     id: format!("{message_id}/{tool_call_id}"),
@@ -100,7 +110,9 @@ pub fn fold(
                     created_at: now.to_string(),
                 });
             }
-            ProviderEvent::MessageComplete { finish_reason: fr, .. } => {
+            ProviderEvent::MessageComplete {
+                finish_reason: fr, ..
+            } => {
                 finalized = true;
                 finish_reason = Some(fr.clone());
             }

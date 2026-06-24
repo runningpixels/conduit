@@ -2,9 +2,7 @@
 
 mod common;
 
-use conduit_desktop::db::repository::licenses::{
-    self, License, LicenseKeySet,
-};
+use conduit_desktop::db::repository::licenses::{self, License, LicenseKeySet};
 use serde_json::json;
 
 fn license(seat: &str, exp: i64, last_seen: Option<i64>) -> License {
@@ -37,14 +35,22 @@ async fn upsert_license_by_seat_preserves_created_at() {
     let mut renewed = license("s1", 2_100_000_000, Some(1_200));
     renewed.tier = "enterprise".into();
     renewed.created_at = "2026-06-23T00:00:00Z".into(); // ignored on update
-    licenses::upsert_license(&pool, &enc, &renewed).await.unwrap();
+    licenses::upsert_license(&pool, &enc, &renewed)
+        .await
+        .unwrap();
 
-    let active = licenses::get_active_license(&pool, &enc).await.unwrap().unwrap();
+    let active = licenses::get_active_license(&pool, &enc)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(active.seat_id, "s1");
     assert_eq!(active.tier, "enterprise");
     assert_eq!(active.exp, 2_100_000_000);
     assert_eq!(active.last_seen_server_time, Some(1_200));
-    assert_eq!(active.created_at, "2026-06-22T00:00:00Z", "created_at preserved");
+    assert_eq!(
+        active.created_at, "2026-06-22T00:00:00Z",
+        "created_at preserved"
+    );
 
     // Only one row for the seat.
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM licenses")

@@ -131,14 +131,11 @@ pub async fn load_all_request_ids(
 /// Every `(conversation_id, request_id)` turn that has logged events, across all
 /// conversations. Used by the M3 reconciliation and interrupted-stream recovery
 /// sweeps.
-pub async fn load_all_turns(
-    pool: &SqlitePool,
-) -> Result<Vec<(String, String)>, DbError> {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT DISTINCT conversation_id, request_id FROM provider_event_log",
-    )
-    .fetch_all(pool)
-    .await?;
+pub async fn load_all_turns(pool: &SqlitePool) -> Result<Vec<(String, String)>, DbError> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT DISTINCT conversation_id, request_id FROM provider_event_log")
+            .fetch_all(pool)
+            .await?;
     Ok(rows)
 }
 

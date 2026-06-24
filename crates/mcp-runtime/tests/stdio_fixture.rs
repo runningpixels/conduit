@@ -28,7 +28,10 @@ async fn stdio_initialize_list_and_call() {
     let cancel = CancellationToken::new();
     let mut t = StdioTransport::spawn(
         fixture_config(),
-        ClientInfo { name: "conduit-test".into(), version: "0.1.0".into() },
+        ClientInfo {
+            name: "conduit-test".into(),
+            version: "0.1.0".into(),
+        },
     )
     .expect("spawn");
 
@@ -64,7 +67,10 @@ async fn stdio_cancel_kills_and_reports_cancelled() {
     let cancel = CancellationToken::new();
     let mut t = StdioTransport::spawn(
         fixture_config(),
-        ClientInfo { name: "conduit-test".into(), version: "0.1.0".into() },
+        ClientInfo {
+            name: "conduit-test".into(),
+            version: "0.1.0".into(),
+        },
     )
     .expect("spawn");
     t.initialize(&cancel).await.expect("initialize");
@@ -73,9 +79,7 @@ async fn stdio_cancel_kills_and_reports_cancelled() {
     // Cancelled and the transport should be dead afterwards.
     let call_cancel = CancellationToken::new();
     let call_cancel2 = call_cancel.clone();
-    let handle = tokio::spawn(async move {
-        t.call_tool("slow", &json!({}), &call_cancel2).await
-    });
+    let handle = tokio::spawn(async move { t.call_tool("slow", &json!({}), &call_cancel2).await });
     // Give the child a moment to receive the request.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     call_cancel.cancel();
@@ -101,7 +105,11 @@ async fn stdio_config_rejects_powershell_shells() {
     for command in ["powershell", "powershell.exe", "pwsh", "pwsh.exe"] {
         let raw = json!({ "command": command, "args": ["-Command", "Write-Host ok"] });
         let err = StdioConfig::from_value(&raw).expect_err("must reject");
-        assert_eq!(err.category, mcp_runtime::ErrorCategory::Protocol, "{command}");
+        assert_eq!(
+            err.category,
+            mcp_runtime::ErrorCategory::Protocol,
+            "{command}"
+        );
     }
 }
 
@@ -110,7 +118,10 @@ async fn stdio_child_dies_when_transport_dropped() {
     let cancel = CancellationToken::new();
     let mut t = StdioTransport::spawn(
         fixture_config(),
-        ClientInfo { name: "conduit-test".into(), version: "0.1.0".into() },
+        ClientInfo {
+            name: "conduit-test".into(),
+            version: "0.1.0".into(),
+        },
     )
     .expect("spawn");
     t.initialize(&cancel).await.expect("initialize");

@@ -74,10 +74,7 @@ async fn create_list_get_delete_and_cascade() {
 
     // delete cascades to messages + parts
     conversations::delete(&pool, &conv.id).await.unwrap();
-    assert!(conversations::get(&pool, &conv.id)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(conversations::get(&pool, &conv.id).await.unwrap().is_none());
     let msgs = messages::load_conversation_messages(&pool, &conv.id)
         .await
         .unwrap();

@@ -44,7 +44,9 @@ pub fn expected_effect(level: PermissionLevel, description: &str) -> String {
     let kind = match level {
         PermissionLevel::ReadOnly => "Read-only: returns data, no side effects.",
         PermissionLevel::SideEffectful => "Side-effectful: may change an external system.",
-        PermissionLevel::Sensitive => "Sensitive: touches credentials, secrets, or destructive state.",
+        PermissionLevel::Sensitive => {
+            "Sensitive: touches credentials, secrets, or destructive state."
+        }
     };
     if description.trim().is_empty() {
         kind.to_string()

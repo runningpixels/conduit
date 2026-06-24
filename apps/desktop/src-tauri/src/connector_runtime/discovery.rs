@@ -6,8 +6,8 @@
 //! Re-running this is also the cache-invalidation hook Phase 8 calls when a
 //! connector version or grant changes.
 
-use tracing::warn;
 use std::time::Duration;
+use tracing::warn;
 
 use super::ActiveConnector;
 use crate::db::repository::connectors::{self, ConnectorCapability, ConnectorVersion};
@@ -50,10 +50,17 @@ pub async fn discover(
         ));
     }
     for res in resources {
-        caps.push(connectors::new_capability(version_id, "resource", &res.name, None));
+        caps.push(connectors::new_capability(
+            version_id, "resource", &res.name, None,
+        ));
     }
     for prompt in prompts {
-        caps.push(connectors::new_capability(version_id, "prompt", &prompt.name, None));
+        caps.push(connectors::new_capability(
+            version_id,
+            "prompt",
+            &prompt.name,
+            None,
+        ));
     }
 
     caps = apply_allowlist(caps, &version.capability_allowlist);
@@ -78,10 +85,7 @@ fn apply_allowlist(
         warn!(target: "mcp_connector", "capability_allowlist is not an array; ignoring");
         return caps;
     };
-    let allowed: std::collections::HashSet<&str> = arr
-        .iter()
-        .filter_map(|v| v.as_str())
-        .collect();
+    let allowed: std::collections::HashSet<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
     if allowed.is_empty() {
         return caps;
     }

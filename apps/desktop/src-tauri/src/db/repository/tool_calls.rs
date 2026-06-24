@@ -52,10 +52,7 @@ pub fn parse_status(s: &str) -> ToolCallStatus {
 /// record the call at `Pending`/`Running` and again after a status transition.
 /// `message_id` is not on the record (the view folds it later) so it is left
 /// NULL here.
-pub async fn insert_tool_call(
-    pool: &SqlitePool,
-    rec: &ToolCallRecord,
-) -> Result<(), DbError> {
+pub async fn insert_tool_call(pool: &SqlitePool, rec: &ToolCallRecord) -> Result<(), DbError> {
     sqlx::query(
         "INSERT INTO tool_calls \
          (id, tool_id, request_id, message_id, status, arguments, result, error, \
@@ -413,7 +410,9 @@ mod tests {
             conn_repo::new_capability("echo:1", "tool", "echo", Some(json!({}))),
             conn_repo::new_capability("echo:1", "tool", "post", None),
         ];
-        conn_repo::upsert_capabilities(&pool, "echo:1", &caps).await.unwrap();
+        conn_repo::upsert_capabilities(&pool, "echo:1", &caps)
+            .await
+            .unwrap();
 
         let got = conn_repo::get_capability_by_name(&pool, "echo:1", "post")
             .await

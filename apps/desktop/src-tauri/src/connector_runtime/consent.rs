@@ -13,8 +13,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use mcp_runtime::{
     consent::{classify, expected_effect, ConsentKind},
     protocol::{McpTool, PermissionLevel},
-    redact,
-    McpError,
+    redact, McpError,
 };
 use provider_core::schema::{ConsentDecision, ConsentPrompt};
 use tokio::sync::oneshot;
@@ -52,7 +51,9 @@ pub async fn classify_live(
     tools
         .into_iter()
         .find(|t| t.name == tool_name)
-        .ok_or_else(|| McpError::protocol(format!("tool '{tool_name}' not discovered by connector")))
+        .ok_or_else(|| {
+            McpError::protocol(format!("tool '{tool_name}' not discovered by connector"))
+        })
 }
 
 /// Build the prompt from an already-loaded definition (name + consent_copy).
@@ -105,7 +106,9 @@ pub async fn request_consent(
     let tool = classify_live(active, tool_name).await?;
     let decision = classify(&tool);
     match decision.required {
-        ConsentKind::Auto => Ok(ConsentRequirement::Auto { level: decision.level }),
+        ConsentKind::Auto => Ok(ConsentRequirement::Auto {
+            level: decision.level,
+        }),
         ConsentKind::Prompt => {
             let prompt = build_prompt_with_def(
                 &definition.name,
@@ -119,7 +122,10 @@ pub async fn request_consent(
             if let Ok(mut g) = pending.lock() {
                 g.insert(tool_call_id.to_string(), tx);
             }
-            Ok(ConsentRequirement::Prompt { prompt, decision: rx })
+            Ok(ConsentRequirement::Prompt {
+                prompt,
+                decision: rx,
+            })
         }
     }
 }
@@ -137,9 +143,9 @@ pub fn resolve_consent(
         .map_err(|_| "consent registry lock poisoned".to_string())?
         .remove(tool_call_id);
     match tx {
-        Some(tx) => tx.send(decision).map_err(|_| {
-            "consent request was dropped before the decision arrived".to_string()
-        }),
+        Some(tx) => tx
+            .send(decision)
+            .map_err(|_| "consent request was dropped before the decision arrived".to_string()),
         None => Err("no pending consent for this tool call".to_string()),
     }
 }

@@ -91,7 +91,9 @@ fn redact_until_boundary(s: &mut String, from: usize) {
     }
     // skip a single leading space/quote
     let mut start = from;
-    while start < bytes.len() && (bytes[start] == b' ' || bytes[start] == b'"' || bytes[start] == b'\'') {
+    while start < bytes.len()
+        && (bytes[start] == b' ' || bytes[start] == b'"' || bytes[start] == b'\'')
+    {
         start += 1;
     }
     // find end boundary: whitespace, quote, or end
@@ -116,9 +118,11 @@ pub fn redact_value(v: &Value) -> Value {
     match v {
         Value::String(s) => Value::String(redact_text(s)),
         Value::Array(a) => Value::Array(a.iter().map(redact_value).collect()),
-        Value::Object(o) => {
-            Value::Object(o.iter().map(|(k, val)| (k.clone(), redact_value(val))).collect())
-        }
+        Value::Object(o) => Value::Object(
+            o.iter()
+                .map(|(k, val)| (k.clone(), redact_value(val)))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }

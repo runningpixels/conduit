@@ -35,7 +35,11 @@ async fn attachment_blob_is_ciphertext_on_disk() {
     assert!(blob.exists());
     let on_disk = std::fs::read(&blob).unwrap();
     assert_ne!(on_disk, bytes, "on-disk blob is not the plaintext");
-    assert_eq!(&on_disk[..6], b"CDENC1", "blob carries the encryption magic");
+    assert_eq!(
+        &on_disk[..6],
+        b"CDENC1",
+        "blob carries the encryption magic"
+    );
     assert!(
         !std::str::from_utf8(&on_disk)
             .map(|s| s.contains("top-secret"))
@@ -83,7 +87,8 @@ async fn artifact_file_blob_is_ciphertext_on_disk() {
     .unwrap();
 
     // The on-disk blob is ciphertext, not the plaintext payload.
-    let blob = artifacts::resolve_artifact_path(&artifacts_dir, after.content_path.as_deref().unwrap());
+    let blob =
+        artifacts::resolve_artifact_path(&artifacts_dir, after.content_path.as_deref().unwrap());
     assert!(blob.exists());
     let on_disk = std::fs::read(&blob).unwrap();
     assert_ne!(on_disk, payload);

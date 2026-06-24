@@ -1,6 +1,6 @@
 use crate::{
-    credentials::{CredentialStore, CredentialSummary},
     connector_runtime::{execution, ConnectorRuntimeManager},
+    credentials::{CredentialStore, CredentialSummary},
     db::repository::{
         artifacts::{self, Artifact, ArtifactContent, ArtifactExportResult, FileState},
         attachments::{self, Attachment},
@@ -8,8 +8,10 @@ use crate::{
             self, ConnectorCapability, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeState,
             ConnectorVersion,
         },
-        conversations, licenses::{self, License},
-        messages, tenant_cache::{self, TenantConfigCache},
+        conversations,
+        licenses::{self, License},
+        messages,
+        tenant_cache::{self, TenantConfigCache},
     },
     diagnostics::{self, DiagnosticsExport},
     state::{AppSettings, AppState, SettingsPatch},
@@ -17,7 +19,7 @@ use crate::{
 };
 use mcp_runtime::StdioConfig;
 use provider_core::schema::{
-    ConsentDecision, ConnectorRuntimeEvent, Conversation, ConversationSummary, CredentialRequest,
+    ConnectorRuntimeEvent, ConsentDecision, Conversation, ConversationSummary, CredentialRequest,
     Message, ModelInfo, ProviderEvent, ProviderRequest,
 };
 use serde::{Deserialize, Serialize};
@@ -143,10 +145,13 @@ pub fn get_onboarding_state(state: State<'_, AppState>) -> Result<OnboardingStat
     Ok(OnboardingState {
         onboarding_completed: settings.onboarding_completed,
         has_provider_credential: state.has_any_provider_credential(),
-        migration_recovery: state.migration_recovery.as_ref().map(|r| MigrationRecoveryInfo {
-            backup_path: r.backup_path.display().to_string(),
-            error: r.error.clone(),
-        }),
+        migration_recovery: state
+            .migration_recovery
+            .as_ref()
+            .map(|r| MigrationRecoveryInfo {
+                backup_path: r.backup_path.display().to_string(),
+                error: r.error.clone(),
+            }),
     })
 }
 
@@ -248,7 +253,9 @@ pub async fn create_conversation(
 pub async fn list_conversations(
     state: State<'_, AppState>,
 ) -> Result<Vec<ConversationSummary>, String> {
-    conversations::list(&state.db).await.map_err(|e| e.to_string())
+    conversations::list(&state.db)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -459,9 +466,14 @@ pub async fn check_artifact_file_state(
     state: State<'_, AppState>,
     artifact_id: String,
 ) -> Result<FileState, String> {
-    artifacts::check_file_state(&state.db, &state.paths.artifacts, &state.encryption, &artifact_id)
-        .await
-        .map_err(|e| e.to_string())
+    artifacts::check_file_state(
+        &state.db,
+        &state.paths.artifacts,
+        &state.encryption,
+        &artifact_id,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Export the artifact's current payload to the app's `exports` directory,
@@ -531,9 +543,7 @@ pub async fn get_tenant_config(
 }
 
 #[tauri::command]
-pub async fn get_license_state(
-    state: State<'_, AppState>,
-) -> Result<Option<License>, String> {
+pub async fn get_license_state(state: State<'_, AppState>) -> Result<Option<License>, String> {
     licenses::get_active_license(&state.db, &state.encryption)
         .await
         .map_err(|e| e.to_string())
@@ -549,9 +559,7 @@ pub fn export_diagnostics(state: State<'_, AppState>) -> Result<DiagnosticsExpor
 /// raw settings JSON. `false` until the user has acknowledged the disclosure at
 /// least once.
 #[tauri::command]
-pub fn get_diagnostics_disclosure_acknowledged(
-    state: State<'_, AppState>,
-) -> Result<bool, String> {
+pub fn get_diagnostics_disclosure_acknowledged(state: State<'_, AppState>) -> Result<bool, String> {
     Ok(state.diagnostics_disclosure_acknowledged())
 }
 
@@ -775,9 +783,15 @@ pub async fn get_connector_runtime_states(
     runtime: State<'_, ConnectorRuntimeManager>,
 ) -> Result<Vec<ConnectorRuntimeSnapshot>, String> {
     let pool = &state.db;
-    let defs = connectors::list_definitions(pool).await.map_err(|e| e.to_string())?;
-    let states = connectors::list_runtime_states(pool).await.map_err(|e| e.to_string())?;
-    let grants = connectors::list_grants(pool, None).await.map_err(|e| e.to_string())?;
+    let defs = connectors::list_definitions(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let states = connectors::list_runtime_states(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let grants = connectors::list_grants(pool, None)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Index runtime states + grants by version id for O(1) join.
     use std::collections::HashMap;
@@ -875,7 +889,9 @@ pub async fn invoke_connector_tool(
         .await;
     });
 
-    Ok(StreamHandle { request_id: tool_call_id })
+    Ok(StreamHandle {
+        request_id: tool_call_id,
+    })
 }
 
 #[tauri::command]
@@ -911,7 +927,9 @@ pub async fn revoke_connector_grant_inner(
 ) -> Result<(), String> {
     // Always resolve the version from the grant so revocation guarantees stop
     // even if the renderer omits connector_version_id.
-    let grants = connectors::list_grants(&state.db, None).await.map_err(|e| e.to_string())?;
+    let grants = connectors::list_grants(&state.db, None)
+        .await
+        .map_err(|e| e.to_string())?;
     let vid = grants
         .iter()
         .find(|g| g.id == grant_id)
@@ -959,9 +977,9 @@ pub async fn add_local_connector(
         .await
         .map_err(|e| e.to_string())?;
 
-    let capability_allowlist = request
-        .capability_allowlist
-        .map(|names| serde_json::Value::Array(names.into_iter().map(serde_json::Value::String).collect()));
+    let capability_allowlist = request.capability_allowlist.map(|names| {
+        serde_json::Value::Array(names.into_iter().map(serde_json::Value::String).collect())
+    });
     let version = ConnectorVersion {
         id: version_id.clone(),
         connector_id: connector_id.clone(),

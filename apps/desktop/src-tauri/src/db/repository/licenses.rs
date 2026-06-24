@@ -96,8 +96,19 @@ pub async fn get_active_license(
     enc: &Encryption,
 ) -> Result<Option<License>, DbError> {
     let row: Option<(
-        String, String, String, String, String, i64, String, Option<String>, Option<String>,
-        Option<i64>, Option<i64>, Option<i64>, String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        String,
     )> = sqlx::query_as(
         "SELECT id, tenant_id, seat_id, tier, token, exp, config_version, key_set_version, \
                 feature_flags, offline_grace_deadline, issued_at, last_seen_server_time, \
@@ -107,12 +118,36 @@ pub async fn get_active_license(
     .fetch_optional(pool)
     .await?;
     match row {
-        Some((id, tenant_id, seat_id, tier, token, exp, config_version, key_set_version, feature_flags, offline_grace_deadline, issued_at, last_seen_server_time, created_at)) => {
+        Some((
+            id,
+            tenant_id,
+            seat_id,
+            tier,
+            token,
+            exp,
+            config_version,
+            key_set_version,
+            feature_flags,
+            offline_grace_deadline,
+            issued_at,
+            last_seen_server_time,
+            created_at,
+        )) => {
             let token = enc.decrypt(&token)?;
             Ok(Some(License {
-                id, tenant_id, seat_id, tier, token, exp, config_version, key_set_version,
+                id,
+                tenant_id,
+                seat_id,
+                tier,
+                token,
+                exp,
+                config_version,
+                key_set_version,
                 feature_flags: feature_flags.and_then(|s| serde_json::from_str(&s).ok()),
-                offline_grace_deadline, issued_at, last_seen_server_time, created_at,
+                offline_grace_deadline,
+                issued_at,
+                last_seen_server_time,
+                created_at,
             }))
         }
         None => Ok(None),
@@ -158,12 +193,14 @@ pub async fn get_active_key_set(pool: &SqlitePool) -> Result<Option<LicenseKeySe
     )
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(version, public_keys, fetched_at, is_active)| LicenseKeySet {
-        version,
-        public_keys: serde_json::from_str(&public_keys).unwrap_or(serde_json::Value::Null),
-        fetched_at,
-        is_active: is_active != 0,
-    }))
+    Ok(row.map(
+        |(version, public_keys, fetched_at, is_active)| LicenseKeySet {
+            version,
+            public_keys: serde_json::from_str(&public_keys).unwrap_or(serde_json::Value::Null),
+            fetched_at,
+            is_active: is_active != 0,
+        },
+    ))
 }
 
 // --- clock-rollback guard (spec §11 primitive) -------------------------------
@@ -171,10 +208,7 @@ pub async fn get_active_key_set(pool: &SqlitePool) -> Result<Option<LicenseKeySe
 /// `true` if any stored license records a `last_seen_server_time` strictly
 /// greater than `last_seen` — i.e. the server clock has moved backwards since
 /// the last refresh. The verification response loop lands in Phase 7.
-pub async fn refuse_clock_rollback(
-    pool: &SqlitePool,
-    last_seen: i64,
-) -> Result<bool, DbError> {
+pub async fn refuse_clock_rollback(pool: &SqlitePool, last_seen: i64) -> Result<bool, DbError> {
     let row: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM licenses \
          WHERE last_seen_server_time IS NOT NULL AND last_seen_server_time > ?",
@@ -187,10 +221,9 @@ pub async fn refuse_clock_rollback(
 
 /// Read the monotonic `last_seen_server_time` anchor, for the refresh loop.
 pub async fn last_seen_server_time(pool: &SqlitePool) -> Result<Option<i64>, DbError> {
-    let row: Option<(Option<i64>,)> = sqlx::query_as(
-        "SELECT MAX(last_seen_server_time) FROM licenses",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(Option<i64>,)> =
+        sqlx::query_as("SELECT MAX(last_seen_server_time) FROM licenses")
+            .fetch_optional(pool)
+            .await?;
     Ok(row.and_then(|(v,)| v))
 }

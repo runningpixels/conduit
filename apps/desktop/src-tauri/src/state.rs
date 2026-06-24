@@ -78,18 +78,21 @@ impl AppState {
         let encryption = match Encryption::init(app_name, tier) {
             Ok(enc) => enc,
             Err(err) => {
-                let exists = encryption::encrypted_data_exists(&db, &paths.attachments, &paths.artifacts)
-                    .await
-                    .unwrap_or(false);
+                let exists =
+                    encryption::encrypted_data_exists(&db, &paths.attachments, &paths.artifacts)
+                        .await
+                        .unwrap_or(false);
                 encryption::resolve_key_unavailable(err, exists)
                     .map(|(enc, diagnostic)| {
                         eprintln!("conduit: encryption-at-rest fallback — {diagnostic}");
                         enc
                     })
-                    .map_err(|e| format!(
+                    .map_err(|e| {
+                        format!(
                         "Conduit cannot unlock your local data: the OS keychain is unavailable \
                          ({e:?}). Re-enroll your key or restore from backup."
-                    ))?
+                    )
+                    })?
             }
         };
         // If tier is On and plaintext rows exist (e.g. upgraded from Off),
@@ -250,7 +253,8 @@ impl AppState {
         read_raw_settings_json(&self.paths)
             .ok()
             .and_then(|m| {
-                m.get("diagnosticsDisclosureAcknowledged").and_then(|v| v.as_bool())
+                m.get("diagnosticsDisclosureAcknowledged")
+                    .and_then(|v| v.as_bool())
             })
             .unwrap_or(false)
     }
@@ -319,7 +323,8 @@ fn read_raw_settings_json(
         return Ok(serde_json::Map::new());
     }
     let raw = fs::read_to_string(&paths.settings_file).map_err(|error| error.to_string())?;
-    let value = serde_json::from_str::<serde_json::Value>(&raw).map_err(|error| error.to_string())?;
+    let value =
+        serde_json::from_str::<serde_json::Value>(&raw).map_err(|error| error.to_string())?;
     value
         .as_object()
         .cloned()
@@ -509,7 +514,9 @@ mod tests {
         let written = fs::read_to_string(&paths.settings_file).unwrap();
         let value: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(
-            value.get("diagnosticsDisclosureAcknowledged").and_then(|v| v.as_bool()),
+            value
+                .get("diagnosticsDisclosureAcknowledged")
+                .and_then(|v| v.as_bool()),
             Some(true)
         );
     }
@@ -520,7 +527,8 @@ mod tests {
         read_raw_settings_json(paths)
             .ok()
             .and_then(|m| {
-                m.get("diagnosticsDisclosureAcknowledged").and_then(|v| v.as_bool())
+                m.get("diagnosticsDisclosureAcknowledged")
+                    .and_then(|v| v.as_bool())
             })
             .unwrap_or(false)
     }

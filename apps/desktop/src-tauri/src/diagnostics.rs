@@ -82,9 +82,7 @@ pub fn export(paths: &AppPaths, settings: &AppSettings) -> Result<DiagnosticsExp
     // Phase 6 M6.5: write to the shared `exports` dir (same place artifact
     // exports land) so users have one revealable folder for everything they
     // pulled out of Conduit.
-    let export_path = paths
-        .exports
-        .join(format!("diagnostics-{}.json", stamp));
+    let export_path = paths.exports.join(format!("diagnostics-{}.json", stamp));
 
     let serialized = serde_json::to_string_pretty(&payload).map_err(|error| error.to_string())?;
     fs::write(&export_path, serialized).map_err(|error| error.to_string())?;

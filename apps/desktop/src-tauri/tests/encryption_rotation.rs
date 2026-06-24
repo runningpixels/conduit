@@ -47,7 +47,9 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
         &v1,
         &art_text.id,
         Some("text/markdown"),
-        &artifacts::ArtifactContent::Text { text: "v0 body".into() },
+        &artifacts::ArtifactContent::Text {
+            text: "v0 body".into(),
+        },
     )
     .await
     .unwrap();
@@ -60,7 +62,9 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
         &v1,
         &art_json.id,
         Some("application/json"),
-        &artifacts::ArtifactContent::Json { json: json!({"k": "v"}) },
+        &artifacts::ArtifactContent::Json {
+            json: json!({"k": "v"}),
+        },
     )
     .await
     .unwrap();
@@ -79,7 +83,9 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
     .await
     .unwrap();
 
-    licenses::upsert_license(&pool, &v1, &license("s1")).await.unwrap();
+    licenses::upsert_license(&pool, &v1, &license("s1"))
+        .await
+        .unwrap();
 
     // All seeded rows are at version 1.
     let v1_rows: (i64,) = sqlx::query_as(
@@ -118,15 +124,27 @@ async fn rotate_v1_to_v2_rekeys_all_inline_rows() {
     assert_eq!(v1_remaining.0, 0, "no rows left at version 1");
 
     // The v2 key decrypts every row back to the original plaintext.
-    let got_text = artifacts::get(&pool, &v2, &art_text.id).await.unwrap().unwrap();
+    let got_text = artifacts::get(&pool, &v2, &art_text.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(got_text.content_text.as_deref(), Some("v0 body"));
-    let got_json = artifacts::get(&pool, &v2, &art_json.id).await.unwrap().unwrap();
+    let got_json = artifacts::get(&pool, &v2, &art_json.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(got_json.content_json, Some(json!({"k": "v"})));
 
-    let cfg = tenant_cache::get_tenant_config(&pool, &v2, "t1").await.unwrap().unwrap();
+    let cfg = tenant_cache::get_tenant_config(&pool, &v2, "t1")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(cfg.config_json, json!({"tier": "pro"}));
 
-    let lic = licenses::get_active_license(&pool, &v2).await.unwrap().unwrap();
+    let lic = licenses::get_active_license(&pool, &v2)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(lic.token, "jwt-secret-token");
 
     // The old v1 key can no longer decrypt the rotated rows (the stored values

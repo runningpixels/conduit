@@ -106,7 +106,10 @@ async fn orphaned_event_log_turn_is_rebuilt_then_marked_interrupted() {
         .unwrap();
     assert_eq!(after.len(), 1);
     assert!(after[0].interrupted_at.is_some());
-    assert_eq!(after[0].parts[0].content.as_deref(), Some("partial response"));
+    assert_eq!(
+        after[0].parts[0].content.as_deref(),
+        Some("partial response")
+    );
 }
 
 #[tokio::test]

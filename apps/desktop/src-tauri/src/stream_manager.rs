@@ -154,13 +154,18 @@ impl StreamManager {
                 // update the materialized view in one transaction. Best-effort
                 // on failure — the stream still reaches the UI, and the
                 // startup reconciliation/recovery sweep repairs drift.
-                let _ =
-                    event_log::append_and_apply(&pool_task, &conversation_id_task, &request_id_task, &event)
-                        .await;
+                let _ = event_log::append_and_apply(
+                    &pool_task,
+                    &conversation_id_task,
+                    &request_id_task,
+                    &event,
+                )
+                .await;
 
                 if channel.send(event.clone()).is_err() {
                     cancel.cancel();
-                    let _ = messages::mark_interrupted_by_request(&pool_task, &request_id_task).await;
+                    let _ =
+                        messages::mark_interrupted_by_request(&pool_task, &request_id_task).await;
                     break;
                 }
 

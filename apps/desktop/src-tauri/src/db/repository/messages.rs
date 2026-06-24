@@ -76,11 +76,10 @@ async fn ensure_message_row_in_txn(
     conversation_id: &str,
     request_id: &str,
 ) -> Result<String, DbError> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM messages WHERE request_id = ?")
-            .bind(request_id)
-            .fetch_optional(&mut **tx)
-            .await?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM messages WHERE request_id = ?")
+        .bind(request_id)
+        .fetch_optional(&mut **tx)
+        .await?;
     if let Some((id,)) = row {
         return Ok(id);
     }
@@ -114,7 +113,10 @@ pub async fn apply_event_in_txn(
             ensure_message_row_in_txn(tx, conversation_id, request_id).await?;
         }
         ProviderEvent::ContentBlockStart {
-            block_id, index, block_kind, ..
+            block_id,
+            index,
+            block_kind,
+            ..
         } => {
             let message_id = ensure_message_row_in_txn(tx, conversation_id, request_id).await?;
             let kind = if block_kind == "thinking" {
@@ -143,8 +145,12 @@ pub async fn apply_event_in_txn(
             .execute(&mut **tx)
             .await?;
         }
-        ProviderEvent::ContentDelta { block_id, content, .. }
-        | ProviderEvent::ReasoningDelta { block_id, content, .. } => {
+        ProviderEvent::ContentDelta {
+            block_id, content, ..
+        }
+        | ProviderEvent::ReasoningDelta {
+            block_id, content, ..
+        } => {
             let message_id = ensure_message_row_in_txn(tx, conversation_id, request_id).await?;
             let part_id = format!("{message_id}/{block_id}");
             sqlx::query(
@@ -156,7 +162,10 @@ pub async fn apply_event_in_txn(
             .await?;
         }
         ProviderEvent::ToolCallStart {
-            tool_call_id, index, name, ..
+            tool_call_id,
+            index,
+            name,
+            ..
         } => {
             let message_id = ensure_message_row_in_txn(tx, conversation_id, request_id).await?;
             let now = now_iso8601();
@@ -239,11 +248,10 @@ pub async fn get_message_id_by_request(
     pool: &SqlitePool,
     request_id: &str,
 ) -> Result<Option<String>, DbError> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM messages WHERE request_id = ?")
-            .bind(request_id)
-            .fetch_optional(pool)
-            .await?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM messages WHERE request_id = ?")
+        .bind(request_id)
+        .fetch_optional(pool)
+        .await?;
     Ok(row.map(|(id,)| id))
 }
 
@@ -328,8 +336,18 @@ pub async fn snapshot_view_for_request(
     };
 
     let part_rows: Vec<(
-        String, String, i64, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, Option<String>, Option<String>, Option<String>, String,
+        String,
+        String,
+        i64,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
     )> = sqlx::query_as(
         "SELECT id, message_id, idx, kind, content, mime_type, tool_call_id, \
                 artifact_id, attachment_id, blob_ref, metadata, created_at \
@@ -340,8 +358,20 @@ pub async fn snapshot_view_for_request(
     .await?;
 
     let mut parts = Vec::with_capacity(part_rows.len());
-    for (id, message_id, idx, kind, content, mime_type, tool_call_id, artifact_id,
-        attachment_id, blob_ref, metadata, created_at) in part_rows
+    for (
+        id,
+        message_id,
+        idx,
+        kind,
+        content,
+        mime_type,
+        tool_call_id,
+        artifact_id,
+        attachment_id,
+        blob_ref,
+        metadata,
+        created_at,
+    ) in part_rows
     {
         parts.push(MessagePart {
             id,
@@ -469,8 +499,16 @@ pub async fn load_conversation_messages(
     conversation_id: &str,
 ) -> Result<Vec<Message>, DbError> {
     let message_rows: Vec<(
-        String, String, String, Option<String>, Option<String>, Option<String>,
-        i64, Option<String>, Option<String>, String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        Option<String>,
+        Option<String>,
+        String,
     )> = sqlx::query_as(
         "SELECT id, conversation_id, role, author_label, provider_message_id, \
                 interrupted_at, finalized, finish_reason, metadata, created_at \
@@ -485,8 +523,18 @@ pub async fn load_conversation_messages(
     }
 
     let part_rows: Vec<(
-        String, String, i64, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, Option<String>, Option<String>, Option<String>, String,
+        String,
+        String,
+        i64,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
     )> = sqlx::query_as(
         "SELECT id, message_id, idx, kind, content, mime_type, tool_call_id, \
                 artifact_id, attachment_id, blob_ref, metadata, created_at \
@@ -501,30 +549,51 @@ pub async fn load_conversation_messages(
     use std::collections::HashMap;
     let mut parts_by_message: HashMap<String, Vec<MessagePart>> = HashMap::new();
     for (
-        id, message_id, idx, kind, content, mime_type, tool_call_id, artifact_id,
-        attachment_id, blob_ref, metadata, created_at,
+        id,
+        message_id,
+        idx,
+        kind,
+        content,
+        mime_type,
+        tool_call_id,
+        artifact_id,
+        attachment_id,
+        blob_ref,
+        metadata,
+        created_at,
     ) in part_rows
     {
-        parts_by_message.entry(message_id).or_default().push(MessagePart {
-            id,
-            message_id: String::new(), // filled below from the grouping key
-            index: idx.max(0) as u32,
-            kind: part_kind_from_str(&kind)?,
-            content,
-            mime_type,
-            tool_call_id,
-            artifact_id,
-            attachment_id,
-            blob_ref,
-            metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
-            created_at,
-        });
+        parts_by_message
+            .entry(message_id)
+            .or_default()
+            .push(MessagePart {
+                id,
+                message_id: String::new(), // filled below from the grouping key
+                index: idx.max(0) as u32,
+                kind: part_kind_from_str(&kind)?,
+                content,
+                mime_type,
+                tool_call_id,
+                artifact_id,
+                attachment_id,
+                blob_ref,
+                metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
+                created_at,
+            });
     }
 
     let mut messages = Vec::with_capacity(message_rows.len());
     for (
-        id, conversation_id, role, author_label, provider_message_id, interrupted_at,
-        _finalized, _finish_reason, metadata, created_at,
+        id,
+        conversation_id,
+        role,
+        author_label,
+        provider_message_id,
+        interrupted_at,
+        _finalized,
+        _finish_reason,
+        metadata,
+        created_at,
     ) in message_rows
     {
         let mut parts = parts_by_message.remove(&id).unwrap_or_default();

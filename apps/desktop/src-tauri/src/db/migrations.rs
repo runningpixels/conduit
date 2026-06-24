@@ -9,7 +9,11 @@
 //! Migration files live in `apps/desktop/src-tauri/migrations/` and are embedded
 //! at compile time via `sqlx::migrate!`.
 
-use std::{borrow::Cow, fs, path::{Path, PathBuf}};
+use std::{
+    borrow::Cow,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use sqlx::{
     migrate::{Migration, MigrationType, Migrator},
@@ -167,9 +171,7 @@ fn handle_migration_failure(db_path: &Path, error: &DbError) -> Result<Migration
 
     // Copy then remove (rename can fail if a stale handle lingers on Windows).
     if db_path.exists() {
-        fs::copy(db_path, &backup_path).map_err(|e| {
-            DbError::RecoveryIo(map_io(e).to_string())
-        })?;
+        fs::copy(db_path, &backup_path).map_err(|e| DbError::RecoveryIo(map_io(e).to_string()))?;
         let _ = fs::remove_file(db_path);
         // WAL sidecars: harmless if absent, removed so the fresh DB starts clean.
         let _ = fs::remove_file(format!("{}-wal", db_path.display()));

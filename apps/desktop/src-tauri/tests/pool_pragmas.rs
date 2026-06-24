@@ -35,5 +35,8 @@ async fn init_pool_sets_pragmas() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(foreign_keys, 1, "foreign_keys must hold on every connection");
+    assert_eq!(
+        foreign_keys, 1,
+        "foreign_keys must hold on every connection"
+    );
 }

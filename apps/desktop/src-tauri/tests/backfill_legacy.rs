@@ -77,7 +77,11 @@ fn legacy_record(conv: &str, req: &str, interrupted: bool) -> StreamRecord {
         message,
         finalized: !interrupted,
         interrupted,
-        finish_reason: Some(if interrupted { "cancelled".into() } else { "stop".into() }),
+        finish_reason: Some(if interrupted {
+            "cancelled".into()
+        } else {
+            "stop".into()
+        }),
     }
 }
 

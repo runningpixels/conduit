@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use mcp_runtime::{redact, validate_reinjection, ErrorCategory, ToolOutput};
 use provider_core::schema::{
-    ConsentDecision, ConnectorRuntimeEvent, ToolCallRecord, ToolCallStatus,
+    ConnectorRuntimeEvent, ConsentDecision, ToolCallRecord, ToolCallStatus,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -79,7 +79,10 @@ pub async fn execute_tool_call(
             format!("tool '{tool_name}' is not available on connector {connector_version_id}")
         })?;
     if cap.kind != "tool" {
-        return Err(format!("'{}' is not a tool (kind: {})", tool_name, cap.kind));
+        return Err(format!(
+            "'{}' is not a tool (kind: {})",
+            tool_name, cap.kind
+        ));
     }
 
     // 2. Persist the call as Pending.
@@ -100,7 +103,13 @@ pub async fn execute_tool_call(
 
     // 3. Consent.
     let requirement = mgr
-        .request_consent(state, connector_version_id, tool_call_id, tool_name, arguments)
+        .request_consent(
+            state,
+            connector_version_id,
+            tool_call_id,
+            tool_name,
+            arguments,
+        )
         .await
         .map_err(|e| e)?;
     let decision = match requirement {
@@ -124,8 +133,7 @@ pub async fn execute_tool_call(
         }
     };
     if matches!(decision, ConsentDecision::Denied) {
-        return finish_cancelled(state, tool_call_id, "user denied consent", sink)
-            .await;
+        return finish_cancelled(state, tool_call_id, "user denied consent", sink).await;
     }
 
     // Approved → mark Approved then Running.
@@ -154,8 +162,8 @@ pub async fn execute_tool_call(
             }
 
             // 6. Redact for persistence/display.
-            let raw_value = serde_json::to_value(&output)
-                .unwrap_or_else(|_| serde_json::Value::Null);
+            let raw_value =
+                serde_json::to_value(&output).unwrap_or_else(|_| serde_json::Value::Null);
             let redacted = redact::redact_value(&raw_value);
 
             // Best-effort injection-shape warning. Never blocks; the content is

@@ -23,7 +23,9 @@ async fn fresh_cache_returns_config() {
         .await
         .unwrap();
 
-    let cached = tenant_cache::get_tenant_config(&pool, &enc, "t1").await.unwrap();
+    let cached = tenant_cache::get_tenant_config(&pool, &enc, "t1")
+        .await
+        .unwrap();
     assert!(cached.is_some());
     assert_eq!(cached.unwrap().version, "v1");
 }

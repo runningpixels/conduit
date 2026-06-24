@@ -14,11 +14,7 @@ use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::{
-    db::DbError,
-    encryption::Encryption,
-    time::now_iso8601,
-};
+use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,7 +93,15 @@ pub async fn save(
 /// Fetch one attachment by id.
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Attachment>, DbError> {
     let row: Option<(
-        String, String, String, String, i64, Option<String>, Option<String>, String, String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
     )> = sqlx::query_as(
         "SELECT id, conversation_id, path, mime_type, size_bytes, hash, origin, \
                 retention_state, created_at FROM attachments WHERE id = ?",
@@ -106,9 +110,29 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Attachment>, DbEr
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|(id, conversation_id, path, mime_type, size_bytes, hash, origin, retention_state, created_at)| Attachment {
-        id, conversation_id, path, mime_type, size_bytes, hash, origin, retention_state, created_at,
-    }))
+    Ok(row.map(
+        |(
+            id,
+            conversation_id,
+            path,
+            mime_type,
+            size_bytes,
+            hash,
+            origin,
+            retention_state,
+            created_at,
+        )| Attachment {
+            id,
+            conversation_id,
+            path,
+            mime_type,
+            size_bytes,
+            hash,
+            origin,
+            retention_state,
+            created_at,
+        },
+    ))
 }
 
 /// List attachments for a conversation (any retention state, newest-first).
@@ -117,7 +141,15 @@ pub async fn list_for_conversation(
     conversation_id: &str,
 ) -> Result<Vec<Attachment>, DbError> {
     let rows: Vec<(
-        String, String, String, String, i64, Option<String>, Option<String>, String, String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
     )> = sqlx::query_as(
         "SELECT id, conversation_id, path, mime_type, size_bytes, hash, origin, \
                 retention_state, created_at FROM attachments \
@@ -129,18 +161,34 @@ pub async fn list_for_conversation(
 
     Ok(rows
         .into_iter()
-        .map(|(id, conversation_id, path, mime_type, size_bytes, hash, origin, retention_state, created_at)| Attachment {
-            id, conversation_id, path, mime_type, size_bytes, hash, origin, retention_state, created_at,
-        })
+        .map(
+            |(
+                id,
+                conversation_id,
+                path,
+                mime_type,
+                size_bytes,
+                hash,
+                origin,
+                retention_state,
+                created_at,
+            )| Attachment {
+                id,
+                conversation_id,
+                path,
+                mime_type,
+                size_bytes,
+                hash,
+                origin,
+                retention_state,
+                created_at,
+            },
+        )
         .collect())
 }
 
 /// Soft-delete: set `retention_state`. The blob file is not touched here.
-pub async fn set_retention(
-    pool: &SqlitePool,
-    id: &str,
-    state: &str,
-) -> Result<(), DbError> {
+pub async fn set_retention(pool: &SqlitePool, id: &str, state: &str) -> Result<(), DbError> {
     sqlx::query("UPDATE attachments SET retention_state = ? WHERE id = ?")
         .bind(state)
         .bind(id)
@@ -178,7 +226,11 @@ pub async fn verify_integrity(
 
 /// Read the blob bytes for an attachment (for IPC delivery to the renderer).
 /// Decodes the on-disk (possibly encrypted) blob back to plaintext.
-pub fn read_bytes(attachments_dir: &Path, enc: &Encryption, rel_path: &str) -> Result<Vec<u8>, DbError> {
+pub fn read_bytes(
+    attachments_dir: &Path,
+    enc: &Encryption,
+    rel_path: &str,
+) -> Result<Vec<u8>, DbError> {
     let raw = std::fs::read(attachments_dir.join(rel_path))
         .map_err(|e| DbError::RecoveryIo(format!("read attachment blob: {e}")))?;
     enc.decode_blob(&raw)

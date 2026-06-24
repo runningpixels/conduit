@@ -159,8 +159,14 @@ async fn import_one(
 
     let mut tx = pool.begin().await?;
     for (index, event) in record.events.iter().enumerate() {
-        event_log::append_event_in_txn(&mut tx, conversation_id, &record.request_id, index as i64, event)
-            .await?;
+        event_log::append_event_in_txn(
+            &mut tx,
+            conversation_id,
+            &record.request_id,
+            index as i64,
+            event,
+        )
+        .await?;
     }
     sqlx::query(
         "INSERT INTO messages \

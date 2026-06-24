@@ -41,7 +41,11 @@ fn on_encrypts_and_round_trips() {
         ct.starts_with("enc:v1:"),
         "encrypted values carry the version prefix"
     );
-    assert_eq!(enc.decrypt(&ct).unwrap(), plaintext, "round-trip restores plaintext");
+    assert_eq!(
+        enc.decrypt(&ct).unwrap(),
+        plaintext,
+        "round-trip restores plaintext"
+    );
 
     // Two encryptions of the same plaintext differ (random nonce).
     assert_ne!(enc.encrypt(plaintext).unwrap(), ct);
@@ -58,7 +62,11 @@ fn on_blob_round_trips_and_is_not_plaintext() {
     let on_disk = enc.encode_blob(&bytes).unwrap();
     assert_ne!(on_disk, bytes, "on-disk blob is not the plaintext");
     assert_eq!(&on_disk[..6], b"CDENC1", "encrypted blob carries the magic");
-    assert_eq!(enc.decode_blob(&on_disk).unwrap(), bytes, "round-trip restores plaintext");
+    assert_eq!(
+        enc.decode_blob(&on_disk).unwrap(),
+        bytes,
+        "round-trip restores plaintext"
+    );
 
     // decode_blob tolerates a plaintext (magic-less) blob under On.
     assert_eq!(enc.decode_blob(b"plain").unwrap(), b"plain".to_vec());

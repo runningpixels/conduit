@@ -25,15 +25,24 @@ async fn load_orders_by_created_at_lexicographically() {
     let conv = conversations::create(&pool, None).await.unwrap();
 
     // Insert out of chronological order.
-    messages::insert_message(&pool, &bare_message(&conv.id, "m-late", "2026-06-22T10:00:00Z"))
-        .await
-        .unwrap();
-    messages::insert_message(&pool, &bare_message(&conv.id, "m-early", "2026-06-22T08:00:00Z"))
-        .await
-        .unwrap();
-    messages::insert_message(&pool, &bare_message(&conv.id, "m-mid", "2026-06-22T09:30:00Z"))
-        .await
-        .unwrap();
+    messages::insert_message(
+        &pool,
+        &bare_message(&conv.id, "m-late", "2026-06-22T10:00:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &bare_message(&conv.id, "m-early", "2026-06-22T08:00:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &bare_message(&conv.id, "m-mid", "2026-06-22T09:30:00Z"),
+    )
+    .await
+    .unwrap();
 
     let msgs = messages::load_conversation_messages(&pool, &conv.id)
         .await

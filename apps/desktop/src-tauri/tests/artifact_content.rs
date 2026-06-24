@@ -33,7 +33,9 @@ async fn set_content_overwrites_in_place() {
         &enc,
         &art.id,
         Some("text/markdown"),
-        &ArtifactContent::Text { text: "first body".into() },
+        &ArtifactContent::Text {
+            text: "first body".into(),
+        },
     )
     .await
     .unwrap();
@@ -48,14 +50,20 @@ async fn set_content_overwrites_in_place() {
         &enc,
         &art.id,
         Some("text/markdown"),
-        &ArtifactContent::Text { text: "second body".into() },
+        &ArtifactContent::Text {
+            text: "second body".into(),
+        },
     )
     .await
     .unwrap();
     assert_eq!(after_second.content_text.as_deref(), Some("second body"));
 
     let got = artifacts::get(&pool, &enc, &art.id).await.unwrap().unwrap();
-    assert_eq!(got.content_text.as_deref(), Some("second body"), "get returns the latest payload");
+    assert_eq!(
+        got.content_text.as_deref(),
+        Some("second body"),
+        "get returns the latest payload"
+    );
 
     // One artifact in the conversation, still current (no version history).
     let listed = artifacts::list(&pool, &conv.id).await.unwrap();
@@ -79,20 +87,27 @@ async fn set_content_json_round_trips() {
     let artifacts_dir = dir.path().to_path_buf();
     let conv = conversations::create(&pool, None).await.unwrap();
 
-    let art = artifacts::create(&pool, &conv.id, "json", None, None).await.unwrap();
+    let art = artifacts::create(&pool, &conv.id, "json", None, None)
+        .await
+        .unwrap();
     artifacts::set_content(
         &pool,
         &artifacts_dir,
         &enc,
         &art.id,
         Some("application/json"),
-        &ArtifactContent::Json { json: json!({"v": 2, "nested": {"a": [1, 2]}}) },
+        &ArtifactContent::Json {
+            json: json!({"v": 2, "nested": {"a": [1, 2]}}),
+        },
     )
     .await
     .unwrap();
 
     let got = artifacts::get(&pool, &enc, &art.id).await.unwrap().unwrap();
-    assert_eq!(got.content_json, Some(json!({"v": 2, "nested": {"a": [1, 2]}})));
+    assert_eq!(
+        got.content_json,
+        Some(json!({"v": 2, "nested": {"a": [1, 2]}}))
+    );
     assert!(got.content_text.is_none());
 }
 
@@ -122,10 +137,8 @@ async fn set_content_file_writes_blob_and_hashes() {
     .unwrap();
 
     // The blob lives at artifacts/<artifact_id>/<filename> (no version segment).
-    let blob = artifacts::resolve_artifact_path(
-        &artifacts_dir,
-        after.content_path.as_deref().unwrap(),
-    );
+    let blob =
+        artifacts::resolve_artifact_path(&artifacts_dir, after.content_path.as_deref().unwrap());
     assert!(blob.exists());
     assert_eq!(
         after.content_path.as_deref().unwrap(),
@@ -149,21 +162,24 @@ async fn set_content_replaces_previous_file_blob() {
     let artifacts_dir = dir.path().to_path_buf();
     let conv = conversations::create(&pool, None).await.unwrap();
 
-    let art = artifacts::create(&pool, &conv.id, "image", None, None).await.unwrap();
+    let art = artifacts::create(&pool, &conv.id, "image", None, None)
+        .await
+        .unwrap();
     let first = artifacts::set_content(
         &pool,
         &artifacts_dir,
         &enc,
         &art.id,
         Some("image/png"),
-        &ArtifactContent::File { bytes: b"first".to_vec(), filename: "a.png".into() },
+        &ArtifactContent::File {
+            bytes: b"first".to_vec(),
+            filename: "a.png".into(),
+        },
     )
     .await
     .unwrap();
-    let first_blob = artifacts::resolve_artifact_path(
-        &artifacts_dir,
-        first.content_path.as_deref().unwrap(),
-    );
+    let first_blob =
+        artifacts::resolve_artifact_path(&artifacts_dir, first.content_path.as_deref().unwrap());
     assert!(first_blob.exists());
 
     // Overwrite with a different filename: the old blob is removed.
@@ -173,7 +189,10 @@ async fn set_content_replaces_previous_file_blob() {
         &enc,
         &art.id,
         Some("image/png"),
-        &ArtifactContent::File { bytes: b"second".to_vec(), filename: "b.png".into() },
+        &ArtifactContent::File {
+            bytes: b"second".to_vec(),
+            filename: "b.png".into(),
+        },
     )
     .await
     .unwrap();
@@ -207,7 +226,9 @@ async fn read_content_bytes_round_trips() {
     let artifacts_dir = dir.path().to_path_buf();
     let conv = conversations::create(&pool, None).await.unwrap();
 
-    let art = artifacts::create(&pool, &conv.id, "image", None, None).await.unwrap();
+    let art = artifacts::create(&pool, &conv.id, "image", None, None)
+        .await
+        .unwrap();
     let payload = b"file payload bytes".to_vec();
     artifacts::set_content(
         &pool,
@@ -215,7 +236,10 @@ async fn read_content_bytes_round_trips() {
         &enc,
         &art.id,
         Some("application/octet-stream"),
-        &ArtifactContent::File { bytes: payload.clone(), filename: "bin.dat".into() },
+        &ArtifactContent::File {
+            bytes: payload.clone(),
+            filename: "bin.dat".into(),
+        },
     )
     .await
     .unwrap();

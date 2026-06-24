@@ -33,7 +33,10 @@ impl HttpSseConfig {
         if w.url.trim().is_empty() {
             return Err(McpError::protocol("http-sse transport_config.url is empty"));
         }
-        Ok(Self { url: w.url, credential_ref: w.credential_ref })
+        Ok(Self {
+            url: w.url,
+            credential_ref: w.credential_ref,
+        })
     }
 }
 
@@ -56,7 +59,10 @@ impl McpTransport for HttpSseTransport {
     async fn list_tools(&mut self, _c: &CancellationToken) -> Result<Vec<McpTool>, McpError> {
         Err(McpError::not_implemented("http/sse transport lands in 04b"))
     }
-    async fn list_resources(&mut self, _c: &CancellationToken) -> Result<Vec<McpResource>, McpError> {
+    async fn list_resources(
+        &mut self,
+        _c: &CancellationToken,
+    ) -> Result<Vec<McpResource>, McpError> {
         Err(McpError::not_implemented("http/sse transport lands in 04b"))
     }
     async fn list_prompts(&mut self, _c: &CancellationToken) -> Result<Vec<McpPrompt>, McpError> {

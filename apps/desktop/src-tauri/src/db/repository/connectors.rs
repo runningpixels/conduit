@@ -83,7 +83,10 @@ pub struct ConnectorCapability {
 
 /// Insert or update a connector definition by id. `created_at` is preserved on
 /// update; `updated_at` is bumped.
-pub async fn upsert_definition(pool: &SqlitePool, def: &ConnectorDefinition) -> Result<(), DbError> {
+pub async fn upsert_definition(
+    pool: &SqlitePool,
+    def: &ConnectorDefinition,
+) -> Result<(), DbError> {
     sqlx::query(
         "INSERT INTO connector_definitions \
          (id, name, description, transport, owner, icon, support_url, consent_copy, \
@@ -114,8 +117,18 @@ pub async fn upsert_definition(pool: &SqlitePool, def: &ConnectorDefinition) -> 
 
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<ConnectorDefinition>, DbError> {
     let row: Option<(
-        String, String, String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, Option<String>, String, String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
     )> = sqlx::query_as(
         "SELECT id, name, description, transport, owner, icon, support_url, consent_copy, \
                 policy_metadata, cloud_id, created_at, updated_at \
@@ -124,17 +137,51 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<ConnectorDefiniti
     .bind(id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(id, name, description, transport, owner, icon, support_url, consent_copy, policy_metadata, cloud_id, created_at, updated_at)| ConnectorDefinition {
-        id, name, description, transport, owner, icon, support_url, consent_copy,
-        policy_metadata: policy_metadata.and_then(|s| serde_json::from_str(&s).ok()),
-        cloud_id, created_at, updated_at,
-    }))
+    Ok(row.map(
+        |(
+            id,
+            name,
+            description,
+            transport,
+            owner,
+            icon,
+            support_url,
+            consent_copy,
+            policy_metadata,
+            cloud_id,
+            created_at,
+            updated_at,
+        )| ConnectorDefinition {
+            id,
+            name,
+            description,
+            transport,
+            owner,
+            icon,
+            support_url,
+            consent_copy,
+            policy_metadata: policy_metadata.and_then(|s| serde_json::from_str(&s).ok()),
+            cloud_id,
+            created_at,
+            updated_at,
+        },
+    ))
 }
 
 pub async fn list_definitions(pool: &SqlitePool) -> Result<Vec<ConnectorDefinition>, DbError> {
     let rows: Vec<(
-        String, String, String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, Option<String>, String, String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
     )> = sqlx::query_as(
         "SELECT id, name, description, transport, owner, icon, support_url, consent_copy, \
                 policy_metadata, cloud_id, created_at, updated_at \
@@ -144,11 +191,35 @@ pub async fn list_definitions(pool: &SqlitePool) -> Result<Vec<ConnectorDefiniti
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, description, transport, owner, icon, support_url, consent_copy, policy_metadata, cloud_id, created_at, updated_at)| ConnectorDefinition {
-            id, name, description, transport, owner, icon, support_url, consent_copy,
-            policy_metadata: policy_metadata.and_then(|s| serde_json::from_str(&s).ok()),
-            cloud_id, created_at, updated_at,
-        })
+        .map(
+            |(
+                id,
+                name,
+                description,
+                transport,
+                owner,
+                icon,
+                support_url,
+                consent_copy,
+                policy_metadata,
+                cloud_id,
+                created_at,
+                updated_at,
+            )| ConnectorDefinition {
+                id,
+                name,
+                description,
+                transport,
+                owner,
+                icon,
+                support_url,
+                consent_copy,
+                policy_metadata: policy_metadata.and_then(|s| serde_json::from_str(&s).ok()),
+                cloud_id,
+                created_at,
+                updated_at,
+            },
+        )
         .collect())
 }
 
@@ -182,8 +253,15 @@ pub async fn list_versions(
     connector_id: &str,
 ) -> Result<Vec<ConnectorVersion>, DbError> {
     let rows: Vec<(
-        String, String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
     )> = sqlx::query_as(
         "SELECT id, connector_id, version, transport_config, scope_grants, \
                 capability_allowlist, rollout_channel, support_state, created_at \
@@ -194,13 +272,31 @@ pub async fn list_versions(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, connector_id, version, transport_config, scope_grants, capability_allowlist, rollout_channel, support_state, created_at)| ConnectorVersion {
-            id, connector_id, version,
-            transport_config: serde_json::from_str(&transport_config).unwrap_or(serde_json::Value::Null),
-            scope_grants: scope_grants.and_then(|s| serde_json::from_str(&s).ok()),
-            capability_allowlist: capability_allowlist.and_then(|s| serde_json::from_str(&s).ok()),
-            rollout_channel, support_state, created_at,
-        })
+        .map(
+            |(
+                id,
+                connector_id,
+                version,
+                transport_config,
+                scope_grants,
+                capability_allowlist,
+                rollout_channel,
+                support_state,
+                created_at,
+            )| ConnectorVersion {
+                id,
+                connector_id,
+                version,
+                transport_config: serde_json::from_str(&transport_config)
+                    .unwrap_or(serde_json::Value::Null),
+                scope_grants: scope_grants.and_then(|s| serde_json::from_str(&s).ok()),
+                capability_allowlist: capability_allowlist
+                    .and_then(|s| serde_json::from_str(&s).ok()),
+                rollout_channel,
+                support_state,
+                created_at,
+            },
+        )
         .collect())
 }
 
@@ -211,8 +307,15 @@ pub async fn get_version(
     version_id: &str,
 ) -> Result<Option<ConnectorVersion>, DbError> {
     let row: Option<(
-        String, String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
     )> = sqlx::query_as(
         "SELECT id, connector_id, version, transport_config, scope_grants, \
                 capability_allowlist, rollout_channel, support_state, created_at \
@@ -221,13 +324,30 @@ pub async fn get_version(
     .bind(version_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(id, connector_id, version, transport_config, scope_grants, capability_allowlist, rollout_channel, support_state, created_at)| ConnectorVersion {
-        id, connector_id, version,
-        transport_config: serde_json::from_str(&transport_config).unwrap_or(serde_json::Value::Null),
-        scope_grants: scope_grants.and_then(|s| serde_json::from_str(&s).ok()),
-        capability_allowlist: capability_allowlist.and_then(|s| serde_json::from_str(&s).ok()),
-        rollout_channel, support_state, created_at,
-    }))
+    Ok(row.map(
+        |(
+            id,
+            connector_id,
+            version,
+            transport_config,
+            scope_grants,
+            capability_allowlist,
+            rollout_channel,
+            support_state,
+            created_at,
+        )| ConnectorVersion {
+            id,
+            connector_id,
+            version,
+            transport_config: serde_json::from_str(&transport_config)
+                .unwrap_or(serde_json::Value::Null),
+            scope_grants: scope_grants.and_then(|s| serde_json::from_str(&s).ok()),
+            capability_allowlist: capability_allowlist.and_then(|s| serde_json::from_str(&s).ok()),
+            rollout_channel,
+            support_state,
+            created_at,
+        },
+    ))
 }
 
 /// Grants for a specific version. Phase 4 checks that an `Active` grant exists
@@ -237,8 +357,15 @@ pub async fn list_grants_for_version(
     connector_version_id: &str,
 ) -> Result<Vec<ConnectorGrant>, DbError> {
     let rows: Vec<(
-        String, String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
     )> = sqlx::query_as(
         "SELECT id, connector_version_id, scope, status, credential_ref, approved_by, \
                 revoked_at, notes, created_at \
@@ -249,10 +376,29 @@ pub async fn list_grants_for_version(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, connector_version_id, scope, status, credential_ref, approved_by, revoked_at, notes, created_at)| ConnectorGrant {
-            id, connector_version_id, scope, status, credential_ref, approved_by, revoked_at,
-            notes, created_at,
-        })
+        .map(
+            |(
+                id,
+                connector_version_id,
+                scope,
+                status,
+                credential_ref,
+                approved_by,
+                revoked_at,
+                notes,
+                created_at,
+            )| ConnectorGrant {
+                id,
+                connector_version_id,
+                scope,
+                status,
+                credential_ref,
+                approved_by,
+                revoked_at,
+                notes,
+                created_at,
+            },
+        )
         .collect())
 }
 
@@ -287,8 +433,15 @@ pub async fn list_grants(
     status: Option<&str>,
 ) -> Result<Vec<ConnectorGrant>, DbError> {
     let rows: Vec<(
-        String, String, String, String, Option<String>, Option<String>, Option<String>,
-        Option<String>, String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
     )> = if let Some(status) = status {
         sqlx::query_as(
             "SELECT id, connector_version_id, scope, status, credential_ref, approved_by, \
@@ -309,10 +462,29 @@ pub async fn list_grants(
     };
     Ok(rows
         .into_iter()
-        .map(|(id, connector_version_id, scope, status, credential_ref, approved_by, revoked_at, notes, created_at)| ConnectorGrant {
-            id, connector_version_id, scope, status, credential_ref, approved_by, revoked_at,
-            notes, created_at,
-        })
+        .map(
+            |(
+                id,
+                connector_version_id,
+                scope,
+                status,
+                credential_ref,
+                approved_by,
+                revoked_at,
+                notes,
+                created_at,
+            )| ConnectorGrant {
+                id,
+                connector_version_id,
+                scope,
+                status,
+                credential_ref,
+                approved_by,
+                revoked_at,
+                notes,
+                created_at,
+            },
+        )
         .collect())
 }
 
@@ -322,13 +494,11 @@ pub async fn revoke_grant(
     id: &str,
     revoked_at: Option<&str>,
 ) -> Result<(), DbError> {
-    sqlx::query(
-        "UPDATE connector_grants SET status = 'revoked', revoked_at = ? WHERE id = ?",
-    )
-    .bind(revoked_at.unwrap_or_else(|| ""))
-    .bind(id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE connector_grants SET status = 'revoked', revoked_at = ? WHERE id = ?")
+        .bind(revoked_at.unwrap_or_else(|| ""))
+        .bind(id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -367,17 +537,20 @@ pub async fn get_runtime_state(
     .bind(connector_version_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(health, last_started_at, last_error, restart_count)| ConnectorRuntimeState {
-        connector_version_id: connector_version_id.to_string(),
-        health, last_started_at, last_error, restart_count,
-    }))
+    Ok(row.map(
+        |(health, last_started_at, last_error, restart_count)| ConnectorRuntimeState {
+            connector_version_id: connector_version_id.to_string(),
+            health,
+            last_started_at,
+            last_error,
+            restart_count,
+        },
+    ))
 }
 
 /// All persisted runtime states (Phase 4 M4.6: the connectors rail renders a
 /// snapshot of every version's health/restart count).
-pub async fn list_runtime_states(
-    pool: &SqlitePool,
-) -> Result<Vec<ConnectorRuntimeState>, DbError> {
+pub async fn list_runtime_states(pool: &SqlitePool) -> Result<Vec<ConnectorRuntimeState>, DbError> {
     let rows: Vec<(String, String, Option<String>, Option<String>, i64)> = sqlx::query_as(
         "SELECT connector_version_id, health, last_started_at, last_error, restart_count \
          FROM connector_runtime_state ORDER BY connector_version_id ASC",
@@ -386,11 +559,17 @@ pub async fn list_runtime_states(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(connector_version_id, health, last_started_at, last_error, restart_count)| {
-            ConnectorRuntimeState {
-                connector_version_id, health, last_started_at, last_error, restart_count,
-            }
-        })
+        .map(
+            |(connector_version_id, health, last_started_at, last_error, restart_count)| {
+                ConnectorRuntimeState {
+                    connector_version_id,
+                    health,
+                    last_started_at,
+                    last_error,
+                    restart_count,
+                }
+            },
+        )
         .collect())
 }
 
@@ -467,14 +646,16 @@ pub async fn list_capabilities(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, cvi, kind, name, schema_json, discovered_at)| ConnectorCapability {
-            id,
-            connector_version_id: cvi,
-            kind,
-            name,
-            schema_json: schema_json.and_then(|s| serde_json::from_str(&s).ok()),
-            discovered_at,
-        })
+        .map(
+            |(id, cvi, kind, name, schema_json, discovered_at)| ConnectorCapability {
+                id,
+                connector_version_id: cvi,
+                kind,
+                name,
+                schema_json: schema_json.and_then(|s| serde_json::from_str(&s).ok()),
+                discovered_at,
+            },
+        )
         .collect())
 }
 
@@ -494,12 +675,14 @@ pub async fn get_capability_by_name(
     .bind(name)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(id, cvi, kind, name, schema_json, discovered_at)| ConnectorCapability {
-        id,
-        connector_version_id: cvi,
-        kind,
-        name,
-        schema_json: schema_json.and_then(|s| serde_json::from_str(&s).ok()),
-        discovered_at,
-    }))
+    Ok(row.map(
+        |(id, cvi, kind, name, schema_json, discovered_at)| ConnectorCapability {
+            id,
+            connector_version_id: cvi,
+            kind,
+            name,
+            schema_json: schema_json.and_then(|s| serde_json::from_str(&s).ok()),
+            discovered_at,
+        },
+    ))
 }

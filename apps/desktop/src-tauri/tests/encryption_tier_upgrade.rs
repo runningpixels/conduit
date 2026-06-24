@@ -28,7 +28,9 @@ async fn off_data_encrypted_when_tier_flips_on() {
         &off,
         &art.id,
         Some("text/markdown"),
-        &artifacts::ArtifactContent::Text { text: "plain body".into() },
+        &artifacts::ArtifactContent::Text {
+            text: "plain body".into(),
+        },
     )
     .await
     .unwrap();
@@ -53,18 +55,23 @@ async fn off_data_encrypted_when_tier_flips_on() {
             .await
             .unwrap()
     );
-    let raw_text: (Option<String>,) = sqlx::query_as(
-        "SELECT content_text FROM artifacts WHERE id = ?",
-    )
-    .bind(&art.id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(raw_text.0.as_deref(), Some("plain body"), "Off stores plaintext");
+    let raw_text: (Option<String>,) =
+        sqlx::query_as("SELECT content_text FROM artifacts WHERE id = ?")
+            .bind(&art.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        raw_text.0.as_deref(),
+        Some("plain body"),
+        "Off stores plaintext"
+    );
 
     // Flip tier to On and migrate existing plaintext into the current key.
     let on = Encryption::on_with_key(encryption::generate_key(), 1);
-    let rekeyed = encryption::encrypt_existing_plaintext(&pool, &on).await.unwrap();
+    let rekeyed = encryption::encrypt_existing_plaintext(&pool, &on)
+        .await
+        .unwrap();
     assert_eq!(rekeyed, 2, "artifact + tenant rows re-keyed");
 
     // Now encrypted data exists, rows are stamped at version 1, and the on-disk
@@ -74,20 +81,18 @@ async fn off_data_encrypted_when_tier_flips_on() {
             .await
             .unwrap()
     );
-    let stamped: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM artifacts WHERE enc_key_version = 1",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let stamped: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM artifacts WHERE enc_key_version = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(stamped.0, 1);
-    let raw_text: (Option<String>,) = sqlx::query_as(
-        "SELECT content_text FROM artifacts WHERE id = ?",
-    )
-    .bind(&art.id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let raw_text: (Option<String>,) =
+        sqlx::query_as("SELECT content_text FROM artifacts WHERE id = ?")
+            .bind(&art.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_ne!(
         raw_text.0.as_deref(),
         Some("plain body"),
@@ -101,11 +106,16 @@ async fn off_data_encrypted_when_tier_flips_on() {
     // The On key decrypts back to the original plaintext.
     let got = artifacts::get(&pool, &on, &art.id).await.unwrap().unwrap();
     assert_eq!(got.content_text.as_deref(), Some("plain body"));
-    let cfg = tenant_cache::get_tenant_config(&pool, &on, "t1").await.unwrap().unwrap();
+    let cfg = tenant_cache::get_tenant_config(&pool, &on, "t1")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(cfg.config_json, json!({"tier": "pro"}));
 
     // Idempotent: a second pass finds no NULL-version rows.
-    let again = encryption::encrypt_existing_plaintext(&pool, &on).await.unwrap();
+    let again = encryption::encrypt_existing_plaintext(&pool, &on)
+        .await
+        .unwrap();
     assert_eq!(again, 0, "migration is idempotent");
 }
 
@@ -138,7 +148,9 @@ async fn encrypt_existing_is_noop_when_off() {
     .await
     .unwrap();
     assert_eq!(
-        encryption::encrypt_existing_plaintext(&pool, &off).await.unwrap(),
+        encryption::encrypt_existing_plaintext(&pool, &off)
+            .await
+            .unwrap(),
         0
     );
 }

@@ -11,11 +11,11 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition,
-    ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt,
-    Conversation, ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls,
-    GrantScope, GrantStatus, LicenseClaims, Message, MessagePart, MessagePartKind, MessageRole,
-    ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig, ProviderError, ProviderEvent,
+    AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition, ConnectorGrant,
+    ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, Conversation,
+    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
+    GrantStatus, LicenseClaims, Message, MessagePart, MessagePartKind, MessageRole, ModelInfo,
+    ModelPolicy, PermissionLevel, ProviderEndpointConfig, ProviderError, ProviderEvent,
     ProviderRequest, ProviderUsage, ResponseFormatHint, RetentionState, RolloutChannel,
     SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
     ToolCallStatus, ToolChoice, ToolDefinition, Transport,

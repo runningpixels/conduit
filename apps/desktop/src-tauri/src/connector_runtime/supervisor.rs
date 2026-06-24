@@ -87,12 +87,21 @@ async fn supervise(
 
         match restart_connector(&conn).await {
             Ok(()) => {
-                let _ = persist_health(&pool, &version_id, "healthy", None, restart_count, false).await;
+                let _ =
+                    persist_health(&pool, &version_id, "healthy", None, restart_count, false).await;
                 info!(target: "mcp_connector", %version_id, restart_count, "connector restarted");
             }
             Err(e) => {
                 warn!(target: "mcp_connector", %version_id, error = %e.message, "restart failed");
-                let _ = persist_health(&pool, &version_id, "degraded", Some(&e.message), restart_count, false).await;
+                let _ = persist_health(
+                    &pool,
+                    &version_id,
+                    "degraded",
+                    Some(&e.message),
+                    restart_count,
+                    false,
+                )
+                .await;
             }
         }
     }

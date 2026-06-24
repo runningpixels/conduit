@@ -7,11 +7,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
-use crate::{
-    db::DbError,
-    encryption::Encryption,
-    time::now_iso8601,
-};
+use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

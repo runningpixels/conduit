@@ -41,7 +41,10 @@ fn echo_bin() -> &'static Path {
             .status()
             .expect("failed to invoke cargo to build echo_connector");
         assert!(status.success(), "cargo build echo_connector failed");
-        assert!(exe.exists(), "echo_connector not found at {exe:?} after build");
+        assert!(
+            exe.exists(),
+            "echo_connector not found at {exe:?} after build"
+        );
         exe
     })
 }
@@ -97,8 +100,8 @@ async fn seed_connector_with(
     connectors::upsert_definition(pool, &def).await.unwrap();
 
     let bin = echo_bin().to_string_lossy().to_string();
-    let capability_allowlist = allowlist
-        .map(|names| serde_json::Value::Array(names.iter().map(|n| json!(n)).collect()));
+    let capability_allowlist =
+        allowlist.map(|names| serde_json::Value::Array(names.iter().map(|n| json!(n)).collect()));
     let transport_env = env.unwrap_or_else(|| json!({}));
     let version = ConnectorVersion {
         id: "echo:1.0.0".into(),
@@ -194,7 +197,12 @@ async fn start_connector_is_healthy_and_invokes() {
     assert_eq!(runtime_state(&pool, &vid).await.unwrap().health, "healthy");
 
     let out = mgr
-        .invoke_tool(&vid, "echo", &json!({ "text": "hi" }), &CancellationToken::new())
+        .invoke_tool(
+            &vid,
+            "echo",
+            &json!({ "text": "hi" }),
+            &CancellationToken::new(),
+        )
         .await
         .expect("echo");
     assert_eq!(out.text_summary(), "hi");
@@ -225,11 +233,14 @@ async fn crash_triggers_supervised_restart() {
         "supervisor should restart after crash"
     );
     // After restart the connector should be healthy again and callable.
-    assert!(
-        wait_for_health(&pool, &vid, "healthy", Duration::from_secs(2)).await
-    );
+    assert!(wait_for_health(&pool, &vid, "healthy", Duration::from_secs(2)).await);
     let out = mgr
-        .invoke_tool(&vid, "echo", &json!({ "text": "after-restart" }), &CancellationToken::new())
+        .invoke_tool(
+            &vid,
+            "echo",
+            &json!({ "text": "after-restart" }),
+            &CancellationToken::new(),
+        )
         .await
         .expect("echo after restart");
     assert_eq!(out.text_summary(), "after-restart");
@@ -262,7 +273,11 @@ async fn repeated_crashes_hit_cap_and_go_down() {
         "connector should be down after exceeding the restart cap"
     );
     let s = runtime_state(&pool, &vid).await.unwrap();
-    assert!(s.restart_count >= RESTART_MAX as i64, "restart_count={}", s.restart_count);
+    assert!(
+        s.restart_count >= RESTART_MAX as i64,
+        "restart_count={}",
+        s.restart_count
+    );
     assert!(
         mgr.active_connector(&vid).is_none(),
         "restart-capped connector should be removed from the active registry"
@@ -316,7 +331,10 @@ async fn start_rejected_for_revoked_grant() {
     let mgr = test_manager();
     let vid = seed_connector(&pool, None, "revoked").await;
 
-    let err = mgr.start_connector(&state, &vid).await.expect_err("must reject");
+    let err = mgr
+        .start_connector(&state, &vid)
+        .await
+        .expect_err("must reject");
     assert!(err.contains("grant"));
 }
 
@@ -328,7 +346,10 @@ async fn start_rejected_for_admin_disabled() {
     let mgr = test_manager();
     let vid = seed_connector(&pool, Some("adminDisabled"), "active").await;
 
-    let err = mgr.start_connector(&state, &vid).await.expect_err("must reject");
+    let err = mgr
+        .start_connector(&state, &vid)
+        .await
+        .expect_err("must reject");
     assert!(err.contains("admin-disabled") || err.contains("adminDisabled"));
 }
 
@@ -342,7 +363,10 @@ async fn discovery_caches_all_tools() {
 
     mgr.start_connector(&state, &vid).await.unwrap();
     // start_connector already ran discovery; re-discover returns the cache set.
-    let caps = mgr.discover_capabilities(&state, &vid).await.expect("discover");
+    let caps = mgr
+        .discover_capabilities(&state, &vid)
+        .await
+        .expect("discover");
     let names: Vec<&str> = caps.iter().map(|c| c.name.as_str()).collect();
     assert!(names.contains(&"echo"));
     assert!(names.contains(&"post_message"));
@@ -363,7 +387,10 @@ async fn discovery_filters_through_allowlist() {
     let vid = seed_connector_with(&pool, None, "active", Some(&["echo", "read_time"]), None).await;
 
     mgr.start_connector(&state, &vid).await.unwrap();
-    let caps = mgr.discover_capabilities(&state, &vid).await.expect("discover");
+    let caps = mgr
+        .discover_capabilities(&state, &vid)
+        .await
+        .expect("discover");
     let names: Vec<&str> = caps.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(names.len(), 2);
     assert!(names.contains(&"echo"));
@@ -383,7 +410,12 @@ async fn discovery_empty_result_clears_stale_cached_capabilities() {
     connectors::upsert_capabilities(
         &pool,
         &vid,
-        &[connectors::new_capability(&vid, "tool", "stale_tool", Some(json!({})))],
+        &[connectors::new_capability(
+            &vid,
+            "tool",
+            "stale_tool",
+            Some(json!({})),
+        )],
     )
     .await
     .unwrap();
@@ -391,7 +423,10 @@ async fn discovery_empty_result_clears_stale_cached_capabilities() {
     mgr.start_connector(&state, &vid).await.unwrap();
 
     let cached = connectors::list_capabilities(&pool, &vid).await.unwrap();
-    assert!(cached.is_empty(), "empty discovery should clear stale cached rows");
+    assert!(
+        cached.is_empty(),
+        "empty discovery should clear stale cached rows"
+    );
 }
 
 #[tokio::test]
@@ -409,7 +444,10 @@ async fn initialize_timeout_marks_connector_down() {
     )
     .await;
 
-    let err = mgr.start_connector(&state, &vid).await.expect_err("initialize should time out");
+    let err = mgr
+        .start_connector(&state, &vid)
+        .await
+        .expect_err("initialize should time out");
     assert!(err.contains("initialize exceeded"), "got {err}");
     assert_eq!(runtime_state(&pool, &vid).await.unwrap().health, "down");
 }

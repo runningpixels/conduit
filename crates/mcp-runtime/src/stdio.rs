@@ -15,14 +15,13 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command, ChildStdin, ChildStdout};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::protocol::{
-    ClientInfo, InitializeResult, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse,
-    McpPrompt, McpResource, McpTool, PROTOCOL_VERSION, RequestId, ServerInfo, ToolContent,
-    ToolOutput,
+    ClientInfo, InitializeResult, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse, McpPrompt,
+    McpResource, McpTool, RequestId, ServerInfo, ToolContent, ToolOutput, PROTOCOL_VERSION,
 };
 use crate::redact;
 use crate::transport::{McpError, McpTransport};
@@ -45,20 +44,26 @@ impl StdioConfig {
     /// Parse + validate the raw `transport_config` blob. Refuses shell
     /// metacharacters in `command` and empty commands.
     pub fn from_value(raw: &Value) -> Result<Self, McpError> {
-        let cfg: StdioConfig = serde_json::from_value(raw.clone()).map_err(|e| {
-            McpError::protocol(format!("invalid stdio transport_config: {e}"))
-        })?;
+        let cfg: StdioConfig = serde_json::from_value(raw.clone())
+            .map_err(|e| McpError::protocol(format!("invalid stdio transport_config: {e}")))?;
         if cfg.command.trim().is_empty() {
-            return Err(McpError::protocol("stdio transport_config.command is empty"));
+            return Err(McpError::protocol(
+                "stdio transport_config.command is empty",
+            ));
         }
         // No shell invocation: the command must be a real program path/name,
         // not `sh -c ...` / `cmd /c ...`. Args are passed verbatim.
         let lower = cfg.command.to_ascii_lowercase();
-        if lower.ends_with("sh") || lower.ends_with("sh.exe")
-            || lower == "cmd" || lower == "cmd.exe"
-            || lower.contains("/sh") || lower.contains("\\cmd")
-            || lower.ends_with("powershell") || lower.ends_with("powershell.exe")
-            || lower.ends_with("pwsh") || lower.ends_with("pwsh.exe")
+        if lower.ends_with("sh")
+            || lower.ends_with("sh.exe")
+            || lower == "cmd"
+            || lower == "cmd.exe"
+            || lower.contains("/sh")
+            || lower.contains("\\cmd")
+            || lower.ends_with("powershell")
+            || lower.ends_with("powershell.exe")
+            || lower.ends_with("pwsh")
+            || lower.ends_with("pwsh.exe")
         {
             // Reject common shell interpreters outright for MVP to prevent
             // arbitrary command execution via transport_config.
@@ -109,15 +114,17 @@ impl StdioTransport {
             "spawning stdio connector",
         );
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| McpError::unavailable(format!("spawn '{}' failed: {e}", config.command)))?;
-        let stdin = child.stdin.take().ok_or_else(|| {
-            McpError::unavailable("connector child opened without a stdin pipe")
+        let mut child = cmd.spawn().map_err(|e| {
+            McpError::unavailable(format!("spawn '{}' failed: {e}", config.command))
         })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            McpError::unavailable("connector child opened without a stdout pipe")
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| McpError::unavailable("connector child opened without a stdin pipe"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| McpError::unavailable("connector child opened without a stdout pipe"))?;
 
         // Capture stderr: redact + emit as tracing events. The app's tracing
         // subscriber routes `mcp_connector` target lines to the connectors log
@@ -250,9 +257,13 @@ impl StdioTransport {
 
 fn resp_to_result(resp: JsonRpcResponse) -> Result<Value, McpError> {
     if let Some(err) = resp.error {
-        return Err(McpError::new(crate::transport::ErrorCategory::Protocol, err.message));
+        return Err(McpError::new(
+            crate::transport::ErrorCategory::Protocol,
+            err.message,
+        ));
     }
-    resp.result.ok_or_else(|| McpError::protocol("response had no result and no error"))
+    resp.result
+        .ok_or_else(|| McpError::protocol("response had no result and no error"))
 }
 
 #[async_trait]
@@ -264,7 +275,9 @@ impl McpTransport for StdioTransport {
             "clientInfo": self.client,
             "capabilities": {},
         });
-        let result = self.round_trip(id, "initialize", Some(params), cancel).await?;
+        let result = self
+            .round_trip(id, "initialize", Some(params), cancel)
+            .await?;
         let init: InitializeResult = serde_json::from_value(result)
             .map_err(|e| McpError::protocol(format!("decode initialize result failed: {e}")))?;
 
@@ -283,8 +296,9 @@ impl McpTransport for StdioTransport {
     async fn list_tools(&mut self, cancel: &CancellationToken) -> Result<Vec<McpTool>, McpError> {
         let id = self.next_request_id();
         let result = self.round_trip(id, "tools/list", None, cancel).await?;
-        let tools: Vec<McpTool> = serde_json::from_value(result.get("tools").cloned().unwrap_or(Value::Array(vec![])))
-            .map_err(|e| McpError::protocol(format!("decode tools/list failed: {e}")))?;
+        let tools: Vec<McpTool> =
+            serde_json::from_value(result.get("tools").cloned().unwrap_or(Value::Array(vec![])))
+                .map_err(|e| McpError::protocol(format!("decode tools/list failed: {e}")))?;
         Ok(tools)
     }
 
@@ -295,7 +309,10 @@ impl McpTransport for StdioTransport {
         let id = self.next_request_id();
         let result = self.round_trip(id, "resources/list", None, cancel).await?;
         let resources: Vec<McpResource> = serde_json::from_value(
-            result.get("resources").cloned().unwrap_or(Value::Array(vec![])),
+            result
+                .get("resources")
+                .cloned()
+                .unwrap_or(Value::Array(vec![])),
         )
         .map_err(|e| McpError::protocol(format!("decode resources/list failed: {e}")))?;
         Ok(resources)
@@ -308,7 +325,10 @@ impl McpTransport for StdioTransport {
         let id = self.next_request_id();
         let result = self.round_trip(id, "prompts/list", None, cancel).await?;
         let prompts: Vec<McpPrompt> = serde_json::from_value(
-            result.get("prompts").cloned().unwrap_or(Value::Array(vec![])),
+            result
+                .get("prompts")
+                .cloned()
+                .unwrap_or(Value::Array(vec![])),
         )
         .map_err(|e| McpError::protocol(format!("decode prompts/list failed: {e}")))?;
         Ok(prompts)
@@ -322,7 +342,9 @@ impl McpTransport for StdioTransport {
     ) -> Result<ToolOutput, McpError> {
         let id = self.next_request_id();
         let params = json!({ "name": name, "arguments": arguments });
-        let result = self.round_trip(id, "tools/call", Some(params), cancel).await?;
+        let result = self
+            .round_trip(id, "tools/call", Some(params), cancel)
+            .await?;
         decode_tool_output(&result)
     }
 
@@ -385,7 +407,9 @@ fn decode_tool_output(result: &Value) -> Result<ToolOutput, McpError> {
     let wire: Wire = serde_json::from_value(result.clone())
         .map_err(|e| McpError::protocol(format!("decode tools/call result failed: {e}")))?;
 
-    let size_bytes = serde_json::to_vec(&wire.content).map(|v| v.len() as u64).unwrap_or(0);
+    let size_bytes = serde_json::to_vec(&wire.content)
+        .map(|v| v.len() as u64)
+        .unwrap_or(0);
     let mime_hints: Vec<String> = wire
         .content
         .iter()

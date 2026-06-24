@@ -43,7 +43,9 @@ async fn save_list_soft_delete_and_gc() {
     );
 
     // List reflects the conversation.
-    let listed = attachments::list_for_conversation(&pool, &conv.id).await.unwrap();
+    let listed = attachments::list_for_conversation(&pool, &conv.id)
+        .await
+        .unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, att.id);
     assert_eq!(listed[0].retention_state, "active");
@@ -69,12 +71,28 @@ async fn attachment_dedupes_on_identical_content() {
     let conv = conversations::create(&pool, None).await.unwrap();
 
     let bytes = b"duplicate-content".to_vec();
-    let a = attachments::save(&pool, &attachments_dir, &enc, &conv.id, &bytes, "text/plain", None)
-        .await
-        .unwrap();
-    let b = attachments::save(&pool, &attachments_dir, &enc, &conv.id, &bytes, "text/plain", None)
-        .await
-        .unwrap();
+    let a = attachments::save(
+        &pool,
+        &attachments_dir,
+        &enc,
+        &conv.id,
+        &bytes,
+        "text/plain",
+        None,
+    )
+    .await
+    .unwrap();
+    let b = attachments::save(
+        &pool,
+        &attachments_dir,
+        &enc,
+        &conv.id,
+        &bytes,
+        "text/plain",
+        None,
+    )
+    .await
+    .unwrap();
 
     // Two distinct metadata rows, one shared blob, identical hash + path.
     assert_ne!(a.id, b.id);

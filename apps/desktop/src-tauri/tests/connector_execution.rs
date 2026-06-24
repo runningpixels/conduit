@@ -40,7 +40,10 @@ fn echo_bin() -> &'static Path {
             .status()
             .expect("failed to invoke cargo to build echo_connector");
         assert!(status.success(), "cargo build echo_connector failed");
-        assert!(exe.exists(), "echo_connector not found at {exe:?} after build");
+        assert!(
+            exe.exists(),
+            "echo_connector not found at {exe:?} after build"
+        );
         exe
     })
 }
@@ -81,8 +84,8 @@ async fn seed_connector(pool: &SqlitePool, allowlist: Option<&[&str]>) -> String
     connectors::upsert_definition(pool, &def).await.unwrap();
 
     let bin = echo_bin().to_string_lossy().to_string();
-    let capability_allowlist = allowlist
-        .map(|names| serde_json::Value::Array(names.iter().map(|n| json!(n)).collect()));
+    let capability_allowlist =
+        allowlist.map(|names| serde_json::Value::Array(names.iter().map(|n| json!(n)).collect()));
     let version = connectors::ConnectorVersion {
         id: "echo:1.0.0".into(),
         connector_id: "echo".into(),
@@ -306,7 +309,10 @@ async fn denial_records_cancelled_and_does_not_invoke() {
         .resolve_consent(&tcid, provider_core::schema::ConsentDecision::Denied)
         .unwrap();
 
-    let outcome = task.await.expect("task join").expect("denial returns Cancelled outcome");
+    let outcome = task
+        .await
+        .expect("task join")
+        .expect("denial returns Cancelled outcome");
     assert_eq!(outcome.record.status, ToolCallStatus::Cancelled);
     assert_eq!(finished_count(&events, ToolCallStatus::Cancelled), 1);
 
@@ -330,17 +336,7 @@ async fn oversized_output_fails() {
     let (events, sink) = recorder();
     let tcid = Uuid::new_v4().to_string();
 
-    let res = execute_tool_call(
-        &state,
-        &mgr,
-        &vid,
-        &tcid,
-        "req-4",
-        "big",
-        &json!({}),
-        &sink,
-    )
-    .await;
+    let res = execute_tool_call(&state, &mgr, &vid, &tcid, "req-4", "big", &json!({}), &sink).await;
 
     // `big` is readOnly → auto-invoked; output exceeds the cap → failed.
     assert!(res.is_err(), "oversized output should fail");
@@ -356,10 +352,12 @@ async fn oversized_output_fails() {
     assert_eq!(rec.status, ToolCallStatus::Failed);
     assert!(rec.error.as_deref().unwrap().contains("exceeded"));
     // No result row for an oversized output.
-    assert!(tool_calls::latest_tool_result(&pool, &state.encryption, &tcid)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        tool_calls::latest_tool_result(&pool, &state.encryption, &tcid)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -387,7 +385,10 @@ async fn redaction_strips_secret_in_persisted_result() {
         .unwrap();
     let stored = result.to_string();
     assert!(stored.contains("[redacted]"), "got {stored}");
-    assert!(!stored.contains("supersecret"), "secret leaked into storage: {stored}");
+    assert!(
+        !stored.contains("supersecret"),
+        "secret leaked into storage: {stored}"
+    );
 }
 
 #[tokio::test]

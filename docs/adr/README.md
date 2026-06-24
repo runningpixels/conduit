@@ -10,3 +10,4 @@ These decision records lock the open Phase 0 questions before implementation exp
 - `adr-005-shared-ui-strategy.md`
 - `adr-006-linux-support.md`
 - `adr-007-artifact-rendering-security.md`
+- `adr-008-tauri-capability-surface.md`

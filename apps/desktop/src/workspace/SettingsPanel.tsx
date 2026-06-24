@@ -464,11 +464,10 @@ export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths
 
   async function handleRevealExports() {
     if (!diagnostics) return;
-    // Reveal the folder containing the export (layout-agnostic): the parent of
-    // the written file is the shared `exports` directory.
-    const dir = diagnostics.exportedTo.replace(/[\\/][^\\/]+$/, '');
+    // The Rust command opens `AppPaths::exports` server-side — the renderer
+    // passes no path, so it cannot direct the shell at an arbitrary location.
     try {
-      await revealPath(dir || diagnostics.exportedTo);
+      await revealPath();
     } catch (err) {
       onStatus(`Could not reveal folder: ${String(err)}`);
     }

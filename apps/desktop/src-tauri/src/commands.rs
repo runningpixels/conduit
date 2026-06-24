@@ -562,11 +562,17 @@ pub fn acknowledge_diagnostics_disclosure(state: State<'_, AppState>) -> Result<
     state.acknowledge_diagnostics_disclosure()
 }
 
-/// Phase 6 M6.5: reveal a path in the OS file manager (Finder/Explorer). Used
-/// by the Diagnostics section to surface the exports folder after a successful
-/// export. Backed by `tauri-plugin-shell`'s `open`, which hands the path to the
-/// OS default handler — for a directory that is the file manager. The path is
-/// app-local (under `AppPaths`), never user-supplied free text.
+/// Phase 6 M6.5: reveal the app's **exports** directory in the OS file manager
+/// (Finder/Explorer). Used by the Diagnostics section (and artifact Export) to
+/// surface the shared exports folder after a successful export.
+///
+/// Security: the directory is derived **server-side** from `AppPaths::exports`.
+/// The renderer does NOT supply a path — there is no "open whatever the renderer
+/// asks for" vector. This matters because `tauri-plugin-shell`'s `Shell::open`,
+/// when called from Rust, passes `scope: None` and so opens **without** the
+/// `shell:allow-open` scope check (see `tauri-plugin-shell` `open.rs`: "when
+/// running directly from Rust code we don't need to validate the path"). That
+/// is safe here only because the path is app-owned, never renderer-controlled.
 ///
 /// `shell().open(...)` is deprecated upstream in favor of `tauri-plugin-opener`;
 /// we keep the shell plugin (already wired in M6.1) to avoid introducing a new
@@ -574,9 +580,11 @@ pub fn acknowledge_diagnostics_disclosure(state: State<'_, AppState>) -> Result<
 /// cleanup.
 #[tauri::command]
 #[allow(deprecated)]
-pub fn reveal_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+pub fn reveal_path(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
-    app.shell().open(path, None).map_err(|e| e.to_string())
+    app.shell()
+        .open(state.paths.exports.to_string_lossy(), None)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

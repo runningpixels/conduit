@@ -125,7 +125,7 @@ describe('SettingsPanel Diagnostics section (Phase 6 M6.5)', () => {
     expect(screen.getByRole('button', { name: 'Reveal in folder' })).toBeInTheDocument();
   });
 
-  it('Reveal in folder opens the export directory', async () => {
+  it('Reveal in folder opens the export directory with no renderer-supplied path', async () => {
     vi.mocked(exportDiagnostics).mockResolvedValue({
       exportedTo: '/home/user/conduit/exports/diagnostics-1719.json',
       redactedFields: ['exports'],
@@ -135,7 +135,9 @@ describe('SettingsPanel Diagnostics section (Phase 6 M6.5)', () => {
     const reveal = await screen.findByRole('button', { name: 'Reveal in folder' });
     fireEvent.click(reveal);
     await waitFor(() => expect(revealPath).toHaveBeenCalled());
-    expect(revealPath).toHaveBeenCalledWith('/home/user/conduit/exports');
+    // The Rust command opens `AppPaths::exports` server-side — the renderer
+    // passes no path, so it cannot direct the shell at an arbitrary location.
+    expect(revealPath).toHaveBeenCalledWith();
   });
 
   it('prompts the one-time disclosure on the first export and persists acknowledgement', async () => {

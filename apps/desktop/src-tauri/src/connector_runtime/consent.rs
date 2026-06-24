@@ -29,7 +29,7 @@ pub enum ConsentRequirement {
         level: PermissionLevel,
     },
     Prompt {
-        prompt: ConsentPrompt,
+        prompt: Box<ConsentPrompt>,
         decision: oneshot::Receiver<ConsentDecision>,
     },
 }
@@ -123,7 +123,7 @@ pub async fn request_consent(
                 g.insert(tool_call_id.to_string(), tx);
             }
             Ok(ConsentRequirement::Prompt {
-                prompt,
+                prompt: Box::new(prompt),
                 decision: rx,
             })
         }

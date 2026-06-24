@@ -114,7 +114,7 @@ pub async fn execute_tool_call(
     let decision = match requirement {
         ConsentRequirement::Auto { .. } => ConsentDecision::Approved,
         ConsentRequirement::Prompt { prompt, decision } => {
-            sink(ConnectorRuntimeEvent::ConsentRequested { prompt });
+            sink(ConnectorRuntimeEvent::ConsentRequested { prompt: *prompt });
             match decision.await {
                 Ok(d) => d,
                 // The waiting request was dropped (connector stopped / app

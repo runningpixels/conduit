@@ -31,6 +31,8 @@ import type {
   SettingsPatch,
   StreamEvent,
   StreamHandle,
+  UpdateInfo,
+  OnboardingState,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -96,6 +98,58 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 
 export async function exportDiagnostics(): Promise<DiagnosticsExport> {
   return invoke<DiagnosticsExport>('export_diagnostics');
+}
+
+// =============================================================================
+// Phase 6 M6.5 — Diagnostics export hardening: disclosure gate + reveal.
+//
+// `getDiagnosticsDisclosureAcknowledged` reads the once-ever disclosure flag
+// from raw settings JSON; `acknowledgeDiagnosticsDisclosure` persists it.
+// `revealPath` opens a path in the OS file manager (Finder/Explorer) via the
+// shell plugin — used to surface the exports folder after a successful export.
+// =============================================================================
+
+export async function getDiagnosticsDisclosureAcknowledged(): Promise<boolean> {
+  return invoke<boolean>('get_diagnostics_disclosure_acknowledged');
+}
+
+export async function acknowledgeDiagnosticsDisclosure(): Promise<void> {
+  await invoke('acknowledge_diagnostics_disclosure');
+}
+
+export async function revealPath(path: string): Promise<void> {
+  await invoke('reveal_path', { path });
+}
+
+// =============================================================================
+// Phase 6 — Consumer release: updater (trust-promise gate)
+//
+// `checkForUpdate` reads `updateChannel` + `updateCheckEnabled` from settings
+// and fetches the per-channel manifest WITHOUT downloading the payload. Returns
+// `null` when update checks are disabled or no update is available.
+// `downloadAndInstallUpdate` re-checks, runs the Rust-side migration
+// precheck on a copy of the local DB, and only then applies the
+// signature-verified payload and restarts. Refuses (rejects with a user-safe
+// message) if the precheck fails — your local data is never touched by it.
+// =============================================================================
+
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>('check_for_update');
+}
+
+export async function downloadAndInstallUpdate(): Promise<void> {
+  await invoke('download_and_install_update');
+}
+
+// =============================================================================
+// Phase 6 M6.4 — First-run onboarding (BYOK gate)
+// =============================================================================
+
+/** Boot-time onboarding state. `App.tsx` gates the workspace on this:
+ *  migration recovery takes priority, then the BYOK gate (`onboardingCompleted`
+ *  + `hasProviderCredential`). */
+export async function getOnboardingState(): Promise<OnboardingState> {
+  return invoke<OnboardingState>('get_onboarding_state');
 }
 
 export async function startMockStream(

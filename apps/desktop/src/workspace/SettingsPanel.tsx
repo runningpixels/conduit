@@ -4,25 +4,27 @@ import type {
   AppSettings,
   ConnectorCapability,
   ConnectorRuntimeSnapshot,
-  CredentialSummary,
   DiagnosticsExport,
-  ModelInfo,
+  RolloutChannel,
+  UpdateInfo,
 } from '../ipc/contracts';
 import {
   addLocalConnector,
+  acknowledgeDiagnosticsDisclosure,
+  checkForUpdate,
   discoverConnector,
+  downloadAndInstallUpdate,
   exportDiagnostics,
   getConnectorRuntimeStates,
+  getDiagnosticsDisclosureAcknowledged,
   listConnectorCapabilities,
-  listProviderModels,
-  loadProviderCredentialReference,
+  revealPath,
   revokeConnectorGrant,
-  saveProviderCredential,
   startConnector,
   stopConnector,
   updateSettings,
-  validateProviderCredentials,
 } from '../ipc/client';
+import { ProviderPicker } from './settings/ProviderPicker';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -35,10 +37,6 @@ interface SettingsPanelProps {
 
 function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
-}
-
-function providerNeedsBaseUrl(providerId: string): boolean {
-  return providerId === 'openai_compat' || providerId === 'ollama';
 }
 
 /// Compact health/support → label mapping for the settings list (mirrors the
@@ -56,11 +54,134 @@ function connectorLabel(s: ConnectorRuntimeSnapshot): { tone: 'ok' | 'warn' | 'b
   return { tone: 'hold', label: 'stopped' };
 }
 
+/** Updates section (Phase 6): update channel, the "check for updates" toggle,
+ *  the trust-promise disclosure, an explicit "Check now" button, and — when an
+ *  update is available — "Download & install" (which runs the Rust-side
+ *  migration precheck before applying, then restarts). Updates are never
+ *  automatic: checking is opt-in via the toggle and the install is passive
+ *  (user confirms before applying). */
+function UpdatesSection({
+  settings,
+  onSettingsChange,
+  onStatus,
+}: {
+  settings: AppSettings;
+  onSettingsChange: (s: AppSettings) => void;
+  onStatus: (message: string) => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleCheck() {
+    setChecking(true);
+    setError(null);
+    try {
+      const found = await checkForUpdate();
+      setUpdate(found);
+      onStatus(found ? `Update available: ${found.version}` : 'You are up to date');
+    } catch (e) {
+      setError(String(e));
+      onStatus(`Update check failed: ${String(e)}`);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function handleInstall() {
+    setInstalling(true);
+    setError(null);
+    try {
+      // Refuses (rejects) if the migration precheck on a copy of the local DB
+      // fails — your data is never touched by the precheck. On success, the
+      // app restarts into the new version (this promise may never resolve).
+      await downloadAndInstallUpdate();
+      onStatus('Update installed — restarting…');
+    } catch (e) {
+      setError(String(e));
+      onStatus(`Update install failed: ${String(e)}`);
+    } finally {
+      setInstalling(false);
+    }
+  }
+
+  return (
+    <div className="status-item" style={{ marginTop: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
+      <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Updates</span>
+      <label className="field" style={{ display: 'grid', gap: 6 }}>
+        <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Channel</span>
+        <select
+          value={settings.updateChannel}
+          onChange={(e) => onSettingsChange({ ...settings, updateChannel: e.target.value as RolloutChannel })}
+          style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
+        >
+          <option value="stable">Stable</option>
+          <option value="beta">Beta</option>
+        </select>
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+        <input
+          type="checkbox"
+          checked={settings.updateCheckEnabled}
+          onChange={(e) => onSettingsChange({ ...settings, updateCheckEnabled: e.target.checked })}
+        />
+        Allow update checks
+      </label>
+      <span style={{ fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
+        Conduit checks for updates only when you choose — there is no background
+        telemetry. Sent: your Conduit version, release notes, and the download
+        URL. Updates are signature-verified and applied only after a migration
+        dry-run confirms your local data is safe; installing asks you to confirm
+        (passive install mode).
+      </span>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        <button
+          className="btn"
+          type="button"
+          disabled={checking || !settings.updateCheckEnabled}
+          onClick={() => void handleCheck()}
+        >
+          {checking ? 'Checking…' : 'Check now'}
+        </button>
+        {update && (
+          <button
+            className="btn primary"
+            type="button"
+            disabled={installing}
+            onClick={() => void handleInstall()}
+          >
+            {installing ? 'Installing…' : `Download & install ${update.version}`}
+          </button>
+        )}
+      </div>
+      {update && (
+        <div style={{ fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
+          <b>Conduit {update.version}</b> is available.
+          {update.notes && (
+            <pre className="code-block" style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
+              {update.notes}
+            </pre>
+          )}
+        </div>
+      )}
+      {!update && !checking && settings.updateCheckEnabled && (
+        <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>No update checked yet — use “Check now”.</span>
+      )}
+      {error && (
+        <span style={{ fontSize: '12px', color: 'var(--text-2)' }}>{error}</span>
+      )}
+      <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>Use “Persist settings” to save your channel + toggle choice.</span>
+    </div>
+  );
+}
+
 /** Connectors section: list registered connectors with health + start/stop,
  *  revoke a grant, and add a local stdio connector. Transport config is
  *  untrusted renderer input — `add_local_connector` validates it server-side
- *  via `StdioConfig` before persisting. */
-function ConnectorsSection({ onStatus }: { onStatus: (message: string) => void }) {
+ *  via `StdioConfig` before persisting. Exported so the first-run `Onboarding`
+ *  can reuse it for the optional connector step (no duplication). */
+export function ConnectorsSection({ onStatus }: { onStatus: (message: string) => void }) {
   const [rows, setRows] = useState<ConnectorRuntimeSnapshot[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, ConnectorCapability[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -275,46 +396,40 @@ function ConnectorsSection({ onStatus }: { onStatus: (message: string) => void }
   );
 }
 
+/** Phase 6 M6.5: the one-time diagnostics-export disclosure copy. Shown via a
+ *  native `confirm()` before the first export, then persisted (once-ever) in raw
+ *  settings JSON. States exactly what is and is NOT included so the user gives
+ *  informed consent — no secrets, no base URLs, no allowlists, no conversation
+ *  content ever leave the device in a diagnostics bundle. */
+const DIAGNOSTICS_DISCLOSURE_TEXT =
+  'Conduit diagnostics export includes:\n' +
+  '  • active provider + model\n' +
+  '  • local-only flag, diagnostics-enabled flag, theme\n' +
+  '  • redacted app paths (your home folder prefix is stripped)\n\n' +
+  'It NEVER includes:\n' +
+  '  • secrets or API keys\n' +
+  '  • provider base URLs\n' +
+  '  • artifact remote allowlists\n' +
+  '  • conversation or message content\n\n' +
+  'The bundle is written to your local exports folder. Export?';
+
 /** Settings overlay: provider selection, BYOK entry (keychain), theme,
  *  local-only/diagnostics toggles, model listing, and diagnostics export.
  *  The trust boundary is preserved — secrets go through Rust to the keychain. */
 export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths, onStatus }: SettingsPanelProps) {
-  const [providerSecret, setProviderSecret] = useState('');
-  const [models, setModels] = useState<ModelInfo[]>([]);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsExport | null>(null);
-  const [credentialSummary, setCredentialSummary] = useState<CredentialSummary | null>(null);
   const [allowlistInput, setAllowlistInput] = useState('');
+  // Phase 6 M6.5: once-ever diagnostics-export disclosure. Loaded from raw
+  // settings JSON on open; the first export prompts a native confirm() with the
+  // what's-in / what's-out summary, then persists the acknowledgement.
+  const [disclosureAcknowledged, setDisclosureAcknowledged] = useState(true);
 
   useEffect(() => {
     if (!open) return;
-    void (async () => {
-      try {
-        const listed = await listProviderModels(settings.activeProvider);
-        setModels(listed);
-      } catch {
-        setModels([]);
-      }
-      try {
-        setCredentialSummary(await loadProviderCredentialReference(settings.activeProvider));
-      } catch {
-        setCredentialSummary(null);
-      }
-    })();
-  }, [open, settings.activeProvider]);
+    void getDiagnosticsDisclosureAcknowledged().then(setDisclosureAcknowledged);
+  }, [open]);
 
   if (!open) return null;
-
-  const providerBaseUrl = settings.providerEndpoints?.[settings.activeProvider]?.baseUrl ?? '';
-
-  async function handleSaveCredential() {
-    const summary = await saveProviderCredential({
-      providerId: settings.activeProvider,
-      secret: providerSecret,
-    });
-    setCredentialSummary(summary);
-    setProviderSecret('');
-    onStatus('Provider credential stored in keychain');
-  }
 
   async function handlePersistSettings() {
     const next = await updateSettings(settings);
@@ -322,33 +437,41 @@ export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths
     onStatus('Settings persisted');
   }
 
-  async function handleLoadModels() {
-    const listed = await listProviderModels(settings.activeProvider);
-    setModels(listed);
-    onStatus(`Loaded ${listed.length} models`);
-  }
-
-  async function handleValidateProvider() {
-    await validateProviderCredentials(settings.activeProvider);
-    onStatus('Provider credentials validated');
-  }
-
   async function handleExportDiagnostics() {
-    const result = await exportDiagnostics();
-    setDiagnostics(result);
+    // Defensive gate (the button is disabled when off, but the Rust side also
+    // refuses — surface a clear message either way).
+    if (!settings.diagnosticsEnabled) {
+      onStatus('Diagnostics export is disabled. Enable it above to export a support bundle.');
+      return;
+    }
+    if (!disclosureAcknowledged) {
+      const ok = window.confirm(DIAGNOSTICS_DISCLOSURE_TEXT);
+      if (!ok) {
+        onStatus('Diagnostics export cancelled');
+        return;
+      }
+      await acknowledgeDiagnosticsDisclosure();
+      setDisclosureAcknowledged(true);
+    }
+    try {
+      const result = await exportDiagnostics();
+      setDiagnostics(result);
+      onStatus(`Diagnostics exported to ${result.exportedTo}`);
+    } catch (err) {
+      onStatus(`Diagnostics export failed: ${String(err)}`);
+    }
   }
 
-  function updateProviderBaseUrl(baseUrl: string) {
-    onSettingsChange({
-      ...settings,
-      providerEndpoints: {
-        ...settings.providerEndpoints,
-        [settings.activeProvider]: {
-          ...settings.providerEndpoints?.[settings.activeProvider],
-          baseUrl,
-        },
-      },
-    });
+  async function handleRevealExports() {
+    if (!diagnostics) return;
+    // Reveal the folder containing the export (layout-agnostic): the parent of
+    // the written file is the shared `exports` directory.
+    const dir = diagnostics.exportedTo.replace(/[\\/][^\\/]+$/, '');
+    try {
+      await revealPath(dir || diagnostics.exportedTo);
+    } catch (err) {
+      onStatus(`Could not reveal folder: ${String(err)}`);
+    }
   }
 
   return (
@@ -378,63 +501,10 @@ export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths
           </button>
         </h3>
         <p style={{ marginBottom: 12 }}>Provider selection and BYOK entry stay inside Rust and the OS keychain.</p>
-        <div className="form-grid" style={{ display: 'grid', gap: 12 }}>
-          <label className="field" style={{ display: 'grid', gap: 6 }}>
-            <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider</span>
-            <select
-              value={settings.activeProvider}
-              onChange={(e) => onSettingsChange({ ...settings, activeProvider: e.target.value })}
-              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
-            >
-              <option value="anthropic">Anthropic</option>
-              <option value="openai">OpenAI</option>
-              <option value="openai_compat">OpenAI Compatible</option>
-              <option value="ollama">Ollama</option>
-            </select>
-          </label>
-          <label className="field" style={{ display: 'grid', gap: 6 }}>
-            <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Model</span>
-            {models.length > 0 ? (
-              <select
-                value={settings.activeModel}
-                onChange={(e) => onSettingsChange({ ...settings, activeModel: e.target.value })}
-                style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
-              >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.displayName ?? m.id}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={settings.activeModel}
-                onChange={(e) => onSettingsChange({ ...settings, activeModel: e.target.value })}
-                style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
-              />
-            )}
-          </label>
-          {providerNeedsBaseUrl(settings.activeProvider) && (
-            <label className="field" style={{ display: 'grid', gap: 6 }}>
-              <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Base URL</span>
-              <input
-                value={providerBaseUrl}
-                onChange={(e) => updateProviderBaseUrl(e.target.value)}
-                placeholder={settings.activeProvider === 'ollama' ? 'http://127.0.0.1:11434' : 'https://your-endpoint.example/v1'}
-                style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
-              />
-            </label>
-          )}
-          {settings.activeProvider !== 'ollama' && (
-            <label className="field" style={{ display: 'grid', gap: 6 }}>
-              <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider secret</span>
-              <input
-                type="password"
-                value={providerSecret}
-                onChange={(e) => setProviderSecret(e.target.value)}
-                placeholder="Stored only through Rust"
-                style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
-              />
-            </label>
-          )}
+        {/* Phase 6 M6.4: provider + BYOK surface is shared with the first-run
+            Onboarding via `ProviderPicker` (no duplication of the flow). */}
+        <ProviderPicker settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
+        <div className="form-grid" style={{ display: 'grid', gap: 12, marginTop: 12 }}>
           <label className="field" style={{ display: 'grid', gap: 6 }}>
             <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Theme</span>
             <select
@@ -526,18 +596,7 @@ export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths
           <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>Use “Persist settings” to save. Invalid origins are rejected by Rust on save.</span>
         </div>
         <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
-          <button className="btn primary" type="button" onClick={() => void handleSaveCredential()}>Save provider key</button>
           <button className="btn" type="button" onClick={() => void handlePersistSettings()}>Persist settings</button>
-          <button className="btn" type="button" onClick={() => void handleLoadModels()}>Load models</button>
-          <button className="btn" type="button" onClick={() => void handleValidateProvider()}>Test connection</button>
-        </div>
-        <div className="status-item" style={{ marginTop: 16, display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
-          <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Credential reference</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-            {credentialSummary?.storedInKeychain
-              ? `${credentialSummary.credentialRef} (active provider)`
-              : 'No key stored yet'}
-          </span>
         </div>
         {paths && (
           <div className="status-item" style={{ marginTop: 12, display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
@@ -547,15 +606,37 @@ export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths
         )}
         <div className="status-item" style={{ marginTop: 12, display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
           <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Diagnostics</span>
-          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-            <button className="btn primary" type="button" onClick={() => void handleExportDiagnostics()}>Export diagnostics</button>
+          <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--text-2)' }}>
+            A diagnostics bundle contains your active provider/model, flags, theme, and redacted app paths. It never contains secrets, base URLs, allowlists, or conversation content.
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              className="btn primary"
+              type="button"
+              onClick={() => void handleExportDiagnostics()}
+              disabled={!settings.diagnosticsEnabled}
+              title={settings.diagnosticsEnabled ? undefined : 'Enable diagnostics above to export a support bundle'}
+            >
+              Export diagnostics
+            </button>
+            {!settings.diagnosticsEnabled && (
+              <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>Enable diagnostics above to export a support bundle.</span>
+            )}
+            {diagnostics && (
+              <button className="btn" type="button" onClick={() => void handleRevealExports()}>Reveal in folder</button>
+            )}
           </div>
           {diagnostics && (
-            <pre className="code-block" style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
-              {prettyJson(diagnostics)}
-            </pre>
+            <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+              <span style={{ color: 'var(--text-3)', fontSize: '12px' }}>Exported to</span>
+              <code style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', wordBreak: 'break-all' }}>{diagnostics.exportedTo}</code>
+              <pre className="code-block" style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
+                {prettyJson(diagnostics)}
+              </pre>
+            </div>
           )}
         </div>
+        <UpdatesSection settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
         <ConnectorsSection onStatus={onStatus} />
       </div>
     </div>

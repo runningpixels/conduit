@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Conduit",
         "width": 1360,
         "height": 900,
@@ -35,6 +36,37 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": ["nsis", "app", "dmg", "deb", "appimage"],
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "publisher": "Conduit",
+    "copyright": "Copyright © 2026 Conduit",
+    "category": "Productivity",
+    "shortDescription": "Local-first AI assistant with connectors and artifacts.",
+    "longDescription": "Conduit is a local-first desktop AI assistant: your conversations, attachments, and artifacts stay on your machine, with optional connectors and a single-payload artifact model. No background telemetry; updates are opt-in and integrity-verified.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM3QjQ3Q0MzNTc3QjQzMzEKUldReFEzdFh3M3kwTjlvZGYzZjNBVFRPbkswZVdyY0ptakM3dDFPVng2OFN4TGJSa3o4L1R1RzAK",
+      "windows": {
+        "installMode": "passive"
+      },
+      "endpoints": [
+        "https://conduit-app.github.io/conduit-updates/stable/manifest.json"
+      ]
+    }
   }
 }

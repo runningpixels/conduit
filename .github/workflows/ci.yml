@@ -25,10 +25,19 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.4
+
       - name: Install Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Format check
         run: cargo fmt --all --check
@@ -41,14 +50,76 @@ jobs:
 
       - name: Regenerate schema bindings
         working-directory: packages/config-schema
-        run: npm run build
+        run: pnpm run build
 
       # C1: fail if the committed TypeScript bindings have drifted from the
       # Rust schema source. Regenerates and asserts the worktree is clean.
       - name: Schema freshness
         working-directory: packages/config-schema
-        run: npm run check
+        run: pnpm run check
 
       - name: Renderer typecheck
         working-directory: apps/desktop
-        run: npx tsc --noEmit
+        run: pnpm run check
+
+      # Phase 6 M6.6: vitest (renderer component tests, jsdom) gates merges.
+      # Mirrors `pnpm -C apps/desktop test` locally.
+      - name: Renderer tests (vitest)
+        working-directory: apps/desktop
+        run: pnpm test
+
+  # Phase 6 M6.6: catch `tauri.conf.json` / bundler regressions early on every
+  # PR. Ubuntu-only, `--debug`, NO signing (the dev updater key is not present
+  # here) — this is a config/build smoke, not a release artifact producer. The
+  # release workflow (release.yml) does the signed multi-platform build.
+  tauri-build-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-smoke-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install Tauri system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            libssl-dev
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: tauri build --debug (no signing)
+        working-directory: apps/desktop
+        # No TAURI_SIGNING_PRIVATE_KEY → the bundle is unsigned, which is the
+        # point of the smoke. A failure here means a tauri.conf.json / bundle
+        # regression, not a signing problem.
+        run: pnpm exec tauri build --debug

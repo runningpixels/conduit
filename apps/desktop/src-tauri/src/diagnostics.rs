@@ -38,10 +38,22 @@ fn path_entries(paths: &AppPaths) -> Vec<(&'static str, &Path)> {
         ("logs", &paths.logs),
         ("diagnostics", &paths.diagnostics),
         ("updates", &paths.updates),
+        // Phase 6 M6.5: the shared exports dir (artifact + diagnostics exports).
+        ("exports", &paths.exports),
     ]
 }
 
 pub fn export(paths: &AppPaths, settings: &AppSettings) -> Result<DiagnosticsExport, String> {
+    // Phase 6 M6.5: gate on diagnostics_enabled. Refuse with a user-safe
+    // message rather than silently exporting when the user has opted out.
+    if !settings.diagnostics_enabled {
+        return Err(
+            "Diagnostics export is disabled. Enable it in Settings to export a \
+             support bundle."
+                .to_string(),
+        );
+    }
+
     let home = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf());
 
     let mut redacted_fields = Vec::new();
@@ -67,8 +79,11 @@ pub fn export(paths: &AppPaths, settings: &AppSettings) -> Result<DiagnosticsExp
     });
 
     let stamp = now_unix();
+    // Phase 6 M6.5: write to the shared `exports` dir (same place artifact
+    // exports land) so users have one revealable folder for everything they
+    // pulled out of Conduit.
     let export_path = paths
-        .diagnostics
+        .exports
         .join(format!("diagnostics-{}.json", stamp));
 
     let serialized = serde_json::to_string_pretty(&payload).map_err(|error| error.to_string())?;
@@ -125,6 +140,7 @@ mod tests {
             updates: root.join("updates"),
             streams: root.join("streams"),
             connectors: root.join("connectors"),
+            exports: root.join("exports"),
         };
         let settings = AppSettings::default();
 
@@ -149,5 +165,76 @@ mod tests {
             !serialized.contains("providerCredentialRef"),
             "M2 removed provider_credential_ref; it must not appear in settings"
         );
+    }
+
+    /// Phase 6 M6.5: helper that builds a real, writable AppPaths under a
+    /// tempfile so `export` can actually fs::write without touching the user's
+    /// home directory.
+    fn paths_in_tempdir(dir: &Path) -> AppPaths {
+        let root = dir.to_path_buf();
+        AppPaths {
+            root: root.clone(),
+            settings_file: root.join("settings.json"),
+            database: root.join("conduit.sqlite"),
+            attachments: root.join("attachments"),
+            artifacts: root.join("artifacts"),
+            logs: root.join("logs"),
+            diagnostics: root.join("diagnostics"),
+            updates: root.join("updates"),
+            streams: root.join("streams"),
+            connectors: root.join("connectors"),
+            exports: root.join("exports"),
+        }
+    }
+
+    #[test]
+    fn export_refuses_when_diagnostics_disabled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = paths_in_tempdir(dir.path());
+        std::fs::create_dir_all(&paths.exports).unwrap();
+        let settings = AppSettings {
+            diagnostics_enabled: false,
+            ..AppSettings::default()
+        };
+
+        let result = export(&paths, &settings);
+        assert!(result.is_err(), "export must refuse when disabled");
+        let message = result.unwrap_err();
+        assert!(
+            message.to_lowercase().contains("disabled"),
+            "refusal message should mention 'disabled': {message}"
+        );
+        // Nothing was written.
+        assert!(
+            std::fs::read_dir(&paths.exports).unwrap().count() == 0,
+            "no file should be written when diagnostics are disabled"
+        );
+    }
+
+    #[test]
+    fn export_writes_to_exports_dir_when_enabled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = paths_in_tempdir(dir.path());
+        std::fs::create_dir_all(&paths.exports).unwrap();
+        let settings = AppSettings {
+            diagnostics_enabled: true,
+            ..AppSettings::default()
+        };
+
+        let result = export(&paths, &settings).expect("export should succeed when enabled");
+        assert!(
+            result.exported_to.contains("exports"),
+            "exported_to should point at the exports dir: {}",
+            result.exported_to
+        );
+
+        // The file exists and is valid JSON that includes an `exports` path entry.
+        let written = std::fs::read_to_string(&result.exported_to).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&written).expect("valid JSON");
+        let paths_obj = parsed
+            .get("paths")
+            .and_then(|v| v.get("exports"))
+            .expect("payload must include the exports path entry");
+        assert!(paths_obj.is_string(), "exports path must be a string");
     }
 }

@@ -4,7 +4,7 @@
 // integration tests (`tests/`) can reach the migration runner and repositories.
 use conduit_desktop::{
     commands::*, connector_runtime::ConnectorRuntimeManager, state::AppState,
-    stream_manager::StreamManager,
+    stream_manager::StreamManager, updater::*,
 };
 use tauri::{Manager, RunEvent};
 
@@ -30,6 +30,14 @@ fn main() {
         .expect("failed to initialize desktop state");
 
     let app = tauri::Builder::default()
+        // Phase 6 plugins (registered before `.manage(state)`):
+        // - updater: signature-verified auto-update; commands in `updater.rs`.
+        // - dialog: first-run onboarding + the one-time diagnostics disclosure.
+        // - shell: "Reveal in Finder/Explorer" for diagnostics + artifact exports
+        //   (renderer calls `reveal_path` IPC command; no `shell:allow-open`).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .manage(state)
         .manage(StreamManager::new())
         .manage(ConnectorRuntimeManager::new())
@@ -37,6 +45,7 @@ fn main() {
             get_app_paths,
             get_settings,
             update_settings,
+            get_onboarding_state,
             save_provider_credential,
             load_provider_credential_reference,
             validate_provider_credentials,
@@ -78,6 +87,13 @@ fn main() {
             export_diagnostics,
             start_mock_stream,
             cancel_mock_stream,
+            // Phase 6: updater trust-promise gate.
+            check_for_update,
+            download_and_install_update,
+            // Phase 6 M6.5: diagnostics export disclosure + reveal-in-folder.
+            get_diagnostics_disclosure_acknowledged,
+            acknowledge_diagnostics_disclosure,
+            reveal_path,
         ])
         .setup(|app| {
             let _ = app.handle();

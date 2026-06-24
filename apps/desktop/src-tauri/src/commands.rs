@@ -113,6 +113,43 @@ pub fn update_settings(
     state.update_settings(patch)
 }
 
+/// Phase 6 M6.4: serializable view of the migration-recovery info (the Rust
+/// `MigrationRecovery` is `Debug`/`Clone` but not `Serialize`). The backup path
+/// is the user's own local path, shown to them so they can find their data — it
+/// stays on-device (not telemetry).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationRecoveryInfo {
+    pub backup_path: String,
+    pub error: String,
+}
+
+/// Phase 6 M6.4: first-run onboarding state. `App.tsx` reads this at boot and
+/// renders `<Onboarding>` instead of the workspace while `onboardingCompleted`
+/// is false or no provider credential is configured. `migrationRecovery` takes
+/// priority (shown first) when a startup migration failed and the live DB was
+/// rolled back to a fresh store.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingState {
+    pub onboarding_completed: bool,
+    pub has_provider_credential: bool,
+    pub migration_recovery: Option<MigrationRecoveryInfo>,
+}
+
+#[tauri::command]
+pub fn get_onboarding_state(state: State<'_, AppState>) -> Result<OnboardingState, String> {
+    let settings = state.settings()?;
+    Ok(OnboardingState {
+        onboarding_completed: settings.onboarding_completed,
+        has_provider_credential: state.has_any_provider_credential(),
+        migration_recovery: state.migration_recovery.as_ref().map(|r| MigrationRecoveryInfo {
+            backup_path: r.backup_path.display().to_string(),
+            error: r.error.clone(),
+        }),
+    })
+}
+
 #[tauri::command]
 pub fn save_provider_credential(
     _state: State<'_, AppState>,
@@ -121,7 +158,7 @@ pub fn save_provider_credential(
     // M2: the keychain is the sole source of truth for stored credentials,
     // keyed by provider_id. No global credential ref is mirrored into settings.
     // `build_adapter_context` looks the secret up by provider_id directly.
-    let store = CredentialStore::new("conduit");
+    let store = CredentialStore::default_service();
     let summary = store.save_provider_secret(&request.provider_id, &request.secret)?;
     Ok(summary)
 }
@@ -130,7 +167,7 @@ pub fn save_provider_credential(
 pub fn load_provider_credential_reference(
     provider_id: String,
 ) -> Result<CredentialSummary, String> {
-    let store = CredentialStore::new("conduit");
+    let store = CredentialStore::default_service();
     Ok(CredentialSummary {
         provider_id: provider_id.clone(),
         credential_ref: store.reference(&provider_id),
@@ -429,15 +466,17 @@ pub async fn check_artifact_file_state(
 
 /// Export the artifact's current payload to the app's `exports` directory,
 /// optionally with a `.conduit.json` metadata sidecar. Returns the absolute
-/// path written + bytes written. (M5.) The destination is app-local; a future
-/// Tauri dialog plugin can let the user pick a folder.
+/// path written + bytes written. (M5; M6.5 promotes the destination to the
+/// real `AppPaths::exports` so artifact + diagnostics exports share one
+/// revealable folder.) The destination is app-local; a future Tauri dialog
+/// plugin can let the user pick a folder.
 #[tauri::command]
 pub async fn export_artifact(
     state: State<'_, AppState>,
     artifact_id: String,
     include_metadata: bool,
 ) -> Result<ArtifactExportResult, String> {
-    let out_dir = state.paths.root.join("exports");
+    let out_dir = state.paths.exports.clone();
     artifacts::export(
         &state.db,
         &state.paths.artifacts,
@@ -504,6 +543,40 @@ pub async fn get_license_state(
 pub fn export_diagnostics(state: State<'_, AppState>) -> Result<DiagnosticsExport, String> {
     let settings = state.settings()?;
     diagnostics::export(&state.paths, &settings)
+}
+
+/// Phase 6 M6.5: read the one-time diagnostics-export disclosure flag from the
+/// raw settings JSON. `false` until the user has acknowledged the disclosure at
+/// least once.
+#[tauri::command]
+pub fn get_diagnostics_disclosure_acknowledged(
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    Ok(state.diagnostics_disclosure_acknowledged())
+}
+
+/// Phase 6 M6.5: persist the one-time diagnostics-export disclosure
+/// acknowledgement. Idempotent.
+#[tauri::command]
+pub fn acknowledge_diagnostics_disclosure(state: State<'_, AppState>) -> Result<(), String> {
+    state.acknowledge_diagnostics_disclosure()
+}
+
+/// Phase 6 M6.5: reveal a path in the OS file manager (Finder/Explorer). Used
+/// by the Diagnostics section to surface the exports folder after a successful
+/// export. Backed by `tauri-plugin-shell`'s `open`, which hands the path to the
+/// OS default handler — for a directory that is the file manager. The path is
+/// app-local (under `AppPaths`), never user-supplied free text.
+///
+/// `shell().open(...)` is deprecated upstream in favor of `tauri-plugin-opener`;
+/// we keep the shell plugin (already wired in M6.1) to avoid introducing a new
+/// plugin dependency mid-milestone. Migrating to the opener plugin is a later
+/// cleanup.
+#[tauri::command]
+#[allow(deprecated)]
+pub fn reveal_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    app.shell().open(path, None).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

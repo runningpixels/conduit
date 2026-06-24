@@ -57,6 +57,7 @@ fn test_paths(root: &Path) -> AppPaths {
         updates: root.join("updates"),
         streams: root.join("streams"),
         connectors: root.join("connectors"),
+        exports: root.join("exports"),
     }
 }
 

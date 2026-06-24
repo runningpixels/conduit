@@ -557,13 +557,14 @@ pub struct ConnectorDefinition {
     pub policy_metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
     export,
     export_to = "../packages/config-schema/src/generated/rollout_channel.ts"
 )]
 pub enum RolloutChannel {
+    #[default]
     Stable,
     Beta,
     Pinned,
@@ -809,6 +810,25 @@ pub struct AppSettings {
     /// rendering security decision record.
     #[serde(default)]
     pub artifact_remote_allowlist: Vec<String>,
+    /// Phase 6: which update channel the client checks. Consumer UI only offers
+    /// `Stable`/`Beta`; `Pinned`/`TenantSpecific` are reserved for Phase 7/8/9.
+    /// Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.
+    #[serde(default)]
+    pub update_channel: RolloutChannel,
+    /// Phase 6: whether the app may check for updates. Defaults `true` but is a
+    /// checkbox — updates are never automatic; "Check now" is explicit and
+    /// `installMode: passive` requires user confirmation before applying.
+    #[serde(default = "default_true")]
+    pub update_check_enabled: bool,
+    /// Phase 6: first-run onboarding completion flag. `false` until the user
+    /// finishes the BYOK gate; `App.tsx` renders `<Onboarding>` instead of the
+    /// workspace while false (and while no provider credential is configured).
+    #[serde(default)]
+    pub onboarding_completed: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -821,6 +841,9 @@ impl Default for AppSettings {
             theme: Theme::System,
             provider_endpoints: HashMap::new(),
             artifact_remote_allowlist: Vec::new(),
+            update_channel: RolloutChannel::Stable,
+            update_check_enabled: true,
+            onboarding_completed: false,
         }
     }
 }
@@ -848,6 +871,12 @@ pub struct SettingsPatch {
     /// http(s) URL or the whole update is rejected.
     #[ts(optional)]
     pub artifact_remote_allowlist: Option<Vec<String>>,
+    #[ts(optional)]
+    pub update_channel: Option<RolloutChannel>,
+    #[ts(optional)]
+    pub update_check_enabled: Option<bool>,
+    #[ts(optional)]
+    pub onboarding_completed: Option<bool>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

@@ -3,3 +3,8 @@ dist/
 target/
 .tauri/
 *.tsbuildinfo
+
+# Phase 6: Tauri updater signing keypair (generated locally / per CI secret).
+# The public key is committed inside tauri.conf.json; the private key NEVER.
+apps/desktop/src-tauri/.tauri-updater-private.key
+apps/desktop/src-tauri/.tauri-updater-private.key.pub

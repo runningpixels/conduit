@@ -1,0 +1,226 @@
+name: Release
+
+# Phase 6 M6.2 — build + updater-sign + manifest + host. NO OS code-signing.
+#
+# Triggers:
+#   - push tag v*.*.*            → stable release (a prerelease tag like
+#     v0.1.0-beta.1 is routed to the beta channel by the `channel` step below)
+#   - push branch nightly         → beta release
+#   - workflow_dispatch           → manual (pick channel via input)
+#   - workflow_call               → reusable; Phase 9 white-label passes
+#     `edition` so it can call this per edition without forking the workflow.
+#
+# Secrets (GitHub Actions secrets, NEVER in the repo):
+#   TAURI_SIGNING_PRIVATE_KEY           Ed25519 minisign private key (updater payload)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  Password for the private key (empty ok)
+# The matching pubkey is committed in apps/desktop/src-tauri/tauri.conf.json
+# (plugins.updater.pubkey) — it is NOT secret.
+#
+# OS code-signing (macOS notarization / Windows Azure Trusted Signing / Linux
+# GPG) is intentionally absent — deferred to Phase 9/10. Bundles ship unsigned
+# at the OS level (documented Gatekeeper/SmartScreen first-run trade-off); the
+# updater payload itself is still signature-verified via the keypair above.
+
+on:
+  push:
+    tags: ['v*.*.*']
+    branches: ['nightly']
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Update channel'
+        required: true
+        type: choice
+        default: stable
+        options: [stable, beta]
+      edition:
+        description: 'Product edition (Phase 9 white-label; consumer by default)'
+        required: false
+        default: consumer
+  workflow_call:
+    inputs:
+      edition:
+        required: false
+        type: string
+        default: consumer
+
+# Only one release pipeline per tag at a time.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create the GitHub Release + upload assets
+
+jobs:
+  # Resolve the channel + edition once so the matrix and the manifest job agree.
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.meta.outputs.channel }}
+      edition: ${{ steps.meta.outputs.edition }}
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - id: meta
+        run: |
+          set -euo pipefail
+          # Edition: explicit input (workflow_call/dispatch) else consumer.
+          EDITION="${{ inputs.edition || 'consumer' }}"
+          # Channel: explicit dispatch input > prerelease tag > nightly branch > stable.
+          if [ -n "${{ inputs.channel }}" ]; then
+            CHANNEL="${{ inputs.channel }}"
+          elif [[ "${GITHUB_REF#refs/heads/}" == "nightly" ]]; then
+            CHANNEL="beta"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            # A prerelease tag (v1.2.3-beta.1, -rc.1, -nightly) → beta; else stable.
+            if [[ "${TAG}" == *-* ]]; then CHANNEL="beta"; else CHANNEL="stable"; fi
+          else
+            CHANNEL="stable"
+          fi
+          CHANNEL="${CHANNEL:-stable}"
+          # Version: strip a leading v from the tag; nightly → 0.0.0-dev.
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="0.0.0-dev"
+            TAG="nightly"
+          fi
+          {
+            echo "channel=${CHANNEL}"
+            echo "edition=${EDITION}"
+            echo "version=${VERSION}"
+            echo "tag=${TAG}"
+          } >> "$GITHUB_OUTPUT"
+
+  # Build per-platform with tauri-action: compiles, updater-signs each bundle
+  # (emits the .sig next to it), and uploads the bundles to a GitHub Release.
+  # No notarization / signtool / GPG step — OS signing is deferred.
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-latest
+            args: '--target x86_64-unknown-linux-gnu'
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-13
+            args: '--target x86_64-apple-darwin'
+          - platform: windows-latest
+            args: '--target x86_64-pc-windows-msvc'
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add build target
+        run: rustup target add "$(echo "${{ matrix.args }}" | awk '{print $2}')"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      # Updater payload signing — the private key never touches the repo.
+      - name: Build + sign + release (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ needs.meta.outputs.tag }}
+          releaseName: 'Conduit ${{ needs.meta.outputs.tag }}'
+          releaseBody: 'See release notes. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'
+          releaseDraft: false
+          prerelease: ${{ needs.meta.outputs.channel == 'beta' }}
+          args: ${{ matrix.args }}
+
+      # Upload the updater-signed bundle + .sig as a workflow artifact so the
+      # manifest job can read them without querying the GitHub API.
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: |
+            apps/desktop/src-tauri/target/**/release/**/*-setup.nsis.zip*
+            apps/desktop/src-tauri/target/**/release/**/*.app.tar.gz*
+            apps/desktop/src-tauri/target/**/release/**/*.AppImage.tar.gz*
+          if-no-files-found: ignore
+
+  # Generate the Tauri 2 updater manifest from the signed bundles + their .sig
+  # files, then attach it to the release. The download URLs use the standard
+  # GitHub Releases asset URL pattern (no API query needed).
+  manifest:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download all signed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: bundle-*
+          merge-multiple: true
+
+      # Flatten the nested target/**/release/** layout into one dir the manifest
+      # scanner can read. Drops the .sig-less files the scanner ignores anyway.
+      - name: Flatten artifact tree
+        run: |
+          set -euo pipefail
+          mkdir -p flat
+          find artifacts -type f \( -name '*.nsis.zip*' -o -name '*.app.tar.gz*' -o -name '*.AppImage.tar.gz*' \) -exec cp {} flat/ \;
+          ls -la flat
+
+      - name: Generate manifest (${{ needs.meta.outputs.channel }})
+        env:
+          # Standard GH Releases asset URL: .../releases/download/<tag>/<filename>.
+          DOWNLOAD_BASE: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ needs.meta.outputs.tag }}
+        run: |
+          node scripts/generate-update-manifest.mjs \
+            --artifacts-dir flat \
+            --download-base "$DOWNLOAD_BASE" \
+            --version "${{ needs.meta.outputs.version }}" \
+            --channel "${{ needs.meta.outputs.channel }}" \
+            --out-dir manifest-out \
+            --notes "Conduit ${{ needs.meta.outputs.tag }} (${{ needs.meta.outputs.channel }} channel)."
+
+      - name: Upload manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ needs.meta.outputs.channel }}
+          path: manifest-out/
+
+      - name: Attach manifest to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          files: manifest-out/${{ needs.meta.outputs.channel }}/manifest.json
+
+  # NOTE on hosting: the static host for the per-channel manifest (GitHub Pages
+  # at https://conduit-app.github.io/conduit-updates/<channel>/manifest.json, as
+  # referenced by tauri.conf.json endpoints) is published by copying the
+  # `manifest-*` artifact into the Pages repo/dir. That deploy is a manual
+  # checklist step for Phase 6 (M6.6) and automated in Phase 10; it is not part
+  # of this workflow to keep OS-agnostic hosting swappable.

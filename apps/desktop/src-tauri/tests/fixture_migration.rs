@@ -56,3 +56,112 @@ async fn every_fixture_migrates_and_is_internally_consistent() {
     );
     eprintln!("fixture_migration: verified {count} fixture DB(s)");
 }
+
+/// Phase 6 M6.6: the previous release tag's DB must forward-migrate to the
+/// current schema. Release-tag fixtures are named `v<semver>.sqlite` (e.g.
+/// `v0.1.0.sqlite`); the synthetic pre-release fixture is `0001_*.sqlite`.
+///
+/// Until the first public release there is no tag fixture, so this test is a
+/// no-op pass with a notice — generating + committing the per-tag fixture is a
+/// manual release-checklist item for Phase 6 (automated as a CI gate in Phase
+/// 10). Once a tag fixture exists, it must migrate + reconcile and reach the
+/// same `schema_migrations` row count as a freshly-migrated DB (i.e. it
+/// forward-migrates to the current codegen, not a subset).
+#[tokio::test]
+async fn previous_tag_db_migrates_forward() {
+    let dir = fixtures_dir();
+    if !dir.exists() {
+        eprintln!("previous_tag_db_migrates_forward: no fixtures dir — skipping (Phase 6 manual item)");
+        return;
+    }
+
+    // Pick the highest semver tag fixture present, if any.
+    let mut tag_fixtures: Vec<(String, PathBuf)> = Vec::new();
+    for entry in fs::read_dir(&dir).expect("read fixtures dir") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("sqlite") {
+            continue;
+        }
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if stem.starts_with('v') && semver_loose(stem).is_some() {
+            tag_fixtures.push((stem.to_string(), path));
+        }
+    }
+
+    if tag_fixtures.is_empty() {
+        eprintln!(
+            "previous_tag_db_migrates_forward: no release-tag fixture in {} — \
+             skipping (generate one per tests/fixtures/regenerate.sh at release time)",
+            dir.display()
+        );
+        return;
+    }
+
+    // Highest semver wins (the immediately-previous release).
+    tag_fixtures.sort_by(|a, b| semver_loose(&a.0).unwrap().cmp(&semver_loose(&b.0).unwrap()));
+    let (tag, path) = tag_fixtures.last().unwrap();
+
+    // Baseline: a fresh DB migrated to current codegen.
+    let fresh = tempfile::tempdir().expect("tempdir");
+    let fresh_db = fresh.path().join("fresh.sqlite");
+    let (fresh_pool, _) = db::migrations::open_with_migrations(&fresh_db)
+        .await
+        .expect("open fresh db");
+    let (fresh_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
+        .fetch_one(&fresh_pool)
+        .await
+        .expect("count fresh schema_migrations");
+    fresh_pool.close().await;
+
+    // Copy the fixture to a temp path (migrations open in rwc and may mutate it;
+    // never mutate the committed fixture in place).
+    let scratch = tempfile::tempdir().expect("tempdir");
+    let scratch_db = scratch.path().join("tag.sqlite");
+    fs::copy(path, &scratch_db).expect("copy tag fixture");
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        scratch_db.to_string_lossy().replace('\\', "/")
+    );
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .unwrap_or_else(|e| panic!("open tag fixture {tag}: {e}"));
+    db::run_migrations(&pool)
+        .await
+        .unwrap_or_else(|e| panic!("migrate tag fixture {tag}: {e}"));
+    db::migrations::reconcile_on_startup(&pool)
+        .await
+        .unwrap_or_else(|e| panic!("reconcile tag fixture {tag}: {e}"));
+
+    let (tag_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
+        .fetch_one(&pool)
+        .await
+        .expect("count tag schema_migrations");
+    pool.close().await;
+
+    assert_eq!(
+        tag_count, fresh_count,
+        "tag fixture {tag} forward-migrated to {tag_count} schema_migrations rows, \
+         but current codegen produces {fresh_count}; the previous release's DB did \
+         not reach the current schema"
+    );
+    eprintln!(
+        "previous_tag_db_migrates_forward: {tag} → {tag_count} migrations (matches current)"
+    );
+}
+
+/// Parse a loose semver from a tag stem like `v0.1.0` or `v0.1.0-beta.1`.
+/// Returns `(major, minor, patch, pre)` so tag fixtures can be ordered.
+fn semver_loose(stem: &str) -> Option<(u64, u64, u64, String)> {
+    let v = stem.strip_prefix('v')?;
+    let (core, pre) = match v.split_once('-') {
+        Some((c, p)) => (c, p.to_string()),
+        None => (v, String::new()),
+    };
+    let nums: Vec<u64> = core.split('.').filter_map(|n| n.parse().ok()).collect();
+    if nums.len() != 3 {
+        return None;
+    }
+    Some((nums[0], nums[1], nums[2], pre))
+}

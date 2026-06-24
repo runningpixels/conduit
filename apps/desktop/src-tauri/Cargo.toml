@@ -55,7 +55,23 @@ mcp-runtime = { path = "../../../crates/mcp-runtime" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-[dev-dependencies]
+# Phase 6: consumer release plumbing.
+# - `tauri-plugin-updater`: signature-verified auto-update (payload signed with
+#   an Ed25519 keypair from `tauri signer generate`; private key in CI secrets,
+#   pubkey in `tauri.conf.json`). OS code-signing (notarization/signtool) is
+#   deferred to a later phase — bundles ship unsigned with the documented
+#   Gatekeeper/SmartScreen trade-off.
+# - `tauri-plugin-dialog`: first-run onboarding + the one-time diagnostics
+#   disclosure confirmation.
+# - `tauri-plugin-shell`: "Reveal in Finder/Explorer" for the diagnostics export
+#   path + artifact exports (renderer invokes `reveal_path` Rust command; no
+#   `shell:allow-open` in window capability).
+tauri-plugin-updater = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+
+# Phase 6: the updater migration precheck copies the live DB to a temp dir.
+# Also used by in-crate tests, so it lives in `[dependencies]` (not dev-only).
 tempfile = "3"
 
 [build-dependencies]

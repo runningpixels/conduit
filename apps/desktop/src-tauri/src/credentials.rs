@@ -3,6 +3,11 @@ use keyring::Entry;
 // into `@conduit/config-schema`.
 pub use provider_core::schema::CredentialSummary;
 
+/// OS keychain service name. The sole source of truth for stored provider
+/// secrets (keyed by provider_id). Centralized so the BYOK onboarding gate
+/// (`AppState::has_any_provider_credential`) and the save/load commands agree.
+pub const KEYCHAIN_SERVICE: &str = "conduit";
+
 pub struct CredentialStore {
     service_name: String,
 }
@@ -12,6 +17,11 @@ impl CredentialStore {
         Self {
             service_name: service_name.into(),
         }
+    }
+
+    /// Construct a store for the canonical Conduit keychain service.
+    pub fn default_service() -> Self {
+        Self::new(KEYCHAIN_SERVICE)
     }
 
     pub fn save_provider_secret(

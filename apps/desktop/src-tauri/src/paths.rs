@@ -16,6 +16,10 @@ pub struct AppPaths {
     pub streams: PathBuf,
     /// Phase 4: per-connector working dirs / captured logs.
     pub connectors: PathBuf,
+    /// Phase 6 M6.5: shared exports directory for artifact exports (M5) and
+    /// diagnostics exports. Promoted from the ad-hoc `root.join("exports")` so
+    /// both flows write to one real, redacted, revealable path.
+    pub exports: PathBuf,
 }
 
 pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
@@ -32,6 +36,7 @@ pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
     let updates = root.join("updates");
     let streams = root.join("streams");
     let connectors = root.join("connectors");
+    let exports = root.join("exports");
 
     for path in [
         &root,
@@ -42,6 +47,7 @@ pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
         &updates,
         &streams,
         &connectors,
+        &exports,
     ] {
         fs::create_dir_all(path).map_err(|error| error.to_string())?;
     }
@@ -57,5 +63,6 @@ pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
         updates,
         streams,
         connectors,
+        exports,
     })
 }

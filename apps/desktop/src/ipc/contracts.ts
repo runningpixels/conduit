@@ -41,6 +41,44 @@ export interface DiagnosticsExport {
   redactedFields: string[];
 }
 
+// =============================================================================
+// Phase 6 — Consumer release: updater (trust-promise gate)
+//
+// Mirrors the Rust `updater::UpdateInfo` struct (serde `camelCase`). Returned by
+// `check_for_update` WITHOUT downloading the payload. `date` is a Unix
+// timestamp (seconds) or null; the renderer formats it locale-aware.
+// =============================================================================
+
+export interface UpdateInfo {
+  version: string;
+  date: number | null;
+  notes: string | null;
+}
+
+// =============================================================================
+// Phase 6 M6.4 — First-run onboarding (BYOK gate)
+//
+// Mirrors the Rust `commands::OnboardingState` (serde `camelCase`). `App.tsx`
+// reads this at boot and renders `<Onboarding>` instead of the workspace while
+// `onboardingCompleted` is false or no provider credential is configured.
+// `migrationRecovery` takes priority (shown first) when a startup migration
+// failed and the live DB was rolled back to a fresh store.
+// =============================================================================
+
+export interface MigrationRecoveryInfo {
+  /** Absolute path of the `.corrupt-<unix>.bak` backup (the user's own path,
+   *  shown to them so they can find their data — stays on-device). */
+  backupPath: string;
+  /** The migration error that caused the recovery. */
+  error: string;
+}
+
+export interface OnboardingState {
+  onboardingCompleted: boolean;
+  hasProviderCredential: boolean;
+  migrationRecovery: MigrationRecoveryInfo | null;
+}
+
 export interface MockStreamRequest {
   requestId: string;
   conversationId: string;

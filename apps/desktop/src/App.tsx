@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AppPaths, AppSettings, Artifact, ArtifactContent, FileState } from './ipc/contracts';
+import type { AppPaths, AppSettings, Artifact, ArtifactContent, FileState, OnboardingState } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import {
   checkArtifactFileState,
@@ -8,6 +8,7 @@ import {
   exportArtifact,
   getAppPaths,
   getArtifact,
+  getOnboardingState,
   getSettings,
   listArtifacts,
   listConversations,
@@ -23,6 +24,7 @@ import { DocumentPanel } from './workspace/DocumentPanel';
 import { SettingsPanel } from './workspace/SettingsPanel';
 import { useColumnResize, useRailExpand } from './workspace/useLayout';
 import { PlusIcon } from './icons';
+import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 
 const TAB_TITLES: Record<WorkspaceTab, [string, string]> = {
   chat: ['Chat session', 'Repo triage note - github, slack'],
@@ -41,6 +43,9 @@ const defaultSettings: AppSettings = {
   theme: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
+  updateChannel: 'stable',
+  updateCheckEnabled: true,
+  onboardingCompleted: false,
 };
 
 export default function App() {
@@ -49,6 +54,11 @@ export default function App() {
   const [status, setStatus] = useState('Booting desktop shell');
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('chat');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Phase 6 M6.4: first-run onboarding gate. `null` while boot is in flight;
+  // once loaded, App renders the migration-recovery notice (priority), then
+  // `<Onboarding>` (while not completed or no provider credential), else the
+  // workspace.
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   // Phase 5: real artifact state. `artifacts` is the conversation's list
   // (metadata-only; inline content is NOT included — fetch via `getArtifact`).
   // `activeArtifact` is payload-bearing (the one open in DocumentPanel).
@@ -67,28 +77,46 @@ export default function App() {
 
   const setStatusMessage = useCallback((message: string) => setStatus(message), []);
 
-  // Boot: load paths + settings (credential state is probed per-provider by the
-  // panels that need it; nothing global to load here).
+  // Phase 3: ensure there is an active conversation. `list_conversations`
+  // returns newest-first; pick the most recent, or create one if the store is
+  // empty so the chat view always has somewhere to write. Called from boot
+  // (when onboarding is satisfied) and from `refreshOnboarding`.
+  const ensureConversation = useCallback(async () => {
+    try {
+      const conversations = await listConversations();
+      if (conversations.length > 0) {
+        setActiveConversationId(conversations[0].id);
+      } else {
+        const created = await createConversation();
+        setActiveConversationId(created.id);
+      }
+    } catch {
+      /* leave null; the chat view surfaces an empty thread */
+    }
+  }, []);
+
+  // Boot: load paths + settings + onboarding state. The conversation-ensure is
+  // deferred until onboarding is complete (chat is unreachable without a
+  // provider credential); `ensureConversation` is also called when onboarding
+  // finishes via `refreshOnboarding`.
   useEffect(() => {
     void (async () => {
       try {
-        const [loadedPaths, loadedSettings] = await Promise.all([getAppPaths(), getSettings()]);
+        const [loadedPaths, loadedSettings, onboardingState] = await Promise.all([
+          getAppPaths(),
+          getSettings(),
+          getOnboardingState(),
+        ]);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
+        setOnboarding(onboardingState);
 
-        // Phase 3: ensure there is an active conversation. `list_conversations`
-        // returns newest-first; pick the most recent, or create one if the store
-        // is empty so the chat view always has somewhere to write.
-        try {
-          const conversations = await listConversations();
-          if (conversations.length > 0) {
-            setActiveConversationId(conversations[0].id);
-          } else {
-            const created = await createConversation();
-            setActiveConversationId(created.id);
-          }
-        } catch {
-          /* leave null; the chat view surfaces an empty thread */
+        const readyForWorkspace =
+          onboardingState.onboardingCompleted &&
+          onboardingState.hasProviderCredential &&
+          !onboardingState.migrationRecovery;
+        if (readyForWorkspace) {
+          await ensureConversation();
         }
 
         setStatus('Rust trust boundary online');
@@ -96,7 +124,23 @@ export default function App() {
         setStatus(error instanceof Error ? error.message : 'Failed to load desktop state');
       }
     })();
-  }, []);
+  }, [ensureConversation]);
+
+  // Phase 6 M6.4: re-probe onboarding state after the user finishes onboarding
+  // (or after a settings change that could satisfy the gate). On satisfying the
+  // gate, ensure a conversation exists so the workspace has somewhere to write.
+  const refreshOnboarding = useCallback(async () => {
+    try {
+      const next = await getOnboardingState();
+      setOnboarding(next);
+      setSettings(await getSettings());
+      if (next.onboardingCompleted && next.hasProviderCredential && !next.migrationRecovery) {
+        await ensureConversation();
+      }
+    } catch {
+      /* leave current state; the user can retry */
+    }
+  }, [ensureConversation]);
 
   // Phase 3: create a fresh conversation and switch to it (the "New chat"
   // button + the history rail's new-chat row).
@@ -272,6 +316,23 @@ export default function App() {
 
   // The document panel reflects the active artifact (or an empty state).
   const activeFileState = activeArtifact ? fileStateMap[activeArtifact.id] ?? 'noFileContent' : 'noFileContent';
+
+  // Phase 6 M6.4: boot/onboarding gate (after all hooks). While onboarding state
+  // is loading, show a minimal boot splash. Migration recovery takes priority;
+  // then the BYOK onboarding; otherwise the workspace.
+  if (onboarding?.migrationRecovery) {
+    return <MigrationRecoveryNotice recovery={onboarding.migrationRecovery} onStatus={setStatusMessage} />;
+  }
+  if (onboarding && (!onboarding.onboardingCompleted || !onboarding.hasProviderCredential)) {
+    return (
+      <Onboarding
+        settings={settings}
+        onSettingsChange={setSettings}
+        onStatus={setStatusMessage}
+        onComplete={() => void refreshOnboarding()}
+      />
+    );
+  }
 
   return (
     <div className="app" id="app">

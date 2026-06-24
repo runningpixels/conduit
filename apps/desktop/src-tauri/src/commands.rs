@@ -831,7 +831,7 @@ pub async fn get_connector_runtime_states(
                 restart_count: st.map(|s| s.restart_count).unwrap_or(0),
                 support_state: v.support_state.clone(),
                 grant_status: g.map(|g| g.status.clone()),
-                running: running.contains(&v.id) && st.map_or(true, |s| s.health != "down"),
+                running: running.contains(&v.id) && st.is_none_or(|s| s.health != "down"),
             });
         }
     }

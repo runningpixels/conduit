@@ -110,8 +110,7 @@ pub async fn execute_tool_call(
             tool_name,
             arguments,
         )
-        .await
-        .map_err(|e| e)?;
+        .await?;
     let decision = match requirement {
         ConsentRequirement::Auto { .. } => ConsentDecision::Approved,
         ConsentRequirement::Prompt { prompt, decision } => {
@@ -162,8 +161,7 @@ pub async fn execute_tool_call(
             }
 
             // 6. Redact for persistence/display.
-            let raw_value =
-                serde_json::to_value(&output).unwrap_or_else(|_| serde_json::Value::Null);
+            let raw_value = serde_json::to_value(&output).unwrap_or_default();
             let redacted = redact::redact_value(&raw_value);
 
             // Best-effort injection-shape warning. Never blocks; the content is

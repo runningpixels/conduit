@@ -9,7 +9,6 @@ use conduit_desktop::{
     encryption::{self, Encryption},
 };
 use serde_json::json;
-use sqlx;
 
 #[tokio::test]
 async fn off_data_encrypted_when_tier_flips_on() {

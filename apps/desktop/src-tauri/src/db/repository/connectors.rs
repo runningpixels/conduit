@@ -495,7 +495,7 @@ pub async fn revoke_grant(
     revoked_at: Option<&str>,
 ) -> Result<(), DbError> {
     sqlx::query("UPDATE connector_grants SET status = 'revoked', revoked_at = ? WHERE id = ?")
-        .bind(revoked_at.unwrap_or_else(|| ""))
+        .bind(revoked_at.unwrap_or(""))
         .bind(id)
         .execute(pool)
         .await?;

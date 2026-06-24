@@ -9,7 +9,6 @@ use conduit_desktop::{
     encryption::{self, Encryption},
 };
 use serde_json::json;
-use sqlx;
 
 fn license(seat: &str) -> licenses::License {
     licenses::License {

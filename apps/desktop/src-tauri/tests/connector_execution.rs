@@ -342,7 +342,10 @@ async fn oversized_output_fails() {
     assert!(res.is_err(), "oversized output should fail");
     let err = res.unwrap_err();
     assert!(err.contains("exceeded"), "got {err}");
-    assert!(MAX_OUTPUT_BYTES < 2_000_000);
+    // Compile-time guard: the cap must stay below the "big" tool's output so
+    // this test actually exercises the size limit (not a tautological runtime
+    // assert, which clippy flags as `assertions_on_constants`).
+    const _: () = assert!(MAX_OUTPUT_BYTES < 2_000_000);
 
     assert_eq!(finished_count(&events, ToolCallStatus::Failed), 1);
     let rec = tool_calls::get_tool_call(&pool, &state.encryption, &tcid)

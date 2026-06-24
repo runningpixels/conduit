@@ -401,8 +401,10 @@ mod tests {
         )
         .unwrap();
 
-        let mut settings = AppSettings::default();
-        settings.active_model = "claude-opus-4".into();
+        let settings = AppSettings {
+            active_model: "claude-opus-4".into(),
+            ..AppSettings::default()
+        };
         write_settings(&paths, &settings).unwrap();
 
         let written = fs::read_to_string(&paths.settings_file).unwrap();

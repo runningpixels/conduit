@@ -410,7 +410,7 @@ pub async fn read_content_bytes(
         let abs = artifacts_dir.join(rel);
         let bytes = std::fs::read(&abs)
             .map_err(|e| DbError::RecoveryIo(format!("read artifact blob: {e}")))?;
-        return Ok(enc.decode_blob(&bytes)?);
+        return enc.decode_blob(&bytes);
     }
     Err(DbError::Query("artifact has no content".to_string()))
 }

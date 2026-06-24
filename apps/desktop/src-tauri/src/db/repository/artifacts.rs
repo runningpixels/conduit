@@ -21,6 +21,52 @@ use uuid::Uuid;
 
 use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
+/// Row shape for [`list`] (metadata only — no inline content).
+type ArtifactListRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+);
+
+/// Row shape for [`get`] (metadata + decrypted inline content columns).
+type ArtifactGetRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+);
+
+/// Materialized content tuple returned by [`materialize_content`].
+type ArtifactContentRow = (
+    Option<String>,
+    Option<serde_json::Value>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+    Option<PathBuf>,
+);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Artifact {
@@ -201,21 +247,7 @@ pub async fn set_content(
 /// back to `created_at` for payload-less artifacts). Inline content is **not**
 /// decrypted here — use [`get`] for a payload-bearing artifact.
 pub async fn list(pool: &SqlitePool, conversation_id: &str) -> Result<Vec<Artifact>, DbError> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-    )> = sqlx::query_as(
+    let rows: Vec<ArtifactListRow> = sqlx::query_as(
         "SELECT id, conversation_id, kind, title, source_message_id, cloud_share_id, \
                 metadata, created_at, updated_at, mime_type, content_path, content_hash, \
                 size_bytes \
@@ -272,23 +304,7 @@ pub async fn get(
     enc: &Encryption,
     artifact_id: &str,
 ) -> Result<Option<Artifact>, DbError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-    )> = sqlx::query_as(
+    let row: Option<ArtifactGetRow> = sqlx::query_as(
         "SELECT id, conversation_id, kind, title, source_message_id, cloud_share_id, \
                 metadata, created_at, updated_at, mime_type, content_text, content_json, \
                 content_path, content_hash, size_bytes \
@@ -623,17 +639,7 @@ fn materialize_content(
     enc: &Encryption,
     artifact_id: &str,
     content: &ArtifactContent,
-) -> Result<
-    (
-        Option<String>,
-        Option<serde_json::Value>,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-        Option<std::path::PathBuf>,
-    ),
-    DbError,
-> {
+) -> Result<ArtifactContentRow, DbError> {
     match content {
         ArtifactContent::Text { text } => {
             let hash = sha256_hex(text.as_bytes());

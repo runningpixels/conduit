@@ -11,6 +11,19 @@ use uuid::Uuid;
 
 use crate::{db::DbError, time::now_iso8601};
 
+/// Row shape for [`list`] (id, title, updated_at, message_count, last preview).
+type ConversationSummaryRow = (String, Option<String>, String, i64, Option<String>);
+
+/// Row shape for [`get`] (id, title, created_at, updated_at, cloud_id, metadata).
+type ConversationRow = (
+    String,
+    Option<String>,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+);
+
 /// Create a conversation row with a fresh UUID id. Returns the full row.
 pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversation, DbError> {
     let id = Uuid::new_v4().to_string();
@@ -41,7 +54,7 @@ pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversati
 /// List all conversations newest-first, with message count and a preview of the
 /// last text part for the history rail.
 pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError> {
-    let rows: Vec<(String, Option<String>, String, i64, Option<String>)> = sqlx::query_as(
+    let rows: Vec<ConversationSummaryRow> = sqlx::query_as(
         "SELECT c.id, c.title, c.updated_at, \
                 (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count, \
                 (SELECT mp.content FROM messages m2 \
@@ -70,14 +83,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
 
 /// Fetch one conversation, or `None` if it does not exist.
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Conversation>, DbError> {
-    let row: Option<(
-        String,
-        Option<String>,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
+    let row: Option<ConversationRow> = sqlx::query_as(
         "SELECT id, title, created_at, updated_at, cloud_id, metadata \
              FROM conversations WHERE id = ?",
     )

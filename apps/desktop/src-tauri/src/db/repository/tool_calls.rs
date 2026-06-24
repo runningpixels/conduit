@@ -20,6 +20,19 @@ use uuid::Uuid;
 
 use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
+/// Row shape for [`get_tool_call`] (the `tool_calls` columns we read back).
+type ToolCallRecordRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 /// Map a `ToolCallStatus` to its stored TEXT form. The schema enum serializes
 /// camelCase (`pending`/`approved`/...); we mirror that here so reads and writes
 /// agree without depending on serde at the sqlx bind boundary.
@@ -154,17 +167,7 @@ pub async fn get_tool_call(
     enc: &Encryption,
     id: &str,
 ) -> Result<Option<ToolCallRecord>, DbError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
+    let row: Option<ToolCallRecordRow> = sqlx::query_as(
         "SELECT id, tool_id, request_id, status, arguments, result, error, \
                 approved_at, completed_at FROM tool_calls WHERE id = ?",
     )

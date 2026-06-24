@@ -18,6 +18,36 @@ use uuid::Uuid;
 
 use crate::{db::DbError, time::now_iso8601};
 
+/// Row shape for `message_parts` reads (the 12 columns we SELECT back).
+type MessagePartRow = (
+    String,
+    String,
+    i64,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+);
+
+/// Row shape for `messages` reads in [`load_conversation_messages`].
+type MessageRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    i64,
+    Option<String>,
+    Option<String>,
+    String,
+);
+
 // --- enum ↔ string mapping (matches serde camelCase rename on the enums) -----
 
 fn role_to_str(role: &MessageRole) -> &'static str {
@@ -335,20 +365,7 @@ pub async fn snapshot_view_for_request(
         return Ok(None);
     };
 
-    let part_rows: Vec<(
-        String,
-        String,
-        i64,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-    )> = sqlx::query_as(
+    let part_rows: Vec<MessagePartRow> = sqlx::query_as(
         "SELECT id, message_id, idx, kind, content, mime_type, tool_call_id, \
                 artifact_id, attachment_id, blob_ref, metadata, created_at \
          FROM message_parts WHERE message_id = ? ORDER BY idx",
@@ -498,18 +515,7 @@ pub async fn load_conversation_messages(
     pool: &SqlitePool,
     conversation_id: &str,
 ) -> Result<Vec<Message>, DbError> {
-    let message_rows: Vec<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        i64,
-        Option<String>,
-        Option<String>,
-        String,
-    )> = sqlx::query_as(
+    let message_rows: Vec<MessageRow> = sqlx::query_as(
         "SELECT id, conversation_id, role, author_label, provider_message_id, \
                 interrupted_at, finalized, finish_reason, metadata, created_at \
          FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
@@ -522,20 +528,7 @@ pub async fn load_conversation_messages(
         return Ok(Vec::new());
     }
 
-    let part_rows: Vec<(
-        String,
-        String,
-        i64,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-    )> = sqlx::query_as(
+    let part_rows: Vec<MessagePartRow> = sqlx::query_as(
         "SELECT id, message_id, idx, kind, content, mime_type, tool_call_id, \
                 artifact_id, attachment_id, blob_ref, metadata, created_at \
          FROM message_parts WHERE message_id IN \

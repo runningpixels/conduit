@@ -10,6 +10,23 @@ use sqlx::SqlitePool;
 
 use crate::{db::DbError, encryption::Encryption};
 
+/// Row shape for [`get_active_license`] (all `licenses` columns).
+type LicenseRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    String,
+);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct License {
@@ -95,21 +112,7 @@ pub async fn get_active_license(
     pool: &SqlitePool,
     enc: &Encryption,
 ) -> Result<Option<License>, DbError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        i64,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        String,
-    )> = sqlx::query_as(
+    let row: Option<LicenseRow> = sqlx::query_as(
         "SELECT id, tenant_id, seat_id, tier, token, exp, config_version, key_set_version, \
                 feature_flags, offline_grace_deadline, issued_at, last_seen_server_time, \
                 created_at \

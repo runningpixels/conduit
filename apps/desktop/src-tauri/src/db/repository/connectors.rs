@@ -11,6 +11,47 @@ use uuid::Uuid;
 
 use crate::{db::DbError, time::now_iso8601};
 
+// Row shapes for the `query_as` tuple bindings below (keep the DB tuple next to
+// the query that produces it + the struct it maps into). Structurally identical
+// tuples are kept under separate names for semantic clarity.
+type ConnectorDefinitionRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+);
+type ConnectorVersionRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+);
+type ConnectorGrantRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+);
+type RuntimeStateListRow = (String, String, Option<String>, Option<String>, i64);
+
 // --- types -------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,20 +157,7 @@ pub async fn upsert_definition(
 }
 
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<ConnectorDefinition>, DbError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-    )> = sqlx::query_as(
+    let row: Option<ConnectorDefinitionRow> = sqlx::query_as(
         "SELECT id, name, description, transport, owner, icon, support_url, consent_copy, \
                 policy_metadata, cloud_id, created_at, updated_at \
          FROM connector_definitions WHERE id = ?",
@@ -169,20 +197,7 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<ConnectorDefiniti
 }
 
 pub async fn list_definitions(pool: &SqlitePool) -> Result<Vec<ConnectorDefinition>, DbError> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-    )> = sqlx::query_as(
+    let rows: Vec<ConnectorDefinitionRow> = sqlx::query_as(
         "SELECT id, name, description, transport, owner, icon, support_url, consent_copy, \
                 policy_metadata, cloud_id, created_at, updated_at \
          FROM connector_definitions ORDER BY name ASC",
@@ -252,17 +267,7 @@ pub async fn list_versions(
     pool: &SqlitePool,
     connector_id: &str,
 ) -> Result<Vec<ConnectorVersion>, DbError> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-    )> = sqlx::query_as(
+    let rows: Vec<ConnectorVersionRow> = sqlx::query_as(
         "SELECT id, connector_id, version, transport_config, scope_grants, \
                 capability_allowlist, rollout_channel, support_state, created_at \
          FROM connector_versions WHERE connector_id = ? ORDER BY created_at ASC",
@@ -306,17 +311,7 @@ pub async fn get_version(
     pool: &SqlitePool,
     version_id: &str,
 ) -> Result<Option<ConnectorVersion>, DbError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-    )> = sqlx::query_as(
+    let row: Option<ConnectorVersionRow> = sqlx::query_as(
         "SELECT id, connector_id, version, transport_config, scope_grants, \
                 capability_allowlist, rollout_channel, support_state, created_at \
          FROM connector_versions WHERE id = ?",
@@ -356,17 +351,7 @@ pub async fn list_grants_for_version(
     pool: &SqlitePool,
     connector_version_id: &str,
 ) -> Result<Vec<ConnectorGrant>, DbError> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-    )> = sqlx::query_as(
+    let rows: Vec<ConnectorGrantRow> = sqlx::query_as(
         "SELECT id, connector_version_id, scope, status, credential_ref, approved_by, \
                 revoked_at, notes, created_at \
          FROM connector_grants WHERE connector_version_id = ? ORDER BY created_at ASC",
@@ -432,17 +417,7 @@ pub async fn list_grants(
     pool: &SqlitePool,
     status: Option<&str>,
 ) -> Result<Vec<ConnectorGrant>, DbError> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-    )> = if let Some(status) = status {
+    let rows: Vec<ConnectorGrantRow> = if let Some(status) = status {
         sqlx::query_as(
             "SELECT id, connector_version_id, scope, status, credential_ref, approved_by, \
                     revoked_at, notes, created_at \
@@ -551,7 +526,7 @@ pub async fn get_runtime_state(
 /// All persisted runtime states (Phase 4 M4.6: the connectors rail renders a
 /// snapshot of every version's health/restart count).
 pub async fn list_runtime_states(pool: &SqlitePool) -> Result<Vec<ConnectorRuntimeState>, DbError> {
-    let rows: Vec<(String, String, Option<String>, Option<String>, i64)> = sqlx::query_as(
+    let rows: Vec<RuntimeStateListRow> = sqlx::query_as(
         "SELECT connector_version_id, health, last_started_at, last_error, restart_count \
          FROM connector_runtime_state ORDER BY connector_version_id ASC",
     )

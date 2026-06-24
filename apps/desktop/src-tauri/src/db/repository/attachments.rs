@@ -16,6 +16,19 @@ use uuid::Uuid;
 
 use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
+/// Row shape for [`get`] / [`list_for_conversation`] (both select the same columns).
+type AttachmentRow = (
+    String,
+    String,
+    String,
+    String,
+    i64,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Attachment {
@@ -92,17 +105,7 @@ pub async fn save(
 
 /// Fetch one attachment by id.
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Attachment>, DbError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        i64,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-    )> = sqlx::query_as(
+    let row: Option<AttachmentRow> = sqlx::query_as(
         "SELECT id, conversation_id, path, mime_type, size_bytes, hash, origin, \
                 retention_state, created_at FROM attachments WHERE id = ?",
     )
@@ -140,17 +143,7 @@ pub async fn list_for_conversation(
     pool: &SqlitePool,
     conversation_id: &str,
 ) -> Result<Vec<Attachment>, DbError> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        i64,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-    )> = sqlx::query_as(
+    let rows: Vec<AttachmentRow> = sqlx::query_as(
         "SELECT id, conversation_id, path, mime_type, size_bytes, hash, origin, \
                 retention_state, created_at FROM attachments \
          WHERE conversation_id = ? ORDER BY created_at DESC",

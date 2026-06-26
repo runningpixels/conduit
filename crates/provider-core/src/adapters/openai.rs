@@ -249,6 +249,10 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     }
 
     for message in &request.messages {
+        // Phase A extension point: full tool call / tool result serialization
+        // will replace `message_text` with a dispatcher that emits the correct
+        // OpenAI `function_call` / `tool` message shapes when the message
+        // contains `ToolCall*` or `ToolResult` parts.
         messages.push(json!({
           "role": role_to_string(&message.role),
           "content": message_text(message),

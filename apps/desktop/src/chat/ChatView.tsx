@@ -430,12 +430,9 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
         if (event.kind === 'toolCallStart') {
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
         } else if (event.kind === 'toolCallComplete') {
-          void handoffConnectorTool(
-            request.requestId,
-            conversationId,
-            event.toolCallId,
-            event.arguments,
-          );
+          // Phase A: tool execution is now owned by the Rust `AgentLoop` inside
+          // `start_chat_stream`. The UI no longer hands off tool calls via IPC.
+          // The `toolCallComplete` event is still rendered for the tool card.
         } else if (event.kind === 'messageComplete' || event.kind === 'error') {
           if (event.kind === 'error') terminalError = event.error.message;
           finish();

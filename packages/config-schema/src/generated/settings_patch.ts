@@ -8,4 +8,4 @@ export type SettingsPatch = { activeProvider?: string, activeModel?: string, loc
  * Replace the artifact remote allowlist. Each entry must be an absolute
  * http(s) URL or the whole update is rejected.
  */
-artifactRemoteAllowlist?: Array<string>, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, onboardingCompleted?: boolean, };
+artifactRemoteAllowlist?: Array<string>, artifactStyledPreview?: boolean, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, onboardingCompleted?: boolean, };

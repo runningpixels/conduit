@@ -45,6 +45,8 @@ interface RailPanesProps {
   onSelectConversation: (id: string) => void;
   /// Create + switch to a fresh conversation (the "New chat" button).
   onNewChat: () => void;
+  /// Rename an artifact (title update). Optional — when provided, rows become editable.
+  onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
 }
 
 // Rail panes are shown/hidden by [data-tab] on <html> via styles.css
@@ -165,11 +167,47 @@ function ArtifactsPane({
   artifacts,
   fileStateMap,
   onOpenArtifact,
+  onRenameArtifact,
 }: {
   artifacts: Artifact[];
   fileStateMap: Record<string, FileState>;
   onOpenArtifact: (id: string) => void;
+  onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+
+  function startEdit(a: Artifact, e: React.MouseEvent) {
+    e.stopPropagation();
+    const current = a.title ?? '';
+    setEditingId(a.id);
+    setEditingValue(current);
+  }
+
+  function commitEdit(id: string) {
+    const trimmed = editingValue.trim();
+    if (trimmed && onRenameArtifact) {
+      void onRenameArtifact(id, trimmed);
+    }
+    setEditingId(null);
+    setEditingValue('');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditingValue('');
+  }
+
+  function handleKey(e: React.KeyboardEvent<HTMLInputElement>, id: string) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitEdit(id);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    }
+  }
+
   return (
     <section className="tab-pane" data-pane="artifacts" aria-label="Files and artifacts">
       <div className="tab-list scroll">
@@ -196,7 +234,21 @@ function ArtifactsPane({
                 >
                   <FileIcon className="row-icon" />
                   <span className="meta">
-                    <b>{name}</b>
+                    {editingId === a.id ? (
+                      <input
+                        className="inline-title-input"
+                        value={editingValue}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onBlur={() => commitEdit(a.id)}
+                        onKeyDown={(e) => handleKey(e, a.id)}
+                      />
+                    ) : (
+                      <b onClick={(e) => startEdit(a, e)} style={{ cursor: 'text' }}>
+                        {name}
+                      </b>
+                    )}
                     <small>{subtitle}</small>
                   </span>
                   <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
@@ -438,6 +490,7 @@ export function RailPanes({
   activeConversationId,
   onSelectConversation,
   onNewChat,
+  onRenameArtifact,
 }: RailPanesProps) {
   // The active prop is accepted for future per-pane focus/refresh hooks; the
   // show/hide is driven by [data-tab] on <html> so panes stay mounted.
@@ -453,6 +506,7 @@ export function RailPanes({
         artifacts={artifacts}
         fileStateMap={fileStateMap}
         onOpenArtifact={onOpenArtifact}
+        onRenameArtifact={onRenameArtifact}
       />
       <ConnectorsPane />
       {activityPane()}

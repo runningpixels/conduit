@@ -85,10 +85,11 @@ export function inlineText(artifact: Artifact): string {
 }
 
 /// Build Preview props for the artifact. `allowlist` is the user-managed remote
-/// allowlist (HTML artifacts only). Returns `null` when there is no inline
+/// allowlist (HTML artifacts only). `styledPreview` controls whether richer
+/// app-like styles are applied (default true). Returns `null` when there is no inline
 /// content to preview (File-content without inline text) — the caller renders
 /// its own affordance.
-export function buildPreviewProps(artifact: Artifact, allowlist: string[]): PreviewProps | null {
+export function buildPreviewProps(artifact: Artifact, allowlist: string[], styledPreview = true): PreviewProps | null {
   const kind = resolveKind(artifact.kind, artifact.mimeType);
   const text = inlineText(artifact);
   if (kind !== 'html' && text === '' && artifact.contentJson == null) {
@@ -96,16 +97,16 @@ export function buildPreviewProps(artifact: Artifact, allowlist: string[]): Prev
   }
   switch (kind) {
     case 'markdown':
-      return { source: text };
+      return { source: text, styledPreview };
     case 'code':
-      return { code: text, language: languageFromMime(artifact.mimeType) };
+      return { code: text, language: languageFromMime(artifact.mimeType), styledPreview };
     case 'json':
-      return { data: artifact.contentJson ?? safeParseJson(text) };
+      return { data: artifact.contentJson ?? safeParseJson(text), styledPreview };
     case 'html':
-      return { html: text, allowlist };
+      return { html: text, allowlist, styledPreview };
     case 'text':
     default:
-      return { text };
+      return { text, styledPreview };
   }
 }
 

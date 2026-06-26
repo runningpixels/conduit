@@ -15,6 +15,7 @@ use std::{
 };
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,19 +138,46 @@ impl StreamManager {
         let mut provider_request = request;
         provider_request.request_id = request_id.clone();
 
-        let stream = adapter
+        let request_model = provider_request.model_id.clone();
+        let stream = match adapter
             .stream_chat(provider_request, ctx, cancel.clone())
             .await
-            .map_err(|e| e.message)?;
+        {
+            Ok(s) => s,
+            Err(e) => {
+                // The provider rejected the request before streaming (HTTP 4xx
+                // from a bad model/key, no credential stored, connection
+                // failure). Without this log the failure reached the UI only as
+                // a one-line status string that is easy to miss; surface it in
+                // the process log too.
+                warn!(
+                    provider = %provider_id,
+                    model = %request_model,
+                    error = %e.message,
+                    "provider stream_chat failed before any output"
+                );
+                return Err(e.message);
+            }
+        };
+        info!(provider = %provider_id, model = %request_model, "provider stream started");
 
         let active = self.active.clone();
         let request_id_task = request_id.clone();
         let conversation_id_task = conversation_id.clone();
         let pool_task = pool.clone();
+        let provider_id_task = provider_id.clone();
 
         tauri::async_runtime::spawn(async move {
             futures::pin_mut!(stream);
             while let Some(event) = stream.next().await {
+                if let ProviderEvent::Error { error, .. } = &event {
+                    warn!(
+                        request_id = %request_id_task,
+                        provider = %provider_id_task,
+                        error = %error.message,
+                        "provider stream error"
+                    );
+                }
                 // The persistence invariant: append the event to the log and
                 // update the materialized view in one transaction. Best-effort
                 // on failure — the stream still reaches the UI, and the

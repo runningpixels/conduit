@@ -13,6 +13,12 @@ export type AppSettings = { activeProvider: string, activeModel: string, localOn
  */
 artifactRemoteAllowlist: Array<string>, 
 /**
+ * Phase 6: whether rendered artifacts (markdown, html, code, json) receive
+ * app-like base styling (typography, spacing, colors) in the preview pane.
+ * Defaults true so previews feel native; user can disable in Settings.
+ */
+artifactStyledPreview: boolean, 
+/**
  * Phase 6: which update channel the client checks. Consumer UI only offers
  * `Stable`/`Beta`; `Pinned`/`TenantSpecific` are reserved for Phase 7/8/9.
  * Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.

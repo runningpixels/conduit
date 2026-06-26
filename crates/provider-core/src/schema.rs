@@ -810,6 +810,11 @@ pub struct AppSettings {
     /// rendering security decision record.
     #[serde(default)]
     pub artifact_remote_allowlist: Vec<String>,
+    /// Phase 6: whether rendered artifacts (markdown, html, code, json) receive
+    /// app-like base styling (typography, spacing, colors) in the preview pane.
+    /// Defaults true so previews feel native; user can disable in Settings.
+    #[serde(default = "default_true")]
+    pub artifact_styled_preview: bool,
     /// Phase 6: which update channel the client checks. Consumer UI only offers
     /// `Stable`/`Beta`; `Pinned`/`TenantSpecific` are reserved for Phase 7/8/9.
     /// Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.
@@ -841,6 +846,7 @@ impl Default for AppSettings {
             theme: Theme::System,
             provider_endpoints: HashMap::new(),
             artifact_remote_allowlist: Vec::new(),
+            artifact_styled_preview: true,
             update_channel: RolloutChannel::Stable,
             update_check_enabled: true,
             onboarding_completed: false,
@@ -871,6 +877,8 @@ pub struct SettingsPatch {
     /// http(s) URL or the whole update is rejected.
     #[ts(optional)]
     pub artifact_remote_allowlist: Option<Vec<String>>,
+    #[ts(optional)]
+    pub artifact_styled_preview: Option<bool>,
     #[ts(optional)]
     pub update_channel: Option<RolloutChannel>,
     #[ts(optional)]

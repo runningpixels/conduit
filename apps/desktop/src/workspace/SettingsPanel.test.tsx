@@ -64,6 +64,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     theme: 'system',
     providerEndpoints: {},
     artifactRemoteAllowlist: [],
+    artifactStyledPreview: true,
     updateChannel: 'stable',
     updateCheckEnabled: true,
     onboardingCompleted: true,

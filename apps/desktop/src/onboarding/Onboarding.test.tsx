@@ -42,6 +42,7 @@ const baseSettings: AppSettings = {
   theme: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
+  artifactStyledPreview: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
   onboardingCompleted: false,
@@ -56,6 +57,7 @@ function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> =
       settings={baseSettings}
       onSettingsChange={onSettingsChange}
       onStatus={onStatus}
+      status=""
       onComplete={onComplete}
       {...overrides}
     />,

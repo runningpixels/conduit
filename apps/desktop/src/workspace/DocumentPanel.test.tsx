@@ -35,7 +35,7 @@ function renderPanel(overrides: Partial<Parameters<typeof DocumentPanel>[0]> = {
   render(
     <DocumentPanel
       artifact={baseArtifact}
-      artifacts={[baseArtifact]}
+      openArtifacts={[baseArtifact]}
       fileStateMap={{ a1: 'ok' as FileState }}
       activeFileState="ok"
       allowlist={[]}
@@ -81,7 +81,7 @@ describe('DocumentPanel Source tab (M3)', () => {
     const fileArtifact: Artifact = { ...baseArtifact, id: 'a2', contentPath: 'a2/report.txt', mimeType: 'text/plain', contentText: undefined };
     const { onSaveContent } = renderPanel({
       artifact: fileArtifact,
-      artifacts: [fileArtifact],
+      openArtifacts: [fileArtifact],
       fileStateMap: { a2: 'modified' as FileState },
       activeFileState: 'modified',
     });
@@ -107,5 +107,26 @@ describe('DocumentPanel Export (M5)', () => {
     expect(toggle.checked).toBe(true);
     fireEvent.click(exportBtn);
     await waitFor(() => expect(onExport).toHaveBeenLastCalledWith('a1', true));
+  });
+});
+
+describe('DocumentPanel chrome', () => {
+  it('shows updated footer copy for inline artifacts', () => {
+    renderPanel({ docTab: 'preview', activeFileState: 'noFileContent', fileStateMap: { a1: 'noFileContent' } });
+    expect(screen.getByText('Saved in Conduit')).toBeInTheDocument();
+  });
+
+  it('calls onCollapsePanel when the hide button is clicked', () => {
+    const onCollapsePanel = vi.fn();
+    renderPanel({ onCollapsePanel, docTab: 'preview' });
+    fireEvent.click(screen.getByRole('button', { name: 'Hide artifact panel' }));
+    expect(onCollapsePanel).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onCloseTab when a tab close control is clicked', () => {
+    const onCloseTab = vi.fn();
+    renderPanel({ onCloseTab, docTab: 'preview' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close Note' }));
+    expect(onCloseTab).toHaveBeenCalledWith('a1');
   });
 });

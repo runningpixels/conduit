@@ -73,21 +73,23 @@ describe('buildPreviewProps', () => {
     expect(buildPreviewProps(art({ kind: 'code', contentPath: 'a/foo.txt' }), [])).toBeNull();
   });
   it('builds markdown props from contentText', () => {
-    expect(buildPreviewProps(art({ kind: 'markdown', contentText: '# hi' }), [])).toEqual({ source: '# hi' });
+    expect(buildPreviewProps(art({ kind: 'markdown', contentText: '# hi' }), [])).toEqual({ source: '# hi', styledPreview: true });
   });
   it('builds code props with a language chip from mimeType', () => {
     expect(buildPreviewProps(art({ kind: 'code', contentText: 'fn x()', mimeType: 'text/x-rust' }), [])).toEqual({
       code: 'fn x()',
       language: 'rust',
+      styledPreview: true,
     });
   });
   it('builds json props from contentJson', () => {
-    expect(buildPreviewProps(art({ kind: 'json', contentJson: { k: 1 } }), [])).toEqual({ data: { k: 1 } });
+    expect(buildPreviewProps(art({ kind: 'json', contentJson: { k: 1 } }), [])).toEqual({ data: { k: 1 }, styledPreview: true });
   });
   it('builds html props with the allowlist', () => {
     expect(buildPreviewProps(art({ kind: 'html', contentText: '<p/>' }), ['https://x.example.com'])).toEqual({
       html: '<p/>',
       allowlist: ['https://x.example.com'],
+      styledPreview: true,
     });
   });
 });
@@ -109,5 +111,15 @@ describe('languageFromMime', () => {
     expect(languageFromMime('text/x-rust')).toBe('rust');
     expect(languageFromMime('text/plain')).toBeUndefined();
     expect(languageFromMime(undefined)).toBeUndefined();
+  });
+});
+
+describe('buildPreviewProps styledPreview', () => {
+  it('passes styledPreview through to renderer props (default true)', () => {
+    const art = { kind: 'markdown' as const, contentText: '# hi', mimeType: undefined } as any;
+    const p = buildPreviewProps(art, [], true) as any;
+    expect(p.styledPreview).toBe(true);
+    const p2 = buildPreviewProps(art, []) as any;
+    expect(p2.styledPreview).toBe(true);
   });
 });

@@ -67,6 +67,35 @@ impl StreamParser for OpenAiParser {
         };
 
         let mut events = Vec::new();
+
+        // OpenAI (and compat proxies) can stream errors in-band as
+        // `{"error": {...}}` chunks — an invalid model, a content-policy
+        // rejection, or a mid-stream proxy failure. Without this branch the
+        // parser returned `vec![]`, the error was silently dropped, and
+        // `wrap_sse_stream` then emitted a bare `MessageComplete` — producing
+        // a blank assistant bubble with no diagnostics. Surface it as a
+        // `ProviderEvent::Error` instead, mirroring the Anthropic parser.
+        if let Some(err) = value.get("error") {
+            let message = err
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("OpenAI stream error")
+                .to_string();
+            events.push(ProviderEvent::Error {
+                request_id: request_id.to_string(),
+                error: ProviderError {
+                    provider_code: err
+                        .get("type")
+                        .or_else(|| err.get("code"))
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    retryable: false,
+                    message,
+                },
+            });
+            return events;
+        }
+
         let choices = value.get("choices").and_then(|c| c.as_array());
 
         if let Some(choices) = choices {
@@ -423,5 +452,24 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| matches!(e, ProviderEvent::ContentDelta { .. })));
+    }
+
+    #[test]
+    fn surfaces_in_stream_error_chunk() {
+        // An in-band `{"error": {...}}` chunk (invalid model, content-policy
+        // rejection, proxy failure) must surface as a `ProviderEvent::Error`,
+        // not be silently dropped — the bug that produced a blank bubble with
+        // no diagnostics for OpenAI-family providers.
+        let fixture =
+            "data: {\"error\":{\"message\":\"bad model id\",\"type\":\"invalid_request_error\"}}\n";
+        let events = parse_fixture("req-1", fixture);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ProviderEvent::Error { error, .. } if error.message == "bad model id"
+        )));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ProviderEvent::Error { error, .. } if error.provider_code.as_deref() == Some("invalid_request_error")
+        )));
     }
 }

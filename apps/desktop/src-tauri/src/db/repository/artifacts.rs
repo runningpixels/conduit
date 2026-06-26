@@ -161,6 +161,24 @@ pub async fn create(
     })
 }
 
+/// Update the artifact's title (trimmed; empty becomes NULL) and bump updated_at.
+pub async fn set_title(
+    pool: &SqlitePool,
+    artifact_id: &str,
+    title: &str,
+) -> Result<(), DbError> {
+    let now = now_iso8601();
+    let t = title.trim();
+    let title_val: Option<String> = if t.is_empty() { None } else { Some(t.to_string()) };
+    sqlx::query("UPDATE artifacts SET title = ?, updated_at = ? WHERE id = ?")
+        .bind(&title_val)
+        .bind(&now)
+        .bind(artifact_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Overwrite the artifact's single payload in place. Inline `content_text` /
 /// `content_json` are encrypted at the bind boundary when `enc.tier() == On`;
 /// the returned [`Artifact`] (via [`get`]) carries the **plaintext** content.

@@ -13,6 +13,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke, Channel }));
 import {
   createArtifact,
   listArtifacts,
+  getMessageIdByRequest,
   getArtifact,
   setArtifactContent,
   getArtifactContentBytes,
@@ -44,6 +45,13 @@ describe('artifact + attachment IPC wrappers', () => {
     invoke.mockResolvedValue([]);
     await listArtifacts('c1');
     expect(invoke).toHaveBeenCalledWith('list_artifacts', { conversationId: 'c1' });
+  });
+
+  it('getMessageIdByRequest calls get_message_id_by_request with requestId', async () => {
+    invoke.mockResolvedValue('msg-uuid');
+    const got = await getMessageIdByRequest('req-1');
+    expect(invoke).toHaveBeenCalledWith('get_message_id_by_request', { requestId: 'req-1' });
+    expect(got).toBe('msg-uuid');
   });
 
   it('getArtifact calls get_artifact with artifactId, returns nullable', async () => {

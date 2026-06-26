@@ -432,9 +432,23 @@ export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths
   if (!open) return null;
 
   async function handlePersistSettings() {
-    const next = await updateSettings(settings);
-    onSettingsChange(next);
-    onStatus('Settings persisted');
+    try {
+      const next = await updateSettings(settings);
+      onSettingsChange(next);
+      onStatus('Settings persisted');
+    } catch (error) {
+      // Tauri rejects `invoke` with the serialized Rust error (a string), not
+      // an `Error`. Without this the rejection was swallowed by `void` and
+      // "Persist settings" appeared to do nothing.
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : String(error);
+      console.error('[persistSettings] rejected:', error);
+      onStatus(`Settings persist failed: ${message}`);
+    }
   }
 
   async function handleExportDiagnostics() {
@@ -544,6 +558,14 @@ export function SettingsPanel({ open, onClose, settings, onSettingsChange, paths
           <span style={{ fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
             Trusted origins rendered HTML artifacts may load images, fonts, and styles from. Scripts and network API calls (fetch/XHR) are blocked regardless. Empty = artifacts are fully offline.
           </span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={settings.artifactStyledPreview ?? true}
+              onChange={(e) => onSettingsChange({ ...settings, artifactStyledPreview: e.target.checked })}
+            />
+            Apply app-like styling to rendered artifacts (typography, spacing, code blocks)
+          </label>
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <input
               value={allowlistInput}

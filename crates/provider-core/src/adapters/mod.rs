@@ -1,6 +1,8 @@
 use crate::adapter::StreamParser;
 use crate::error::fatal;
-use crate::schema::{Message, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest};
+use crate::schema::{
+    Message, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
+};
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 
@@ -99,6 +101,15 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
         index: 0,
       };
 
+      // Track whether the parser produced any substantive event (content,
+      // reasoning, tool calls, or a surfaced error). A stream that yields only
+      // `Ping`/`Usage`/nothing is an empty response — without this guard the
+      // trailing `MessageComplete` would make it look like a successful turn
+      // with zero output: a blank assistant bubble and no error. An `Error`
+      // counts as substantive so a real in-stream error isn't doubled by the
+      // synthetic empty-response error emitted below.
+      let mut produced_substantive = false;
+
       let mut buf = LineBuffer::new();
       futures::pin_mut!(sse);
       while let Some(chunk_result) = sse.next().await {
@@ -106,6 +117,9 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
           Ok(bytes) => {
             for line in buf.push(&bytes) {
               for event in dispatch_sse_line(&line, &request_id, &mut parser, &mut index) {
+                if is_substantive(&event) {
+                  produced_substantive = true;
+                }
                 yield event;
               }
             }
@@ -122,8 +136,22 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
 
       if let Some(tail) = buf.flush() {
         for event in dispatch_sse_line(&tail, &request_id, &mut parser, &mut index) {
+          if is_substantive(&event) {
+            produced_substantive = true;
+          }
           yield event;
         }
+      }
+
+      if !produced_substantive {
+        yield ProviderEvent::Error {
+          request_id: request_id.clone(),
+          error: ProviderError {
+            provider_code: None,
+            retryable: false,
+            message: "Provider returned an empty response with no content".to_string(),
+          },
+        };
       }
 
       yield ProviderEvent::MessageComplete {
@@ -134,6 +162,18 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
     };
 
     Box::pin(stream)
+}
+
+/// Whether an event represents actual assistant output (or a surfaced
+/// error), as opposed to framing/noise (`MessageStart`, `Ping`, `Usage`).
+/// Used by `wrap_sse_stream` to detect an empty provider response.
+fn is_substantive(event: &ProviderEvent) -> bool {
+    !matches!(
+        event,
+        ProviderEvent::MessageStart { .. }
+            | ProviderEvent::Ping { .. }
+            | ProviderEvent::Usage { .. }
+    )
 }
 
 /// Applies the SSE line dispatch (`data:` prefix strip, `[DONE]` skip, bare
@@ -301,5 +341,33 @@ mod line_buffer_tests {
         futures::pin_mut!(stream);
         while stream.next().await.is_some() {}
         assert_eq!(drain(&seen), vec!["a", "b"]);
+    }
+
+    #[tokio::test]
+    async fn empty_response_emits_error_not_silent_complete() {
+        // A parser that yields no substantive events (an empty provider
+        // response) must produce a `ProviderEvent::Error`, not a bare
+        // `MessageComplete` — otherwise the UI shows a blank bubble with no
+        // error. `Forward` returns no events for any chunk.
+        let seen = capture();
+        let sse = byte_chunks(vec![chunk(b"data: {\"choices\":[]}\n\n")]);
+        let stream = wrap_sse_stream("req-1".to_string(), Forward(seen.clone()), sse);
+        futures::pin_mut!(stream);
+        let mut collected = Vec::new();
+        while let Some(event) = stream.next().await {
+            collected.push(event);
+        }
+        assert!(
+            collected
+                .iter()
+                .any(|e| matches!(e, ProviderEvent::Error { .. })),
+            "empty provider response must surface an Error event, not a silent complete"
+        );
+        assert!(
+            collected
+                .iter()
+                .any(|e| matches!(e, ProviderEvent::MessageComplete { .. })),
+            "MessageComplete must still finalize the stream after the error"
+        );
     }
 }

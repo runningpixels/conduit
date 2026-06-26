@@ -71,6 +71,36 @@
   overflow: hidden;
   position: relative;
 }
+[data-doc-panel="collapsed"] .body {
+  grid-template-columns: 1fr;
+}
+[data-doc-panel="collapsed"] .doc-panel,
+[data-doc-panel="collapsed"] .resize-handle {
+  display: none;
+}
+.doc-panel-expand-tab {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  width: 22px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-soft);
+  border-right: 0;
+  border-radius: var(--r-sm) 0 0 var(--r-sm);
+  background: var(--panel);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: var(--tap);
+}
+.doc-panel-expand-tab:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.doc-panel-expand-tab svg { width: 14px; height: 14px; }
 .resize-handle {
   position: absolute;
   top: 0;
@@ -98,6 +128,7 @@
 }
 
 .left-workspace {
+  position: relative;
   min-width: 0;
   display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr);
@@ -324,6 +355,19 @@
 .reasoning-block { margin: 10px 0 0; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--surface-2); padding: 8px 11px; }
 .reasoning-block summary { cursor: pointer; font: 600 11px/1 var(--font-mono); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
 .reasoning-block pre { margin: 8px 0 0; white-space: pre-wrap; color: var(--text-2); font: 500 11.5px/1.5 var(--font-mono); }
+.artifact-fence-block { margin: 10px 0 0; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--surface-2); padding: 8px 11px; }
+.artifact-fence-block summary { cursor: pointer; font: 600 11px/1 var(--font-mono); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.artifact-fence-block pre { margin: 8px 0 0; white-space: pre-wrap; color: var(--text-2); font: 500 11.5px/1.5 var(--font-mono); }
+.inline-title-input {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 1px 4px;
+  min-width: 80px;
+  max-width: 220px;
+}
 .consent {
   border-top: 1px solid var(--border-soft);
   background: color-mix(in srgb, var(--warn) 6%, var(--surface));
@@ -686,6 +730,37 @@
 [data-doc-tab="source"] .doc-pane[data-doc-pane="source"],
 [data-doc-tab="file"] .doc-pane[data-doc-pane="file"] { display: block; }
 
+/* M6: Preview pane sizing so renderers (esp. iframe) fill available width
+   and have usable height instead of browser-default tiny iframe (~150px). */
+.doc-pane[data-doc-pane="preview"] {
+  height: 100%;
+  min-height: 320px;
+}
+.artifact-html-frame {
+  width: 100%;
+  min-height: 420px;
+  height: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: #fff;
+  display: block;
+}
+
+/* Consistent baseline for other artifact preview renderers (no prior rules existed). */
+.artifact-plain,
+.artifact-markdown,
+.artifact-code,
+.artifact-json {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  padding: 16px 18px;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.6;
+  overflow: auto;
+}
+
 /* M3: Source-tab editor + banner action rows */
 .source-edit { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 240px; }
 .source-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -705,7 +780,8 @@
 }
 .source-textarea:focus { outline: none; border-color: var(--border-strong); }
 .doc-banner .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-.doc-foot-export { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.doc-foot-export { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+.doc-foot-export .export-hint { font-size: 11px; color: var(--text-3); }
 .export-meta-toggle { display: inline-flex; align-items: center; gap: 6px; font: 500 11.5px/1 var(--font-ui); color: var(--text-2); cursor: pointer; }
 .export-meta-toggle input { accent-color: var(--accent); }
 .doc { font-size: 14px; line-height: 1.68; color: var(--text); max-width: 860px; }

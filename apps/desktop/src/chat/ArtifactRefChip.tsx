@@ -139,6 +139,7 @@ export function AssistantArtifactStrip({
   // While streaming, `candidates` is empty (see the memo above), so no promote
   // buttons render; chips for previously-promoted artifacts still show.
   const visibleCandidates = candidates.filter((c) => !promotedKeys.has(c.key));
+
   if (visibleCandidates.length === 0 && promoted.length === 0) return null;
 
   async function handlePromote(candidate: ArtifactCandidate) {

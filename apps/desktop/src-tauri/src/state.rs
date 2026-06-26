@@ -223,6 +223,10 @@ impl AppState {
             settings.artifact_remote_allowlist = validated;
         }
 
+        if let Some(value) = patch.artifact_styled_preview {
+            settings.artifact_styled_preview = value;
+        }
+
         // Phase 6: update channel + update-check toggle + onboarding flag.
         // `RolloutChannel` is an enum, so serde rejects invalid values at the IPC
         // deserialization boundary; here we only apply it. The consumer UI offers

@@ -9,34 +9,37 @@ import { renderMarkdown } from './markdown/safeMarkdown';
 
 export interface PlainTextRendererProps {
   text: string;
+  styledPreview?: boolean;
 }
 
 /// Plain text in a `<pre>` (whitespace preserved). React escapes text children
 /// by construction — no injected markup possible.
-export function PlainTextRenderer({ text }: PlainTextRendererProps) {
-  return <pre className="artifact-plain">{text}</pre>;
+export function PlainTextRenderer({ text, styledPreview = true }: PlainTextRendererProps) {
+  return <pre className={`artifact-plain${styledPreview ? ' styled' : ''}`}>{text}</pre>;
 }
 
 export interface MarkdownRendererProps {
   source: string;
+  styledPreview?: boolean;
 }
 
 /// Markdown → safe-subset React nodes (see `markdown/safeMarkdown.ts`).
-export function MarkdownRenderer({ source }: MarkdownRendererProps) {
-  return <div className="artifact-markdown">{renderMarkdown(source)}</div>;
+export function MarkdownRenderer({ source, styledPreview = true }: MarkdownRendererProps) {
+  return <div className={`artifact-markdown${styledPreview ? ' styled' : ''}`}>{renderMarkdown(source)}</div>;
 }
 
 export interface CodeRendererProps {
   code: string;
   language?: string;
+  styledPreview?: boolean;
 }
 
 /// Monospace code block with a line-number gutter + a language chip from the
 /// fence info string. No token highlighting this phase (deferred per the plan).
-export function CodeRenderer({ code, language }: CodeRendererProps) {
+export function CodeRenderer({ code, language, styledPreview = true }: CodeRendererProps) {
   const lines = code.length === 0 ? [''] : code.split('\n');
   return (
-    <div className="artifact-code">
+    <div className={`artifact-code${styledPreview ? ' styled' : ''}`}>
       <div className="artifact-code-head">
         {language ? <span className="lang-chip">{language}</span> : <span className="lang-chip muted">text</span>}
       </div>
@@ -57,12 +60,13 @@ export function CodeRenderer({ code, language }: CodeRendererProps) {
 
 export interface JsonRendererProps {
   data: unknown;
+  styledPreview?: boolean;
 }
 
 /// Recursive JSON tree with `<details>` summaries + type-tinted value spans.
 /// Falls back to a pretty-printed `<pre>` for primitives or malformed input.
-export function JsonRenderer({ data }: JsonRendererProps) {
-  return <div className="artifact-json">{renderJson(data, '$')}</div>;
+export function JsonRenderer({ data, styledPreview = true }: JsonRendererProps) {
+  return <div className={`artifact-json${styledPreview ? ' styled' : ''}`}>{renderJson(data, '$')}</div>;
 }
 
 function renderJson(value: unknown, key: string): ReactNode {

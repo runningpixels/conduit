@@ -9,7 +9,26 @@ default-run = "conduit-desktop"
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 directories = "6.0"
-keyring = "3.6"
+keyring = { version = "3.6", features = [
+  "windows-native",
+  "apple-native",
+  "linux-native-async-persistent",
+  "crypto-rust",
+] }
+# keyring v3 ships NO platform backend by default — without these features
+# `Entry::new` returns a no-backend error and secrets never reach the OS
+# keychain (Windows Credential Manager / macOS Keychain / Secret Service),
+# which silently broke Save-provider-key (provider credentials never persisted)
+# and the encryption master-key wrap (encryption fell back to `Off`). keyring
+# itself target-gates each backend crate (windows-sys / security-framework /
+# secret-service+linux-keyutils compile only on their matching OS), so enabling
+# all three here is safe — only the current target's backend links. Linux's
+# Secret Service path needs an explicit crypto backend; `crypto-rust` keeps it
+# pure-Rust (no system OpenSSL dependency, better for bundling). NOTE: do NOT
+# add these as `[target.'cfg(...)'.dependencies]` sections inside this table — a
+# target header mid-`[dependencies]` captures every following key (serde, tauri,
+# sqlx, …) into that target, which on Windows drops `tauri` from the graph and
+# breaks the build (missing `cargo:dev` / `DEP_TAURI_DEV`).
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tauri = { version = "2.0", features = [] }

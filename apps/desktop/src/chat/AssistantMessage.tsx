@@ -3,7 +3,7 @@ import type { AssistantStreamState } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './artifactCandidates';
 import { BotGlyph, CopyIcon, CheckIcon } from '../icons';
-import { ContentBlock } from './ContentBlock';
+import { ChatMessageContent } from './ChatMessageContent';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ToolCallBlock } from './ToolCallBlock';
@@ -79,17 +79,7 @@ export function AssistantMessage({
         {state.reasoning.map((block) => (
           <ReasoningBlock key={block.blockId} block={block} />
         ))}
-        {state.blocks.length === 0 && !state.error && state.streaming ? (
-          <div className="prose">
-            <p>
-              <span className="cursor" />
-            </p>
-          </div>
-        ) : (
-          state.blocks.map((block) => (
-            <ContentBlock key={block.blockId} block={block} streaming={state.streaming} />
-          ))
-        )}
+        <ChatMessageContent content={text} streaming={state.streaming} />
         {state.toolCalls.map((toolCall) => (
           <ToolCallBlock key={toolCall.toolCallId} toolCall={toolCall} />
         ))}

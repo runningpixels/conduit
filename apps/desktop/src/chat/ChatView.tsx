@@ -13,13 +13,18 @@ import {
 } from '../ipc/client';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactRefChip';
-import type { ArtifactCandidate } from './artifactCandidates';
+import { ChatMessageContent } from './ChatMessageContent';
+import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
+import {
+  CONDUIT_ARTIFACT_SYSTEM_APPENDIX,
+  artifactDeveloperPromptFor,
+  looksLikeArtifactCreationRequest,
+} from './artifactPrompt';
 import type { Artifact, FileState } from '../ipc/contracts';
 import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
-  markInterrupted,
   type AssistantStreamState,
 } from './streamState';
 import { AttachIcon, ModelIcon, SendIcon, StopIcon, LockIcon } from '../icons';
@@ -56,6 +61,8 @@ interface ChatViewProps {
   /// M2: promote a detected fenced-block candidate to an artifact (App owns the
   /// create + setContent + open flow).
   onPromoteArtifact: (messageId: string, candidate: ArtifactCandidate) => void;
+  /// Auto-promote the first candidate when a stream completes (App dedupes).
+  onAutoPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
   /// M2: open an existing artifact in the DocumentPanel (chip click).
   onOpenArtifact: (artifactId: string) => void;
 }
@@ -73,7 +80,30 @@ function messageToTurn(message: Message): ChatTurn {
   };
 }
 
-function buildProviderRequest(
+/// Extracts a human-readable message from a Tauri `invoke` rejection.
+/// Tauri commands returning `Result<T, String>` reject with the serialized
+/// error (a plain string, or an object), not an `Error` instance — so
+/// `error instanceof Error` is false and the generic "Stream failed" would
+/// otherwise swallow the real reason. Fall back through the common shapes.
+function describeInvokeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object') {
+    const value = error as { message?: unknown; error?: unknown };
+    if (typeof value.message === 'string') return value.message;
+    if (typeof value.error === 'string') return value.error;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Stream failed';
+    }
+  }
+  return 'Stream failed';
+}
+
+export const BASE_SYSTEM_PROMPT = 'You are a helpful assistant in the Conduit desktop shell.';
+
+export function buildProviderRequest(
   settings: AppSettings,
   prompt: string,
   history: ChatTurn[],
@@ -82,7 +112,11 @@ function buildProviderRequest(
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
-    .filter((turn) => turn.role === 'user' || turn.role === 'assistant')
+    .filter(
+      (turn) =>
+        (turn.role === 'user' || turn.role === 'assistant') &&
+        turn.content.trim() !== '',
+    )
     .map((turn, index) => ({
       id: `msg-${index}`,
       conversationId,
@@ -99,12 +133,14 @@ function buildProviderRequest(
       ],
       createdAt: now,
     }));
+  const devPrompt = artifactDeveloperPromptFor(prompt);
   return {
     requestId: crypto.randomUUID(),
     conversationId,
     modelId: settings.activeModel,
     messages,
-    systemPrompt: 'You are a helpful assistant in the Conduit desktop shell.',
+    systemPrompt: `${BASE_SYSTEM_PROMPT} ${CONDUIT_ARTIFACT_SYSTEM_APPENDIX}`,
+    developerPrompt: devPrompt,
     toolDefinitions,
   };
 }
@@ -120,7 +156,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
-export function ChatView({ settings, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onOpenArtifact }: ChatViewProps) {
+export function ChatView({ settings, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onAutoPromoteArtifact, onOpenArtifact }: ChatViewProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -130,7 +166,12 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
   const taRef = useRef<HTMLTextAreaElement>(null);
   const currentConversationIdRef = useRef<string | null>(conversationId);
   const activeRequestRef = useRef<{ requestId: string; conversationId: string } | null>(null);
-  const activeStreamRef = useRef<AssistantStreamState | null>(null);
+  // Synchronous source of truth for the active stream's state. The `activeStream`
+  // state mirrors it for render, but is updated by React async (and the ref that
+  // synced to it via `useEffect` only caught up after paint — so the finally
+  // block could read a state missing the last delta). Computing each event from
+  // `streamStateRef` keeps the ref and state in lockstep, synchronously.
+  const streamStateRef = useRef<AssistantStreamState | null>(null);
   const toolBindingsRef = useRef<Record<string, ConnectorToolBinding>>({});
   const providerToolByCallIdRef = useRef<Record<string, string>>({});
   const pendingRuntimeCallsRef = useRef<Set<string>>(new Set());
@@ -184,10 +225,6 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       cancelled = true;
     };
   }, [settings.activeProvider]);
-
-  useEffect(() => {
-    activeStreamRef.current = activeStream;
-  }, [activeStream]);
 
   // Autosize the composer textarea.
   useEffect(() => {
@@ -249,9 +286,10 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     if (event.kind === 'toolCallFinished') {
       pendingRuntimeCallsRef.current.delete(event.tool_call_id);
     }
-    setActiveStream((current) =>
-      applyConnectorRuntimeEvent(current ?? createAssistantStreamState(requestId), event),
-    );
+    const base = streamStateRef.current ?? createAssistantStreamState(requestId);
+    const next = applyConnectorRuntimeEvent(base, event);
+    streamStateRef.current = next;
+    setActiveStream(next);
   }
 
   function recordRuntimeFailure(
@@ -350,11 +388,28 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       requestId: request.requestId,
       conversationId,
     };
+    streamStateRef.current = initialStream;
     setActiveRequestId(request.requestId);
     setActiveStream(initialStream);
 
-    try {
-      await startChatStream(request, (event) => {
+    // `start_chat_stream` spawns the provider stream and returns a handle
+    // immediately — the invoke promise resolves *before* any provider events
+    // arrive (network RTT + time-to-first-token). Awaiting it as if it marked
+    // completion used to run the finally block at once: it nulled
+    // `activeRequestRef.current` and cleared the live bubble before the first
+    // `contentDelta` landed, so every event was dropped by the guard and the
+    // turn rendered as a blank "stream complete". Await a promise that only
+    // resolves on the terminal `messageComplete`/`error` event instead.
+    let terminalError: string | null = null;
+    const streamDone = new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
+      startChatStream(request, (event) => {
         const active = activeRequestRef.current;
         if (
           !active ||
@@ -363,10 +418,15 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
         ) {
           return;
         }
-        setActiveStream((current) => {
-          const base = current ?? createAssistantStreamState(request.requestId);
-          return applyProviderEvent(base, event);
-        });
+        // `streamStateRef` is the synchronous source of truth; `activeStream`
+        // mirrors it for render. Computing from the ref (not the state) avoids
+        // the render-lag where the finally block would read a state missing the
+        // last delta — the useEffect-synced ref only caught up after paint.
+        const base = streamStateRef.current ?? createAssistantStreamState(request.requestId);
+        const next = applyProviderEvent(base, event);
+        streamStateRef.current = next;
+        setActiveStream(next);
+
         if (event.kind === 'toolCallStart') {
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
         } else if (event.kind === 'toolCallComplete') {
@@ -376,30 +436,67 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
             event.toolCallId,
             event.arguments,
           );
+        } else if (event.kind === 'messageComplete' || event.kind === 'error') {
+          if (event.kind === 'error') terminalError = event.error.message;
+          finish();
         }
+      }).catch((error) => {
+        // Pre-stream rejection (bad model/key/connection) — the invoke rejects
+        // before any event. Surface it and resolve so the finally block
+        // finalizes the turn with the error rather than hanging on `streamDone`.
+        terminalError = describeInvokeError(error);
+        finish();
       });
+    });
+
+    try {
+      await streamDone;
       await waitForPendingRuntimeCalls(request.requestId);
-      onStatus('Stream complete');
+      onStatus(terminalError ?? 'Stream complete');
     } catch (error) {
-      onStatus(error instanceof Error ? error.message : 'Stream failed');
+      console.error('[startChatStream] rejected:', error);
+      onStatus(describeInvokeError(error));
     } finally {
-      const finalState = activeStreamRef.current;
+      const finalState = streamStateRef.current;
       if (currentConversationIdRef.current === conversationId && finalState) {
-        setTurns((current) => [
-          ...current,
-          {
-            id: `assistant-${request.requestId}`,
-            role: 'assistant',
-            content: finalState.blocks.map((block) => block.content).join(''),
-            streamState: { ...finalState, streaming: false },
-            interrupted: finalState.interrupted,
-            modelId: settings.activeModel,
-          },
-        ]);
+        const content = finalState.blocks.map((block) => block.content).join('');
+        const errorText = finalState.error ?? (terminalError ?? undefined);
+        // Don't commit an empty turn with no error. A pre-stream rejection or
+        // an empty provider response would otherwise append a blank assistant
+        // bubble whose `content: ""` then poisons the next request — normalize
+        // rejects empty text parts with "text and reasoning parts require
+        // content". Error turns are kept so the failure shows in the rail;
+        // `buildProviderRequest` skips empty-content turns when sending.
+        if (content.trim() !== '' || errorText) {
+          setTurns((current) => [
+            ...current,
+            {
+              id: `assistant-${request.requestId}`,
+              role: 'assistant',
+              content,
+              streamState: { ...finalState, streaming: false, error: errorText },
+              interrupted: finalState.interrupted,
+              modelId: settings.activeModel,
+            },
+          ]);
+          // Auto-promote the first detected candidate once per completed stream.
+          if (!errorText && content.trim() !== '' && onAutoPromoteArtifact) {
+            const candidates = detectArtifactCandidates(content);
+            const first = candidates[0];
+            if (first) {
+              void onAutoPromoteArtifact(`assistant-${request.requestId}`, first);
+            }
+          }
+          // Warn when the user asked for an artifact but none was produced.
+          if (looksLikeArtifactCreationRequest(trimmed) && detectArtifactCandidates(content).length === 0) {
+            onStatus('No artifact content detected — the assistant must include a fenced code block (e.g. ```html).');
+          }
+        }
       }
       if (activeRequestRef.current?.requestId === request.requestId) {
         activeRequestRef.current = null;
       }
+      streamStateRef.current = null;
       if (currentConversationIdRef.current === conversationId) {
         setActiveStream(null);
         setActiveRequestId(null);
@@ -416,21 +513,27 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       requestId: active.requestId,
       conversationId,
     });
-    setActiveStream((current) => (current ? markInterrupted(current) : current));
+    // Tear down the live stream state. The interrupted banner for the
+    // persisted turn comes from the reloaded messages (the backend's cancel
+    // path marks the assistant turn `interrupted`), so there's nothing to
+    // render live here — clear and reload. The in-flight `handleSend` await
+    // (`streamDone`) is left pending; its finally is a no-op once the request
+    // id no longer matches, and a new send overwrites `streamStateRef`.
+    activeRequestRef.current = null;
+    streamStateRef.current = null;
+    setActiveStream(null);
+    setActiveRequestId(null);
     try {
       const messages = await getConversationMessages(conversationId);
       setTurns(messages.map(messageToTurn));
     } catch {
       /* ignore */
     }
-    activeRequestRef.current = null;
-    setActiveStream(null);
-    setActiveRequestId(null);
     onStatus('Stream cancelled');
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
     }
@@ -481,9 +584,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
                 <div className="av-role bot" />
                 <div className="msg-body">
                   <div className="msg-from"><b>Assistant</b><span className="model">{settings.activeModel}</span></div>
-                  <div className="prose">
-                    <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
-                  </div>
+                  <ChatMessageContent content={turn.content} />
                   {turn.interrupted && <div className="interrupted-banner">Generation was interrupted.</div>}
                   {/* M2: promote candidates + reference chips for this turn. The
                       plain (DB-loaded) turn carries the real message id, so

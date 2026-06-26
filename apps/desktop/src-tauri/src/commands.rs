@@ -379,6 +379,18 @@ pub async fn list_artifacts(
         .map_err(|e| e.to_string())
 }
 
+/// Resolve the persisted assistant message id for a stream `request_id`. Used
+/// when promoting artifacts so `source_message_id` matches reloaded messages.
+#[tauri::command]
+pub async fn get_message_id_by_request(
+    state: State<'_, AppState>,
+    request_id: String,
+) -> Result<Option<String>, String> {
+    messages::get_message_id_by_request(&state.db, &request_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn get_artifact(
     state: State<'_, AppState>,
@@ -415,6 +427,22 @@ pub async fn set_artifact_content(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_artifact_title(
+    state: State<'_, AppState>,
+    artifact_id: String,
+    title: String,
+) -> Result<Artifact, String> {
+    artifacts::set_title(&state.db, &artifact_id, &title)
+        .await
+        .map_err(|e| e.to_string())?;
+    // Return the updated row so the frontend gets the fresh title immediately.
+    artifacts::get(&state.db, &state.encryption, &artifact_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "artifact not found after title update".to_string())
 }
 
 /// Read an artifact's payload bytes for in-app preview. Capped at 5 MiB; larger

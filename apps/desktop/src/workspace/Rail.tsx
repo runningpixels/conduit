@@ -23,7 +23,7 @@ interface RailButtonDef {
 const RAIL_BUTTONS: RailButtonDef[] = [
   { tab: 'chat', label: 'Chat session', icon: <ChatIcon /> },
   { tab: 'history', label: 'Chat history', icon: <HistoryIcon /> },
-  { tab: 'artifacts', label: 'Artifacts', icon: <FilesIcon />, badge: 3 },
+  { tab: 'artifacts', label: 'Artifacts', icon: <FilesIcon /> },
   { tab: 'connectors', label: 'Connectors', icon: <ConnectorsIcon />, badge: 1 },
   { tab: 'activity', label: 'Activity', icon: <ActivityCheckIcon />, badge: 1 },
   { tab: 'models', label: 'Models & keys', icon: <ModelIcon /> },
@@ -35,11 +35,13 @@ interface RailProps {
   expanded: boolean;
   onToggleExpand: () => void;
   onOpenSettings: () => void;
+  /// Live artifact count for the Files & artifacts tab badge.
+  artifactCount?: number;
 }
 
 /** v5 collapsible icon rail: rail-btn with active accent bar and optional badge,
  *  plus expand/collapse. The active state is driven by [data-tab] on <html>. */
-export function Rail({ active, onSelect, expanded, onToggleExpand, onOpenSettings }: RailProps) {
+export function Rail({ active, onSelect, expanded, onToggleExpand, onOpenSettings, artifactCount = 0 }: RailProps) {
   return (
     <nav className="rail" aria-label="Chat panel tabs">
       <div className="rail-top">
@@ -54,7 +56,14 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, onOpenSetting
           {expanded ? <ChevronLeft className="collapse-icon" /> : <ChevronRight className="expand-icon" />}
           <span className="rail-label">Collapse</span>
         </button>
-        {RAIL_BUTTONS.map((btn) => (
+        {RAIL_BUTTONS.map((btn) => {
+          const badge =
+            btn.tab === 'artifacts'
+              ? artifactCount > 0
+                ? artifactCount
+                : undefined
+              : btn.badge;
+          return (
           <button
             key={btn.tab}
             className="rail-btn"
@@ -65,11 +74,12 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, onOpenSetting
             aria-pressed={active === btn.tab}
             onClick={() => onSelect(btn.tab)}
           >
-            {btn.badge !== undefined && <span className="badge">{btn.badge}</span>}
+            {badge !== undefined && <span className="badge">{badge}</span>}
             {btn.icon}
             <span className="rail-label">{btn.label}</span>
           </button>
-        ))}
+          );
+        })}
       </div>
       <div className="rail-bottom">
         <button

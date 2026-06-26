@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
 import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
-import { CopyIcon, ExternalIcon, FilePlainIcon, CheckIcon, AlertIcon } from '../icons';
+import { CopyIcon, ExternalIcon, FilePlainIcon, CheckIcon, AlertIcon, ChevronRight } from '../icons';
 
 type DocTab = 'preview' | 'source' | 'file';
 
@@ -60,14 +60,16 @@ function formatSize(bytes?: number): string {
 interface DocumentPanelProps {
   /// The payload-bearing artifact open in the panel (null = empty state).
   artifact: Artifact | null;
-  /// The conversation's artifacts, for the open-file tab strip.
-  artifacts: Artifact[];
+  /// Editor-style open tabs (subset of conversation artifacts).
+  openArtifacts: Artifact[];
   /// Per-artifact file-state, for the tab-strip state dots.
   fileStateMap: Record<string, FileState>;
   /// File-state of the active artifact (resolved by the owner).
   activeFileState: FileState;
   /// User-managed remote allowlist for HTML/JS artifact previews.
   allowlist: string[];
+  /// Whether to apply app-like styling to rendered artifact previews (default true).
+  styledPreview?: boolean;
   docTab: DocTab;
   onSelectTab: (tab: DocTab) => void;
   onOpenArtifact: (id: string) => void;
@@ -79,6 +81,9 @@ interface DocumentPanelProps {
   /// the app's exports directory. The destination path is surfaced by the owner.
   onExport: (artifactId: string, includeMetadata: boolean) => Promise<void>;
   onCloseTab?: (id: string) => void;
+  onCollapsePanel?: () => void;
+  /// Rename the active artifact via click-to-edit on its tab.
+  onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
 }
 
 /** v5 right-hand document panel: doc-head, artifact-tabs (editor-style open-file
@@ -90,17 +95,23 @@ interface DocumentPanelProps {
  *  of ADR-002). */
 export function DocumentPanel({
   artifact,
-  artifacts,
+  openArtifacts,
   fileStateMap,
   activeFileState,
   allowlist,
+  styledPreview = true,
   docTab,
   onSelectTab,
   onOpenArtifact,
   onSaveContent,
   onExport,
+  onCloseTab,
+  onCollapsePanel,
+  onRenameArtifact,
 }: DocumentPanelProps) {
   const [copied, setCopied] = useState(false);
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [editingTabValue, setEditingTabValue] = useState('');
   // Hooks must run before the empty-state early return, so derive the raw text
   // unconditionally (`rawInlineText` tolerates a null artifact).
   const raw = useMemo(() => (artifact ? rawInlineText(artifact) : ''), [artifact]);
@@ -291,11 +302,23 @@ export function DocumentPanel({
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
           </button>
+          {onCollapsePanel && (
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Hide artifact panel"
+              title="Hide artifact panel"
+              onClick={onCollapsePanel}
+            >
+              <ChevronRight />
+            </button>
+          )}
         </div>
       </div>
 
+      {openArtifacts.length > 0 && (
       <div className="artifact-tabs" aria-label="Open artifacts">
-        {artifacts.map((a) => {
+        {openArtifacts.map((a) => {
           const state = fileStateMap[a.id] ?? 'noFileContent';
           return (
             <button
@@ -307,16 +330,76 @@ export function DocumentPanel({
               onClick={() => onOpenArtifact(a.id)}
             >
               <FilePlainIcon />
-              <span className="tab-name">{a.title ?? 'Untitled artifact'}</span>
+              {editingTabId === a.id && a.id === artifact?.id ? (
+                <input
+                  className="inline-title-input tab-name"
+                  value={editingTabValue}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setEditingTabValue(e.target.value)}
+                  onBlur={() => {
+                    const v = editingTabValue.trim();
+                    if (v && onRenameArtifact && artifact) void onRenameArtifact(artifact.id, v);
+                    setEditingTabId(null);
+                    setEditingTabValue('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const v = editingTabValue.trim();
+                      if (v && onRenameArtifact && artifact) void onRenameArtifact(artifact.id, v);
+                      setEditingTabId(null);
+                      setEditingTabValue('');
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setEditingTabId(null);
+                      setEditingTabValue('');
+                    }
+                  }}
+                />
+              ) : (
+                <span
+                  className="tab-name"
+                  onClick={(e) => {
+                    if (a.id === artifact?.id) {
+                      e.stopPropagation();
+                      const current = a.title ?? '';
+                      setEditingTabId(a.id);
+                      setEditingTabValue(current);
+                    }
+                  }}
+                  style={a.id === artifact?.id ? { cursor: 'text' } : undefined}
+                >
+                  {a.title ?? 'Untitled artifact'}
+                </span>
+              )}
               <span className={`tab-state${tabStateClass(state)}`} />
-              <span className="tab-close" aria-hidden="true">&times;</span>
+              {onCloseTab && (
+                <span
+                  className="tab-close"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Close ${a.title ?? 'artifact'}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseTab(a.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onCloseTab(a.id);
+                    }
+                  }}
+                >
+                  &times;
+                </span>
+              )}
             </button>
           );
         })}
-        <button className="artifact-add-tab" type="button" aria-label="Open another artifact" title="Open another artifact">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-        </button>
       </div>
+      )}
 
       <div className="doc-tabs">
         <button className="doc-tab" data-doc-tab="preview" type="button" onClick={() => onSelectTab('preview')}>
@@ -375,7 +458,7 @@ export function DocumentPanel({
               );
             }
             const { Preview } = selectRenderer(effectiveArtifact);
-            const props = buildPreviewProps(effectiveArtifact, allowlist);
+            const props = buildPreviewProps(effectiveArtifact, allowlist, styledPreview);
             if (!Preview || !props) {
               return <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>No content yet.</p>;
             }
@@ -440,14 +523,15 @@ export function DocumentPanel({
       </div>
 
       <div className="doc-foot">
-        {activeFileState === 'ok' && <span className="foot-ok sync"><CheckIcon />Saved on device — not synced</span>}
-        {activeFileState === 'noFileContent' && <span className="foot-ok sync"><CheckIcon />Inline — saved on device</span>}
+        {activeFileState === 'ok' && <span className="foot-ok sync" title="Payload matches the indexed on-disk file"><CheckIcon />Linked to local file</span>}
+        {activeFileState === 'noFileContent' && <span className="foot-ok sync" title="Stored in app data — use Export for a user-visible file"><CheckIcon />Saved in Conduit</span>}
         {activeFileState === 'modified' && <span className="foot-warn sync"><AlertIcon />Modified outside app</span>}
         {activeFileState === 'missing' && <span className="foot-bad sync"><AlertIcon />File missing</span>}
         {/* M5: Export the current payload to the app's exports directory, with an
             optional curated `.conduit.json` metadata sidecar. Cloud Publish is a
             non-goal. The destination path is surfaced via the App status line. */}
         <div className="doc-foot-export">
+          <span className="export-hint">Export writes a copy to your exports folder</span>
           <label className="export-meta-toggle">
             <input
               type="checkbox"

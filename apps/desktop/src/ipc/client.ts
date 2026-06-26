@@ -258,6 +258,11 @@ export async function listArtifacts(conversationId: string): Promise<Artifact[]>
   return invoke<Artifact[]>('list_artifacts', { conversationId });
 }
 
+/// Resolve the persisted message row id for a chat stream `requestId`.
+export async function getMessageIdByRequest(requestId: string): Promise<string | null> {
+  return invoke<string | null>('get_message_id_by_request', { requestId });
+}
+
 /// Fetch a single payload-bearing artifact (inline content decrypted).
 export async function getArtifact(artifactId: string): Promise<Artifact | null> {
   return invoke<Artifact | null>('get_artifact', { artifactId });
@@ -272,6 +277,10 @@ export async function setArtifactContent(
   mimeType?: string,
 ): Promise<Artifact> {
   return invoke<Artifact>('set_artifact_content', { artifactId, mimeType, content });
+}
+
+export async function setArtifactTitle(artifactId: string, title: string): Promise<Artifact> {
+  return invoke<Artifact>('set_artifact_title', { artifactId, title });
 }
 
 /// Read the artifact's content as raw bytes (inline content as UTF-8; File-content

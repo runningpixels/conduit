@@ -16,11 +16,16 @@ export function Onboarding({
   settings,
   onSettingsChange,
   onStatus,
+  status,
   onComplete,
 }: {
   settings: AppSettings;
   onSettingsChange: (s: AppSettings) => void;
   onStatus: (message: string) => void;
+  // Current status text (owned by App). Rendered here so success/error messages
+  // from every onboarding action — provider save, load models, test connection,
+  // get-started gate — are actually visible instead of swallowed.
+  status: string;
   onComplete: () => void;
 }) {
   const [finishing, setFinishing] = useState(false);
@@ -98,6 +103,17 @@ export function Onboarding({
             {finishing ? 'Starting…' : 'Get started'}
           </button>
         </div>
+
+        {status && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="status-item"
+            style={{ marginTop: 16, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', fontSize: 13, lineHeight: 1.5 }}
+          >
+            {status}
+          </div>
+        )}
       </div>
     </div>
   );

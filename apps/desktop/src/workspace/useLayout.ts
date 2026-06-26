@@ -8,8 +8,10 @@ import { useCallback, useEffect, useState } from 'react';
 
 const LAYOUT_KEY = 'conduit:v5-layout';
 const RAIL_KEY = 'conduit:v5-rail';
+const DOC_PANEL_KEY = 'conduit:v5-doc-panel';
 
 type RailMode = 'collapsed' | 'expanded';
+type DocPanelMode = 'collapsed' | 'open';
 
 function readStoredChatWidth(): number | null {
   try {
@@ -111,4 +113,47 @@ export function useRailExpand() {
 
   const expanded = rail === 'expanded';
   return { expanded, toggle, ariaExpanded: expanded };
+}
+
+function readStoredDocPanel(): DocPanelMode {
+  try {
+    const v = localStorage.getItem(DOC_PANEL_KEY);
+    return v === 'collapsed' ? 'collapsed' : 'open';
+  } catch {
+    return 'open';
+  }
+}
+
+function writeStoredDocPanel(mode: DocPanelMode) {
+  try {
+    localStorage.setItem(DOC_PANEL_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Document panel column collapse: toggles [data-doc-panel] on <html>, persisted. */
+export function useDocPanelCollapse() {
+  const [mode, setMode] = useState<DocPanelMode>(readStoredDocPanel);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-doc-panel', mode);
+    writeStoredDocPanel(mode);
+  }, [mode]);
+
+  const collapse = useCallback(() => setMode('collapsed'), []);
+  const expand = useCallback(() => setMode('open'), []);
+  const collapsed = mode === 'collapsed';
+
+  return { collapsed, collapse, expand };
+}
+
+/** @internal test seam */
+export function __readStoredDocPanelForTest(): DocPanelMode {
+  return readStoredDocPanel();
+}
+
+/** @internal test seam */
+export function __writeStoredDocPanelForTest(mode: DocPanelMode) {
+  writeStoredDocPanel(mode);
 }

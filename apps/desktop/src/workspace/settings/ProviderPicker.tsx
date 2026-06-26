@@ -26,6 +26,10 @@ export function ProviderPicker({
   const [providerSecret, setProviderSecret] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [credentialSummary, setCredentialSummary] = useState<CredentialSummary | null>(null);
+  // True while any of the three action buttons has a request in flight. Disables
+  // the row so clicks aren't lost and gives affordance that work is happening —
+  // the status line (rendered by the caller) carries the success/error text.
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -45,24 +49,45 @@ export function ProviderPicker({
   const providerBaseUrl = settings.providerEndpoints?.[settings.activeProvider]?.baseUrl ?? '';
 
   async function handleSaveCredential() {
-    const summary = await saveProviderCredential({
-      providerId: settings.activeProvider,
-      secret: providerSecret,
-    });
-    setCredentialSummary(summary);
-    setProviderSecret('');
-    onStatus('Provider credential stored in keychain');
+    setBusy(true);
+    try {
+      const summary = await saveProviderCredential({
+        providerId: settings.activeProvider,
+        secret: providerSecret,
+      });
+      setCredentialSummary(summary);
+      setProviderSecret('');
+      onStatus('Provider credential stored in keychain');
+    } catch (e) {
+      onStatus(`Save provider key failed: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleLoadModels() {
-    const listed = await listProviderModels(settings.activeProvider);
-    setModels(listed);
-    onStatus(`Loaded ${listed.length} models`);
+    setBusy(true);
+    try {
+      const listed = await listProviderModels(settings.activeProvider);
+      setModels(listed);
+      onStatus(`Loaded ${listed.length} models`);
+    } catch (e) {
+      onStatus(`Load models failed: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleValidateProvider() {
-    await validateProviderCredentials(settings.activeProvider);
-    onStatus('Provider credentials validated');
+    setBusy(true);
+    try {
+      await validateProviderCredentials(settings.activeProvider);
+      onStatus('Provider credentials validated');
+    } catch (e) {
+      onStatus(`Test connection failed: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function updateProviderBaseUrl(baseUrl: string) {
@@ -137,9 +162,9 @@ export function ProviderPicker({
         </label>
       )}
       <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn primary" type="button" onClick={() => void handleSaveCredential()}>Save provider key</button>
-        <button className="btn" type="button" onClick={() => void handleLoadModels()}>Load models</button>
-        <button className="btn" type="button" onClick={() => void handleValidateProvider()}>Test connection</button>
+        <button className="btn primary" type="button" disabled={busy} onClick={() => void handleSaveCredential()}>Save provider key</button>
+        <button className="btn" type="button" disabled={busy} onClick={() => void handleLoadModels()}>Load models</button>
+        <button className="btn" type="button" disabled={busy} onClick={() => void handleValidateProvider()}>Test connection</button>
       </div>
       <div className="status-item" style={{ display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
         <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Credential reference</span>

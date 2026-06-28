@@ -2,6 +2,11 @@ import { useState } from 'react';
 import type { ToolCallState } from './streamState';
 import { approveConnectorToolCall, denyConnectorToolCall } from '../ipc/client';
 import { splitToolDisplayName } from './connectorTools';
+import {
+  DOCUMENT_TOOL_NAMES,
+  redactDocumentToolArguments,
+  summarizeDocumentToolCall,
+} from './agentTools';
 import { GithubIcon, SlackIcon } from '../icons';
 
 interface ToolCallBlockProps {
@@ -38,6 +43,8 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
 
   const toolIcon = toolCall.name.toLowerCase().startsWith('slack') ? <SlackIcon /> : <GithubIcon />;
   const displayName = splitToolDisplayName(toolCall.name);
+  const isDocumentTool = DOCUMENT_TOOL_NAMES.has(toolCall.name);
+  const docSummary = isDocumentTool ? summarizeDocumentToolCall(toolCall) : undefined;
 
   async function resolve(decision: 'approved' | 'denied') {
     setResolving(true);
@@ -60,14 +67,41 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
       <div className="tool-head">
         <span className="tico">{toolIcon}</span>
         <span className="tname">
-          {displayName.connector} - <span>{displayName.tool || toolCall.toolId}</span>
+          {isDocumentTool && docSummary ? (
+            <>
+              Documents · <span>{docSummary.action} {docSummary.kind}</span>
+            </>
+          ) : (
+            <>
+              {displayName.connector} - <span>{displayName.tool || toolCall.toolId}</span>
+            </>
+          )}
         </span>
         <span className={`pill ${statusTone}`}>{statusLabel}</span>
       </div>
       <div className="tool-detail">
-        <div className="args">
-          {toolCall.complete ? JSON.stringify(toolCall.arguments ?? {}, null, 2) : toolCall.argumentsText || '{}'}
-        </div>
+        {isDocumentTool && docSummary ? (
+          <details className="artifact-fence-block">
+            <summary>
+              {docSummary.kind} document · {docSummary.filename || docSummary.title || 'untitled'} · {docSummary.lineCount} lines
+            </summary>
+            <div className="doc-meta">
+              {docSummary.title && <div>Title: {docSummary.title}</div>}
+              {docSummary.filename && <div>File: {docSummary.filename}</div>}
+              {toolCall.arguments && typeof toolCall.arguments.artifact_id === 'string' && toolCall.arguments.artifact_id.trim() !== '' && (
+                <div>Artifact: {toolCall.arguments.artifact_id}</div>
+              )}
+            </div>
+            <details className="doc-full-args">
+              <summary>Show full arguments</summary>
+              <pre>{JSON.stringify(redactDocumentToolArguments(toolCall.arguments ?? {}, toolCall.name), null, 2)}</pre>
+            </details>
+          </details>
+        ) : (
+          <div className="args">
+            {toolCall.complete ? JSON.stringify(toolCall.arguments ?? {}, null, 2) : toolCall.argumentsText || '{}'}
+          </div>
+        )}
       </div>
       {showConsentGate && (
         <div className="consent">
@@ -117,7 +151,13 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
       )}
       {toolCall.complete && consent !== 'denied' && (
         <div className="tool-result">
-          <b>Tool call complete.</b> {toolCall.error ? toolCall.error : 'Result stored locally.'}
+          {isDocumentTool ? (
+            <b>Document updated.</b>
+          ) : (
+            <>
+              <b>Tool call complete.</b> {toolCall.error ? toolCall.error : 'Result stored locally.'}
+            </>
+          )}
           {/* M2 seam — "Promote to artifact" on a succeeded tool call: deferred.
               The tool-result content is not present in `ToolCallState` (the
               runtime's `toolCallFinished` carries only `size_bytes`/`mime_hints`,

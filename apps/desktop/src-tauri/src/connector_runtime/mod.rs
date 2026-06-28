@@ -14,6 +14,7 @@
 //! connector child outlives `shutdown_all` (app quit / disable / sign-out /
 //! revocation).
 
+pub mod catalog;
 pub mod consent;
 pub mod discovery;
 pub mod execution;

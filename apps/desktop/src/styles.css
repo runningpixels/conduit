@@ -358,6 +358,10 @@
 .artifact-fence-block { margin: 10px 0 0; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--surface-2); padding: 8px 11px; }
 .artifact-fence-block summary { cursor: pointer; font: 600 11px/1 var(--font-mono); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
 .artifact-fence-block pre { margin: 8px 0 0; white-space: pre-wrap; color: var(--text-2); font: 500 11.5px/1.5 var(--font-mono); }
+.doc-meta { font: 500 11.5px/1.5 var(--font-mono); color: var(--text-2); margin: 8px 0; }
+.doc-full-args { margin-top: 8px; }
+.doc-full-args summary { cursor: pointer; font: 600 11px/1 var(--font-mono); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.doc-full-args pre { margin: 6px 0 0; white-space: pre-wrap; color: var(--text-2); font: 500 11px/1.5 var(--font-mono); background: var(--bg); padding: 6px 8px; border-radius: var(--r-sm); border: 1px solid var(--border-soft); }
 .inline-title-input {
   font: inherit;
   color: inherit;

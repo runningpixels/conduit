@@ -3,6 +3,7 @@ import type { AppSettings, Message, MessageRole, ProviderRequest } from '@condui
 import {
   cancelChatStream,
   discoverConnector,
+  getArtifact,
   getConnectorRuntimeStates,
   getConversationMessages,
   invokeConnectorTool,
@@ -20,6 +21,11 @@ import {
   artifactDeveloperPromptFor,
   looksLikeArtifactCreationRequest,
 } from './artifactPrompt';
+import {
+  buildArtifactEditDeveloperPrompt,
+  resolveFollowUpArtifactContext,
+  type FollowUpArtifactContext,
+} from './artifactFollowUpContext';
 import type { Artifact, FileState } from '../ipc/contracts';
 import {
   applyConnectorRuntimeEvent,
@@ -37,6 +43,14 @@ import {
   makeInvokeConnectorToolRequest,
   type ConnectorToolBinding,
 } from './connectorTools';
+import {
+  hadSuccessfulDocumentToolCalls,
+  selectBuiltinDocumentTools,
+} from './agentTools';
+import {
+  classifyDocumentTurnIntent,
+  informationalDeveloperPromptFor,
+} from './documentTurnIntent';
 
 interface ChatTurn {
   id: string;
@@ -65,6 +79,8 @@ interface ChatViewProps {
   onAutoPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
   /// M2: open an existing artifact in the DocumentPanel (chip click).
   onOpenArtifact: (artifactId: string) => void;
+  /// After a completed assistant turn — refresh/open artifacts created via agent tools.
+  onChatTurnComplete?: (streamState: AssistantStreamState) => void;
 }
 
 function messageToTurn(message: Message): ChatTurn {
@@ -109,6 +125,7 @@ export function buildProviderRequest(
   history: ChatTurn[],
   conversationId: string,
   toolDefinitions: ToolDefinition[],
+  followUpArtifact?: FollowUpArtifactContext,
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
@@ -133,14 +150,20 @@ export function buildProviderRequest(
       ],
       createdAt: now,
     }));
-  const devPrompt = artifactDeveloperPromptFor(prompt);
+  const creationDevPrompt = artifactDeveloperPromptFor(prompt);
+  const infoDevPrompt = !creationDevPrompt ? informationalDeveloperPromptFor(prompt) : undefined;
+  const editDevPrompt =
+    !creationDevPrompt && !infoDevPrompt && followUpArtifact
+      ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
+      : undefined;
+  const developerPrompt = [creationDevPrompt, infoDevPrompt, editDevPrompt].filter(Boolean).join('\n\n') || undefined;
   return {
     requestId: crypto.randomUUID(),
     conversationId,
     modelId: settings.activeModel,
     messages,
     systemPrompt: `${BASE_SYSTEM_PROMPT} ${CONDUIT_ARTIFACT_SYSTEM_APPENDIX}`,
-    developerPrompt: devPrompt,
+    developerPrompt,
     toolDefinitions,
   };
 }
@@ -156,7 +179,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
-export function ChatView({ settings, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onAutoPromoteArtifact, onOpenArtifact }: ChatViewProps) {
+export function ChatView({ settings, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onAutoPromoteArtifact, onOpenArtifact, onChatTurnComplete }: ChatViewProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -240,7 +263,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, activeStream]);
 
-  async function loadToolDefinitions(): Promise<ToolDefinition[]> {
+  async function loadConnectorToolDefinitions(): Promise<ToolDefinition[]> {
     try {
       const snapshots = await getConnectorRuntimeStates();
       const callable = snapshots.filter(isConnectorCallable);
@@ -268,6 +291,13 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       toolBindingsRef.current = {};
       return [];
     }
+  }
+
+  async function loadToolDefinitions(prompt: string): Promise<ToolDefinition[]> {
+    const intent = classifyDocumentTurnIntent(prompt);
+    const connectorTools = await loadConnectorToolDefinitions();
+    const builtinTools = selectBuiltinDocumentTools(intent);
+    return [...builtinTools, ...connectorTools];
   }
 
   function applyRuntimeEventToActiveStream(
@@ -356,11 +386,14 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
 
   async function waitForPendingRuntimeCalls(requestId: string) {
     const deadline = Date.now() + 30000;
-    while (
-      activeRequestRef.current?.requestId === requestId &&
-      pendingRuntimeCallsRef.current.size > 0 &&
-      Date.now() < deadline
-    ) {
+    while (activeRequestRef.current?.requestId === requestId && Date.now() < deadline) {
+      const hasPending = pendingRuntimeCallsRef.current.size > 0;
+      const hasUnresolvedComplete = (() => {
+        const state = streamStateRef.current;
+        if (!state) return false;
+        return state.toolCalls.some((tc) => tc.complete && !tc.status);
+      })();
+      if (!hasPending && !hasUnresolvedComplete) break;
       await new Promise((resolve) => window.setTimeout(resolve, 50));
     }
   }
@@ -379,8 +412,22 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     setPrompt('');
     onStatus('Loading connector tools');
 
-    const toolDefinitions = await loadToolDefinitions();
-    const request = buildProviderRequest(settings, trimmed, history, conversationId, toolDefinitions);
+    const toolDefinitions = await loadToolDefinitions(trimmed);
+    const priorHistory = history.slice(0, -1);
+    const followUpArtifact = await resolveFollowUpArtifactContext(
+      priorHistory,
+      trimmed,
+      artifacts,
+      getArtifact,
+    );
+    const request = buildProviderRequest(
+      settings,
+      trimmed,
+      history,
+      conversationId,
+      toolDefinitions,
+      followUpArtifact,
+    );
     const initialStream = createAssistantStreamState(request.requestId);
     providerToolByCallIdRef.current = {};
     pendingRuntimeCallsRef.current = new Set();
@@ -409,7 +456,9 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
           resolve();
         }
       };
-      startChatStream(request, (event) => {
+      startChatStream(
+        request,
+        (event) => {
         const active = activeRequestRef.current;
         if (
           !active ||
@@ -433,11 +482,16 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
           // Phase A: tool execution is now owned by the Rust `AgentLoop` inside
           // `start_chat_stream`. The UI no longer hands off tool calls via IPC.
           // The `toolCallComplete` event is still rendered for the tool card.
+          // Track this so `waitForPendingRuntimeCalls` blocks until the matching
+          // `toolCallFinished` (with `status`) arrives from the runtime.
+          pendingRuntimeCallsRef.current.add(event.toolCallId);
         } else if (event.kind === 'messageComplete' || event.kind === 'error') {
           if (event.kind === 'error') terminalError = event.error.message;
           finish();
         }
-      }).catch((error) => {
+      },
+      (event) => applyRuntimeEventToActiveStream(request.requestId, conversationId, event),
+      ).catch((error) => {
         // Pre-stream rejection (bad model/key/connection) — the invoke rejects
         // before any event. Surface it and resolve so the finally block
         // finalizes the turn with the error rather than hanging on `streamDone`.
@@ -458,13 +512,15 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       if (currentConversationIdRef.current === conversationId && finalState) {
         const content = finalState.blocks.map((block) => block.content).join('');
         const errorText = finalState.error ?? (terminalError ?? undefined);
+        const hasToolCalls = finalState.toolCalls.length > 0;
         // Don't commit an empty turn with no error. A pre-stream rejection or
         // an empty provider response would otherwise append a blank assistant
         // bubble whose `content: ""` then poisons the next request — normalize
         // rejects empty text parts with "text and reasoning parts require
         // content". Error turns are kept so the failure shows in the rail;
         // `buildProviderRequest` skips empty-content turns when sending.
-        if (content.trim() !== '' || errorText) {
+        // Tool-only turns (no assistant text) are kept so tool cards persist.
+        if (content.trim() !== '' || errorText || hasToolCalls) {
           setTurns((current) => [
             ...current,
             {
@@ -484,8 +540,16 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
               void onAutoPromoteArtifact(`assistant-${request.requestId}`, first);
             }
           }
+          if (!errorText && onChatTurnComplete) {
+            onChatTurnComplete({ ...finalState, streaming: false, error: errorText });
+          }
           // Warn when the user asked for an artifact but none was produced.
-          if (looksLikeArtifactCreationRequest(trimmed) && detectArtifactCandidates(content).length === 0) {
+          const docToolsSucceeded = hadSuccessfulDocumentToolCalls(finalState);
+          if (
+            looksLikeArtifactCreationRequest(trimmed) &&
+            detectArtifactCandidates(content).length === 0 &&
+            !docToolsSucceeded
+          ) {
             onStatus('No artifact content detected — the assistant must include a fenced code block (e.g. ```html).');
           }
         }

@@ -1,8 +1,8 @@
 -- Phase 3 initial schema.
 --
--- All 20 spec-mandated tables (docs/plans/03-local-data.md) plus the
+-- All 20 spec-mandated tables (docs/plans/archive/03-local-data.md) plus the
 -- append-only `provider_event_log` required by the persistence invariant
--- (docs/plans/phase3-persistence.md) — 21 tables total.
+-- (docs/plans/archive/phase3-persistence.md) — 21 tables total.
 --
 -- Conventions:
 --   * Timestamps are TEXT ISO-8601 Zulu (time::now_iso8601); they sort

@@ -126,7 +126,7 @@ The provider-agnostic core. Everything LLM-shaped flows through here.
 
 ### 4. `mcp-runtime`
 
-Currently a stub (`lib.rs` returns `crate_name()`). The plan (`docs/plans/04-mcp-runtime.md`)
+Currently a stub (`lib.rs` returns `crate_name()`). The plan (`docs/plans/archive/04-mcp-runtime.md`)
 describes the intended MCP tool runtime; not yet implemented.
 
 ## How a chat turn flows

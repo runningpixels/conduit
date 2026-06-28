@@ -66,10 +66,13 @@ export async function listProviderModels(providerId: string): Promise<ModelInfo[
 export async function startChatStream(
   request: ProviderRequest,
   onEvent: (event: ProviderEvent) => void,
+  onRuntimeEvent?: (event: ConnectorRuntimeEvent) => void,
 ): Promise<StreamHandle> {
   const channel = new Channel<ProviderEvent>();
   channel.onmessage = onEvent;
-  return invoke<StreamHandle>('start_chat_stream', { request, channel });
+  const runtimeChannel = new Channel<ConnectorRuntimeEvent>();
+  if (onRuntimeEvent) runtimeChannel.onmessage = onRuntimeEvent;
+  return invoke<StreamHandle>('start_chat_stream', { request, channel, runtimeChannel });
 }
 
 export async function cancelChatStream(request: CancelChatStreamRequest): Promise<void> {

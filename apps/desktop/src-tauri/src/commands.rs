@@ -200,12 +200,27 @@ pub async fn list_provider_models(
 pub async fn start_chat_stream(
     state: State<'_, AppState>,
     stream_manager: State<'_, StreamManager>,
+    runtime: State<'_, ConnectorRuntimeManager>,
     request: ProviderRequest,
     channel: Channel<ProviderEvent>,
+    runtime_channel: Channel<ConnectorRuntimeEvent>,
 ) -> Result<StreamHandle, String> {
-    stream_manager
-        .start_chat_stream(state.inner(), request, channel)
-        .await
+    if request.tool_definitions.is_empty() {
+        let _ = runtime_channel;
+        stream_manager
+            .start_chat_stream(state.inner(), request, channel)
+            .await
+    } else {
+        stream_manager
+            .run_agent_turn(
+                state.inner(),
+                runtime.inner(),
+                request,
+                channel,
+                runtime_channel,
+            )
+            .await
+    }
 }
 
 #[tauri::command]

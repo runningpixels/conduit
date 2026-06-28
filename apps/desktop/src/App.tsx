@@ -18,6 +18,11 @@ import {
   updateSettings,
 } from './ipc/client';
 import { ChatView } from './chat/ChatView';
+import {
+  hadSuccessfulDocumentToolCalls,
+  resolveDocumentArtifactId,
+} from './chat/agentTools';
+import type { AssistantStreamState } from './chat/streamState';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
 import { Titlebar } from './workspace/Titlebar';
 import { Rail, type WorkspaceTab } from './workspace/Rail';
@@ -164,29 +169,28 @@ export default function App() {
     [clearWorkspaceArtifactSelection],
   );
 
-  const refreshArtifacts = useCallback(
-    async (conversationId: string) => {
-      try {
-        const listed = await listArtifacts(conversationId);
-        setArtifacts(listed);
-        const states = await Promise.all(
-          listed.map(async (a) => {
-            try {
-              return [a.id, await checkArtifactFileState(a.id)] as const;
-            } catch {
-              return [a.id, 'missing' as FileState] as const;
-            }
-          }),
-        );
-        setFileStateMap(Object.fromEntries(states));
-      } catch (error) {
-        setArtifacts([]);
-        setFileStateMap({});
-        setStatus(error instanceof Error ? error.message : 'Failed to load artifacts');
-      }
-    },
-    [],
-  );
+  const refreshArtifacts = useCallback(async (conversationId: string): Promise<Artifact[]> => {
+    try {
+      const listed = await listArtifacts(conversationId);
+      setArtifacts(listed);
+      const states = await Promise.all(
+        listed.map(async (a) => {
+          try {
+            return [a.id, await checkArtifactFileState(a.id)] as const;
+          } catch {
+            return [a.id, 'missing' as FileState] as const;
+          }
+        }),
+      );
+      setFileStateMap(Object.fromEntries(states));
+      return listed;
+    } catch (error) {
+      setArtifacts([]);
+      setFileStateMap({});
+      setStatus(error instanceof Error ? error.message : 'Failed to load artifacts');
+      return [];
+    }
+  }, []);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -197,6 +201,8 @@ export default function App() {
     setOpenArtifactIds((current) => (current.includes(artifactId) ? current : [...current, artifactId]));
   }, []);
 
+  // Artifact auto-open updates the right DocumentPanel only.
+  // The left rail tab reflects explicit user navigation and is never forced.
   const handleOpenArtifact = useCallback(
     async (artifactId: string) => {
       try {
@@ -213,6 +219,20 @@ export default function App() {
       }
     },
     [addOpenArtifactId, expandDocPanel],
+  );
+
+  const handleChatTurnComplete = useCallback(
+    async (streamState: AssistantStreamState) => {
+      if (!activeConversationId || !hadSuccessfulDocumentToolCalls(streamState)) return;
+
+      const listed = await refreshArtifacts(activeConversationId);
+      const artifactId = resolveDocumentArtifactId(streamState, listed);
+      if (!artifactId) return;
+
+      await handleOpenArtifact(artifactId);
+      setStatus('Document updated');
+    },
+    [activeConversationId, refreshArtifacts, handleOpenArtifact],
   );
 
   const handleCloseArtifactTab = useCallback(
@@ -292,7 +312,6 @@ export default function App() {
         );
         if (existing) {
           await handleOpenArtifact(existing.id);
-          setActiveTab('artifacts');
           setStatus('Opened existing artifact');
           return;
         }
@@ -306,7 +325,6 @@ export default function App() {
         await setArtifactContent(created.id, { kind: 'text', text: candidate.body }, candidate.mimeType);
         await refreshArtifacts(activeConversationId);
         await handleOpenArtifact(created.id);
-        setActiveTab('artifacts');
         setStatus('Promoted to artifact');
       } catch (error) {
         setStatus(error instanceof Error ? error.message : 'Failed to promote artifact');
@@ -442,6 +460,7 @@ export default function App() {
               onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
               onAutoPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
               onOpenArtifact={(id) => void handleOpenArtifact(id)}
+              onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
             />
             <RailPanes
               active={activeTab}

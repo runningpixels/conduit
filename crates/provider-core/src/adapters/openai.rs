@@ -5,7 +5,8 @@ use crate::adapters::{
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
-    GenerationControls, ProviderError, ProviderEvent, ProviderRequest, ToolChoice,
+    GenerationControls, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
+    ProviderRequest, ToolChoice,
 };
 use crate::transport::{bearer_header, get_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -249,14 +250,72 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     }
 
     for message in &request.messages {
-        // Phase A extension point: full tool call / tool result serialization
-        // will replace `message_text` with a dispatcher that emits the correct
-        // OpenAI `function_call` / `tool` message shapes when the message
-        // contains `ToolCall*` or `ToolResult` parts.
-        messages.push(json!({
-          "role": role_to_string(&message.role),
-          "content": message_text(message),
-        }));
+        match message.role {
+            MessageRole::Assistant => {
+                // Check if this assistant message contains tool call metadata
+                let tool_calls_meta = message
+                    .parts
+                    .iter()
+                    .find_map(|p| p.metadata.as_ref()?.get("tool_calls"))
+                    .and_then(|v| v.as_array());
+
+                if let Some(tc_array) = tool_calls_meta {
+                    // Assistant message with tool calls
+                    let text_content = message_text(message);
+                    let tool_calls: Vec<Value> = tc_array
+                        .iter()
+                        .map(|tc| {
+                            json!({
+                                "id": tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                                "type": "function",
+                                "function": {
+                                    "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                    "arguments": tc.get("arguments")
+                                        .map(|a| a.to_string())
+                                        .unwrap_or_else(|| "{}".to_string()),
+                                }
+                            })
+                        })
+                        .collect();
+
+                    let mut msg = json!({
+                        "role": "assistant",
+                        "tool_calls": tool_calls,
+                    });
+                    if !text_content.is_empty() {
+                        msg["content"] = json!(text_content);
+                    } else {
+                        msg["content"] = Value::Null;
+                    }
+                    messages.push(msg);
+                } else {
+                    // Regular assistant text message
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": message_text(message),
+                    }));
+                }
+            }
+            MessageRole::Tool => {
+                // Tool result message — one message per tool_call_id
+                for part in &message.parts {
+                    if part.kind == MessagePartKind::ToolResult {
+                        messages.push(json!({
+                            "role": "tool",
+                            "tool_call_id": part.tool_call_id.as_deref().unwrap_or(""),
+                            "content": part.content.as_deref().unwrap_or(""),
+                        }));
+                    }
+                }
+            }
+            _ => {
+                // System, Developer, User — unchanged
+                messages.push(json!({
+                    "role": role_to_string(&message.role),
+                    "content": message_text(message),
+                }));
+            }
+        }
     }
 
     let mut body = json!({

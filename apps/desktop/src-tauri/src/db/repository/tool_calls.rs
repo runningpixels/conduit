@@ -160,6 +160,39 @@ pub async fn insert_tool_result(
     Ok(id)
 }
 
+/// List all tool calls for a given `request_id`, ordered by `created_at ASC`.
+/// Used by `build_continuation_request()` to load tool calls from the
+/// just-completed round and look up their results.
+pub async fn list_tool_calls_by_request(
+    pool: &SqlitePool,
+    request_id: &str,
+) -> Result<Vec<ToolCallRecord>, DbError> {
+    let rows: Vec<ToolCallRecordRow> = sqlx::query_as(
+        "SELECT id, tool_id, request_id, status, arguments, result, error,
+                approved_at, completed_at
+         FROM tool_calls WHERE request_id = ? ORDER BY created_at ASC",
+    )
+    .bind(request_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|(id, tool_id, request_id, status, arguments, result, error, approved_at, completed_at)| {
+            Ok(ToolCallRecord {
+                id,
+                tool_id,
+                request_id,
+                status: parse_status(&status),
+                arguments: arguments.and_then(|s| serde_json::from_str(&s).ok()),
+                result: result.and_then(|s| serde_json::from_str(&s).ok()),
+                error,
+                approved_at,
+                completed_at,
+            })
+        })
+        .collect()
+}
+
 /// Read a tool call by id (used by the no-reinjection invariant test + future
 /// UI reads). `result` is decrypted if the encryption tier is on.
 pub async fn get_tool_call(
@@ -375,6 +408,37 @@ mod tests {
         let got = get_tool_call(&pool, &enc, "tc-4").await.unwrap().unwrap();
         assert_eq!(got.status, ToolCallStatus::Approved);
         assert!(got.approved_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn list_tool_calls_by_request_returns_ordered_results() {
+        let pool = crate::db::tests::pool().await;
+        // Insert three tool calls with the same request_id.
+        for i in 0..3 {
+            let rec = ToolCallRecord {
+                id: format!("tc-list-{i}"),
+                tool_id: "echo".into(),
+                request_id: "req-list".into(),
+                status: ToolCallStatus::Completed,
+                arguments: Some(json!({ "i": i })),
+                result: None,
+                error: None,
+                approved_at: None,
+                completed_at: None,
+            };
+            insert_tool_call(&pool, &rec).await.unwrap();
+        }
+
+        let rows = list_tool_calls_by_request(&pool, "req-list").await.unwrap();
+        assert_eq!(rows.len(), 3);
+        // Should be ordered by created_at ASC — the IDs should be in insertion order.
+        assert_eq!(rows[0].id, "tc-list-0");
+        assert_eq!(rows[1].id, "tc-list-1");
+        assert_eq!(rows[2].id, "tc-list-2");
+
+        // A different request_id should return empty.
+        let empty = list_tool_calls_by_request(&pool, "req-other").await.unwrap();
+        assert!(empty.is_empty());
     }
 
     #[tokio::test]

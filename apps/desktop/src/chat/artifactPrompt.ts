@@ -10,6 +10,9 @@ export const CONDUIT_ARTIFACT_SYSTEM_APPENDIX = [
   'Use labeled fences: html/htm, markdown/md, json, text, or a language tag for code.',
   'Put the full artifact body inside the fence; a one-line confirmation without a fence does not create an artifact.',
   'Conduit auto-opens the first promotable fence when the stream completes.',
+  'Only call write_*_document or edit_*_document when the user explicitly asked to create or revise a document.',
+  'Answer capability and explanatory questions in prose; do not create or edit artifacts to demonstrate.',
+  'When a document artifact is already in scope and the user asks to revise it, prefer edit_*_document over creating a new document.',
 ].join(' ');
 
 const INTENT_REGEX =

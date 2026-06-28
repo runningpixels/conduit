@@ -3,7 +3,7 @@ use crate::adapters::{
     message_text, normalized_or_err, parse_fixture_stream, role_to_string, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
-use crate::schema::{ProviderError, ProviderEvent, ProviderRequest};
+use crate::schema::{MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest};
 use crate::transport::{get_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::Stream;
@@ -104,10 +104,67 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     }
 
     for message in &request.messages {
-        messages.push(json!({
-          "role": role_to_string(&message.role),
-          "content": message_text(message),
-        }));
+        match message.role {
+            MessageRole::Assistant => {
+                let tool_calls_meta = message
+                    .parts
+                    .iter()
+                    .find_map(|p| p.metadata.as_ref()?.get("tool_calls"))
+                    .and_then(|v| v.as_array());
+
+                if let Some(tc_array) = tool_calls_meta {
+                    let text_content = message_text(message);
+                    let tool_calls: Vec<Value> = tc_array
+                        .iter()
+                        .map(|tc| {
+                            json!({
+                                "id": tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                                "type": "function",
+                                "function": {
+                                    "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                    "arguments": tc.get("arguments")
+                                        .map(|a| a.to_string())
+                                        .unwrap_or_else(|| "{}".to_string()),
+                                }
+                            })
+                        })
+                        .collect();
+
+                    let mut msg = json!({
+                        "role": "assistant",
+                        "tool_calls": tool_calls,
+                    });
+                    if !text_content.is_empty() {
+                        msg["content"] = json!(text_content);
+                    } else {
+                        msg["content"] = Value::Null;
+                    }
+                    messages.push(msg);
+                } else {
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": message_text(message),
+                    }));
+                }
+            }
+            MessageRole::Tool => {
+                for part in &message.parts {
+                    if part.kind == MessagePartKind::ToolResult {
+                        messages.push(json!({
+                            "role": "tool",
+                            "tool_call_id": part.tool_call_id.as_deref().unwrap_or(""),
+                            "content": part.content.as_deref().unwrap_or(""),
+                        }));
+                    }
+                }
+            }
+            _ => {
+                messages.push(json!({
+                    "role": role_to_string(&message.role),
+                    "content": message_text(message),
+                }));
+            }
+        }
     }
 
     json!({

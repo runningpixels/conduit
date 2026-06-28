@@ -3,7 +3,7 @@ use crate::adapters::{
     message_text, missing_key, normalized_or_err, parse_fixture_stream, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
-use crate::schema::{MessageRole, ProviderError, ProviderEvent, ProviderRequest, ToolChoice};
+use crate::schema::{MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest, ToolChoice};
 use crate::transport::{api_key_header, get_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::Stream;
@@ -228,16 +228,101 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     let mut messages = Vec::new();
 
     for message in &request.messages {
-        let role = match message.role {
-            MessageRole::User => "user",
-            MessageRole::Assistant => "assistant",
-            MessageRole::Tool => "user",
-            MessageRole::System | MessageRole::Developer => continue,
-        };
-        messages.push(json!({
-          "role": role,
-          "content": message_text(message),
-        }));
+        match message.role {
+            MessageRole::Assistant => {
+                let tool_calls_meta = message
+                    .parts
+                    .iter()
+                    .find_map(|p| p.metadata.as_ref()?.get("tool_calls"))
+                    .and_then(|v| v.as_array());
+
+                if let Some(tc_array) = tool_calls_meta {
+                    // Build content array with text + tool_use blocks
+                    let text_content = message_text(message);
+                    let mut content: Vec<Value> = Vec::new();
+
+                    if !text_content.is_empty() {
+                        content.push(json!({
+                            "type": "text",
+                            "text": text_content,
+                        }));
+                    }
+
+                    for tc in tc_array {
+                        let input = tc
+                            .get("arguments")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({}));
+                        // Anthropic expects tool_use.input as a JSON object, not a string.
+                        let input = match input {
+                            serde_json::Value::String(s) => {
+                                serde_json::from_str(&s).unwrap_or(serde_json::json!({}))
+                            }
+                            other => other,
+                        };
+                        content.push(json!({
+                            "type": "tool_use",
+                            "id": tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                            "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                            "input": input,
+                        }));
+                    }
+
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": content,
+                    }));
+                } else {
+                    // Regular assistant text message
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": message_text(message),
+                    }));
+                }
+            }
+            MessageRole::Tool => {
+                // Tool result message — Anthropic sends tool_result blocks in a user message.
+                // Combine all ToolResult parts into a single user message.
+                let tool_results: Vec<Value> = message
+                    .parts
+                    .iter()
+                    .filter(|p| p.kind == MessagePartKind::ToolResult)
+                    .map(|p| {
+                        let mut block = json!({
+                            "type": "tool_result",
+                            "tool_use_id": p.tool_call_id.as_deref().unwrap_or(""),
+                            "content": p.content.as_deref().unwrap_or(""),
+                        });
+                        // If metadata contains is_error, propagate it
+                        if let Some(is_err) =
+                            p.metadata.as_ref().and_then(|m| m.get("is_error")).and_then(|v| v.as_bool())
+                        {
+                            if is_err {
+                                block["is_error"] = json!(true);
+                            }
+                        }
+                        block
+                    })
+                    .collect();
+
+                if !tool_results.is_empty() {
+                    messages.push(json!({
+                        "role": "user",
+                        "content": tool_results,
+                    }));
+                }
+            }
+            MessageRole::User => {
+                messages.push(json!({
+                    "role": "user",
+                    "content": message_text(message),
+                }));
+            }
+            MessageRole::System | MessageRole::Developer => {
+                // Anthropic handles system/developer separately, skip here
+                continue;
+            }
+        }
     }
 
     let mut body = json!({

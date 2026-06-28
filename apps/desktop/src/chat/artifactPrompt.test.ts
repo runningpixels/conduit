@@ -56,6 +56,7 @@ describe('buildProviderRequest artifact prompts', () => {
   it('includes the artifact appendix in systemPrompt', () => {
     const req = buildProviderRequest(baseSettings, 'hi', [], 'c1', []);
     expect(req.systemPrompt).toContain(CONDUIT_ARTIFACT_SYSTEM_APPENDIX);
+    expect(req.systemPrompt).toContain('Answer capability and explanatory questions in prose');
     expect(req.systemPrompt).toContain(BASE_SYSTEM_PROMPT);
   });
 

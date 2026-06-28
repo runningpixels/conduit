@@ -337,3 +337,11 @@ export async function deleteAttachment(attachmentId: string): Promise<void> {
 export async function getAttachmentBytes(attachmentId: string): Promise<number[]> {
   return invoke<number[]>('get_attachment_bytes', { attachmentId });
 }
+
+// Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
+// Backs up the current DB and deletes the live file. The user must restart
+// Conduit to create a fresh store. Attachments and artifacts on disk are
+// left in place but are no longer indexed.
+export async function resetLocalDatabase(): Promise<{ backupPath: string }> {
+  return invoke<{ backupPath: string }>('reset_local_database');
+}

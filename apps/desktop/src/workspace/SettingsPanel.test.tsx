@@ -68,6 +68,16 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     updateChannel: 'stable',
     updateCheckEnabled: true,
     onboardingCompleted: true,
+    webSearchEnabled: false,
+    webSearch: {
+      searchContextSize: 'medium',
+      allowedDomains: [],
+      blockedDomains: [],
+      externalWebAccess: true,
+      returnTokenBudget: 'default',
+      includeSources: false,
+    },
+    webSearchConsentAcknowledged: false,
     ...overrides,
   };
 }

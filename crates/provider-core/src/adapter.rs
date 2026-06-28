@@ -12,6 +12,11 @@ pub struct AdapterContext {
     pub base_url: Option<String>,
     /// Shared HTTP client with connection pooling + timeouts (H3/H5).
     pub http: crate::transport::HttpClient,
+    /// Phase 7 / M-WebSearch: whether `AppSettings.local_only` is on. Adapters
+    /// must refuse to send hosted-search tools (and any other network-bearing
+    /// hosted tool) when this is `true`. The desktop shell layers a
+    /// provider-level check on top of this in `stream_manager.rs`.
+    pub local_only: bool,
 }
 
 #[async_trait]

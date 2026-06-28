@@ -2,10 +2,26 @@
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
+import type { WebSearchDefaults } from "./web_search_defaults";
 
 export type SettingsPatch = { activeProvider?: string, activeModel?: string, localOnly?: boolean, diagnosticsEnabled?: boolean, theme?: Theme, providerEndpoints?: { [key in string]?: ProviderEndpointConfig }, 
 /**
  * Replace the artifact remote allowlist. Each entry must be an absolute
  * http(s) URL or the whole update is rejected.
  */
-artifactRemoteAllowlist?: Array<string>, artifactStyledPreview?: boolean, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, onboardingCompleted?: boolean, };
+artifactRemoteAllowlist?: Array<string>, artifactStyledPreview?: boolean, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, onboardingCompleted?: boolean, 
+/**
+ * Phase 7: master web search toggle. The renderer also enforces UI
+ * gating on `local_only` and provider capability.
+ */
+webSearchEnabled?: boolean, 
+/**
+ * Phase 7: replace the persistent web search defaults. Each domain-list
+ * entry must be a bare host (no http(s) prefix) and ≤253 chars; entries
+ * are capped at 100 per list (provider limit).
+ */
+webSearch?: WebSearchDefaults, 
+/**
+ * Phase 7 / M-WebSearch: first-use consent acknowledgement.
+ */
+webSearchConsentAcknowledged?: boolean, };

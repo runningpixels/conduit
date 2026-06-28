@@ -3,7 +3,9 @@ use crate::adapters::{
     message_text, missing_key, normalized_or_err, parse_fixture_stream, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
-use crate::schema::{MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest, ToolChoice};
+use crate::schema::{
+    MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest, ToolChoice,
+};
 use crate::transport::{api_key_header, get_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::Stream;
@@ -294,8 +296,11 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                             "content": p.content.as_deref().unwrap_or(""),
                         });
                         // If metadata contains is_error, propagate it
-                        if let Some(is_err) =
-                            p.metadata.as_ref().and_then(|m| m.get("is_error")).and_then(|v| v.as_bool())
+                        if let Some(is_err) = p
+                            .metadata
+                            .as_ref()
+                            .and_then(|m| m.get("is_error"))
+                            .and_then(|v| v.as_bool())
                         {
                             if is_err {
                                 block["is_error"] = json!(true);

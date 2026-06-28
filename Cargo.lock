@@ -3373,6 +3373,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "ts-rs",
+ "url",
  "uuid",
 ]
 

@@ -198,6 +198,7 @@ mod tests {
                 tool_choice: Some(ToolChoice::Auto),
             }),
             response_format: None,
+            web_search: None,
         };
 
         assert!(validate(request).is_ok());
@@ -216,6 +217,7 @@ mod tests {
             tool_definitions: vec![],
             generation_controls: None,
             response_format: None,
+            web_search: None,
         };
 
         assert!(validate(request).is_err());

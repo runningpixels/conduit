@@ -94,6 +94,11 @@ impl StreamManager {
             api_key,
             base_url,
             http: state.http.clone(),
+            // Phase 7 / M-WebSearch: thread the user's local-only intent to
+            // adapters so they can refuse hosted-search tools (and any other
+            // network-bearing hosted tool) at the trust boundary, not just
+            // the UI layer.
+            local_only: settings.local_only,
         })
     }
 
@@ -344,10 +349,8 @@ impl StreamManager {
                     name,
                     ..
                 } => {
-                    tool_start_info.insert(
-                        tool_call_id.clone(),
-                        (Some(tool_id.clone()), name.clone()),
-                    );
+                    tool_start_info
+                        .insert(tool_call_id.clone(), (Some(tool_id.clone()), name.clone()));
                 }
                 ProviderEvent::ToolCallComplete {
                     tool_call_id,
@@ -369,13 +372,7 @@ impl StreamManager {
             }
 
             // Persist + forward
-            let _ = event_log::append_and_apply(
-                &pool,
-                &conversation_id,
-                &request_id,
-                &event,
-            )
-            .await;
+            let _ = event_log::append_and_apply(&pool, &conversation_id, &request_id, &event).await;
 
             if channel.send(event.clone()).is_err() {
                 cancel.cancel();
@@ -510,8 +507,9 @@ impl StreamManager {
             let sink = sink
                 .clone()
                 .unwrap_or_else(|| std::sync::Arc::new(|_| {}) as _);
-            let _ = crate::connector_runtime::execution::execute_tool_call(state, runtime, &req, &sink)
-                .await;
+            let _ =
+                crate::connector_runtime::execution::execute_tool_call(state, runtime, &req, &sink)
+                    .await;
         }
     }
 
@@ -544,8 +542,7 @@ impl StreamManager {
 
             let result_content = match record.status {
                 ToolCallStatus::Completed => {
-                    match tool_calls::latest_tool_result(pool, &state.encryption, &record.id)
-                        .await
+                    match tool_calls::latest_tool_result(pool, &state.encryption, &record.id).await
                     {
                         Ok(Some((value, _is_error))) => {
                             let raw = value.to_string();
@@ -564,9 +561,10 @@ impl StreamManager {
                         _ => "Tool executed but no output was recorded.".to_string(),
                     }
                 }
-                ToolCallStatus::Failed => {
-                    record.error.clone().unwrap_or_else(|| "Tool call failed.".to_string())
-                }
+                ToolCallStatus::Failed => record
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "Tool call failed.".to_string()),
                 ToolCallStatus::Cancelled => "Tool call was cancelled by the user.".to_string(),
                 _ => "Tool call did not complete.".to_string(),
             };
@@ -599,7 +597,10 @@ impl StreamManager {
             messages::snapshot_view_for_request(pool, &previous_request.request_id).await
         {
             for part in &snapshot.parts {
-                if matches!(part.kind, MessagePartKind::Text | MessagePartKind::Reasoning) {
+                if matches!(
+                    part.kind,
+                    MessagePartKind::Text | MessagePartKind::Reasoning
+                ) {
                     if let Some(ref content) = part.content {
                         if !content.is_empty() {
                             assistant_parts.push(MessagePart {
@@ -608,9 +609,12 @@ impl StreamManager {
                                 index: assistant_parts.len() as u32,
                                 kind: MessagePartKind::Text,
                                 content: Some(content.clone()),
-                                mime_type: None, tool_call_id: None,
-                                artifact_id: None, attachment_id: None,
-                                blob_ref: None, metadata: None,
+                                mime_type: None,
+                                tool_call_id: None,
+                                artifact_id: None,
+                                attachment_id: None,
+                                blob_ref: None,
+                                metadata: None,
                                 created_at: turn_now.clone(),
                             });
                         }
@@ -624,10 +628,15 @@ impl StreamManager {
             let idx = assistant_parts.len() as u32;
             assistant_parts.push(MessagePart {
                 id: format!("{}/tc-meta-{}", previous_request.request_id, Uuid::new_v4()),
-                message_id: String::new(), index: idx,
-                kind: MessagePartKind::Text, content: None,
-                mime_type: None, tool_call_id: None, artifact_id: None,
-                attachment_id: None, blob_ref: None,
+                message_id: String::new(),
+                index: idx,
+                kind: MessagePartKind::Text,
+                content: None,
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
                 metadata: Some(serde_json::json!({ "tool_calls": tool_call_meta })),
                 created_at: turn_now.clone(),
             });
@@ -642,14 +651,20 @@ impl StreamManager {
                 id: tool_msg_id.clone(),
                 conversation_id: previous_request.conversation_id.clone(),
                 role: MessageRole::Tool,
-                author_label: None, provider_message_id: None,
-                interrupted_at: None, metadata: None,
-                parts: tool_result_parts.iter().enumerate().map(|(i, p)| {
-                    let mut part = p.clone();
-                    part.message_id = tool_msg_id.clone();
-                    part.index = i as u32;
-                    part
-                }).collect(),
+                author_label: None,
+                provider_message_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: tool_result_parts
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        let mut part = p.clone();
+                        part.message_id = tool_msg_id.clone();
+                        part.index = i as u32;
+                        part
+                    })
+                    .collect(),
                 created_at: turn_now.clone(),
             };
             let _ = messages::insert_message(pool, &msg).await;
@@ -664,11 +679,18 @@ impl StreamManager {
                 id: assistant_msg_id,
                 conversation_id: previous_request.conversation_id.clone(),
                 role: MessageRole::Assistant,
-                author_label: None, provider_message_id: None,
-                interrupted_at: None, metadata: None,
-                parts: assistant_parts.into_iter().enumerate().map(|(i, mut p)| {
-                    p.index = i as u32; p
-                }).collect(),
+                author_label: None,
+                provider_message_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: assistant_parts
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, mut p)| {
+                        p.index = i as u32;
+                        p
+                    })
+                    .collect(),
                 created_at: turn_now.clone(),
             });
         }
@@ -678,11 +700,18 @@ impl StreamManager {
                 id: tool_msg_id,
                 conversation_id: previous_request.conversation_id.clone(),
                 role: MessageRole::Tool,
-                author_label: None, provider_message_id: None,
-                interrupted_at: None, metadata: None,
-                parts: tool_result_parts.into_iter().enumerate().map(|(i, mut p)| {
-                    p.index = i as u32; p
-                }).collect(),
+                author_label: None,
+                provider_message_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: tool_result_parts
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, mut p)| {
+                        p.index = i as u32;
+                        p
+                    })
+                    .collect(),
                 created_at: turn_now,
             });
         }
@@ -698,6 +727,11 @@ impl StreamManager {
             tool_definitions: previous_request.tool_definitions.clone(),
             generation_controls: previous_request.generation_controls.clone(),
             response_format: previous_request.response_format.clone(),
+            // Continuation rounds carry forward the original turn's web-search
+            // intent. `web_search` is a per-turn, per-request knob; if the
+            // user enabled search for the first round, the agent loop should
+            // not silently drop it on continuation rounds.
+            web_search: previous_request.web_search.clone(),
         })
     }
 
@@ -763,7 +797,12 @@ impl StreamManager {
             }
 
             let outcome = self
-                .run_provider_round(state, current_request.clone(), channel.clone(), cancel.clone())
+                .run_provider_round(
+                    state,
+                    current_request.clone(),
+                    channel.clone(),
+                    cancel.clone(),
+                )
                 .await;
 
             if let Some(err) = outcome.error_message {
@@ -796,11 +835,7 @@ impl StreamManager {
 
             // Build a continuation request and loop for the next round.
             match self
-                .build_continuation_request(
-                    state,
-                    &current_request,
-                    &outcome.completed_tool_calls,
-                )
+                .build_continuation_request(state, &current_request, &outcome.completed_tool_calls)
                 .await
             {
                 Ok(continuation) => {
@@ -871,7 +906,10 @@ async fn build_connector_tool_catalog(
         }
     }
 
-    Ok(build_connector_tool_catalog(&snapshots, &capabilities_by_version))
+    Ok(build_connector_tool_catalog(
+        &snapshots,
+        &capabilities_by_version,
+    ))
 }
 
 impl Default for StreamManager {

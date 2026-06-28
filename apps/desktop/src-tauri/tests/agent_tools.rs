@@ -46,7 +46,10 @@ async fn write_html_document_creates_artifact() {
         .unwrap();
     assert_eq!(artifact.kind, "html");
     assert_eq!(artifact.mime_type.as_deref(), Some("text/html"));
-    assert_eq!(artifact.content_text.as_deref(), Some("<!doctype html><html><body>Hello</body></html>"));
+    assert_eq!(
+        artifact.content_text.as_deref(),
+        Some("<!doctype html><html><body>Hello</body></html>")
+    );
     assert_eq!(result.output.get("created"), Some(&json!(true)));
 }
 

@@ -180,6 +180,156 @@ pub struct ResponseFormatHint {
     pub schema_name: Option<String>,
 }
 
+// =============================================================================
+// Agent Web Search — hosted-tool request types (Phase 7 / M-WebSearch)
+//
+// See `docs/specs/agent-web-search.md`. Conduit does not crawl, index, or proxy
+// the web; web search is a provider-hosted tool. The renderer carries the
+// per-turn config in `ProviderRequest.web_search`; the adapter decides how to
+// serialize it (e.g. OpenAI's Responses API uses `{"type":"web_search", ...}`
+// rather than a function tool).
+// =============================================================================
+
+/// How much search-result context the model sees before generating a response.
+/// Provider-specific; the adapter maps it onto the hosted tool's wire field
+/// (OpenAI: `search_context_size` on the `web_search` tool object).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/search_context_size.ts"
+)]
+pub enum SearchContextSize {
+    Low,
+    Medium,
+    High,
+}
+
+/// Returned-token budget for hosted web search. GPT-5+ reasoning only on
+/// OpenAI's hosted `web_search`; other providers may ignore. `Default` matches
+/// the provider's standard returned-token cap; `Unlimited` removes it for
+/// long research runs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/return_token_budget.ts"
+)]
+pub enum ReturnTokenBudget {
+    #[default]
+    Default,
+    Unlimited,
+}
+
+/// Domain allow/block filters for hosted web search. Each list is bounded by
+/// the provider (OpenAI: up to 100 entries). Domain entries omit the
+/// `http(s)://` prefix; validation lives at the trust boundary.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/web_search_filters.ts"
+)]
+pub struct WebSearchFilters {
+    #[ts(optional)]
+    pub allowed_domains: Option<Vec<String>>,
+    #[ts(optional)]
+    pub blocked_domains: Option<Vec<String>>,
+}
+
+/// Approximate user location for hosted web search localization. `country` is
+/// ISO 3166-1 alpha-2 (e.g. "GB"). `city`/`region` are free-form strings; the
+/// provider treats them as hints.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/user_location.ts"
+)]
+pub struct UserLocation {
+    pub country: String,
+    #[ts(optional)]
+    pub city: Option<String>,
+    #[ts(optional)]
+    pub region: Option<String>,
+}
+
+/// Per-turn web search configuration. Adapters serialize this onto the
+/// provider's hosted-search tool object (e.g. OpenAI's `web_search` tool).
+///
+/// `enabled = true` injects the hosted tool into the request. The remaining
+/// fields are forwarded as-is; the provider validates the shape and rejects
+/// malformed entries in-band (the OpenAI parser already surfaces them as
+/// `ProviderEvent::Error`).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/web_search_request.ts"
+)]
+pub struct WebSearchRequest {
+    pub enabled: bool,
+    #[ts(optional)]
+    pub search_context_size: Option<SearchContextSize>,
+    #[ts(optional)]
+    pub filters: Option<WebSearchFilters>,
+    #[ts(optional)]
+    pub external_web_access: Option<bool>,
+    #[ts(optional)]
+    pub return_token_budget: Option<ReturnTokenBudget>,
+    #[ts(optional)]
+    pub user_location: Option<UserLocation>,
+    /// When true, ask the provider to return sources via
+    /// `include: ["web_search_call.action.sources"]`. UI defaults to false;
+    /// providers may rate-limit or charge more for sources.
+    #[ts(optional)]
+    pub include_sources: Option<bool>,
+}
+
+/// Persistent web search defaults, stored on `AppSettings`. Per-turn overrides
+/// on `ProviderRequest.web_search` win.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/web_search_defaults.ts"
+)]
+pub struct WebSearchDefaults {
+    #[serde(default = "default_search_context_size")]
+    pub search_context_size: SearchContextSize,
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+    #[serde(default)]
+    pub blocked_domains: Vec<String>,
+    #[serde(default = "default_true")]
+    pub external_web_access: bool,
+    #[serde(default)]
+    pub return_token_budget: ReturnTokenBudget,
+    #[serde(default)]
+    #[ts(optional)]
+    pub user_location: Option<UserLocation>,
+    #[serde(default)]
+    pub include_sources: bool,
+}
+
+fn default_search_context_size() -> SearchContextSize {
+    SearchContextSize::Medium
+}
+
+impl Default for WebSearchDefaults {
+    fn default() -> Self {
+        Self {
+            search_context_size: SearchContextSize::Medium,
+            allowed_domains: Vec::new(),
+            blocked_domains: Vec::new(),
+            external_web_access: true,
+            return_token_budget: ReturnTokenBudget::Default,
+            user_location: None,
+            include_sources: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -202,6 +352,11 @@ pub struct ProviderRequest {
     pub generation_controls: Option<GenerationControls>,
     #[ts(optional)]
     pub response_format: Option<ResponseFormatHint>,
+    /// Agent web search (Phase 7). Per-turn config; the adapter decides how to
+    /// serialize it onto the provider's hosted-search tool. Absent means "no
+    /// web search on this turn" regardless of `AppSettings.web_search_enabled`.
+    #[ts(optional)]
+    pub web_search: Option<WebSearchRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -308,6 +463,74 @@ pub enum ProviderEvent {
         request_id: String,
         error: ProviderError,
     },
+    // ---------------------------------------------------------------------
+    // Agent web search events (Phase 7 / M-WebSearch).
+    //
+    // Hosted web search runs as a provider-native output item. Adapters map
+    // the provider's items onto Conduit's envelope:
+    //   - `web_search_call` items → ToolCallStart/Delta/Complete with
+    //     tool_id="web_search" (so the renderer reuses ToolCallBlock).
+    //   - `url_citation` annotations on `output_text` → Citation events
+    //     bound to the originating ContentBlock.
+    //   - `web_search_call.action.sources` (when `include_sources` is true)
+    //     → SearchSources with the raw source list.
+    //   - Per-call tool cost from the provider's usage payload → SearchCost.
+    //   - When the adapter silently strips the hosted tool because the
+    //     endpoint does not support it → SearchUnavailable, surfaced to the
+    //     UI so it can render an explicit "not supported" state instead of
+    //     silently losing search.
+    // ---------------------------------------------------------------------
+    SearchSources {
+        request_id: String,
+        index: usize,
+        /// Pass-through raw sources from `web_search_call.action.sources`.
+        /// The renderer shapes for display; the adapter does not parse.
+        #[ts(type = "Array<Record<string, unknown>>")]
+        sources: serde_json::Value,
+    },
+    Citation {
+        request_id: String,
+        /// Block the citation is attached to. The renderer walks these in
+        /// `start_index`/`end_index` order and inserts inline `[n]` markers.
+        block_id: String,
+        index: usize,
+        annotation: ContentAnnotation,
+    },
+    SearchCost {
+        request_id: String,
+        index: usize,
+        /// Number of web_search tool calls the model issued in this response.
+        tool_calls: u32,
+    },
+    SearchUnavailable {
+        request_id: String,
+        index: usize,
+        /// Why the hosted search tool was stripped or refused. Stable codes
+        /// the renderer can branch on; `message` is human-readable.
+        code: String,
+        message: String,
+    },
+}
+
+/// Annotations attached to a `ContentBlock`. OpenAI's `url_citation` is the
+/// first variant; future annotations (file citations, container citations,
+/// etc.) ride the same enum.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/content_annotation.ts"
+)]
+pub enum ContentAnnotation {
+    #[serde(rename_all = "camelCase")]
+    UrlCitation {
+        url: String,
+        title: String,
+        #[serde(rename = "startIndex")]
+        start_index: u32,
+        #[serde(rename = "endIndex")]
+        end_index: u32,
+    },
 }
 
 // =============================================================================
@@ -330,6 +553,23 @@ pub enum PermissionLevel {
 #[serde(rename_all = "camelCase")]
 #[ts(
     export,
+    export_to = "../packages/config-schema/src/generated/tool_kind.ts"
+)]
+pub enum ToolKind {
+    /// JSON-schema function tool. Serialized as
+    /// `{"type":"function","function":{...}}`. Default for `ToolDefinition`s
+    /// without an explicit `kind`.
+    Function,
+    /// Provider-defined hosted tool. Identified by `tool_id`; the adapter
+    /// owns the wire shape. Used for OpenAI's `web_search`, `code_interpreter`,
+    /// `file_search`, etc. `host_config` carries provider-agnostic knobs.
+    Hosted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
     export_to = "../packages/config-schema/src/generated/tool_definition.ts"
 )]
 pub struct ToolDefinition {
@@ -338,6 +578,14 @@ pub struct ToolDefinition {
     pub description: String,
     #[ts(type = "Record<string, unknown>")]
     pub input_schema: serde_json::Value,
+    /// Discriminates function tools from hosted (provider-defined) tools.
+    /// Defaults to `Function` on deserialize when absent.
+    #[ts(optional)]
+    pub kind: Option<ToolKind>,
+    /// Hosted-tool options (only meaningful when `kind = Hosted`). Provider-
+    /// agnostic JSON blob; the adapter interprets it.
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub host_config: Option<serde_json::Value>,
     #[ts(optional)]
     pub permission_level: Option<PermissionLevel>,
     #[ts(optional)]
@@ -830,6 +1078,23 @@ pub struct AppSettings {
     /// workspace while false (and while no provider credential is configured).
     #[serde(default)]
     pub onboarding_completed: bool,
+    /// Phase 7: whether web search is enabled globally. Off by default.
+    /// Honored only when the active provider is non-local; ignored when
+    /// `local_only` is true (see `agent-web-search` spec).
+    #[serde(default)]
+    pub web_search_enabled: bool,
+    /// Phase 7: persistent web search defaults. Per-turn overrides on
+    /// `ProviderRequest.web_search` win.
+    #[serde(default)]
+    pub web_search: WebSearchDefaults,
+    /// Phase 7 / M-WebSearch: first-use consent acknowledgement. `false`
+    /// until the user has seen and accepted the one-time consent dialog
+    /// for web search. The dialog surfaces when the user first enables
+    /// `web_search_enabled` (settings) or flips the per-turn search toggle
+    /// (chat bar). The consent copy is untrusted display data that the
+    /// renderer renders but never executes.
+    #[serde(default)]
+    pub web_search_consent_acknowledged: bool,
 }
 
 fn default_true() -> bool {
@@ -850,6 +1115,9 @@ impl Default for AppSettings {
             update_channel: RolloutChannel::Stable,
             update_check_enabled: true,
             onboarding_completed: false,
+            web_search_enabled: false,
+            web_search: WebSearchDefaults::default(),
+            web_search_consent_acknowledged: false,
         }
     }
 }
@@ -885,6 +1153,18 @@ pub struct SettingsPatch {
     pub update_check_enabled: Option<bool>,
     #[ts(optional)]
     pub onboarding_completed: Option<bool>,
+    /// Phase 7: master web search toggle. The renderer also enforces UI
+    /// gating on `local_only` and provider capability.
+    #[ts(optional)]
+    pub web_search_enabled: Option<bool>,
+    /// Phase 7: replace the persistent web search defaults. Each domain-list
+    /// entry must be a bare host (no http(s) prefix) and ≤253 chars; entries
+    /// are capped at 100 per list (provider limit).
+    #[ts(optional)]
+    pub web_search: Option<WebSearchDefaults>,
+    /// Phase 7 / M-WebSearch: first-use consent acknowledgement.
+    #[ts(optional)]
+    pub web_search_consent_acknowledged: Option<bool>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

@@ -638,6 +638,52 @@ pub fn reveal_path(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<
         .map_err(|e| e.to_string())
 }
 
+/// Phase 7 / M-WebSearch: reset the local database. The user-initiated
+/// destructive operation from the Privacy & Data settings section.
+///
+/// Backs up the current DB to `conduit.sqlite.reset-<unix>.bak` in the same
+/// directory, then deletes the live DB file (+ WAL/SHM sidecars). A fresh
+/// database is created on the next app restart; the running pool is NOT
+/// replaced in-place because that would require interior mutability on
+/// `AppState.db` and a coordinated pool drain. The caller is expected to
+/// prompt the user to restart Conduit.
+///
+/// Attachment and artifact files on disk are intentionally left in place —
+/// they are no longer indexed, but a user who wants to recover them can
+/// still find them in the `attachments/` and `artifacts/` directories.
+#[tauri::command]
+pub fn reset_local_database(state: State<'_, AppState>) -> Result<ResetDatabaseResult, String> {
+    let db_path = &state.paths.database;
+    if !db_path.exists() {
+        return Err("No local database found to reset.".to_string());
+    }
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let backup_path = std::path::PathBuf::from(format!(
+        "{}.reset-{unix}.bak",
+        db_path.display()
+    ));
+    std::fs::copy(db_path, &backup_path)
+        .map_err(|e| format!("Failed to back up database: {e}"))?
+    ;
+    // Delete the live DB and WAL/SHM sidecars so the next startup creates a
+    // clean store. Silently ignore missing sidecars.
+    let _ = std::fs::remove_file(db_path);
+    let _ = std::fs::remove_file(format!("{}-wal", db_path.display()));
+    let _ = std::fs::remove_file(format!("{}-shm", db_path.display()));
+    Ok(ResetDatabaseResult {
+        backup_path: backup_path.to_string_lossy().to_string(),
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetDatabaseResult {
+    pub backup_path: String,
+}
+
 #[tauri::command]
 pub async fn start_mock_stream(
     stream_manager: State<'_, StreamManager>,

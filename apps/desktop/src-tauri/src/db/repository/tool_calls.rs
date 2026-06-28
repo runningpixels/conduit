@@ -177,19 +177,31 @@ pub async fn list_tool_calls_by_request(
     .await?;
 
     rows.into_iter()
-        .map(|(id, tool_id, request_id, status, arguments, result, error, approved_at, completed_at)| {
-            Ok(ToolCallRecord {
+        .map(
+            |(
                 id,
                 tool_id,
                 request_id,
-                status: parse_status(&status),
-                arguments: arguments.and_then(|s| serde_json::from_str(&s).ok()),
-                result: result.and_then(|s| serde_json::from_str(&s).ok()),
+                status,
+                arguments,
+                result,
                 error,
                 approved_at,
                 completed_at,
-            })
-        })
+            )| {
+                Ok(ToolCallRecord {
+                    id,
+                    tool_id,
+                    request_id,
+                    status: parse_status(&status),
+                    arguments: arguments.and_then(|s| serde_json::from_str(&s).ok()),
+                    result: result.and_then(|s| serde_json::from_str(&s).ok()),
+                    error,
+                    approved_at,
+                    completed_at,
+                })
+            },
+        )
         .collect()
 }
 
@@ -437,7 +449,9 @@ mod tests {
         assert_eq!(rows[2].id, "tc-list-2");
 
         // A different request_id should return empty.
-        let empty = list_tool_calls_by_request(&pool, "req-other").await.unwrap();
+        let empty = list_tool_calls_by_request(&pool, "req-other")
+            .await
+            .unwrap();
         assert!(empty.is_empty());
     }
 

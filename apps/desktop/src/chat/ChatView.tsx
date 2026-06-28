@@ -11,6 +11,7 @@ import {
   loadProviderCredentialReference,
   startConnector,
   startChatStream,
+  updateSettings,
 } from '../ipc/client';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactRefChip';
@@ -34,6 +35,7 @@ import {
   type AssistantStreamState,
 } from './streamState';
 import { AttachIcon, ModelIcon, SendIcon, StopIcon, LockIcon } from '../icons';
+import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
 import { COMPOSER_CAPS } from '../mock/workspace';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
@@ -126,6 +128,8 @@ export function buildProviderRequest(
   conversationId: string,
   toolDefinitions: ToolDefinition[],
   followUpArtifact?: FollowUpArtifactContext,
+  /// Phase 7 / M-WebSearch: per-turn search toggle. Defaults false.
+  webSearchOn?: boolean,
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
@@ -157,6 +161,26 @@ export function buildProviderRequest(
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
   const developerPrompt = [creationDevPrompt, infoDevPrompt, editDevPrompt].filter(Boolean).join('\n\n') || undefined;
+
+  // Phase 7 / M-WebSearch: inject the per-turn web-search config when the
+  // user explicitly toggled search on for this turn. `webSearchEnabled`
+  // controls whether the toggle is visible; the toggle itself defaults off
+  // and must be explicitly activated per turn.
+  const webSearch = webSearchOn
+    ? {
+        enabled: true,
+        searchContextSize: settings.webSearch.searchContextSize,
+        filters: {
+          allowedDomains: settings.webSearch.allowedDomains,
+          blockedDomains: settings.webSearch.blockedDomains,
+        },
+        externalWebAccess: settings.webSearch.externalWebAccess,
+        returnTokenBudget: settings.webSearch.returnTokenBudget,
+        userLocation: settings.webSearch.userLocation,
+        includeSources: settings.webSearch.includeSources,
+      }
+    : undefined;
+
   return {
     requestId: crypto.randomUUID(),
     conversationId,
@@ -165,6 +189,7 @@ export function buildProviderRequest(
     systemPrompt: `${BASE_SYSTEM_PROMPT} ${CONDUIT_ARTIFACT_SYSTEM_APPENDIX}`,
     developerPrompt,
     toolDefinitions,
+    webSearch,
   };
 }
 
@@ -185,6 +210,16 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [activeStream, setActiveStream] = useState<AssistantStreamState | null>(null);
   const [keychainOk, setKeychainOk] = useState(false);
+  // Phase 7 / M-WebSearch: per-turn search toggle. Visible only when
+  // `settings.webSearchEnabled` is on; defaults to off each time the
+  // component mounts. Reset after each send so the user must explicitly
+  // opt in per turn.
+  const [webSearchOn, setWebSearchOn] = useState(false);
+  // Phase 7 / M-WebSearch: consent dialog for first-time chat-bar toggle.
+  // If the user has already acknowledged via Settings, this never shows.
+  // Session-only dismissal (same UX as diagnostics disclosure M6.5).
+  const [showChatConsent, setShowChatConsent] = useState(false);
+  const [chatConsentDismissed, setChatConsentDismissed] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const currentConversationIdRef = useRef<string | null>(conversationId);
@@ -427,7 +462,11 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       conversationId,
       toolDefinitions,
       followUpArtifact,
+      webSearchOn,
     );
+    // Reset the per-turn search toggle after building the request so the
+    // next turn defaults back to off, per spec §5.2.
+    setWebSearchOn(false);
     const initialStream = createAssistantStreamState(request.requestId);
     providerToolByCallIdRef.current = {};
     pendingRuntimeCallsRef.current = new Set();
@@ -603,6 +642,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
   const tokenCount = prompt.trim() ? Math.max(1, Math.round(prompt.trim().length / 4)) : 0;
 
   return (
+    <>
     <section className="tab-pane" data-pane="chat" aria-label="Chat session">
       <div className="thread scroll" ref={threadRef}>
         <div className="thread-inner">
@@ -696,6 +736,25 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
               <ModelIcon />
               {settings.activeModel}
             </button>
+            {settings.webSearchEnabled && !settings.localOnly && !activeRequestId && (
+              <button
+                className={`tool-btn${webSearchOn ? ' search-active' : ''}`}
+                type="button"
+                aria-label={webSearchOn ? 'Web search on — click to disable' : 'Web search off — click to enable'}
+                title={webSearchOn ? 'Web search on' : 'Web search off'}
+                aria-pressed={webSearchOn}
+                onClick={() => {
+                if (!webSearchOn && !settings.webSearchConsentAcknowledged && !chatConsentDismissed) {
+                  // First-time flip-on from chat bar: show consent dialog.
+                  setShowChatConsent(true);
+                } else {
+                  setWebSearchOn((on) => !on);
+                }
+              }}
+              >
+                <span aria-hidden style={{ fontSize: '14px' }}>⌕</span>
+              </button>
+            )}
             {activeRequestId ? (
               <button
                 className="send stop"
@@ -731,5 +790,21 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
         </div>
       </div>
     </section>
+      {/* Phase 7 / M-WebSearch: first-use consent dialog for the chat-bar toggle. */}
+      <WebSearchConsentDialog
+        visible={showChatConsent}
+        onAllow={() => {
+          setShowChatConsent(false);
+          setWebSearchOn(true);
+          // Persist the acknowledgement so the dialog never reappears.
+          void updateSettings({ webSearchConsentAcknowledged: true });
+        }}
+        onDeny={() => {
+          setShowChatConsent(false);
+          // Remember the dismissal for this session only.
+          setChatConsentDismissed(true);
+        }}
+      />
+    </>
   );
 }

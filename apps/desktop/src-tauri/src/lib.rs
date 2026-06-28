@@ -6,12 +6,12 @@
 //! declared in `main.rs` live here; `crate::` references inside them resolve to
 //! this library root.
 
+pub mod agent_tools;
 pub mod commands;
 pub mod connector_runtime;
 pub mod credentials;
 pub mod db;
 pub mod diagnostics;
-pub mod agent_tools;
 pub mod encryption;
 pub mod paths;
 pub mod state;

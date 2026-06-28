@@ -46,6 +46,16 @@ const baseSettings: AppSettings = {
   updateChannel: 'stable',
   updateCheckEnabled: true,
   onboardingCompleted: false,
+  webSearchEnabled: false,
+  webSearch: {
+    searchContextSize: 'medium',
+    allowedDomains: [],
+    blockedDomains: [],
+    externalWebAccess: true,
+    returnTokenBudget: 'default',
+    includeSources: false,
+  },
+  webSearchConsentAcknowledged: false,
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {

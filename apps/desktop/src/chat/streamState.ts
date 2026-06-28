@@ -1,6 +1,7 @@
 import type {
   ConsentPrompt,
   ConnectorRuntimeEvent,
+  ContentAnnotation,
   PermissionLevel,
   ProviderEvent,
   ProviderUsage,
@@ -11,6 +12,28 @@ export interface ContentBlockState {
   blockId: string;
   blockKind: string;
   content: string;
+  /// Phase 7 / M-WebSearch: URL citations bound to this block. The provider
+  /// emits one Citation event per annotation, with `startIndex` / `endIndex`
+  /// into the block's final text. The renderer inserts inline `[n]` markers
+  /// at the exact byte ranges the provider specified.
+  citations: CitationAnnotation[];
+}
+
+export interface CitationAnnotation {
+  /// 1-based footnote number, assigned in provider-emission order. Inline
+  /// `[n]` markers reference this; a footnote list at the end of the message
+  /// lists each title + url.
+  index: number;
+  url: string;
+  title: string;
+  startIndex: number;
+  endIndex: number;
+}
+
+export interface SearchSource {
+  /// Pass-through shape from the provider's `web_search_call.action.sources`
+  /// array. Provider-agnostic; the renderer shapes for display.
+  raw: Record<string, unknown>;
 }
 
 export interface ToolCallState {
@@ -46,6 +69,17 @@ export interface AssistantStreamState {
   blocks: ContentBlockState[];
   reasoning: ContentBlockState[];
   toolCalls: ToolCallState[];
+  /// Phase 7 / M-WebSearch: sources surfaced by the provider when the user
+  /// opted in via `include_sources`. One list per `SearchSources` event.
+  searchSources: SearchSource[];
+  /// Phase 7 / M-WebSearch: per-call web-search usage, surfaced alongside
+  /// the regular usage summary.
+  searchCost?: number;
+  /// Phase 7 / M-WebSearch: emitted by the adapter when the hosted-search
+  /// tool was stripped or refused (e.g. the endpoint doesn't host it).
+  /// The UI renders an explicit "not supported" state instead of silently
+  /// losing the user's intent.
+  searchUnavailable?: { code: string; message: string };
   usage?: ProviderUsage;
   finishReason?: string;
   error?: string;
@@ -59,6 +93,7 @@ export function createAssistantStreamState(requestId: string): AssistantStreamSt
     blocks: [],
     reasoning: [],
     toolCalls: [],
+    searchSources: [],
     interrupted: false,
     streaming: true,
   };
@@ -76,7 +111,7 @@ export function applyProviderEvent(
         ...state,
         blocks: [
           ...state.blocks,
-          { blockId: event.blockId, blockKind: event.blockKind, content: '' },
+          { blockId: event.blockId, blockKind: event.blockKind, content: '', citations: [] },
         ],
       };
     case 'contentDelta':
@@ -104,7 +139,7 @@ export function applyProviderEvent(
         ...state,
         reasoning: [
           ...state.reasoning,
-          { blockId: event.blockId, blockKind: 'reasoning', content: event.content },
+          { blockId: event.blockId, blockKind: 'reasoning', content: event.content, citations: [] },
         ],
       };
     }
@@ -153,6 +188,52 @@ export function applyProviderEvent(
         ...state,
         error: event.error.message,
         streaming: false,
+      };
+    case 'searchSources': {
+      // Phase 7 / M-WebSearch: append provider-supplied sources to the
+      // list rendered at the end of the message. We wrap the pass-through
+      // shape in a `raw` field so future fields can be added without
+      // reshaping every entry.
+      const incoming = event.sources.map((raw) => ({ raw }));
+      return { ...state, searchSources: [...state.searchSources, ...incoming] };
+    }
+    case 'citation': {
+      // Phase 7 / M-WebSearch: append a URL citation to the block it
+      // belongs to. The 1-based `index` is the citation's footnote number,
+      // assigned in provider-emission order so the renderer can insert
+      // inline `[n]` markers deterministically.
+      const annotation = event.annotation;
+      if (annotation.kind !== 'urlCitation') {
+        return state;
+      }
+      const next: CitationAnnotation = {
+        index: 0,
+        url: annotation.url,
+        title: annotation.title,
+        startIndex: annotation.startIndex,
+        endIndex: annotation.endIndex,
+      };
+      const blocks = state.blocks.map((block, blockIndex, all) => {
+        if (block.blockId !== event.blockId) return block;
+        const citationsBefore = all
+          .slice(0, blockIndex)
+          .reduce((acc, b) => acc + b.citations.length, 0);
+        const idx: CitationAnnotation = {
+          ...next,
+          index: citationsBefore + block.citations.length + 1,
+        };
+        return { ...block, citations: [...block.citations, idx] };
+      });
+      return { ...state, blocks };
+    }
+    case 'searchCost':
+      // Phase 7 / M-WebSearch: per-response tool-call count. Surface as a
+      // scalar on the stream state; the UsageSummary picks it up.
+      return { ...state, searchCost: (state.searchCost ?? 0) + event.toolCalls };
+    case 'searchUnavailable':
+      return {
+        ...state,
+        searchUnavailable: { code: event.code, message: event.message },
       };
     default:
       return state;

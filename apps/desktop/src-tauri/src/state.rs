@@ -38,6 +38,12 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Convenience accessor for the database pool, so callers can get a
+    /// handle without a partial move of the struct field.
+    pub fn db(&self) -> DbPool {
+        self.db.clone()
+    }
+
     /// Initialize paths, settings, HTTP client, and the SQLite pool (running
     /// migrations + the startup integrity check). Async because pool init and
     /// migrations are async; `main.rs` drives it via `tauri::async_runtime`.
@@ -242,6 +248,22 @@ impl AppState {
             settings.onboarding_completed = value;
         }
 
+        // Phase 7 / M-WebSearch: master toggle and persistent defaults. Domain
+        // lists are validated for shape (bare host, no http(s) prefix, ≤253
+        // chars) and length (≤100 entries per list, matching OpenAI's
+        // provider-side cap). A single bad entry rejects the whole update so
+        // the renderer never silently drops or accepts a malformed filter.
+        if let Some(value) = patch.web_search_enabled {
+            settings.web_search_enabled = value;
+        }
+        if let Some(defaults) = patch.web_search {
+            validate_web_search_defaults(&defaults)?;
+            settings.web_search = defaults;
+        }
+        if let Some(value) = patch.web_search_consent_acknowledged {
+            settings.web_search_consent_acknowledged = value;
+        }
+
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())
     }
@@ -279,6 +301,85 @@ fn read_settings(paths: &AppPaths) -> Result<AppSettings, String> {
 
     let raw = fs::read_to_string(&paths.settings_file).map_err(|error| error.to_string())?;
     serde_json::from_str(&raw).map_err(|error| error.to_string())
+}
+
+/// Phase 7 / M-WebSearch: validate persistent web search defaults on save.
+/// Domain lists must be bare hosts (no http(s) prefix, ≤253 chars, no
+/// whitespace) and bounded to 100 entries per list (OpenAI's provider-side
+/// cap). A single bad entry rejects the whole update so the renderer never
+/// silently drops or accepts a malformed filter. The provider enforces the
+/// actual filter at request time; this is a defense-in-depth gate.
+fn validate_web_search_defaults(
+    defaults: &provider_core::schema::WebSearchDefaults,
+) -> Result<(), String> {
+    const MAX_DOMAIN_ENTRIES: usize = 100;
+    if defaults.allowed_domains.len() > MAX_DOMAIN_ENTRIES {
+        return Err(format!(
+            "web search allowed_domains exceeds the {MAX_DOMAIN_ENTRIES}-entry provider cap"
+        ));
+    }
+    if defaults.blocked_domains.len() > MAX_DOMAIN_ENTRIES {
+        return Err(format!(
+            "web search blocked_domains exceeds the {MAX_DOMAIN_ENTRIES}-entry provider cap"
+        ));
+    }
+    for domain in defaults
+        .allowed_domains
+        .iter()
+        .chain(defaults.blocked_domains.iter())
+    {
+        validate_web_search_domain(domain)?;
+    }
+    if let Some(loc) = &defaults.user_location {
+        if loc.country.len() != 2 || !loc.country.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Err(format!(
+                "web search user_location.country must be a 2-letter ISO 3166-1 alpha-2 code (got {:?})",
+                loc.country
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_web_search_domain(raw: &str) -> Result<(), String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("web search domain entries cannot be empty".to_string());
+    }
+    if trimmed.len() > 253 {
+        return Err(format!(
+            "web search domain entry {:?} exceeds 253 characters",
+            trimmed
+        ));
+    }
+    if trimmed.contains(' ') || trimmed.contains('\t') {
+        return Err(format!(
+            "web search domain entry {:?} contains whitespace",
+            trimmed
+        ));
+    }
+    if trimmed.contains("://") {
+        return Err(format!(
+            "web search domain entry {:?} must omit the http(s):// prefix",
+            trimmed
+        ));
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        return Err(format!(
+            "web search domain entry {:?} contains invalid characters (allowed: letters, digits, '.', '-', '_')",
+            trimmed
+        ));
+    }
+    if !trimmed.contains('.') {
+        return Err(format!(
+            "web search domain entry {:?} must contain at least one '.'",
+            trimmed
+        ));
+    }
+    Ok(())
 }
 
 /// Validate an artifact remote-allowlist entry and normalize it to an origin
@@ -537,5 +638,106 @@ mod tests {
                     .and_then(|v| v.as_bool())
             })
             .unwrap_or(false)
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 7 / M-WebSearch: validation tests for the WebSearchDefaults
+    // patch path. The trust boundary here is `state.rs`; these tests
+    // pin the rules documented in `docs/specs/agent-web-search.md`.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn web_search_defaults_accept_clean_payload() {
+        let defaults = provider_core::schema::WebSearchDefaults {
+            allowed_domains: vec!["pubmed.ncbi.nlm.nih.gov".into()],
+            blocked_domains: vec!["reddit.com".into()],
+            user_location: Some(provider_core::schema::UserLocation {
+                country: "GB".into(),
+                city: Some("London".into()),
+                region: None,
+            }),
+            ..provider_core::schema::WebSearchDefaults::default()
+        };
+        validate_web_search_defaults(&defaults).expect("clean payload must pass");
+    }
+
+    #[test]
+    fn web_search_defaults_reject_http_prefix() {
+        let defaults = provider_core::schema::WebSearchDefaults {
+            allowed_domains: vec!["https://pubmed.ncbi.nlm.nih.gov".into()],
+            ..provider_core::schema::WebSearchDefaults::default()
+        };
+        let err = validate_web_search_defaults(&defaults).unwrap_err();
+        assert!(
+            err.contains("http(s)://"),
+            "rejection must mention the http(s):// prefix rule: {err}"
+        );
+    }
+
+    #[test]
+    fn web_search_defaults_reject_whitespace_and_empty() {
+        let cases = vec!["", "  ", "exam ple.com", "example .com"];
+        for bad in cases {
+            let defaults = provider_core::schema::WebSearchDefaults {
+                allowed_domains: vec![bad.into()],
+                ..provider_core::schema::WebSearchDefaults::default()
+            };
+            assert!(
+                validate_web_search_defaults(&defaults).is_err(),
+                "expected rejection for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn web_search_defaults_reject_too_many_entries() {
+        let domains: Vec<String> = (0..101).map(|i| format!("host{i}.example.com")).collect();
+        let defaults = provider_core::schema::WebSearchDefaults {
+            allowed_domains: domains,
+            ..provider_core::schema::WebSearchDefaults::default()
+        };
+        let err = validate_web_search_defaults(&defaults).unwrap_err();
+        assert!(
+            err.contains("100-entry"),
+            "rejection must mention the 100-entry provider cap: {err}"
+        );
+    }
+
+    #[test]
+    fn web_search_defaults_reject_bad_country_code() {
+        let cases = vec![
+            ("USA", "too long"),       // ISO 3166-1 alpha-2 is exactly 2 letters
+            ("G", "too short"),
+            ("G1", "non-alpha char"),
+            ("",  "empty"),
+        ];
+        for (bad, label) in cases {
+            let defaults = provider_core::schema::WebSearchDefaults {
+                user_location: Some(provider_core::schema::UserLocation {
+                    country: bad.into(),
+                    city: None,
+                    region: None,
+                }),
+                ..provider_core::schema::WebSearchDefaults::default()
+            };
+            let result = validate_web_search_defaults(&defaults);
+            assert!(
+                result.is_err(),
+                "expected rejection for {bad:?} ({label}), got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn web_search_defaults_reject_domain_without_dot() {
+        let defaults = provider_core::schema::WebSearchDefaults {
+            blocked_domains: vec!["localhost".into()],
+            ..provider_core::schema::WebSearchDefaults::default()
+        };
+        let err = validate_web_search_defaults(&defaults).unwrap_err();
+        assert!(
+            err.contains("at least one '.'"),
+            "rejection must mention the dot requirement: {err}"
+        );
     }
 }

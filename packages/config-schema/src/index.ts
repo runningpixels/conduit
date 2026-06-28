@@ -28,8 +28,18 @@ export type { ProviderUsage } from './generated/provider_usage';
 export type { ProviderError } from './generated/provider_error';
 export type { ProviderEvent } from './generated/provider_event';
 
+// Phase 7 — agent web search (M-WebSearch). See docs/specs/agent-web-search.md.
+export type { SearchContextSize } from './generated/search_context_size';
+export type { ReturnTokenBudget } from './generated/return_token_budget';
+export type { WebSearchFilters } from './generated/web_search_filters';
+export type { UserLocation } from './generated/user_location';
+export type { WebSearchRequest } from './generated/web_search_request';
+export type { WebSearchDefaults } from './generated/web_search_defaults';
+export type { ContentAnnotation } from './generated/content_annotation';
+
 // Tools
 export type { PermissionLevel } from './generated/permission_level';
+export type { ToolKind } from './generated/tool_kind';
 export type { ToolDefinition } from './generated/tool_definition';
 export type { ToolCallStatus } from './generated/tool_call_status';
 export type { ToolCallRecord } from './generated/tool_call_record';

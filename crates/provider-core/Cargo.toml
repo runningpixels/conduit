@@ -19,6 +19,7 @@ thiserror = "2.0"
 ts-rs = { version = "10", features = ["serde-json-impl", "no-serde-warnings"] }
 tokio = { version = "1.40", features = ["sync", "macros", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+url = "2.5"
 uuid = { version = "1.11", features = ["v4"] }
 
 [dev-dependencies]

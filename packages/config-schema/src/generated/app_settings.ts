@@ -2,6 +2,7 @@
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
+import type { WebSearchDefaults } from "./web_search_defaults";
 
 export type AppSettings = { activeProvider: string, activeModel: string, localOnly: boolean, diagnosticsEnabled: boolean, theme: Theme, providerEndpoints: { [key in string]?: ProviderEndpointConfig }, 
 /**
@@ -35,4 +36,24 @@ updateCheckEnabled: boolean,
  * finishes the BYOK gate; `App.tsx` renders `<Onboarding>` instead of the
  * workspace while false (and while no provider credential is configured).
  */
-onboardingCompleted: boolean, };
+onboardingCompleted: boolean, 
+/**
+ * Phase 7: whether web search is enabled globally. Off by default.
+ * Honored only when the active provider is non-local; ignored when
+ * `local_only` is true (see `agent-web-search` spec).
+ */
+webSearchEnabled: boolean, 
+/**
+ * Phase 7: persistent web search defaults. Per-turn overrides on
+ * `ProviderRequest.web_search` win.
+ */
+webSearch: WebSearchDefaults, 
+/**
+ * Phase 7 / M-WebSearch: first-use consent acknowledgement. `false`
+ * until the user has seen and accepted the one-time consent dialog
+ * for web search. The dialog surfaces when the user first enables
+ * `web_search_enabled` (settings) or flips the per-turn search toggle
+ * (chat bar). The consent copy is untrusted display data that the
+ * renderer renders but never executes.
+ */
+webSearchConsentAcknowledged: boolean, };

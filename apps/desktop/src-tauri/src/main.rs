@@ -96,6 +96,8 @@ fn main() {
             get_diagnostics_disclosure_acknowledged,
             acknowledge_diagnostics_disclosure,
             reveal_path,
+            // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
+            reset_local_database,
         ])
         .setup(|app| {
             let _ = app.handle();

@@ -54,6 +54,16 @@ const defaultSettings: AppSettings = {
   updateChannel: 'stable',
   updateCheckEnabled: true,
   onboardingCompleted: false,
+  webSearchEnabled: false,
+  webSearch: {
+    searchContextSize: 'medium',
+    allowedDomains: [],
+    blockedDomains: [],
+    externalWebAccess: true,
+    returnTokenBudget: 'default',
+    includeSources: false,
+  },
+  webSearchConsentAcknowledged: false,
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';

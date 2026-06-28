@@ -517,6 +517,10 @@
 }
 .tool-btn:hover { background: var(--surface-2); color: var(--text); }
 .tool-btn svg { width: 16px; height: 16px; }
+/* Phase 7 / M-WebSearch: active search toggle. Accent background + color
+   so the user has a clear visual indicator that the next turn will search. */
+.tool-btn.search-active { background: var(--accent); color: var(--accent-contrast, #fff); }
+.tool-btn.search-active:hover { background: var(--accent-hover, var(--accent)); }
 .send {
   margin-left: auto;
   width: 34px;

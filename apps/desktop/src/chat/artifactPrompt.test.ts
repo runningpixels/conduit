@@ -51,6 +51,16 @@ describe('buildProviderRequest artifact prompts', () => {
     updateChannel: 'stable' as const,
     updateCheckEnabled: true,
     onboardingCompleted: true,
+    webSearchEnabled: false,
+    webSearch: {
+      searchContextSize: 'medium' as const,
+      allowedDomains: [],
+      blockedDomains: [],
+      externalWebAccess: true,
+      returnTokenBudget: 'default' as const,
+      includeSources: false,
+    },
+    webSearchConsentAcknowledged: false,
   };
 
   it('includes the artifact appendix in systemPrompt', () => {

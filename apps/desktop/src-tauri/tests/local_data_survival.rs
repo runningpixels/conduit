@@ -161,6 +161,9 @@ async fn settings_and_db_survive_in_place_reopen() {
         update_channel: None,
         update_check_enabled: None,
         onboarding_completed: None,
+        web_search_enabled: None,
+        web_search: None,
+        web_search_consent_acknowledged: None,
     };
     let updated = state.update_settings(patch).expect("update settings");
     assert_eq!(updated.active_model, "claude-opus-4");

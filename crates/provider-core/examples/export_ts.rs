@@ -12,13 +12,15 @@
 
 use provider_core::schema::{
     AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition, ConnectorGrant,
-    ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, Conversation,
-    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
-    GrantStatus, LicenseClaims, Message, MessagePart, MessagePartKind, MessageRole, ModelInfo,
-    ModelPolicy, PermissionLevel, ProviderEndpointConfig, ProviderError, ProviderEvent,
-    ProviderRequest, ProviderUsage, ResponseFormatHint, RetentionState, RolloutChannel,
-    SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
-    ToolCallStatus, ToolChoice, ToolDefinition, Transport,
+    ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation,
+    Conversation, ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls,
+    GrantScope, GrantStatus, LicenseClaims, Message, MessagePart, MessagePartKind, MessageRole,
+    ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig, ProviderError,
+    ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint, RetentionState,
+    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SupportState,
+    TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ToolDefinition, ToolKind, Transport, UserLocation, WebSearchDefaults, WebSearchFilters,
+    WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -40,8 +42,18 @@ fn main() {
     ProviderError::export().expect("export ProviderError");
     ProviderEvent::export().expect("export ProviderEvent");
 
+    // Phase 7 — agent web search (M-WebSearch). See docs/specs/agent-web-search.md.
+    SearchContextSize::export().expect("export SearchContextSize");
+    ReturnTokenBudget::export().expect("export ReturnTokenBudget");
+    WebSearchFilters::export().expect("export WebSearchFilters");
+    UserLocation::export().expect("export UserLocation");
+    WebSearchRequest::export().expect("export WebSearchRequest");
+    WebSearchDefaults::export().expect("export WebSearchDefaults");
+    ContentAnnotation::export().expect("export ContentAnnotation");
+
     // Tools
     PermissionLevel::export().expect("export PermissionLevel");
+    ToolKind::export().expect("export ToolKind");
     ToolDefinition::export().expect("export ToolDefinition");
     ToolCallStatus::export().expect("export ToolCallStatus");
     ToolCallRecord::export().expect("export ToolCallRecord");

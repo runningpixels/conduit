@@ -153,5 +153,14 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::Ping { .. } => "ping",
         ProviderEvent::MessageComplete { .. } => "messageComplete",
         ProviderEvent::Error { .. } => "error",
+        // Phase 7 / M-WebSearch: hosted web-search events are journaled just
+        // like any other provider event. `SearchUnavailable` is the
+        // adapter-emitted "endpoint can't host this tool" event; it is the
+        // canonical signal that the user's intent was respected, not silently
+        // dropped.
+        ProviderEvent::SearchSources { .. } => "searchSources",
+        ProviderEvent::Citation { .. } => "citation",
+        ProviderEvent::SearchCost { .. } => "searchCost",
+        ProviderEvent::SearchUnavailable { .. } => "searchUnavailable",
     }
 }

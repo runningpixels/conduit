@@ -162,14 +162,14 @@ pub async fn create(
 }
 
 /// Update the artifact's title (trimmed; empty becomes NULL) and bump updated_at.
-pub async fn set_title(
-    pool: &SqlitePool,
-    artifact_id: &str,
-    title: &str,
-) -> Result<(), DbError> {
+pub async fn set_title(pool: &SqlitePool, artifact_id: &str, title: &str) -> Result<(), DbError> {
     let now = now_iso8601();
     let t = title.trim();
-    let title_val: Option<String> = if t.is_empty() { None } else { Some(t.to_string()) };
+    let title_val: Option<String> = if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    };
     sqlx::query("UPDATE artifacts SET title = ?, updated_at = ? WHERE id = ?")
         .bind(&title_val)
         .bind(&now)

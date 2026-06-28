@@ -52,6 +52,8 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
+            kind: None,
+            host_config: None,
         },
         ToolDefinition {
             tool_id: EDIT_HTML_TOOL.to_string(),
@@ -65,6 +67,8 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
+            kind: None,
+            host_config: None,
         },
         ToolDefinition {
             tool_id: WRITE_MARKDOWN_TOOL.to_string(),
@@ -79,6 +83,8 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
+            kind: None,
+            host_config: None,
         },
         ToolDefinition {
             tool_id: EDIT_MARKDOWN_TOOL.to_string(),
@@ -92,6 +98,8 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
+            kind: None,
+            host_config: None,
         },
         ToolDefinition {
             tool_id: WRITE_TEXT_TOOL.to_string(),
@@ -107,6 +115,8 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
+            kind: None,
+            host_config: None,
         },
         ToolDefinition {
             tool_id: EDIT_TEXT_TOOL.to_string(),
@@ -121,6 +131,8 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
+            kind: None,
+            host_config: None,
         },
         ToolDefinition {
             tool_id: EXPORT_DOCUMENT_TOOL.to_string(),
@@ -133,6 +145,8 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             permission_level: Some(PermissionLevel::Sensitive),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
+            kind: None,
+            host_config: None,
         },
     ]
 }
@@ -256,8 +270,16 @@ pub async fn execute_builtin_tool(
 
     match result {
         Ok(output) => {
-            finalize_tool_call(ctx, tool_call_id, request_id, tool_name, arguments, output, false)
-                .await
+            finalize_tool_call(
+                ctx,
+                tool_call_id,
+                request_id,
+                tool_name,
+                arguments,
+                output,
+                false,
+            )
+            .await
         }
         Err(error) => {
             finalize_tool_call(
@@ -278,10 +300,7 @@ fn json_schema(fields: &[(&str, &str, bool)]) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
     for (name, kind, is_required) in fields {
-        properties.insert(
-            (*name).to_string(),
-            serde_json::json!({ "type": kind }),
-        );
+        properties.insert((*name).to_string(), serde_json::json!({ "type": kind }));
         if *is_required {
             required.push((*name).to_string());
         }
@@ -299,7 +318,11 @@ fn json_schema(fields: &[(&str, &str, bool)]) -> Value {
 fn resolve_title(title: Option<String>, filename: Option<String>) -> Option<String> {
     let trimmed = title.and_then(|t| {
         let t = t.trim().to_string();
-        if t.is_empty() { None } else { Some(t) }
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
     });
     if trimmed.is_some() {
         return trimmed;

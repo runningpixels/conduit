@@ -29,6 +29,7 @@ function makeStreamState(toolCalls: ToolCallState[]): AssistantStreamState {
     blocks: [],
     reasoning: [],
     toolCalls,
+    searchSources: [],
     interrupted: false,
     streaming: false,
   };
@@ -46,6 +47,16 @@ const baseSettings = {
   updateChannel: 'stable' as const,
   updateCheckEnabled: true,
   onboardingCompleted: true,
+  webSearchEnabled: false,
+  webSearch: {
+    searchContextSize: 'medium' as const,
+    allowedDomains: [],
+    blockedDomains: [],
+    externalWebAccess: true,
+    returnTokenBudget: 'default' as const,
+    includeSources: false,
+  },
+  webSearchConsentAcknowledged: false,
 };
 
 const listedArtifacts: Artifact[] = [
@@ -276,7 +287,7 @@ describe('buildProviderRequest follow-up artifact context', () => {
     const req = buildProviderRequest(
       baseSettings,
       'make it dark mode',
-      [{ role: 'user', content: 'make it dark mode' }],
+      [{ id: 'u1', role: 'user', content: 'make it dark mode' }],
       'c1',
       [],
       {
@@ -294,7 +305,7 @@ describe('buildProviderRequest follow-up artifact context', () => {
     const req = buildProviderRequest(
       baseSettings,
       'create a new artifact html',
-      [{ role: 'user', content: 'create a new artifact html' }],
+      [{ id: 'u2', role: 'user', content: 'create a new artifact html' }],
       'c1',
       [],
       {
@@ -311,7 +322,7 @@ describe('buildProviderRequest follow-up artifact context', () => {
     const req = buildProviderRequest(
       baseSettings,
       'what types of documents can you create?',
-      [{ role: 'user', content: 'what types of documents can you create?' }],
+      [{ id: 'u3', role: 'user', content: 'what types of documents can you create?' }],
       'c1',
       [],
     );

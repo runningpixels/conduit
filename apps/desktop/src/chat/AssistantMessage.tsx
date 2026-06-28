@@ -7,6 +7,7 @@ import { ChatMessageContent } from './ChatMessageContent';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ToolCallBlock } from './ToolCallBlock';
+import { SearchCallBlock, isWebSearchToolCall } from './SearchCallBlock';
 import { UsageSummary } from './UsageSummary';
 import { AssistantArtifactStrip } from './ArtifactRefChip';
 
@@ -80,11 +81,21 @@ export function AssistantMessage({
           <ReasoningBlock key={block.blockId} block={block} />
         ))}
         <ChatMessageContent content={text} streaming={state.streaming} />
-        {state.toolCalls.map((toolCall) => (
-          <ToolCallBlock key={toolCall.toolCallId} toolCall={toolCall} />
-        ))}
+        {state.toolCalls.map((toolCall) =>
+          isWebSearchToolCall(toolCall) ? (
+            <SearchCallBlock
+              key={toolCall.toolCallId}
+              toolCall={toolCall}
+              sources={state.searchSources}
+              unavailable={state.searchUnavailable}
+              cost={state.searchCost}
+            />
+          ) : (
+            <ToolCallBlock key={toolCall.toolCallId} toolCall={toolCall} />
+          ),
+        )}
         {state.error && <p className="error-text">{state.error}</p>}
-        <UsageSummary usage={state.usage} />
+        <UsageSummary usage={state.usage} searchCost={state.searchCost} />
         {messageId && onPromoteArtifact && onOpenArtifact && (
           <AssistantArtifactStrip
             messageId={messageId}

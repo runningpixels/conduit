@@ -5,19 +5,36 @@ use crate::adapters::{
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
-    GenerationControls, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
-    ProviderRequest, ToolChoice,
+    ContentAnnotation, GenerationControls, MessagePartKind, MessageRole, ProviderError,
+    ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
 };
 use crate::transport::{bearer_header, get_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::Stream;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+
+/// Phase 7 / M-WebSearch: merge a provider-agnostic hosted-tool config blob
+/// onto an existing `tools[]` entry. Shallow merge — keys in `overlay` win.
+/// Used so adapters can serialize a `ToolDefinition.host_config` onto the
+/// provider-specific tool object without forking the type system.
+fn merge_json(base: Value, overlay: Value) -> Value {
+    match (base, overlay) {
+        (Value::Object(mut a), Value::Object(b)) => {
+            for (k, v) in b {
+                a.insert(k, v);
+            }
+            Value::Object(a)
+        }
+        (_, b) => b,
+    }
+}
 use std::pin::Pin;
 use tokio_util::sync::CancellationToken;
 
 const DEFAULT_BASE: &str = "https://api.openai.com/v1";
 
+#[derive(Clone)]
 pub struct OpenAiAdapter {
     pub provider_id: &'static str,
     pub display: &'static str,
@@ -45,6 +62,15 @@ impl OpenAiAdapter {
 struct OpenAiParser {
     blocks: HashMap<u32, String>,
     tool_calls: HashMap<u32, (String, String, String, String)>,
+    /// Phase 7 / M-WebSearch: open hosted web-search tool calls keyed by the
+    /// provider's `ws_*` id. Each holds (tool_call_id, query_text, status)
+    /// so we can emit `ToolCallStart` on `output_item.added` and
+    /// `ToolCallComplete` on `output_item.done`.
+    search_calls: HashMap<String, (String, String, String)>,
+    /// Count of completed hosted web-search tool calls in this response.
+    /// Surfaced as `ProviderEvent::SearchCost { tool_calls }` so the
+    /// usage summary can show "Web searches: N".
+    completed_search_calls: u32,
 }
 
 impl OpenAiParser {
@@ -52,6 +78,8 @@ impl OpenAiParser {
         Self {
             blocks: HashMap::new(),
             tool_calls: HashMap::new(),
+            search_calls: HashMap::new(),
+            completed_search_calls: 0,
         }
     }
 }
@@ -228,13 +256,277 @@ impl StreamParser for OpenAiParser {
                         .get("prompt_tokens_details")
                         .and_then(|d| d.get("cached_tokens"))
                         .and_then(|v| v.as_u64()),
-                    cost_hint: None,
+                    cost_hint: usage
+                        .pointer("/cost_hint")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
                 },
             });
             *index += 1;
         }
 
+        // -----------------------------------------------------------------
+        // Phase 7 / M-WebSearch: Responses-API dispatch.
+        //
+        // OpenAI's hosted web_search tool surfaces as a discrete output item
+        // rather than a function tool call. Items come wrapped in
+        // `response.output_item.added` / `response.output_item.done` events
+        // with the item under `.item`, or sometimes as a top-level item with
+        // `type == "web_search_call"`. URL citations ride the message item's
+        // `content[].annotations` arrays.
+        //
+        // The two helpers below keep the dispatch table out of `parse_chunk`
+        // so the chat-completions path above stays untouched.
+        // -----------------------------------------------------------------
+        if let Some(events_from_item) =
+            self.parse_openai_response_item(request_id, &value, index)
+        {
+            events.extend(events_from_item);
+        }
+        if let Some(events_from_annotations) =
+            self.parse_openai_response_annotations(request_id, &value, index)
+        {
+            events.extend(events_from_annotations);
+        }
+        // Surface the per-response search-call count once, on the same chunk
+        // as `MessageComplete` (or whenever the response payload lands). We
+        // emit it only when at least one hosted search call completed, to
+        // avoid adding noise to non-search turns.
+        if value.get("type").and_then(|v| v.as_str()) == Some("response.completed")
+            && self.completed_search_calls > 0
+        {
+            let count = self.completed_search_calls;
+            self.completed_search_calls = 0;
+            events.push(ProviderEvent::SearchCost {
+                request_id: request_id.to_string(),
+                index: *index,
+                tool_calls: count,
+            });
+            *index += 1;
+        }
+
         events
+    }
+}
+
+impl OpenAiParser {
+    /// Handle Responses-API output items. Returns events for hosted
+    /// `web_search_call` items; ignores everything else (the chat-completions
+    /// branch above handles function tool calls and message deltas).
+    fn parse_openai_response_item(
+        &mut self,
+        request_id: &str,
+        value: &Value,
+        index: &mut usize,
+    ) -> Option<Vec<ProviderEvent>> {
+        // Locate the item, whether it is wrapped (`response.output_item.*`)
+        // or top-level. We accept either shape so the parser stays robust if
+        // the upstream serialization changes.
+        let item = value
+            .get("item")
+            .filter(|v| v.is_object())
+            .or_else(|| {
+                if value.get("type").is_some() {
+                    Some(value)
+                } else {
+                    None
+                }
+            })?;
+        let item_type = item.get("type").and_then(|v| v.as_str())?;
+        if item_type != "web_search_call" {
+            return None;
+        }
+
+        let event_type = value.get("type").and_then(|v| v.as_str());
+        let item_id = item
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("web_search")
+            .to_string();
+        let query = item
+            .pointer("/action/query")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let status = item
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("completed")
+            .to_string();
+
+        let mut events = Vec::new();
+        let is_done = event_type
+            .map(|t| t == "response.output_item.done" || t == "web_search_call")
+            .unwrap_or(false);
+
+        if is_done {
+            // Complete path: we may not have seen the matching `added`
+            // event (e.g. legacy / non-streaming shapes). Synthesize a Start
+            // before Complete so the renderer's ToolCallStart/Delta/Complete
+            // envelope is consistent.
+            if !self.search_calls.contains_key(&item_id) {
+                events.push(ProviderEvent::ToolCallStart {
+                    request_id: request_id.to_string(),
+                    tool_call_id: item_id.clone(),
+                    index: *index,
+                    tool_id: "web_search".to_string(),
+                    name: "web_search".to_string(),
+                });
+                *index += 1;
+            }
+            if !query.is_empty() {
+                events.push(ProviderEvent::ToolCallDelta {
+                    request_id: request_id.to_string(),
+                    tool_call_id: item_id.clone(),
+                    index: *index,
+                    content: query.clone(),
+                });
+                *index += 1;
+            }
+            let sources = item
+                .pointer("/action/sources")
+                .cloned()
+                .unwrap_or(Value::Null);
+            let arguments = if sources.is_null() {
+                json!({ "query": query, "status": status })
+            } else {
+                json!({ "query": query, "status": status, "sources": sources })
+            };
+            events.push(ProviderEvent::ToolCallComplete {
+                request_id: request_id.to_string(),
+                tool_call_id: item_id.clone(),
+                index: *index,
+                arguments,
+            });
+            *index += 1;
+            self.search_calls.remove(&item_id);
+            self.completed_search_calls =
+                self.completed_search_calls.saturating_add(1);
+            // Forward sources as a discrete event so the renderer can show a
+            // sources list separately from the search block. Only emit when
+            // the provider actually returned sources.
+            if !sources.is_null() {
+                if let Value::Array(arr) = sources {
+                    events.push(ProviderEvent::SearchSources {
+                        request_id: request_id.to_string(),
+                        index: *index,
+                        sources: Value::Array(arr),
+                    });
+                    *index += 1;
+                }
+            }
+        } else {
+            // `response.output_item.added`: track the open call so the
+            // eventual `done` event can correlate. Emit ToolCallStart here
+            // so the renderer sees the search the moment it begins.
+            self.search_calls.insert(
+                item_id.clone(),
+                (item_id.clone(), query.clone(), status.clone()),
+            );
+            events.push(ProviderEvent::ToolCallStart {
+                request_id: request_id.to_string(),
+                tool_call_id: item_id,
+                index: *index,
+                tool_id: "web_search".to_string(),
+                name: "web_search".to_string(),
+            });
+            *index += 1;
+        }
+
+        Some(events)
+    }
+
+    /// Surface `url_citation` annotations from Responses-API message items
+    /// and from inline `output_text` payloads. Citations are bound to the
+    /// originating `ContentBlock` (`block_id`); the renderer walks them in
+    /// `start_index`/`end_index` order to insert inline `[n]` markers.
+    fn parse_openai_response_annotations(
+        &self,
+        request_id: &str,
+        value: &Value,
+        index: &mut usize,
+    ) -> Option<Vec<ProviderEvent>> {
+        let mut events = Vec::new();
+
+        // The Responses API emits the message item both in `output_item.done`
+        // and in `output_text.done` chunks; the latter carries the most
+        // up-to-date `text` and `annotations` for a single content part.
+        // We pull annotations from both shapes so the renderer sees them
+        // regardless of which shape the chunk uses.
+        let mut annotations: Vec<&Value> = Vec::new();
+        if let Some(arr) = value.get("annotations").and_then(|v| v.as_array()) {
+            annotations.extend(arr.iter());
+        }
+        if let Some(content) = value.get("content").and_then(|v| v.as_array()) {
+            for part in content {
+                if let Some(arr) = part.get("annotations").and_then(|v| v.as_array()) {
+                    annotations.extend(arr.iter());
+                }
+            }
+        }
+        if let Some(item_content) =
+            value.pointer("/item/content").and_then(|v| v.as_array())
+        {
+            for part in item_content {
+                if let Some(arr) = part.get("annotations").and_then(|v| v.as_array()) {
+                    annotations.extend(arr.iter());
+                }
+            }
+        }
+
+        // Bind citations to the most recently opened content block for this
+        // response. The chat-completions path uses `block-{choice_index}`
+        // ids; the Responses-API message path uses `block-{output_index}`.
+        // We use the chunk's `output_index` (preferred) or `item_id` (fallback)
+        // to derive a stable id.
+        let block_id = value
+            .get("output_index")
+            .and_then(|v| v.as_u64())
+            .map(|i| format!("block-{i}"))
+            .or_else(|| {
+                value
+                    .get("item_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| format!("block-{s}"))
+            })
+            .or_else(|| {
+                value
+                    .pointer("/item/id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| format!("block-{s}"))
+            })
+            .unwrap_or_else(|| "block-0".to_string());
+
+        for ann in annotations {
+            if ann.get("type").and_then(|v| v.as_str()) != Some("url_citation") {
+                continue;
+            }
+            let url = ann.get("url").and_then(|v| v.as_str()).unwrap_or("");
+            let title = ann.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let start_index = ann.get("start_index").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let end_index = ann.get("end_index").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            if url.is_empty() {
+                continue;
+            }
+            events.push(ProviderEvent::Citation {
+                request_id: request_id.to_string(),
+                block_id: block_id.clone(),
+                index: *index,
+                annotation: ContentAnnotation::UrlCitation {
+                    url: url.to_string(),
+                    title: title.to_string(),
+                    start_index,
+                    end_index,
+                },
+            });
+            *index += 1;
+        }
+
+        if events.is_empty() {
+            None
+        } else {
+            Some(events)
+        }
     }
 }
 
@@ -318,29 +610,126 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         }
     }
 
+    let web_search_intent = request
+        .web_search
+        .as_ref()
+        .map(|w| w.enabled)
+        .unwrap_or(false);
+
     let mut body = json!({
       "model": request.model_id,
-      "messages": messages,
       "stream": true,
       "stream_options": { "include_usage": true },
     });
+
+    // Phase 7 / M-WebSearch: the Responses API (`/responses`) takes `input`
+    // rather than `messages`. The two payloads are largely compatible — the
+    // messages above are `{role, content}` shaped; Responses accepts that
+    // shape directly under `input`. Rename the field so a single `messages`
+    // build step serves both endpoints.
+    if web_search_intent {
+        body["input"] = json!(messages);
+    } else {
+        body["messages"] = json!(messages);
+    }
 
     if !request.tool_definitions.is_empty() {
         let tools: Vec<Value> = request
             .tool_definitions
             .iter()
             .map(|tool| {
-                json!({
-                  "type": "function",
-                  "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.input_schema,
-                  }
-                })
+                // Phase 7 / M-WebSearch: hosted tools ride alongside function
+                // tools on the same `tools` array, but with a different shape.
+                // The renderer / catalog marks them with `kind = Hosted`; the
+                // adapter is the sole authority on the wire shape per provider.
+                if matches!(tool.kind, Some(crate::schema::ToolKind::Hosted)) {
+                    let mut obj = json!({ "type": tool.name });
+                    if let Some(cfg) = &tool.host_config {
+                        obj = merge_json(obj, cfg.clone());
+                    }
+                    obj
+                } else {
+                    json!({
+                      "type": "function",
+                      "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.input_schema,
+                      }
+                    })
+                }
             })
             .collect();
         body["tools"] = json!(tools);
+    }
+
+    // Phase 7 / M-WebSearch: inject the hosted `web_search` tool when the
+    // turn opts in. The provider-agnostic `WebSearchRequest` is serialized
+    // directly onto the Responses-API tool object. Domain lists are forwarded
+    // as-is; the provider validates entries and rejects malformed ones in-band
+    // (the existing `{"error":...}` branch surfaces them as `ProviderEvent::Error`).
+    if let Some(ws) = request.web_search.as_ref().filter(|w| w.enabled) {
+        let mut web_search_tool = json!({ "type": "web_search" });
+        if let Some(size) = ws.search_context_size {
+            let value = match size {
+                SearchContextSize::Low => "low",
+                SearchContextSize::Medium => "medium",
+                SearchContextSize::High => "high",
+            };
+            web_search_tool["search_context_size"] = json!(value);
+        }
+        if let Some(filters) = &ws.filters {
+            let mut f = serde_json::Map::new();
+            if let Some(allowed) = &filters.allowed_domains {
+                f.insert("allowed_domains".to_string(), json!(allowed));
+            }
+            if let Some(blocked) = &filters.blocked_domains {
+                f.insert("blocked_domains".to_string(), json!(blocked));
+            }
+            if !f.is_empty() {
+                web_search_tool["filters"] = Value::Object(f);
+            }
+        }
+        if let Some(external) = ws.external_web_access {
+            web_search_tool["external_web_access"] = json!(external);
+        }
+        if let Some(budget) = ws.return_token_budget {
+            let value = match budget {
+                crate::schema::ReturnTokenBudget::Default => "default",
+                crate::schema::ReturnTokenBudget::Unlimited => "unlimited",
+            };
+            web_search_tool["return_token_budget"] = json!(value);
+        }
+        if let Some(loc) = &ws.user_location {
+            web_search_tool["user_location"] = json!({
+                "type": "approximate",
+                "approximate": {
+                    "country": loc.country,
+                    "city": loc.city,
+                    "region": loc.region,
+                }
+            });
+        }
+
+        // Append to the `tools` array we built above. `build_payload` always
+        // initializes `tools` as an array when the request carried any tool
+        // definitions, so we can safely extend in place.
+        if let Some(arr) = body.get_mut("tools").and_then(|v| v.as_array_mut()) {
+            arr.push(web_search_tool);
+        } else {
+            body["tools"] = json!([web_search_tool]);
+        }
+
+        if ws.include_sources.unwrap_or(false) {
+            let include_entry = json!("web_search_call.action.sources");
+            if let Some(arr) = body.get_mut("include").and_then(|v| v.as_array_mut()) {
+                if !arr.iter().any(|v| v == &include_entry) {
+                    arr.push(include_entry);
+                }
+            } else {
+                body["include"] = json!([include_entry]);
+            }
+        }
     }
 
     if let Some(controls) = &request.generation_controls {
@@ -469,6 +858,21 @@ impl ProviderAdapter for OpenAiAdapter {
         ctx: AdapterContext,
         cancel: CancellationToken,
     ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
+        // Phase 7 / M-WebSearch: trust-boundary check. Refuse to send any
+        // hosted search tool when `local_only` is on. The renderer's chat-bar
+        // hides the toggle, and `stream_manager.rs` blocks cloud providers
+        // outright when local-only is on; this is defense-in-depth so a
+        // direct adapter call (e.g. from a future tenant-provided MCP server)
+        // cannot bypass the user's local-only intent.
+        let web_search_intent = request.web_search.as_ref().map(|w| w.enabled).unwrap_or(false);
+        if ctx.local_only && web_search_intent {
+            return Err(ProviderError {
+                provider_code: Some("local_only_block".to_string()),
+                retryable: false,
+                message: "Web search is disabled while local-only mode is on.".to_string(),
+            });
+        }
+
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
         let body = build_payload(&normalized);
@@ -481,10 +885,20 @@ impl ProviderAdapter for OpenAiAdapter {
             return Err(missing_key());
         };
 
+        // Phase 7 / M-WebSearch: hosted web_search lives on the Responses API.
+        // Switch to `/responses` when the turn opted in. The chat-completions
+        // path is preserved for turns that did not opt in (and for non-search
+        // function tools, which still work on both endpoints).
+        let endpoint = if web_search_intent {
+            "responses"
+        } else {
+            "chat/completions"
+        };
+
         let sse = post_sse(
             &ctx.http,
             SseRequest {
-                url: format!("{}/chat/completions", base_url(self, &ctx)),
+                url: format!("{}/{}", base_url(self, &ctx), endpoint),
                 headers,
                 body,
             },
@@ -507,6 +921,10 @@ pub fn parse_fixture(request_id: &str, fixture: &str) -> Vec<ProviderEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::schema::{
+        Message, MessagePart, MessagePartKind, MessageRole, PermissionLevel, ToolDefinition,
+        ToolKind, WebSearchRequest,
+    };
 
     #[test]
     fn parses_plain_text_fixture() {
@@ -534,5 +952,315 @@ mod tests {
             e,
             ProviderEvent::Error { error, .. } if error.provider_code.as_deref() == Some("invalid_request_error")
         )));
+    }
+
+    // ---------------------------------------------------------------------
+    // Phase 7 / M-WebSearch: parser tests for the Responses-API hosted
+    // `web_search_call` item + `url_citation` annotations. The fixture
+    // exercises the full envelope: web_search_call (added + done), message
+    // item with output_text annotations, and the response.completed event.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn parses_web_search_call_as_tool_call_envelope() {
+        let fixture = include_str!("../../tests/fixtures/openai/web_search_call.sse");
+        let events = parse_fixture("req-ws-1", fixture);
+
+        // The web_search_call must surface as a tool call with
+        // tool_id="web_search" so the renderer reuses ToolCallBlock.
+        let starts: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallStart {
+                    tool_call_id,
+                    tool_id,
+                    name,
+                    ..
+                } => Some((tool_call_id.clone(), tool_id.clone(), name.clone())),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            starts.iter().any(|(_, id, n)| id == "web_search" && n == "web_search"),
+            "expected a ToolCallStart with tool_id=name=web_search, got {starts:?}"
+        );
+
+        // The query must appear as a ToolCallDelta so the renderer can show
+        // the search query as it streams.
+        let deltas: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallDelta { tool_call_id, content, .. } => {
+                    Some((tool_call_id.clone(), content.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            deltas.iter().any(|(_, c)| c.contains("best picture 2025")),
+            "expected a ToolCallDelta with the search query, got {deltas:?}"
+        );
+
+        // The complete event carries the query + status as JSON arguments.
+        let completes: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallComplete { tool_call_id, arguments, .. } => {
+                    Some((tool_call_id.clone(), arguments.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            completes.iter().any(|(_, args)| args.get("query").is_some()
+                && args.get("status").is_some()),
+            "expected ToolCallComplete with query+status, got {completes:?}"
+        );
+    }
+
+    #[test]
+    fn parses_url_citation_annotations() {
+        let fixture = include_str!("../../tests/fixtures/openai/web_search_call.sse");
+        let events = parse_fixture("req-ws-2", fixture);
+
+        let citations: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::Citation {
+                    annotation, block_id, ..
+                } => Some((block_id.clone(), annotation.clone())),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            !citations.is_empty(),
+            "expected at least one Citation event from the web_search_call fixture"
+        );
+        let (block_id, annotation) = &citations[0];
+        match annotation {
+            ContentAnnotation::UrlCitation {
+                url,
+                title,
+                start_index,
+                end_index,
+            } => {
+                assert_eq!(url, "https://www.example.com/oscars-2025");
+                assert_eq!(title, "Oscars 2025: Best Picture");
+                assert_eq!(*start_index, 0);
+                assert_eq!(*end_index, 46);
+            }
+        }
+        // The block_id must be derived from output_index so the renderer
+        // can bind the citation to the correct ContentBlock.
+        assert!(
+            block_id.starts_with("block-"),
+            "block_id should be derived from output_index, got {block_id}"
+        );
+    }
+
+    #[test]
+    fn surfaces_search_cost_when_response_completes() {
+        let fixture = include_str!("../../tests/fixtures/openai/web_search_call.sse");
+        let events = parse_fixture("req-ws-3", fixture);
+
+        let costs: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::SearchCost { tool_calls, .. } => Some(*tool_calls),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            costs.len(),
+            1,
+            "expected exactly one SearchCost on response.completed, got {costs:?}"
+        );
+        assert_eq!(costs[0], 1, "one web_search_call completed in the fixture");
+    }
+
+    #[test]
+    fn payload_builds_responses_api_when_web_search_enabled() {
+        // When web_search is enabled, the payload must use `input` (Responses
+        // API) instead of `messages` (chat completions), inject the hosted
+        // web_search tool with the user-specified knobs, and add the include
+        // directive when sources are requested.
+        let request = ProviderRequest {
+            request_id: "req-payload".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gpt-5".into(),
+            messages: vec![Message {
+                id: "m1".into(),
+                conversation_id: "conv-1".into(),
+                role: MessageRole::User,
+                author_label: None,
+                provider_message_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![MessagePart {
+                    id: "p1".into(),
+                    message_id: "m1".into(),
+                    index: 0,
+                    kind: MessagePartKind::Text,
+                    content: Some("What's the best restaurant in Paris?".into()),
+                    mime_type: None,
+                    tool_call_id: None,
+                    artifact_id: None,
+                    attachment_id: None,
+                    blob_ref: None,
+                    metadata: None,
+                    created_at: "2026-06-28T00:00:00Z".into(),
+                }],
+                created_at: "2026-06-28T00:00:00Z".into(),
+            }],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: Some(WebSearchRequest {
+                enabled: true,
+                search_context_size: Some(SearchContextSize::Low),
+                filters: Some(crate::schema::WebSearchFilters {
+                    allowed_domains: Some(vec!["pubmed.ncbi.nlm.nih.gov".into()]),
+                    blocked_domains: None,
+                }),
+                external_web_access: Some(true),
+                return_token_budget: None,
+                user_location: Some(crate::schema::UserLocation {
+                    country: "FR".into(),
+                    city: Some("Paris".into()),
+                    region: None,
+                }),
+                include_sources: Some(true),
+            }),
+        };
+
+        let body = build_payload(&NormalizedRequest { request });
+        // Responses-API field shape, not chat-completions.
+        assert!(body.get("input").is_some(), "must use Responses-API `input` field");
+        assert!(body.get("messages").is_none(), "must not emit chat-completions `messages`");
+
+        // Hosted tool injection.
+        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
+        let ws_tool = tools
+            .iter()
+            .find(|t| t.get("type").and_then(|v| v.as_str()) == Some("web_search"))
+            .expect("web_search tool must be injected");
+        assert_eq!(
+            ws_tool.get("search_context_size").and_then(|v| v.as_str()),
+            Some("low")
+        );
+        assert_eq!(
+            ws_tool
+                .pointer("/filters/allowed_domains/0")
+                .and_then(|v| v.as_str()),
+            Some("pubmed.ncbi.nlm.nih.gov")
+        );
+        assert_eq!(
+            ws_tool.get("external_web_access").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            ws_tool.pointer("/user_location/approximate/country").and_then(|v| v.as_str()),
+            Some("FR")
+        );
+
+        // include directive when sources are requested.
+        let includes = body.get("include").and_then(|v| v.as_array()).expect("include array");
+        assert!(
+            includes.iter().any(|v| v.as_str() == Some("web_search_call.action.sources")),
+            "include must request sources when include_sources=true"
+        );
+    }
+
+    #[test]
+    fn payload_uses_chat_completions_when_web_search_disabled() {
+        // Default path: no web_search on the request, so the payload stays
+        // on chat-completions (`messages`) and emits no hosted tool.
+        let request = ProviderRequest {
+            request_id: "req-no-ws".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gpt-5".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+
+        let body = build_payload(&NormalizedRequest { request });
+        assert!(body.get("messages").is_some(), "chat-completions path keeps `messages`");
+        assert!(body.get("input").is_none(), "must not emit Responses-API `input`");
+        assert!(
+            body.get("tools").is_none() || body.get("tools").and_then(|v| v.as_array()).map_or(true, |a| a.is_empty()),
+            "must not inject hosted tools on the chat-completions path"
+        );
+    }
+
+    #[test]
+    fn hosted_tool_definition_serializes_as_provider_hosted_object() {
+        // A ToolDefinition with `kind=Hosted` must serialize as a bare
+        // provider-hosted object (e.g. `{"type":"web_search", ...}`) so it
+        // can ride alongside function tools on the same `tools` array.
+        let mut request = ProviderRequest {
+            request_id: "req-hosted".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gpt-5".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![ToolDefinition {
+                tool_id: "web_search".into(),
+                name: "web_search".into(),
+                description: "Hosted web search tool".into(),
+                input_schema: json!({}),
+                kind: Some(ToolKind::Hosted),
+                host_config: Some(json!({ "search_context_size": "high" })),
+                permission_level: Some(PermissionLevel::SideEffectful),
+                display_group: None,
+                tenant_scope: None,
+            }],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+        // Web search is not on the request itself, but the catalog is exposing
+        // a hosted tool. build_payload should still emit it as a hosted tool
+        // object, not a function tool.
+        let body = build_payload(&NormalizedRequest { request: request.clone() });
+        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].get("type").and_then(|v| v.as_str()), Some("web_search"));
+        assert_eq!(
+            tools[0].get("search_context_size").and_then(|v| v.as_str()),
+            Some("high"),
+            "host_config fields must merge into the tool object"
+        );
+
+        // Sanity: a function-kind tool stays as a function tool.
+        request.tool_definitions = vec![ToolDefinition {
+            tool_id: "get_weather".into(),
+            name: "get_weather".into(),
+            description: "Get the weather".into(),
+            input_schema: json!({"type": "object"}),
+            kind: None,
+            host_config: None,
+            permission_level: None,
+            display_group: None,
+            tenant_scope: None,
+        }];
+        let body = build_payload(&NormalizedRequest { request });
+        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
+        assert_eq!(tools[0].get("type").and_then(|v| v.as_str()), Some("function"));
+        assert_eq!(
+            tools[0].pointer("/function/name").and_then(|v| v.as_str()),
+            Some("get_weather")
+        );
     }
 }

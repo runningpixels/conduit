@@ -44,7 +44,13 @@ pub fn sanitize_segment(value: &str) -> String {
     let cleaned: String = value
         .trim()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let trimmed = cleaned.trim_matches('_');
     if trimmed.is_empty() {
@@ -70,7 +76,10 @@ pub fn is_connector_callable(grant_status: Option<&str>, support_state: Option<&
 /// This is the direct port of `buildConnectorToolCatalog` from TypeScript.
 pub fn build_connector_tool_catalog(
     snapshots: &[ConnectorToolSnapshot],
-    capabilities_by_version: &std::collections::HashMap<String, Vec<conn_repo::ConnectorCapability>>,
+    capabilities_by_version: &std::collections::HashMap<
+        String,
+        Vec<conn_repo::ConnectorCapability>,
+    >,
 ) -> ConnectorToolCatalog {
     let mut tool_definitions = Vec::new();
     let mut bindings = std::collections::HashMap::new();
@@ -117,6 +126,8 @@ pub fn build_connector_tool_catalog(
                 permission_level: None,
                 display_group: Some(snapshot.connector_name.clone()),
                 tenant_scope: Some(snapshot.connector_id.clone()),
+                kind: None,
+                host_config: None,
             });
         }
     }

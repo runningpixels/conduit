@@ -9,7 +9,9 @@ describe('parseMessageSegments', () => {
     expect(segs).toHaveLength(3);
     expect(segs[0].type).toBe('prose');
     expect(segs[1].type).toBe('fence');
-    expect(segs[1].candidate.kind).toBe('html');
+    if (segs[1].type === 'fence') {
+      expect(segs[1].candidate.kind).toBe('html');
+    }
     expect(segs[2].type).toBe('prose');
   });
 
@@ -18,7 +20,9 @@ describe('parseMessageSegments', () => {
     const segs = parseMessageSegments(src);
     expect(segs).toHaveLength(1);
     expect(segs[0].type).toBe('prose');
-    expect(segs[0].text).toContain('let x=1');
+    if (segs[0].type === 'prose') {
+      expect(segs[0].text).toContain('let x=1');
+    }
   });
 
   it('handles multiple fences', () => {

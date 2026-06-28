@@ -1,0 +1,17 @@
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws_abc123","status":"in_progress","action":{"type":"search","query":"best picture 2025"}}}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_abc123","status":"completed","action":{"type":"search","query":"best picture 2025"}}}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg_xyz","status":"in_progress","role":"assistant","content":[]}}
+
+data: {"type":"response.content_part.added","output_index":1,"content_index":0,"item_id":"msg_xyz","part":{"type":"output_text","text":"","annotations":[]}}
+
+data: {"type":"response.output_text.delta","output_index":1,"content_index":0,"item_id":"msg_xyz","delta":"Anora won Best Picture at the 97th Academy Awards."}
+
+data: {"type":"response.output_text.done","output_index":1,"content_index":0,"item_id":"msg_xyz","text":"Anora won Best Picture at the 97th Academy Awards.","annotations":[{"type":"url_citation","start_index":0,"end_index":46,"url":"https://www.example.com/oscars-2025","title":"Oscars 2025: Best Picture"}]}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"type":"message","id":"msg_xyz","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Anora won Best Picture at the 97th Academy Awards.","annotations":[{"type":"url_citation","start_index":0,"end_index":46,"url":"https://www.example.com/oscars-2025","title":"Oscars 2025: Best Picture"}]}]}}
+
+data: {"type":"response.completed","usage":{"prompt_tokens":24,"completion_tokens":18}}
+
+data: [DONE]

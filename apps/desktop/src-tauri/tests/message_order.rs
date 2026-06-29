@@ -12,6 +12,7 @@ fn bare_message(conversation_id: &str, id: &str, created_at: &str) -> Message {
         role: MessageRole::User,
         author_label: None,
         provider_message_id: None,
+        request_id: None,
         interrupted_at: None,
         metadata: None,
         parts: vec![],

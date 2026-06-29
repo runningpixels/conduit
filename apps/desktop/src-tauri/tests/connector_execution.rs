@@ -429,6 +429,7 @@ async fn tool_output_not_reinjected_into_messages() {
         role: MessageRole::User,
         author_label: None,
         provider_message_id: None,
+        request_id: None,
         interrupted_at: None,
         metadata: None,
         parts: vec![MessagePart {

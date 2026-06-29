@@ -42,6 +42,7 @@ type MessageRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
     i64,
     Option<String>,
     Option<String>,
@@ -516,7 +517,7 @@ pub async fn load_conversation_messages(
     conversation_id: &str,
 ) -> Result<Vec<Message>, DbError> {
     let message_rows: Vec<MessageRow> = sqlx::query_as(
-        "SELECT id, conversation_id, role, author_label, provider_message_id, \
+        "SELECT id, conversation_id, role, author_label, provider_message_id, request_id, \
                 interrupted_at, finalized, finish_reason, metadata, created_at \
          FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
     )
@@ -582,6 +583,7 @@ pub async fn load_conversation_messages(
         role,
         author_label,
         provider_message_id,
+        request_id,
         interrupted_at,
         _finalized,
         _finish_reason,
@@ -599,6 +601,7 @@ pub async fn load_conversation_messages(
             role: role_from_str(&role)?,
             author_label,
             provider_message_id,
+            request_id,
             interrupted_at,
             metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
             parts,

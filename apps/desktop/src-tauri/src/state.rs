@@ -148,13 +148,10 @@ impl AppState {
     /// can switch to it without re-entering it.
     pub fn has_any_provider_credential(&self) -> bool {
         let settings = self.settings().unwrap_or_default();
-        if settings.active_provider == "ollama" {
-            return true;
-        }
         let store = credentials::CredentialStore::default_service();
-        ["anthropic", "openai", "openai_compat"]
-            .iter()
-            .any(|provider_id| store.has_provider_secret(provider_id))
+        provider_core::has_usable_provider_credential(&settings.active_provider, |id| {
+            store.has_provider_secret(id)
+        })
     }
 
     pub fn update_settings(&self, patch: SettingsPatch) -> Result<AppSettings, String> {

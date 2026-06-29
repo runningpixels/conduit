@@ -47,6 +47,7 @@ fn legacy_record(conv: &str, req: &str, interrupted: bool) -> StreamRecord {
         role: MessageRole::Assistant,
         author_label: None,
         provider_message_id: None,
+        request_id: None,
         interrupted_at: interrupted.then(|| now.clone()),
         metadata: None,
         // Mirror what the legacy `apply_to_message` would have stored: one text

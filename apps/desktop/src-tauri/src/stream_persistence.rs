@@ -60,6 +60,7 @@ impl StreamPersistence {
                     role: MessageRole::Assistant,
                     author_label: None,
                     provider_message_id: None,
+                    request_id: None,
                     interrupted_at: None,
                     metadata: None,
                     parts: Vec::new(),

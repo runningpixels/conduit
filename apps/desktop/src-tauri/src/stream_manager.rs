@@ -75,14 +75,25 @@ impl StreamManager {
         let settings = state.settings()?;
         let store = CredentialStore::new("conduit");
 
-        let api_key = if provider_id == "ollama" {
-            None
-        } else if store.has_provider_secret(provider_id) {
-            Some(store.get_secret(provider_id)?)
-        } else if provider_id == "openai_compat" {
-            None
-        } else {
-            return Err(format!("No credential stored for provider {provider_id}"));
+        let descriptor = provider_core::descriptor(provider_id)
+            .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
+
+        let api_key = match descriptor.credential_mode {
+            provider_core::CredentialMode::None => None,
+            provider_core::CredentialMode::Optional => {
+                if store.has_provider_secret(provider_id) {
+                    Some(store.get_secret(provider_id)?)
+                } else {
+                    None
+                }
+            }
+            provider_core::CredentialMode::Required => {
+                if store.has_provider_secret(provider_id) {
+                    Some(store.get_secret(provider_id)?)
+                } else {
+                    return Err(format!("No credential stored for provider {provider_id}"));
+                }
+            }
         };
 
         let base_url = settings
@@ -569,6 +580,14 @@ impl StreamManager {
                 _ => "Tool call did not complete.".to_string(),
             };
 
+            let mut part_metadata = serde_json::json!({ "name": record.tool_id });
+            if matches!(
+                record.status,
+                ToolCallStatus::Failed | ToolCallStatus::Cancelled
+            ) {
+                part_metadata["is_error"] = serde_json::json!(true);
+            }
+
             tool_result_parts.push(MessagePart {
                 id: format!("{}/tr-{}", previous_request.request_id, record.id),
                 message_id: String::new(),
@@ -580,7 +599,7 @@ impl StreamManager {
                 artifact_id: None,
                 attachment_id: None,
                 blob_ref: None,
-                metadata: None,
+                metadata: Some(part_metadata),
                 created_at: crate::time::now_iso8601(),
             });
         }
@@ -653,6 +672,7 @@ impl StreamManager {
                 role: MessageRole::Tool,
                 author_label: None,
                 provider_message_id: None,
+                request_id: None,
                 interrupted_at: None,
                 metadata: None,
                 parts: tool_result_parts
@@ -681,6 +701,7 @@ impl StreamManager {
                 role: MessageRole::Assistant,
                 author_label: None,
                 provider_message_id: None,
+                request_id: None,
                 interrupted_at: None,
                 metadata: None,
                 parts: assistant_parts
@@ -702,6 +723,7 @@ impl StreamManager {
                 role: MessageRole::Tool,
                 author_label: None,
                 provider_message_id: None,
+                request_id: None,
                 interrupted_at: None,
                 metadata: None,
                 parts: tool_result_parts

@@ -180,6 +180,44 @@ pub fn load_provider_credential_reference(
     })
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderDescriptorPayload {
+    pub id: String,
+    pub display_name: String,
+    pub default_base_url: Option<String>,
+    pub credential_mode: String,
+    pub is_local: bool,
+    pub show_base_url_field: bool,
+    pub tier: u8,
+    pub description: Option<String>,
+}
+
+fn credential_mode_label(mode: provider_core::CredentialMode) -> &'static str {
+    match mode {
+        provider_core::CredentialMode::None => "none",
+        provider_core::CredentialMode::Optional => "optional",
+        provider_core::CredentialMode::Required => "required",
+    }
+}
+
+#[tauri::command]
+pub fn list_provider_descriptors() -> Vec<ProviderDescriptorPayload> {
+    provider_core::list_descriptors()
+        .iter()
+        .map(|d| ProviderDescriptorPayload {
+            id: d.id.to_string(),
+            display_name: d.display_name.to_string(),
+            default_base_url: d.default_base_url.map(str::to_string),
+            credential_mode: credential_mode_label(d.credential_mode).to_string(),
+            is_local: d.is_local,
+            show_base_url_field: d.show_base_url_field,
+            tier: d.tier,
+            description: d.description.map(str::to_string),
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub async fn validate_provider_credentials(
     state: State<'_, AppState>,
@@ -250,6 +288,17 @@ pub async fn get_conversation_messages(
     // Phase 3: reads the materialized view from SQLite. (The legacy file-journal
     // path is retained only for the M3 backfill + one-release downgrade safety.)
     messages::load_conversation_messages(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_request_provider_events(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    request_id: String,
+) -> Result<Vec<provider_core::schema::ProviderEvent>, String> {
+    crate::db::repository::event_log::load_events(&state.db, &conversation_id, &request_id)
         .await
         .map_err(|e| e.to_string())
 }

@@ -33,6 +33,7 @@ import type {
   StreamHandle,
   UpdateInfo,
   OnboardingState,
+  ProviderDescriptor,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -59,6 +60,10 @@ export async function validateProviderCredentials(providerId: string): Promise<v
   await invoke('validate_provider_credentials', { providerId });
 }
 
+export async function listProviderDescriptors(): Promise<ProviderDescriptor[]> {
+  return invoke<ProviderDescriptor[]>('list_provider_descriptors');
+}
+
 export async function listProviderModels(providerId: string): Promise<ModelInfo[]> {
   return invoke<ModelInfo[]>('list_provider_models', { providerId });
 }
@@ -81,6 +86,13 @@ export async function cancelChatStream(request: CancelChatStreamRequest): Promis
 
 export async function getConversationMessages(conversationId: string): Promise<Message[]> {
   return invoke<Message[]>('get_conversation_messages', { conversationId });
+}
+
+export async function getRequestProviderEvents(
+  conversationId: string,
+  requestId: string,
+): Promise<ProviderEvent[]> {
+  return invoke<ProviderEvent[]>('get_request_provider_events', { conversationId, requestId });
 }
 
 export async function createConversation(title?: string): Promise<Conversation> {

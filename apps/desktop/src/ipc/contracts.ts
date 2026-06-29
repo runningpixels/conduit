@@ -73,6 +73,17 @@ export interface MigrationRecoveryInfo {
   error: string;
 }
 
+export interface ProviderDescriptor {
+  id: string;
+  displayName: string;
+  defaultBaseUrl: string | null;
+  credentialMode: 'none' | 'optional' | 'required';
+  isLocal: boolean;
+  showBaseUrlField: boolean;
+  tier: number;
+  description: string | null;
+}
+
 export interface OnboardingState {
   onboardingCompleted: boolean;
   hasProviderCredential: boolean;

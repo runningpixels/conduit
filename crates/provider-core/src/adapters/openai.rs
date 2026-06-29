@@ -8,9 +8,9 @@ use crate::schema::{
     ContentAnnotation, GenerationControls, MessagePartKind, MessageRole, ProviderError,
     ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
 };
-use crate::transport::{bearer_header, get_json, post_sse, SseRequest};
+use crate::transport::{get_json, post_sse, SseRequest};
 use async_trait::async_trait;
-use futures::stream::Stream;
+use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -39,6 +39,11 @@ pub struct OpenAiAdapter {
     pub provider_id: &'static str,
     pub display: &'static str,
     pub default_base: &'static str,
+    pub optional_api_key: bool,
+    pub is_local_endpoint: bool,
+    pub extra_headers: &'static [(&'static str, &'static str)],
+    /// When true, always POST to `/chat/completions` (e.g. OpenCode Zen v1).
+    pub force_chat_completions: bool,
 }
 
 impl OpenAiAdapter {
@@ -47,6 +52,10 @@ impl OpenAiAdapter {
             provider_id: "openai",
             display: "OpenAI",
             default_base: DEFAULT_BASE,
+            optional_api_key: false,
+            is_local_endpoint: false,
+            extra_headers: &[],
+            force_chat_completions: false,
         }
     }
 
@@ -55,7 +64,42 @@ impl OpenAiAdapter {
             provider_id: "openai_compat",
             display: "OpenAI Compatible",
             default_base,
+            optional_api_key: true,
+            is_local_endpoint: true,
+            extra_headers: &[],
+            force_chat_completions: false,
         }
+    }
+
+    pub fn preset(
+        provider_id: &'static str,
+        display: &'static str,
+        default_base: &'static str,
+        is_local: bool,
+        optional_api_key: bool,
+        extra_headers: &'static [(&'static str, &'static str)],
+        force_chat_completions: bool,
+    ) -> Self {
+        Self {
+            provider_id,
+            display,
+            default_base,
+            optional_api_key,
+            is_local_endpoint: is_local,
+            extra_headers,
+            force_chat_completions,
+        }
+    }
+
+    fn request_headers(&self, ctx: &AdapterContext) -> Result<reqwest::header::HeaderMap, ProviderError> {
+        let token = if let Some(key) = ctx.api_key.as_deref() {
+            key
+        } else if self.optional_api_key {
+            "noop"
+        } else {
+            return Err(missing_key());
+        };
+        crate::transport::bearer_header_with_extras(token, self.extra_headers)
     }
 }
 
@@ -250,8 +294,14 @@ impl StreamParser for OpenAiParser {
             events.push(ProviderEvent::Usage {
                 request_id: request_id.to_string(),
                 usage: crate::schema::ProviderUsage {
-                    input_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()),
-                    output_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()),
+                    input_tokens: usage
+                        .get("prompt_tokens")
+                        .and_then(|v| v.as_u64())
+                        .or_else(|| usage.get("input_tokens").and_then(|v| v.as_u64())),
+                    output_tokens: usage
+                        .get("completion_tokens")
+                        .and_then(|v| v.as_u64())
+                        .or_else(|| usage.get("output_tokens").and_then(|v| v.as_u64())),
                     cache_tokens: usage
                         .get("prompt_tokens_details")
                         .and_then(|d| d.get("cached_tokens"))
@@ -282,6 +332,13 @@ impl StreamParser for OpenAiParser {
             self.parse_openai_response_item(request_id, &value, index)
         {
             events.extend(events_from_item);
+        }
+        // Text deltas must be parsed before annotations so `ContentBlockStart`
+        // opens the target block before `Citation` events bind to it.
+        if let Some(events_from_text) =
+            self.parse_openai_response_output_text(request_id, &value, index)
+        {
+            events.extend(events_from_text);
         }
         if let Some(events_from_annotations) =
             self.parse_openai_response_annotations(request_id, &value, index)
@@ -436,6 +493,87 @@ impl OpenAiParser {
         Some(events)
     }
 
+    /// Open a Responses-API content block keyed by `output_index`. Reuses the
+    /// chat-completions `blocks` map; the two paths are mutually exclusive per
+    /// request (web-search turns use `/responses`, everything else uses
+    /// `/chat/completions`).
+    fn ensure_response_content_block(
+        &mut self,
+        request_id: &str,
+        output_index: u32,
+        index: &mut usize,
+    ) -> (String, Option<ProviderEvent>) {
+        match self.blocks.entry(output_index) {
+            std::collections::hash_map::Entry::Occupied(e) => (e.get().clone(), None),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let block_id = format!("block-{output_index}");
+                e.insert(block_id.clone());
+                let start = ProviderEvent::ContentBlockStart {
+                    request_id: request_id.to_string(),
+                    block_id: block_id.clone(),
+                    index: *index,
+                    block_kind: "text".to_string(),
+                };
+                *index += 1;
+                (block_id, Some(start))
+            }
+        }
+    }
+
+    /// Stream assistant prose from Responses-API `output_text` events. The
+    /// chat-completions branch above handles `choices[].delta.content`; this
+    /// path handles `response.output_text.delta` / `response.output_text.done`.
+    fn parse_openai_response_output_text(
+        &mut self,
+        request_id: &str,
+        value: &Value,
+        index: &mut usize,
+    ) -> Option<Vec<ProviderEvent>> {
+        let event_type = value.get("type").and_then(|v| v.as_str())?;
+        let is_delta = match event_type {
+            "response.output_text.delta" => true,
+            "response.output_text.done" => false,
+            _ => return None,
+        };
+
+        let content = if is_delta {
+            value.get("delta").and_then(|v| v.as_str())?
+        } else {
+            value.get("text").and_then(|v| v.as_str())?
+        };
+        if content.is_empty() {
+            return None;
+        }
+
+        let output_index = value
+            .get("output_index")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+
+        let (block_id, maybe_start) =
+            self.ensure_response_content_block(request_id, output_index, index);
+
+        // `output_text.done` repeats the final text after deltas; skip when the
+        // block was already opened by an earlier delta on this output item.
+        if !is_delta && maybe_start.is_none() {
+            return None;
+        }
+
+        let mut events = Vec::new();
+        if let Some(start) = maybe_start {
+            events.push(start);
+        }
+        events.push(ProviderEvent::ContentDelta {
+            request_id: request_id.to_string(),
+            block_id,
+            index: *index,
+            content: content.to_string(),
+        });
+        *index += 1;
+
+        Some(events)
+    }
+
     /// Surface `url_citation` annotations from Responses-API message items
     /// and from inline `output_text` payloads. Citations are bound to the
     /// originating `ContentBlock` (`block_id`); the renderer walks them in
@@ -530,6 +668,28 @@ impl OpenAiParser {
     }
 }
 
+fn serialize_function_tool(tool: &crate::schema::ToolDefinition, responses_api: bool) -> Value {
+    if responses_api {
+        // Responses API: name/description/parameters are top-level on the tool
+        // object, not nested under `function` (chat-completions shape).
+        json!({
+            "type": "function",
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.input_schema,
+        })
+    } else {
+        json!({
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.input_schema,
+            }
+        })
+    }
+}
+
 fn build_payload(normalized: &NormalizedRequest) -> Value {
     let request = &normalized.request;
     let mut messages = Vec::new();
@@ -619,8 +779,14 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     let mut body = json!({
       "model": request.model_id,
       "stream": true,
-      "stream_options": { "include_usage": true },
     });
+
+    // `stream_options.include_usage` is chat-completions only. The Responses API
+    // rejects it with `unknown_parameter` and the whole request fails — which
+    // blocks web search even when the user opted in.
+    if !web_search_intent {
+        body["stream_options"] = json!({ "include_usage": true });
+    }
 
     // Phase 7 / M-WebSearch: the Responses API (`/responses`) takes `input`
     // rather than `messages`. The two payloads are largely compatible — the
@@ -649,14 +815,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                     }
                     obj
                 } else {
-                    json!({
-                      "type": "function",
-                      "function": {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.input_schema,
-                      }
-                    })
+                    serialize_function_tool(tool, web_search_intent)
                 }
             })
             .collect();
@@ -681,10 +840,14 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         if let Some(filters) = &ws.filters {
             let mut f = serde_json::Map::new();
             if let Some(allowed) = &filters.allowed_domains {
-                f.insert("allowed_domains".to_string(), json!(allowed));
+                if !allowed.is_empty() {
+                    f.insert("allowed_domains".to_string(), json!(allowed));
+                }
             }
             if let Some(blocked) = &filters.blocked_domains {
-                f.insert("blocked_domains".to_string(), json!(blocked));
+                if !blocked.is_empty() {
+                    f.insert("blocked_domains".to_string(), json!(blocked));
+                }
             }
             if !f.is_empty() {
                 web_search_tool["filters"] = Value::Object(f);
@@ -784,27 +947,15 @@ impl ProviderAdapter for OpenAiAdapter {
     }
 
     fn is_local(&self) -> bool {
-        self.provider_id == "openai_compat"
+        self.is_local_endpoint
     }
 
     async fn validate_credentials(&self, ctx: &AdapterContext) -> Result<(), ProviderError> {
-        if self.provider_id == "openai_compat" && ctx.api_key.is_none() {
-            let cancel = CancellationToken::new();
-            let _ = get_json(
-                &ctx.http,
-                &format!("{}/models", base_url(self, ctx)),
-                bearer_header("noop")?,
-                cancel,
-            )
-            .await;
-            return Ok(());
-        }
-        let key = ctx.api_key.as_deref().ok_or_else(missing_key)?;
         let cancel = CancellationToken::new();
         let _ = get_json(
             &ctx.http,
             &format!("{}/models", base_url(self, ctx)),
-            bearer_header(key)?,
+            self.request_headers(ctx)?,
             cancel,
         )
         .await?;
@@ -813,13 +964,7 @@ impl ProviderAdapter for OpenAiAdapter {
 
     async fn list_models(&self, ctx: &AdapterContext) -> Result<Vec<ModelInfo>, ProviderError> {
         let cancel = CancellationToken::new();
-        let headers = if let Some(key) = ctx.api_key.as_deref() {
-            bearer_header(key)?
-        } else if self.provider_id == "openai_compat" {
-            bearer_header("noop")?
-        } else {
-            return Err(missing_key());
-        };
+        let headers = self.request_headers(ctx)?;
 
         let response = get_json(
             &ctx.http,
@@ -854,7 +999,7 @@ impl ProviderAdapter for OpenAiAdapter {
 
     async fn stream_chat(
         &self,
-        request: ProviderRequest,
+        mut request: ProviderRequest,
         ctx: AdapterContext,
         cancel: CancellationToken,
     ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
@@ -873,23 +1018,39 @@ impl ProviderAdapter for OpenAiAdapter {
             });
         }
 
+        let mut search_unavailable: Option<ProviderEvent> = None;
+        if web_search_intent && !endpoint_supports_hosted_search(ctx.base_url.as_deref()) {
+            let endpoint_msg = ctx.base_url.clone().unwrap_or_else(|| {
+                format!("<unset — falling back to {}>", self.default_base)
+            });
+            search_unavailable = Some(ProviderEvent::SearchUnavailable {
+                request_id: request.request_id.clone(),
+                index: 0,
+                code: "endpoint_mismatch".to_string(),
+                message: format!(
+                    "The configured OpenAI-compatible endpoint ({endpoint_msg}) does not host web search. Falling back to a no-search response."
+                ),
+            });
+            request.web_search = None;
+            request.tool_definitions = std::mem::take(&mut request.tool_definitions)
+                .into_iter()
+                .filter(|t| !matches!(t.kind, Some(crate::schema::ToolKind::Hosted)))
+                .collect();
+        }
+
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
         let body = build_payload(&normalized);
 
-        let headers = if let Some(key) = ctx.api_key.as_deref() {
-            bearer_header(key)?
-        } else if self.provider_id == "openai_compat" {
-            bearer_header("noop")?
-        } else {
-            return Err(missing_key());
-        };
+        let headers = self.request_headers(&ctx)?;
 
         // Phase 7 / M-WebSearch: hosted web_search lives on the Responses API.
         // Switch to `/responses` when the turn opted in. The chat-completions
         // path is preserved for turns that did not opt in (and for non-search
         // function tools, which still work on both endpoints).
-        let endpoint = if web_search_intent {
+        let endpoint = if self.force_chat_completions {
+            "chat/completions"
+        } else if web_search_intent && search_unavailable.is_none() {
             "responses"
         } else {
             "chat/completions"
@@ -906,8 +1067,34 @@ impl ProviderAdapter for OpenAiAdapter {
         )
         .await?;
 
-        Ok(wrap_sse_stream(request_id, OpenAiParser::new(), sse))
+        let inner = wrap_sse_stream(request_id, OpenAiParser::new(), sse);
+        if let Some(unavailable) = search_unavailable {
+            let prefix = async_stream::stream! {
+                yield unavailable;
+            };
+            Ok(Box::pin(prefix.chain(inner)))
+        } else {
+            Ok(inner)
+        }
     }
+}
+
+/// Phase 7 / M-WebSearch: hosts we trust to implement OpenAI's hosted
+/// `web_search` tool on an OpenAI-compatible base URL.
+pub(crate) fn endpoint_supports_hosted_search(base_url: Option<&str>) -> bool {
+    // M4: extend when Zen v2 routes real upstream search, or move to a
+    // descriptor-driven `supports_hosted_search` flag on ProviderDescriptor.
+    const OPENAI_HOSTED_SEARCH_HOSTS: &[&str] = &["api.openai.com"];
+    let Some(raw) = base_url else {
+        return false;
+    };
+    let Ok(parsed) = url::Url::parse(raw) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    OPENAI_HOSTED_SEARCH_HOSTS.contains(&host)
 }
 
 pub fn parse_fixture(request_id: &str, fixture: &str) -> Vec<ProviderEvent> {
@@ -1019,6 +1206,35 @@ mod tests {
     }
 
     #[test]
+    fn parses_response_output_text_as_content_deltas() {
+        let fixture = include_str!("../../tests/fixtures/openai/web_search_call.sse");
+        let events = parse_fixture("req-ws-text", fixture);
+
+        let deltas: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ContentDelta { block_id, content, .. } => {
+                    Some((block_id.clone(), content.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            deltas.iter().any(|(id, c)| id == "block-1" && c.contains("Anora")),
+            "expected ContentDelta for block-1 with the answer text, got {deltas:?}"
+        );
+
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                ProviderEvent::ContentBlockStart { block_id, block_kind, .. }
+                    if block_id == "block-1" && block_kind == "text"
+            )),
+            "expected ContentBlockStart for block-1 before the text deltas"
+        );
+    }
+
+    #[test]
     fn parses_url_citation_annotations() {
         let fixture = include_str!("../../tests/fixtures/openai/web_search_call.sse");
         let events = parse_fixture("req-ws-2", fixture);
@@ -1095,6 +1311,7 @@ mod tests {
                 role: MessageRole::User,
                 author_label: None,
                 provider_message_id: None,
+                request_id: None,
                 interrupted_at: None,
                 metadata: None,
                 parts: vec![MessagePart {
@@ -1172,6 +1389,105 @@ mod tests {
         assert!(
             includes.iter().any(|v| v.as_str() == Some("web_search_call.action.sources")),
             "include must request sources when include_sources=true"
+        );
+
+        // Responses API rejects chat-completions-only fields.
+        assert!(
+            body.get("stream_options").is_none(),
+            "must not send stream_options on Responses API"
+        );
+    }
+
+    #[test]
+    fn payload_omits_empty_domain_filter_arrays() {
+        let request = ProviderRequest {
+            request_id: "req-ws-empty-filters".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gpt-5".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: Some(WebSearchRequest {
+                enabled: true,
+                search_context_size: None,
+                filters: Some(crate::schema::WebSearchFilters {
+                    allowed_domains: Some(vec![]),
+                    blocked_domains: Some(vec![]),
+                }),
+                external_web_access: None,
+                return_token_budget: None,
+                user_location: None,
+                include_sources: None,
+            }),
+        };
+
+        let body = build_payload(&NormalizedRequest { request });
+        let ws_tool = body
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .and_then(|tools| {
+                tools
+                    .iter()
+                    .find(|t| t.get("type").and_then(|v| v.as_str()) == Some("web_search"))
+            })
+            .expect("web_search tool");
+        assert!(
+            ws_tool.get("filters").is_none(),
+            "empty domain lists must be omitted — OpenAI rejects empty allowed_domains arrays"
+        );
+    }
+
+    #[test]
+    fn payload_responses_api_function_tools_use_flat_shape() {
+        let request = ProviderRequest {
+            request_id: "req-ws-tools".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gpt-5".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![ToolDefinition {
+                tool_id: "create_artifact".into(),
+                name: "create_artifact".into(),
+                description: "Create an artifact".into(),
+                input_schema: serde_json::json!({"type": "object"}),
+                kind: Some(ToolKind::Function),
+                host_config: None,
+                permission_level: None,
+                display_group: None,
+                tenant_scope: None,
+            }],
+            generation_controls: None,
+            response_format: None,
+            web_search: Some(WebSearchRequest {
+                enabled: true,
+                search_context_size: None,
+                filters: None,
+                external_web_access: None,
+                return_token_budget: None,
+                user_location: None,
+                include_sources: None,
+            }),
+        };
+
+        let body = build_payload(&NormalizedRequest { request });
+        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools");
+        let fn_tool = tools
+            .iter()
+            .find(|t| t.get("type").and_then(|v| v.as_str()) == Some("function"))
+            .expect("function tool");
+        assert_eq!(
+            fn_tool.get("name").and_then(|v| v.as_str()),
+            Some("create_artifact")
+        );
+        assert!(
+            fn_tool.get("function").is_none(),
+            "Responses API uses flat function tool shape, not nested function object"
         );
     }
 

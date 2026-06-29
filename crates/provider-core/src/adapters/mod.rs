@@ -7,9 +7,11 @@ use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 
 pub mod anthropic;
+pub mod gemini;
 pub mod ollama;
 pub mod openai;
 pub mod openai_compat;
+pub mod openai_preset;
 
 pub fn message_text(message: &Message) -> String {
     message

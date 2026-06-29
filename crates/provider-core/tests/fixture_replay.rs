@@ -1,4 +1,5 @@
 use provider_core::adapters::anthropic;
+use provider_core::adapters::gemini;
 use provider_core::adapters::ollama;
 use provider_core::adapters::openai;
 use provider_core::schema::ProviderEvent;
@@ -64,6 +65,54 @@ fn ollama_plain_text_fixture() {
     assert!(events
         .iter()
         .any(|e| matches!(e, ProviderEvent::ContentDelta { .. })));
+}
+
+#[test]
+fn gemini_plain_text_fixture() {
+    let fixture = include_str!("fixtures/gemini/plain_text.sse");
+    let events = gemini::parse_fixture("req-1", fixture);
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::ContentDelta { content, .. } if content == "Hello")));
+}
+
+#[test]
+fn gemini_tool_call_fixture() {
+    let fixture = include_str!("fixtures/gemini/tool_call_single.sse");
+    let events = gemini::parse_fixture("req-1", fixture);
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::ToolCallStart { .. })));
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::ToolCallComplete { .. })));
+}
+
+#[test]
+fn gemini_parallel_tool_call_fixture() {
+    let fixture = include_str!("fixtures/gemini/tool_call_parallel.sse");
+    let events = gemini::parse_fixture("req-1", fixture);
+    let ids: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProviderEvent::ToolCallStart { tool_call_id, .. } => Some(tool_call_id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+}
+
+#[test]
+fn gemini_grounding_fixture() {
+    let fixture = include_str!("fixtures/gemini/grounding.sse");
+    let events = gemini::parse_fixture("req-1", fixture);
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::SearchSources { .. })));
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::Citation { .. })));
 }
 
 #[test]

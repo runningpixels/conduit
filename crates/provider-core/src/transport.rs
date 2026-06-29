@@ -2,7 +2,7 @@ use crate::error::{fatal, from_http_status, retryable};
 use crate::schema::ProviderError;
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use std::pin::Pin;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -39,6 +39,13 @@ impl Default for HttpClient {
 }
 
 pub fn bearer_header(token: &str) -> Result<HeaderMap, ProviderError> {
+    bearer_header_with_extras(token, &[])
+}
+
+pub fn bearer_header_with_extras(
+    token: &str,
+    extras: &[(&str, &str)],
+) -> Result<HeaderMap, ProviderError> {
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
@@ -46,6 +53,13 @@ pub fn bearer_header(token: &str) -> Result<HeaderMap, ProviderError> {
             .map_err(|e| crate::error::fatal(e.to_string()))?,
     );
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    for (name, value) in extras {
+        headers.insert(
+            HeaderName::from_bytes(name.as_bytes())
+                .map_err(|e| crate::error::fatal(e.to_string()))?,
+            HeaderValue::from_str(value).map_err(|e| crate::error::fatal(e.to_string()))?,
+        );
+    }
     Ok(headers)
 }
 
@@ -56,6 +70,16 @@ pub fn api_key_header(key: &str) -> Result<HeaderMap, ProviderError> {
         HeaderValue::from_str(key).map_err(|e| crate::error::fatal(e.to_string()))?,
     );
     headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    Ok(headers)
+}
+
+pub fn gemini_api_key_header(key: &str) -> Result<HeaderMap, ProviderError> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-goog-api-key",
+        HeaderValue::from_str(key).map_err(|e| crate::error::fatal(e.to_string()))?,
+    );
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     Ok(headers)
 }

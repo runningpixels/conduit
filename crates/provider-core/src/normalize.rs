@@ -159,6 +159,7 @@ mod tests {
             role,
             author_label: None,
             provider_message_id: None,
+            request_id: None,
             interrupted_at: None,
             metadata: None,
             parts: vec![MessagePart {

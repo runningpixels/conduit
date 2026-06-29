@@ -1,0 +1,1 @@
+data: {"candidates":[{"content":{"parts":[{"text":"The weather in NYC is sunny."}],"role":"model"},"groundingMetadata":{"webSearchQueries":["weather NYC today"],"groundingChunks":[{"web":{"uri":"https://example.com/weather-nyc","title":"NYC Weather"}}],"groundingSupports":[{"segment":{"startIndex":0,"endIndex":28},"groundingChunkIndices":[0]}]}}]}

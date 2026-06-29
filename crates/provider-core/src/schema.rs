@@ -78,6 +78,9 @@ pub struct Message {
     pub author_label: Option<String>,
     #[ts(optional)]
     pub provider_message_id: Option<String>,
+    /// Stream `request_id` for assistant turns; used to replay rich UI from the event log.
+    #[ts(optional)]
+    pub request_id: Option<String>,
     // `interrupted_at` is nullable (always emitted, `null` when uninterrupted)
     // rather than merely optional — the shell distinguishes "field absent" from
     // "message was never interrupted".

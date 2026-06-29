@@ -6,6 +6,7 @@ import {
   getArtifact,
   getConnectorRuntimeStates,
   getConversationMessages,
+  getRequestProviderEvents,
   invokeConnectorTool,
   listConnectorCapabilities,
   loadProviderCredentialReference,
@@ -22,6 +23,7 @@ import {
   artifactDeveloperPromptFor,
   looksLikeArtifactCreationRequest,
 } from './artifactPrompt';
+import { webSearchDeveloperPromptFor } from './webSearchDeveloperPrompt';
 import {
   buildArtifactEditDeveloperPrompt,
   resolveFollowUpArtifactContext,
@@ -32,11 +34,13 @@ import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
+  rebuildAssistantStreamStateFromEvents,
   type AssistantStreamState,
 } from './streamState';
 import { AttachIcon, ModelIcon, SendIcon, StopIcon, LockIcon } from '../icons';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
 import { COMPOSER_CAPS } from '../mock/workspace';
+import { resolveWebSearchForTurn } from './webSearchIntent';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
 import {
@@ -98,6 +102,22 @@ function messageToTurn(message: Message): ChatTurn {
   };
 }
 
+async function hydrateAssistantTurn(message: Message): Promise<ChatTurn> {
+  const turn = messageToTurn(message);
+  if (message.role !== 'assistant' || !message.requestId) {
+    return turn;
+  }
+  try {
+    const events = await getRequestProviderEvents(message.conversationId, message.requestId);
+    if (events.length > 0) {
+      turn.streamState = rebuildAssistantStreamStateFromEvents(message.requestId, events);
+    }
+  } catch {
+    /* fall back to flat content */
+  }
+  return turn;
+}
+
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
 /// Tauri commands returning `Result<T, String>` reject with the serialized
 /// error (a plain string, or an object), not an `Error` instance — so
@@ -155,38 +175,50 @@ export function buildProviderRequest(
       createdAt: now,
     }));
   const creationDevPrompt = artifactDeveloperPromptFor(prompt);
-  const infoDevPrompt = !creationDevPrompt ? informationalDeveloperPromptFor(prompt) : undefined;
-  const editDevPrompt =
-    !creationDevPrompt && !infoDevPrompt && followUpArtifact
-      ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
-      : undefined;
-  const developerPrompt = [creationDevPrompt, infoDevPrompt, editDevPrompt].filter(Boolean).join('\n\n') || undefined;
-
-  // Phase 7 / M-WebSearch: inject the per-turn web-search config when the
-  // user explicitly toggled search on for this turn. `webSearchEnabled`
-  // controls whether the toggle is visible; the toggle itself defaults off
-  // and must be explicitly activated per turn.
   const webSearch = webSearchOn
     ? {
         enabled: true,
         searchContextSize: settings.webSearch.searchContextSize,
-        filters: {
-          allowedDomains: settings.webSearch.allowedDomains,
-          blockedDomains: settings.webSearch.blockedDomains,
-        },
+        ...(settings.webSearch.allowedDomains.length > 0 ||
+        settings.webSearch.blockedDomains.length > 0
+          ? {
+              filters: {
+                ...(settings.webSearch.allowedDomains.length > 0
+                  ? { allowedDomains: settings.webSearch.allowedDomains }
+                  : {}),
+                ...(settings.webSearch.blockedDomains.length > 0
+                  ? { blockedDomains: settings.webSearch.blockedDomains }
+                  : {}),
+              },
+            }
+          : {}),
         externalWebAccess: settings.webSearch.externalWebAccess,
         returnTokenBudget: settings.webSearch.returnTokenBudget,
         userLocation: settings.webSearch.userLocation,
         includeSources: settings.webSearch.includeSources,
       }
     : undefined;
+  const infoDevPrompt =
+    !creationDevPrompt && !webSearch ? informationalDeveloperPromptFor(prompt) : undefined;
+  const editDevPrompt =
+    !creationDevPrompt && !infoDevPrompt && followUpArtifact
+      ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
+      : undefined;
+  const webSearchDevPrompt = webSearch ? webSearchDeveloperPromptFor() : undefined;
+  const developerPrompt =
+    [creationDevPrompt, infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') ||
+    undefined;
+  const systemPrompt =
+    webSearch && !creationDevPrompt
+      ? BASE_SYSTEM_PROMPT
+      : `${BASE_SYSTEM_PROMPT} ${CONDUIT_ARTIFACT_SYSTEM_APPENDIX}`;
 
   return {
     requestId: crypto.randomUUID(),
     conversationId,
     modelId: settings.activeModel,
     messages,
-    systemPrompt: `${BASE_SYSTEM_PROMPT} ${CONDUIT_ARTIFACT_SYSTEM_APPENDIX}`,
+    systemPrompt,
     developerPrompt,
     toolDefinitions,
     webSearch,
@@ -257,7 +289,10 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     void (async () => {
       try {
         const messages = await getConversationMessages(conversationId);
-        if (!cancelled) setTurns(messages.map(messageToTurn));
+        if (!cancelled) {
+          const turns = await Promise.all(messages.map((m) => hydrateAssistantTurn(m)));
+          setTurns(turns);
+        }
       } catch (error) {
         if (!cancelled) onStatus(error instanceof Error ? error.message : 'Failed to load conversation');
       }
@@ -462,7 +497,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       conversationId,
       toolDefinitions,
       followUpArtifact,
-      webSearchOn,
+      resolveWebSearchForTurn(settings, webSearchOn, trimmed),
     );
     // Reset the per-turn search toggle after building the request so the
     // next turn defaults back to off, per spec §5.2.
@@ -625,7 +660,8 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     setActiveRequestId(null);
     try {
       const messages = await getConversationMessages(conversationId);
-      setTurns(messages.map(messageToTurn));
+      const turns = await Promise.all(messages.map((m) => hydrateAssistantTurn(m)));
+      setTurns(turns);
     } catch {
       /* ignore */
     }
@@ -711,12 +747,24 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       <div className="composer-wrap">
         <div className="caps">
           <span className="lbl">Available here</span>
-          {COMPOSER_CAPS.map((cap) => (
+          {COMPOSER_CAPS.map((cap) => {
+            let state = cap.state;
+            if (cap.id === 'websearch') {
+              if (!settings.webSearchEnabled || settings.localOnly) {
+                state = 'none';
+              } else if (webSearchOn) {
+                state = 'ok';
+              } else {
+                state = 'warn';
+              }
+            }
+            return (
             <span className="cap" key={cap.id}>
-              <i style={cap.state === 'warn' ? { background: 'var(--warn)' } : cap.state === 'none' ? { background: 'var(--text-3)' } : undefined} />
+              <i style={state === 'warn' ? { background: 'var(--warn)' } : state === 'none' ? { background: 'var(--text-3)' } : undefined} />
               {cap.label}
             </span>
-          ))}
+            );
+          })}
         </div>
         <div className="composer">
           <textarea

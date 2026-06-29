@@ -28,7 +28,7 @@ import { Titlebar } from './workspace/Titlebar';
 import { Rail, type WorkspaceTab } from './workspace/Rail';
 import { RailPanes } from './workspace/RailPanes';
 import { DocumentPanel } from './workspace/DocumentPanel';
-import { SettingsPanel } from './workspace/SettingsPanel';
+import { SettingsScreen, type SettingsTab } from './workspace/settings/SettingsScreen';
 import { useColumnResize, useDocPanelCollapse, useRailExpand } from './workspace/useLayout';
 import { ChevronLeft, PlusIcon } from './icons';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
@@ -39,7 +39,7 @@ const TAB_TITLES: Record<WorkspaceTab, [string, string]> = {
   artifacts: ['Files and artifacts', 'Local workspace, versions, share state'],
   connectors: ['Connectors', 'Tenant-granted tools and support state'],
   activity: ['Activity and approvals', 'Tool runs, consent, recoverable events'],
-  models: ['Models and keys', 'BYOK providers, tenant allowlist, local runtimes'],
+  settings: ['Settings', 'Provider, privacy, connectors, and more'],
 };
 
 const defaultSettings: AppSettings = {
@@ -85,7 +85,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [status, setStatus] = useState('Booting desktop shell');
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('chat');
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>();
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
@@ -370,6 +370,16 @@ export default function App() {
 
   const [panelTitle, panelSubtitle] = TAB_TITLES[activeTab];
 
+  const openSettings = useCallback((tab?: SettingsTab) => {
+    if (tab) setSettingsInitialTab(tab);
+    setActiveTab('settings');
+  }, []);
+
+  const handleSelectTab = useCallback((tab: WorkspaceTab) => {
+    if (tab !== 'settings') setSettingsInitialTab(undefined);
+    setActiveTab(tab);
+  }, []);
+
   const handleToggleTheme = useCallback(() => {
     setSettings((current) => {
       const next: AppSettings = {
@@ -440,10 +450,9 @@ export default function App() {
           )}
           <Rail
             active={activeTab}
-            onSelect={setActiveTab}
+            onSelect={handleSelectTab}
             expanded={expanded}
             onToggleExpand={toggleRail}
-            onOpenSettings={() => setSettingsOpen(true)}
             artifactCount={artifacts.length}
           />
 
@@ -453,12 +462,14 @@ export default function App() {
                 <b>{panelTitle}</b>
                 <small>{panelSubtitle}</small>
               </div>
-              <div className="actions">
-                <button className="new-btn" type="button" onClick={() => void handleNewChat()}>
-                  <PlusIcon />
-                  New chat
-                </button>
-              </div>
+              {activeTab !== 'settings' && (
+                <div className="actions">
+                  <button className="new-btn" type="button" onClick={() => void handleNewChat()}>
+                    <PlusIcon />
+                    New chat
+                  </button>
+                </div>
+              )}
             </div>
 
             <ChatView
@@ -481,10 +492,20 @@ export default function App() {
               onSelectConversation={handleSelectConversation}
               onNewChat={() => void handleNewChat()}
               onRenameArtifact={handleRenameArtifact}
+              onManageConnectors={() => openSettings('connectors')}
+            />
+            <SettingsScreen
+              settings={settings}
+              onSettingsChange={setSettings}
+              paths={paths}
+              onStatus={setStatusMessage}
+              initialTab={settingsInitialTab}
             />
           </div>
         </section>
 
+        {activeTab !== 'settings' && (
+          <>
         <div
           className="resize-handle"
           id="columnResize"
@@ -510,16 +531,9 @@ export default function App() {
           onExport={(artifactId, includeMetadata) => handleExport(artifactId, includeMetadata)}
           onRenameArtifact={handleRenameArtifact}
         />
+          </>
+        )}
       </main>
-
-      <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        settings={settings}
-        onSettingsChange={setSettings}
-        paths={paths}
-        onStatus={setStatusMessage}
-      />
     </div>
   );
 }

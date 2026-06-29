@@ -114,3 +114,65 @@ describe('streamState connector runtime events', () => {
     });
   });
 });
+
+describe('streamState web search', () => {
+  it('deduplicates identical citation annotations', () => {
+    let state = createAssistantStreamState('req-ws');
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-ws',
+      blockId: 'b1',
+      index: 0,
+      blockKind: 'text',
+    });
+    const cite = {
+      kind: 'urlCitation' as const,
+      url: 'https://example.com',
+      title: 'Example',
+      startIndex: 0,
+      endIndex: 5,
+    };
+    state = applyProviderEvent(state, {
+      kind: 'citation',
+      requestId: 'req-ws',
+      blockId: 'b1',
+      index: 1,
+      annotation: cite,
+    });
+    state = applyProviderEvent(state, {
+      kind: 'citation',
+      requestId: 'req-ws',
+      blockId: 'b1',
+      index: 2,
+      annotation: cite,
+    });
+    expect(state.blocks[0].citations).toHaveLength(1);
+  });
+
+  it('scopes searchSources to the last completed web_search call', () => {
+    let state = createAssistantStreamState('req-ws');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-ws',
+      toolCallId: 'ws-1',
+      index: 0,
+      toolId: 'web_search',
+      name: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolCallComplete',
+      requestId: 'req-ws',
+      toolCallId: 'ws-1',
+      index: 1,
+      arguments: { query: 'q1', status: 'completed' },
+    });
+    state = applyProviderEvent(state, {
+      kind: 'searchSources',
+      requestId: 'req-ws',
+      index: 2,
+      sources: [{ url: 'https://a.com', title: 'A' }],
+    });
+    expect(state.toolCalls[0].sources).toHaveLength(1);
+    expect(state.toolCalls[0].sources?.[0].raw.url).toBe('https://a.com');
+  });
+});

@@ -2,13 +2,13 @@ import { useState } from 'react';
 import type { AppSettings, MigrationRecoveryInfo } from '../ipc/contracts';
 import { getOnboardingState, updateSettings } from '../ipc/client';
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
-import { ConnectorsSection } from '../workspace/SettingsPanel';
+import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
 
 /** Phase 6 M6.4: first-run onboarding — the BYOK gate. Full-screen route (not a
  *  modal) shown by `App.tsx` while `onboardingCompleted` is false or no provider
  *  credential is configured. Reuses the shared `ProviderPicker` (provider + BYOK
  *  entry via the OS keychain) and `ConnectorsSection` so it does not duplicate
- *  the SettingsPanel flows. Steps: welcome + privacy → provider/BYOK → optional
+ *  the Settings screen flows. Steps: welcome + privacy → provider/BYOK → optional
  *  connectors → diagnostics awareness → "Get started". The hard gate is a
  *  configured provider (chat is useless without one); connectors + diagnostics
  *  are optional. */

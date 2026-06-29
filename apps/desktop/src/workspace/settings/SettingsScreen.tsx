@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AppPaths, AppSettings } from '../../ipc/contracts';
 import type { WebSearchDefaults } from '@conduit/config-schema';
 import { ProviderPicker } from './ProviderPicker';
@@ -17,9 +17,11 @@ interface SettingsScreenProps {
   onSettingsChange: (s: AppSettings) => void;
   paths: AppPaths | null;
   onStatus: (message: string) => void;
+  /// Optional sub-tab to open when navigating from elsewhere (e.g. Connectors rail).
+  initialTab?: SettingsTab;
 }
 
-type SettingsTab =
+export type SettingsTab =
   | 'provider'
   | 'appearance'
   | 'privacy'
@@ -48,12 +50,22 @@ const SETTINGS_TABS: TabDef[] = [
 ];
 
 /** Settings screen: a first-class workspace screen with tab-based navigation and auto-save. */
-export function SettingsScreen({ settings, onSettingsChange, paths, onStatus }: SettingsScreenProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('provider');
+export function SettingsScreen({
+  settings,
+  onSettingsChange,
+  paths,
+  onStatus,
+  initialTab,
+}: SettingsScreenProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'provider');
   const save = useAutoSave(onSettingsChange, onStatus);
 
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
   return (
-    <section className="settings-screen" aria-label="Settings">
+    <section className="tab-pane settings-screen" data-pane="settings" aria-label="Settings">
       <nav className="settings-tab-sidebar" aria-label="Settings sections">
         {SETTINGS_TABS.map((tab) => (
           <button

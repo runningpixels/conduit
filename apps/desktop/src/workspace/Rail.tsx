@@ -7,11 +7,10 @@ import {
   ConnectorsIcon,
   FilesIcon,
   HistoryIcon,
-  ModelIcon,
   SettingsIcon,
 } from '../icons';
 
-export type WorkspaceTab = 'chat' | 'history' | 'artifacts' | 'connectors' | 'activity' | 'models';
+export type WorkspaceTab = 'chat' | 'history' | 'artifacts' | 'connectors' | 'activity' | 'settings';
 
 interface RailButtonDef {
   tab: WorkspaceTab;
@@ -26,7 +25,6 @@ const RAIL_BUTTONS: RailButtonDef[] = [
   { tab: 'artifacts', label: 'Artifacts', icon: <FilesIcon /> },
   { tab: 'connectors', label: 'Connectors', icon: <ConnectorsIcon />, badge: 1 },
   { tab: 'activity', label: 'Activity', icon: <ActivityCheckIcon />, badge: 1 },
-  { tab: 'models', label: 'Models & keys', icon: <ModelIcon /> },
 ];
 
 interface RailProps {
@@ -34,14 +32,13 @@ interface RailProps {
   onSelect: (tab: WorkspaceTab) => void;
   expanded: boolean;
   onToggleExpand: () => void;
-  onOpenSettings: () => void;
   /// Live artifact count for the Files & artifacts tab badge.
   artifactCount?: number;
 }
 
 /** v5 collapsible icon rail: rail-btn with active accent bar and optional badge,
  *  plus expand/collapse. The active state is driven by [data-tab] on <html>. */
-export function Rail({ active, onSelect, expanded, onToggleExpand, onOpenSettings, artifactCount = 0 }: RailProps) {
+export function Rail({ active, onSelect, expanded, onToggleExpand, artifactCount = 0 }: RailProps) {
   return (
     <nav className="rail" aria-label="Chat panel tabs">
       <div className="rail-top">
@@ -84,10 +81,12 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, onOpenSetting
       <div className="rail-bottom">
         <button
           className="rail-btn"
+          data-tab="settings"
           type="button"
           aria-label="Settings"
           title="Settings"
-          onClick={onOpenSettings}
+          aria-pressed={active === 'settings'}
+          onClick={() => onSelect('settings')}
         >
           <SettingsIcon />
           <span className="rail-label">Settings</span>

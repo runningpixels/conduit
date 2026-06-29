@@ -43,6 +43,8 @@ export interface ToolCallState {
   argumentsText: string;
   arguments?: Record<string, unknown>;
   complete: boolean;
+  /// Sources from `SearchSources` events scoped to this web_search call.
+  sources?: SearchSource[];
   /** Real consent tier from the MCP runtime (Phase 4). Absent means
    *  "unspecified" — the runtime defaults to read-only and never silently
    *  treats a tool as side-effectful. The v4 name-regex heuristic is gone. */
@@ -97,6 +99,30 @@ export function createAssistantStreamState(requestId: string): AssistantStreamSt
     interrupted: false,
     streaming: true,
   };
+}
+
+function isWebSearchToolCall(tc: ToolCallState): boolean {
+  return tc.toolId === 'web_search' || tc.name === 'web_search';
+}
+
+/** Index of the most recently completed web_search call (for scoping SearchSources). */
+function lastCompletedWebSearchIndex(toolCalls: ToolCallState[]): number {
+  for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
+    if (isWebSearchToolCall(toolCalls[i]) && toolCalls[i].complete) return i;
+  }
+  return -1;
+}
+
+function citationAlreadyPresent(
+  citations: CitationAnnotation[],
+  next: Omit<CitationAnnotation, 'index'>,
+): boolean {
+  return citations.some(
+    (c) =>
+      c.url === next.url &&
+      c.startIndex === next.startIndex &&
+      c.endIndex === next.endIndex,
+  );
 }
 
 export function applyProviderEvent(
@@ -170,15 +196,34 @@ export function applyProviderEvent(
             : toolCall,
         ),
       };
-    case 'toolCallComplete':
+    case 'toolCallComplete': {
+      const completed = state.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
+      let embeddedSources: SearchSource[] | undefined;
+      if (
+        completed &&
+        isWebSearchToolCall(completed) &&
+        Array.isArray(event.arguments?.sources)
+      ) {
+        embeddedSources = (event.arguments.sources as unknown[]).map((raw) => ({
+          raw: (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>,
+        }));
+      }
       return {
         ...state,
         toolCalls: state.toolCalls.map((toolCall) =>
           toolCall.toolCallId === event.toolCallId
-            ? { ...toolCall, arguments: event.arguments, complete: true }
+            ? {
+                ...toolCall,
+                arguments: event.arguments,
+                complete: true,
+                ...(embeddedSources
+                  ? { sources: [...(toolCall.sources ?? []), ...embeddedSources] }
+                  : {}),
+              }
             : toolCall,
         ),
       };
+    }
     case 'usage':
       return { ...state, usage: event.usage };
     case 'messageComplete':
@@ -190,12 +235,21 @@ export function applyProviderEvent(
         streaming: false,
       };
     case 'searchSources': {
-      // Phase 7 / M-WebSearch: append provider-supplied sources to the
-      // list rendered at the end of the message. We wrap the pass-through
-      // shape in a `raw` field so future fields can be added without
-      // reshaping every entry.
       const incoming = event.sources.map((raw) => ({ raw }));
-      return { ...state, searchSources: [...state.searchSources, ...incoming] };
+      const attachIdx = lastCompletedWebSearchIndex(state.toolCalls);
+      const toolCalls =
+        attachIdx >= 0
+          ? state.toolCalls.map((tc, i) =>
+              i === attachIdx
+                ? { ...tc, sources: [...(tc.sources ?? []), ...incoming] }
+                : tc,
+            )
+          : state.toolCalls;
+      return {
+        ...state,
+        toolCalls,
+        searchSources: [...state.searchSources, ...incoming],
+      };
     }
     case 'citation': {
       // Phase 7 / M-WebSearch: append a URL citation to the block it
@@ -213,6 +267,25 @@ export function applyProviderEvent(
         startIndex: annotation.startIndex,
         endIndex: annotation.endIndex,
       };
+      const target = state.blocks.find((block) => block.blockId === event.blockId);
+      if (!target) {
+        const citationsBefore = state.blocks.reduce((acc, b) => acc + b.citations.length, 0);
+        return {
+          ...state,
+          blocks: [
+            ...state.blocks,
+            {
+              blockId: event.blockId,
+              blockKind: 'text',
+              content: '',
+              citations: [{ ...next, index: citationsBefore + 1 }],
+            },
+          ],
+        };
+      }
+      if (citationAlreadyPresent(target.citations, next)) {
+        return state;
+      }
       const blocks = state.blocks.map((block, blockIndex, all) => {
         if (block.blockId !== event.blockId) return block;
         const citationsBefore = all
@@ -238,6 +311,18 @@ export function applyProviderEvent(
     default:
       return state;
   }
+}
+
+/** Replay provider events into a finalized assistant stream state (reload path). */
+export function rebuildAssistantStreamStateFromEvents(
+  requestId: string,
+  events: ProviderEvent[],
+): AssistantStreamState {
+  let state = createAssistantStreamState(requestId);
+  for (const event of events) {
+    state = applyProviderEvent(state, event);
+  }
+  return { ...state, streaming: false };
 }
 
 export function markInterrupted(state: AssistantStreamState): AssistantStreamState {

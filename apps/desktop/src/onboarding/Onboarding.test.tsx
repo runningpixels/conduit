@@ -11,6 +11,11 @@ vi.mock('../ipc/client', () => ({
   getOnboardingState: vi.fn(),
   updateSettings: vi.fn(),
   listProviderModels: vi.fn().mockResolvedValue([]),
+  listProviderDescriptors: vi.fn().mockResolvedValue([
+    { id: 'anthropic', displayName: 'Anthropic', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null },
+    { id: 'openai', displayName: 'OpenAI', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null },
+    { id: 'ollama', displayName: 'Ollama', defaultBaseUrl: 'http://127.0.0.1:11434', credentialMode: 'none', isLocal: true, showBaseUrlField: true, tier: 0, description: null },
+  ]),
   loadProviderCredentialReference: vi.fn().mockResolvedValue({
     providerId: 'anthropic',
     credentialRef: 'keychain://conduit/anthropic',

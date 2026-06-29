@@ -1,13 +1,14 @@
 import { useState } from 'react';
+import { ReasoningBlock } from './ReasoningBlock';
+import { ChatProse } from './ChatProse';
 import type { AssistantStreamState } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './artifactCandidates';
 import { BotGlyph, CopyIcon, CheckIcon } from '../icons';
-import { ChatMessageContent } from './ChatMessageContent';
 import { InterruptedBanner } from './InterruptedBanner';
-import { ReasoningBlock } from './ReasoningBlock';
 import { ToolCallBlock } from './ToolCallBlock';
-import { SearchCallBlock, isWebSearchToolCall } from './SearchCallBlock';
+import { SearchCallGroup } from './SearchCallGroup';
+import { isWebSearchToolCall } from './SearchCallBlock';
 import { UsageSummary } from './UsageSummary';
 import { AssistantArtifactStrip } from './ArtifactRefChip';
 
@@ -42,6 +43,8 @@ export function AssistantMessage({
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
   const text = state.blocks.map((b) => b.content).join('');
+  const webSearchCalls = state.toolCalls.filter(isWebSearchToolCall);
+  const otherToolCalls = state.toolCalls.filter((tc) => !isWebSearchToolCall(tc));
 
   async function handleCopy() {
     if (!text) return;
@@ -80,20 +83,28 @@ export function AssistantMessage({
         {state.reasoning.map((block) => (
           <ReasoningBlock key={block.blockId} block={block} />
         ))}
-        <ChatMessageContent content={text} streaming={state.streaming} />
-        {state.toolCalls.map((toolCall) =>
-          isWebSearchToolCall(toolCall) ? (
-            <SearchCallBlock
-              key={toolCall.toolCallId}
-              toolCall={toolCall}
-              sources={state.searchSources}
-              unavailable={state.searchUnavailable}
-              cost={state.searchCost}
-            />
-          ) : (
-            <ToolCallBlock key={toolCall.toolCallId} toolCall={toolCall} />
-          ),
+        {webSearchCalls.length > 0 && (
+          <SearchCallGroup
+            toolCalls={webSearchCalls}
+            unavailable={state.searchUnavailable}
+            cost={state.searchCost}
+          />
         )}
+        {state.blocks.length > 0 ? (
+          state.blocks.map((block) => (
+            <ChatProse
+              key={block.blockId}
+              content={block.content}
+              citations={block.citations}
+              streaming={state.streaming}
+            />
+          ))
+        ) : (
+          <ChatProse content={text} streaming={state.streaming} />
+        )}
+        {otherToolCalls.map((toolCall) => (
+          <ToolCallBlock key={toolCall.toolCallId} toolCall={toolCall} />
+        ))}
         {state.error && <p className="error-text">{state.error}</p>}
         <UsageSummary usage={state.usage} searchCost={state.searchCost} />
         {messageId && onPromoteArtifact && onOpenArtifact && (

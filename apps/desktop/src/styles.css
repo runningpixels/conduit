@@ -74,6 +74,9 @@
 [data-doc-panel="collapsed"] .body {
   grid-template-columns: 1fr;
 }
+[data-tab="settings"] .body {
+  grid-template-columns: 1fr;
+}
 [data-doc-panel="collapsed"] .doc-panel,
 [data-doc-panel="collapsed"] .resize-handle {
   display: none;
@@ -212,7 +215,7 @@
 [data-tab="artifacts"] .rail-btn[data-tab="artifacts"],
 [data-tab="connectors"] .rail-btn[data-tab="connectors"],
 [data-tab="activity"] .rail-btn[data-tab="activity"],
-[data-tab="models"] .rail-btn[data-tab="models"] {
+[data-tab="settings"] .rail-btn[data-tab="settings"] {
   color: var(--accent-text);
   background: var(--accent-weak);
 }
@@ -221,7 +224,7 @@
 [data-tab="artifacts"] .rail-btn[data-tab="artifacts"]::before,
 [data-tab="connectors"] .rail-btn[data-tab="connectors"]::before,
 [data-tab="activity"] .rail-btn[data-tab="activity"]::before,
-[data-tab="models"] .rail-btn[data-tab="models"]::before {
+[data-tab="settings"] .rail-btn[data-tab="settings"]::before {
   content: "";
   position: absolute;
   left: -8px;
@@ -275,10 +278,85 @@
 [data-tab="history"] .tab-pane[data-pane="history"],
 [data-tab="artifacts"] .tab-pane[data-pane="artifacts"],
 [data-tab="connectors"] .tab-pane[data-pane="connectors"],
-[data-tab="activity"] .tab-pane[data-pane="activity"],
-[data-tab="models"] .tab-pane[data-pane="models"] {
+[data-tab="activity"] .tab-pane[data-pane="activity"] {
   display: flex;
   flex-direction: column;
+}
+
+/* Settings uses a sidebar + content two-column layout inside the pane. */
+[data-tab="settings"] .tab-pane.settings-screen[data-pane="settings"] {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Settings screen (workspace tab) ───────────────────────────────────── */
+.settings-screen {
+  flex: 1;
+  min-height: 0;
+  flex-direction: row;
+  align-items: stretch;
+}
+.settings-tab-sidebar {
+  flex: none;
+  width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px;
+  border-right: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  overflow-y: auto;
+}
+.settings-tab-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--tap);
+  white-space: nowrap;
+}
+.settings-tab-btn:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.settings-tab-btn.active {
+  color: var(--accent-text);
+  background: var(--accent-weak);
+  font-weight: 600;
+}
+.settings-tab-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 28px 32px;
+  background: var(--surface);
+}
+.settings-section {
+  max-width: 720px;
+}
+.settings-section-header {
+  font-size: 15px;
+  font-weight: 620;
+  color: var(--text);
+  margin-bottom: 4px;
+  letter-spacing: -.01em;
+}
+.settings-section-header + p,
+.settings-section > p:first-of-type {
+  margin-top: 0;
+}
+.settings-section + .settings-section {
+  margin-top: 24px;
 }
 
 /* ── Chat thread ───────────────────────────────────────────────────────── */
@@ -317,6 +395,91 @@
   border: 1px solid var(--border-soft);
   border-radius: var(--r-xs);
   padding: 2px 5px;
+}
+
+/* Chat prose: markdown + citations */
+.chat-prose h1, .chat-prose h2, .chat-prose h3, .chat-prose h4 {
+  font-weight: 600;
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+.chat-prose h2 { font-size: 15px; }
+.chat-prose h3 { font-size: 14px; }
+.chat-prose ul, .chat-prose ol { margin: 0 0 11px; padding-left: 1.35em; }
+.chat-prose li { margin-bottom: 4px; }
+.chat-prose-segment { margin-bottom: 4px; }
+.chat-prose .md-code {
+  font: 500 12.5px/1 var(--font-mono);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xs);
+  padding: 2px 5px;
+}
+.citation-marker {
+  font-size: 10px;
+  line-height: 0;
+  margin-left: 1px;
+}
+.citation-marker a {
+  color: var(--accent-text);
+  text-decoration: none;
+  font-weight: 600;
+}
+.citation-marker a:hover { text-decoration: underline; }
+ol.citations {
+  margin: 12px 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-2);
+  border-top: 1px solid var(--border-soft);
+  padding-top: 10px;
+}
+ol.citations li { margin-bottom: 6px; }
+.citation-index { color: var(--text-3); font-weight: 600; }
+.citation-link { color: var(--accent-text); text-decoration: none; }
+.citation-link:hover { text-decoration: underline; }
+.citation-host { color: var(--text-3); }
+
+/* Web search tool group */
+.search-call-group .search-queries summary {
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.search-query-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+.search-query-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+.search-query-status {
+  display: inline-block;
+  width: 14px;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.search-query-status.done { color: var(--ok, #2d8a4e); }
+.search-query { color: var(--text); line-height: 1.45; }
+.search-sources { margin-top: 4px; font-size: 12px; }
+.search-sources summary { cursor: pointer; color: var(--text-2); }
+.search-sources-list { margin: 6px 0 0; padding-left: 1.2em; }
+.search-sources-list .src-title { color: var(--text); }
+.search-sources-list .src-url { color: var(--accent-text); }
+.search-unavailable {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--warn, #b8860b);
 }
 
 /* ── Tool card ─────────────────────────────────────────────────────────── */

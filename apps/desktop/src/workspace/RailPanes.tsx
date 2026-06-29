@@ -18,7 +18,6 @@ import {
 } from '../ipc/client';
 import {
   ACTIVITY_ROWS,
-  MODEL_ROWS,
 } from '../mock/workspace';
 import { InfoCard, SearchBox, SectionLabel, StatusPill } from '@conduit/ui';
 import {
@@ -47,6 +46,8 @@ interface RailPanesProps {
   onNewChat: () => void;
   /// Rename an artifact (title update). Optional — when provided, rows become editable.
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
+  /// Open Settings on the Connectors sub-tab for full connector management.
+  onManageConnectors?: () => void;
 }
 
 // Rail panes are shown/hidden by [data-tab] on <html> via styles.css
@@ -297,7 +298,7 @@ function connectorStatus(s: ConnectorRuntimeSnapshot): {
   return { dot: 'off', tone: 'hold', label: 'stopped' };
 }
 
-function ConnectorsPane() {
+function ConnectorsPane({ onManageConnectors }: { onManageConnectors?: () => void }) {
   const [rows, setRows] = useState<ConnectorRuntimeSnapshot[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, ConnectorCapability[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -362,7 +363,15 @@ function ConnectorsPane() {
     <section className="tab-pane" data-pane="connectors" aria-label="Connectors">
       <div className="tab-list scroll">
         <InfoCard title="Tenant capabilities, not generic plugins">
-          Connector status combines transport health, auth state, tenant grant, and support state. Add local stdio connectors from Settings.
+          Connector status combines transport health, auth state, tenant grant, and support state.
+          {onManageConnectors && (
+            <>
+              {' '}
+              <button className="btn ghost" type="button" style={{ padding: '2px 6px', fontSize: '12px' }} onClick={onManageConnectors}>
+                Manage in Settings
+              </button>
+            </>
+          )}
         </InfoCard>
         {rows.length === 0 ? (
           <SectionLabel left="No connectors yet" right="add in settings" />
@@ -457,31 +466,6 @@ function activityPane() {
   );
 }
 
-function modelsPane() {
-  return (
-    <section className="tab-pane" data-pane="models" aria-label="Models and keys">
-      <div className="tab-list scroll">
-        <InfoCard title="Model and key surface">
-          This keeps BYOK, tenant allowlists, local runtimes, and keychain status visible without making the titlebar do all the work.
-        </InfoCard>
-        <SectionLabel left="Allowed models" right="tenant default" />
-        {MODEL_ROWS.map((m) => (
-          <button key={m.id} className="model-row" type="button">
-            <ActivityCheckIcon className="row-icon" />
-            <span className="meta">
-              <b>{m.name}</b>
-              <small>{m.subtitle}</small>
-            </span>
-            {m.tone && m.toneLabel ? <StatusPill tone={m.tone}>{m.toneLabel}</StatusPill> : (
-              <span className="row-right">{m.rightLabel}</span>
-            )}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function RailPanes({
   active,
   artifacts,
@@ -491,6 +475,7 @@ export function RailPanes({
   onSelectConversation,
   onNewChat,
   onRenameArtifact,
+  onManageConnectors,
 }: RailPanesProps) {
   // The active prop is accepted for future per-pane focus/refresh hooks; the
   // show/hide is driven by [data-tab] on <html> so panes stay mounted.
@@ -508,9 +493,8 @@ export function RailPanes({
         onOpenArtifact={onOpenArtifact}
         onRenameArtifact={onRenameArtifact}
       />
-      <ConnectorsPane />
+      <ConnectorsPane onManageConnectors={onManageConnectors} />
       {activityPane()}
-      {modelsPane()}
     </>
   );
 }

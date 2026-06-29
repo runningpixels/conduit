@@ -29,6 +29,14 @@ vi.mock('../../ipc/client', () => ({
   checkForUpdate: vi.fn().mockResolvedValue(null),
   downloadAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
   listProviderModels: vi.fn().mockResolvedValue([]),
+  listProviderDescriptors: vi.fn().mockResolvedValue([
+    { id: 'gemini', displayName: 'Google Gemini', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 1, description: null },
+    { id: 'deepseek', displayName: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com', credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 1, description: 'Cost-efficient V4 models' },
+    { id: 'mistral', displayName: 'Mistral', defaultBaseUrl: 'https://api.mistral.ai/v1', credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 1, description: 'Codestral and Mistral Large' },
+    { id: 'anthropic', displayName: 'Anthropic', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null },
+    { id: 'openai', displayName: 'OpenAI', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null },
+    { id: 'ollama', displayName: 'Ollama', defaultBaseUrl: 'http://127.0.0.1:11434', credentialMode: 'none', isLocal: true, showBaseUrlField: true, tier: 0, description: null },
+  ]),
   loadProviderCredentialReference: vi.fn().mockResolvedValue(null),
   saveProviderCredential: vi.fn().mockResolvedValue({
     providerId: 'anthropic',
@@ -153,6 +161,37 @@ describe('SettingsScreen tab navigation', () => {
     renderScreen();
     fireEvent.click(screen.getByText('About'));
     expect(screen.getByText('/home/user/conduit')).toBeInTheDocument();
+  });
+
+  it('navigates to Web Search tab when clicked', () => {
+    renderScreen({ localOnly: false });
+    fireEvent.click(screen.getByText('Web Search'));
+    expect(screen.getByRole('checkbox', { name: /enable web search/i })).toBeInTheDocument();
+  });
+
+  it('opens the requested sub-tab via initialTab', () => {
+    const onSettingsChange = vi.fn();
+    const onStatus = vi.fn();
+    render(
+      <SettingsScreen
+        settings={makeSettings({ localOnly: false })}
+        onSettingsChange={onSettingsChange}
+        paths={paths}
+        onStatus={onStatus}
+        initialTab="web-search"
+      />,
+    );
+    expect(screen.getByRole('checkbox', { name: /enable web search/i })).toBeInTheDocument();
+  });
+});
+
+describe('SettingsScreen Web Search section (Phase 7)', () => {
+  it('warns when local-only mode blocks web search', () => {
+    renderScreen({ localOnly: true });
+    fireEvent.click(screen.getByText('Web Search'));
+    expect(
+      screen.getByText(/web search is unavailable in local-only mode/i),
+    ).toBeInTheDocument();
   });
 });
 

@@ -44,6 +44,13 @@ pub fn registry() -> Vec<Box<dyn ProviderAdapter>> {
     vec![
         Box::new(crate::adapters::anthropic::AnthropicAdapter),
         Box::new(crate::adapters::openai::OpenAiAdapter::official()),
+        Box::new(crate::adapters::gemini::GeminiAdapter),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::openrouter()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::opencode_zen()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::groq()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::deepseek()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::mistral()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::lmstudio()),
         Box::new(crate::adapters::openai_compat::OpenAiCompatAdapter::default()),
         Box::new(crate::adapters::ollama::OllamaAdapter),
     ]
@@ -89,6 +96,26 @@ mod tests {
         assert!(
             local_ids.contains(&"openai_compat"),
             "openai_compat must be local: {local_ids:?}"
+        );
+        assert!(
+            local_ids.contains(&"lmstudio"),
+            "lmstudio must be local: {local_ids:?}"
+        );
+        assert!(
+            cloud_ids.contains(&"gemini"),
+            "gemini must be cloud: {cloud_ids:?}"
+        );
+        assert!(
+            cloud_ids.contains(&"openrouter"),
+            "openrouter must be cloud: {cloud_ids:?}"
+        );
+        assert!(
+            cloud_ids.contains(&"deepseek"),
+            "deepseek must be cloud: {cloud_ids:?}"
+        );
+        assert!(
+            cloud_ids.contains(&"mistral"),
+            "mistral must be cloud: {cloud_ids:?}"
         );
         assert!(
             cloud_ids.contains(&"anthropic"),

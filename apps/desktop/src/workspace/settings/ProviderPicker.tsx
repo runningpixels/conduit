@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { AppSettings, CredentialSummary, ModelInfo } from '../../ipc/contracts';
+import type { AppSettings, CredentialSummary, ModelInfo, ProviderDescriptor } from '../../ipc/contracts';
 import {
+  listProviderDescriptors,
   listProviderModels,
   loadProviderCredentialReference,
   saveProviderCredential,
@@ -8,12 +9,11 @@ import {
   validateProviderCredentials,
 } from '../../ipc/client';
 
-/** Phase 6 M6.4: shared provider + BYOK surface, extracted from `SettingsPanel`
- *  so the first-run `Onboarding` reuses it instead of duplicating the flow.
- *  Owns provider selection, model listing, the optional base URL, the secret
- *  entry that routes through Rust to the OS keychain, the connection test, and
- *  the keychain credential reference. The trust boundary is preserved — secrets
- *  never touch the renderer's state. */
+/** Phase 6 M6.4: shared provider + BYOK surface. Used by Onboarding and
+ *  SettingsScreen. Owns provider selection, model listing, the optional base
+ *  URL, the secret entry that routes through Rust to the OS keychain, the
+ *  connection test, and the keychain credential reference. Secrets never
+ *  touch the renderer's state. */
 export function ProviderPicker({
   settings,
   onSettingsChange,
@@ -26,10 +26,20 @@ export function ProviderPicker({
   const [providerSecret, setProviderSecret] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [credentialSummary, setCredentialSummary] = useState<CredentialSummary | null>(null);
-  // True while any of the three action buttons has a request in flight. Disables
-  // the row so clicks aren't lost and gives affordance that work is happening —
-  // the status line (rendered by the caller) carries the success/error text.
+  const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [busy, setBusy] = useState(false);
+
+  const activeDescriptor = providers.find((p) => p.id === settings.activeProvider);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setProviders(await listProviderDescriptors());
+      } catch {
+        setProviders([]);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -47,6 +57,23 @@ export function ProviderPicker({
   }, [settings.activeProvider]);
 
   const providerBaseUrl = settings.providerEndpoints?.[settings.activeProvider]?.baseUrl ?? '';
+
+  function handleProviderChange(providerId: string) {
+    const descriptor = providers.find((p) => p.id === providerId);
+    const existingEndpoint = settings.providerEndpoints?.[providerId];
+    const nextEndpoints = { ...settings.providerEndpoints };
+    if (descriptor?.defaultBaseUrl && !existingEndpoint?.baseUrl) {
+      nextEndpoints[providerId] = {
+        ...existingEndpoint,
+        baseUrl: descriptor.defaultBaseUrl,
+      };
+    }
+    onSettingsChange({
+      ...settings,
+      activeProvider: providerId,
+      providerEndpoints: nextEndpoints,
+    });
+  }
 
   async function handleSaveCredential() {
     setBusy(true);
@@ -103,20 +130,40 @@ export function ProviderPicker({
     });
   }
 
+  const sortedProviders = [...providers].sort((a, b) => a.tier - b.tier || a.displayName.localeCompare(b.displayName));
+
   return (
     <div className="form-grid" style={{ display: 'grid', gap: 12 }}>
       <label className="field" style={{ display: 'grid', gap: 6 }}>
         <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider</span>
         <select
           value={settings.activeProvider}
-          onChange={(e) => onSettingsChange({ ...settings, activeProvider: e.target.value })}
+          onChange={(e) => handleProviderChange(e.target.value)}
           style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
         >
-          <option value="anthropic">Anthropic</option>
-          <option value="openai">OpenAI</option>
-          <option value="openai_compat">OpenAI Compatible</option>
-          <option value="ollama">Ollama</option>
+          {sortedProviders.length > 0 ? (
+            sortedProviders.map((p) => (
+              <option key={p.id} value={p.id}>{p.displayName}</option>
+            ))
+          ) : (
+            <>
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="opencode_zen">OpenCode Zen</option>
+              <option value="ollama">Ollama</option>
+              <option value="groq">Groq</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="mistral">Mistral</option>
+              <option value="lmstudio">LM Studio</option>
+              <option value="openai_compat">OpenAI Compatible</option>
+            </>
+          )}
         </select>
+        {activeDescriptor?.description ? (
+          <span style={{ color: 'var(--text-3)', fontSize: '12px' }}>{activeDescriptor.description}</span>
+        ) : null}
       </label>
       <label className="field" style={{ display: 'grid', gap: 6 }}>
         <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Model</span>
@@ -138,18 +185,18 @@ export function ProviderPicker({
           />
         )}
       </label>
-      {providerNeedsBaseUrl(settings.activeProvider) && (
+      {activeDescriptor?.showBaseUrlField && (
         <label className="field" style={{ display: 'grid', gap: 6 }}>
           <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Base URL</span>
           <input
             value={providerBaseUrl}
             onChange={(e) => updateProviderBaseUrl(e.target.value)}
-            placeholder={settings.activeProvider === 'ollama' ? 'http://127.0.0.1:11434' : 'https://your-endpoint.example/v1'}
+            placeholder={activeDescriptor.defaultBaseUrl ?? 'https://your-endpoint.example/v1'}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
           />
         </label>
       )}
-      {settings.activeProvider !== 'ollama' && (
+      {activeDescriptor?.credentialMode !== 'none' && (
         <label className="field" style={{ display: 'grid', gap: 6 }}>
           <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider secret</span>
           <input
@@ -162,7 +209,7 @@ export function ProviderPicker({
         </label>
       )}
       <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn primary" type="button" disabled={busy} onClick={() => void handleSaveCredential()}>Save provider key</button>
+        <button className="btn primary" type="button" disabled={busy || activeDescriptor?.credentialMode === 'none'} onClick={() => void handleSaveCredential()}>Save provider key</button>
         <button className="btn" type="button" disabled={busy} onClick={() => void handleLoadModels()}>Load models</button>
         <button className="btn" type="button" disabled={busy} onClick={() => void handleValidateProvider()}>Test connection</button>
       </div>
@@ -171,19 +218,17 @@ export function ProviderPicker({
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
           {credentialSummary?.storedInKeychain
             ? `${credentialSummary.credentialRef} (active provider)`
-            : 'No key stored yet'}
+            : activeDescriptor?.credentialMode === 'none'
+              ? 'No key required for this provider'
+              : 'No key stored yet'}
         </span>
       </div>
     </div>
   );
 }
 
-function providerNeedsBaseUrl(providerId: string): boolean {
-  return providerId === 'openai_compat' || providerId === 'ollama';
-}
-
 /** Persist the full settings object (used by both Onboarding "Get started" and
- *  the SettingsPanel "Persist settings" button). Returns the persisted settings
+ *  settings auto-save). Returns the persisted settings
  *  the Rust layer normalized. */
 export async function persistSettings(settings: AppSettings): Promise<AppSettings> {
   return updateSettings(settings);

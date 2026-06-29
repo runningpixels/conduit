@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
 import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
-import { CopyIcon, ExternalIcon, FilePlainIcon, CheckIcon, AlertIcon, ChevronRight } from '../icons';
+import { FilePlainIcon, ChevronRight, MoreIcon } from '../icons';
 
-type DocTab = 'preview' | 'source' | 'file';
+type DocTab = 'preview' | 'source';
 
 const KIND_LABEL: Record<ArtifactKind, string> = {
   markdown: 'Markdown',
@@ -14,30 +14,21 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   html: 'HTML',
 };
 
-const STATE_LABEL: Record<FileState, string> = {
-  ok: 'saved',
-  modified: 'changed',
-  missing: 'missing',
-  noFileContent: 'inline',
-};
-
-const STATE_TONE: Record<FileState, 'ok' | 'warn' | 'bad' | 'hold'> = {
-  ok: 'ok',
-  modified: 'warn',
-  missing: 'bad',
-  noFileContent: 'hold',
-};
+/// Whether to show a sync/state dot for this artifact.
+function showStateDot(state: FileState, hasFilePayload: boolean): boolean {
+  if (!hasFilePayload) return false;
+  return state === 'ok' || state === 'modified' || state === 'missing';
+}
 
 /// File-state → per-tab state-dot class (matches the CSS `tab-state` modifiers).
 function tabStateClass(state: FileState): string {
-  if (state === 'ok') return '';
   if (state === 'modified') return ' warn';
   if (state === 'missing') return ' bad';
-  return ''; // noFileContent / inline — no dot
+  return '';
 }
 
-/// Derive the raw inline text for the Copy button + Source pane: prefer
-/// `contentText`, fall back to pretty-printed `contentJson`, else empty.
+/// Derive the raw inline text for Copy + Source pane: prefer `contentText`,
+/// fall back to pretty-printed `contentJson`, else empty.
 function rawInlineText(artifact: Artifact): string {
   if (artifact.contentText != null) return artifact.contentText;
   if (artifact.contentJson != null) {
@@ -57,42 +48,27 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function DocPlaceholder({ children }: { children: ReactNode }) {
+  return <p className="doc-placeholder">{children}</p>;
+}
+
 interface DocumentPanelProps {
-  /// The payload-bearing artifact open in the panel (null = empty state).
   artifact: Artifact | null;
-  /// Editor-style open tabs (subset of conversation artifacts).
   openArtifacts: Artifact[];
-  /// Per-artifact file-state, for the tab-strip state dots.
   fileStateMap: Record<string, FileState>;
-  /// File-state of the active artifact (resolved by the owner).
   activeFileState: FileState;
-  /// User-managed remote allowlist for HTML/JS artifact previews.
   allowlist: string[];
-  /// Whether to apply app-like styling to rendered artifact previews (default true).
   styledPreview?: boolean;
   docTab: DocTab;
   onSelectTab: (tab: DocTab) => void;
   onOpenArtifact: (id: string) => void;
-  /// M3: overwrite the artifact's single payload (no version history). The
-  /// Source tab edits inline text; "Use disk" in the Modified banner re-saves
-  /// the on-disk blob's plaintext as a File payload to re-sync the hash.
   onSaveContent: (artifactId: string, content: ArtifactContent, mimeType?: string) => Promise<void>;
-  /// M5: export the current payload (optionally with a metadata sidecar) to
-  /// the app's exports directory. The destination path is surfaced by the owner.
   onExport: (artifactId: string, includeMetadata: boolean) => Promise<void>;
   onCloseTab?: (id: string) => void;
   onCollapsePanel?: () => void;
-  /// Rename the active artifact via click-to-edit on its tab.
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
 }
 
-/** v5 right-hand document panel: doc-head, artifact-tabs (editor-style open-file
- *  tabs with per-file state dots), doc-tabs (Preview/Source/File), doc-body
- *  panes, file-state banners, and doc-foot (sync status). Real artifact data
- *  flows from the IPC layer; the rich Preview renderers (M6), Source save (M3),
- *  and Export (M5) slot into the seams marked below. No version picker, no
- *  restore — the artifact holds a single current payload (user-directed override
- *  of ADR-002). */
 export function DocumentPanel({
   artifact,
   openArtifacts,
@@ -112,14 +88,14 @@ export function DocumentPanel({
   const [copied, setCopied] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabValue, setEditingTabValue] = useState('');
-  // Hooks must run before the empty-state early return, so derive the raw text
-  // unconditionally (`rawInlineText` tolerates a null artifact).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const raw = useMemo(() => (artifact ? rawInlineText(artifact) : ''), [artifact]);
   const isFilePayload = artifact?.contentPath != null;
+  const multiOpen = openArtifacts.length > 1;
 
-  // M6: for File-content artifacts (no inline text), fetch the payload bytes
-  // (5 MiB preview cap) so the renderer can preview them. Inline-content
-  // artifacts use `raw` directly. Cleared on artifact switch.
   const [loadedText, setLoadedText] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
@@ -141,9 +117,6 @@ export function DocumentPanel({
     };
   }, [artifact, isFilePayload]);
 
-  // Effective inline text for the renderer: loaded File-content bytes, else the
-  // artifact's inline text. A synthetic artifact view that carries the loaded
-  // text so `buildPreviewProps` sees it as inline content.
   const effectiveArtifact: Artifact | null = useMemo(() => {
     if (!artifact) return null;
     if (loadedText != null) {
@@ -152,56 +125,54 @@ export function DocumentPanel({
     return artifact;
   }, [artifact, loadedText]);
 
-  // M3: Source-tab edit state. `sourceText` is the canonical raw text for the
-  // effective artifact (inline text, or pretty-printed JSON, or loaded
-  // File-content bytes). The draft resets to it whenever it changes (artifact
-  // switch, File-content load completing, or a save that updates the artifact).
   const sourceText = useMemo(() => (effectiveArtifact ? rawInlineText(effectiveArtifact) : ''), [effectiveArtifact]);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedSource, setSavedSource] = useState(false);
-  // M5: export controls — a "include metadata" toggle + the export action.
   const [includeMetadata, setIncludeMetadata] = useState(false);
   const [exporting, setExporting] = useState(false);
-  // M3: dismiss the Modified banner without writing (the indexed hash stays
-  // canonical; the file remains out of sync until the next save/use-disk).
   const [dismissedModified, setDismissedModified] = useState(false);
+
   useEffect(() => {
     setDraft(sourceText);
     setSavedSource(false);
   }, [sourceText]);
-  // Re-arm the dismiss whenever the active artifact or its file-state changes.
+
   useEffect(() => {
     setDismissedModified(false);
+    setShowDetails(false);
+    setMenuOpen(false);
   }, [artifact?.id, activeFileState]);
+
+  useEffect(() => {
+    if (activeFileState === 'missing') setShowDetails(true);
+  }, [artifact?.id, activeFileState]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClick(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpen]);
+
   const dirty = draft !== sourceText;
 
-  // Empty state: no artifact open.
   if (!artifact) {
     return (
-      <section className="doc-panel" aria-label="Document panel" data-doc-tab={docTab}>
-        <div className="doc-head">
-          <div className="ficon"><FilePlainIcon /></div>
-          <div className="doc-title">
-            <b>No artifact open</b>
-            <small>Promote a code block from chat or pick an artifact from the rail</small>
-          </div>
-        </div>
+      <section className="doc-panel doc-panel-empty" aria-label="Document panel" data-doc-tab={docTab}>
         <div className="doc-body scroll">
-          <div className="doc-pane" data-doc-pane="preview">
-            <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>
-              Artifacts created in this conversation appear here. Use the rail&rsquo;s Files tab to open one.
-            </p>
-          </div>
+          <DocPlaceholder>No artifact open</DocPlaceholder>
         </div>
       </section>
     );
   }
 
-  const toneClass = `status-pill ${STATE_TONE[activeFileState]}`;
-  const label = STATE_LABEL[activeFileState];
   const name = artifact.title ?? 'Untitled artifact';
-  const subtitle = `${KIND_LABEL[artifact.kind] ?? artifact.kind} · current`;
+  const kindLabel = KIND_LABEL[artifact.kind] ?? artifact.kind;
 
   async function handleCopy() {
     if (!raw) return;
@@ -209,14 +180,12 @@ export function DocumentPanel({
       await navigator.clipboard.writeText(raw);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
+      setMenuOpen(false);
     } catch {
       /* ignore */
     }
   }
 
-  // M3: save the Source-tab draft as the artifact's single inline-text payload
-  // (overwrites — no version history). The mimeType is preserved so the
-  // renderer (json/html/markdown/code) keeps resolving correctly.
   async function handleSaveSource() {
     if (!artifact || !dirty || saving) return;
     setSaving(true);
@@ -231,15 +200,10 @@ export function DocumentPanel({
     }
   }
 
-  // M3: Modified-banner "Use disk" — accept the on-disk blob's current plaintext
-  // as canonical. We read the decrypted bytes (the live disk content, which
-  // differs from the indexed hash), then re-save them as a File payload with
-  // the same filename so `content_hash` re-syncs and the state returns to `ok`.
   async function handleUseDisk() {
     if (!artifact || !artifact.contentPath || saving) return;
     setSaving(true);
     try {
-      // Use the uncapped recovery reader so large modified files can be re-accepted.
       const bytes = await readArtifactFileBytes(artifact.id);
       const path = artifact.contentPath;
       const filename = path.includes('/') ? path.split('/').slice(1).join('/') : path;
@@ -251,12 +215,12 @@ export function DocumentPanel({
     }
   }
 
-  // M5: export the current payload (+ optional curated metadata sidecar).
   async function handleExport() {
     if (!artifact || exporting) return;
     setExporting(true);
     try {
       await onExport(artifact.id, includeMetadata);
+      setMenuOpen(false);
     } catch {
       /* failure surfaces via the App status line */
     } finally {
@@ -264,15 +228,33 @@ export function DocumentPanel({
     }
   }
 
-  const fileMeta: Array<{ k: string; v: string; dim?: boolean }> = [
+  const fileMeta: Array<{ k: string; v: string }> = [
     { k: 'Path', v: artifact.contentPath ?? '(inline)' },
-    { k: 'Hash', v: artifact.contentHash ?? '—' },
-    { k: 'Size', v: formatSize(artifact.sizeBytes) },
-    { k: 'MIME', v: artifact.mimeType ?? '—' },
-    { k: 'Origin', v: artifact.sourceMessageId ? 'From message' : 'Manual', dim: true },
-    { k: 'Cloud', v: artifact.cloudShareId ?? 'Not published — local only', dim: true },
-    { k: 'Updated', v: artifact.updatedAt ?? artifact.createdAt, dim: true },
+    { k: 'Type', v: artifact.mimeType ?? kindLabel },
+    { k: 'Updated', v: artifact.updatedAt ?? artifact.createdAt },
+    ...(isFilePayload
+      ? [
+          { k: 'Size', v: formatSize(artifact.sizeBytes) },
+        ]
+      : []),
   ];
+
+  function beginRename(id: string, currentTitle: string) {
+    setEditingTabId(id);
+    setEditingTabValue(currentTitle);
+  }
+
+  function commitRename() {
+    const v = editingTabValue.trim();
+    if (v && onRenameArtifact && artifact) void onRenameArtifact(artifact.id, v);
+    setEditingTabId(null);
+    setEditingTabValue('');
+  }
+
+  function cancelRename() {
+    setEditingTabId(null);
+    setEditingTabValue('');
+  }
 
   return (
     <section
@@ -280,28 +262,197 @@ export function DocumentPanel({
       aria-label="Document panel"
       data-doc-tab={docTab}
       data-file-state={activeFileState}
+      data-multi-open={multiOpen ? 'true' : 'false'}
     >
-      <div className="doc-head">
-        <div className="ficon"><FilePlainIcon /></div>
-        <div className="doc-title">
-          <b>{name}</b>
-          <small>{subtitle}</small>
-        </div>
-        <span className={toneClass}>{label}</span>
-        <div className="doc-actions">
-          <button className="icon-btn" type="button" aria-label="Reveal in Explorer" title="Reveal in Explorer" disabled={!isFilePayload}>
-            <ExternalIcon />
+      <div className="doc-toolbar">
+        {!multiOpen ? (
+          <div className="doc-toolbar-title">
+            <div className="ficon"><FilePlainIcon /></div>
+            <div className="doc-title">
+              {editingTabId === artifact.id ? (
+                <input
+                  className="inline-title-input"
+                  value={editingTabValue}
+                  autoFocus
+                  onChange={(e) => setEditingTabValue(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitRename();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                />
+              ) : (
+                <b
+                  onClick={() => onRenameArtifact && beginRename(artifact.id, name)}
+                  style={onRenameArtifact ? { cursor: 'text' } : undefined}
+                  title={name}
+                >
+                  {name}
+                </b>
+              )}
+              <small>
+                {kindLabel}
+                {showStateDot(activeFileState, isFilePayload) && (
+                  <span className={`tab-state inline${tabStateClass(activeFileState)}`} aria-hidden="true" />
+                )}
+              </small>
+            </div>
+          </div>
+        ) : (
+          <div className="artifact-tabs" aria-label="Open artifacts">
+            {openArtifacts.map((a) => {
+              const state = fileStateMap[a.id] ?? 'noFileContent';
+              return (
+                <button
+                  key={a.id}
+                  className={`artifact-file-tab${a.id === artifact.id ? ' active' : ''}`}
+                  type="button"
+                  data-state={state}
+                  title={KIND_LABEL[a.kind] ?? a.kind}
+                  onClick={() => onOpenArtifact(a.id)}
+                >
+                  <FilePlainIcon />
+                  {editingTabId === a.id && a.id === artifact.id ? (
+                    <input
+                      className="inline-title-input tab-name"
+                      value={editingTabValue}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setEditingTabValue(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitRename();
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelRename();
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="tab-name"
+                      onClick={(e) => {
+                        if (a.id === artifact.id && onRenameArtifact) {
+                          e.stopPropagation();
+                          beginRename(a.id, a.title ?? '');
+                        }
+                      }}
+                      style={a.id === artifact.id && onRenameArtifact ? { cursor: 'text' } : undefined}
+                    >
+                      {a.title ?? 'Untitled artifact'}
+                    </span>
+                  )}
+                  {showStateDot(state, a.contentPath != null) && (
+                    <span className={`tab-state${tabStateClass(state)}`} />
+                  )}
+                  {onCloseTab && (
+                    <span
+                      className="tab-close"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Close ${a.title ?? 'artifact'}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCloseTab(a.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onCloseTab(a.id);
+                        }
+                      }}
+                    >
+                      &times;
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <span className="doc-toolbar-spacer" />
+
+        <div className="doc-view-toggle" role="tablist" aria-label="View mode">
+          <button
+            className={`doc-view-btn${docTab === 'preview' ? ' active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={docTab === 'preview'}
+            onClick={() => onSelectTab('preview')}
+          >
+            Preview
           </button>
           <button
-            className="icon-btn"
+            className={`doc-view-btn${docTab === 'source' ? ' active' : ''}`}
             type="button"
-            aria-label={copied ? 'Copied' : 'Copy'}
-            title={copied ? 'Copied' : 'Copy'}
-            onClick={handleCopy}
-            disabled={!raw}
+            role="tab"
+            aria-selected={docTab === 'source'}
+            onClick={() => onSelectTab('source')}
           >
-            {copied ? <CheckIcon /> : <CopyIcon />}
+            Source
           </button>
+        </div>
+
+        <div className="doc-actions">
+          <div className="doc-overflow" ref={menuRef}>
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="More actions"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <MoreIcon />
+            </button>
+            {menuOpen && (
+              <div className="doc-overflow-menu" role="menu">
+                <button className="doc-overflow-item" type="button" role="menuitem" disabled={!raw} onClick={() => void handleCopy()}>
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button className="doc-overflow-item" type="button" role="menuitem" disabled={!isFilePayload}>
+                  Reveal in Explorer
+                </button>
+                <button
+                  className="doc-overflow-item"
+                  type="button"
+                  role="menuitem"
+                  disabled={exporting || saving}
+                  onClick={() => void handleExport()}
+                >
+                  {exporting ? 'Exporting…' : 'Export'}
+                </button>
+                <label className="doc-overflow-item doc-overflow-check">
+                  <input
+                    type="checkbox"
+                    checked={includeMetadata}
+                    onChange={(e) => setIncludeMetadata(e.target.checked)}
+                  />
+                  Include metadata sidecar
+                </label>
+                <button
+                  className="doc-overflow-item"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setShowDetails((open) => !open);
+                    setMenuOpen(false);
+                  }}
+                >
+                  {showDetails ? 'Hide details' : 'Details'}
+                </button>
+              </div>
+            )}
+          </div>
           {onCollapsePanel && (
             <button
               className="icon-btn"
@@ -316,109 +467,10 @@ export function DocumentPanel({
         </div>
       </div>
 
-      {openArtifacts.length > 0 && (
-      <div className="artifact-tabs" aria-label="Open artifacts">
-        {openArtifacts.map((a) => {
-          const state = fileStateMap[a.id] ?? 'noFileContent';
-          return (
-            <button
-              key={a.id}
-              className={`artifact-file-tab${a.id === artifact.id ? ' active' : ''}`}
-              type="button"
-              data-state={state}
-              title={KIND_LABEL[a.kind] ?? a.kind}
-              onClick={() => onOpenArtifact(a.id)}
-            >
-              <FilePlainIcon />
-              {editingTabId === a.id && a.id === artifact?.id ? (
-                <input
-                  className="inline-title-input tab-name"
-                  value={editingTabValue}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setEditingTabValue(e.target.value)}
-                  onBlur={() => {
-                    const v = editingTabValue.trim();
-                    if (v && onRenameArtifact && artifact) void onRenameArtifact(artifact.id, v);
-                    setEditingTabId(null);
-                    setEditingTabValue('');
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const v = editingTabValue.trim();
-                      if (v && onRenameArtifact && artifact) void onRenameArtifact(artifact.id, v);
-                      setEditingTabId(null);
-                      setEditingTabValue('');
-                    } else if (e.key === 'Escape') {
-                      e.preventDefault();
-                      setEditingTabId(null);
-                      setEditingTabValue('');
-                    }
-                  }}
-                />
-              ) : (
-                <span
-                  className="tab-name"
-                  onClick={(e) => {
-                    if (a.id === artifact?.id) {
-                      e.stopPropagation();
-                      const current = a.title ?? '';
-                      setEditingTabId(a.id);
-                      setEditingTabValue(current);
-                    }
-                  }}
-                  style={a.id === artifact?.id ? { cursor: 'text' } : undefined}
-                >
-                  {a.title ?? 'Untitled artifact'}
-                </span>
-              )}
-              <span className={`tab-state${tabStateClass(state)}`} />
-              {onCloseTab && (
-                <span
-                  className="tab-close"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Close ${a.title ?? 'artifact'}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCloseTab(a.id);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onCloseTab(a.id);
-                    }
-                  }}
-                >
-                  &times;
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      )}
-
-      <div className="doc-tabs">
-        <button className="doc-tab" data-doc-tab="preview" type="button" onClick={() => onSelectTab('preview')}>
-          Preview
-        </button>
-        <button className="doc-tab" data-doc-tab="source" type="button" onClick={() => onSelectTab('source')}>
-          Source
-        </button>
-        <button className="doc-tab" data-doc-tab="file" type="button" onClick={() => onSelectTab('file')}>
-          File
-        </button>
-        <span className="doc-tab-spacer" />
-      </div>
-
       <div className="doc-body scroll">
         {activeFileState === 'modified' && !dismissedModified && (
           <div className="doc-banner warn">
-            <strong>Modified outside Conduit.</strong> The file on disk changed since Conduit last read it. Review the disk copy before continuing.
-            {/* M3: recovery overwrites the current payload (no version created). */}
+            <strong>Modified on disk.</strong> Review before continuing.
             <div className="row">
               <button className="btn ghost" type="button" disabled={saving} onClick={() => void handleUseDisk()}>
                 Use disk
@@ -431,123 +483,86 @@ export function DocumentPanel({
         )}
         {activeFileState === 'missing' && (
           <div className="doc-banner bad">
-            <strong>File missing.</strong> Conduit cannot find this artifact at its indexed path. The catalog entry is intact, but the payload is gone from the workspace.
-            {/* M3 seam — "Locate" (re-import via a native file dialog) and
-                "Remove" (set a flag in artifact.metadata) need a Tauri dialog
-                plugin and a metadata-update IPC respectively, neither of which
-                is wired yet. The banner stays informational this phase. */}
+            <strong>File missing.</strong> The payload is no longer at its indexed path.
           </div>
         )}
 
-        <div className="doc-pane" data-doc-pane="preview">
-          {/* M6: dispatch to the safe renderer for the artifact's kind/mimeType.
-              File-content payloads are fetched above (5 MiB cap) into
-              `effectiveArtifact`. `buildPreviewProps` returns null when there is
-              no inline content to preview yet (File-content still loading or
-              over the cap). */}
-          {(() => {
-            if (!effectiveArtifact) return null;
-            if (isFilePayload && loadedText == null && !loadFailed) {
-              return <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>Loading file payload…</p>;
-            }
-            if (isFilePayload && loadFailed) {
-              return (
-                <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>
-                  This artifact&rsquo;s file payload is too large to preview (over 5 MiB) or could not be read. Use the File tab or export it.
-                </p>
-              );
-            }
-            const { Preview } = selectRenderer(effectiveArtifact);
-            const props = buildPreviewProps(effectiveArtifact, allowlist, styledPreview);
-            if (!Preview || !props) {
-              return <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>No content yet.</p>;
-            }
-            return <Preview {...props} />;
-          })()}
-        </div>
+        <div className="doc-content">
+          <div className="doc-pane" data-doc-pane="preview">
+            {(() => {
+              if (!effectiveArtifact) return null;
+              if (isFilePayload && loadedText == null && !loadFailed) {
+                return <DocPlaceholder>Loading…</DocPlaceholder>;
+              }
+              if (isFilePayload && loadFailed) {
+                return (
+                  <DocPlaceholder>
+                    Payload too large to preview or could not be read. Export or open details.
+                  </DocPlaceholder>
+                );
+              }
+              const { Preview } = selectRenderer(effectiveArtifact);
+              const props = buildPreviewProps(effectiveArtifact, allowlist, styledPreview);
+              if (!Preview || !props) {
+                return <DocPlaceholder>No content yet.</DocPlaceholder>;
+              }
+              return <Preview {...props} />;
+            })()}
+          </div>
 
-        <div className="doc-pane" data-doc-pane="source">
-          {/* M3: editable raw source. Save overwrites the single payload via
-              `setArtifactContent` (Text content, preserving mimeType). No
-              version history — the previous payload is gone. For File-content
-              artifacts still loading or over the 5 MiB preview cap, fall back to
-              a read-only note (edit large/binary payloads via Export + an
-              external editor, then re-import). */}
-          {isFilePayload && loadedText == null && !loadFailed ? (
-            <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>Loading file payload…</p>
-          ) : isFilePayload && loadFailed ? (
-            <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>
-              This artifact&rsquo;s file payload is too large to edit inline (over 5 MiB) or could not be read. Use the File tab or export it.
-            </p>
-          ) : !sourceText && !dirty ? (
-            <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '13px' }}>No source to show.</p>
-          ) : (
-            <div className="source-edit">
-              <div className="source-edit-bar">
-                <span className="source-edit-hint">
-                  {dirty ? 'Unsaved changes' : savedSource ? 'Saved' : 'Read-only preview updates as you edit'}
-                </span>
-                <button
-                  className="btn primary"
-                  type="button"
-                  disabled={!dirty || saving}
-                  onClick={() => void handleSaveSource()}
-                >
-                  {saving ? 'Saving…' : savedSource ? 'Saved' : 'Save'}
+          <div className="doc-pane" data-doc-pane="source">
+            {isFilePayload && loadedText == null && !loadFailed ? (
+              <DocPlaceholder>Loading…</DocPlaceholder>
+            ) : isFilePayload && loadFailed ? (
+              <DocPlaceholder>
+                Payload too large to edit inline or could not be read. Export or open details.
+              </DocPlaceholder>
+            ) : !sourceText && !dirty ? (
+              <DocPlaceholder>No source to show.</DocPlaceholder>
+            ) : (
+              <div className="source-edit">
+                <div className="source-edit-bar">
+                  <span className="source-edit-hint">
+                    {dirty ? 'Unsaved changes' : savedSource ? 'Saved' : ''}
+                  </span>
+                  <button
+                    className="btn primary"
+                    type="button"
+                    disabled={!dirty || saving}
+                    onClick={() => void handleSaveSource()}
+                  >
+                    {saving ? 'Saving…' : savedSource ? 'Saved' : 'Save'}
+                  </button>
+                </div>
+                <textarea
+                  className="source-textarea"
+                  value={draft}
+                  spellCheck={false}
+                  onChange={(e) => setDraft(e.target.value)}
+                  aria-label={`Edit ${kindLabel} source`}
+                />
+              </div>
+            )}
+          </div>
+
+          {showDetails && (
+            <aside className="doc-details" aria-label="Artifact details">
+              <div className="doc-details-head">
+                <strong>Details</strong>
+                <button className="icon-btn" type="button" aria-label="Hide details" onClick={() => setShowDetails(false)}>
+                  &times;
                 </button>
               </div>
-              <textarea
-                className="source-textarea"
-                value={draft}
-                spellCheck={false}
-                onChange={(e) => setDraft(e.target.value)}
-                aria-label={`Edit ${KIND_LABEL[artifact.kind] ?? artifact.kind} source`}
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="doc-pane" data-doc-pane="file">
-          <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5, maxWidth: '860px' }}>
-            The local store indexes this artifact. {isFilePayload ? 'The canonical payload is the file below, not a database blob.' : 'The payload is stored inline (encrypted at rest).'}
-          </p>
-          <div className="file-meta">
-            {fileMeta.map((row) => (
-              <div className="row" key={row.k}>
-                <span className="k">{row.k}</span>
-                <span className={`v${row.dim ? ' dim' : ''}`}>{row.v}</span>
+              <div className="file-meta compact">
+                {fileMeta.map((row) => (
+                  <div className="row" key={row.k}>
+                    <span className="k">{row.k}</span>
+                    <span className="v">{row.v}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="doc-foot">
-        {activeFileState === 'ok' && <span className="foot-ok sync" title="Payload matches the indexed on-disk file"><CheckIcon />Linked to local file</span>}
-        {activeFileState === 'noFileContent' && <span className="foot-ok sync" title="Stored in app data — use Export for a user-visible file"><CheckIcon />Saved in Conduit</span>}
-        {activeFileState === 'modified' && <span className="foot-warn sync"><AlertIcon />Modified outside app</span>}
-        {activeFileState === 'missing' && <span className="foot-bad sync"><AlertIcon />File missing</span>}
-        {/* M5: Export the current payload to the app's exports directory, with an
-            optional curated `.conduit.json` metadata sidecar. Cloud Publish is a
-            non-goal. The destination path is surfaced via the App status line. */}
-        <div className="doc-foot-export">
-          <span className="export-hint">Export writes a copy to your exports folder</span>
-          <label className="export-meta-toggle">
-            <input
-              type="checkbox"
-              checked={includeMetadata}
-              onChange={(e) => setIncludeMetadata(e.target.checked)}
-            />
-            Include metadata sidecar
-          </label>
-          <button
-            className="btn ghost"
-            type="button"
-            disabled={exporting || saving}
-            onClick={() => void handleExport()}
-          >
-            {exporting ? 'Exporting…' : 'Export'}
-          </button>
+            </aside>
+          )}
         </div>
       </div>
     </section>

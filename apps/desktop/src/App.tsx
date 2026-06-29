@@ -91,7 +91,7 @@ export default function App() {
   const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
   const [openArtifactIds, setOpenArtifactIds] = useState<string[]>([]);
   const [fileStateMap, setFileStateMap] = useState<Record<string, FileState>>({});
-  const [docTab, setDocTab] = useState<'preview' | 'source' | 'file'>('preview');
+  const [docTab, setDocTab] = useState<'preview' | 'source'>('preview');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const { onPointerDown } = useColumnResize();
@@ -223,7 +223,7 @@ export default function App() {
         setActiveArtifact(got);
         const state = await checkArtifactFileState(artifactId);
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
-        setDocTab(state === 'missing' ? 'file' : 'preview');
+        setDocTab('preview');
       } catch (error) {
         setStatus(error instanceof Error ? error.message : 'Failed to open artifact');
       }

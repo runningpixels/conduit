@@ -42,14 +42,14 @@ export interface HtmlArtifactRendererProps {
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
 /// tiny on purpose — the artifact may bring its own styles (inline only).
 const RESET_STYLE = [
-  'html,body{margin:0;padding:8px;color:inherit;background:transparent;font:inherit}',
+  'html,body{margin:0;padding:0;color:inherit;background:transparent;font:inherit}',
   'img{max-width:100%}',
 ].join('\n');
 
 /// Richer baseline applied when `styledPreview` is true. Conservative set:
 /// typography, spacing, code, tables, links — no heavy resets or JS.
 const STYLED_STYLE = [
-  'body{font:14px/1.65 var(--font-ui, system-ui, sans-serif); color:#111; max-width:860px}',
+  'body{font:14px/1.65 var(--font-ui, system-ui, sans-serif); color:#111}',
   'h1,h2,h3{margin-top:1.4em;margin-bottom:.4em;font-weight:600}',
   'p{margin:.6em 0}',
   'pre,code{font-family:var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); background:#f6f7f9; padding:2px 6px; border-radius:4px}',

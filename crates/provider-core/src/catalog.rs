@@ -75,9 +75,7 @@ pub const PROVIDER_DESCRIPTORS: &[ProviderDescriptor] = &[
         is_local: false,
         show_base_url_field: false,
         tier: 0,
-        description: Some(
-            "Curated coding models (v1: chat/completions only — pick chat-compatible models)",
-        ),
+        description: Some("Curated coding models — Claude, GPT, Gemini, and chat-compat"),
     },
     ProviderDescriptor {
         id: "ollama",

@@ -46,7 +46,7 @@ pub fn registry() -> Vec<Box<dyn ProviderAdapter>> {
         Box::new(crate::adapters::openai::OpenAiAdapter::official()),
         Box::new(crate::adapters::gemini::GeminiAdapter),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::openrouter()),
-        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::opencode_zen()),
+        Box::new(crate::adapters::opencode_zen::OpenCodeZenAdapter::new()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::groq()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::deepseek()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::mistral()),
@@ -116,6 +116,10 @@ mod tests {
         assert!(
             cloud_ids.contains(&"mistral"),
             "mistral must be cloud: {cloud_ids:?}"
+        );
+        assert!(
+            cloud_ids.contains(&"opencode_zen"),
+            "opencode_zen must be cloud: {cloud_ids:?}"
         );
         assert!(
             cloud_ids.contains(&"anthropic"),

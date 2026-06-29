@@ -42,8 +42,11 @@ pub struct OpenAiAdapter {
     pub optional_api_key: bool,
     pub is_local_endpoint: bool,
     pub extra_headers: &'static [(&'static str, &'static str)],
-    /// When true, always POST to `/chat/completions` (e.g. OpenCode Zen v1).
+    /// When true, always POST to `/chat/completions` (e.g. OpenCode Zen chat models).
     pub force_chat_completions: bool,
+    /// When true, always POST to `/responses` with the Responses-API payload shape
+    /// (e.g. OpenCode Zen GPT models).
+    pub force_responses: bool,
 }
 
 impl OpenAiAdapter {
@@ -56,6 +59,7 @@ impl OpenAiAdapter {
             is_local_endpoint: false,
             extra_headers: &[],
             force_chat_completions: false,
+            force_responses: false,
         }
     }
 
@@ -68,6 +72,7 @@ impl OpenAiAdapter {
             is_local_endpoint: true,
             extra_headers: &[],
             force_chat_completions: false,
+            force_responses: false,
         }
     }
 
@@ -79,6 +84,7 @@ impl OpenAiAdapter {
         optional_api_key: bool,
         extra_headers: &'static [(&'static str, &'static str)],
         force_chat_completions: bool,
+        force_responses: bool,
     ) -> Self {
         Self {
             provider_id,
@@ -88,6 +94,7 @@ impl OpenAiAdapter {
             is_local_endpoint: is_local,
             extra_headers,
             force_chat_completions,
+            force_responses,
         }
     }
 
@@ -690,7 +697,7 @@ fn serialize_function_tool(tool: &crate::schema::ToolDefinition, responses_api: 
     }
 }
 
-fn build_payload(normalized: &NormalizedRequest) -> Value {
+fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> Value {
     let request = &normalized.request;
     let mut messages = Vec::new();
 
@@ -775,6 +782,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         .as_ref()
         .map(|w| w.enabled)
         .unwrap_or(false);
+    let responses_api = web_search_intent || force_responses_api;
 
     let mut body = json!({
       "model": request.model_id,
@@ -784,7 +792,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     // `stream_options.include_usage` is chat-completions only. The Responses API
     // rejects it with `unknown_parameter` and the whole request fails — which
     // blocks web search even when the user opted in.
-    if !web_search_intent {
+    if !responses_api {
         body["stream_options"] = json!({ "include_usage": true });
     }
 
@@ -793,7 +801,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     // messages above are `{role, content}` shaped; Responses accepts that
     // shape directly under `input`. Rename the field so a single `messages`
     // build step serves both endpoints.
-    if web_search_intent {
+    if responses_api {
         body["input"] = json!(messages);
     } else {
         body["messages"] = json!(messages);
@@ -815,7 +823,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                     }
                     obj
                 } else {
-                    serialize_function_tool(tool, web_search_intent)
+                    serialize_function_tool(tool, responses_api)
                 }
             })
             .collect();
@@ -1040,7 +1048,7 @@ impl ProviderAdapter for OpenAiAdapter {
 
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
-        let body = build_payload(&normalized);
+        let body = build_payload(&normalized, self.force_responses);
 
         let headers = self.request_headers(&ctx)?;
 
@@ -1050,7 +1058,7 @@ impl ProviderAdapter for OpenAiAdapter {
         // function tools, which still work on both endpoints).
         let endpoint = if self.force_chat_completions {
             "chat/completions"
-        } else if web_search_intent && search_unavailable.is_none() {
+        } else if self.force_responses || (web_search_intent && search_unavailable.is_none()) {
             "responses"
         } else {
             "chat/completions"
@@ -1354,7 +1362,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request });
+        let body = build_payload(&NormalizedRequest { request }, false);
         // Responses-API field shape, not chat-completions.
         assert!(body.get("input").is_some(), "must use Responses-API `input` field");
         assert!(body.get("messages").is_none(), "must not emit chat-completions `messages`");
@@ -1425,7 +1433,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request });
+        let body = build_payload(&NormalizedRequest { request }, false);
         let ws_tool = body
             .get("tools")
             .and_then(|v| v.as_array())
@@ -1475,7 +1483,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request });
+        let body = build_payload(&NormalizedRequest { request }, false);
         let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools");
         let fn_tool = tools
             .iter()
@@ -1509,7 +1517,7 @@ mod tests {
             web_search: None,
         };
 
-        let body = build_payload(&NormalizedRequest { request });
+        let body = build_payload(&NormalizedRequest { request }, false);
         assert!(body.get("messages").is_some(), "chat-completions path keeps `messages`");
         assert!(body.get("input").is_none(), "must not emit Responses-API `input`");
         assert!(
@@ -1549,7 +1557,7 @@ mod tests {
         // Web search is not on the request itself, but the catalog is exposing
         // a hosted tool. build_payload should still emit it as a hosted tool
         // object, not a function tool.
-        let body = build_payload(&NormalizedRequest { request: request.clone() });
+        let body = build_payload(&NormalizedRequest { request: request.clone() }, false);
         let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].get("type").and_then(|v| v.as_str()), Some("web_search"));
@@ -1571,12 +1579,34 @@ mod tests {
             display_group: None,
             tenant_scope: None,
         }];
-        let body = build_payload(&NormalizedRequest { request });
+        let body = build_payload(&NormalizedRequest { request }, false);
         let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
         assert_eq!(tools[0].get("type").and_then(|v| v.as_str()), Some("function"));
         assert_eq!(
             tools[0].pointer("/function/name").and_then(|v| v.as_str()),
             Some("get_weather")
         );
+    }
+
+    #[test]
+    fn force_responses_payload_uses_input_field() {
+        let request = ProviderRequest {
+            request_id: "req-zen-gpt".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gpt-5.4".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+
+        let body = build_payload(&NormalizedRequest { request }, true);
+        assert!(body.get("input").is_some());
+        assert!(body.get("messages").is_none());
+        assert!(body.get("stream_options").is_none());
     }
 }

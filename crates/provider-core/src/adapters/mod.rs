@@ -12,6 +12,7 @@ pub mod ollama;
 pub mod openai;
 pub mod openai_compat;
 pub mod openai_preset;
+pub mod opencode_zen;
 
 pub fn message_text(message: &Message) -> String {
     message

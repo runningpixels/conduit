@@ -116,6 +116,42 @@ fn gemini_grounding_fixture() {
 }
 
 #[test]
+fn zen_claude_fixture() {
+    let fixture = include_str!("fixtures/zen/claude_plain_text.sse");
+    let events = anthropic::parse_fixture("req-1", fixture);
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::ContentDelta { content, .. } if content == "Hello")));
+}
+
+#[test]
+fn zen_gpt_responses_fixture() {
+    let fixture = include_str!("fixtures/zen/gpt_responses_plain_text.sse");
+    let events = openai::parse_fixture("req-1", fixture);
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::ContentDelta { content, .. } if content == "Hello")));
+}
+
+#[test]
+fn zen_chat_fixture() {
+    let fixture = include_str!("fixtures/zen/chat_plain_text.sse");
+    let events = openai::parse_fixture("req-1", fixture);
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::ContentDelta { content, .. } if content == "Hello")));
+}
+
+#[test]
+fn zen_gemini_fixture() {
+    let fixture = include_str!("fixtures/zen/gemini_plain_text.sse");
+    let events = gemini::parse_fixture("req-1", fixture);
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::ContentDelta { content, .. } if content == "Hello")));
+}
+
+#[test]
 fn openai_compat_plain_text_fixture() {
     let fixture = include_str!("fixtures/openai_compat/plain_text.sse");
     let events = openai::parse_fixture("req-1", fixture);

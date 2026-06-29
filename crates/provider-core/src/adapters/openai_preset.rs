@@ -27,18 +27,7 @@ impl OpenAiPresetAdapter {
             false,
             OPENROUTER_HEADERS,
             false,
-        ))
-    }
-
-    pub fn opencode_zen() -> Self {
-        Self(OpenAiAdapter::preset(
-            "opencode_zen",
-            "OpenCode Zen",
-            "https://opencode.ai/zen/v1",
             false,
-            false,
-            &[],
-            true,
         ))
     }
 
@@ -50,6 +39,7 @@ impl OpenAiPresetAdapter {
             false,
             false,
             &[],
+            false,
             false,
         ))
     }
@@ -63,6 +53,7 @@ impl OpenAiPresetAdapter {
             false,
             &[],
             false,
+            false,
         ))
     }
 
@@ -75,6 +66,7 @@ impl OpenAiPresetAdapter {
             false,
             &[],
             false,
+            false,
         ))
     }
 
@@ -86,6 +78,7 @@ impl OpenAiPresetAdapter {
             true,
             true,
             &[],
+            false,
             false,
         ))
     }

@@ -511,6 +511,30 @@ fn base_url(ctx: &AdapterContext) -> String {
         .clone()
         .filter(|u| !u.is_empty())
         .unwrap_or_else(|| DEFAULT_BASE.to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// OpenCode Zen proxies Gemini at `/v1/models/{id}?alt=sse` instead of the
+/// native `:streamGenerateContent` path.
+pub(crate) fn is_zen_gemini_base(base: &str) -> bool {
+    base.contains("opencode.ai/zen")
+}
+
+fn stream_generate_url(base: &str, model: &str) -> String {
+    if is_zen_gemini_base(base) {
+        format!("{base}/models/{model}?alt=sse")
+    } else {
+        format!("{base}/models/{model}:streamGenerateContent?alt=sse")
+    }
+}
+
+fn stream_auth_headers(base: &str, key: &str) -> Result<reqwest::header::HeaderMap, ProviderError> {
+    if is_zen_gemini_base(base) {
+        crate::transport::bearer_header(key)
+    } else {
+        gemini_api_key_header(key)
+    }
 }
 
 fn parse_model_list(response: &Value) -> Result<Vec<ModelInfo>, ProviderError> {
@@ -607,15 +631,12 @@ impl ProviderAdapter for GeminiAdapter {
         let model = normalize_model_id(&normalized.request.model_id);
         let body = build_payload(&normalized);
 
+        let base = base_url(&ctx);
         let sse = post_sse(
             &ctx.http,
             SseRequest {
-                url: format!(
-                    "{}/models/{}:streamGenerateContent?alt=sse",
-                    base_url(&ctx),
-                    model
-                ),
-                headers: gemini_api_key_header(key)?,
+                url: stream_generate_url(&base, &model),
+                headers: stream_auth_headers(&base, key)?,
                 body,
             },
             cancel,
@@ -885,5 +906,21 @@ mod tests {
         let body = build_payload(&NormalizedRequest { request });
         let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools");
         assert!(tools.iter().any(|t| t.get("google_search").is_some()));
+    }
+
+    #[test]
+    fn zen_stream_url_uses_proxy_path() {
+        assert!(is_zen_gemini_base("https://opencode.ai/zen/v1"));
+        assert_eq!(
+            stream_generate_url("https://opencode.ai/zen/v1", "gemini-3.5-flash"),
+            "https://opencode.ai/zen/v1/models/gemini-3.5-flash?alt=sse"
+        );
+        assert_eq!(
+            stream_generate_url(
+                "https://generativelanguage.googleapis.com/v1beta",
+                "gemini-3.5-flash"
+            ),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse"
+        );
     }
 }

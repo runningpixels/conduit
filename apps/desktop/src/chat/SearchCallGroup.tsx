@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import { isWebSearchToolCall } from './SearchCallBlock';
 import { hostOf } from './citationUtils';
@@ -15,6 +16,16 @@ function pickString(raw: Record<string, unknown>, keys: string[]): string | unde
     if (typeof value === 'string' && value.length > 0) return value;
   }
   return undefined;
+}
+
+function queryText(tc: ToolCallState): string {
+  const args = (tc.arguments ?? {}) as Record<string, unknown>;
+  const query = typeof args.query === 'string' ? args.query : '';
+  return query || tc.argumentsText || 'searching…';
+}
+
+function totalSourceCount(searchCalls: ToolCallState[]): number {
+  return searchCalls.reduce((acc, tc) => acc + (tc.sources?.length ?? 0), 0);
 }
 
 function renderSources(sources: SearchSource[]) {
@@ -49,12 +60,16 @@ function renderSources(sources: SearchSource[]) {
 
 /** Compact grouped view for one or more hosted web_search tool calls. */
 export function SearchCallGroup({ toolCalls, unavailable, cost }: SearchCallGroupProps) {
+  const [queriesOpen, setQueriesOpen] = useState(false);
   const searchCalls = toolCalls.filter(isWebSearchToolCall);
   if (searchCalls.length === 0) return null;
 
   const allComplete = searchCalls.every((tc) => tc.complete);
   const statusTone = allComplete ? 'ran' : 'running';
   const queryCount = cost ?? searchCalls.length;
+  const latestCall = searchCalls[searchCalls.length - 1];
+  const latestQuery = queryText(latestCall);
+  const sourceCount = totalSourceCount(searchCalls);
 
   return (
     <div className="tool search-call-group">
@@ -74,24 +89,36 @@ export function SearchCallGroup({ toolCalls, unavailable, cost }: SearchCallGrou
         <span className={`pill ${statusTone}`}>{allComplete ? 'ran' : 'running'}</span>
       </div>
       <div className="tool-detail">
-        <details className="search-queries" open={!allComplete}>
+        {!queriesOpen && (
+          <div className="search-query-preview" aria-live="polite">
+            <span className={`search-query-status ${latestCall.complete ? 'done' : 'pending'}`}>
+              {latestCall.complete ? '✓' : '…'}
+            </span>
+            <span className="search-query">{latestQuery}</span>
+            {sourceCount > 0 && (
+              <span className="search-source-count">
+                {' '}
+                · {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
+              </span>
+            )}
+          </div>
+        )}
+        <details
+          className="search-queries"
+          open={queriesOpen}
+          onToggle={(e) => setQueriesOpen((e.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary>Search queries</summary>
           <ol className="search-query-list">
-            {searchCalls.map((tc) => {
-              const args = (tc.arguments ?? {}) as Record<string, unknown>;
-              const query = typeof args.query === 'string' ? args.query : '';
-              return (
-                <li key={tc.toolCallId} className="search-query-item">
-                  <span className={`search-query-status ${tc.complete ? 'done' : 'pending'}`}>
-                    {tc.complete ? '✓' : '…'}
-                  </span>
-                  <span className="search-query">
-                    {query || tc.argumentsText || 'searching…'}
-                  </span>
-                  {tc.sources && tc.sources.length > 0 && renderSources(tc.sources)}
-                </li>
-              );
-            })}
+            {searchCalls.map((tc) => (
+              <li key={tc.toolCallId} className="search-query-item">
+                <span className={`search-query-status ${tc.complete ? 'done' : 'pending'}`}>
+                  {tc.complete ? '✓' : '…'}
+                </span>
+                <span className="search-query">{queryText(tc)}</span>
+                {tc.sources && tc.sources.length > 0 && renderSources(tc.sources)}
+              </li>
+            ))}
           </ol>
         </details>
         {unavailable && (

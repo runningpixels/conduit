@@ -175,4 +175,36 @@ describe('streamState web search', () => {
     expect(state.toolCalls[0].sources).toHaveLength(1);
     expect(state.toolCalls[0].sources?.[0].raw.url).toBe('https://a.com');
   });
+
+  it('accumulates searchCost from searchCost events', () => {
+    let state = createAssistantStreamState('req-ws');
+    state = applyProviderEvent(state, {
+      kind: 'searchCost',
+      requestId: 'req-ws',
+      index: 0,
+      toolCalls: 3,
+    });
+    state = applyProviderEvent(state, {
+      kind: 'searchCost',
+      requestId: 'req-ws',
+      index: 1,
+      toolCalls: 2,
+    });
+    expect(state.searchCost).toBe(5);
+  });
+
+  it('stores searchUnavailable from searchUnavailable events', () => {
+    let state = createAssistantStreamState('req-ws');
+    state = applyProviderEvent(state, {
+      kind: 'searchUnavailable',
+      requestId: 'req-ws',
+      index: 0,
+      code: 'unsupported',
+      message: 'Hosted search is not available for this model.',
+    });
+    expect(state.searchUnavailable).toEqual({
+      code: 'unsupported',
+      message: 'Hosted search is not available for this model.',
+    });
+  });
 });

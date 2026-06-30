@@ -161,8 +161,5 @@ export const MODEL_ROWS: ModelRow[] = [
 
 /** Connector availability pills shown in the composer caps row. */
 export const COMPOSER_CAPS: Array<{ id: string; label: string; state: 'ok' | 'warn' | 'none' }> = [
-  { id: 'github', label: 'github', state: 'ok' },
-  { id: 'postgres', label: 'postgres', state: 'ok' },
-  { id: 'slack', label: 'slack auth', state: 'warn' },
   { id: 'websearch', label: 'web search', state: 'none' },
 ];

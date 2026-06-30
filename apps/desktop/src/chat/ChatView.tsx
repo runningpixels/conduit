@@ -37,9 +37,11 @@ import {
   rebuildAssistantStreamStateFromEvents,
   type AssistantStreamState,
 } from './streamState';
+import type { StatusState } from './statusTypes';
+import { makeStatus } from './statusTypes';
 import { AttachIcon, ModelIcon, SendIcon, StopIcon, LockIcon } from '../icons';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
-import { COMPOSER_CAPS } from '../mock/workspace';
+import { getMessageIdByRequest } from '../ipc/client';
 import { resolveWebSearchForTurn } from './webSearchIntent';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
@@ -69,7 +71,7 @@ interface ChatTurn {
 
 interface ChatViewProps {
   settings: AppSettings;
-  onStatus: (message: string) => void;
+  onStatus: (message: string | StatusState) => void;
   /// Active conversation id (owned by App; the history rail drives selection).
   /// `null` only briefly during boot before App ensures a conversation exists.
   conversationId: string | null;
@@ -236,6 +238,46 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
+/** Derive agent loop phase from stream state and pending calls.
+ *  Frontend-only derivation — no backend changes needed.
+ *  Used to show phase labels and the phase badge in the assistant message. */
+function deriveAgentPhase(
+  state: AssistantStreamState | null,
+  pendingCalls: Set<string>,
+): AssistantStreamState['agentPhase'] | undefined {
+  if (!state) return undefined;
+  if (!state.streaming && state.finishReason && pendingCalls.size === 0) {
+    return undefined; // not in agent loop
+  }
+  if (pendingCalls.size > 0) {
+    return {
+      label: `Running ${pendingCalls.size} tool${pendingCalls.size > 1 ? 's' : ''}…`,
+      round: 1,
+      subPhase: 'executing_tools',
+    };
+  }
+  if (state.streaming && state.blocks.length === 0 && state.toolCalls.length === 0) {
+    return {
+      label: 'Thinking…',
+      round: 1,
+      subPhase: 'thinking',
+    };
+  }
+  if (state.streaming && state.toolCalls.length > 0) {
+    // Still streaming with tool calls visible — in the "reviewing" sub-phase
+    // between tool execution results and next content blocks.
+    const anyComplete = state.toolCalls.some((tc) => tc.complete);
+    if (anyComplete) {
+      return {
+        label: 'Reviewing results…',
+        round: 1,
+        subPhase: 'reviewing',
+      };
+    }
+  }
+  return undefined;
+}
+
 export function ChatView({ settings, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onAutoPromoteArtifact, onOpenArtifact, onChatTurnComplete }: ChatViewProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -252,6 +294,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
   // Session-only dismissal (same UX as diagnostics disclosure M6.5).
   const [showChatConsent, setShowChatConsent] = useState(false);
   const [chatConsentDismissed, setChatConsentDismissed] = useState(false);
+  const [suppressedPromoteKeys, setSuppressedPromoteKeys] = useState<Record<string, Set<string>>>({});
   const threadRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const currentConversationIdRef = useRef<string | null>(conversationId);
@@ -265,6 +308,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
   const toolBindingsRef = useRef<Record<string, ConnectorToolBinding>>({});
   const providerToolByCallIdRef = useRef<Record<string, string>>({});
   const pendingRuntimeCallsRef = useRef<Set<string>>(new Set());
+  const [agentPhase, setAgentPhase] = useState<AssistantStreamState['agentPhase']>(undefined);
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId;
@@ -332,6 +376,12 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, activeStream]);
+
+  // Derive agent loop phase from stream state + pending calls.
+  useEffect(() => {
+    const phase = deriveAgentPhase(activeStream, pendingRuntimeCallsRef.current);
+    setAgentPhase(phase);
+  }, [activeStream]);
 
   async function loadConnectorToolDefinitions(): Promise<ToolDefinition[]> {
     try {
@@ -480,7 +530,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     const history = [...turns, userTurn];
     setTurns(history);
     setPrompt('');
-    onStatus('Loading connector tools');
+    onStatus(makeStatus('Loading connector tools', 'active', 'chat'));
 
     const toolDefinitions = await loadToolDefinitions(trimmed);
     const priorHistory = history.slice(0, -1);
@@ -576,11 +626,12 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
 
     try {
       await streamDone;
+      onStatus(makeStatus('Waiting for tool results…', 'active', 'chat'));
       await waitForPendingRuntimeCalls(request.requestId);
-      onStatus(terminalError ?? 'Stream complete');
+      onStatus(makeStatus(terminalError ?? 'Stream complete', terminalError ? 'error' : 'success', 'chat'));
     } catch (error) {
       console.error('[startChatStream] rejected:', error);
-      onStatus(describeInvokeError(error));
+      onStatus(makeStatus(describeInvokeError(error), 'error', 'chat'));
     } finally {
       const finalState = streamStateRef.current;
       if (currentConversationIdRef.current === conversationId && finalState) {
@@ -595,25 +646,43 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
         // `buildProviderRequest` skips empty-content turns when sending.
         // Tool-only turns (no assistant text) are kept so tool cards persist.
         if (content.trim() !== '' || errorText || hasToolCalls) {
-          setTurns((current) => [
-            ...current,
-            {
-              id: `assistant-${request.requestId}`,
-              role: 'assistant',
-              content,
-              streamState: { ...finalState, streaming: false, error: errorText },
-              interrupted: finalState.interrupted,
-              modelId: settings.activeModel,
-            },
-          ]);
-          // Auto-promote the first detected candidate once per completed stream.
-          if (!errorText && content.trim() !== '' && onAutoPromoteArtifact) {
-            const candidates = detectArtifactCandidates(content);
-            const first = candidates[0];
-            if (first) {
-              void onAutoPromoteArtifact(`assistant-${request.requestId}`, first);
+          void (async () => {
+            let turnId = `assistant-${request.requestId}`;
+            try {
+              const realId = await getMessageIdByRequest(request.requestId);
+              if (realId) turnId = realId;
+            } catch {
+              /* keep client turn id */
             }
-          }
+
+            const candidates = detectArtifactCandidates(content);
+            const htmlCandidate = candidates.find((c) => c.kind === 'html');
+            if (htmlCandidate) {
+              setSuppressedPromoteKeys((current) => {
+                const next = { ...current };
+                const keys = new Set(current[turnId] ?? []);
+                keys.add(htmlCandidate.key);
+                next[turnId] = keys;
+                return next;
+              });
+            }
+
+            setTurns((current) => [
+              ...current,
+              {
+                id: turnId,
+                role: 'assistant',
+                content,
+                streamState: { ...finalState, streaming: false, error: errorText },
+                interrupted: finalState.interrupted,
+                modelId: settings.activeModel,
+              },
+            ]);
+
+            if (!errorText && content.trim() !== '' && htmlCandidate && onAutoPromoteArtifact) {
+              await onAutoPromoteArtifact(turnId, htmlCandidate);
+            }
+          })();
           if (!errorText && onChatTurnComplete) {
             onChatTurnComplete({ ...finalState, streaming: false, error: errorText });
           }
@@ -624,7 +693,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
             detectArtifactCandidates(content).length === 0 &&
             !docToolsSucceeded
           ) {
-            onStatus('No artifact content detected — the assistant must include a fenced code block (e.g. ```html).');
+            onStatus(makeStatus('No artifact content detected — the assistant must include a fenced code block (e.g. ```html).', 'warning', 'chat'));
           }
         }
       }
@@ -665,7 +734,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     } catch {
       /* ignore */
     }
-    onStatus('Stream cancelled');
+    onStatus(makeStatus('Stream cancelled', 'success', 'chat'));
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -715,6 +784,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
                 fileStateMap={fileStateMap}
                 onPromoteArtifact={onPromoteArtifact}
                 onOpenArtifact={onOpenArtifact}
+                suppressedCandidateKeys={suppressedPromoteKeys[turn.id]}
               />
             ) : (
               <div key={turn.id} className="msg enter">
@@ -731,6 +801,7 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
                     artifacts={artifacts}
                     fileStateMap={fileStateMap}
                     content={turn.content}
+                    suppressedCandidateKeys={suppressedPromoteKeys[turn.id]}
                     onPromote={onPromoteArtifact}
                     onOpenArtifact={onOpenArtifact}
                   />
@@ -739,33 +810,23 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
             ),
           )}
           {activeStream && (
-            <AssistantMessage state={activeStream} modelId={settings.activeModel} />
+            <AssistantMessage
+              state={{ ...activeStream, agentPhase: agentPhase ?? activeStream.agentPhase }}
+              modelId={settings.activeModel}
+            />
           )}
         </div>
       </div>
 
       <div className="composer-wrap">
-        <div className="caps">
-          <span className="lbl">Available here</span>
-          {COMPOSER_CAPS.map((cap) => {
-            let state = cap.state;
-            if (cap.id === 'websearch') {
-              if (!settings.webSearchEnabled || settings.localOnly) {
-                state = 'none';
-              } else if (webSearchOn) {
-                state = 'ok';
-              } else {
-                state = 'warn';
-              }
-            }
-            return (
-            <span className="cap" key={cap.id}>
-              <i style={state === 'warn' ? { background: 'var(--warn)' } : state === 'none' ? { background: 'var(--text-3)' } : undefined} />
-              {cap.label}
+        {settings.webSearchEnabled && !settings.localOnly && (
+          <div className="caps caps-websearch">
+            <span className="cap" data-state={webSearchOn ? 'ok' : 'warn'}>
+              <i style={webSearchOn ? undefined : { background: 'var(--warn)' }} />
+              web search {webSearchOn ? 'on' : 'off'}
             </span>
-            );
-          })}
-        </div>
+          </div>
+        )}
         <div className="composer">
           <textarea
             ref={taRef}

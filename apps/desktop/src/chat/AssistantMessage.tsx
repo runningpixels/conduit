@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ChatProse } from './ChatProse';
+import { ThinkingIndicator } from './ThinkingIndicator';
 import type { AssistantStreamState } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './artifactCandidates';
@@ -27,6 +28,8 @@ interface AssistantMessageProps {
   onPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
   /// Open an existing artifact in the DocumentPanel (chip click).
   onOpenArtifact?: (artifactId: string) => void;
+  /// Candidate keys hidden because auto-promotion is in flight or completed.
+  suppressedCandidateKeys?: ReadonlySet<string>;
 }
 
 /** v5 assistant message: av-role bot avatar, prose body with inline code chips,
@@ -40,6 +43,7 @@ export function AssistantMessage({
   fileStateMap,
   onPromoteArtifact,
   onOpenArtifact,
+  suppressedCandidateKeys,
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
   const text = state.blocks.map((b) => b.content).join('');
@@ -66,6 +70,12 @@ export function AssistantMessage({
         <div className="msg-from">
           <b>Assistant</b>
           {modelId && <span className="model">{modelId}</span>}
+          {state.agentPhase && (
+            <span className="phase-badge" title={state.agentPhase.subPhase}>
+              Round {state.agentPhase.round}
+              {state.agentPhase.totalRounds ? `/${state.agentPhase.totalRounds}` : ''}
+            </span>
+          )}
           <div className="msg-actions">
             <button
               type="button"
@@ -89,6 +99,10 @@ export function AssistantMessage({
             unavailable={state.searchUnavailable}
             cost={state.searchCost}
           />
+        )}
+        {/* Show thinking indicator when streaming but no blocks, reasoning, or tool calls yet */}
+        {state.streaming && state.blocks.length === 0 && state.reasoning.length === 0 && state.toolCalls.length === 0 && (
+          <ThinkingIndicator modelId={modelId} phase={state.agentPhase} visible={state.streaming} />
         )}
         {state.blocks.length > 0 ? (
           state.blocks.map((block) => (
@@ -114,6 +128,7 @@ export function AssistantMessage({
             fileStateMap={fileStateMap}
             content={text}
             streaming={state.streaming}
+            suppressedCandidateKeys={suppressedCandidateKeys}
             onPromote={onPromoteArtifact}
             onOpenArtifact={onOpenArtifact}
           />

@@ -106,8 +106,16 @@ interface AssistantArtifactStripProps {
   content: string;
   /// Hide promote affordances while the turn is still streaming.
   streaming?: boolean;
+  /// Candidate keys hidden because auto-promotion is in flight or completed.
+  suppressedCandidateKeys?: ReadonlySet<string>;
   onPromote: (messageId: string, candidate: ArtifactCandidate) => void | Promise<void>;
   onOpenArtifact: (artifactId: string) => void;
+}
+
+function artifactMatchesMessage(artifact: Artifact, messageId: string): boolean {
+  if (artifact.sourceMessageId === messageId) return true;
+  if (messageId.startsWith('assistant-') && artifact.sourceMessageId === messageId) return true;
+  return false;
 }
 
 /** The promote + reference strip at the end of an assistant turn. Renders
@@ -120,6 +128,7 @@ export function AssistantArtifactStrip({
   fileStateMap,
   content,
   streaming,
+  suppressedCandidateKeys,
   onPromote,
   onOpenArtifact,
 }: AssistantArtifactStripProps) {
@@ -132,13 +141,20 @@ export function AssistantArtifactStrip({
   );
 
   const promoted = useMemo(
-    () => artifacts.filter((a) => a.sourceMessageId === messageId),
+    () => artifacts.filter((a) => artifactMatchesMessage(a, messageId)),
     [artifacts, messageId],
   );
 
+  const promotedKinds = useMemo(() => new Set(promoted.map((a) => a.kind)), [promoted]);
+
   // While streaming, `candidates` is empty (see the memo above), so no promote
   // buttons render; chips for previously-promoted artifacts still show.
-  const visibleCandidates = candidates.filter((c) => !promotedKeys.has(c.key));
+  const visibleCandidates = candidates.filter((c) => {
+    if (promotedKeys.has(c.key)) return false;
+    if (suppressedCandidateKeys?.has(c.key)) return false;
+    if (promotedKinds.has(c.kind)) return false;
+    return true;
+  });
 
   if (visibleCandidates.length === 0 && promoted.length === 0) return null;
 
@@ -166,6 +182,7 @@ export function AssistantArtifactStrip({
         <ArtifactPromoteButton
           key={candidate.key}
           candidate={candidate}
+          disabled={pending.has(candidate.key)}
           onPromote={handlePromote}
         />
       ))}

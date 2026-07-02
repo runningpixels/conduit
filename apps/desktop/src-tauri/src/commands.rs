@@ -337,7 +337,28 @@ pub async fn delete_conversation(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<(), String> {
-    conversations::delete(&state.db, &conversation_id)
+    conversations::delete_with_files(
+        &state.db,
+        &state.paths.artifacts,
+        &state.paths.attachments,
+        &conversation_id,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_all_conversations(
+    state: State<'_, AppState>,
+) -> Result<Conversation, String> {
+    conversations::delete_all_with_files(
+        &state.db,
+        &state.paths.artifacts,
+        &state.paths.attachments,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    conversations::create(&state.db, None)
         .await
         .map_err(|e| e.to_string())
 }

@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppPaths, AppSettings, Artifact, ArtifactContent, FileState, OnboardingState } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
+import type { StatusState } from './chat/statusTypes';
+import { makeStatus, STATUS_DISMISS_MS } from './chat/statusTypes';
 import {
   checkArtifactFileState,
   createArtifact,
   createConversation,
+  deleteAllConversations,
+  deleteConversation,
   exportArtifact,
   getAppPaths,
   getArtifact,
@@ -64,6 +68,10 @@ const defaultSettings: AppSettings = {
     includeSources: false,
   },
   webSearchConsentAcknowledged: false,
+  agent: {
+    maxSteps: 25,
+    wallClockBudgetSecs: 300,
+  },
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';
@@ -83,7 +91,7 @@ async function resolveSourceMessageId(messageId: string): Promise<string> {
 export default function App() {
   const [paths, setPaths] = useState<AppPaths | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [status, setStatus] = useState('Booting desktop shell');
+  const [status, setStatus] = useState<StatusState | null>(makeStatus('Booting desktop shell', 'active'));
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('chat');
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>();
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
@@ -98,7 +106,28 @@ export default function App() {
   const { expanded, toggle: toggleRail } = useRailExpand();
   const { collapsed: docPanelCollapsed, collapse: collapseDocPanel, expand: expandDocPanel } = useDocPanelCollapse();
 
-  const setStatusMessage = useCallback((message: string) => setStatus(message), []);
+  // Rich status: accepts either a string (legacy) or a StatusState object.
+  const setStatusMessage = useCallback((message: string | StatusState) => {
+    const state = typeof message === 'string'
+      ? makeStatus(message)
+      : message;
+    setStatus(state);
+  }, []);
+
+  // Auto-dismiss timer for transient status kinds.
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!status) return;
+    const ms = STATUS_DISMISS_MS[status.kind];
+    if (ms == null) return;
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => {
+      setStatus(null);
+    }, ms);
+    return () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    };
+  }, [status]);
 
   const clearWorkspaceArtifactSelection = useCallback(() => {
     setActiveArtifact(null);
@@ -137,12 +166,12 @@ export default function App() {
           !onboardingState.migrationRecovery;
         if (readyForWorkspace) {
           await ensureConversation();
-          setStatus('Rust trust boundary online');
+          setStatus(makeStatus('Rust trust boundary online', 'idle'));
         } else {
-          setStatus('');
+          setStatus(null);
         }
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to load desktop state');
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to load desktop state', 'error'));
       }
     })();
   }, [ensureConversation]);
@@ -165,9 +194,9 @@ export default function App() {
       const created = await createConversation();
       setActiveConversationId(created.id);
       clearWorkspaceArtifactSelection();
-      setStatus('Started a new chat');
+      setStatus(makeStatus('Started a new chat', 'success'));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Failed to create chat');
+      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to create chat', 'error'));
     }
   }, [clearWorkspaceArtifactSelection]);
 
@@ -175,9 +204,57 @@ export default function App() {
     (id: string) => {
       setActiveConversationId(id);
       clearWorkspaceArtifactSelection();
+      setActiveTab('chat');
     },
     [clearWorkspaceArtifactSelection],
   );
+
+  const handleDeleteConversation = useCallback(
+    async (id: string) => {
+      const label = 'this conversation';
+      if (!window.confirm(`Delete ${label}?\n\nMessages and associated local artifacts will be removed.`)) {
+        return;
+      }
+      const wasActive = activeConversationId === id;
+      try {
+        await deleteConversation(id);
+        if (wasActive) {
+          const remaining = await listConversations();
+          if (remaining.length > 0) {
+            setActiveConversationId(remaining[0].id);
+          } else {
+            const created = await createConversation();
+            setActiveConversationId(created.id);
+          }
+          clearWorkspaceArtifactSelection();
+          setActiveTab('chat');
+        }
+        setStatus(makeStatus('Conversation deleted', 'success'));
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete conversation', 'error'));
+      }
+    },
+    [activeConversationId, clearWorkspaceArtifactSelection],
+  );
+
+  const handleDeleteAllHistory = useCallback(async () => {
+    if (
+      !window.confirm(
+        'Delete all conversation history?\n\nAll conversations, messages, and associated local artifacts will be removed. App settings are preserved.',
+      )
+    ) {
+      return;
+    }
+    try {
+      const created = await deleteAllConversations();
+      setActiveConversationId(created.id);
+      clearWorkspaceArtifactSelection();
+      setActiveTab('chat');
+      setStatus(makeStatus('All conversation history deleted', 'success'));
+    } catch (error) {
+      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete history', 'error'));
+    }
+  }, [clearWorkspaceArtifactSelection]);
 
   const refreshArtifacts = useCallback(async (conversationId: string): Promise<Artifact[]> => {
     try {
@@ -197,7 +274,7 @@ export default function App() {
     } catch (error) {
       setArtifacts([]);
       setFileStateMap({});
-      setStatus(error instanceof Error ? error.message : 'Failed to load artifacts');
+      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to load artifacts', 'error'));
       return [];
     }
   }, []);
@@ -225,7 +302,7 @@ export default function App() {
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
         setDocTab('preview');
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to open artifact');
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to open artifact', 'error'));
       }
     },
     [addOpenArtifactId, expandDocPanel],
@@ -240,31 +317,30 @@ export default function App() {
       if (!artifactId) return;
 
       await handleOpenArtifact(artifactId);
-      setStatus('Document updated');
+      setStatus(makeStatus('Document updated', 'success'));
     },
     [activeConversationId, refreshArtifacts, handleOpenArtifact],
   );
 
   const handleCloseArtifactTab = useCallback(
     (artifactId: string) => {
-      let fallbackId: string | undefined;
-      setOpenArtifactIds((current) => {
-        const next = current.filter((id) => id !== artifactId);
-        if (activeArtifact?.id === artifactId) {
-          fallbackId = next[next.length - 1];
-        }
-        return next;
-      });
-      if (activeArtifact?.id === artifactId) {
-        if (fallbackId) {
-          void handleOpenArtifact(fallbackId);
-        } else {
-          setActiveArtifact(null);
-        }
-      }
+      setOpenArtifactIds((current) => current.filter((id) => id !== artifactId));
     },
-    [activeArtifact?.id, handleOpenArtifact],
+    [],
   );
+
+  // When the active artifact is removed from openArtifactIds, switch to the
+  // last remaining open artifact or clear the active artifact.
+  useEffect(() => {
+    if (!activeArtifact) return;
+    if (!openArtifactIds.includes(activeArtifact.id)) {
+      if (openArtifactIds.length > 0) {
+        void handleOpenArtifact(openArtifactIds[openArtifactIds.length - 1]);
+      } else {
+        setActiveArtifact(null);
+      }
+    }
+  }, [activeArtifact?.id, openArtifactIds, handleOpenArtifact]);
 
   const handleSaveContent = useCallback(
     async (artifactId: string, content: ArtifactContent, mimeType?: string) => {
@@ -276,9 +352,9 @@ export default function App() {
         }
         const state = await checkArtifactFileState(artifactId);
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
-        setStatus('Saved artifact');
+        setStatus(makeStatus('Saved artifact', 'success'));
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to save artifact');
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to save artifact', 'error'));
         throw error;
       }
     },
@@ -289,9 +365,9 @@ export default function App() {
     async (artifactId: string, includeMetadata: boolean) => {
       try {
         const result = await exportArtifact(artifactId, includeMetadata);
-        setStatus(`Exported to ${result.exportedTo}`);
+        setStatus(makeStatus(`Exported to ${result.exportedTo}`, 'success'));
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to export artifact');
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to export artifact', 'error'));
       }
     },
     [],
@@ -322,7 +398,7 @@ export default function App() {
         );
         if (existing) {
           await handleOpenArtifact(existing.id);
-          setStatus('Opened existing artifact');
+          setStatus(makeStatus('Opened existing artifact', 'success'));
           return;
         }
 
@@ -335,9 +411,9 @@ export default function App() {
         await setArtifactContent(created.id, { kind: 'text', text: candidate.body }, candidate.mimeType);
         await refreshArtifacts(activeConversationId);
         await handleOpenArtifact(created.id);
-        setStatus('Promoted to artifact');
+        setStatus(makeStatus('Promoted to artifact', 'success'));
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to promote artifact');
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to promote artifact', 'error'));
       }
     },
     [activeConversationId, artifacts, refreshArtifacts, handleOpenArtifact],
@@ -351,7 +427,7 @@ export default function App() {
           await refreshArtifacts(activeConversationId);
         }
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to rename artifact');
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to rename artifact', 'error'));
       }
     },
     [activeConversationId, refreshArtifacts],
@@ -424,17 +500,6 @@ export default function App() {
         workspaceLabel="Documents/Conduit/Artifacts"
       />
 
-      {status && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="status-bar"
-          style={{ padding: '4px 12px', fontSize: 12, color: 'var(--text-3)', background: 'var(--surface-2)' }}
-        >
-          {status}
-        </div>
-      )}
-
       <main className="body">
         <section className="left-workspace" aria-label="Assistant workspace">
           {docPanelCollapsed && (
@@ -490,6 +555,8 @@ export default function App() {
               onOpenArtifact={(id) => void handleOpenArtifact(id)}
               activeConversationId={activeConversationId}
               onSelectConversation={handleSelectConversation}
+              onDeleteConversation={(id) => void handleDeleteConversation(id)}
+              onDeleteAllHistory={() => void handleDeleteAllHistory()}
               onNewChat={() => void handleNewChat()}
               onRenameArtifact={handleRenameArtifact}
               onManageConnectors={() => openSettings('connectors')}
@@ -534,6 +601,24 @@ export default function App() {
           </>
         )}
       </main>
+
+      <div
+        role="status"
+        aria-live="polite"
+        className={`status-footer${status && status.kind !== 'idle' ? ` kind-${status.kind}` : ''}`}
+      >
+        {status ? (
+          <>
+            <span className={`status-icon kind-${status.kind}`} aria-hidden="true" />
+            <span className="status-brief">{status.brief}</span>
+            {status.detail && (
+              <span className="status-detail" title={status.detail}>{status.detail}</span>
+            )}
+          </>
+        ) : (
+          <span className="status-brief">Rust trust boundary online</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -4,4 +4,9 @@
  * A history-rail entry: a conversation plus enough derived state (message
  * count, last message preview) to render without a second round-trip.
  */
-export type ConversationSummary = { id: string, title?: string, updatedAt: string, messageCount: number, lastMessagePreview?: string, };
+export type ConversationSummary = { id: string, title?: string, 
+/**
+ * Display-ready label for the history rail: explicit title, else the first
+ * words of the first user prompt, else `"Untitled chat"`.
+ */
+displayTitle: string, updatedAt: string, messageCount: number, lastMessagePreview?: string, };

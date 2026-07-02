@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AppSettings, MigrationRecoveryInfo } from '../ipc/contracts';
+import type { StatusState } from '../chat/statusTypes';
 import { getOnboardingState, updateSettings } from '../ipc/client';
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
@@ -22,10 +23,9 @@ export function Onboarding({
   settings: AppSettings;
   onSettingsChange: (s: AppSettings) => void;
   onStatus: (message: string) => void;
-  // Current status text (owned by App). Rendered here so success/error messages
-  // from every onboarding action — provider save, load models, test connection,
-  // get-started gate — are actually visible instead of swallowed.
-  status: string;
+  // Current status (owned by App). Rendered here so success/error messages
+  // from every onboarding action are actually visible instead of swallowed.
+  status: StatusState | null;
   onComplete: () => void;
 }) {
   const [finishing, setFinishing] = useState(false);
@@ -111,7 +111,7 @@ export function Onboarding({
             className="status-item"
             style={{ marginTop: 16, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', fontSize: 13, lineHeight: 1.5 }}
           >
-            {status}
+            {status.brief}
           </div>
         )}
       </div>

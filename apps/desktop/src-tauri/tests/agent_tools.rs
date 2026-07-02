@@ -54,6 +54,47 @@ async fn write_html_document_creates_artifact() {
 }
 
 #[tokio::test]
+async fn write_html_document_creates_when_artifact_id_unknown() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let artifacts_dir = tempfile::tempdir().unwrap();
+    let exports_dir = tempfile::tempdir().unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let ctx = AgentToolContext {
+        db: &pool,
+        artifacts_dir: artifacts_dir.path(),
+        exports_dir: exports_dir.path(),
+        encryption: &enc,
+        conversation_id: &conv.id,
+        source_message_id: None,
+    };
+
+    let result = agent_tools::execute_builtin_tool(
+        &ctx,
+        "tool-call-slug",
+        "req-slug",
+        WRITE_HTML_TOOL,
+        &json!({
+          "artifact_id": "ancient_rome_history",
+          "title": "History of Ancient Rome",
+          "filename": "ancient-rome-history.html",
+          "html": "<!doctype html><html><body>Rome</body></html>"
+        }),
+    )
+    .await
+    .expect("tool runs");
+
+    assert_eq!(result.is_error, false);
+    let artifact_id = result
+        .output
+        .get("artifact_id")
+        .and_then(|v| v.as_str())
+        .expect("artifact id");
+    assert_ne!(artifact_id, "ancient_rome_history");
+    assert_eq!(result.output.get("created"), Some(&json!(true)));
+}
+
+#[tokio::test]
 async fn edit_text_document_updates_existing() {
     let pool = common::setup_pool().await;
     let enc = common::setup_encryption();

@@ -5,7 +5,7 @@ use crate::adapters::{
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
-    ContentAnnotation, GenerationControls, MessagePartKind, MessageRole, ProviderError,
+    ContentAnnotation, GenerationControls, MessagePart, MessagePartKind, MessageRole, ProviderError,
     ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
 };
 use crate::transport::{get_json, post_sse, SseRequest};
@@ -711,27 +711,30 @@ fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> V
     for message in &request.messages {
         match message.role {
             MessageRole::Assistant => {
-                // Check if this assistant message contains tool call metadata
-                let tool_calls_meta = message
+                // Collect ToolCall-kind parts (R4: typed variant instead of metadata digging)
+                let tool_call_parts: Vec<&MessagePart> = message
                     .parts
                     .iter()
-                    .find_map(|p| p.metadata.as_ref()?.get("tool_calls"))
-                    .and_then(|v| v.as_array());
+                    .filter(|p| p.kind == MessagePartKind::ToolCall)
+                    .collect();
 
-                if let Some(tc_array) = tool_calls_meta {
+                if !tool_call_parts.is_empty() {
                     // Assistant message with tool calls
                     let text_content = message_text(message);
-                    let tool_calls: Vec<Value> = tc_array
+                    let tool_calls: Vec<Value> = tool_call_parts
                         .iter()
-                        .map(|tc| {
+                        .map(|p| {
+                            let name = p
+                                .metadata
+                                .as_ref()
+                                .and_then(|m| m.get("name").and_then(|v| v.as_str()))
+                                .unwrap_or("");
                             json!({
-                                "id": tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                                "id": p.tool_call_id.as_deref().unwrap_or(""),
                                 "type": "function",
                                 "function": {
-                                    "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                                    "arguments": tc.get("arguments")
-                                        .map(|a| a.to_string())
-                                        .unwrap_or_else(|| "{}".to_string()),
+                                    "name": name,
+                                    "arguments": p.content.as_deref().unwrap_or("{}"),
                                 }
                             })
                         })
@@ -748,11 +751,46 @@ fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> V
                     }
                     messages.push(msg);
                 } else {
-                    // Regular assistant text message
-                    messages.push(json!({
-                        "role": "assistant",
-                        "content": message_text(message),
-                    }));
+                    // Fallback: check metadata-based tool_calls for backward compat
+                    let legacy_tc = message
+                        .parts
+                        .iter()
+                        .find_map(|p| p.metadata.as_ref()?.get("tool_calls"))
+                        .and_then(|v| v.as_array());
+                    if let Some(tc_array) = legacy_tc {
+                        let text_content = message_text(message);
+                        let tool_calls: Vec<Value> = tc_array
+                            .iter()
+                            .map(|tc| {
+                                json!({
+                                    "id": tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                        "arguments": tc.get("arguments")
+                                            .map(|a| a.to_string())
+                                            .unwrap_or_else(|| "{}".to_string()),
+                                    }
+                                })
+                            })
+                            .collect();
+                        let mut msg = json!({
+                            "role": "assistant",
+                            "tool_calls": tool_calls,
+                        });
+                        if !text_content.is_empty() {
+                            msg["content"] = json!(text_content);
+                        } else {
+                            msg["content"] = Value::Null;
+                        }
+                        messages.push(msg);
+                    } else {
+                        // Regular assistant text message
+                        messages.push(json!({
+                            "role": "assistant",
+                            "content": message_text(message),
+                        }));
+                    }
                 }
             }
             MessageRole::Tool => {
@@ -1026,11 +1064,10 @@ impl ProviderAdapter for OpenAiAdapter {
             });
         }
 
+        let resolved_base = base_url(self, &ctx);
         let mut search_unavailable: Option<ProviderEvent> = None;
-        if web_search_intent && !endpoint_supports_hosted_search(ctx.base_url.as_deref()) {
-            let endpoint_msg = ctx.base_url.clone().unwrap_or_else(|| {
-                format!("<unset — falling back to {}>", self.default_base)
-            });
+        if web_search_intent && !endpoint_supports_hosted_search(Some(&resolved_base)) {
+            let endpoint_msg = resolved_base.clone();
             search_unavailable = Some(ProviderEvent::SearchUnavailable {
                 request_id: request.request_id.clone(),
                 index: 0,
@@ -1608,5 +1645,26 @@ mod tests {
         assert!(body.get("input").is_some());
         assert!(body.get("messages").is_none());
         assert!(body.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn official_openai_default_endpoint_hosts_web_search() {
+        // Regression: when no custom base_url is configured, the adapter must
+        // still recognize the official OpenAI endpoint as hosting web search.
+        // Previously the check only inspected ctx.base_url, which is None by
+        // default, and silently disabled search for official OpenAI users.
+        let adapter = OpenAiAdapter::official();
+        let ctx = crate::adapter::AdapterContext {
+            api_key: Some("sk-test".into()),
+            base_url: None,
+            http: crate::transport::HttpClient::new(),
+            local_only: false,
+        };
+        let resolved = base_url(&adapter, &ctx);
+        assert_eq!(resolved, "https://api.openai.com/v1");
+        assert!(
+            endpoint_supports_hosted_search(Some(&resolved)),
+            "official OpenAI default endpoint must host web search"
+        );
     }
 }

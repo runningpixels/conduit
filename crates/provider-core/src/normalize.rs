@@ -92,6 +92,14 @@ fn validate_message(message: &Message) -> Result<(), ProviderError> {
                     return Err(fatal("artifact reference parts require artifact_id"));
                 }
             }
+            MessagePartKind::ToolCall => {
+                if part.tool_call_id.as_ref().is_none_or(|id| id.is_empty()) {
+                    return Err(fatal("tool call parts require tool_call_id"));
+                }
+                if part.content.as_ref().is_none_or(|c| c.is_empty()) {
+                    return Err(fatal("tool call parts require content (serialized arguments)"));
+                }
+            }
             MessagePartKind::Image | MessagePartKind::File => {
                 if part.blob_ref.as_ref().is_none_or(|r| r.is_empty())
                     && part.attachment_id.is_none()

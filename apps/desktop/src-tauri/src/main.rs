@@ -59,6 +59,7 @@ fn main() {
             list_conversations,
             get_conversation,
             delete_conversation,
+            delete_all_conversations,
             save_attachment,
             list_attachments,
             delete_attachment,

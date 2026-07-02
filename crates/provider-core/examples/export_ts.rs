@@ -11,7 +11,8 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition, ConnectorGrant,
+    AgentGuardrails, AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition,
+    ConnectorGrant,
     ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation,
     Conversation, ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls,
     GrantScope, GrantStatus, LicenseClaims, Message, MessagePart, MessagePartKind, MessageRole,
@@ -90,6 +91,7 @@ fn main() {
     // App shell config
     Theme::export().expect("export Theme");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
+    AgentGuardrails::export().expect("export AgentGuardrails");
     AppSettings::export().expect("export AppSettings");
     SettingsPatch::export().expect("export SettingsPatch");
     ModelInfo::export().expect("export ModelInfo");

@@ -22,7 +22,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_html_document',
     name: 'write_html_document',
     description:
-      'Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions.',
+      'Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs.',
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'html', type: 'string', required: true },
@@ -48,7 +48,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_markdown_document',
     name: 'write_markdown_document',
     description:
-      'Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions.',
+      'Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs.',
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'markdown', type: 'string', required: true },
@@ -74,7 +74,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_text_document',
     name: 'write_text_document',
     description:
-      'Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions.',
+      'Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs.',
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'text', type: 'string', required: true },
@@ -140,6 +140,16 @@ export function completedDocumentToolCalls(state: AssistantStreamState): ToolCal
 
 export function hadSuccessfulDocumentToolCalls(state: AssistantStreamState): boolean {
   return completedDocumentToolCalls(state).length > 0;
+}
+
+export function failedDocumentToolCalls(state: AssistantStreamState): ToolCallState[] {
+  return state.toolCalls.filter(
+    (toolCall) => toolCall.status === 'failed' && DOCUMENT_TOOL_NAMES.has(toolCall.name),
+  );
+}
+
+export function hadFailedDocumentToolCalls(state: AssistantStreamState): boolean {
+  return failedDocumentToolCalls(state).length > 0;
 }
 
 /** Pick the artifact the document panel should open after an agent turn. */

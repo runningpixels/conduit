@@ -32,6 +32,34 @@ fn user_message(conversation_id: &str, id: &str, content: &str) -> Message {
     }
 }
 
+fn assistant_message(conversation_id: &str, id: &str, content: &str) -> Message {
+    Message {
+        id: id.to_string(),
+        conversation_id: conversation_id.to_string(),
+        role: MessageRole::Assistant,
+        author_label: None,
+        provider_message_id: None,
+        request_id: Some("req-1".to_string()),
+        interrupted_at: None,
+        metadata: None,
+        parts: vec![MessagePart {
+            id: format!("{id}-p0"),
+            message_id: id.to_string(),
+            index: 0,
+            kind: MessagePartKind::Text,
+            content: Some(content.to_string()),
+            mime_type: None,
+            tool_call_id: None,
+            artifact_id: None,
+            attachment_id: None,
+            blob_ref: None,
+            metadata: None,
+            created_at: "2026-06-22T00:01:00Z".to_string(),
+        }],
+        created_at: "2026-06-22T00:01:00Z".to_string(),
+    }
+}
+
 #[tokio::test]
 async fn create_list_get_delete_and_cascade() {
     let pool = common::setup_pool().await;
@@ -51,6 +79,7 @@ async fn create_list_get_delete_and_cascade() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, conv.id);
     assert_eq!(listed[0].message_count, 0);
+    assert_eq!(listed[0].display_title, "First conversation");
     assert!(listed[0].last_message_preview.is_none());
 
     // add a user message; message_count and preview should reflect it
@@ -108,4 +137,51 @@ async fn list_is_newest_first() {
     let listed = conversations::list(&pool).await.unwrap();
     assert_eq!(listed[0].id, newer.id);
     assert_eq!(listed[1].id, older.id);
+}
+
+#[tokio::test]
+async fn list_display_title_from_first_user_prompt_when_untitled() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message(&conv.id, "m1", "How do I refactor this module?"),
+    )
+    .await
+    .unwrap();
+
+    let listed = conversations::list(&pool).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].display_title,
+        "How do I refactor this module?"
+    );
+}
+
+#[tokio::test]
+async fn list_summarizes_artifact_heavy_last_message_preview() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message(&conv.id, "m1", "create an html artifact overview of python"),
+    )
+    .await
+    .unwrap();
+
+    let artifact_body = "Here's the artifact.\n```html\n<!DOCTYPE html>\n<html><head><title>Python overview</title></head><body><p>lots of content</p></body></html>\n```";
+    messages::insert_message(&pool, &assistant_message(&conv.id, "m2", artifact_body))
+        .await
+        .unwrap();
+
+    let listed = conversations::list(&pool).await.unwrap();
+    let preview = listed[0]
+        .last_message_preview
+        .as_deref()
+        .expect("preview should be present");
+    assert!(preview.contains("Here's the artifact."));
+    assert!(preview.contains("HTML artifact"));
+    assert!(preview.contains("Python overview"));
+    assert!(!preview.contains("<!DOCTYPE"));
+    assert!(!preview.contains("<html>"));
 }

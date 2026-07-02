@@ -76,6 +76,7 @@ export type { LicenseClaims } from './generated/license_claims';
 // App shell configuration (IPC schema)
 export type { Theme } from './generated/theme';
 export type { ProviderEndpointConfig } from './generated/provider_endpoint_config';
+export type { AgentGuardrails } from './generated/agent_guardrails';
 export type { AppSettings } from './generated/app_settings';
 export type { SettingsPatch } from './generated/settings_patch';
 export type { ModelInfo } from './generated/model_info';

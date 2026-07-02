@@ -234,6 +234,65 @@ pub fn resolve_blob_path(attachments_dir: &Path, rel_path: &str) -> PathBuf {
     attachments_dir.join(rel_path)
 }
 
+/// Blob reference for cleanup: relative path + optional content hash.
+pub type AttachmentBlobRef = (String, Option<String>);
+
+/// List attachment blob paths (and hashes) for a conversation.
+pub async fn list_blob_refs_for_conversation(
+    pool: &SqlitePool,
+    conversation_id: &str,
+) -> Result<Vec<AttachmentBlobRef>, DbError> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT path, hash FROM attachments WHERE conversation_id = ?",
+    )
+    .bind(conversation_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// List attachment blob paths (and hashes) across all conversations.
+pub async fn list_all_blob_refs(pool: &SqlitePool) -> Result<Vec<AttachmentBlobRef>, DbError> {
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT path, hash FROM attachments").fetch_all(pool).await?;
+    Ok(rows)
+}
+
+/// Remove attachment blobs from disk when no remaining row references them.
+pub async fn remove_blobs_if_unreferenced(
+    pool: &SqlitePool,
+    attachments_dir: &Path,
+    refs: &[AttachmentBlobRef],
+) -> Result<(), DbError> {
+    let mut seen_paths = std::collections::HashSet::new();
+    for (path, hash) in refs {
+        if !seen_paths.insert(path.clone()) {
+            continue;
+        }
+        let still_referenced = if let Some(h) = hash {
+            let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM attachments WHERE hash = ?")
+                .bind(h)
+                .fetch_one(pool)
+                .await?;
+            count.0 > 0
+        } else {
+            let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM attachments WHERE path = ?")
+                .bind(path)
+                .fetch_one(pool)
+                .await?;
+            count.0 > 0
+        };
+        if still_referenced {
+            continue;
+        }
+        let abs = attachments_dir.join(path);
+        if abs.exists() {
+            let _ = std::fs::remove_file(&abs);
+        }
+    }
+    Ok(())
+}
+
 // --- helpers -----------------------------------------------------------------
 
 fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), DbError> {

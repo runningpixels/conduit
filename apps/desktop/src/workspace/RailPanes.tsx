@@ -19,7 +19,8 @@ import {
 import {
   ACTIVITY_ROWS,
 } from '../mock/workspace';
-import { InfoCard, SearchBox, SectionLabel, StatusPill } from '@conduit/ui';
+import { summarizeMessageContentForPreview } from '../chat/messageSegments';
+import { InfoCard, SectionLabel, StatusPill } from '@conduit/ui';
 import {
   ActivityCheckIcon,
   AlertIcon,
@@ -28,6 +29,7 @@ import {
   FileIcon,
   PlusIcon,
   ShareIcon,
+  TrashIcon,
 } from '../icons';
 
 interface RailPanesProps {
@@ -42,6 +44,10 @@ interface RailPanesProps {
   activeConversationId: string | null;
   /// Switch the chat view to an existing conversation.
   onSelectConversation: (id: string) => void;
+  /// Delete a single conversation from history.
+  onDeleteConversation: (id: string) => void | Promise<void>;
+  /// Delete all conversation history.
+  onDeleteAllHistory: () => void | Promise<void>;
   /// Create + switch to a fresh conversation (the "New chat" button).
   onNewChat: () => void;
   /// Rename an artifact (title update). Optional — when provided, rows become editable.
@@ -69,19 +75,29 @@ function relativeFromIso(iso: string): string {
   return new Date(then).toLocaleDateString();
 }
 
+function formatHistoryPreview(row: ConversationSummary): string {
+  if (row.lastMessagePreview) {
+    return summarizeMessageContentForPreview(row.lastMessagePreview) ?? row.lastMessagePreview;
+  }
+  return `${row.messageCount} message${row.messageCount === 1 ? '' : 's'}`;
+}
+
 function HistoryPane({
   activeConversationId,
   onSelectConversation,
+  onDeleteConversation,
+  onDeleteAllHistory,
   onNewChat,
 }: {
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
+  onDeleteConversation: (id: string) => void | Promise<void>;
+  onDeleteAllHistory: () => void | Promise<void>;
   onNewChat: () => void;
 }) {
-  // Real conversations from the local store (M2 `list_conversations`). Re-fetched
-  // whenever the active conversation changes, so a newly-created chat appears
-  // immediately and the active highlight tracks the chat view.
   const [rows, setRows] = useState<ConversationSummary[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -95,7 +111,18 @@ function HistoryPane({
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId]);
+  }, [activeConversationId, refreshKey]);
+
+  async function handleDeleteConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    await onDeleteConversation(id);
+    setRefreshKey((k) => k + 1);
+  }
+
+  async function handleDeleteAllHistory() {
+    await onDeleteAllHistory();
+    setRefreshKey((k) => k + 1);
+  }
 
   return (
     <section className="tab-pane" data-pane="history" aria-label="Chat history">
@@ -107,32 +134,49 @@ function HistoryPane({
             <small>Start a fresh local conversation</small>
           </span>
         </button>
-        <SearchBox placeholder="Search local chat history" />
-        <InfoCard title="Local history by default">
-          Conversations stay in the local store unless you opt into cloud sync. History is searchable without an account.
-        </InfoCard>
+        {rows.length > 0 && (
+          <div className="history-actions">
+            <button className="history-delete-all-btn" type="button" onClick={() => void handleDeleteAllHistory()}>
+              <TrashIcon />
+              Delete all history
+            </button>
+          </div>
+        )}
         {rows.length === 0 ? (
           <SectionLabel left="No conversations yet" right="local" />
         ) : (
           <>
-            <SectionLabel left="Recent chats" right={`${rows.length} local`} />
+            <SectionLabel left="Previous conversations" right={`${rows.length}`} />
             {rows.map((r) => (
-              <button
+              <div
                 key={r.id}
                 className={`list-row history-row${r.id === activeConversationId ? ' active' : ''}`}
-                type="button"
-                onClick={() => onSelectConversation(r.id)}
               >
-                <ChatIcon className="row-icon" />
-                <span className="meta">
-                  <b>{r.title ?? 'Untitled chat'}</b>
-                  <small>{r.lastMessagePreview ?? `${r.messageCount} message${r.messageCount === 1 ? '' : 's'}`}</small>
-                </span>
-                <span className="row-right">
-                  <span>{relativeFromIso(r.updatedAt)}</span>
-                  {r.messageCount === 0 && <StatusPill tone="warn">empty</StatusPill>}
-                </span>
-              </button>
+                <button
+                  className="history-row-main"
+                  type="button"
+                  onClick={() => onSelectConversation(r.id)}
+                >
+                  <ChatIcon className="row-icon" />
+                  <span className="meta">
+                    <b>{r.displayTitle}</b>
+                    <small>{formatHistoryPreview(r)}</small>
+                  </span>
+                  <span className="row-right">
+                    <span>{relativeFromIso(r.updatedAt)}</span>
+                    {r.messageCount === 0 && <StatusPill tone="warn">empty</StatusPill>}
+                  </span>
+                </button>
+                <button
+                  className="history-row-delete"
+                  type="button"
+                  aria-label={`Delete ${r.displayTitle}`}
+                  title="Delete conversation"
+                  onClick={(e) => void handleDeleteConversation(r.id, e)}
+                >
+                  <TrashIcon />
+                </button>
+              </div>
             ))}
           </>
         )}
@@ -212,9 +256,6 @@ function ArtifactsPane({
   return (
     <section className="tab-pane" data-pane="artifacts" aria-label="Files and artifacts">
       <div className="tab-list scroll">
-        <InfoCard title="Files stay first-class">
-          Artifacts are local workspace records indexed locally, so this tab is a lightweight file switcher instead of a separate document database.
-        </InfoCard>
         {artifacts.length === 0 ? (
           <SectionLabel left="No artifacts yet" right="local" />
         ) : (
@@ -473,6 +514,8 @@ export function RailPanes({
   onOpenArtifact,
   activeConversationId,
   onSelectConversation,
+  onDeleteConversation,
+  onDeleteAllHistory,
   onNewChat,
   onRenameArtifact,
   onManageConnectors,
@@ -485,6 +528,8 @@ export function RailPanes({
       <HistoryPane
         activeConversationId={activeConversationId}
         onSelectConversation={onSelectConversation}
+        onDeleteConversation={onDeleteConversation}
+        onDeleteAllHistory={onDeleteAllHistory}
         onNewChat={onNewChat}
       />
       <ArtifactsPane

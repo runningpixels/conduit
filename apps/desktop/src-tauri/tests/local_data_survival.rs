@@ -123,6 +123,14 @@ async fn settings_and_db_survive_in_place_reopen() {
         !settings.update_check_enabled,
         "updateCheckEnabled must survive"
     );
+    assert_eq!(
+        settings.agent.max_steps, 25,
+        "missing agent field must serde-default max_steps"
+    );
+    assert_eq!(
+        settings.agent.wall_clock_budget_secs, 300,
+        "missing agent field must serde-default wall_clock_budget_secs"
+    );
 
     // Raw-only knob survives the read.
     assert!(
@@ -164,9 +172,15 @@ async fn settings_and_db_survive_in_place_reopen() {
         web_search_enabled: None,
         web_search: None,
         web_search_consent_acknowledged: None,
+        agent: Some(provider_core::schema::AgentGuardrails {
+            max_steps: 40,
+            wall_clock_budget_secs: 600,
+        }),
     };
     let updated = state.update_settings(patch).expect("update settings");
     assert_eq!(updated.active_model, "claude-opus-4");
+    assert_eq!(updated.agent.max_steps, 40);
+    assert_eq!(updated.agent.wall_clock_budget_secs, 600);
     assert!(
         state.diagnostics_disclosure_acknowledged(),
         "raw disclosure flag must survive a typed settings write"
@@ -180,6 +194,8 @@ async fn settings_and_db_survive_in_place_reopen() {
         .expect("second reload");
     let settings2 = state2.settings().expect("read settings2");
     assert_eq!(settings2.active_model, "claude-opus-4");
+    assert_eq!(settings2.agent.max_steps, 40);
+    assert_eq!(settings2.agent.wall_clock_budget_secs, 600);
     assert!(settings2.onboarding_completed);
     assert!(matches!(settings2.update_channel, RolloutChannel::Beta));
     assert!(state2.diagnostics_disclosure_acknowledged());

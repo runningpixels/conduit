@@ -652,7 +652,8 @@ ol.citations li { margin-bottom: 6px; }
 .artref .s,
 .list-row .meta small,
 .model-row .meta small,
-.activity-row .meta small { font-size: 11.5px; color: var(--text-3); }
+.activity-row .meta small { font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-row .meta small { display: block; max-width: 100%; }
 .artref .open { margin-left: auto; font-size: 11.5px; color: var(--text-3); display: inline-flex; align-items: center; gap: 4px; }
 .artref .open svg { width: 13px; height: 13px; }
 
@@ -756,6 +757,71 @@ ol.citations li { margin-bottom: 6px; }
 .history-row.active {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
   background: var(--accent-weak);
+}
+.history-row {
+  padding: 0;
+  overflow: hidden;
+}
+.history-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.history-row-delete {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  align-self: stretch;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: var(--tap);
+}
+.history-row-delete:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.history-row-delete svg {
+  width: 14px;
+  height: 14px;
+}
+.history-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.history-delete-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: var(--tap);
+}
+.history-delete-all-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.history-delete-all-btn svg {
+  width: 13px;
+  height: 13px;
 }
 .history-row .row-right { flex-direction: column; align-items: flex-end; gap: 4px; }
 .health {
@@ -1301,13 +1367,81 @@ ol.citations li { margin-bottom: 6px; }
   animation: tool-pulse 1.8s ease-in-out infinite;
 }
 
-/* Running tool card: accent left border to show activity */
+/* Animated dot inside the running pill — a clearly-alive "working" signal
+   rather than a static chip. Sits before the label, pulses on its own cycle
+   so the pill reads as in-progress even at a glance. */
+.tool-head .pill.running .running-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 6px;
+  vertical-align: -1px;
+  animation: running-dot-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes running-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.7); }
+}
+
+/* Running tool card: accent left border + a slow sweep down the left edge to
+   show the whole card is actively working, not just the pill. */
 .tool:has(.pill.running) {
   border-left: 2px solid var(--accent);
   transition: border-color 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+.tool:has(.pill.running)::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--accent) 50%,
+    transparent 100%
+  );
+  animation: tool-edge-sweep 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes tool-edge-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
 }
 
 @keyframes tool-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .6; }
+}
+
+/* ── Thinking: trailing caret while streaming with no text yet ─────────── */
+/* Paired with the ThinkingIndicator dots so the assistant bubble reads as
+   alive before the first content delta. Reuses the existing .cursor blink. */
+.cursor.thinking-trailing {
+  display: inline-block;
+  margin-left: 0;
+  margin-top: 2px;
+}
+
+/* ── Reduced motion: keep the meaning, drop the movement ───────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dot,
+  .tool-head .pill.running,
+  .tool-head .pill.running .running-dot,
+  .tool:has(.pill.running)::before,
+  .phase-badge,
+  .cursor,
+  .cursor.thinking-trailing {
+    animation: none !important;
+  }
+  /* Steady accent dot so the running pill still reads as in-progress. */
+  .tool-head .pill.running .running-dot { opacity: 1; transform: none; }
+  .tool:has(.pill.running)::before { display: none; }
+  .cursor, .cursor.thinking-trailing { opacity: 1; }
 }

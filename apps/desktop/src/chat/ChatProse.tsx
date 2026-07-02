@@ -76,7 +76,7 @@ export function ChatProse({
   streaming,
   showCitations = true,
 }: ChatProseProps) {
-  const raw = content || (streaming ? '' : '…');
+  const raw = content || '';
   const deduped = showCitations ? dedupeCitationsByUrl(citations) : [];
   const footnotes = showCitations ? uniqueFootnotes(deduped) : [];
   const segments = parseMessageSegments(raw);
@@ -89,7 +89,7 @@ export function ChatProse({
           const prose =
             deduped.length > 0
               ? renderMarkdownWithCitations(seg.text, deduped, `p${idx}`)
-              : renderMarkdown(seg.text || (streaming && isLast ? '' : '…'));
+              : renderMarkdown(seg.text || (streaming && isLast ? '' : ''));
           return (
             <div key={`p${idx}`} className="chat-prose-segment">
               {prose}

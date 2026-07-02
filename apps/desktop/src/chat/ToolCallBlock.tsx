@@ -41,6 +41,7 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
     : toolCall.complete ? 'ran'
     : 'running';
 
+  const isRunning = statusLabel === 'running';
   const toolIcon = toolCall.name.toLowerCase().startsWith('slack') ? <SlackIcon /> : <GithubIcon />;
   const displayName = splitToolDisplayName(toolCall.name);
   const isDocumentTool = DOCUMENT_TOOL_NAMES.has(toolCall.name);
@@ -77,7 +78,10 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
             </>
           )}
         </span>
-        <span className={`pill ${statusTone}`}>{statusLabel}</span>
+        <span className={`pill ${statusTone}`}>
+          {isRunning && <span className="running-dot" aria-hidden="true" />}
+          {statusLabel}
+        </span>
       </div>
       <div className="tool-detail">
         {isDocumentTool && docSummary ? (
@@ -152,7 +156,16 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
       {toolCall.complete && consent !== 'denied' && (
         <div className="tool-result">
           {isDocumentTool ? (
-            <b>Document updated.</b>
+            status === 'failed' ? (
+              <>
+                <b>Document tool failed.</b>{' '}
+                {toolCall.error ?? 'The document was not created or updated.'}
+              </>
+            ) : status === 'cancelled' ? (
+              <b>Document tool cancelled.</b>
+            ) : (
+              <b>Document updated.</b>
+            )
           ) : (
             <>
               <b>Tool call complete.</b> {toolCall.error ? toolCall.error : 'Result stored locally.'}

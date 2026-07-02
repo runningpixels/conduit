@@ -102,6 +102,15 @@ const KIND_MIME: Record<ArtifactKind, string> = {
 
 const MIN_UNLABELED_BODY = 200;
 const TITLE_MAX = 60;
+const PREVIEW_MAX_CHARS = 120;
+
+const KIND_LABEL: Record<ArtifactKind, string> = {
+  markdown: 'Markdown',
+  text: 'Text',
+  code: 'Code',
+  json: 'JSON',
+  html: 'HTML',
+};
 
 function matchOpenFence(line: string): { fence: string; info: string } | null {
   const m = /^(\s*)(`{3,}|~{3,})([^\n]*)$/.exec(line);
@@ -140,8 +149,16 @@ function resolveKind(info: string, body: string): ArtifactKind | null {
     if (mapped) return mapped;
     return 'code';
   }
-  if (body.length > MIN_UNLABELED_BODY) {
-    return looksLikeJson(body) ? 'json' : 'markdown';
+  // Unlabeled fence. Sniff for structured artifacts (HTML / JSON) regardless of
+  // size so a short unlabeled `<div>hi</div>` is still detected as a candidate
+  // (previously it was dropped by the size gate, which made the "No artifact
+  // content detected" warning fire even when the reply contained a fence). Keep
+  // the size gate for the generic markdown fallback so incidental tiny
+  // code/prose blocks (e.g. `let x=1`) are not promoted into artifacts.
+  if (body.trim()) {
+    if (looksLikeJson(body)) return 'json';
+    if (/^\s*<(!doctype|html|[a-z][\w:-]*\b)/i.test(body)) return 'html';
+    if (body.length > MIN_UNLABELED_BODY) return 'markdown';
   }
   return null;
 }
@@ -248,4 +265,55 @@ export function parseMessageSegments(content: string): MessageSegment[] {
     segments.push({ type: 'prose', text: proseLines.join('\n') });
   }
   return segments;
+}
+
+function normalizePreviewWhitespace(s: string): string {
+  return s.split(/\s+/).filter(Boolean).join(' ');
+}
+
+function truncatePreview(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}…`;
+}
+
+/** One-line summary for a fenced artifact block (matches in-chat fence labels). */
+export function summarizeFenceForPreview(candidate: ArtifactCandidate): string {
+  const label = KIND_LABEL[candidate.kind] ?? candidate.kind;
+  const lineCount = candidate.body.split('\n').length;
+  const title = candidate.title.trim();
+  const genericTitle =
+    title === 'Markdown artifact' ||
+    title === 'Text artifact' ||
+    title.endsWith(' snippet');
+  if (title && !genericTitle) {
+    return `${label} artifact · ${title} · ${lineCount} lines`;
+  }
+  return `${label} artifact · ${lineCount} lines`;
+}
+
+/**
+ * Produce a compact, artifact-aware preview for history rails and other
+ * compact surfaces. Replaces fenced artifact bodies with one-line summaries.
+ */
+export function summarizeMessageContentForPreview(
+  content: string,
+  maxChars = PREVIEW_MAX_CHARS,
+): string | null {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+
+  const segments = parseMessageSegments(trimmed);
+  const parts: string[] = [];
+  for (const seg of segments) {
+    if (seg.type === 'prose') {
+      const prose = normalizePreviewWhitespace(seg.text);
+      if (prose) parts.push(prose);
+    } else {
+      parts.push(summarizeFenceForPreview(seg.candidate));
+    }
+  }
+
+  const joined = normalizePreviewWhitespace(parts.join(' '));
+  if (!joined) return null;
+  return truncatePreview(joined, maxChars);
 }

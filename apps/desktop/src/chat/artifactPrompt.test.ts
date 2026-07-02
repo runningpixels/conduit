@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   looksLikeArtifactCreationRequest,
-  artifactDeveloperPromptFor,
   CONDUIT_ARTIFACT_SYSTEM_APPENDIX,
 } from './artifactPrompt';
 import { BASE_SYSTEM_PROMPT, buildProviderRequest } from './ChatView';
@@ -24,17 +23,19 @@ describe('looksLikeArtifactCreationRequest', () => {
     expect(looksLikeArtifactCreationRequest('what is rust')).toBe(false);
     expect(looksLikeArtifactCreationRequest('tell me a joke')).toBe(false);
   });
-});
 
-describe('artifactDeveloperPromptFor', () => {
-  it('returns a developer prompt for artifact requests', () => {
-    const p = artifactDeveloperPromptFor('create a new artifact html');
-    expect(p).toBeDefined();
-    expect(p).toContain('fenced code block');
+  it('returns false for informational questions that mention artifacts', () => {
+    // These previously matched the `artifact.*html` alternation and were
+    // misrouted into artifact-creation prompting.
+    expect(looksLikeArtifactCreationRequest('what is an html artifact?')).toBe(false);
+    expect(looksLikeArtifactCreationRequest('how do artifacts handle json?')).toBe(false);
+    expect(looksLikeArtifactCreationRequest('tell me about html artifacts')).toBe(false);
+    expect(looksLikeArtifactCreationRequest('explain what a markdown artifact is')).toBe(false);
   });
 
-  it('returns undefined for non-artifact prompts', () => {
-    expect(artifactDeveloperPromptFor('hello')).toBeUndefined();
+  it('still treats phrased-as-a-question ability requests as creation', () => {
+    expect(looksLikeArtifactCreationRequest('can you create an html artifact?')).toBe(true);
+    expect(looksLikeArtifactCreationRequest('could you make a new json artifact?')).toBe(true);
   });
 });
 
@@ -61,6 +62,10 @@ describe('buildProviderRequest artifact prompts', () => {
       includeSources: false,
     },
     webSearchConsentAcknowledged: false,
+    agent: {
+      maxSteps: 25,
+      wallClockBudgetSecs: 300,
+    },
   };
 
   it('includes the artifact appendix in systemPrompt', () => {
@@ -70,12 +75,22 @@ describe('buildProviderRequest artifact prompts', () => {
     expect(req.systemPrompt).toContain(BASE_SYSTEM_PROMPT);
   });
 
-  it('includes developerPrompt only for artifact-intent prompts', () => {
+  it('does not inject a positive creation developer prompt (system appendix carries the contract)', () => {
+    // We deliberately no longer inject an artifact-creation developer prompt,
+    // even on explicit creation intent: the system appendix already states the
+    // contract and a false-positive intent match would otherwise pressure the
+    // model into creating an artifact on a question turn.
     const reqYes = buildProviderRequest(baseSettings, 'create a new artifact html', [], 'c1', []);
-    expect(reqYes.developerPrompt).toBeDefined();
-    expect(reqYes.developerPrompt).toContain('fenced code block');
+    expect(reqYes.developerPrompt).toBeUndefined();
 
     const reqNo = buildProviderRequest(baseSettings, 'hello', [], 'c1', []);
     expect(reqNo.developerPrompt).toBeUndefined();
+  });
+
+  it('injects an informational developer prompt only for non-artifact questions', () => {
+    const reqInfo = buildProviderRequest(baseSettings, 'what types of documents can you create?', [], 'c1', []);
+    expect(reqInfo.developerPrompt).toBeDefined();
+    expect(reqInfo.developerPrompt).toContain('informational');
+    expect(reqInfo.developerPrompt).toContain('text only');
   });
 });

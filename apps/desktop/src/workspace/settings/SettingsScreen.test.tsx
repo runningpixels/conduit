@@ -90,6 +90,10 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       includeSources: false,
     },
     webSearchConsentAcknowledged: false,
+    agent: {
+      maxSteps: 25,
+      wallClockBudgetSecs: 300,
+    },
     ...overrides,
   };
 }
@@ -167,6 +171,13 @@ describe('SettingsScreen tab navigation', () => {
     renderScreen({ localOnly: false });
     fireEvent.click(screen.getByText('Web Search'));
     expect(screen.getByRole('checkbox', { name: /enable web search/i })).toBeInTheDocument();
+  });
+
+  it('navigates to Agent tab when clicked', () => {
+    renderScreen();
+    fireEvent.click(screen.getByText('Agent'));
+    expect(screen.getByLabelText(/max agent steps/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/turn time limit/i)).toBeInTheDocument();
   });
 
   it('opens the requested sub-tab via initialTab', () => {

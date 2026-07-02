@@ -75,6 +75,7 @@ fn role_from_str(s: &str) -> Result<MessageRole, DbError> {
 fn part_kind_to_str(kind: &MessagePartKind) -> &'static str {
     match kind {
         MessagePartKind::Text => "text",
+        MessagePartKind::ToolCall => "toolCall",
         MessagePartKind::ToolResult => "toolResult",
         MessagePartKind::ArtifactReference => "artifactReference",
         MessagePartKind::AttachmentReference => "attachmentReference",
@@ -87,6 +88,7 @@ fn part_kind_to_str(kind: &MessagePartKind) -> &'static str {
 fn part_kind_from_str(s: &str) -> Result<MessagePartKind, DbError> {
     Ok(match s {
         "text" => MessagePartKind::Text,
+        "toolCall" => MessagePartKind::ToolCall,
         "toolResult" => MessagePartKind::ToolResult,
         "artifactReference" => MessagePartKind::ArtifactReference,
         "attachmentReference" => MessagePartKind::AttachmentReference,
@@ -204,8 +206,8 @@ pub async fn apply_event_in_txn(
             let part_id = format!("{message_id}/{tool_call_id}");
             sqlx::query(
                 "INSERT OR IGNORE INTO message_parts \
-                 (id, message_id, idx, kind, content, mime_type, tool_call_id, created_at) \
-                 VALUES (?, ?, ?, 'text', ?, 'application/x-tool-call', ?, ?)",
+                 (id, message_id, idx, kind, content, tool_call_id, created_at) \
+                 VALUES (?, ?, ?, 'toolCall', ?, ?, ?)",
             )
             .bind(&part_id)
             .bind(&message_id)
@@ -298,20 +300,45 @@ pub async fn persist_request_messages(
     pool: &SqlitePool,
     messages: &[Message],
 ) -> Result<(), DbError> {
+    use tracing::warn;
+
+    // Count the request messages we actually intend to persist (everything but
+    // assistant/tool rows, which are owned by the event-log fold / MCP runtime).
+    // If the number of rows we end up inserting is lower, some were silently
+    // ignored by `INSERT OR IGNORE` — usually a cross-conversation id collision
+    // from non-unique client-generated ids. Surface it so a regression is
+    // visible instead of dropping user content with no log line.
+    let expected = messages
+        .iter()
+        .filter(|m| !matches!(m.role, MessageRole::Assistant | MessageRole::Tool))
+        .count();
+
+    let mut inserted = 0usize;
     let mut tx = pool.begin().await?;
     for msg in messages {
-        upsert_request_message_in_txn(&mut tx, msg).await?;
+        if upsert_request_message_in_txn(&mut tx, msg).await? {
+            inserted += 1;
+        }
     }
     tx.commit().await?;
+
+    if inserted < expected {
+        warn!(
+            expected,
+            inserted,
+            "persist_request_messages: INSERT OR IGNORE dropped request messages \
+             (likely a cross-conversation id collision from non-unique client ids)"
+        );
+    }
     Ok(())
 }
 
 pub(crate) async fn upsert_request_message_in_txn(
     tx: &mut Transaction<'_, sqlx::Sqlite>,
     msg: &Message,
-) -> Result<(), DbError> {
+) -> Result<bool, DbError> {
     if matches!(msg.role, MessageRole::Assistant | MessageRole::Tool) {
-        return Ok(());
+        return Ok(false);
     }
 
     let res = sqlx::query(
@@ -337,8 +364,10 @@ pub(crate) async fn upsert_request_message_in_txn(
         for part in &msg.parts {
             insert_part_in_txn(tx, part).await?;
         }
+        Ok(true)
+    } else {
+        Ok(false)
     }
-    Ok(())
 }
 
 // --- view snapshot (for the M3 reconciliation check) -------------------------
@@ -478,6 +507,80 @@ async fn insert_part_in_txn(
     .bind(&part.created_at)
     .execute(&mut **tx)
     .await?;
+    Ok(())
+}
+
+/// Enrich an existing assistant message with tool-call metadata.
+/// Persists a single `text`-kind part whose `metadata.tool_calls` array
+/// carries all tool-call infos the adapters need to serialize the correct
+/// wire format (`tool_calls` array for OpenAI, `tool_use` blocks for
+/// Anthropic).  Also updates the message-row metadata with a summary.
+pub async fn enrich_assistant_with_tool_calls(
+    pool: &SqlitePool,
+    message_id: &str,
+    tool_calls: &[(String, String, serde_json::Value)], // (tool_call_id, name, arguments)
+) -> Result<(), DbError> {
+    if tool_calls.is_empty() {
+        return Ok(());
+    }
+    let mut tx = pool.begin().await?;
+
+    let now = now_iso8601();
+
+    // Build the per-call metadata entries and the aggregate tool_calls array.
+    let call_values: Vec<serde_json::Value> = tool_calls
+        .iter()
+        .map(|(tool_call_id, name, arguments)| {
+            serde_json::json!({
+                "tool_call_id": tool_call_id,
+                "name": name,
+                "arguments": arguments,
+            })
+        })
+        .collect();
+
+    // Find the next available index in the message.
+    let max_idx: i64 = {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT COALESCE(MAX(idx), -1) FROM message_parts WHERE message_id = ?",
+        )
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        row.map(|(v,)| v).unwrap_or(-1)
+    };
+
+    // Insert one part whose metadata carries the tool_calls array
+    // (matches what adapter serialization code inspects).
+    let part_id = format!("{message_id}/tc-meta");
+    let aggregate_meta = serde_json::json!({ "tool_calls": call_values });
+    sqlx::query(
+        "INSERT OR IGNORE INTO message_parts \
+         (id, message_id, idx, kind, content, metadata, created_at) \
+         VALUES (?, ?, ?, 'toolCall', '', ?, ?)",
+    )
+    .bind(&part_id)
+    .bind(message_id)
+    .bind(max_idx + 1)
+    .bind(aggregate_meta.to_string())
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+
+    // Also update the message metadata to carry a tool_calls summary.
+    sqlx::query(
+        "UPDATE messages SET metadata = json_set(
+            COALESCE(metadata, '{}'),
+            '$.tool_calls',
+            json(?)
+         ) WHERE id = ?",
+    )
+    .bind(serde_json::json!(call_values).to_string())
+    .bind(message_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
     Ok(())
 }
 

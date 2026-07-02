@@ -111,6 +111,10 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   await invoke('delete_conversation', { conversationId });
 }
 
+export async function deleteAllConversations(): Promise<Conversation> {
+  return invoke<Conversation>('delete_all_conversations');
+}
+
 export async function exportDiagnostics(): Promise<DiagnosticsExport> {
   return invoke<DiagnosticsExport>('export_diagnostics');
 }

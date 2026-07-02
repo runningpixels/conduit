@@ -10,6 +10,7 @@ import { ConnectorsSection } from './ConnectorsSection';
 import { DiagnosticsSection } from './DiagnosticsSection';
 import { AboutSection } from './AboutSection';
 import { WebSearchSection } from './WebSearchSection';
+import { AgentSection } from './AgentSection';
 import { useAutoSave } from './useAutoSave';
 
 interface SettingsScreenProps {
@@ -27,6 +28,7 @@ export type SettingsTab =
   | 'privacy'
   | 'artifact-security'
   | 'web-search'
+  | 'agent'
   | 'updates'
   | 'connectors'
   | 'diagnostics'
@@ -43,6 +45,7 @@ const SETTINGS_TABS: TabDef[] = [
   { id: 'privacy', label: 'Privacy & Data' },
   { id: 'artifact-security', label: 'Artifact Security' },
   { id: 'web-search', label: 'Web Search' },
+  { id: 'agent', label: 'Agent' },
   { id: 'updates', label: 'Updates' },
   { id: 'connectors', label: 'Connectors' },
   { id: 'diagnostics', label: 'Diagnostics' },
@@ -101,6 +104,9 @@ export function SettingsScreen({
         )}
         {activeTab === 'web-search' && (
           <WebSearchSection settings={settings} onUpdate={save} onStatus={onStatus} />
+        )}
+        {activeTab === 'agent' && (
+          <AgentSection settings={settings} onUpdate={save} onStatus={onStatus} />
         )}
         {activeTab === 'updates' && (
           <UpdatesSection settings={settings} onUpdate={save} onStatus={onStatus} />

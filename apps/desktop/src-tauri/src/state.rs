@@ -260,6 +260,10 @@ impl AppState {
         if let Some(value) = patch.web_search_consent_acknowledged {
             settings.web_search_consent_acknowledged = value;
         }
+        if let Some(guardrails) = patch.agent {
+            validate_agent_guardrails(&guardrails)?;
+            settings.agent = guardrails;
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())
@@ -334,6 +338,29 @@ fn validate_web_search_defaults(
                 loc.country
             ));
         }
+    }
+    Ok(())
+}
+
+/// Validate agent loop guardrails on save. Bounds match the Settings UI and
+/// `run_agent_turn` enforcement in `stream_manager.rs`.
+fn validate_agent_guardrails(
+    guardrails: &provider_core::schema::AgentGuardrails,
+) -> Result<(), String> {
+    const MIN_STEPS: u32 = 1;
+    const MAX_STEPS: u32 = 50;
+    const MIN_WALL_CLOCK_SECS: u32 = 30;
+    const MAX_WALL_CLOCK_SECS: u32 = 1800;
+
+    if !(MIN_STEPS..=MAX_STEPS).contains(&guardrails.max_steps) {
+        return Err(format!(
+            "agent max_steps must be between {MIN_STEPS} and {MAX_STEPS}"
+        ));
+    }
+    if !(MIN_WALL_CLOCK_SECS..=MAX_WALL_CLOCK_SECS).contains(&guardrails.wall_clock_budget_secs) {
+        return Err(format!(
+            "agent wall_clock_budget_secs must be between {MIN_WALL_CLOCK_SECS} and {MAX_WALL_CLOCK_SECS}"
+        ));
     }
     Ok(())
 }
@@ -735,6 +762,37 @@ mod tests {
         assert!(
             err.contains("at least one '.'"),
             "rejection must mention the dot requirement: {err}"
+        );
+    }
+
+    #[test]
+    fn agent_guardrails_accept_defaults() {
+        let guardrails = provider_core::schema::AgentGuardrails::default();
+        validate_agent_guardrails(&guardrails).expect("defaults must pass");
+        assert_eq!(guardrails.max_steps, 25);
+        assert_eq!(guardrails.wall_clock_budget_secs, 300);
+    }
+
+    #[test]
+    fn agent_guardrails_reject_zero_steps() {
+        let guardrails = provider_core::schema::AgentGuardrails {
+            max_steps: 0,
+            ..provider_core::schema::AgentGuardrails::default()
+        };
+        let err = validate_agent_guardrails(&guardrails).unwrap_err();
+        assert!(err.contains("max_steps"), "rejection must mention max_steps: {err}");
+    }
+
+    #[test]
+    fn agent_guardrails_reject_excessive_wall_clock() {
+        let guardrails = provider_core::schema::AgentGuardrails {
+            wall_clock_budget_secs: 9999,
+            ..provider_core::schema::AgentGuardrails::default()
+        };
+        let err = validate_agent_guardrails(&guardrails).unwrap_err();
+        assert!(
+            err.contains("wall_clock_budget_secs"),
+            "rejection must mention wall_clock_budget_secs: {err}"
         );
     }
 }

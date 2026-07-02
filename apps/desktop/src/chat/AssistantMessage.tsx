@@ -100,9 +100,29 @@ export function AssistantMessage({
             cost={state.searchCost}
           />
         )}
-        {/* Show thinking indicator when streaming but no blocks, reasoning, or tool calls yet */}
-        {state.streaming && state.blocks.length === 0 && state.reasoning.length === 0 && state.toolCalls.length === 0 && (
-          <ThinkingIndicator modelId={modelId} phase={state.agentPhase} visible={state.streaming} />
+        {/* Show the thinking indicator across the whole streaming lifecycle whenever
+            the assistant isn't actively emitting text — including the tool-execution
+            gap and the post-tool "reviewing results" pause before the next text delta.
+            Once real text starts streaming, ChatProse's blinking .cursor takes over.
+            `producingText` = there is at least one content block that already has
+            content; a freshly created empty block (provider sent contentBlockStart
+            but no delta yet) does NOT count, so the dots stay during that gap too. */}
+        {(() => {
+          const producingText = state.blocks.some((b) => b.content.length > 0);
+          const thinkingVisible = state.streaming && !producingText;
+          return (
+            <ThinkingIndicator
+              modelId={modelId}
+              phase={state.agentPhase}
+              visible={thinkingVisible}
+            />
+          );
+        })()}
+        {/* Trailing blinking caret shown while streaming with no text yet, paired
+            with the thinking dots above so the message bubble reads as alive even
+            before the first content delta. Reuses the existing .cursor blink anim. */}
+        {state.streaming && state.blocks.every((b) => b.content.length === 0) && (
+          <span className="cursor thinking-trailing" aria-hidden="true" />
         )}
         {state.blocks.length > 0 ? (
           state.blocks.map((block) => (

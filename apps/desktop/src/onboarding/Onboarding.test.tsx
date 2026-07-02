@@ -61,6 +61,10 @@ const baseSettings: AppSettings = {
     includeSources: false,
   },
   webSearchConsentAcknowledged: false,
+  agent: {
+    maxSteps: 25,
+    wallClockBudgetSecs: 300,
+  },
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {
@@ -72,7 +76,7 @@ function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> =
       settings={baseSettings}
       onSettingsChange={onSettingsChange}
       onStatus={onStatus}
-      status=""
+      status={null}
       onComplete={onComplete}
       {...overrides}
     />,

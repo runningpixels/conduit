@@ -4,7 +4,7 @@ use crate::adapters::{
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
-    MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest, ToolChoice,
+    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest, ToolChoice,
 };
 use crate::transport::{api_key_header, get_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -232,13 +232,14 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     for message in &request.messages {
         match message.role {
             MessageRole::Assistant => {
-                let tool_calls_meta = message
+                // Collect ToolCall-kind parts (R4: typed variant instead of metadata digging)
+                let tool_call_parts: Vec<&MessagePart> = message
                     .parts
                     .iter()
-                    .find_map(|p| p.metadata.as_ref()?.get("tool_calls"))
-                    .and_then(|v| v.as_array());
+                    .filter(|p| p.kind == MessagePartKind::ToolCall)
+                    .collect();
 
-                if let Some(tc_array) = tool_calls_meta {
+                if !tool_call_parts.is_empty() {
                     // Build content array with text + tool_use blocks
                     let text_content = message_text(message);
                     let mut content: Vec<Value> = Vec::new();
@@ -250,22 +251,20 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                         }));
                     }
 
-                    for tc in tc_array {
-                        let input = tc
-                            .get("arguments")
-                            .cloned()
-                            .unwrap_or(serde_json::json!({}));
+                    for p in &tool_call_parts {
+                        let name = p
+                            .metadata
+                            .as_ref()
+                            .and_then(|m| m.get("name").and_then(|v| v.as_str()))
+                            .unwrap_or("");
+                        let raw_args = p.content.as_deref().unwrap_or("{}");
                         // Anthropic expects tool_use.input as a JSON object, not a string.
-                        let input = match input {
-                            serde_json::Value::String(s) => {
-                                serde_json::from_str(&s).unwrap_or(serde_json::json!({}))
-                            }
-                            other => other,
-                        };
+                        let input: serde_json::Value = serde_json::from_str(raw_args)
+                            .unwrap_or(serde_json::json!({}));
                         content.push(json!({
                             "type": "tool_use",
-                            "id": tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
-                            "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                            "id": p.tool_call_id.as_deref().unwrap_or(""),
+                            "name": name,
                             "input": input,
                         }));
                     }
@@ -275,11 +274,50 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                         "content": content,
                     }));
                 } else {
-                    // Regular assistant text message
-                    messages.push(json!({
-                        "role": "assistant",
-                        "content": message_text(message),
-                    }));
+                    // Fallback: check metadata-based tool_calls for backward compat
+                    let legacy_tc = message
+                        .parts
+                        .iter()
+                        .find_map(|p| p.metadata.as_ref()?.get("tool_calls"))
+                        .and_then(|v| v.as_array());
+                    if let Some(tc_array) = legacy_tc {
+                        let text_content = message_text(message);
+                        let mut content: Vec<Value> = Vec::new();
+                        if !text_content.is_empty() {
+                            content.push(json!({
+                                "type": "text",
+                                "text": text_content,
+                            }));
+                        }
+                        for tc in tc_array {
+                            let input = tc
+                                .get("arguments")
+                                .cloned()
+                                .unwrap_or(serde_json::json!({}));
+                            let input = match input {
+                                serde_json::Value::String(s) => {
+                                    serde_json::from_str(&s).unwrap_or(serde_json::json!({}))
+                                }
+                                other => other,
+                            };
+                            content.push(json!({
+                                "type": "tool_use",
+                                "id": tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                                "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                "input": input,
+                            }));
+                        }
+                        messages.push(json!({
+                            "role": "assistant",
+                            "content": content,
+                        }));
+                    } else {
+                        // Regular assistant text message
+                        messages.push(json!({
+                            "role": "assistant",
+                            "content": message_text(message),
+                        }));
+                    }
                 }
             }
             MessageRole::Tool => {

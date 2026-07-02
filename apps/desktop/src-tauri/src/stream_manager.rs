@@ -33,6 +33,8 @@ pub struct RoundOutcome {
     pub finished_normally: bool,
     /// Error message if the round ended due to a provider error.
     pub error_message: Option<String>,
+    /// Provider usage (tokens, cost) reported for this round, if any.
+    pub usage: Option<provider_core::schema::ProviderUsage>,
 }
 
 /// A tool call that was requested by the provider and is ready for execution.
@@ -339,6 +341,7 @@ impl StreamManager {
         let mut completed_tool_calls: Vec<CompletedToolCall> = Vec::new();
         let mut finished_normally = false;
         let mut error_message: Option<String> = None;
+        let mut round_usage: Option<provider_core::schema::ProviderUsage> = None;
 
         futures::pin_mut!(stream);
         while let Some(event) = stream.next().await {
@@ -350,6 +353,11 @@ impl StreamManager {
                     "provider stream error during round"
                 );
                 error_message = Some(error.message.clone());
+            }
+
+            // Capture usage event for the round outcome
+            if let ProviderEvent::Usage { usage, .. } = &event {
+                round_usage = Some(usage.clone());
             }
 
             // Correlate tool start/complete for round outcome
@@ -413,6 +421,7 @@ impl StreamManager {
             completed_tool_calls,
             finished_normally,
             error_message,
+            usage: round_usage,
         }
     }
 
@@ -543,8 +552,16 @@ impl StreamManager {
         // 2–3. For each tool call, load redacted result, validate reinjection.
         let mut tool_result_parts: Vec<MessagePart> = Vec::new();
         let mut tool_call_meta: Vec<serde_json::Value> = Vec::new();
+        // Parallel tuples for DB persistence — mirrors tool_call_meta but as
+        // typed (String, String, Value) triplets for enrich_assistant_with_tool_calls.
+        let mut tool_call_tuples: Vec<(String, String, serde_json::Value)> = Vec::new();
 
         for record in &records {
+            tool_call_tuples.push((
+                record.id.clone(),
+                record.tool_id.clone(),
+                record.arguments.clone().unwrap_or(serde_json::Value::Null),
+            ));
             tool_call_meta.push(serde_json::json!({
                 "tool_call_id": record.id,
                 "name": record.tool_id,
@@ -580,6 +597,17 @@ impl StreamManager {
                 _ => "Tool call did not complete.".to_string(),
             };
 
+            // Truncate very long tool results to save context window space.
+            const MAX_TOOL_RESULT_CHARS: usize = 50_000;
+            let result_content = if result_content.len() > MAX_TOOL_RESULT_CHARS {
+                let mut truncated = result_content;
+                truncated.truncate(MAX_TOOL_RESULT_CHARS);
+                truncated.push_str("\n\n[Tool output truncated at 50,000 characters]");
+                truncated
+            } else {
+                result_content
+            };
+
             let mut part_metadata = serde_json::json!({ "name": record.tool_id });
             if matches!(
                 record.status,
@@ -604,10 +632,46 @@ impl StreamManager {
             });
         }
 
-        // 4. Build assistant message parts for the continuation request.
-        // Note: the assistant message is already persisted by the event fold
-        // in run_provider_round(). We build an in-memory version enriched with
-        // tool-call metadata for the adapters to serialize correctly.
+// 4. Persist tool-call metadata on the event-folded assistant message
+        // so tool calls survive conversation reload (R1 of the Phase A plan).
+        if !tool_call_tuples.is_empty() {
+            match messages::get_message_id_by_request(pool, &previous_request.request_id).await {
+                Ok(Some(assistant_msg_id)) => {
+                    if let Err(e) = messages::enrich_assistant_with_tool_calls(
+                        pool,
+                        &assistant_msg_id,
+                        &tool_call_tuples,
+                    )
+                    .await
+                    {
+                        eprintln!("DEBUG_R1: enrich error: {}", e);
+                        warn!(
+                            request_id = %previous_request.request_id,
+                            error = %e,
+                            "failed to enrich assistant message with tool-call metadata"
+                        );
+                    }
+                }
+                Ok(None) => {
+                    warn!(
+                        request_id = %previous_request.request_id,
+                        "no message row found for request; cannot enrich with tool-call metadata"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        request_id = %previous_request.request_id,
+                        error = %e,
+                        "failed to look up message for request"
+                    );
+                }
+            }
+        }
+
+        // 5. Build assistant message parts for the continuation request.
+        // The assistant message is already persisted by the event fold.
+        // We build an in-memory version enriched with tool-call metadata
+        // for the adapters to serialize correctly.
         let turn_now = crate::time::now_iso8601();
         let mut assistant_parts: Vec<MessagePart> = Vec::new();
 
@@ -642,21 +706,25 @@ impl StreamManager {
             }
         }
 
-        // Add tool-call metadata part (adapters inspect metadata.tool_calls)
-        if !tool_call_meta.is_empty() {
+        // Add ToolCall-kind parts (one per tool call) so the adapters can
+        // serialize them directly without digging into metadata.
+        for tc in &tool_call_meta {
+            let tc_id = tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("");
+            let tc_name = tc.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let tc_args = tc.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
             let idx = assistant_parts.len() as u32;
             assistant_parts.push(MessagePart {
-                id: format!("{}/tc-meta-{}", previous_request.request_id, Uuid::new_v4()),
+                id: format!("{}/tc-{}", previous_request.request_id, tc_id),
                 message_id: String::new(),
                 index: idx,
-                kind: MessagePartKind::Text,
-                content: None,
+                kind: MessagePartKind::ToolCall,
+                content: Some(tc_args.to_string()),
                 mime_type: None,
-                tool_call_id: None,
+                tool_call_id: Some(tc_id.to_string()),
                 artifact_id: None,
                 attachment_id: None,
                 blob_ref: None,
-                metadata: Some(serde_json::json!({ "tool_calls": tool_call_meta })),
+                metadata: Some(serde_json::json!({"name": tc_name})),
                 created_at: turn_now.clone(),
             });
         }
@@ -696,7 +764,7 @@ impl StreamManager {
 
         if !assistant_parts.is_empty() {
             continuation_messages.push(Message {
-                id: assistant_msg_id,
+                id: assistant_msg_id.clone(),
                 conversation_id: previous_request.conversation_id.clone(),
                 role: MessageRole::Assistant,
                 author_label: None,
@@ -709,6 +777,7 @@ impl StreamManager {
                     .enumerate()
                     .map(|(i, mut p)| {
                         p.index = i as u32;
+                        p.message_id = assistant_msg_id.clone();
                         p
                     })
                     .collect(),
@@ -718,7 +787,7 @@ impl StreamManager {
 
         if !tool_result_parts.is_empty() {
             continuation_messages.push(Message {
-                id: tool_msg_id,
+                id: tool_msg_id.clone(),
                 conversation_id: previous_request.conversation_id.clone(),
                 role: MessageRole::Tool,
                 author_label: None,
@@ -731,6 +800,7 @@ impl StreamManager {
                     .enumerate()
                     .map(|(i, mut p)| {
                         p.index = i as u32;
+                        p.message_id = tool_msg_id.clone();
                         p
                     })
                     .collect(),
@@ -795,13 +865,18 @@ impl StreamManager {
 
         let cancel = self.register_stream(&request_id)?;
 
-        const MAX_STEPS: usize = 10;
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
+        let guardrails = state.settings().map_err(|e| e.to_string())?.agent;
+        let max_steps = guardrails.max_steps as usize;
+        let wall_clock_secs = guardrails.wall_clock_budget_secs;
+        let deadline =
+            tokio::time::Instant::now() + std::time::Duration::from_secs(wall_clock_secs as u64);
 
         let mut current_request = initial_request;
         current_request.request_id = request_id.clone();
+        let mut ended_with_pending_tools = false;
+        let mut cumulative_usage: Option<provider_core::schema::ProviderUsage> = None;
 
-        for step in 0..MAX_STEPS {
+        for step in 0..max_steps {
             if cancel.is_cancelled() {
                 break;
             }
@@ -811,7 +886,9 @@ impl StreamManager {
                     request_id: request_id.clone(),
                     error: provider_core::schema::ProviderError {
                         provider_code: None,
-                        message: "Agent turn exceeded wall-clock budget".to_string(),
+                        message: format!(
+                            "Agent turn exceeded wall-clock budget ({wall_clock_secs}s). Increase it in Settings → Agent."
+                        ),
                         retryable: false,
                     },
                 });
@@ -826,6 +903,19 @@ impl StreamManager {
                     cancel.clone(),
                 )
                 .await;
+
+            // Accumulate usage across rounds.
+            if let Some(ref round_usage) = outcome.usage {
+                cumulative_usage = Some(match cumulative_usage.take() {
+                    Some(acc) => provider_core::schema::ProviderUsage {
+                        input_tokens: acc.input_tokens.zip(round_usage.input_tokens).map(|(a, b)| a + b).or(acc.input_tokens.or(round_usage.input_tokens)),
+                        output_tokens: acc.output_tokens.zip(round_usage.output_tokens).map(|(a, b)| a + b).or(acc.output_tokens.or(round_usage.output_tokens)),
+                        cache_tokens: acc.cache_tokens.zip(round_usage.cache_tokens).map(|(a, b)| a + b).or(acc.cache_tokens.or(round_usage.cache_tokens)),
+                        cost_hint: round_usage.cost_hint.clone(),
+                    },
+                    None => round_usage.clone(),
+                });
+            }
 
             if let Some(err) = outcome.error_message {
                 // Error already forwarded by the round; stop the turn.
@@ -862,6 +952,9 @@ impl StreamManager {
             {
                 Ok(continuation) => {
                     current_request = continuation;
+                    if step == max_steps - 1 {
+                        ended_with_pending_tools = true;
+                    }
                     // Continue to next iteration of the loop
                 }
                 Err(e) => {
@@ -874,6 +967,27 @@ impl StreamManager {
                     break;
                 }
             }
+        }
+
+        if ended_with_pending_tools {
+            let _ = channel.send(ProviderEvent::Error {
+                request_id: request_id.clone(),
+                error: provider_core::schema::ProviderError {
+                    provider_code: None,
+                    message: format!(
+                        "Agent turn exceeded max steps ({max_steps}). Increase it in Settings → Agent."
+                    ),
+                    retryable: false,
+                },
+            });
+        }
+
+        // Emit cumulative usage across all rounds.
+        if let Some(usage) = cumulative_usage {
+            let _ = channel.send(ProviderEvent::Usage {
+                request_id: request_id.clone(),
+                usage,
+            });
         }
 
         // Ensure the active entry is cleared (run_provider_round cleans per-round,

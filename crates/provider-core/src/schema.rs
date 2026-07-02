@@ -28,6 +28,7 @@ pub enum MessageRole {
 )]
 pub enum MessagePartKind {
     Text,
+    ToolCall,
     ToolResult,
     ArtifactReference,
     AttachmentReference,
@@ -125,6 +126,9 @@ pub struct ConversationSummary {
     pub id: String,
     #[ts(optional)]
     pub title: Option<String>,
+    /// Display-ready label for the history rail: explicit title, else the first
+    /// words of the first user prompt, else `"Untitled chat"`.
+    pub display_title: String,
     pub updated_at: String,
     pub message_count: u32,
     #[ts(optional)]
@@ -287,6 +291,40 @@ pub struct WebSearchRequest {
     /// providers may rate-limit or charge more for sources.
     #[ts(optional)]
     pub include_sources: Option<bool>,
+}
+
+/// Agent loop guardrails stored on `AppSettings`. Enforced by
+/// `run_agent_turn` in the desktop stream manager.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/agent_guardrails.ts"
+)]
+pub struct AgentGuardrails {
+    /// Maximum provider rounds (tool-call + continuation cycles) per user message.
+    #[serde(default = "default_agent_max_steps")]
+    pub max_steps: u32,
+    /// Wall-clock time limit in seconds for a single agent turn.
+    #[serde(default = "default_agent_wall_clock_secs")]
+    pub wall_clock_budget_secs: u32,
+}
+
+fn default_agent_max_steps() -> u32 {
+    25
+}
+
+fn default_agent_wall_clock_secs() -> u32 {
+    300
+}
+
+impl Default for AgentGuardrails {
+    fn default() -> Self {
+        Self {
+            max_steps: default_agent_max_steps(),
+            wall_clock_budget_secs: default_agent_wall_clock_secs(),
+        }
+    }
 }
 
 /// Persistent web search defaults, stored on `AppSettings`. Per-turn overrides
@@ -1098,6 +1136,9 @@ pub struct AppSettings {
     /// renderer renders but never executes.
     #[serde(default)]
     pub web_search_consent_acknowledged: bool,
+    /// Agent loop guardrails: max provider rounds and wall-clock budget per turn.
+    #[serde(default)]
+    pub agent: AgentGuardrails,
 }
 
 fn default_true() -> bool {
@@ -1121,6 +1162,7 @@ impl Default for AppSettings {
             web_search_enabled: false,
             web_search: WebSearchDefaults::default(),
             web_search_consent_acknowledged: false,
+            agent: AgentGuardrails::default(),
         }
     }
 }
@@ -1168,6 +1210,9 @@ pub struct SettingsPatch {
     /// Phase 7 / M-WebSearch: first-use consent acknowledgement.
     #[ts(optional)]
     pub web_search_consent_acknowledged: Option<bool>,
+    /// Replace agent loop guardrails. Values are validated on save.
+    #[ts(optional)]
+    pub agent: Option<AgentGuardrails>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

@@ -27,7 +27,7 @@
 /// CPU (DoS). Render-only means no bridge for a liveness heartbeat; mitigated
 /// by the user closing the artifact. A watchdog is a future follow-up.
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { buildArtifactCsp, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 
 export interface HtmlArtifactRendererProps {
@@ -76,16 +76,30 @@ export function assembleArtifactDoc(html: string, allowlist: string[], styledPre
 
 export function HtmlArtifactRenderer({ html, allowlist, styledPreview = true }: HtmlArtifactRendererProps) {
   const srcdoc = useMemo(() => assembleArtifactDoc(html, allowlist, styledPreview), [html, allowlist, styledPreview]);
+  const [loaded, setLoaded] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const handleLoad = useCallback(() => {
+    setLoaded(true);
+  }, []);
 
   return (
-    <iframe
-      className="artifact-html-frame"
-      title="Artifact preview"
-      // `allow-scripts` only. NEVER add allow-same-origin / allow-top-navigation /
-      // allow-popups / allow-forms / allow-modals — those would break containment.
-      sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
-      srcDoc={srcdoc}
-    />
+    <div className="artifact-html-wrapper" style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {!loaded && (
+        <div className="artifact-skeleton" style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
+      )}
+      <iframe
+        ref={iframeRef}
+        className="artifact-html-frame"
+        title="Artifact preview"
+        // `allow-scripts` only. NEVER add allow-same-origin / allow-top-navigation /
+        // allow-popups / allow-forms / allow-modals — those would break containment.
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        srcDoc={srcdoc}
+        onLoad={handleLoad}
+        style={{ position: 'relative', zIndex: 2 }}
+      />
+    </div>
   );
 }

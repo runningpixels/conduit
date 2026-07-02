@@ -13,6 +13,7 @@ pub mod credentials;
 pub mod db;
 pub mod diagnostics;
 pub mod encryption;
+pub mod message_preview;
 pub mod paths;
 pub mod state;
 pub mod stream_manager;

@@ -454,6 +454,52 @@ pub fn resolve_artifact_path(artifacts_dir: &Path, rel_path: &str) -> PathBuf {
     artifacts_dir.join(rel_path)
 }
 
+/// On-disk file references for artifacts in a conversation (id + optional blob path).
+pub type ArtifactFileRef = (String, Option<String>);
+
+/// List artifact ids and file-backed content paths for a conversation.
+pub async fn list_file_refs_for_conversation(
+    pool: &SqlitePool,
+    conversation_id: &str,
+) -> Result<Vec<ArtifactFileRef>, DbError> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT id, content_path FROM artifacts WHERE conversation_id = ?",
+    )
+    .bind(conversation_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// List artifact ids and file-backed content paths across all conversations.
+pub async fn list_all_file_refs(pool: &SqlitePool) -> Result<Vec<ArtifactFileRef>, DbError> {
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT id, content_path FROM artifacts")
+            .fetch_all(pool)
+            .await?;
+    Ok(rows)
+}
+
+/// Remove artifact blob files and per-artifact directories from disk.
+pub fn remove_artifact_files(artifacts_dir: &Path, refs: &[ArtifactFileRef]) {
+    let mut seen_paths = std::collections::HashSet::new();
+    let mut seen_ids = std::collections::HashSet::new();
+    for (artifact_id, content_path) in refs {
+        if let Some(rel) = content_path {
+            if seen_paths.insert(rel.clone()) {
+                let abs = artifacts_dir.join(rel);
+                let _ = std::fs::remove_file(&abs);
+            }
+        }
+        if seen_ids.insert(artifact_id.clone()) {
+            let dir = artifacts_dir.join(artifact_id);
+            if dir.is_dir() {
+                let _ = std::fs::remove_dir_all(&dir);
+            }
+        }
+    }
+}
+
 /// Result of [`export`] (M5): the exported file path + bytes written.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

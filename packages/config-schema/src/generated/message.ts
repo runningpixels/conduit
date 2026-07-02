@@ -2,4 +2,8 @@
 import type { MessagePart } from "./message_part";
 import type { MessageRole } from "./message_role";
 
-export type Message = { id: string, conversationId: string, role: MessageRole, authorLabel?: string, providerMessageId?: string, requestId?: string, interruptedAt?: string, metadata?: Record<string, unknown>, parts: Array<MessagePart>, createdAt: string, };
+export type Message = { id: string, conversationId: string, role: MessageRole, authorLabel?: string, providerMessageId?: string, 
+/**
+ * Stream `request_id` for assistant turns; used to replay rich UI from the event log.
+ */
+requestId?: string, interruptedAt?: string, metadata?: Record<string, unknown>, parts: Array<MessagePart>, createdAt: string, };

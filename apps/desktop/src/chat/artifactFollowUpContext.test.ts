@@ -10,6 +10,7 @@ import {
   shouldIncludeArtifactFollowUpContext,
 } from './artifactFollowUpContext';
 import { BASE_SYSTEM_PROMPT, buildProviderRequest } from './ChatView';
+import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX } from './artifactPrompt';
 
 function makeToolCall(name: string, args: Record<string, unknown>): ToolCallState {
   return {
@@ -57,6 +58,10 @@ const baseSettings = {
     includeSources: false,
   },
   webSearchConsentAcknowledged: false,
+  agent: {
+    maxSteps: 25,
+    wallClockBudgetSecs: 300,
+  },
 };
 
 const listedArtifacts: Artifact[] = [
@@ -301,7 +306,12 @@ describe('buildProviderRequest follow-up artifact context', () => {
     expect(req.developerPrompt).toContain('art-html-1');
   });
 
-  it('prefers creation developer prompt over edit context', () => {
+  it('does not inject an edit developer prompt on a creation-intent turn', () => {
+    // Creation intent suppresses the edit follow-up prompt (so an explicit
+    // "create a new" while an artifact is in scope does not get rerouted into
+    // editing it). We no longer inject a positive creation developer prompt; we
+    // just assert the edit prompt is absent and the contract lives in the
+    // system appendix instead.
     const req = buildProviderRequest(
       baseSettings,
       'create a new artifact html',
@@ -314,8 +324,8 @@ describe('buildProviderRequest follow-up artifact context', () => {
         content: '<html></html>',
       },
     );
-    expect(req.developerPrompt).toContain('fenced code block');
-    expect(req.developerPrompt).not.toContain('edit_html_document');
+    expect(req.developerPrompt ?? '').not.toContain('edit_html_document');
+    expect(req.systemPrompt).toContain(CONDUIT_ARTIFACT_SYSTEM_APPENDIX);
   });
 
   it('includes informational developer prompt for capability questions', () => {

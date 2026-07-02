@@ -42,7 +42,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WRITE_HTML_TOOL.to_string(),
             name: WRITE_HTML_TOOL.to_string(),
-            description: "Create a new HTML document artifact.".to_string(),
+            description: "Create a new HTML document artifact. Omit artifact_id for new documents — Conduit assigns IDs.".to_string(),
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("html", "string", true),
@@ -73,7 +73,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WRITE_MARKDOWN_TOOL.to_string(),
             name: WRITE_MARKDOWN_TOOL.to_string(),
-            description: "Create a new Markdown document artifact.".to_string(),
+            description: "Create a new Markdown document artifact. Omit artifact_id for new documents — Conduit assigns IDs.".to_string(),
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("markdown", "string", true),
@@ -104,7 +104,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WRITE_TEXT_TOOL.to_string(),
             name: WRITE_TEXT_TOOL.to_string(),
-            description: "Create a new plain-text document artifact.".to_string(),
+            description: "Create a new plain-text document artifact. Omit artifact_id for new documents — Conduit assigns IDs.".to_string(),
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("text", "string", true),
@@ -346,17 +346,30 @@ async fn write_document(
 ) -> Result<Value, String> {
     let (artifact, created) = match artifact_id {
         Some(id) => {
-            let existing = artifacts::get(ctx.db, ctx.encryption, id)
+            if let Some(existing) = artifacts::get(ctx.db, ctx.encryption, id)
                 .await
                 .map_err(|e| e.to_string())?
-                .ok_or_else(|| format!("artifact '{id}' not found"))?;
-            ensure_kind(&existing, kind)?;
-            if let Some(new_title) = title {
-                artifacts::set_title(ctx.db, id, new_title)
-                    .await
-                    .map_err(|e| e.to_string())?;
+            {
+                ensure_kind(&existing, kind)?;
+                if let Some(new_title) = title {
+                    artifacts::set_title(ctx.db, id, new_title)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+                (existing, false)
+            } else {
+                // Model-supplied ids are often slug-like labels, not Conduit UUIDs.
+                let art = artifacts::create(
+                    ctx.db,
+                    ctx.conversation_id,
+                    kind,
+                    title,
+                    ctx.source_message_id.as_deref(),
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                (art, true)
             }
-            (existing, false)
         }
         None => {
             let art = artifacts::create(

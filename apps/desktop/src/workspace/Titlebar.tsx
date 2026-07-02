@@ -13,9 +13,6 @@ interface TitlebarProps {
 export function Titlebar({ settings, effectiveTheme, onToggleTheme, workspaceLabel }: TitlebarProps) {
   return (
     <header className="titlebar">
-      <div className="windots" aria-hidden="true">
-        <i /><i /><i />
-      </div>
       <div className="brand">
         <BrandMark className="mark" />
         <b>Conduit</b>

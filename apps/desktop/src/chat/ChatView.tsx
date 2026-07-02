@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AppSettings, Message, MessageRole, ProviderRequest } from '@conduit/config-schema';
+import type { AppSettings, MessageRole, ProviderRequest } from '@conduit/config-schema';
 import {
   cancelChatStream,
   discoverConnector,
   getArtifact,
   getConnectorRuntimeStates,
   getConversationMessages,
-  getRequestProviderEvents,
   invokeConnectorTool,
   listConnectorCapabilities,
   loadProviderCredentialReference,
@@ -18,11 +17,7 @@ import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactRefChip';
 import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
-import {
-  CONDUIT_ARTIFACT_SYSTEM_APPENDIX,
-  artifactDeveloperPromptFor,
-  looksLikeArtifactCreationRequest,
-} from './artifactPrompt';
+import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
 import { webSearchDeveloperPromptFor } from './webSearchDeveloperPrompt';
 import {
   buildArtifactEditDeveloperPrompt,
@@ -34,9 +29,9 @@ import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
-  rebuildAssistantStreamStateFromEvents,
   type AssistantStreamState,
 } from './streamState';
+import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { AttachIcon, ModelIcon, SendIcon, StopIcon, LockIcon } from '../icons';
@@ -52,6 +47,7 @@ import {
   type ConnectorToolBinding,
 } from './connectorTools';
 import {
+  failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
   selectBuiltinDocumentTools,
 } from './agentTools';
@@ -60,14 +56,7 @@ import {
   informationalDeveloperPromptFor,
 } from './documentTurnIntent';
 
-interface ChatTurn {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  streamState?: AssistantStreamState;
-  interrupted?: boolean;
-  modelId?: string;
-}
+export type { ChatTurn } from './conversationHydration';
 
 interface ChatViewProps {
   settings: AppSettings;
@@ -89,35 +78,6 @@ interface ChatViewProps {
   onOpenArtifact: (artifactId: string) => void;
   /// After a completed assistant turn — refresh/open artifacts created via agent tools.
   onChatTurnComplete?: (streamState: AssistantStreamState) => void;
-}
-
-function messageToTurn(message: Message): ChatTurn {
-  const content = message.parts
-    .map((part) => part.content ?? '')
-    .filter(Boolean)
-    .join('\n');
-  return {
-    id: message.id,
-    role: message.role === 'assistant' ? 'assistant' : 'user',
-    content,
-    interrupted: Boolean(message.interruptedAt),
-  };
-}
-
-async function hydrateAssistantTurn(message: Message): Promise<ChatTurn> {
-  const turn = messageToTurn(message);
-  if (message.role !== 'assistant' || !message.requestId) {
-    return turn;
-  }
-  try {
-    const events = await getRequestProviderEvents(message.conversationId, message.requestId);
-    if (events.length > 0) {
-      turn.streamState = rebuildAssistantStreamStateFromEvents(message.requestId, events);
-    }
-  } catch {
-    /* fall back to flat content */
-  }
-  return turn;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -160,14 +120,20 @@ export function buildProviderRequest(
         (turn.role === 'user' || turn.role === 'assistant') &&
         turn.content.trim() !== '',
     )
-    .map((turn, index) => ({
-      id: `msg-${index}`,
+    .map((turn) => ({
+      // Use each turn's own globally-unique id (UUID for new user turns, DB
+      // primary key for reloaded turns) so re-sent history dedupes WITHIN a
+      // conversation via `INSERT OR IGNORE`, but never collides ACROSS
+      // conversations. The previous `msg-${index}` scheme reset to `msg-0`
+      // for every conversation, so the second conversation's first user turn
+      // silently failed the PK insert and its content was lost on reload.
+      id: turn.id,
       conversationId,
       role: turn.role as MessageRole,
       parts: [
         {
-          id: `part-${index}`,
-          messageId: `msg-${index}`,
+          id: `${turn.id}-part-0`,
+          messageId: turn.id,
           index: 0,
           kind: 'text' as const,
           content: turn.content,
@@ -176,7 +142,14 @@ export function buildProviderRequest(
       ],
       createdAt: now,
     }));
-  const creationDevPrompt = artifactDeveloperPromptFor(prompt);
+  // Creation intent is used only to gate tool visibility, the post-hoc warning,
+  // and to suppress edit/informational developer prompts. We deliberately do NOT
+  // inject a positive "you must create an artifact" developer prompt here: the
+  // system appendix already states the contract, and a false-positive intent
+  // match would otherwise pressure the model into creating an artifact on a
+  // question turn (the original cause of the spurious "no artifact content"
+  // warning).
+  const isCreationIntent = looksLikeArtifactCreationRequest(prompt);
   const webSearch = webSearchOn
     ? {
         enabled: true,
@@ -201,17 +174,16 @@ export function buildProviderRequest(
       }
     : undefined;
   const infoDevPrompt =
-    !creationDevPrompt && !webSearch ? informationalDeveloperPromptFor(prompt) : undefined;
+    !isCreationIntent && !webSearch ? informationalDeveloperPromptFor(prompt) : undefined;
   const editDevPrompt =
-    !creationDevPrompt && !infoDevPrompt && followUpArtifact
+    !isCreationIntent && !infoDevPrompt && followUpArtifact
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
   const webSearchDevPrompt = webSearch ? webSearchDeveloperPromptFor() : undefined;
   const developerPrompt =
-    [creationDevPrompt, infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') ||
-    undefined;
+    [infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') || undefined;
   const systemPrompt =
-    webSearch && !creationDevPrompt
+    webSearch && !isCreationIntent
       ? BASE_SYSTEM_PROMPT
       : `${BASE_SYSTEM_PROMPT} ${CONDUIT_ARTIFACT_SYSTEM_APPENDIX}`;
 
@@ -334,7 +306,9 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       try {
         const messages = await getConversationMessages(conversationId);
         if (!cancelled) {
-          const turns = await Promise.all(messages.map((m) => hydrateAssistantTurn(m)));
+          const turns = (
+            await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
+          ).filter((t): t is ChatTurn => t !== null);
           setTurns(turns);
         }
       } catch (error) {
@@ -688,12 +662,32 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
           }
           // Warn when the user asked for an artifact but none was produced.
           const docToolsSucceeded = hadSuccessfulDocumentToolCalls(finalState);
-          if (
-            looksLikeArtifactCreationRequest(trimmed) &&
-            detectArtifactCandidates(content).length === 0 &&
-            !docToolsSucceeded
-          ) {
-            onStatus(makeStatus('No artifact content detected — the assistant must include a fenced code block (e.g. ```html).', 'warning', 'chat'));
+          if (looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded) {
+            const failedDocTools = failedDocumentToolCalls(finalState);
+            const hasFences = detectArtifactCandidates(content).length > 0;
+            if (failedDocTools.length > 0) {
+              const detail = failedDocTools
+                .map((tc) => tc.error)
+                .filter((e): e is string => typeof e === 'string' && e.trim() !== '')
+                .join(' ');
+              onStatus(
+                makeStatus(
+                  detail
+                    ? `Document tool failed — ${detail}`
+                    : 'Document tool failed — retry or ask for a fenced code block (e.g. ```html).',
+                  'warning',
+                  'chat',
+                ),
+              );
+            } else if (!hasFences) {
+              onStatus(
+                makeStatus(
+                  'No artifact content detected — use write_*_document or include a fenced code block (e.g. ```html).',
+                  'warning',
+                  'chat',
+                ),
+              );
+            }
           }
         }
       }
@@ -729,7 +723,9 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     setActiveRequestId(null);
     try {
       const messages = await getConversationMessages(conversationId);
-      const turns = await Promise.all(messages.map((m) => hydrateAssistantTurn(m)));
+      const turns = (
+        await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
+      ).filter((t): t is ChatTurn => t !== null);
       setTurns(turns);
     } catch {
       /* ignore */

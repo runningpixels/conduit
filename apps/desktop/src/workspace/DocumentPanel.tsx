@@ -313,7 +313,7 @@ export function DocumentPanel({
                   className={`artifact-file-tab${a.id === artifact.id ? ' active' : ''}`}
                   type="button"
                   data-state={state}
-                  title={KIND_LABEL[a.kind] ?? a.kind}
+                  title={a.title ?? 'Untitled artifact'}
                   onClick={() => onOpenArtifact(a.id)}
                 >
                   <FilePlainIcon />
@@ -492,7 +492,7 @@ export function DocumentPanel({
             {(() => {
               if (!effectiveArtifact) return null;
               if (isFilePayload && loadedText == null && !loadFailed) {
-                return <DocPlaceholder>Loading…</DocPlaceholder>;
+                return <div className="artifact-skeleton" />;
               }
               if (isFilePayload && loadFailed) {
                 return (

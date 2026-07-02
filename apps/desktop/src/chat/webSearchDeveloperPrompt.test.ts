@@ -34,6 +34,10 @@ describe('buildProviderRequest web search prompts', () => {
       includeSources: false,
     },
     webSearchConsentAcknowledged: true,
+    agent: {
+      maxSteps: 25,
+      wallClockBudgetSecs: 300,
+    },
   };
 
   it('uses search developer prompt and slims system prompt for search turns', () => {

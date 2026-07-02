@@ -81,11 +81,10 @@ fn fold_text_reasoning_toolcall_and_completion() {
     assert_eq!(reasoning.kind, MessagePartKind::Reasoning);
     assert_eq!(reasoning.content.as_deref(), Some("pondering"));
 
-    // tool call part: synthetic text + mime marker + tool_call_id
+    // tool call part: now uses ToolCall kind (R4) instead of text + mime marker
     let tool = folded.parts.iter().find(|p| p.id == "msg-1/tc-0").unwrap();
-    assert_eq!(tool.kind, MessagePartKind::Text);
+    assert_eq!(tool.kind, MessagePartKind::ToolCall);
     assert_eq!(tool.content.as_deref(), Some("Tool call: search"));
-    assert_eq!(tool.mime_type.as_deref(), Some("application/x-tool-call"));
     assert_eq!(tool.tool_call_id.as_deref(), Some("tc-0"));
 
     assert!(folded.finalized);

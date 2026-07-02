@@ -87,6 +87,17 @@ export interface AssistantStreamState {
   error?: string;
   interrupted: boolean;
   streaming: boolean;
+  /** Agent loop phase indicator. undefined = not in agent loop. */
+  agentPhase?: {
+    /** Current phase label shown to user. */
+    label: string;
+    /** Round number (1-based). */
+    round: number;
+    /** Total rounds or undefined if unknown. */
+    totalRounds?: number;
+    /** Sub-phase for more granular feedback. */
+    subPhase: 'connecting' | 'thinking' | 'executing_tools' | 'reviewing' | 'finalizing';
+  };
 }
 
 export function createAssistantStreamState(requestId: string): AssistantStreamState {

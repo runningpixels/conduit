@@ -8,3 +8,7 @@ target/
 # The public key is committed inside tauri.conf.json; the private key NEVER.
 apps/desktop/src-tauri/.tauri-updater-private.key
 apps/desktop/src-tauri/.tauri-updater-private.key.pub
+
+# Machine-specific agent/MCP config (local paths, model overrides)
+.mcp.json
+.pi/

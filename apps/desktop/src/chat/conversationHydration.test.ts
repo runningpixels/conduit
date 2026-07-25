@@ -151,12 +151,14 @@ describe('hydrateAssistantTurn', () => {
       {
         kind: 'contentBlockStart',
         requestId: 'req-1',
+        blockId: 'block-1',
         index: 0,
-        blockType: 'text',
+        blockKind: 'text',
       },
       {
         kind: 'contentDelta',
         requestId: 'req-1',
+        blockId: 'block-1',
         index: 0,
         content: 'Hello',
       },
@@ -173,7 +175,6 @@ describe('hydrateAssistantTurn', () => {
         requestId: 'req-1',
         toolCallId: 'call-1',
         index: 1,
-        name: 'write_html_document',
         arguments: { title: 'Doc' },
       },
     ]);

@@ -157,6 +157,16 @@ describe('shouldIncludeArtifactFollowUpContext', () => {
     ).toBe(false);
   });
 
+  it('includes context for edit follow-ups when inline document exists', () => {
+    const history = [
+      {
+        role: 'assistant' as const,
+        content: '```markdown\n# Notes\n\nBody\n```',
+      },
+    ];
+    expect(shouldIncludeArtifactFollowUpContext('make it shorter', history, undefined)).toBe(true);
+  });
+
   it('skips when no artifact is in scope', () => {
     expect(shouldIncludeArtifactFollowUpContext('make it dark mode', [], undefined)).toBe(false);
   });
@@ -281,9 +291,44 @@ describe('resolveFollowUpArtifactContext', () => {
     expect(ctx?.content).toBe('# Notes\n\nBody');
   });
 
-  it('returns undefined when there is no prior artifact', async () => {
+  it('returns undefined when there is no prior artifact or inline document', async () => {
     const ctx = await resolveFollowUpArtifactContext([], 'make it dark mode', [], async () => null);
     expect(ctx).toBeUndefined();
+  });
+
+  it('returns inline context from unpromoted fenced assistant content', async () => {
+    const history = [
+      {
+        role: 'assistant' as const,
+        content: '```html\n<html><body>light</body></html>\n```',
+      },
+    ];
+    const ctx = await resolveFollowUpArtifactContext(
+      history,
+      'make it dark mode',
+      [],
+      async () => null,
+    );
+    expect(ctx).toEqual({
+      kind: 'html',
+      title: '<html><body>light</body></html>',
+      content: '<html><body>light</body></html>',
+      inlineOnly: true,
+    });
+  });
+
+  it('builds inline edit prompt without artifact_id when content is unpromoted', () => {
+    const prompt = buildArtifactEditDeveloperPrompt(
+      {
+        kind: 'html',
+        content: '<html><body>light</body></html>',
+        inlineOnly: true,
+      },
+      'make it dark mode',
+    );
+    expect(prompt).toContain('inline in chat');
+    expect(prompt).not.toContain('artifact_id:');
+    expect(prompt).toContain('fenced code block');
   });
 });
 

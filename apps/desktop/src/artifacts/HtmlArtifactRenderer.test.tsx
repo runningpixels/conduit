@@ -29,6 +29,11 @@ describe('assembleArtifactDoc', () => {
     expect(doc).not.toContain('__TAURI__');
     expect(doc).not.toMatch(/<script/i);
   });
+
+  it('sets data-theme on the iframe document root from colorScheme', () => {
+    expect(assembleArtifactDoc('<p>x</p>', [])).toContain('<html data-theme="light">');
+    expect(assembleArtifactDoc('<p>x</p>', [], true, 'dark')).toContain('<html data-theme="dark">');
+  });
 });
 
 describe('HtmlArtifactRenderer', () => {

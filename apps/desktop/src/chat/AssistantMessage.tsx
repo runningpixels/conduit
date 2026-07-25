@@ -28,8 +28,6 @@ interface AssistantMessageProps {
   onPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
   /// Open an existing artifact in the DocumentPanel (chip click).
   onOpenArtifact?: (artifactId: string) => void;
-  /// Candidate keys hidden because auto-promotion is in flight or completed.
-  suppressedCandidateKeys?: ReadonlySet<string>;
 }
 
 /** v5 assistant message: av-role bot avatar, prose body with inline code chips,
@@ -43,7 +41,6 @@ export function AssistantMessage({
   fileStateMap,
   onPromoteArtifact,
   onOpenArtifact,
-  suppressedCandidateKeys,
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
   const text = state.blocks.map((b) => b.content).join('');
@@ -131,25 +128,32 @@ export function AssistantMessage({
               content={block.content}
               citations={block.citations}
               streaming={state.streaming}
+              messageId={messageId}
+              artifacts={artifacts}
+              onPromoteArtifact={onPromoteArtifact}
+              onOpenArtifact={onOpenArtifact}
             />
           ))
         ) : (
-          <ChatProse content={text} streaming={state.streaming} />
+          <ChatProse
+            content={text}
+            streaming={state.streaming}
+            messageId={messageId}
+            artifacts={artifacts}
+            onPromoteArtifact={onPromoteArtifact}
+            onOpenArtifact={onOpenArtifact}
+          />
         )}
         {otherToolCalls.map((toolCall) => (
           <ToolCallBlock key={toolCall.toolCallId} toolCall={toolCall} />
         ))}
         {state.error && <p className="error-text">{state.error}</p>}
         <UsageSummary usage={state.usage} searchCost={state.searchCost} />
-        {messageId && onPromoteArtifact && onOpenArtifact && (
+        {messageId && onOpenArtifact && (
           <AssistantArtifactStrip
             messageId={messageId}
             artifacts={artifacts ?? []}
             fileStateMap={fileStateMap}
-            content={text}
-            streaming={state.streaming}
-            suppressedCandidateKeys={suppressedCandidateKeys}
-            onPromote={onPromoteArtifact}
             onOpenArtifact={onOpenArtifact}
           />
         )}

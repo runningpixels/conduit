@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
 import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
+import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
+import { isWelcomeArtifact } from '../artifacts/defaultWelcomeArtifact';
 import { FilePlainIcon, ChevronRight, MoreIcon } from '../icons';
 
 type DocTab = 'preview' | 'source';
@@ -59,6 +61,7 @@ interface DocumentPanelProps {
   activeFileState: FileState;
   allowlist: string[];
   styledPreview?: boolean;
+  effectiveTheme?: ArtifactColorScheme;
   docTab: DocTab;
   onSelectTab: (tab: DocTab) => void;
   onOpenArtifact: (id: string) => void;
@@ -76,6 +79,7 @@ export function DocumentPanel({
   activeFileState,
   allowlist,
   styledPreview = true,
+  effectiveTheme = 'light',
   docTab,
   onSelectTab,
   onOpenArtifact,
@@ -93,7 +97,8 @@ export function DocumentPanel({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const raw = useMemo(() => (artifact ? rawInlineText(artifact) : ''), [artifact]);
-  const isFilePayload = artifact?.contentPath != null;
+  const isWelcome = isWelcomeArtifact(artifact);
+  const isFilePayload = artifact?.contentPath != null && !isWelcome;
   const multiOpen = openArtifacts.length > 1;
 
   const [loadedText, setLoadedText] = useState<string | null>(null);
@@ -288,8 +293,8 @@ export function DocumentPanel({
                 />
               ) : (
                 <b
-                  onClick={() => onRenameArtifact && beginRename(artifact.id, name)}
-                  style={onRenameArtifact ? { cursor: 'text' } : undefined}
+                  onClick={() => !isWelcome && onRenameArtifact && beginRename(artifact.id, name)}
+                  style={!isWelcome && onRenameArtifact ? { cursor: 'text' } : undefined}
                   title={name}
                 >
                   {name}
@@ -403,6 +408,7 @@ export function DocumentPanel({
         </div>
 
         <div className="doc-actions">
+          {!isWelcome && (
           <div className="doc-overflow" ref={menuRef}>
             <button
               className="icon-btn"
@@ -453,6 +459,7 @@ export function DocumentPanel({
               </div>
             )}
           </div>
+          )}
           {onCollapsePanel && (
             <button
               className="icon-btn"
@@ -468,7 +475,7 @@ export function DocumentPanel({
       </div>
 
       <div className="doc-body scroll">
-        {activeFileState === 'modified' && !dismissedModified && (
+        {!isWelcome && activeFileState === 'modified' && !dismissedModified && (
           <div className="doc-banner warn">
             <strong>Modified on disk.</strong> Review before continuing.
             <div className="row">
@@ -481,7 +488,7 @@ export function DocumentPanel({
             </div>
           </div>
         )}
-        {activeFileState === 'missing' && (
+        {!isWelcome && activeFileState === 'missing' && (
           <div className="doc-banner bad">
             <strong>File missing.</strong> The payload is no longer at its indexed path.
           </div>
@@ -502,11 +509,13 @@ export function DocumentPanel({
                 );
               }
               const { Preview } = selectRenderer(effectiveArtifact);
-              const props = buildPreviewProps(effectiveArtifact, allowlist, styledPreview);
+              const previewStyled = isWelcome ? false : styledPreview;
+              const props = buildPreviewProps(effectiveArtifact, allowlist, previewStyled);
               if (!Preview || !props) {
                 return <DocPlaceholder>No content yet.</DocPlaceholder>;
               }
-              return <Preview {...props} />;
+              const previewProps = isWelcome ? { ...props, colorScheme: effectiveTheme } : props;
+              return <Preview {...previewProps} />;
             })()}
           </div>
 
@@ -517,6 +526,8 @@ export function DocumentPanel({
               <DocPlaceholder>
                 Payload too large to edit inline or could not be read. Export or open details.
               </DocPlaceholder>
+            ) : isWelcome ? (
+              <pre className="source-readonly" aria-label={`${kindLabel} source`}>{sourceText}</pre>
             ) : !sourceText && !dirty ? (
               <DocPlaceholder>No source to show.</DocPlaceholder>
             ) : (

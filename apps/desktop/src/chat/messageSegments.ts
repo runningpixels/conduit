@@ -22,7 +22,7 @@ const KIND_FROM_LANG: Record<string, ArtifactKind> = {
   htm: 'html',
 };
 
-const CODE_LANG: Record<string, string> = {
+export const CODE_LANG: Record<string, string> = {
   js: 'javascript',
   javascript: 'javascript',
   mjs: 'javascript',

@@ -5,6 +5,7 @@
 /// `HtmlArtifactRenderer.tsx`.
 
 import { Fragment, type ReactNode } from 'react';
+import { renderHighlightLine, useHighlightTokens } from './codeHighlight';
 import { renderMarkdown } from './markdown/safeMarkdown';
 
 export interface PlainTextRendererProps {
@@ -35,9 +36,10 @@ export interface CodeRendererProps {
 }
 
 /// Monospace code block with a line-number gutter + a language chip from the
-/// fence info string. No token highlighting this phase (deferred per the plan).
+/// fence info string. Syntax highlighting via Prism (React-node tokens only).
 export function CodeRenderer({ code, language, styledPreview = true }: CodeRendererProps) {
   const lines = code.length === 0 ? [''] : code.split('\n');
+  const highlighted = useHighlightTokens(code, language);
   return (
     <div className={`artifact-code${styledPreview ? ' styled' : ''}`}>
       <div className="artifact-code-head">
@@ -48,7 +50,11 @@ export function CodeRenderer({ code, language, styledPreview = true }: CodeRende
           {lines.map((line, idx) => (
             <Fragment key={idx}>
               <span className="line-no" aria-hidden="true">{String(idx + 1).padStart(3, ' ')}</span>
-              <span className="line-text">{line || ' '}</span>
+              <span className="line-text">
+                {highlighted?.[idx]
+                  ? renderHighlightLine(highlighted[idx], `l${idx}`)
+                  : line || '\u00a0'}
+              </span>
               {idx < lines.length - 1 ? '\n' : null}
             </Fragment>
           ))}

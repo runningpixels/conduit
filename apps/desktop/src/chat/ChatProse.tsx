@@ -10,20 +10,18 @@ import {
   uniqueFootnotes,
 } from './citationUtils';
 import type { CitationAnnotation } from './streamState';
-
-const KIND_LABEL: Record<ArtifactCandidate['kind'], string> = {
-  markdown: 'Markdown',
-  text: 'Text',
-  code: 'Code',
-  json: 'JSON',
-  html: 'HTML',
-};
+import type { Artifact } from '../ipc/contracts';
+import { InlineCodeBlock } from './InlineCodeBlock';
 
 interface ChatProseProps {
   content: string;
   citations?: CitationAnnotation[];
   streaming?: boolean;
   showCitations?: boolean;
+  messageId?: string;
+  artifacts?: Artifact[];
+  onPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
+  onOpenArtifact?: (artifactId: string) => void;
 }
 
 function renderMarkdownWithCitations(
@@ -42,39 +40,16 @@ function renderMarkdownWithCitations(
   ));
 }
 
-function renderFenceBlock(
-  candidate: ArtifactCandidate,
-  streaming: boolean,
-  isLast: boolean,
-  key: string,
-) {
-  if (streaming && isLast) {
-    const label = KIND_LABEL[candidate.kind] ?? candidate.kind;
-    return (
-      <div key={key} className="prose">
-        <p>
-          Writing {label} artifact…
-          <span className="cursor" />
-        </p>
-      </div>
-    );
-  }
-  const label = KIND_LABEL[candidate.kind] ?? candidate.kind;
-  const lineCount = candidate.body.split('\n').length;
-  return (
-    <details key={key} className="artifact-fence-block">
-      <summary>{`${label} artifact · ${lineCount} lines`}</summary>
-      <pre>{candidate.body}</pre>
-    </details>
-  );
-}
-
-/** Unified assistant prose: safe markdown, artifact fences, and inline citations. */
+/** Unified assistant prose: safe markdown, inline fenced blocks, and citations. */
 export function ChatProse({
   content,
   citations = [],
   streaming,
   showCitations = true,
+  messageId,
+  artifacts,
+  onPromoteArtifact,
+  onOpenArtifact,
 }: ChatProseProps) {
   const raw = content || '';
   const deduped = showCitations ? dedupeCitationsByUrl(citations) : [];
@@ -97,7 +72,17 @@ export function ChatProse({
             </div>
           );
         }
-        return renderFenceBlock(seg.candidate, !!streaming, isLast, `f${idx}`);
+        return (
+          <InlineCodeBlock
+            key={`f${idx}`}
+            candidate={seg.candidate}
+            streaming={streaming && isLast}
+            messageId={messageId}
+            artifacts={artifacts}
+            onPromote={onPromoteArtifact}
+            onOpenArtifact={onOpenArtifact}
+          />
+        );
       })}
       {showCitations && footnotes.length > 0 && (
         <ol className="citations">

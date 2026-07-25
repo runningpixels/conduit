@@ -14,10 +14,13 @@
     "@conduit/config-schema": "workspace:*",
     "@conduit/ui": "workspace:*",
     "@tauri-apps/api": "*",
+    "prism-react-renderer": "^2.4.1",
+    "prismjs": "^1.30.0",
     "react": "*",
     "react-dom": "*"
   },
   "devDependencies": {
+    "@types/prismjs": "^1.26.5",
     "@tauri-apps/cli": "*",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

@@ -95,6 +95,15 @@
   --danger: #f87171;
   --shadow: 0 20px 48px -28px rgba(0,0,0,.85);
   --glow: 0 0 0 1px var(--accent-weak), 0 0 22px -8px var(--accent-line);
+  --syn-keyword: #7dd3fc;
+  --syn-string: #86efac;
+  --syn-number: #fbbf24;
+  --syn-function: var(--accent-text);
+  --syn-tag: #f0abfc;
+  --syn-property: #93c5fd;
+  --syn-const: #fca5a5;
+  --syn-comment: var(--text-3);
+  --syn-punct: var(--text-2);
   color-scheme: dark;
 
   /* ── Scale tokens: spacing (named once, referenced by primitives) ── */
@@ -157,6 +166,15 @@
   --danger: #dc4b4b;
   --shadow: 0 18px 38px -24px rgba(20,30,40,.30);
   --glow: 0 0 0 1px var(--accent-weak), 0 0 18px -8px var(--accent-line);
+  --syn-keyword: #0369a1;
+  --syn-string: #15803d;
+  --syn-number: #b45309;
+  --syn-function: var(--accent-text);
+  --syn-tag: #a21caf;
+  --syn-property: #1d4ed8;
+  --syn-const: #b91c1c;
+  --syn-comment: var(--text-3);
+  --syn-punct: var(--text-2);
   color-scheme: light;
 }
 

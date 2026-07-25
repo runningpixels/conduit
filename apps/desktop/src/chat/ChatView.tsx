@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppSettings, MessageRole, ProviderRequest } from '@conduit/config-schema';
 import {
   cancelChatStream,
@@ -8,7 +8,6 @@ import {
   getConversationMessages,
   invokeConnectorTool,
   listConnectorCapabilities,
-  loadProviderCredentialReference,
   startConnector,
   startChatStream,
   updateSettings,
@@ -34,8 +33,10 @@ import {
 import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
-import { AttachIcon, ModelIcon, SendIcon, StopIcon, LockIcon } from '../icons';
+import { Composer, type ComposerHandle } from './Composer';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
+import { SuggestedPrompts } from './SuggestedPrompts';
+import { deriveSuggestedPrompts } from './suggestedPromptLogic';
 import { getMessageIdByRequest } from '../ipc/client';
 import { resolveWebSearchForTurn } from './webSearchIntent';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
@@ -60,6 +61,7 @@ export type { ChatTurn } from './conversationHydration';
 
 interface ChatViewProps {
   settings: AppSettings;
+  onSettingsChange: (settings: AppSettings) => void;
   onStatus: (message: string | StatusState) => void;
   /// Active conversation id (owned by App; the history rail drives selection).
   /// `null` only briefly during boot before App ensures a conversation exists.
@@ -72,8 +74,6 @@ interface ChatViewProps {
   /// M2: promote a detected fenced-block candidate to an artifact (App owns the
   /// create + setContent + open flow).
   onPromoteArtifact: (messageId: string, candidate: ArtifactCandidate) => void;
-  /// Auto-promote the first candidate when a stream completes (App dedupes).
-  onAutoPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
   /// M2: open an existing artifact in the DocumentPanel (chip click).
   onOpenArtifact: (artifactId: string) => void;
   /// After a completed assistant turn — refresh/open artifacts created via agent tools.
@@ -250,12 +250,11 @@ function deriveAgentPhase(
   return undefined;
 }
 
-export function ChatView({ settings, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onAutoPromoteArtifact, onOpenArtifact, onChatTurnComplete }: ChatViewProps) {
+export function ChatView({ settings, onSettingsChange, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onOpenArtifact, onChatTurnComplete }: ChatViewProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [activeStream, setActiveStream] = useState<AssistantStreamState | null>(null);
-  const [keychainOk, setKeychainOk] = useState(false);
   // Phase 7 / M-WebSearch: per-turn search toggle. Visible only when
   // `settings.webSearchEnabled` is on; defaults to off each time the
   // component mounts. Reset after each send so the user must explicitly
@@ -266,9 +265,8 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
   // Session-only dismissal (same UX as diagnostics disclosure M6.5).
   const [showChatConsent, setShowChatConsent] = useState(false);
   const [chatConsentDismissed, setChatConsentDismissed] = useState(false);
-  const [suppressedPromoteKeys, setSuppressedPromoteKeys] = useState<Record<string, Set<string>>>({});
   const threadRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<ComposerHandle>(null);
   const currentConversationIdRef = useRef<string | null>(conversationId);
   const activeRequestRef = useRef<{ requestId: string; conversationId: string } | null>(null);
   // Synchronous source of truth for the active stream's state. The `activeStream`
@@ -319,31 +317,6 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
       cancelled = true;
     };
   }, [conversationId, onStatus]);
-
-  // M2: the keychain is the source of truth, keyed by provider. Probe it per
-  // active provider rather than reading a (removed) global credential ref.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const summary = await loadProviderCredentialReference(settings.activeProvider);
-        if (!cancelled) setKeychainOk(summary.storedInKeychain);
-      } catch {
-        if (!cancelled) setKeychainOk(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [settings.activeProvider]);
-
-  // Autosize the composer textarea.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 180)}px`;
-  }, [prompt]);
 
   // Keep the thread scrolled to the latest content while streaming.
   useEffect(() => {
@@ -629,18 +602,6 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
               /* keep client turn id */
             }
 
-            const candidates = detectArtifactCandidates(content);
-            const htmlCandidate = candidates.find((c) => c.kind === 'html');
-            if (htmlCandidate) {
-              setSuppressedPromoteKeys((current) => {
-                const next = { ...current };
-                const keys = new Set(current[turnId] ?? []);
-                keys.add(htmlCandidate.key);
-                next[turnId] = keys;
-                return next;
-              });
-            }
-
             setTurns((current) => [
               ...current,
               {
@@ -653,9 +614,6 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
               },
             ]);
 
-            if (!errorText && content.trim() !== '' && htmlCandidate && onAutoPromoteArtifact) {
-              await onAutoPromoteArtifact(turnId, htmlCandidate);
-            }
           })();
           if (!errorText && onChatTurnComplete) {
             onChatTurnComplete({ ...finalState, streaming: false, error: errorText });
@@ -733,14 +691,29 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
     onStatus(makeStatus('Stream cancelled', 'success', 'chat'));
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
+  function handleWebSearchToggle() {
+    if (!webSearchOn && !settings.webSearchConsentAcknowledged && !chatConsentDismissed) {
+      setShowChatConsent(true);
+      return;
     }
+    setWebSearchOn((on) => !on);
   }
 
-  const tokenCount = prompt.trim() ? Math.max(1, Math.round(prompt.trim().length / 4)) : 0;
+  function handleSuggestionSelect(text: string) {
+    setPrompt(text);
+    requestAnimationFrame(() => composerRef.current?.focusPrompt());
+  }
+
+  const suggestedPrompts = useMemo(
+    () => deriveSuggestedPrompts({ turns, artifacts }),
+    [turns, artifacts],
+  );
+
+  const showInlineSuggestions =
+    turns.length > 0 &&
+    !activeStream &&
+    activeRequestId == null &&
+    !prompt.trim();
 
   return (
     <>
@@ -755,6 +728,11 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
                 <div className="prose">
                   <p>Reply, ask for an edit, or create a new artifact. Calls go straight to your provider with your key.</p>
                 </div>
+                <SuggestedPrompts
+                  prompts={suggestedPrompts}
+                  variant="empty"
+                  onSelect={handleSuggestionSelect}
+                />
               </div>
             </div>
           )}
@@ -780,25 +758,24 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
                 fileStateMap={fileStateMap}
                 onPromoteArtifact={onPromoteArtifact}
                 onOpenArtifact={onOpenArtifact}
-                suppressedCandidateKeys={suppressedPromoteKeys[turn.id]}
               />
             ) : (
               <div key={turn.id} className="msg enter">
                 <div className="av-role bot" />
                 <div className="msg-body">
                   <div className="msg-from"><b>Assistant</b><span className="model">{settings.activeModel}</span></div>
-                  <ChatMessageContent content={turn.content} />
+                  <ChatMessageContent
+                    content={turn.content}
+                    messageId={turn.id}
+                    artifacts={artifacts}
+                    onPromoteArtifact={onPromoteArtifact}
+                    onOpenArtifact={onOpenArtifact}
+                  />
                   {turn.interrupted && <div className="interrupted-banner">Generation was interrupted.</div>}
-                  {/* M2: promote candidates + reference chips for this turn. The
-                      plain (DB-loaded) turn carries the real message id, so
-                      chips linked via `sourceMessageId` match across sessions. */}
                   <AssistantArtifactStrip
                     messageId={turn.id}
                     artifacts={artifacts}
                     fileStateMap={fileStateMap}
-                    content={turn.content}
-                    suppressedCandidateKeys={suppressedPromoteKeys[turn.id]}
-                    onPromote={onPromoteArtifact}
                     onOpenArtifact={onOpenArtifact}
                   />
                 </div>
@@ -814,86 +791,27 @@ export function ChatView({ settings, onStatus, conversationId, artifacts, fileSt
         </div>
       </div>
 
-      <div className="composer-wrap">
-        {settings.webSearchEnabled && !settings.localOnly && (
-          <div className="caps caps-websearch">
-            <span className="cap" data-state={webSearchOn ? 'ok' : 'warn'}>
-              <i style={webSearchOn ? undefined : { background: 'var(--warn)' }} />
-              web search {webSearchOn ? 'on' : 'off'}
-            </span>
-          </div>
-        )}
-        <div className="composer">
-          <textarea
-            ref={taRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Reply, ask for an edit, or create a new artifact"
-            rows={1}
-            aria-label="Message the active provider"
-          />
-          <div className="composer-bar">
-            <button className="tool-btn" type="button" aria-label="Attach file" title="Attach file">
-              <AttachIcon />
-            </button>
-            <button className="tool-btn" type="button" title="Model picker">
-              <ModelIcon />
-              {settings.activeModel}
-            </button>
-            {settings.webSearchEnabled && !settings.localOnly && !activeRequestId && (
-              <button
-                className={`tool-btn${webSearchOn ? ' search-active' : ''}`}
-                type="button"
-                aria-label={webSearchOn ? 'Web search on — click to disable' : 'Web search off — click to enable'}
-                title={webSearchOn ? 'Web search on' : 'Web search off'}
-                aria-pressed={webSearchOn}
-                onClick={() => {
-                if (!webSearchOn && !settings.webSearchConsentAcknowledged && !chatConsentDismissed) {
-                  // First-time flip-on from chat bar: show consent dialog.
-                  setShowChatConsent(true);
-                } else {
-                  setWebSearchOn((on) => !on);
-                }
-              }}
-              >
-                <span aria-hidden style={{ fontSize: '14px' }}>⌕</span>
-              </button>
-            )}
-            {activeRequestId ? (
-              <button
-                className="send stop"
-                type="button"
-                aria-label="Stop generating"
-                title="Stop generating"
-                onClick={() => void handleCancel()}
-              >
-                <StopIcon />
-              </button>
-            ) : (
-              <button
-                className="send"
-                type="button"
-                aria-label="Send message"
-                title="Send message"
-                onClick={() => void handleSend()}
-                disabled={!prompt.trim()}
-              >
-                <SendIcon />
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="composer-foot">
-          <span className="meta">
-            <b>{tokenCount}</b> tokens - ~3.1k context
-          </span>
-          <span className="right">
-            <LockIcon />
-            {keychainOk ? 'key stored in OS keychain' : 'no key stored'}
-          </span>
-        </div>
-      </div>
+      {showInlineSuggestions && (
+        <SuggestedPrompts
+          prompts={suggestedPrompts}
+          variant="inline"
+          onSelect={handleSuggestionSelect}
+        />
+      )}
+
+      <Composer
+        ref={composerRef}
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+        conversationId={conversationId}
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onSend={() => void handleSend()}
+        onStop={() => void handleCancel()}
+        streaming={activeRequestId != null}
+        webSearchOn={webSearchOn}
+        onWebSearchToggle={handleWebSearchToggle}
+      />
     </section>
       {/* Phase 7 / M-WebSearch: first-use consent dialog for the chat-bar toggle. */}
       <WebSearchConsentDialog

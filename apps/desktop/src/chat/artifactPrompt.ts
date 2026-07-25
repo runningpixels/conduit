@@ -9,10 +9,10 @@
 /// Intent is now used only to gate tool visibility and the post-hoc warning.
 
 export const CONDUIT_ARTIFACT_SYSTEM_APPENDIX = [
-  'Artifacts are created from fenced code blocks in the assistant reply.',
+  'Fenced code blocks in assistant replies render inline in chat first.',
   'Use labeled fences: html/htm, markdown/md, json, text, or a language tag for code.',
-  'Put the full artifact body inside the fence; a one-line confirmation without a fence does not create an artifact.',
-  'Conduit auto-opens the first promotable fence when the stream completes.',
+  'Put the full body inside the fence; a one-line confirmation without a fence does not create content.',
+  'Users promote inline blocks to artifacts when they want editing, preview, or export in the document panel.',
   'Only call write_*_document or edit_*_document when the user explicitly asked to create or revise a document.',
   'For new documents, omit artifact_id — Conduit assigns IDs; do not invent slug-like ids.',
   'Answer capability and explanatory questions in prose; do not create or edit artifacts to demonstrate.',

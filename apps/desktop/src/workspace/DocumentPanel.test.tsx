@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { DocumentPanel } from './DocumentPanel';
+import { DEFAULT_WELCOME_ARTIFACT } from '../artifacts/defaultWelcomeArtifact';
 
 vi.mock('../ipc/client', () => ({
   getArtifactContentBytes: vi.fn().mockResolvedValue([]),
@@ -113,7 +114,67 @@ describe('DocumentPanel Export (M5)', () => {
 });
 
 describe('DocumentPanel chrome', () => {
-  it('shows a minimal empty state without header chrome', () => {
+  it('shows the welcome artifact when no real artifact is open', () => {
+    render(
+      <DocumentPanel
+        artifact={DEFAULT_WELCOME_ARTIFACT}
+        openArtifacts={[]}
+        fileStateMap={{}}
+        activeFileState="noFileContent"
+        allowlist={[]}
+        docTab="preview"
+        onSelectTab={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onSaveContent={vi.fn()}
+        onExport={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Welcome')).toBeInTheDocument();
+    expect(screen.getByTitle('Artifact preview')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('passes the app theme into the welcome artifact iframe', () => {
+    const { container } = render(
+      <DocumentPanel
+        artifact={DEFAULT_WELCOME_ARTIFACT}
+        openArtifacts={[]}
+        fileStateMap={{}}
+        activeFileState="noFileContent"
+        allowlist={[]}
+        effectiveTheme="dark"
+        docTab="preview"
+        onSelectTab={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onSaveContent={vi.fn()}
+        onExport={vi.fn()}
+      />,
+    );
+    const srcdoc = container.querySelector('iframe')?.getAttribute('srcdoc') ?? '';
+    expect(srcdoc).toContain('data-theme="dark"');
+  });
+
+  it('shows read-only source for the welcome artifact', () => {
+    render(
+      <DocumentPanel
+        artifact={DEFAULT_WELCOME_ARTIFACT}
+        openArtifacts={[]}
+        fileStateMap={{}}
+        activeFileState="noFileContent"
+        allowlist={[]}
+        docTab="source"
+        onSelectTab={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onSaveContent={vi.fn()}
+        onExport={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('HTML source')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('shows a minimal empty state without header chrome when artifact is null', () => {
     render(
       <DocumentPanel
         artifact={null}

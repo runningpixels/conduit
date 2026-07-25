@@ -6,7 +6,7 @@ describe('UsageSummary', () => {
   it('renders token usage without duplicate web search counts', () => {
     render(
       <UsageSummary
-        usage={{ inputTokens: 100, outputTokens: 50 }}
+        usage={{ inputTokens: 100n, outputTokens: 50n }}
         searchCost={9}
       />,
     );

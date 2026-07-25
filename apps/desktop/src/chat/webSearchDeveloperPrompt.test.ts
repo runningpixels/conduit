@@ -66,7 +66,7 @@ describe('buildProviderRequest web search prompts', () => {
       undefined,
       true,
     );
-    expect(req.systemPrompt).toContain('Artifacts are created from fenced code blocks');
+    expect(req.systemPrompt).toContain('render inline in chat first');
     expect(req.developerPrompt).toContain('fenced code block');
   });
 });

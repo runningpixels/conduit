@@ -24,7 +24,6 @@ import {
 import { ChatView } from './chat/ChatView';
 import {
   hadSuccessfulDocumentToolCalls,
-  resolveDocumentArtifactId,
 } from './chat/agentTools';
 import type { AssistantStreamState } from './chat/streamState';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
@@ -36,6 +35,7 @@ import { SettingsScreen, type SettingsTab } from './workspace/settings/SettingsS
 import { useColumnResize, useDocPanelCollapse, useRailExpand } from './workspace/useLayout';
 import { ChevronLeft, PlusIcon } from './icons';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
+import { DEFAULT_WELCOME_ARTIFACT } from './artifacts/defaultWelcomeArtifact';
 
 const TAB_TITLES: Record<WorkspaceTab, [string, string]> = {
   chat: ['Chat session', 'Repo triage note - github, slack'],
@@ -312,14 +312,10 @@ export default function App() {
     async (streamState: AssistantStreamState) => {
       if (!activeConversationId || !hadSuccessfulDocumentToolCalls(streamState)) return;
 
-      const listed = await refreshArtifacts(activeConversationId);
-      const artifactId = resolveDocumentArtifactId(streamState, listed);
-      if (!artifactId) return;
-
-      await handleOpenArtifact(artifactId);
+      await refreshArtifacts(activeConversationId);
       setStatus(makeStatus('Document updated', 'success'));
     },
-    [activeConversationId, refreshArtifacts, handleOpenArtifact],
+    [activeConversationId, refreshArtifacts],
   );
 
   const handleCloseArtifactTab = useCallback(
@@ -393,15 +389,6 @@ export default function App() {
       if (!activeConversationId) return;
       try {
         const sourceMessageId = await resolveSourceMessageId(messageId);
-        const existing = artifacts.find(
-          (a) => a.sourceMessageId === sourceMessageId || a.sourceMessageId === messageId,
-        );
-        if (existing) {
-          await handleOpenArtifact(existing.id);
-          setStatus(makeStatus('Opened existing artifact', 'success'));
-          return;
-        }
-
         const created = await createArtifact(
           activeConversationId,
           candidate.kind,
@@ -416,7 +403,7 @@ export default function App() {
         setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to promote artifact', 'error'));
       }
     },
-    [activeConversationId, artifacts, refreshArtifacts, handleOpenArtifact],
+    [activeConversationId, refreshArtifacts, handleOpenArtifact],
   );
 
   const handleRenameArtifact = useCallback(
@@ -468,6 +455,8 @@ export default function App() {
   }, [effectiveTheme]);
 
   const activeFileState = activeArtifact ? fileStateMap[activeArtifact.id] ?? 'noFileContent' : 'noFileContent';
+
+  const displayArtifact = activeArtifact ?? DEFAULT_WELCOME_ARTIFACT;
 
   const openArtifacts = useMemo(() => {
     const byId = new Map(artifacts.map((a) => [a.id, a]));
@@ -539,12 +528,12 @@ export default function App() {
 
             <ChatView
               settings={settings}
+              onSettingsChange={setSettings}
               onStatus={setStatusMessage}
               conversationId={activeConversationId}
               artifacts={artifacts}
               fileStateMap={fileStateMap}
               onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
-              onAutoPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
               onOpenArtifact={(id) => void handleOpenArtifact(id)}
               onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
             />
@@ -583,12 +572,13 @@ export default function App() {
         />
 
         <DocumentPanel
-          artifact={activeArtifact}
+          artifact={displayArtifact}
           openArtifacts={openArtifacts}
           fileStateMap={fileStateMap}
           activeFileState={activeFileState}
           allowlist={settings.artifactRemoteAllowlist}
           styledPreview={settings.artifactStyledPreview}
+          effectiveTheme={effectiveTheme}
           docTab={docTab}
           onSelectTab={setDocTab}
           onOpenArtifact={(id) => void handleOpenArtifact(id)}

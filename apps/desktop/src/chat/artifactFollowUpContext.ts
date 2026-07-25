@@ -6,6 +6,7 @@ import {
   looksLikeInformationalQuestion,
 } from './documentTurnIntent';
 import { looksLikeArtifactCreationRequest } from './artifactPrompt';
+import { detectArtifactCandidates } from './artifactCandidates';
 
 /** Document artifact kinds supported for follow-up edit context. */
 export const DOCUMENT_ARTIFACT_KINDS = new Set(['html', 'markdown', 'text']);
@@ -22,6 +23,12 @@ const CONTENT_FIELD_BY_KIND: Record<string, string> = {
   text: 'updated_text',
 };
 
+const FENCE_LANG_BY_KIND: Record<string, string> = {
+  html: 'html',
+  markdown: 'markdown',
+  text: 'text',
+};
+
 /** Max artifact body chars injected into the developer prompt (token guard). */
 export const ARTIFACT_CONTEXT_CONTENT_CAP = 48_000;
 
@@ -32,10 +39,12 @@ export interface ChatTurnForContext {
 }
 
 export interface FollowUpArtifactContext {
-  artifactId: string;
+  artifactId?: string;
   kind: 'html' | 'markdown' | 'text';
   title?: string;
   content: string;
+  /** True when content comes from an unpromoted inline fence in chat. */
+  inlineOnly?: boolean;
 }
 
 /**
@@ -50,6 +59,10 @@ export { looksLikeArtifactEditFollowUp } from './documentTurnIntent';
 
 function isDocumentArtifact(artifact: Artifact): artifact is Artifact & { kind: 'html' | 'markdown' | 'text' } {
   return DOCUMENT_ARTIFACT_KINDS.has(artifact.kind);
+}
+
+function isDocumentKind(kind: string): kind is 'html' | 'markdown' | 'text' {
+  return DOCUMENT_ARTIFACT_KINDS.has(kind);
 }
 
 function contentFromToolArguments(
@@ -74,6 +87,28 @@ function contentFromToolArguments(
   return undefined;
 }
 
+/** Latest document-kind fenced block from assistant message text (newest turn first). */
+export function resolveInlineDocumentFromHistory(
+  history: ChatTurnForContext[],
+): FollowUpArtifactContext | undefined {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const turn = history[i];
+    if (turn.role !== 'assistant' || !turn.content.trim()) continue;
+    const candidates = detectArtifactCandidates(turn.content);
+    for (let j = candidates.length - 1; j >= 0; j -= 1) {
+      const candidate = candidates[j];
+      if (!isDocumentKind(candidate.kind)) continue;
+      return {
+        kind: candidate.kind,
+        title: candidate.title,
+        content: candidate.body,
+        inlineOnly: true,
+      };
+    }
+  }
+  return undefined;
+}
+
 /** Walk assistant turns (newest first) and resolve the latest document artifact id. */
 export function resolveRecentDocumentArtifactId(
   history: ChatTurnForContext[],
@@ -92,13 +127,14 @@ export function resolveRecentDocumentArtifactId(
 
 export function shouldIncludeArtifactFollowUpContext(
   prompt: string,
-  _history: ChatTurnForContext[],
+  history: ChatTurnForContext[],
   artifactId: string | undefined,
 ): boolean {
-  if (!artifactId) return false;
   if (looksLikeExplicitNewArtifactRequest(prompt)) return false;
   if (looksLikeInformationalQuestion(prompt)) return false;
-  return looksLikeArtifactEditFollowUp(prompt);
+  if (!looksLikeArtifactEditFollowUp(prompt)) return false;
+  if (artifactId) return true;
+  return resolveInlineDocumentFromHistory(history) != null;
 }
 
 function truncateContent(content: string): { text: string; truncated: boolean } {
@@ -118,9 +154,24 @@ export function buildArtifactEditDeveloperPrompt(
   const editTool = EDIT_TOOL_BY_KIND[context.kind] ?? 'edit_*_document';
   const contentField = CONTENT_FIELD_BY_KIND[context.kind] ?? 'updated_content';
   const { text, truncated } = truncateContent(context.content);
-  const fence = context.kind === 'markdown' ? 'markdown' : context.kind === 'html' ? 'html' : 'text';
+  const fence = FENCE_LANG_BY_KIND[context.kind] ?? 'text';
   const titleLine = context.title ? `- title: ${context.title}\n` : '';
   const truncatedNote = truncated ? '\n(Content was truncated for the context window; use the artifact as the source of truth.)' : '';
+
+  if (context.inlineOnly || !context.artifactId) {
+    return [
+      'A document from the recent assistant reply is in scope for this conversation (inline in chat, not yet promoted to an artifact).',
+      `${titleLine}- kind: ${context.kind}`,
+      `The user follow-up: "${userPrompt.trim()}"`,
+      'If they asked to revise it, output the full updated body in a labeled fenced code block in your reply.',
+      'Do NOT call write_*_document or edit_*_document unless the user explicitly asked to create or persist a new document artifact.',
+      'If they only asked a question or made a general comment, answer in text and do NOT emit a revised fence.',
+      `Current content:${truncatedNote}`,
+      `\`\`\`${fence}`,
+      text,
+      '```',
+    ].join('\n');
+  }
 
   return [
     'An existing document artifact is in scope for this conversation.',
@@ -151,23 +202,25 @@ export async function resolveFollowUpArtifactContext(
   getArtifact: GetArtifactFn,
 ): Promise<FollowUpArtifactContext | undefined> {
   const artifactId = resolveRecentDocumentArtifactId(history, listed);
-  if (!shouldIncludeArtifactFollowUpContext(prompt, history, artifactId) || !artifactId) {
+  if (!shouldIncludeArtifactFollowUpContext(prompt, history, artifactId)) {
     return undefined;
   }
 
-  const listedRow = listed.find((a) => a.id === artifactId);
+  const listedRow = artifactId ? listed.find((a) => a.id === artifactId) : undefined;
   const kind = listedRow && isDocumentArtifact(listedRow) ? listedRow.kind : undefined;
 
   let resolvedKind: 'html' | 'markdown' | 'text' | undefined = kind;
   let title = listedRow?.title;
   let content: string | undefined;
 
-  const full = await getArtifact(artifactId);
-  if (full) {
-    if (!resolvedKind && isDocumentArtifact(full)) resolvedKind = full.kind;
-    title = full.title ?? title;
-    if (typeof full.contentText === 'string' && full.contentText.length > 0) {
-      content = full.contentText;
+  if (artifactId) {
+    const full = await getArtifact(artifactId);
+    if (full) {
+      if (!resolvedKind && isDocumentArtifact(full)) resolvedKind = full.kind;
+      title = full.title ?? title;
+      if (typeof full.contentText === 'string' && full.contentText.length > 0) {
+        content = full.contentText;
+      }
     }
   }
 
@@ -192,12 +245,23 @@ export async function resolveFollowUpArtifactContext(
     }
   }
 
+  if (!content) {
+    const inline = resolveInlineDocumentFromHistory(history);
+    if (inline) {
+      return inline;
+    }
+  }
+
   if (!resolvedKind || !content) return undefined;
 
-  return {
+  const result: FollowUpArtifactContext = {
     artifactId,
     kind: resolvedKind,
     title,
     content,
   };
+  if (!artifactId) {
+    result.inlineOnly = true;
+  }
+  return result;
 }

@@ -1,0 +1,180 @@
+import { useEffect, useRef, useState } from 'react';
+import type { AppSettings, ModelInfo, ProviderDescriptor } from '../ipc/contracts';
+import { listProviderDescriptors, listProviderModels, updateSettings } from '../ipc/client';
+import { ModelIcon } from '../icons';
+
+interface ComposerModelPickerProps {
+  settings: AppSettings;
+  onSettingsChange: (settings: AppSettings) => void;
+  disabled?: boolean;
+}
+
+export function ComposerModelPicker({
+  settings,
+  onSettingsChange,
+  disabled = false,
+}: ComposerModelPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [busy, setBusy] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const activeDescriptor = providers.find((p) => p.id === settings.activeProvider);
+  const activeModelLabel =
+    models.find((m) => m.id === settings.activeModel)?.displayName ?? settings.activeModel;
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setProviders(await listProviderDescriptors());
+      } catch {
+        setProviders([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setModels(await listProviderModels(settings.activeProvider));
+      } catch {
+        setModels([]);
+      }
+    })();
+  }, [settings.activeProvider]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  async function persistSettings(next: AppSettings) {
+    setBusy(true);
+    try {
+      const persisted = await updateSettings(next);
+      onSettingsChange(persisted);
+    } catch {
+      onSettingsChange(next);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleProviderChange(providerId: string) {
+    const descriptor = providers.find((p) => p.id === providerId);
+    const existingEndpoint = settings.providerEndpoints?.[providerId];
+    const nextEndpoints = { ...settings.providerEndpoints };
+    if (descriptor?.defaultBaseUrl && !existingEndpoint?.baseUrl) {
+      nextEndpoints[providerId] = {
+        ...existingEndpoint,
+        baseUrl: descriptor.defaultBaseUrl,
+      };
+    }
+    void persistSettings({
+      ...settings,
+      activeProvider: providerId,
+      providerEndpoints: nextEndpoints,
+    });
+  }
+
+  function handleModelChange(modelId: string) {
+    void persistSettings({ ...settings, activeModel: modelId });
+    setOpen(false);
+  }
+
+  const sortedProviders = [...providers].sort(
+    (a, b) => a.tier - b.tier || a.displayName.localeCompare(b.displayName),
+  );
+
+  return (
+    <div className="composer-model-picker" ref={rootRef}>
+      <button
+        className="tool-btn model-trigger"
+        type="button"
+        title="Switch model"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        disabled={disabled || busy}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ModelIcon />
+        <span className="model-label">{activeModelLabel}</span>
+        <span className="model-chevron" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="composer-popover" role="dialog" aria-label="Model switcher">
+          <div className="composer-popover-head">
+            <span>Model</span>
+            {activeDescriptor?.displayName ? (
+              <span className="composer-popover-sub">{activeDescriptor.displayName}</span>
+            ) : null}
+          </div>
+          <label className="composer-popover-field">
+            <span>Provider</span>
+            <select
+              value={settings.activeProvider}
+              onChange={(e) => handleProviderChange(e.target.value)}
+              disabled={busy}
+            >
+              {sortedProviders.length > 0 ? (
+                sortedProviders.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.displayName}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="ollama">Ollama</option>
+                </>
+              )}
+            </select>
+          </label>
+          <label className="composer-popover-field">
+            <span>Model</span>
+            {models.length > 0 ? (
+              <select
+                value={settings.activeModel}
+                onChange={(e) => handleModelChange(e.target.value)}
+                disabled={busy}
+              >
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.displayName ?? model.id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={settings.activeModel}
+                onChange={(e) => handleModelChange(e.target.value)}
+                disabled={busy}
+                placeholder="Model id"
+              />
+            )}
+          </label>
+          <p className="composer-popover-note">
+            Changes apply app-wide. Manage credentials in Settings.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -30,6 +30,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { buildArtifactCsp, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 
+export type ArtifactColorScheme = 'light' | 'dark';
+
 export interface HtmlArtifactRendererProps {
   /** The model-generated HTML document fragment (inserted into the iframe body). */
   html: string;
@@ -37,6 +39,8 @@ export interface HtmlArtifactRendererProps {
   allowlist: string[];
   /** Whether to inject richer app-like baseline styles (typography etc.). */
   styledPreview?: boolean;
+  /** Mirrors the app theme so artifact HTML can style itself for dark mode. */
+  colorScheme?: ArtifactColorScheme;
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -48,7 +52,7 @@ const RESET_STYLE = [
 
 /// Richer baseline applied when `styledPreview` is true. Conservative set:
 /// typography, spacing, code, tables, links — no heavy resets or JS.
-const STYLED_STYLE = [
+const STYLED_STYLE_LIGHT = [
   'body{font:14px/1.65 var(--font-ui, system-ui, sans-serif); color:#111}',
   'h1,h2,h3{margin-top:1.4em;margin-bottom:.4em;font-weight:600}',
   'p{margin:.6em 0}',
@@ -60,13 +64,31 @@ const STYLED_STYLE = [
   'ul,ol{padding-left:1.4em}',
 ].join('\n');
 
+const STYLED_STYLE_DARK = [
+  'body{font:14px/1.65 var(--font-ui, system-ui, sans-serif); color:#e9ebed}',
+  'h1,h2,h3{margin-top:1.4em;margin-bottom:.4em;font-weight:600}',
+  'p{margin:.6em 0}',
+  'pre,code{font-family:var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); background:#191c1f; padding:2px 6px; border-radius:4px}',
+  'pre{padding:12px 14px; overflow:auto}',
+  'table{border-collapse:collapse}',
+  'th,td{border:1px solid #24282d; padding:6px 10px; text-align:left}',
+  'a{color:#5eead4}',
+  'ul,ol{padding-left:1.4em}',
+].join('\n');
+
 /// Assemble the full srcdoc: doctype + our CSP meta (FIRST in head) + reset
 /// style + (optional styled baseline) + body with the model HTML. Pure — exported for unit testing.
-export function assembleArtifactDoc(html: string, allowlist: string[], styledPreview = true): string {
+export function assembleArtifactDoc(
+  html: string,
+  allowlist: string[],
+  styledPreview = true,
+  colorScheme: ArtifactColorScheme = 'light',
+): string {
   const csp = buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP;
-  const extra = styledPreview ? `<style>${STYLED_STYLE}</style>` : '';
+  const styled = colorScheme === 'dark' ? STYLED_STYLE_DARK : STYLED_STYLE_LIGHT;
+  const extra = styledPreview ? `<style>${styled}</style>` : '';
   return (
-    `<!doctype html><html><head>` +
+    `<!doctype html><html data-theme="${colorScheme}"><head>` +
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${RESET_STYLE}</style>` +
     extra +
@@ -74,8 +96,16 @@ export function assembleArtifactDoc(html: string, allowlist: string[], styledPre
   );
 }
 
-export function HtmlArtifactRenderer({ html, allowlist, styledPreview = true }: HtmlArtifactRendererProps) {
-  const srcdoc = useMemo(() => assembleArtifactDoc(html, allowlist, styledPreview), [html, allowlist, styledPreview]);
+export function HtmlArtifactRenderer({
+  html,
+  allowlist,
+  styledPreview = true,
+  colorScheme = 'light',
+}: HtmlArtifactRendererProps) {
+  const srcdoc = useMemo(
+    () => assembleArtifactDoc(html, allowlist, styledPreview, colorScheme),
+    [html, allowlist, styledPreview, colorScheme],
+  );
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 

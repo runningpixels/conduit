@@ -348,6 +348,17 @@ pub async fn delete_conversation(
 }
 
 #[tauri::command]
+pub async fn set_conversation_title(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    title: String,
+) -> Result<(), String> {
+    conversations::set_title(&state.db, &conversation_id, &title)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn delete_all_conversations(
     state: State<'_, AppState>,
 ) -> Result<Conversation, String> {
@@ -705,6 +716,66 @@ pub fn reveal_path(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<
     use tauri_plugin_shell::ShellExt;
     app.shell()
         .open(state.paths.exports.to_string_lossy(), None)
+        .map_err(|e| e.to_string())
+}
+
+/// Reveal the artifacts workspace directory in the OS file manager.
+/// Path is resolved server-side from `AppPaths::artifacts` (same security
+/// model as `reveal_path` — the renderer cannot pass an arbitrary path).
+#[tauri::command]
+#[allow(deprecated)]
+pub fn reveal_artifacts_dir(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    let dir = &state.paths.artifacts;
+    if !dir.exists() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    app.shell()
+        .open(dir.to_string_lossy(), None)
+        .map_err(|e| e.to_string())
+}
+
+/// Reveal a file-backed artifact in the OS file manager. The renderer supplies
+/// only the artifact id; the absolute path is resolved server-side from the DB
+/// + `AppPaths::artifacts` (same security model as `reveal_path`).
+#[tauri::command]
+#[allow(deprecated)]
+pub async fn reveal_artifact(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    artifact_id: String,
+) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT content_path FROM artifacts WHERE id = ?")
+            .bind(&artifact_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| e.to_string())?;
+    let Some((Some(rel_path),)) = row else {
+        return Err("This artifact has no file on disk to reveal.".to_string());
+    };
+    // Reject path traversal — content_path must stay under the artifacts dir.
+    let abs = state.paths.artifacts.join(&rel_path);
+    let canonical_artifacts = state
+        .paths
+        .artifacts
+        .canonicalize()
+        .unwrap_or_else(|_| state.paths.artifacts.clone());
+    let canonical_target = abs.canonicalize().unwrap_or(abs.clone());
+    if !canonical_target.starts_with(&canonical_artifacts) {
+        return Err("Artifact path is outside the workspace.".to_string());
+    }
+    let reveal_target = if canonical_target.is_file() {
+        canonical_target
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or(canonical_target)
+    } else {
+        canonical_target
+    };
+    app.shell()
+        .open(reveal_target.to_string_lossy(), None)
         .map_err(|e| e.to_string())
 }
 

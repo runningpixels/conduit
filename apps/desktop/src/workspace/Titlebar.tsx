@@ -1,41 +1,71 @@
-import type { AppSettings } from '@conduit/config-schema';
-import { BrandMark, FolderIcon, ModelIcon, MoonIcon, SunIcon } from '../icons';
+import { BrandMark, FolderIcon, MoonIcon, SunIcon } from '../icons';
+
+export type ConnectionState = 'connected' | 'no-key' | 'local-only' | 'disconnected';
 
 interface TitlebarProps {
-  settings: AppSettings;
   effectiveTheme: 'dark' | 'light';
   onToggleTheme: () => void;
   workspaceLabel?: string;
+  onRevealWorkspace?: () => void;
+  connectionState: ConnectionState;
+  onConnectionClick: () => void;
 }
 
-/** v5 titlebar: brand mark + edition chip, workspace/model/local chips with the
- *  animated local-first ping, and the theme toggle. */
-export function Titlebar({ settings, effectiveTheme, onToggleTheme, workspaceLabel }: TitlebarProps) {
+const CONNECTION_LABEL: Record<ConnectionState, string> = {
+  connected: 'Connected',
+  'no-key': 'No API key',
+  'local-only': 'Local only',
+  disconnected: 'Disconnected',
+};
+
+const CONNECTION_TITLE: Record<ConnectionState, string> = {
+  connected:
+    'Ready to call your provider with your key. Click to open Privacy & Data.',
+  'no-key': 'Add a provider API key in Settings to start chatting.',
+  'local-only':
+    'No data leaves this device except BYOK provider calls. Click to open Privacy & Data.',
+  disconnected: 'Desktop shell could not reach the local trust boundary.',
+};
+
+/** Titlebar: brand, workspace reveal, connection state, theme toggle. */
+export function Titlebar({
+  effectiveTheme,
+  onToggleTheme,
+  workspaceLabel,
+  onRevealWorkspace,
+  connectionState,
+  onConnectionClick,
+}: TitlebarProps) {
   return (
     <header className="titlebar">
       <div className="brand">
         <BrandMark className="mark" />
         <b>Conduit</b>
-        <span className="edition">V5 - local</span>
       </div>
 
       <div className="tb-spacer" />
 
       <div className="tb-right">
         {workspaceLabel && (
-          <span className="workspace-chip" title="Artifact workspace location">
+          <button
+            className="workspace-chip"
+            type="button"
+            title="Reveal artifacts folder in Explorer"
+            onClick={onRevealWorkspace}
+          >
             <FolderIcon />
             <span>{workspaceLabel}</span>
-          </span>
+          </button>
         )}
-        <span className="model-chip" title="Current provider and model">
-          <ModelIcon />
-          <b>{settings.activeModel}</b>
-        </span>
-        <span className="local-chip" title="No data leaves this device. Calls go straight to your provider with your key.">
-          <span className="ping" aria-hidden="true" />
-          <span>Fully local - BYOK</span>
-        </span>
+        <button
+          className={`connection-chip state-${connectionState}`}
+          type="button"
+          title={CONNECTION_TITLE[connectionState]}
+          onClick={onConnectionClick}
+        >
+          <span className="connection-dot" aria-hidden="true" />
+          <span>{CONNECTION_LABEL[connectionState]}</span>
+        </button>
         <button
           className="icon-btn"
           id="themeBtn"
@@ -49,4 +79,16 @@ export function Titlebar({ settings, effectiveTheme, onToggleTheme, workspaceLab
       </div>
     </header>
   );
+}
+
+/** Derive titlebar connection indicator from live app state. */
+export function deriveConnectionState(opts: {
+  boundaryOk: boolean;
+  hasCredential: boolean;
+  localOnly: boolean;
+}): ConnectionState {
+  if (!opts.boundaryOk) return 'disconnected';
+  if (!opts.hasCredential) return 'no-key';
+  if (opts.localOnly) return 'local-only';
+  return 'connected';
 }

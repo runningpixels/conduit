@@ -1,11 +1,11 @@
-/** A single suggested prompt shown in chat or the welcome artifact. */
+/** A single suggested prompt shown in the chat empty / follow-up states. */
 export interface SuggestedPrompt {
   id: string;
   label: string;
   text: string;
 }
 
-/** Starter prompts for empty chat / first open — shared with the welcome artifact. */
+/** Starter prompts for empty chat / first open. */
 export const STARTER_SUGGESTED_PROMPTS: readonly SuggestedPrompt[] = [
   {
     id: 'starter-markdown',
@@ -28,23 +28,3 @@ export const STARTER_SUGGESTED_PROMPTS: readonly SuggestedPrompt[] = [
     text: 'Generate a Python script that parses log files and groups errors.',
   },
 ] as const;
-
-function escapeHtmlAttr(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/** Build the prompt-card HTML fragment for the welcome artifact from shared data. */
-export function buildWelcomePromptCardsHtml(prompts: readonly SuggestedPrompt[]): string {
-  return prompts
-    .map(
-      (p) => `    <div class="prompt-card">
-      <span class="prompt-label">${escapeHtmlAttr(p.label)}</span>
-      <p class="prompt-text">"${escapeHtmlAttr(p.text)}"</p>
-    </div>`,
-    )
-    .join('\n');
-}

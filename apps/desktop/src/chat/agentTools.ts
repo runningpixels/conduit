@@ -114,6 +114,37 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
 
 export const DOCUMENT_TOOL_NAMES = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name));
 
+/** Document tools that create or edit content (excludes export). */
+export const DOCUMENT_CONTENT_TOOL_NAMES = new Set(
+  BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.name !== 'export_document').map((tool) => tool.name),
+);
+
+export type DocumentToolPhase = 'start' | 'complete' | 'error';
+
+export interface DocumentToolActivity {
+  phase: DocumentToolPhase;
+  toolName: string;
+  titleHint?: string;
+  /** Present for edit_* tools once arguments are known. */
+  artifactId?: string;
+}
+
+export function isDocumentContentTool(name: string): boolean {
+  return DOCUMENT_CONTENT_TOOL_NAMES.has(name);
+}
+
+export function isDocumentCreateTool(name: string): boolean {
+  return name.startsWith('write_') && DOCUMENT_CONTENT_TOOL_NAMES.has(name);
+}
+
+export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
+  if (toolName.includes('html')) return 'html';
+  if (toolName.includes('markdown')) return 'markdown';
+  if (toolName.includes('json')) return 'json';
+  if (toolName.includes('code')) return 'code';
+  return 'text';
+}
+
 /** Built-in document tools exposed to the model for a given turn intent. */
 export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefinition[] {
   switch (intent) {

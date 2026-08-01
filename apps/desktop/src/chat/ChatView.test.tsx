@@ -262,4 +262,33 @@ describe('ChatView suggested prompts', () => {
       screen.getByRole('button', { name: /Improve "API Overview"/i }),
     ).toBeInTheDocument();
   });
+
+  it('preserves line breaks in multi-line user messages', async () => {
+    const multiLine = 'line one\nline two\nline three';
+    vi.mocked(getConversationMessages).mockResolvedValue([
+      {
+        id: 'u1',
+        conversationId: 'conv-1',
+        role: 'user',
+        parts: [
+          {
+            id: 'u1-p0',
+            messageId: 'u1',
+            index: 0,
+            kind: 'text',
+            content: multiLine,
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    renderChatView();
+    const paragraph = await screen.findByText((_, el) => {
+      return el?.tagName === 'P' && el.textContent === multiLine;
+    });
+    expect(paragraph.textContent).toBe(multiLine);
+    expect(paragraph.closest('.user-prose')).not.toBeNull();
+  });
 });

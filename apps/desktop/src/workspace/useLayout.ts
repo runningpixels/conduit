@@ -13,6 +13,9 @@ const DOC_PANEL_KEY = 'conduit:v5-doc-panel';
 type RailMode = 'collapsed' | 'expanded';
 type DocPanelMode = 'collapsed' | 'open';
 
+const CHAT_MIN = 420;
+const CHAT_STEP = 10;
+
 function readStoredChatWidth(): number | null {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY);
@@ -49,16 +52,37 @@ function writeStoredRail(mode: RailMode) {
   }
 }
 
+function chatMax(): number {
+  return Math.max(CHAT_MIN, window.innerWidth - 520);
+}
+
 function setChatVar(px: number): number {
-  const max = Math.max(420, window.innerWidth - 520);
-  const clamped = Math.max(420, Math.min(max, px));
+  const max = chatMax();
+  const clamped = Math.max(CHAT_MIN, Math.min(max, px));
   document.documentElement.style.setProperty('--chat-w', `${clamped}px`);
   return clamped;
+}
+
+function widthToPercent(px: number): number {
+  const max = chatMax();
+  if (max <= CHAT_MIN) return 0;
+  return Math.round(((px - CHAT_MIN) / (max - CHAT_MIN)) * 100);
 }
 
 /** Column-resize: drag of --chat-w persisted to localStorage. Disabled below 820px. */
 export function useColumnResize() {
   const [dragging, setDragging] = useState(false);
+  const [chatWidthPx, setChatWidthPx] = useState(() => {
+    if (typeof window === 'undefined') return CHAT_MIN;
+    return readStoredChatWidth() ?? CHAT_MIN;
+  });
+
+  const applyWidth = useCallback((px: number, persist: boolean) => {
+    const next = setChatVar(px);
+    setChatWidthPx(next);
+    if (persist) writeStoredChatWidth(next);
+    return next;
+  }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (window.matchMedia('(max-width: 820px)').matches) return;
@@ -70,10 +94,11 @@ export function useColumnResize() {
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
 
-    const onMove = (ev: PointerEvent) => setChatVar(ev.clientX);
+    const onMove = (ev: PointerEvent) => {
+      applyWidth(ev.clientX, false);
+    };
     const onUp = (ev: PointerEvent) => {
-      const width = setChatVar(ev.clientX);
-      writeStoredChatWidth(width);
+      applyWidth(ev.clientX, true);
       handle.releasePointerCapture(e.pointerId);
       handle.classList.remove('dragging');
       setDragging(false);
@@ -87,15 +112,39 @@ export function useColumnResize() {
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
-  }, []);
+  }, [applyWidth]);
+
+  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (window.matchMedia('(max-width: 820px)').matches) return;
+    const max = chatMax();
+    let next: number | null = null;
+    if (e.key === 'ArrowLeft') next = chatWidthPx - CHAT_STEP;
+    else if (e.key === 'ArrowRight') next = chatWidthPx + CHAT_STEP;
+    else if (e.key === 'Home') next = CHAT_MIN;
+    else if (e.key === 'End') next = max;
+    if (next == null) return;
+    e.preventDefault();
+    applyWidth(next, true);
+  }, [applyWidth, chatWidthPx]);
 
   // Restore persisted width on mount.
   useEffect(() => {
     const saved = readStoredChatWidth();
-    if (saved !== null) setChatVar(saved);
-  }, []);
+    if (saved !== null) applyWidth(saved, false);
+  }, [applyWidth]);
 
-  return { onPointerDown, dragging };
+  const max = typeof window !== 'undefined' ? chatMax() : CHAT_MIN;
+  return {
+    onPointerDown,
+    onKeyDown,
+    dragging,
+    chatWidthPx,
+    ariaValueNow: widthToPercent(chatWidthPx),
+    ariaValueMin: 0,
+    ariaValueMax: 100,
+    chatMin: CHAT_MIN,
+    chatMax: max,
+  };
 }
 
 /** Rail expand/collapse: toggles [data-rail] on <html>, persisted. */
@@ -143,9 +192,12 @@ export function useDocPanelCollapse() {
 
   const collapse = useCallback(() => setMode('collapsed'), []);
   const expand = useCallback(() => setMode('open'), []);
+  const toggle = useCallback(() => {
+    setMode((current) => (current === 'collapsed' ? 'open' : 'collapsed'));
+  }, []);
   const collapsed = mode === 'collapsed';
 
-  return { collapsed, collapse, expand };
+  return { collapsed, collapse, expand, toggle };
 }
 
 /** @internal test seam */
@@ -154,6 +206,11 @@ export function __readStoredDocPanelForTest(): DocPanelMode {
 }
 
 /** @internal test seam */
-export function __writeStoredDocPanelForTest(mode: DocPanelMode) {
+export function __writeStoredDocPanelForTest(mode: DocPanelMode): void {
   writeStoredDocPanel(mode);
+}
+
+/** @internal test seam */
+export function __readStoredRailForTest(): RailMode {
+  return readStoredRail();
 }

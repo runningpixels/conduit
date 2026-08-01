@@ -84,18 +84,26 @@ function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> =
   return { onSettingsChange, onStatus, onComplete };
 }
 
+function goToFinishStep() {
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+}
+
 describe('Onboarding (Phase 6 M6.4)', () => {
-  it('renders all steps: welcome, provider/BYOK, connectors, diagnostics, Get started', () => {
+  it('renders welcome, provider step, and progress dots', () => {
     renderOnboarding();
     expect(screen.getByText('Welcome to Conduit')).toBeInTheDocument();
-    expect(screen.getByText('1 · Choose a provider and bring your key')).toBeInTheDocument();
-    expect(screen.getByText('2 · Connectors (optional)')).toBeInTheDocument();
-    expect(screen.getByText('3 · Diagnostics')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Get started' })).toBeInTheDocument();
+    expect(screen.getByText('Choose a provider and bring your key')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /1 · Provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /2 · Connectors/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /3 · Finish/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Get started' })).not.toBeInTheDocument();
   });
 
-  it('shows the diagnostics disclosure copy once', () => {
+  it('shows the diagnostics disclosure copy on the finish step', () => {
     renderOnboarding();
+    goToFinishStep();
     const copy = screen.getAllByText(/never secrets, base URLs, allowlists, or conversation content/i);
     expect(copy).toHaveLength(1);
   });
@@ -111,6 +119,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
     );
 
     const { onComplete, onSettingsChange } = renderOnboarding();
+    goToFinishStep();
     fireEvent.click(screen.getByRole('button', { name: 'Get started' }));
 
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
@@ -128,6 +137,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
     updateSpy.mockClear();
 
     const { onComplete, onStatus } = renderOnboarding();
+    goToFinishStep();
     fireEvent.click(screen.getByRole('button', { name: 'Get started' }));
 
     await waitFor(() => expect(onStatus).toHaveBeenCalledWith(expect.stringContaining('provider key')));
@@ -137,6 +147,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
 
   it('toggling diagnostics updates settings', () => {
     const { onSettingsChange } = renderOnboarding({ settings: { ...baseSettings, diagnosticsEnabled: false } });
+    goToFinishStep();
     const checkbox = screen.getByRole('checkbox', { name: /Enable diagnostics export/i });
     fireEvent.click(checkbox);
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ diagnosticsEnabled: true }));

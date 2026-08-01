@@ -37,13 +37,12 @@ describe('CodeRenderer', () => {
 
   it('renders syntax-highlighted token spans for supported languages', () => {
     const { container } = render(<CodeRenderer code={'def main():\n  pass'} language="python" />);
-    expect(container.querySelectorAll('.token').length).toBeGreaterThan(0);
-    expect(container.querySelector('.token.keyword')?.textContent).toBe('def');
+    expect(container.querySelector('.keyword')?.textContent).toBe('def');
   });
 
   it('falls back to plain text for unsupported languages', () => {
     const { container } = render(<CodeRenderer code={'let x = 1'} language="funkylang" />);
-    expect(container.querySelectorAll('.token').length).toBe(0);
+    expect(container.querySelector('.keyword')).toBeNull();
     expect(container.querySelector('.line-text')?.textContent).toBe('let x = 1');
   });
 });

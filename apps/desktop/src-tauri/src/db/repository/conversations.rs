@@ -203,6 +203,23 @@ pub async fn touch_at(pool: &SqlitePool, id: &str, updated_at: &str) -> Result<(
     Ok(())
 }
 
+/// Set (or clear) the explicit conversation title used by the history rail.
+pub async fn set_title(pool: &SqlitePool, id: &str, title: &str) -> Result<(), DbError> {
+    let trimmed = title.trim();
+    let value = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    };
+    sqlx::query("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?")
+        .bind(value)
+        .bind(now_iso8601())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Ensure a conversation row exists for `id`, creating a title-less row if it
 /// does not. Idempotent. The stream path calls this before writing events so a
 /// request referencing a not-yet-persisted conversation id (e.g. a legacy or

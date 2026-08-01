@@ -63,7 +63,7 @@ export function useHighlightTokens(code: string, language?: string): HighlightTo
 /** Render a single tokenized line as class-named spans (no inline theme styles). */
 export function renderHighlightLine(tokens: Token[], keyPrefix: string): ReactNode {
   return tokens.map((token, idx) => (
-    <span key={`${keyPrefix}-${idx}`} className={['token', ...token.types].join(' ')}>
+    <span key={`${keyPrefix}-${idx}`} className={token.types.join(' ')}>
       {token.content}
     </span>
   ));

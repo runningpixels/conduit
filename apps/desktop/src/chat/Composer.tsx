@@ -5,7 +5,7 @@ import {
   loadProviderCredentialReference,
   saveAttachment,
 } from '../ipc/client';
-import { AttachIcon, FilePlainIcon, LockIcon, SendIcon, StopIcon } from '../icons';
+import { AttachIcon, FilePlainIcon, LockIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
 import { ComposerModelPicker } from './ComposerModelPicker';
 import {
   ATTACHMENT_INLINE_CAP_BYTES,
@@ -56,6 +56,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [keychainOk, setKeychainOk] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [dropActive, setDropActive] = useState(false);
 
   useComposerAutosize(textareaRef, prompt);
 
@@ -165,6 +166,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }
 
+  function handleDragOver(event: React.DragEvent) {
+    if (attachDisabled) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setDropActive(true);
+  }
+
+  function handleDragLeave(event: React.DragEvent) {
+    if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+    setDropActive(false);
+  }
+
+  function handleDrop(event: React.DragEvent) {
+    event.preventDefault();
+    setDropActive(false);
+    if (attachDisabled) return;
+    const files = Array.from(event.dataTransfer.files);
+    for (const file of files) void uploadAttachment(file);
+  }
+
+  async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(event.clipboardData.items);
+    const files: File[] = [];
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length === 0 || attachDisabled) return;
+    event.preventDefault();
+    for (const file of files) void uploadAttachment(file);
+  }
+
   const tokenCount = prompt.trim() ? Math.max(1, Math.round(prompt.trim().length / 4)) : 0;
   const attachDisabled = !conversationId || streaming;
 
@@ -178,7 +213,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </span>
         </div>
       )}
-      <div className="composer">
+      <div
+        className={`composer${dropActive ? ' drop-active' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         {pendingAttachments.length > 0 && (
           <div className="composer-attachments" aria-label="Attached files">
             {pendingAttachments.map((item) => (
@@ -188,7 +228,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 data-status={item.status}
                 title={
                   item.status === 'uploaded'
-                    ? 'Saved locally — not sent to the model yet'
+                    ? 'Ready to send with your next message'
                     : item.error
                 }
               >
@@ -199,7 +239,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     ? 'Uploading…'
                     : item.status === 'failed'
                       ? 'Failed'
-                      : formatBytes(item.sizeBytes)}
+                      : item.status === 'uploaded'
+                        ? 'Ready'
+                        : formatBytes(item.sizeBytes)}
                 </span>
                 {item.status === 'failed' ? (
                   <button
@@ -228,6 +270,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={(event) => void handlePaste(event)}
           placeholder="Reply, ask for an edit, or create a new artifact"
           rows={1}
           aria-label="Message the active provider"
@@ -267,9 +310,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-pressed={webSearchOn}
               onClick={onWebSearchToggle}
             >
-              <span aria-hidden style={{ fontSize: '14px' }}>
-                ⌕
-              </span>
+              <SearchIcon />
             </button>
           )}
           {streaming ? (
@@ -298,7 +339,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       </div>
       <div className="composer-foot">
         <span className="meta">
-          <b>{tokenCount}</b> tokens - ~3.1k context
+          ~{tokenCount} tokens (est.)
         </span>
         <span className="right">
           <LockIcon />

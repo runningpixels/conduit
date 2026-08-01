@@ -111,6 +111,10 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   await invoke('delete_conversation', { conversationId });
 }
 
+export async function setConversationTitle(conversationId: string, title: string): Promise<void> {
+  await invoke('set_conversation_title', { conversationId, title });
+}
+
 export async function deleteAllConversations(): Promise<Conversation> {
   return invoke<Conversation>('delete_all_conversations');
 }
@@ -141,6 +145,18 @@ export async function acknowledgeDiagnosticsDisclosure(): Promise<void> {
 /// cannot direct the shell to open an arbitrary path/URL.
 export async function revealPath(): Promise<void> {
   await invoke('reveal_path');
+}
+
+/// Reveal the artifacts workspace directory in the OS file manager.
+/// Path is resolved server-side from `AppPaths::artifacts`.
+export async function revealArtifactsDir(): Promise<void> {
+  await invoke('reveal_artifacts_dir');
+}
+
+/// Reveal a file-backed artifact's parent folder in the OS file manager.
+/// The renderer supplies only the artifact id; the path is resolved server-side.
+export async function revealArtifact(artifactId: string): Promise<void> {
+  await invoke('reveal_artifact', { artifactId });
 }
 
 // =============================================================================

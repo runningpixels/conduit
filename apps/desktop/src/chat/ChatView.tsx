@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { AppSettings, MessageRole, ProviderRequest } from '@conduit/config-schema';
 import {
   cancelChatStream,
@@ -50,7 +50,9 @@ import {
 import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
+  isDocumentContentTool,
   selectBuiltinDocumentTools,
+  type DocumentToolActivity,
 } from './agentTools';
 import {
   classifyDocumentTurnIntent,
@@ -58,6 +60,13 @@ import {
 } from './documentTurnIntent';
 
 export type { ChatTurn } from './conversationHydration';
+export type { DocumentToolActivity } from './agentTools';
+
+export interface ChatViewHandle {
+  stopStreaming: () => void;
+  copyLastAssistantMessage: () => Promise<boolean>;
+  isStreaming: () => boolean;
+}
 
 interface ChatViewProps {
   settings: AppSettings;
@@ -78,6 +87,10 @@ interface ChatViewProps {
   onOpenArtifact: (artifactId: string) => void;
   /// After a completed assistant turn — refresh/open artifacts created via agent tools.
   onChatTurnComplete?: (streamState: AssistantStreamState) => void;
+  /// Fired when a document create/edit tool starts or finishes argument streaming.
+  onDocumentToolActivity?: (activity: DocumentToolActivity) => void;
+  /// Whether this pane is the active workspace tab (`data-active` for CSS). Defaults true for tests.
+  paneActive?: boolean;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -250,11 +263,35 @@ function deriveAgentPhase(
   return undefined;
 }
 
-export function ChatView({ settings, onSettingsChange, onStatus, conversationId, artifacts, fileStateMap, onPromoteArtifact, onOpenArtifact, onChatTurnComplete }: ChatViewProps) {
+function formatMsgTime(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return '';
+  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatView(
+  {
+    settings,
+    onSettingsChange,
+    onStatus,
+    conversationId,
+    artifacts,
+    fileStateMap,
+    onPromoteArtifact,
+    onOpenArtifact,
+    onChatTurnComplete,
+    onDocumentToolActivity,
+    paneActive = true,
+  },
+  ref,
+) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [activeStream, setActiveStream] = useState<AssistantStreamState | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [stuckToBottom, setStuckToBottom] = useState(true);
+  const [showJumpPill, setShowJumpPill] = useState(false);
   // Phase 7 / M-WebSearch: per-turn search toggle. Visible only when
   // `settings.webSearchEnabled` is on; defaults to off each time the
   // component mounts. Reset after each send so the user must explicitly
@@ -267,6 +304,8 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
   const [chatConsentDismissed, setChatConsentDismissed] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
+  const stuckRef = useRef(true);
+  const stickPrefRef = useRef<Record<string, boolean>>({});
   const currentConversationIdRef = useRef<string | null>(conversationId);
   const activeRequestRef = useRef<{ requestId: string; conversationId: string } | null>(null);
   // Synchronous source of truth for the active stream's state. The `activeStream`
@@ -297,9 +336,16 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
   useEffect(() => {
     if (!conversationId) {
       setTurns([]);
+      setThreadLoading(false);
       return;
     }
+    const pref = stickPrefRef.current[conversationId];
+    stuckRef.current = pref !== false;
+    setStuckToBottom(stuckRef.current);
+    setShowJumpPill(false);
+
     let cancelled = false;
+    setThreadLoading(true);
     void (async () => {
       try {
         const messages = await getConversationMessages(conversationId);
@@ -311,6 +357,8 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
         }
       } catch (error) {
         if (!cancelled) onStatus(error instanceof Error ? error.message : 'Failed to load conversation');
+      } finally {
+        if (!cancelled) setThreadLoading(false);
       }
     })();
     return () => {
@@ -318,11 +366,48 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
     };
   }, [conversationId, onStatus]);
 
-  // Keep the thread scrolled to the latest content while streaming.
+  const STICK_THRESHOLD_PX = 48;
+
+  function measureStuck(el: HTMLDivElement): boolean {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_THRESHOLD_PX;
+  }
+
+  function jumpToBottom() {
+    const el = threadRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    stuckRef.current = true;
+    setStuckToBottom(true);
+    setShowJumpPill(false);
+    if (conversationId) stickPrefRef.current[conversationId] = true;
+  }
+
   useEffect(() => {
     const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [turns, activeStream]);
+    if (!el) return;
+    function onScroll() {
+      if (!el) return;
+      const stuck = measureStuck(el);
+      stuckRef.current = stuck;
+      setStuckToBottom(stuck);
+      if (conversationId) stickPrefRef.current[conversationId] = stuck;
+      if (stuck) setShowJumpPill(false);
+    }
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [conversationId]);
+
+  // Auto-scroll only while the user is stuck to the bottom.
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    if (stuckRef.current) {
+      el.scrollTop = el.scrollHeight;
+      setShowJumpPill(false);
+    } else if (activeStream || activeRequestId != null) {
+      setShowJumpPill(true);
+    }
+  }, [turns, activeStream, activeRequestId]);
 
   // Derive agent loop phase from stream state + pending calls.
   useEffect(() => {
@@ -549,6 +634,9 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
 
         if (event.kind === 'toolCallStart') {
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
+          if (isDocumentContentTool(event.name)) {
+            onDocumentToolActivity?.({ phase: 'start', toolName: event.name });
+          }
         } else if (event.kind === 'toolCallComplete') {
           // Phase A: tool execution is now owned by the Rust `AgentLoop` inside
           // `start_chat_stream`. The UI no longer hands off tool calls via IPC.
@@ -556,6 +644,23 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
           // Track this so `waitForPendingRuntimeCalls` blocks until the matching
           // `toolCallFinished` (with `status`) arrives from the runtime.
           pendingRuntimeCallsRef.current.add(event.toolCallId);
+          const toolName =
+            providerToolByCallIdRef.current[event.toolCallId] ??
+            next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId)?.name;
+          if (toolName && isDocumentContentTool(toolName)) {
+            const title =
+              typeof event.arguments?.title === 'string' ? event.arguments.title : undefined;
+            const artifactId =
+              typeof event.arguments?.artifact_id === 'string'
+                ? event.arguments.artifact_id
+                : undefined;
+            onDocumentToolActivity?.({
+              phase: 'complete',
+              toolName,
+              titleHint: title,
+              artifactId,
+            });
+          }
         } else if (event.kind === 'messageComplete' || event.kind === 'error') {
           if (event.kind === 'error') terminalError = event.error.message;
           finish();
@@ -691,6 +796,28 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
     onStatus(makeStatus('Stream cancelled', 'success', 'chat'));
   }
 
+  useImperativeHandle(ref, () => ({
+    stopStreaming: () => {
+      void handleCancel();
+    },
+    isStreaming: () => activeRequestRef.current != null,
+    copyLastAssistantMessage: async () => {
+      const last = [...turns].reverse().find((t) => t.role === 'assistant');
+      const text =
+        last?.content?.trim() ||
+        last?.streamState?.blocks.map((b) => b.content).join('').trim() ||
+        activeStream?.blocks.map((b) => b.content).join('').trim() ||
+        '';
+      if (!text) return false;
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  }));
+
   function handleWebSearchToggle() {
     if (!webSearchOn && !settings.webSearchConsentAcknowledged && !chatConsentDismissed) {
       setShowChatConsent(true);
@@ -715,16 +842,42 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
     activeRequestId == null &&
     !prompt.trim();
 
+  function handleEditUserTurn(content: string) {
+    setPrompt(content);
+    requestAnimationFrame(() => composerRef.current?.focusPrompt());
+  }
+
+  async function handleCopyAssistantTurn(content: string) {
+    if (!content.trim()) return;
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch {
+      /* clipboard may be unavailable */
+    }
+  }
+
   return (
     <>
-    <section className="tab-pane" data-pane="chat" aria-label="Chat session">
+    <section
+      className="tab-pane"
+      data-pane="chat"
+      data-active={paneActive ? 'true' : 'false'}
+      aria-label="Chat session"
+    >
       <div className="thread scroll" ref={threadRef}>
         <div className="thread-inner">
-          {turns.length === 0 && !activeStream && (
+          {threadLoading && (
+            <div className="thread-skeleton" aria-busy="true" aria-label="Loading conversation">
+              <div className="skeleton-row" />
+              <div className="skeleton-row short" />
+              <div className="skeleton-row" />
+            </div>
+          )}
+          {!threadLoading && turns.length === 0 && !activeStream && (
             <div className="msg enter">
-              <div className="av-role you">You</div>
+              <div className="av-role bot" aria-hidden="true" />
               <div className="msg-body">
-                <div className="msg-from"><b>Start a conversation</b></div>
+                <div className="msg-from"><b>Conduit</b></div>
                 <div className="prose">
                   <p>Reply, ask for an edit, or create a new artifact. Calls go straight to your provider with your key.</p>
                 </div>
@@ -736,13 +889,26 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
               </div>
             </div>
           )}
-          {turns.map((turn) =>
+          {!threadLoading && turns.map((turn) =>
             turn.role === 'user' ? (
               <div key={turn.id} className="msg enter">
                 <div className="av-role you">You</div>
                 <div className="msg-body">
-                  <div className="msg-from"><b>You</b></div>
-                  <div className="prose">
+                  <div className="msg-from">
+                    <b>You</b>
+                    {turn.createdAt && (
+                      <span className="msg-time">{formatMsgTime(turn.createdAt)}</span>
+                    )}
+                    <div className="msg-actions">
+                      <button
+                        type="button"
+                        onClick={() => handleEditUserTurn(turn.content)}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                  <div className="prose user-prose">
                     <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
                   </div>
                   {turn.interrupted && <div className="interrupted-banner">Generation was interrupted.</div>}
@@ -763,7 +929,21 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
               <div key={turn.id} className="msg enter">
                 <div className="av-role bot" />
                 <div className="msg-body">
-                  <div className="msg-from"><b>Assistant</b><span className="model">{settings.activeModel}</span></div>
+                  <div className="msg-from">
+                    <b>Assistant</b>
+                    <span className="model">{settings.activeModel}</span>
+                    {turn.createdAt && (
+                      <span className="msg-time">{formatMsgTime(turn.createdAt)}</span>
+                    )}
+                    <div className="msg-actions">
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyAssistantTurn(turn.content)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
                   <ChatMessageContent
                     content={turn.content}
                     messageId={turn.id}
@@ -790,6 +970,16 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
           )}
         </div>
       </div>
+
+      {showJumpPill && !stuckToBottom && (
+        <button
+          className="jump-to-bottom"
+          type="button"
+          onClick={jumpToBottom}
+        >
+          ↓ New messages
+        </button>
+      )}
 
       {showInlineSuggestions && (
         <SuggestedPrompts
@@ -830,4 +1020,4 @@ export function ChatView({ settings, onSettingsChange, onStatus, conversationId,
       />
     </>
   );
-}
+});

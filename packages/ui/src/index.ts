@@ -20,6 +20,7 @@ export type {
   SectionLabelProps,
   AvatarProps,
   AvatarRole,
+  ConfirmDialogProps,
 } from './primitives';
 
 export {
@@ -31,4 +32,5 @@ export {
   InfoCard,
   SectionLabel,
   Avatar,
+  ConfirmDialog,
 } from './primitives';

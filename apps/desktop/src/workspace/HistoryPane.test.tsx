@@ -71,7 +71,6 @@ describe('HistoryPane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listConversations).mockResolvedValue(mockRows);
-    window.confirm = vi.fn(() => true);
   });
 
   it('renders display titles including fallback from first user prompt', async () => {

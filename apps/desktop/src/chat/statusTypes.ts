@@ -1,14 +1,14 @@
 /**
- * Rich status state for the footer status bar.
- * Replaces the plain `string` status with a typed object that includes
- * visual kind, source locality, and optional detail text.
+ * Rich status state for panel-head activity and toast notifications.
+ * Progress (active/thinking) stays in the panel head; errors, warnings,
+ * and successes route to ToastStack.
  */
 
 export type StatusKind = 'idle' | 'active' | 'thinking' | 'warning' | 'error' | 'success';
 export type StatusSource = 'chat' | 'artifact' | 'connector' | 'settings';
 
 export interface StatusState {
-  /** Short one-line message for the footer (always shown). */
+  /** Short one-line message (always shown). */
   brief: string;
   /** Optional detailed message (tooltip or expandable). */
   detail?: string;
@@ -20,11 +20,23 @@ export interface StatusState {
   timestamp: number;
 }
 
-/** Auto-dismiss timeout by kind (ms). `undefined` = never auto-dismiss. */
+/** Auto-dismiss timeout for panel-head status by kind (ms). */
 export const STATUS_DISMISS_MS: Partial<Record<StatusKind, number>> = {
-  success: 4000,
   idle: 3000,
 };
+
+/** Toast auto-dismiss: warnings 6s, success 4s; errors stay until dismissed. */
+export const TOAST_DISMISS_MS: Partial<Record<StatusKind, number>> = {
+  warning: 6000,
+  success: 4000,
+};
+
+/** Kinds that surface exclusively in ToastStack (not the panel-head pill). */
+export const TOAST_STATUS_KINDS: ReadonlySet<StatusKind> = new Set([
+  'error',
+  'warning',
+  'success',
+]);
 
 /** Create a StatusState from a brief message and inferred kind. */
 export function makeStatus(

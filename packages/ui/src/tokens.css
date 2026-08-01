@@ -75,17 +75,17 @@
   --chat-w: 43vw;
   --doc-w: 57vw;
 
-  --bg: #0c0d0f;
-  --panel: #101214;
-  --surface: #131517;
-  --surface-2: #191c1f;
-  --surface-3: #202428;
-  --border: #24282d;
-  --border-soft: #1c1f23;
-  --border-strong: #323840;
+  --bg: #08090b;
+  --panel: #101317;
+  --surface: #191d21;
+  --surface-2: #23282d;
+  --surface-3: #2d3339;
+  --border: #333940;
+  --border-soft: #262b30;
+  --border-strong: #454d56;
   --text: #e9ebed;
   --text-2: #969da4;
-  --text-3: #656c73;
+  --text-3: #8b9299;
   --accent: #2dd4bf;
   --accent-text: #5eead4;
   --accent-weak: rgba(45,212,191,.13);
@@ -93,6 +93,9 @@
   --success: #34d399;
   --warn: #f4bf4f;
   --danger: #f87171;
+  --accent-contrast: #04140f;
+  --accent-hover: #5eead4;
+  --shadow-color: rgba(0,0,0,.55);
   --shadow: 0 20px 48px -28px rgba(0,0,0,.85);
   --glow: 0 0 0 1px var(--accent-weak), 0 0 22px -8px var(--accent-line);
   --syn-keyword: #7dd3fc;
@@ -105,6 +108,9 @@
   --syn-comment: var(--text-3);
   --syn-punct: var(--text-2);
   color-scheme: dark;
+
+  /* Readability multiplier applied by Appearance settings */
+  --fs-scale: 1;
 
   /* ── Scale tokens: spacing (named once, referenced by primitives) ── */
   --space-0: 0;
@@ -146,17 +152,17 @@
 }
 
 [data-theme="light"] {
-  --bg: #f5f6f7;
-  --panel: #fbfbfc;
+  --bg: #e8ebee;
+  --panel: #f7f8fa;
   --surface: #ffffff;
-  --surface-2: #f1f3f5;
-  --surface-3: #e9edf1;
-  --border: #e4e7ea;
-  --border-soft: #eceef0;
-  --border-strong: #d3d8dd;
+  --surface-2: #eef1f4;
+  --surface-3: #e2e6eb;
+  --border: #d2d7dd;
+  --border-soft: #e2e5e9;
+  --border-strong: #b6bec7;
   --text: #15181b;
   --text-2: #59616a;
-  --text-3: #8a929b;
+  --text-3: #6b737c;
   --accent: #0d9488;
   --accent-text: #0f766e;
   --accent-weak: rgba(13,148,136,.10);
@@ -164,6 +170,9 @@
   --success: #0f9d63;
   --warn: #c98a13;
   --danger: #dc4b4b;
+  --accent-contrast: #fff;
+  --accent-hover: #0f766e;
+  --shadow-color: rgba(20,30,40,.25);
   --shadow: 0 18px 38px -24px rgba(20,30,40,.30);
   --glow: 0 0 0 1px var(--accent-weak), 0 0 18px -8px var(--accent-line);
   --syn-keyword: #0369a1;
@@ -186,12 +195,14 @@ html, body { height: 100%; }
 body {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: var(--fs-4xl);
+  font-size: calc(var(--fs-4xl) * var(--fs-scale, 1));
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+[data-density="compact"] .msg { padding-top: 8px; padding-bottom: 8px; }
+[data-density="compact"] .composer-wrap { padding-bottom: 10px; }
 button, textarea { font-family: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus { outline: none; }
@@ -221,14 +232,23 @@ textarea:focus-visible { outline: none; }
   border-radius: var(--r-sm);
   padding: var(--space-5) var(--space-11);
   font-size: var(--fs-2xl);
-  font-weight: 550;
+  font-weight: 500;
   transition: var(--tap);
 }
 .btn:hover { border-color: var(--border-strong); }
-.btn.primary { background: var(--accent); color: #04140f; border-color: transparent; }
-[data-theme="light"] .btn.primary { color: #fff; }
+.btn.primary { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
+.btn.primary:hover { background: var(--accent-hover); }
 .btn.ghost { background: transparent; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn.danger {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface-2));
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 24%, var(--surface-2));
+  border-color: var(--danger);
+}
 
 /* IconButton — .icon-btn */
 .icon-btn {
@@ -322,7 +342,7 @@ textarea:focus-visible { outline: none; }
   margin: 0 0 var(--space-10);
   box-shadow: var(--shadow);
 }
-.info-card h3 { margin: 0 0 var(--space-6); font-size: var(--fs-3xl); font-weight: 620; }
+.info-card h3 { margin: 0 0 var(--space-6); font-size: var(--fs-3xl); font-weight: 600; }
 .info-card p { margin: 0; color: var(--text-2); line-height: 1.5; }
 
 /* SectionLabel — .section-label */
@@ -352,6 +372,70 @@ textarea:focus-visible { outline: none; }
 .av-role.you { background: var(--surface-2); border: var(--space-1) solid var(--border); color: var(--text-2); }
 .av-role.bot { background: var(--accent-weak); color: var(--accent-text); }
 .av-role.bot svg { width: 16px; height: 16px; }
+
+/* ConfirmDialog */
+.cu-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: var(--space-14);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.cu-dialog {
+  width: min(420px, 100%);
+  border: var(--space-1) solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: var(--space-14);
+}
+.cu-dialog-title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--fs-5xl);
+  font-weight: 600;
+}
+.cu-dialog-body {
+  color: var(--text-2);
+  font-size: var(--fs-4xl);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.cu-dialog-phrase {
+  display: grid;
+  gap: var(--space-6);
+  margin-top: var(--space-12);
+  font-size: var(--fs-xl);
+  color: var(--text-2);
+}
+.cu-dialog-phrase kbd {
+  font: 600 var(--fs-md)/1 var(--font-mono);
+  color: var(--text);
+  background: var(--surface-2);
+  border: var(--space-1) solid var(--border);
+  border-radius: var(--r-xs);
+  padding: var(--space-2) var(--space-4);
+}
+.cu-dialog-phrase input {
+  width: 100%;
+  border: var(--space-1) solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+  padding: var(--space-8) var(--space-10);
+  font: 500 var(--fs-4xl)/1.2 var(--font-ui);
+}
+.cu-dialog-phrase input:focus {
+  border-color: var(--border-strong);
+  box-shadow: var(--glow);
+}
+.cu-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-6);
+  margin-top: var(--space-14);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }

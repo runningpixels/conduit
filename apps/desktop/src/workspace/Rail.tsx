@@ -9,6 +9,7 @@ import {
   HistoryIcon,
   SettingsIcon,
 } from '../icons';
+import { ACTIVITY_PANE_ENABLED } from './features';
 
 export type WorkspaceTab = 'chat' | 'history' | 'artifacts' | 'connectors' | 'activity' | 'settings';
 
@@ -23,8 +24,10 @@ const RAIL_BUTTONS: RailButtonDef[] = [
   { tab: 'chat', label: 'Chat session', icon: <ChatIcon /> },
   { tab: 'history', label: 'Chat history', icon: <HistoryIcon /> },
   { tab: 'artifacts', label: 'Artifacts', icon: <FilesIcon /> },
-  { tab: 'connectors', label: 'Connectors', icon: <ConnectorsIcon />, badge: 1 },
-  { tab: 'activity', label: 'Activity', icon: <ActivityCheckIcon />, badge: 1 },
+  { tab: 'connectors', label: 'Connectors', icon: <ConnectorsIcon /> },
+  ...(ACTIVITY_PANE_ENABLED
+    ? [{ tab: 'activity' as const, label: 'Activity', icon: <ActivityCheckIcon /> }]
+    : []),
 ];
 
 interface RailProps {
@@ -60,6 +63,7 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, artifactCount
                 ? artifactCount
                 : undefined
               : btn.badge;
+          const isCurrent = active === btn.tab;
           return (
           <button
             key={btn.tab}
@@ -68,7 +72,7 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, artifactCount
             type="button"
             aria-label={btn.label}
             title={btn.label}
-            aria-pressed={active === btn.tab}
+            aria-current={isCurrent ? 'page' : undefined}
             onClick={() => onSelect(btn.tab)}
           >
             {badge !== undefined && <span className="badge">{badge}</span>}
@@ -85,7 +89,7 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, artifactCount
           type="button"
           aria-label="Settings"
           title="Settings"
-          aria-pressed={active === 'settings'}
+          aria-current={active === 'settings' ? 'page' : undefined}
           onClick={() => onSelect('settings')}
         >
           <SettingsIcon />

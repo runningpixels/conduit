@@ -6,6 +6,7 @@ import {
   getDiagnosticsDisclosureAcknowledged,
   revealPath,
 } from '../../ipc/client';
+import { ConfirmDialog } from '@conduit/ui';
 
 interface DiagnosticsSectionProps {
   settings: AppSettings;
@@ -27,16 +28,27 @@ const DIAGNOSTICS_DISCLOSURE_TEXT =
   '  • provider base URLs\n' +
   '  • artifact remote allowlists\n' +
   '  • conversation or message content\n\n' +
-  'The bundle is written to your local exports folder. Export?';
+  'The bundle is written to your local exports folder.';
 
 /** Diagnostics section: disclosure, export, reveal. */
 export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionProps) {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsExport | null>(null);
   const [disclosureAcknowledged, setDisclosureAcknowledged] = useState(true);
+  const [showDisclosure, setShowDisclosure] = useState(false);
 
   useEffect(() => {
     void getDiagnosticsDisclosureAcknowledged().then(setDisclosureAcknowledged);
   }, []);
+
+  async function runExport() {
+    try {
+      const result = await exportDiagnostics();
+      setDiagnostics(result);
+      onStatus(`Diagnostics exported to ${result.exportedTo}`);
+    } catch (err) {
+      onStatus(`Diagnostics export failed: ${String(err)}`);
+    }
+  }
 
   async function handleExportDiagnostics() {
     if (!settings.diagnosticsEnabled) {
@@ -44,18 +56,18 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
       return;
     }
     if (!disclosureAcknowledged) {
-      const ok = window.confirm(DIAGNOSTICS_DISCLOSURE_TEXT);
-      if (!ok) {
-        onStatus('Diagnostics export cancelled');
-        return;
-      }
+      setShowDisclosure(true);
+      return;
+    }
+    await runExport();
+  }
+
+  async function handleAcknowledgeAndExport() {
+    setShowDisclosure(false);
+    try {
       await acknowledgeDiagnosticsDisclosure();
       setDisclosureAcknowledged(true);
-    }
-    try {
-      const result = await exportDiagnostics();
-      setDiagnostics(result);
-      onStatus(`Diagnostics exported to ${result.exportedTo}`);
+      await runExport();
     } catch (err) {
       onStatus(`Diagnostics export failed: ${String(err)}`);
     }
@@ -106,6 +118,20 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={showDisclosure}
+        title="Diagnostics export disclosure"
+        description={DIAGNOSTICS_DISCLOSURE_TEXT}
+        confirmLabel="Export"
+        cancelLabel="Cancel"
+        destructive={false}
+        onCancel={() => {
+          setShowDisclosure(false);
+          onStatus('Diagnostics export cancelled');
+        }}
+        onConfirm={() => void handleAcknowledgeAndExport()}
+      />
     </div>
   );
 }

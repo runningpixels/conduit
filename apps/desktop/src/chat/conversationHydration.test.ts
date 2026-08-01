@@ -45,6 +45,7 @@ describe('messageToDisplayTurn', () => {
       role: 'user',
       content: 'my prompt',
       interrupted: false,
+      createdAt: now,
     });
   });
 
@@ -99,6 +100,7 @@ describe('messageToDisplayTurn', () => {
       role: 'user',
       content: 'visible prompt',
       interrupted: false,
+      createdAt: now,
     });
   });
 
@@ -125,6 +127,7 @@ describe('messageToDisplayTurn', () => {
       role: 'assistant',
       content: 'Here is your document.',
       interrupted: false,
+      createdAt: now,
     });
   });
 });

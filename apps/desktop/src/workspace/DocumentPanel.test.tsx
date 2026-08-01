@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { DocumentPanel } from './DocumentPanel';
-import { DEFAULT_WELCOME_ARTIFACT } from '../artifacts/defaultWelcomeArtifact';
 
 vi.mock('../ipc/client', () => ({
   getArtifactContentBytes: vi.fn().mockResolvedValue([]),
   readArtifactFileBytes: vi.fn().mockResolvedValue([]),
+  revealArtifact: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
@@ -114,67 +114,7 @@ describe('DocumentPanel Export (M5)', () => {
 });
 
 describe('DocumentPanel chrome', () => {
-  it('shows the welcome artifact when no real artifact is open', () => {
-    render(
-      <DocumentPanel
-        artifact={DEFAULT_WELCOME_ARTIFACT}
-        openArtifacts={[]}
-        fileStateMap={{}}
-        activeFileState="noFileContent"
-        allowlist={[]}
-        docTab="preview"
-        onSelectTab={vi.fn()}
-        onOpenArtifact={vi.fn()}
-        onSaveContent={vi.fn()}
-        onExport={vi.fn()}
-      />,
-    );
-    expect(screen.getByText('Welcome')).toBeInTheDocument();
-    expect(screen.getByTitle('Artifact preview')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
-  });
-
-  it('passes the app theme into the welcome artifact iframe', () => {
-    const { container } = render(
-      <DocumentPanel
-        artifact={DEFAULT_WELCOME_ARTIFACT}
-        openArtifacts={[]}
-        fileStateMap={{}}
-        activeFileState="noFileContent"
-        allowlist={[]}
-        effectiveTheme="dark"
-        docTab="preview"
-        onSelectTab={vi.fn()}
-        onOpenArtifact={vi.fn()}
-        onSaveContent={vi.fn()}
-        onExport={vi.fn()}
-      />,
-    );
-    const srcdoc = container.querySelector('iframe')?.getAttribute('srcdoc') ?? '';
-    expect(srcdoc).toContain('data-theme="dark"');
-  });
-
-  it('shows read-only source for the welcome artifact', () => {
-    render(
-      <DocumentPanel
-        artifact={DEFAULT_WELCOME_ARTIFACT}
-        openArtifacts={[]}
-        fileStateMap={{}}
-        activeFileState="noFileContent"
-        allowlist={[]}
-        docTab="source"
-        onSelectTab={vi.fn()}
-        onOpenArtifact={vi.fn()}
-        onSaveContent={vi.fn()}
-        onExport={vi.fn()}
-      />,
-    );
-    expect(screen.getByLabelText('HTML source')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
-  });
-
-  it('shows a minimal empty state without header chrome when artifact is null', () => {
+  it('shows the artifact empty state when no artifact is open', () => {
     render(
       <DocumentPanel
         artifact={null}
@@ -189,14 +129,77 @@ describe('DocumentPanel chrome', () => {
         onExport={vi.fn()}
       />,
     );
-    expect(screen.getByText('No artifact open')).toBeInTheDocument();
+    expect(screen.getByText('Artifacts live here')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
-  it('shows title in toolbar when only one artifact is open', () => {
-    renderPanel({ docTab: 'preview' });
+  it('shows collapse control on the empty state when provided', () => {
+    const onCollapsePanel = vi.fn();
+    render(
+      <DocumentPanel
+        artifact={null}
+        openArtifacts={[]}
+        fileStateMap={{}}
+        activeFileState="noFileContent"
+        allowlist={[]}
+        docTab="preview"
+        onSelectTab={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onSaveContent={vi.fn()}
+        onExport={vi.fn()}
+        onCollapsePanel={onCollapsePanel}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Hide artifact panel' }));
+    expect(onCollapsePanel).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a close control when only one artifact is open', () => {
+    const onCloseTab = vi.fn();
+    renderPanel({ docTab: 'preview', onCloseTab });
     expect(screen.getByText('Note')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Close Note' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Note' }));
+    expect(onCloseTab).toHaveBeenCalledWith('a1');
+  });
+
+  it('offers Close in the overflow menu for a single open artifact', () => {
+    const onCloseTab = vi.fn();
+    renderPanel({ docTab: 'preview', onCloseTab });
+    openOverflowMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close' }));
+    expect(onCloseTab).toHaveBeenCalledWith('a1');
+  });
+
+  it('shows a generating placeholder when a create is pending', () => {
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        title: 'API Overview',
+        toolName: 'write_html_document',
+        mode: 'create',
+      },
+      docTab: 'preview',
+    });
+    expect(screen.getByText(/Generating html document/i)).toBeInTheDocument();
+    expect(screen.getByText('API Overview')).toBeInTheDocument();
+    expect(screen.queryByText('Artifacts live here')).not.toBeInTheDocument();
+  });
+
+  it('shows an updating banner when an edit is pending on an open artifact', () => {
+    renderPanel({
+      docTab: 'preview',
+      pendingArtifact: {
+        kind: 'markdown',
+        toolName: 'edit_markdown_document',
+        mode: 'edit',
+        artifactId: 'a1',
+      },
+    });
+    expect(screen.getByText(/Updating document/i)).toBeInTheDocument();
+    expect(screen.getByText('Note')).toBeInTheDocument();
   });
 
   it('shows artifact tabs when multiple artifacts are open', () => {
@@ -221,11 +224,17 @@ describe('DocumentPanel chrome', () => {
     expect(onCloseTab).toHaveBeenCalledWith('a1');
   });
 
-  it('opens details from the overflow menu', () => {
-    renderPanel({ docTab: 'preview' });
-    openOverflowMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Details' }));
-    expect(screen.getByLabelText('Artifact details')).toBeInTheDocument();
-    expect(screen.getByText('Path')).toBeInTheDocument();
+  it('uses sibling close buttons without nesting interactive controls in the tab select', () => {
+    const second: Artifact = { ...baseArtifact, id: 'a2', title: 'Second' };
+    renderPanel({
+      openArtifacts: [baseArtifact, second],
+      docTab: 'preview',
+      onCloseTab: vi.fn(),
+      onRenameArtifact: vi.fn(),
+    });
+    const closeBtn = screen.getByRole('button', { name: 'Close Note' });
+    expect(closeBtn.closest('button.tab-select')).toBeNull();
+    expect(closeBtn.closest('.artifact-file-tab')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Rename Note' })).toBeInTheDocument();
   });
 });

@@ -10,6 +10,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
 } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /* ── Button ─────────────────────────────────────────────────────────────── */
 export type ButtonVariant = 'default' | 'primary' | 'ghost';
@@ -140,6 +141,120 @@ export function Avatar({ role, className, children, ...rest }: AvatarProps) {
       {...rest}
     >
       {children ?? (role === 'you' ? 'You' : null)}
+    </div>
+  );
+}
+/* ── ConfirmDialog ─────────────────────────────────────────────────────── */
+export interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  description: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** When set, the confirm button stays disabled until the user types this phrase. */
+  confirmPhrase?: string;
+  /** Destructive actions require an explicit click — Enter never confirms. */
+  destructive?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  confirmPhrase,
+  destructive = true,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const [phrase, setPhrase] = useState('');
+
+  useEffect(() => {
+    if (!open) {
+      setPhrase('');
+      return;
+    }
+    const previous = document.activeElement as HTMLElement | null;
+    cancelRef.current?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCancel();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previous?.focus?.();
+    };
+  }, [open, onCancel]);
+
+  if (!open) return null;
+
+  const phraseOk = !confirmPhrase || phrase.trim() === confirmPhrase;
+  const confirmDisabled = !phraseOk;
+
+  return (
+    <div className="cu-dialog-backdrop" role="presentation" onMouseDown={onCancel}>
+      <div
+        ref={dialogRef}
+        className="cu-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="cu-dialog-title"
+        aria-describedby="cu-dialog-desc"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h2 id="cu-dialog-title" className="cu-dialog-title">{title}</h2>
+        <div id="cu-dialog-desc" className="cu-dialog-body">{description}</div>
+        {confirmPhrase && (
+          <label className="cu-dialog-phrase">
+            <span>Type <kbd>{confirmPhrase}</kbd> to confirm</span>
+            <input
+              type="text"
+              value={phrase}
+              onChange={(e) => setPhrase(e.target.value)}
+              autoComplete="off"
+              aria-label={`Type ${confirmPhrase} to confirm`}
+            />
+          </label>
+        )}
+        <div className="cu-dialog-actions">
+          <button ref={cancelRef} className="btn ghost" type="button" onClick={onCancel}>
+            {cancelLabel}
+          </button>
+          <button
+            className={`btn${destructive ? ' danger' : ' primary'}`}
+            type="button"
+            disabled={confirmDisabled}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

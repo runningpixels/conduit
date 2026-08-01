@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
-import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
+import { getArtifactContentBytes, readArtifactFileBytes, revealArtifact } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
-import { isWelcomeArtifact } from '../artifacts/defaultWelcomeArtifact';
-import { FilePlainIcon, ChevronRight, MoreIcon } from '../icons';
+import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
+import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon } from '../icons';
+import { Menu } from './Menu';
+import type { PendingArtifact } from '../artifacts/pendingArtifact';
 
 type DocTab = 'preview' | 'source';
 
@@ -54,8 +56,16 @@ function DocPlaceholder({ children }: { children: ReactNode }) {
   return <p className="doc-placeholder">{children}</p>;
 }
 
+function modShortcutHint(key: string): string {
+  const isMac =
+    typeof navigator !== 'undefined' &&
+    /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  return `${isMac ? '⌘' : 'Ctrl'}+${key}`;
+}
+
 interface DocumentPanelProps {
   artifact: Artifact | null;
+  pendingArtifact?: PendingArtifact | null;
   openArtifacts: Artifact[];
   fileStateMap: Record<string, FileState>;
   activeFileState: FileState;
@@ -70,16 +80,73 @@ interface DocumentPanelProps {
   onCloseTab?: (id: string) => void;
   onCollapsePanel?: () => void;
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
+  onStatus?: (message: string) => void;
+}
+
+function ArtifactPendingState({
+  pending,
+  onCollapsePanel,
+  collapseShortcutHint,
+}: {
+  pending: PendingArtifact;
+  onCollapsePanel?: () => void;
+  collapseShortcutHint?: string;
+}) {
+  const kindLabel = KIND_LABEL[pending.kind] ?? pending.kind;
+  const title = pending.title?.trim() || `${kindLabel} document`;
+  const action = pending.mode === 'edit' ? 'Updating' : 'Generating';
+
+  return (
+    <section className="doc-panel doc-panel-pending" aria-label="Document panel" aria-busy="true">
+      <div className="doc-toolbar">
+        <div className="doc-toolbar-title">
+          <div className="ficon"><FilePlainIcon /></div>
+          <div className="doc-title">
+            <b title={title}>{title}</b>
+            <small>{kindLabel} · {action.toLowerCase()}…</small>
+          </div>
+        </div>
+        <span className="doc-toolbar-spacer" />
+        {onCollapsePanel && (
+          <div className="doc-actions">
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Hide artifact panel"
+              aria-pressed={false}
+              title={
+                collapseShortcutHint
+                  ? `Hide artifact panel (${collapseShortcutHint})`
+                  : 'Hide artifact panel'
+              }
+              onClick={onCollapsePanel}
+            >
+              <ChevronRight />
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="doc-body scroll">
+        <div className="artifact-pending">
+          <div className="artifact-skeleton" aria-hidden="true" />
+          <p className="artifact-pending-copy">
+            {action} {kindLabel.toLowerCase()} document…
+          </p>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export function DocumentPanel({
   artifact,
+  pendingArtifact = null,
   openArtifacts,
   fileStateMap,
   activeFileState,
   allowlist,
   styledPreview = true,
-  effectiveTheme = 'light',
+  effectiveTheme: _effectiveTheme = 'light',
   docTab,
   onSelectTab,
   onOpenArtifact,
@@ -88,6 +155,7 @@ export function DocumentPanel({
   onCloseTab,
   onCollapsePanel,
   onRenameArtifact,
+  onStatus,
 }: DocumentPanelProps) {
   const [copied, setCopied] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -95,11 +163,12 @@ export function DocumentPanel({
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   const raw = useMemo(() => (artifact ? rawInlineText(artifact) : ''), [artifact]);
-  const isWelcome = isWelcomeArtifact(artifact);
-  const isFilePayload = artifact?.contentPath != null && !isWelcome;
+  const isFilePayload = artifact?.contentPath != null;
   const multiOpen = openArtifacts.length > 1;
+  const collapseHint = modShortcutHint('J');
 
   const [loadedText, setLoadedText] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -164,15 +233,46 @@ export function DocumentPanel({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
 
+  // Esc closes the active artifact when focus is inside the panel (not in an
+  // editable field), returning to the empty welcome state.
+  useEffect(() => {
+    if (!artifact || !onCloseTab) return;
+    const artifactId = artifact.id;
+    function handleKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      const panel = target?.closest('.doc-panel');
+      if (!panel || panel.classList.contains('doc-panel-empty')) return;
+      event.preventDefault();
+      onCloseTab?.(artifactId);
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [artifact, onCloseTab]);
+
   const dirty = draft !== sourceText;
+
+  const showCreatePending =
+    pendingArtifact != null &&
+    (pendingArtifact.mode === 'create' || !artifact);
+
+  if (showCreatePending && pendingArtifact) {
+    return (
+      <ArtifactPendingState
+        pending={pendingArtifact}
+        onCollapsePanel={onCollapsePanel}
+        collapseShortcutHint={collapseHint}
+      />
+    );
+  }
 
   if (!artifact) {
     return (
-      <section className="doc-panel doc-panel-empty" aria-label="Document panel" data-doc-tab={docTab}>
-        <div className="doc-body scroll">
-          <DocPlaceholder>No artifact open</DocPlaceholder>
-        </div>
-      </section>
+      <ArtifactEmptyState
+        onCollapsePanel={onCollapsePanel}
+        collapseShortcutHint={collapseHint}
+      />
     );
   }
 
@@ -213,6 +313,7 @@ export function DocumentPanel({
       const path = artifact.contentPath;
       const filename = path.includes('/') ? path.split('/').slice(1).join('/') : path;
       await onSaveContent(artifact.id, { kind: 'file', bytes, filename }, artifact.mimeType);
+      setDismissedModified(true);
     } catch {
       /* failure surfaces via the App status line */
     } finally {
@@ -233,15 +334,21 @@ export function DocumentPanel({
     }
   }
 
+  async function handleReveal() {
+    if (!artifact || !isFilePayload) return;
+    setMenuOpen(false);
+    try {
+      await revealArtifact(artifact.id);
+    } catch (e) {
+      onStatus?.(e instanceof Error ? e.message : 'Could not reveal artifact');
+    }
+  }
+
   const fileMeta: Array<{ k: string; v: string }> = [
     { k: 'Path', v: artifact.contentPath ?? '(inline)' },
     { k: 'Type', v: artifact.mimeType ?? kindLabel },
     { k: 'Updated', v: artifact.updatedAt ?? artifact.createdAt },
-    ...(isFilePayload
-      ? [
-          { k: 'Size', v: formatSize(artifact.sizeBytes) },
-        ]
-      : []),
+    ...(isFilePayload ? [{ k: 'Size', v: formatSize(artifact.sizeBytes) }] : []),
   ];
 
   function beginRename(id: string, currentTitle: string) {
@@ -292,13 +399,31 @@ export function DocumentPanel({
                   }}
                 />
               ) : (
-                <b
-                  onClick={() => !isWelcome && onRenameArtifact && beginRename(artifact.id, name)}
-                  style={!isWelcome && onRenameArtifact ? { cursor: 'text' } : undefined}
-                  title={name}
-                >
-                  {name}
-                </b>
+                <div className="doc-title-row">
+                  <b title={name}>{name}</b>
+                  {onRenameArtifact && (
+                    <button
+                      className="icon-btn tab-rename"
+                      type="button"
+                      aria-label={`Rename ${name}`}
+                      title="Rename"
+                      onClick={() => beginRename(artifact.id, name)}
+                    >
+                      <PencilIcon />
+                    </button>
+                  )}
+                  {onCloseTab && (
+                    <button
+                      className="icon-btn tab-close"
+                      type="button"
+                      aria-label={`Close ${name}`}
+                      title="Close"
+                      onClick={() => onCloseTab(artifact.id)}
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
               )}
               <small>
                 {kindLabel}
@@ -312,73 +437,69 @@ export function DocumentPanel({
           <div className="artifact-tabs" aria-label="Open artifacts">
             {openArtifacts.map((a) => {
               const state = fileStateMap[a.id] ?? 'noFileContent';
+              const tabTitle = a.title ?? 'Untitled artifact';
+              const isActive = a.id === artifact.id;
               return (
-                <button
+                <div
                   key={a.id}
-                  className={`artifact-file-tab${a.id === artifact.id ? ' active' : ''}`}
-                  type="button"
+                  className={`artifact-file-tab${isActive ? ' active' : ''}`}
                   data-state={state}
-                  title={a.title ?? 'Untitled artifact'}
-                  onClick={() => onOpenArtifact(a.id)}
                 >
-                  <FilePlainIcon />
-                  {editingTabId === a.id && a.id === artifact.id ? (
-                    <input
-                      className="inline-title-input tab-name"
-                      value={editingTabValue}
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => setEditingTabValue(e.target.value)}
-                      onBlur={commitRename}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          commitRename();
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault();
-                          cancelRename();
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span
-                      className="tab-name"
-                      onClick={(e) => {
-                        if (a.id === artifact.id && onRenameArtifact) {
-                          e.stopPropagation();
-                          beginRename(a.id, a.title ?? '');
-                        }
-                      }}
-                      style={a.id === artifact.id && onRenameArtifact ? { cursor: 'text' } : undefined}
+                  <button
+                    className="tab-select"
+                    type="button"
+                    title={tabTitle}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => onOpenArtifact(a.id)}
+                  >
+                    <FilePlainIcon />
+                    {editingTabId === a.id && isActive ? (
+                      <input
+                        className="inline-title-input tab-name"
+                        value={editingTabValue}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditingTabValue(e.target.value)}
+                        onBlur={commitRename}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitRename();
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            cancelRename();
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span className="tab-name">{tabTitle}</span>
+                    )}
+                    {showStateDot(state, a.contentPath != null) && (
+                      <span className={`tab-state${tabStateClass(state)}`} aria-hidden="true" />
+                    )}
+                  </button>
+                  {isActive && onRenameArtifact && editingTabId !== a.id && (
+                    <button
+                      className="tab-rename"
+                      type="button"
+                      aria-label={`Rename ${tabTitle}`}
+                      title="Rename"
+                      onClick={() => beginRename(a.id, tabTitle)}
                     >
-                      {a.title ?? 'Untitled artifact'}
-                    </span>
-                  )}
-                  {showStateDot(state, a.contentPath != null) && (
-                    <span className={`tab-state${tabStateClass(state)}`} />
+                      <PencilIcon />
+                    </button>
                   )}
                   {onCloseTab && (
-                    <span
+                    <button
                       className="tab-close"
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Close ${a.title ?? 'artifact'}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCloseTab(a.id);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onCloseTab(a.id);
-                        }
-                      }}
+                      type="button"
+                      aria-label={`Close ${tabTitle}`}
+                      onClick={() => onCloseTab(a.id)}
                     >
                       &times;
-                    </span>
+                    </button>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -408,9 +529,9 @@ export function DocumentPanel({
         </div>
 
         <div className="doc-actions">
-          {!isWelcome && (
           <div className="doc-overflow" ref={menuRef}>
             <button
+              ref={menuTriggerRef}
               className="icon-btn"
               type="button"
               aria-label="More actions"
@@ -420,52 +541,74 @@ export function DocumentPanel({
             >
               <MoreIcon />
             </button>
-            {menuOpen && (
-              <div className="doc-overflow-menu" role="menu">
-                <button className="doc-overflow-item" type="button" role="menuitem" disabled={!raw} onClick={() => void handleCopy()}>
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-                <button className="doc-overflow-item" type="button" role="menuitem" disabled={!isFilePayload}>
-                  Reveal in Explorer
-                </button>
-                <button
-                  className="doc-overflow-item"
-                  type="button"
-                  role="menuitem"
-                  disabled={exporting || saving}
-                  onClick={() => void handleExport()}
-                >
-                  {exporting ? 'Exporting…' : 'Export'}
-                </button>
-                <label className="doc-overflow-item doc-overflow-check">
-                  <input
-                    type="checkbox"
-                    checked={includeMetadata}
-                    onChange={(e) => setIncludeMetadata(e.target.checked)}
-                  />
-                  Include metadata sidecar
-                </label>
+            <Menu
+              open={menuOpen}
+              onClose={() => setMenuOpen(false)}
+              triggerRef={menuTriggerRef}
+              label="Artifact actions"
+            >
+              <button className="doc-overflow-item" type="button" role="menuitem" disabled={!raw} onClick={() => void handleCopy()}>
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                className="doc-overflow-item"
+                type="button"
+                role="menuitem"
+                disabled={!isFilePayload}
+                onClick={() => void handleReveal()}
+              >
+                Reveal in Explorer
+              </button>
+              <button
+                className="doc-overflow-item"
+                type="button"
+                role="menuitem"
+                disabled={exporting || saving}
+                onClick={() => void handleExport()}
+              >
+                {exporting ? 'Exporting…' : 'Export'}
+              </button>
+              <label className="doc-overflow-item doc-overflow-check">
+                <input
+                  type="checkbox"
+                  checked={includeMetadata}
+                  onChange={(e) => setIncludeMetadata(e.target.checked)}
+                />
+                Include metadata sidecar
+              </label>
+              <button
+                className="doc-overflow-item"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShowDetails((open) => !open);
+                  setMenuOpen(false);
+                }}
+              >
+                {showDetails ? 'Hide details' : 'Details'}
+              </button>
+              {onCloseTab && (
                 <button
                   className="doc-overflow-item"
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setShowDetails((open) => !open);
                     setMenuOpen(false);
+                    onCloseTab(artifact.id);
                   }}
                 >
-                  {showDetails ? 'Hide details' : 'Details'}
+                  Close
                 </button>
-              </div>
-            )}
+              )}
+            </Menu>
           </div>
-          )}
           {onCollapsePanel && (
             <button
               className="icon-btn"
               type="button"
               aria-label="Hide artifact panel"
-              title="Hide artifact panel"
+              aria-pressed={false}
+              title={`Hide artifact panel (${collapseHint})`}
               onClick={onCollapsePanel}
             >
               <ChevronRight />
@@ -475,7 +618,12 @@ export function DocumentPanel({
       </div>
 
       <div className="doc-body scroll">
-        {!isWelcome && activeFileState === 'modified' && !dismissedModified && (
+        {pendingArtifact?.mode === 'edit' && (
+          <div className="doc-banner hold" role="status">
+            <strong>Updating document…</strong> The assistant is revising this artifact.
+          </div>
+        )}
+        {activeFileState === 'modified' && !dismissedModified && (
           <div className="doc-banner warn">
             <strong>Modified on disk.</strong> Review before continuing.
             <div className="row">
@@ -488,7 +636,7 @@ export function DocumentPanel({
             </div>
           </div>
         )}
-        {!isWelcome && activeFileState === 'missing' && (
+        {activeFileState === 'missing' && (
           <div className="doc-banner bad">
             <strong>File missing.</strong> The payload is no longer at its indexed path.
           </div>
@@ -509,13 +657,11 @@ export function DocumentPanel({
                 );
               }
               const { Preview } = selectRenderer(effectiveArtifact);
-              const previewStyled = isWelcome ? false : styledPreview;
-              const props = buildPreviewProps(effectiveArtifact, allowlist, previewStyled);
+              const props = buildPreviewProps(effectiveArtifact, allowlist, styledPreview);
               if (!Preview || !props) {
                 return <DocPlaceholder>No content yet.</DocPlaceholder>;
               }
-              const previewProps = isWelcome ? { ...props, colorScheme: effectiveTheme } : props;
-              return <Preview {...previewProps} />;
+              return <Preview {...props} />;
             })()}
           </div>
 
@@ -526,8 +672,6 @@ export function DocumentPanel({
               <DocPlaceholder>
                 Payload too large to edit inline or could not be read. Export or open details.
               </DocPlaceholder>
-            ) : isWelcome ? (
-              <pre className="source-readonly" aria-label={`${kindLabel} source`}>{sourceText}</pre>
             ) : !sourceText && !dirty ? (
               <DocPlaceholder>No source to show.</DocPlaceholder>
             ) : (

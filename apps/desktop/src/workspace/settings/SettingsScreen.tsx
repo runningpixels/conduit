@@ -12,6 +12,7 @@ import { AboutSection } from './AboutSection';
 import { WebSearchSection } from './WebSearchSection';
 import { AgentSection } from './AgentSection';
 import { useAutoSave } from './useAutoSave';
+import type { ConnectionState } from '../Titlebar';
 
 interface SettingsScreenProps {
   settings: AppSettings;
@@ -20,6 +21,11 @@ interface SettingsScreenProps {
   onStatus: (message: string) => void;
   /// Optional sub-tab to open when navigating from elsewhere (e.g. Connectors rail).
   initialTab?: SettingsTab;
+  /// Whether this pane is the active workspace tab (`data-active` for CSS). Defaults true for tests.
+  paneActive?: boolean;
+  connectionState?: ConnectionState;
+  boundaryOk?: boolean;
+  hasCredential?: boolean;
 }
 
 export type SettingsTab =
@@ -59,6 +65,10 @@ export function SettingsScreen({
   paths,
   onStatus,
   initialTab,
+  paneActive = true,
+  connectionState,
+  boundaryOk,
+  hasCredential,
 }: SettingsScreenProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'provider');
   const save = useAutoSave(onSettingsChange, onStatus);
@@ -68,7 +78,12 @@ export function SettingsScreen({
   }, [initialTab]);
 
   return (
-    <section className="tab-pane settings-screen" data-pane="settings" aria-label="Settings">
+    <section
+      className="tab-pane settings-screen"
+      data-pane="settings"
+      data-active={paneActive ? 'true' : 'false'}
+      aria-label="Settings"
+    >
       <nav className="settings-tab-sidebar" aria-label="Settings sections">
         {SETTINGS_TABS.map((tab) => (
           <button
@@ -97,7 +112,14 @@ export function SettingsScreen({
           <AppearanceSection settings={settings} onUpdate={save} />
         )}
         {activeTab === 'privacy' && (
-          <PrivacyDataSection settings={settings} onUpdate={save} onStatus={onStatus} />
+          <PrivacyDataSection
+            settings={settings}
+            onUpdate={save}
+            onStatus={onStatus}
+            connectionState={connectionState}
+            boundaryOk={boundaryOk}
+            hasCredential={hasCredential}
+          />
         )}
         {activeTab === 'artifact-security' && (
           <ArtifactSecuritySection settings={settings} onUpdate={save} />

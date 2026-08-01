@@ -269,29 +269,29 @@ describe('SettingsScreen Diagnostics section', () => {
   it('prompts disclosure on first export', async () => {
     const { getDiagnosticsDisclosureAcknowledged, acknowledgeDiagnosticsDisclosure, exportDiagnostics } = await import('../../ipc/client');
     vi.mocked(getDiagnosticsDisclosureAcknowledged).mockResolvedValue(false);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderScreen({ diagnosticsEnabled: true });
     fireEvent.click(screen.getByText('Diagnostics'));
     await waitFor(() => expect(getDiagnosticsDisclosureAcknowledged).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: 'Export diagnostics' }));
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
-    expect(acknowledgeDiagnosticsDisclosure).toHaveBeenCalled();
+    // ConfirmDialog should appear; accept it
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(acknowledgeDiagnosticsDisclosure).toHaveBeenCalled());
     expect(exportDiagnostics).toHaveBeenCalled();
-    confirmSpy.mockRestore();
   });
 
   it('aborts export when disclosure cancelled', async () => {
     const { getDiagnosticsDisclosureAcknowledged, exportDiagnostics } = await import('../../ipc/client');
     vi.mocked(getDiagnosticsDisclosureAcknowledged).mockResolvedValue(false);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     renderScreen({ diagnosticsEnabled: true });
     fireEvent.click(screen.getByText('Diagnostics'));
     await waitFor(() => expect(getDiagnosticsDisclosureAcknowledged).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: 'Export diagnostics' }));
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
-    expect(exportDiagnostics).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
+    // ConfirmDialog should appear; cancel it
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(exportDiagnostics).not.toHaveBeenCalled());
   });
 });

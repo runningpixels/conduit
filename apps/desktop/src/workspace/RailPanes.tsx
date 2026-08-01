@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { WorkspaceTab } from './Rail';
 import type {
   Artifact,
@@ -13,24 +13,23 @@ import {
   getConnectorRuntimeStates,
   listConnectorCapabilities,
   listConversations,
+  setConversationTitle,
   startConnector,
   stopConnector,
 } from '../ipc/client';
-import {
-  ACTIVITY_ROWS,
-} from '../mock/workspace';
 import { summarizeMessageContentForPreview } from '../chat/messageSegments';
-import { InfoCard, SectionLabel, StatusPill } from '@conduit/ui';
+import { InfoCard, SearchBox, SectionLabel, StatusPill } from '@conduit/ui';
 import {
-  ActivityCheckIcon,
-  AlertIcon,
   ChatIcon,
+  ChevronDown,
+  ChevronRight,
   ConnectorsIcon,
-  FileIcon,
+  FolderIcon,
+  PencilIcon,
   PlusIcon,
-  ShareIcon,
   TrashIcon,
 } from '../icons';
+import { ACTIVITY_PANE_ENABLED } from './features';
 
 interface RailPanesProps {
   active: WorkspaceTab;
@@ -38,6 +37,8 @@ interface RailPanesProps {
   artifacts: Artifact[];
   /// Per-artifact file-state for the rail state dots.
   fileStateMap: Record<string, FileState>;
+  /// Currently open artifact id (highlights the matching row).
+  activeArtifactId?: string | null;
   /// Open an artifact in the DocumentPanel by id.
   onOpenArtifact: (id: string) => void;
   /// Active conversation id (drives the highlighted row in the history pane).
@@ -48,12 +49,11 @@ interface RailPanesProps {
   onDeleteConversation: (id: string) => void | Promise<void>;
   /// Delete all conversation history.
   onDeleteAllHistory: () => void | Promise<void>;
-  /// Create + switch to a fresh conversation (the "New chat" button).
   onNewChat: () => void;
-  /// Rename an artifact (title update). Optional — when provided, rows become editable.
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
-  /// Open Settings on the Connectors sub-tab for full connector management.
   onManageConnectors?: () => void;
+  /// Called after a conversation is renamed so App can refresh the panel subtitle.
+  onConversationRenamed?: () => void;
 }
 
 // Rail panes are shown/hidden by [data-tab] on <html> via styles.css
@@ -83,20 +83,27 @@ function formatHistoryPreview(row: ConversationSummary): string {
 }
 
 function HistoryPane({
+  paneActive,
   activeConversationId,
   onSelectConversation,
   onDeleteConversation,
   onDeleteAllHistory,
   onNewChat,
+  onConversationRenamed,
 }: {
+  paneActive: boolean;
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void | Promise<void>;
   onDeleteAllHistory: () => void | Promise<void>;
   onNewChat: () => void;
+  onConversationRenamed?: () => void;
 }) {
   const [rows, setRows] = useState<ConversationSummary[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [query, setQuery] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +120,15 @@ function HistoryPane({
     };
   }, [activeConversationId, refreshKey]);
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const hay = `${r.displayTitle} ${r.title ?? ''} ${r.lastMessagePreview ?? ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rows, query]);
+
   async function handleDeleteConversation(id: string, e: React.MouseEvent) {
     e.stopPropagation();
     await onDeleteConversation(id);
@@ -124,9 +140,42 @@ function HistoryPane({
     setRefreshKey((k) => k + 1);
   }
 
+  function beginRename(row: ConversationSummary, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingId(row.id);
+    setEditingValue(row.title ?? row.displayTitle);
+  }
+
+  async function commitRename() {
+    if (!editingId) return;
+    const title = editingValue.trim();
+    const id = editingId;
+    setEditingId(null);
+    setEditingValue('');
+    if (!title) return;
+    try {
+      await setConversationTitle(id, title);
+      setRefreshKey((k) => k + 1);
+      onConversationRenamed?.();
+    } catch {
+      /* status surfaces via App if needed */
+    }
+  }
+
   return (
-    <section className="tab-pane" data-pane="history" aria-label="Chat history">
+    <section
+      className="tab-pane"
+      data-pane="history"
+      data-active={paneActive ? 'true' : 'false'}
+      aria-label="Chat history"
+    >
       <div className="tab-list scroll">
+        <SearchBox
+          placeholder="Search conversations"
+          ariaLabel="Search conversations"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <button className="list-row new-chat-row" type="button" onClick={onNewChat}>
           <PlusIcon className="row-icon" />
           <span className="meta">
@@ -144,10 +193,12 @@ function HistoryPane({
         )}
         {rows.length === 0 ? (
           <SectionLabel left="No conversations yet" right="local" />
+        ) : filtered.length === 0 ? (
+          <SectionLabel left="No matches" right={`${rows.length} total`} />
         ) : (
           <>
-            <SectionLabel left="Previous conversations" right={`${rows.length}`} />
-            {rows.map((r) => (
+            <SectionLabel left="Previous conversations" right={`${filtered.length}`} />
+            {filtered.map((r) => (
               <div
                 key={r.id}
                 className={`list-row history-row${r.id === activeConversationId ? ' active' : ''}`}
@@ -159,13 +210,42 @@ function HistoryPane({
                 >
                   <ChatIcon className="row-icon" />
                   <span className="meta">
-                    <b>{r.displayTitle}</b>
+                    {editingId === r.id ? (
+                      <input
+                        className="inline-title-input"
+                        value={editingValue}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onBlur={() => void commitRename()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void commitRename();
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setEditingId(null);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <b>{r.displayTitle}</b>
+                    )}
                     <small>{formatHistoryPreview(r)}</small>
                   </span>
                   <span className="row-right">
                     <span>{relativeFromIso(r.updatedAt)}</span>
                     {r.messageCount === 0 && <StatusPill tone="warn">empty</StatusPill>}
                   </span>
+                </button>
+                <button
+                  className="history-row-rename"
+                  type="button"
+                  aria-label={`Rename ${r.displayTitle}`}
+                  title="Rename"
+                  onClick={(e) => beginRename(r, e)}
+                >
+                  <PencilIcon />
                 </button>
                 <button
                   className="history-row-delete"
@@ -194,33 +274,71 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   html: 'HTML',
 };
 
-/// File-state → `StatusPill` tone + short label for the rail.
-function fileStatePill(state: FileState): { tone: 'ok' | 'warn' | 'bad' | 'hold'; label: string } {
+const KIND_EXT: Record<ArtifactKind, string> = {
+  markdown: '.md',
+  text: '.txt',
+  code: '.code',
+  json: '.json',
+  html: '.html',
+};
+
+const KIND_ORDER: ArtifactKind[] = ['html', 'markdown', 'code', 'json', 'text'];
+
+/// Quiet file-state indicator for the directory-style list (dot + title).
+function fileStateDot(state: FileState): { className: string; title: string } {
   switch (state) {
     case 'ok':
-      return { tone: 'ok', label: 'saved' };
+      return { className: 'ok', title: 'Saved' };
     case 'modified':
-      return { tone: 'warn', label: 'changed' };
+      return { className: 'warn', title: 'Changed on disk' };
     case 'missing':
-      return { tone: 'bad', label: 'missing' };
+      return { className: 'bad', title: 'Missing on disk' };
     case 'noFileContent':
-      return { tone: 'hold', label: 'inline' };
+      return { className: 'hold', title: 'Inline' };
   }
 }
 
 function ArtifactsPane({
+  paneActive,
   artifacts,
   fileStateMap,
+  activeArtifactId,
   onOpenArtifact,
   onRenameArtifact,
 }: {
+  paneActive: boolean;
   artifacts: Artifact[];
   fileStateMap: Record<string, FileState>;
+  activeArtifactId?: string | null;
   onOpenArtifact: (id: string) => void;
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  const [query, setQuery] = useState('');
+  const [collapsedKinds, setCollapsedKinds] = useState<Partial<Record<ArtifactKind, boolean>>>({});
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return artifacts;
+    return artifacts.filter((a) => {
+      const hay = `${a.title ?? ''} ${KIND_LABEL[a.kind] ?? a.kind} ${KIND_EXT[a.kind] ?? ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [artifacts, query]);
+
+  const grouped = useMemo(() => {
+    const byKind = new Map<ArtifactKind, Artifact[]>();
+    for (const a of filtered) {
+      const list = byKind.get(a.kind) ?? [];
+      list.push(a);
+      byKind.set(a.kind, list);
+    }
+    return KIND_ORDER.filter((k) => byKind.has(k)).map((kind) => ({
+      kind,
+      items: byKind.get(kind)!,
+    }));
+  }, [filtered]);
 
   function startEdit(a: Artifact, e: React.MouseEvent) {
     e.stopPropagation();
@@ -253,61 +371,104 @@ function ArtifactsPane({
     }
   }
 
+  function toggleKind(kind: ArtifactKind) {
+    setCollapsedKinds((current) => ({ ...current, [kind]: !current[kind] }));
+  }
+
   return (
-    <section className="tab-pane" data-pane="artifacts" aria-label="Files and artifacts">
-      <div className="tab-list scroll">
+    <section
+      className="tab-pane"
+      data-pane="artifacts"
+      data-active={paneActive ? 'true' : 'false'}
+      aria-label="Files and artifacts"
+    >
+      <div className="tab-list scroll artifact-dir">
+        {artifacts.length > 0 && (
+          <SearchBox
+            placeholder="Search files"
+            ariaLabel="Search artifacts"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        )}
         {artifacts.length === 0 ? (
           <SectionLabel left="No artifacts yet" right="local" />
+        ) : filtered.length === 0 ? (
+          <SectionLabel left="No matching files" right={`${artifacts.length} local`} />
         ) : (
           <>
-            <SectionLabel left="Open artifacts" right={`${artifacts.length} local`} />
-            {artifacts.map((a) => {
-              const state = fileStateMap[a.id] ?? 'noFileContent';
-              const pill = fileStatePill(state);
-              const name = a.title ?? 'Untitled artifact';
-              const subtitle = `${KIND_LABEL[a.kind] ?? a.kind}${a.updatedAt ? ` · ${relativeFromIso(a.updatedAt)}` : ''}`;
+            <SectionLabel left="Files" right={`${filtered.length} local`} />
+            {grouped.map(({ kind, items }) => {
+              const collapsed = collapsedKinds[kind] === true;
               return (
-                <button
-                  key={a.id}
-                  className="list-row"
-                  type="button"
-                  data-file-state-target={state}
-                  onClick={() => onOpenArtifact(a.id)}
-                >
-                  <FileIcon className="row-icon" />
-                  <span className="meta">
-                    {editingId === a.id ? (
-                      <input
-                        className="inline-title-input"
-                        value={editingValue}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => setEditingValue(e.target.value)}
-                        onBlur={() => commitEdit(a.id)}
-                        onKeyDown={(e) => handleKey(e, a.id)}
-                      />
+                <div key={kind} className="artifact-dir-group">
+                  <button
+                    className="artifact-dir-folder"
+                    type="button"
+                    aria-expanded={!collapsed}
+                    onClick={() => toggleKind(kind)}
+                  >
+                    {collapsed ? (
+                      <ChevronRight className="artifact-dir-chevron" />
                     ) : (
-                      <b onClick={(e) => startEdit(a, e)} style={{ cursor: 'text' }}>
-                        {name}
-                      </b>
+                      <ChevronDown className="artifact-dir-chevron" />
                     )}
-                    <small>{subtitle}</small>
-                  </span>
-                  <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
-                </button>
+                    <FolderIcon className="artifact-dir-folder-icon" />
+                    <span className="artifact-dir-folder-label">{KIND_LABEL[kind]}</span>
+                    <span className="artifact-dir-folder-count">{items.length}</span>
+                  </button>
+                  {!collapsed &&
+                    items.map((a) => {
+                      const state = fileStateMap[a.id] ?? 'noFileContent';
+                      const dot = fileStateDot(state);
+                      const name = a.title ?? 'Untitled artifact';
+                      const isActive = a.id === activeArtifactId;
+                      return (
+                        <button
+                          key={a.id}
+                          className={`artifact-file-row${isActive ? ' active' : ''}`}
+                          type="button"
+                          data-file-state-target={state}
+                          data-kind={a.kind}
+                          aria-current={isActive ? 'true' : undefined}
+                          onClick={() => onOpenArtifact(a.id)}
+                        >
+                          <span className="artifact-file-ext" aria-hidden="true">
+                            {KIND_EXT[a.kind]}
+                          </span>
+                          <span className="meta">
+                            {editingId === a.id ? (
+                              <input
+                                className="inline-title-input"
+                                value={editingValue}
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => setEditingValue(e.target.value)}
+                                onBlur={() => commitEdit(a.id)}
+                                onKeyDown={(e) => handleKey(e, a.id)}
+                              />
+                            ) : (
+                              <b onClick={(e) => startEdit(a, e)} style={{ cursor: 'text' }}>
+                                {name}
+                              </b>
+                            )}
+                            <small>
+                              {a.updatedAt ? relativeFromIso(a.updatedAt) : KIND_LABEL[a.kind]}
+                            </small>
+                          </span>
+                          <span
+                            className={`artifact-file-dot ${dot.className}`}
+                            title={dot.title}
+                            aria-label={dot.title}
+                          />
+                        </button>
+                      );
+                    })}
+                </div>
               );
             })}
           </>
         )}
-        <SectionLabel left="Cloud state" />
-        <button className="list-row" type="button">
-          <ShareIcon className="row-icon" />
-          <span className="meta">
-            <b>Artifact share is off</b>
-            <small>Opt in only. Local users remain invisible by default.</small>
-          </span>
-          <span className="row-right">local</span>
-        </button>
       </div>
     </section>
   );
@@ -339,7 +500,13 @@ function connectorStatus(s: ConnectorRuntimeSnapshot): {
   return { dot: 'off', tone: 'hold', label: 'stopped' };
 }
 
-function ConnectorsPane({ onManageConnectors }: { onManageConnectors?: () => void }) {
+function ConnectorsPane({
+  onManageConnectors,
+  paneActive,
+}: {
+  onManageConnectors?: () => void;
+  paneActive: boolean;
+}) {
   const [rows, setRows] = useState<ConnectorRuntimeSnapshot[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, ConnectorCapability[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -368,10 +535,23 @@ function ConnectorsPane({ onManageConnectors }: { onManageConnectors?: () => voi
   };
 
   useEffect(() => {
+    if (!paneActive) return;
+    if (document.visibilityState === 'hidden') return;
+
     refresh();
-    const id = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(id);
-  }, []);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, 5000);
+
+    function onVisibility() {
+      if (document.visibilityState === 'visible' && paneActive) refresh();
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [paneActive]);
 
   const granted = rows.filter((r) => r.grantStatus === 'active').length;
 
@@ -401,7 +581,12 @@ function ConnectorsPane({ onManageConnectors }: { onManageConnectors?: () => voi
   }
 
   return (
-    <section className="tab-pane" data-pane="connectors" aria-label="Connectors">
+    <section
+      className="tab-pane"
+      data-pane="connectors"
+      data-active={paneActive ? 'true' : 'false'}
+      aria-label="Connectors"
+    >
       <div className="tab-list scroll">
         <InfoCard title="Tenant capabilities, not generic plugins">
           Connector status combines transport health, auth state, tenant grant, and support state.
@@ -473,35 +658,20 @@ function ConnectorsPane({ onManageConnectors }: { onManageConnectors?: () => voi
   );
 }
 
-function activityPane() {
+function activityPane(paneActive: boolean) {
   return (
-    <section className="tab-pane" data-pane="activity" aria-label="Activity and approvals">
+    <section
+      className="tab-pane"
+      data-pane="activity"
+      data-active={paneActive ? 'true' : 'false'}
+      aria-label="Activity and approvals"
+    >
       <div className="tab-list scroll">
-        <InfoCard title="What else belongs in the chat rail?">
-          A dedicated Activity tab makes approvals, tool runs, cancellations, and connector errors easy to audit without burying them in chat history.
+        <InfoCard title="Activity and approvals">
+          Approvals, tool runs, and connector errors will appear here when the runtime feed is wired. Nothing is pending right now.
         </InfoCard>
         <SectionLabel left="Awaiting you" />
-        {ACTIVITY_ROWS.filter((r) => r.awaiting).map((r) => (
-          <button key={r.id} className="activity-row" type="button">
-            <ConnectorsIcon className="row-icon" />
-            <span className="meta">
-              <b>{r.title}</b>
-              <small>{r.subtitle}</small>
-            </span>
-            <StatusPill tone={r.tone}>{r.toneLabel}</StatusPill>
-          </button>
-        ))}
-        <SectionLabel left="Recent activity" />
-        {ACTIVITY_ROWS.filter((r) => !r.awaiting).map((r) => (
-          <button key={r.id} className="activity-row" type="button">
-            {r.tone === 'ok' ? <ActivityCheckIcon className="row-icon" /> : <AlertIcon className="row-icon" />}
-            <span className="meta">
-              <b>{r.title}</b>
-              <small>{r.subtitle}</small>
-            </span>
-            <StatusPill tone={r.tone}>{r.toneLabel}</StatusPill>
-          </button>
-        ))}
+        <p className="empty-pane-note">No pending approvals</p>
       </div>
     </section>
   );
@@ -511,6 +681,7 @@ export function RailPanes({
   active,
   artifacts,
   fileStateMap,
+  activeArtifactId,
   onOpenArtifact,
   activeConversationId,
   onSelectConversation,
@@ -519,27 +690,32 @@ export function RailPanes({
   onNewChat,
   onRenameArtifact,
   onManageConnectors,
+  onConversationRenamed,
 }: RailPanesProps) {
-  // The active prop is accepted for future per-pane focus/refresh hooks; the
-  // show/hide is driven by [data-tab] on <html> so panes stay mounted.
-  void active;
   return (
     <>
       <HistoryPane
+        paneActive={active === 'history'}
         activeConversationId={activeConversationId}
         onSelectConversation={onSelectConversation}
         onDeleteConversation={onDeleteConversation}
         onDeleteAllHistory={onDeleteAllHistory}
         onNewChat={onNewChat}
+        onConversationRenamed={onConversationRenamed}
       />
       <ArtifactsPane
+        paneActive={active === 'artifacts'}
         artifacts={artifacts}
         fileStateMap={fileStateMap}
+        activeArtifactId={activeArtifactId}
         onOpenArtifact={onOpenArtifact}
         onRenameArtifact={onRenameArtifact}
       />
-      <ConnectorsPane onManageConnectors={onManageConnectors} />
-      {activityPane()}
+      <ConnectorsPane
+        onManageConnectors={onManageConnectors}
+        paneActive={active === 'connectors'}
+      />
+      {ACTIVITY_PANE_ENABLED ? activityPane(active === 'activity') : null}
     </>
   );
 }

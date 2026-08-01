@@ -9,6 +9,8 @@ export interface ChatTurn {
   streamState?: AssistantStreamState;
   interrupted?: boolean;
   modelId?: string;
+  /** Persisted message timestamp when available (hydrated turns). */
+  createdAt?: string;
 }
 
 const DISPLAY_PART_KINDS = new Set(['text', 'reasoning']);
@@ -37,6 +39,7 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
     role: message.role === 'assistant' ? 'assistant' : 'user',
     content,
     interrupted: Boolean(message.interruptedAt),
+    createdAt: message.createdAt,
   };
 }
 

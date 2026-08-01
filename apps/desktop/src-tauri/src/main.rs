@@ -59,6 +59,7 @@ fn main() {
             list_conversations,
             get_conversation,
             delete_conversation,
+            set_conversation_title,
             delete_all_conversations,
             save_attachment,
             list_attachments,
@@ -99,6 +100,8 @@ fn main() {
             get_diagnostics_disclosure_acknowledged,
             acknowledge_diagnostics_disclosure,
             reveal_path,
+            reveal_artifacts_dir,
+            reveal_artifact,
             // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
             reset_local_database,
         ])

@@ -29,15 +29,6 @@ export interface ConnectorRow {
   channel: ConnectorChannel;
 }
 
-export interface ActivityRow {
-  id: string;
-  title: string;
-  subtitle: string;
-  tone: 'warn' | 'ok';
-  toneLabel: string;
-  awaiting?: boolean;
-}
-
 export interface ModelRow {
   id: string;
   name: string;
@@ -108,31 +99,6 @@ export const CONNECTOR_ROWS: ConnectorRow[] = [
     subtitle: 'Admin-disabled for this workspace',
     health: 'off',
     channel: 'off',
-  },
-];
-
-export const ACTIVITY_ROWS: ActivityRow[] = [
-  {
-    id: 'ac1',
-    title: 'slack.post_message',
-    subtitle: 'Writes to #eng-triage using triage-note.md',
-    tone: 'warn',
-    toneLabel: 'approval',
-    awaiting: true,
-  },
-  {
-    id: 'ac2',
-    title: 'github.list_issues',
-    subtitle: 'Completed in 1.4s - output stored locally',
-    tone: 'ok',
-    toneLabel: 'ran',
-  },
-  {
-    id: 'ac3',
-    title: 'triage-note.md changed',
-    subtitle: 'Disk copy modified outside app two minutes ago',
-    tone: 'warn',
-    toneLabel: 'file',
   },
 ];
 

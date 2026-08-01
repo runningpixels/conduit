@@ -224,6 +224,11 @@ export function CommandPalette({
             ))
           )}
         </div>
+        <div className="command-palette-footer">
+          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+          <span><kbd>↵</kbd> select</span>
+          <span><kbd>esc</kbd> close</span>
+        </div>
       </div>
     </div>
   );

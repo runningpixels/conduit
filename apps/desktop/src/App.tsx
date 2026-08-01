@@ -766,7 +766,7 @@ export default function App() {
                       <span className="panel-activity-brief">{status.brief}</span>
                     </div>
                   )}
-                  <button className="new-btn" type="button" onClick={() => void handleNewChat()}>
+                  <button className="new-btn" type="button" onClick={() => void handleNewChat()} title={`New chat (${modShortcutHint('N')})`}>
                     <PlusIcon />
                     New chat
                   </button>

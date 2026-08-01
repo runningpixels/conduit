@@ -12,3 +12,4 @@ apps/desktop/src-tauri/.tauri-updater-private.key.pub
 # Machine-specific agent/MCP config (local paths, model overrides)
 .mcp.json
 .pi/
+.pi-subagents/

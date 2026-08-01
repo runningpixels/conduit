@@ -22,4 +22,28 @@ toolCalls: number, } | { "kind": "searchUnavailable", requestId: string, index: 
  * Why the hosted search tool was stripped or refused. Stable codes
  * the renderer can branch on; `message` is human-readable.
  */
-code: string, message: string, };
+code: string, message: string, } | { "kind": "agentPhase", requestId: string, 
+/**
+ * Human-readable label for the current phase.
+ */
+label: string, 
+/**
+ * Round number (1-based).
+ */
+round: number, 
+/**
+ * Total rounds or 0 if unknown.
+ */
+totalRounds: number, 
+/**
+ * Sub-phase identifier: "thinking", "executing_tools", "reviewing", "connecting", "finalizing"
+ */
+subPhase: string, } | { "kind": "toolExecutionStarted", requestId: string, toolCallId: string, toolName: string, } | { "kind": "toolExecutionFinished", requestId: string, toolCallId: string, toolName: string, 
+/**
+ * True if the tool execution failed.
+ */
+isError: boolean, 
+/**
+ * Optional error message.
+ */
+error?: string, };

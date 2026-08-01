@@ -162,5 +162,10 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::Citation { .. } => "citation",
         ProviderEvent::SearchCost { .. } => "searchCost",
         ProviderEvent::SearchUnavailable { .. } => "searchUnavailable",
+        // Phase 1 — Agent Feedback & Status UI: agent phase and tool execution
+        // progress events are UI-only and intentionally not persisted.
+        ProviderEvent::AgentPhase { .. } => "agentPhase",
+        ProviderEvent::ToolExecutionStarted { .. } => "toolExecutionStarted",
+        ProviderEvent::ToolExecutionFinished { .. } => "toolExecutionFinished",
     }
 }

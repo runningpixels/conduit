@@ -319,6 +319,40 @@ export function applyProviderEvent(
         ...state,
         searchUnavailable: { code: event.code, message: event.message },
       };
+    case 'agentPhase':
+      return {
+        ...state,
+        agentPhase: {
+          label: event.label,
+          round: event.round,
+          totalRounds: event.totalRounds > 0 ? event.totalRounds : undefined,
+          subPhase: event.subPhase as 'thinking' | 'connecting' | 'executing_tools' | 'reviewing' | 'finalizing',
+        },
+      };
+    case 'toolExecutionStarted': {
+      // Mark the matching tool call as executing (not yet complete).
+      return {
+        ...state,
+        toolCalls: state.toolCalls.map((tc) =>
+          tc.toolCallId === event.toolCallId
+            ? { ...tc, status: 'running' as ToolCallStatus }
+            : tc,
+        ),
+      };
+    }
+    case 'toolExecutionFinished':
+      return {
+        ...state,
+        toolCalls: state.toolCalls.map((tc) =>
+          tc.toolCallId === event.toolCallId
+            ? {
+                ...tc,
+                status: event.isError ? 'failed' as ToolCallStatus : 'completed' as ToolCallStatus,
+                error: event.error ?? tc.error,
+              }
+            : tc,
+        ),
+      };
     default:
       return state;
   }

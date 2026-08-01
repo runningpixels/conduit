@@ -224,13 +224,22 @@ function escapeHtml(s: string): string {
 }
 
 /** Derive agent loop phase from stream state and pending calls.
- *  Frontend-only derivation — no backend changes needed.
- *  Used to show phase labels and the phase badge in the assistant message. */
+ *  Prefers backend-sent agent phase info when available (from ProviderEvent::AgentPhase
+ *  events emitted by run_agent_turn in Rust). Falls back to frontend derivation when
+ *  the backend hasn't sent phase info yet (e.g. during the initial provider round). */
 function deriveAgentPhase(
   state: AssistantStreamState | null,
   pendingCalls: Set<string>,
 ): AssistantStreamState['agentPhase'] | undefined {
   if (!state) return undefined;
+
+  // Prefer backend-sent phase info when available.
+  if (state.agentPhase) {
+    // If the backend says we're in executing_tools but no pending calls remain,
+    // the backend is still updating — trust the backend timestamp.
+    return state.agentPhase;
+  }
+
   if (!state.streaming && state.finishReason && pendingCalls.size === 0) {
     return undefined; // not in agent loop
   }

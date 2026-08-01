@@ -115,6 +115,207 @@ describe('streamState connector runtime events', () => {
   });
 });
 
+describe('streamState agent feedback events', () => {
+  it('stores agentPhase from agentPhase event', () => {
+    let state = createAssistantStreamState('req-ap');
+    state = applyProviderEvent(state, {
+      kind: 'agentPhase',
+      requestId: 'req-ap',
+      label: 'Thinking',
+      round: 1,
+      totalRounds: 5,
+      subPhase: 'thinking',
+    });
+    expect(state.agentPhase).toEqual({
+      label: 'Thinking',
+      round: 1,
+      totalRounds: 5,
+      subPhase: 'thinking',
+    });
+  });
+
+  it('updates agentPhase on subsequent rounds', () => {
+    let state = createAssistantStreamState('req-ap');
+    state = applyProviderEvent(state, {
+      kind: 'agentPhase',
+      requestId: 'req-ap',
+      label: 'Thinking',
+      round: 1,
+      totalRounds: 3,
+      subPhase: 'thinking',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'agentPhase',
+      requestId: 'req-ap',
+      label: 'Running 2 tools',
+      round: 1,
+      totalRounds: 3,
+      subPhase: 'executing_tools',
+    });
+    expect(state.agentPhase).toEqual({
+      label: 'Running 2 tools',
+      round: 1,
+      totalRounds: 3,
+      subPhase: 'executing_tools',
+    });
+  });
+
+  it('sets zero totalRounds to undefined', () => {
+    let state = createAssistantStreamState('req-ap');
+    state = applyProviderEvent(state, {
+      kind: 'agentPhase',
+      requestId: 'req-ap',
+      label: 'Thinking',
+      round: 1,
+      totalRounds: 0,
+      subPhase: 'thinking',
+    });
+    expect(state.agentPhase?.totalRounds).toBeUndefined();
+  });
+
+  it('marks a tool call running on toolExecutionStarted', () => {
+    let state = createAssistantStreamState('req-te');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      index: 0,
+      toolId: 'web_search',
+      name: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionStarted',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'web_search',
+    });
+    expect(state.toolCalls[0]).toMatchObject({
+      toolCallId: 'call-1',
+      status: 'running',
+    });
+  });
+
+  it('marks a tool call completed on toolExecutionFinished', () => {
+    let state = createAssistantStreamState('req-te');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      index: 0,
+      toolId: 'web_search',
+      name: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionStarted',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionFinished',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'web_search',
+      isError: false,
+    });
+    expect(state.toolCalls[0]).toMatchObject({
+      toolCallId: 'call-1',
+      status: 'completed',
+    });
+  });
+
+  it('marks a tool call failed on toolExecutionFinished with isError', () => {
+    let state = createAssistantStreamState('req-te');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      index: 0,
+      toolId: 'web_search',
+      name: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionStarted',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionFinished',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'web_search',
+      isError: true,
+      error: 'Rate limited',
+    });
+    expect(state.toolCalls[0]).toMatchObject({
+      toolCallId: 'call-1',
+      status: 'failed',
+      error: 'Rate limited',
+    });
+  });
+
+  it('preserves toolExecutionStarted status when tool completes via runtime event', () => {
+    // Connector tools get status via ToolExecutionStarted + ConnectorRuntimeEvent::toolCallFinished
+    let state = createAssistantStreamState('req-te');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      index: 0,
+      toolId: 'Echo__post_message',
+      name: 'Echo__post_message',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionStarted',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'Echo__post_message',
+    });
+    expect(state.toolCalls[0].status).toBe('running');
+
+    // Runtime completes the call
+    state = applyConnectorRuntimeEvent(state, {
+      kind: 'toolCallFinished',
+      tool_call_id: 'call-1',
+      status: 'completed',
+      size_bytes: 10n,
+      mime_hints: ['text/plain'],
+    });
+    expect(state.toolCalls[0]).toMatchObject({
+      complete: true,
+      status: 'completed',
+    });
+  });
+
+  it('preserves error from toolExecutionFinished when error is None', () => {
+    let state = createAssistantStreamState('req-te');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      index: 0,
+      toolId: 'web_search',
+      name: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionStarted',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionFinished',
+      requestId: 'req-te',
+      toolCallId: 'call-1',
+      toolName: 'web_search',
+      isError: false,
+    });
+    // error should not be set when isError is false and error is not provided
+    expect(state.toolCalls[0].error).toBeUndefined();
+  });
+});
+
 describe('streamState web search', () => {
   it('deduplicates identical citation annotations', () => {
     let state = createAssistantStreamState('req-ws');

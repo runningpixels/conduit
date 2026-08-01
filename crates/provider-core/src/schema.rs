@@ -551,6 +551,42 @@ pub enum ProviderEvent {
         code: String,
         message: String,
     },
+    // ---------------------------------------------------------------------
+    // Agent loop phase events (Phase 1 — Agent Feedback & Status UI).
+    //
+    // These are emitted by the Rust agent loop (`run_agent_turn` in
+    // stream_manager.rs) to communicate phase transitions to the frontend
+    // so the UI can show progress during multi-round tool execution.
+    // ---------------------------------------------------------------------
+    /// Emitted when the agent loop enters a new phase or round.
+    AgentPhase {
+        request_id: String,
+        /// Human-readable label for the current phase.
+        label: String,
+        /// Round number (1-based).
+        round: u32,
+        /// Total rounds or 0 if unknown.
+        total_rounds: u32,
+        /// Sub-phase identifier: "thinking", "executing_tools", "reviewing", "connecting", "finalizing"
+        sub_phase: String,
+    },
+    /// Emitted when a tool execution starts in the agent loop.
+    ToolExecutionStarted {
+        request_id: String,
+        tool_call_id: String,
+        tool_name: String,
+    },
+    /// Emitted when a tool execution completes.
+    ToolExecutionFinished {
+        request_id: String,
+        tool_call_id: String,
+        tool_name: String,
+        /// True if the tool execution failed.
+        is_error: bool,
+        /// Optional error message.
+        #[ts(optional)]
+        error: Option<String>,
+    },
 }
 
 /// Annotations attached to a `ContentBlock`. OpenAI's `url_citation` is the

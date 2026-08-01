@@ -436,6 +436,7 @@ impl StreamManager {
         request_id: &str,
         conversation_id: &str,
         runtime_channel: Option<&Channel<ConnectorRuntimeEvent>>,
+        provider_channel: Option<&Channel<ProviderEvent>>,
     ) {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -469,6 +470,15 @@ impl StreamManager {
                 call.name.clone()
             };
 
+            // Emit tool execution started event.
+            if let Some(ch) = provider_channel {
+                let _ = ch.send(ProviderEvent::ToolExecutionStarted {
+                    request_id: request_id.to_string(),
+                    tool_call_id: call.tool_call_id.clone(),
+                    tool_name: tool_name.clone(),
+                });
+            }
+
             if agent_tools::is_builtin_tool_name(&tool_name) {
                 let outcome = agent_tools::execute_builtin_tool(
                     &ctx,
@@ -492,6 +502,16 @@ impl StreamManager {
                                 mime_hints: Vec::new(),
                                 error: exec.record.error.clone(),
                             });
+                            // Emit tool execution finished event.
+                            if let Some(ch) = provider_channel {
+                                let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                                    request_id: request_id.to_string(),
+                                    tool_call_id: exec.record.id.clone(),
+                                    tool_name: tool_name.clone(),
+                                    is_error: exec.is_error,
+                                    error: exec.record.error.clone(),
+                                });
+                            }
                         }
                         Err(error) => {
                             let _ = channel.send(ConnectorRuntimeEvent::ToolCallFinished {
@@ -500,8 +520,18 @@ impl StreamManager {
                                 is_error: Some(true),
                                 size_bytes: 0,
                                 mime_hints: Vec::new(),
-                                error: Some(error),
+                                error: Some(error.clone()),
                             });
+                            // Emit tool execution finished event with error.
+                            if let Some(ch) = provider_channel {
+                                let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                                    request_id: request_id.to_string(),
+                                    tool_call_id: call.tool_call_id.clone(),
+                                    tool_name: tool_name.clone(),
+                                    is_error: true,
+                                    error: Some(error),
+                                });
+                            }
                         }
                     }
                 }
@@ -895,6 +925,22 @@ impl StreamManager {
                 break;
             }
 
+            // Emit agent phase event before each provider round.
+            let total = max_steps as u32;
+            let round_num = (step + 1) as u32;
+            let (label, sub_phase) = if step == 0 {
+                ("Thinking".to_string(), "thinking".to_string())
+            } else {
+                ("Continuing".to_string(), "thinking".to_string())
+            };
+            let _ = channel.send(ProviderEvent::AgentPhase {
+                request_id: request_id.clone(),
+                label,
+                round: round_num,
+                total_rounds: total,
+                sub_phase,
+            });
+
             let outcome = self
                 .run_provider_round(
                     state,
@@ -928,6 +974,25 @@ impl StreamManager {
                 break;
             }
 
+        // Emit executing_tools phase before executing tools.
+            let total = max_steps as u32;
+            let round_num = (step + 1) as u32;
+            let _ = channel.send(ProviderEvent::AgentPhase {
+                request_id: request_id.clone(),
+                label: format!(
+                    "Running {} tool{}",
+                    outcome.completed_tool_calls.len(),
+                    if outcome.completed_tool_calls.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                ),
+                round: round_num,
+                total_rounds: total,
+                sub_phase: "executing_tools".to_string(),
+            });
+
             self.execute_resolved_tool_calls(
                 state,
                 runtime,
@@ -935,8 +1000,18 @@ impl StreamManager {
                 &request_id,
                 &conversation_id,
                 Some(&runtime_channel),
+                Some(&channel),
             )
             .await;
+
+            // Emit reviewing phase after tool execution, before continuation.
+            let _ = channel.send(ProviderEvent::AgentPhase {
+                request_id: request_id.clone(),
+                label: "Reviewing results".to_string(),
+                round: round_num,
+                total_rounds: total,
+                sub_phase: "reviewing".to_string(),
+            });
 
             info!(
                 request_id = %request_id,

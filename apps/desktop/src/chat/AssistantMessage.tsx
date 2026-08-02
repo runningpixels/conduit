@@ -59,7 +59,10 @@ export function AssistantMessage({
   }
 
   return (
-    <div className={`msg${state.streaming ? ' active enter' : ' enter'}`}>
+    <div
+      className={`msg${state.streaming ? ' active enter' : ' enter'}`}
+      {...(messageId ? { 'data-message-id': messageId } : {})}
+    >
       <div className="av-role bot">
         <BotGlyph />
       </div>

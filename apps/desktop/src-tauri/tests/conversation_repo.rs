@@ -152,10 +152,7 @@ async fn list_display_title_from_first_user_prompt_when_untitled() {
 
     let listed = conversations::list(&pool).await.unwrap();
     assert_eq!(listed.len(), 1);
-    assert_eq!(
-        listed[0].display_title,
-        "How do I refactor this module?"
-    );
+    assert_eq!(listed[0].display_title, "How do I refactor this module?");
 }
 
 #[tokio::test]

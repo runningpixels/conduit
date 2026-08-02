@@ -5,6 +5,19 @@
   "scripts": {
     "dev": "pnpm --dir apps/desktop dev",
     "build": "pnpm --dir apps/desktop build",
-    "check": "pnpm --dir apps/desktop check"
+    "check": "pnpm --dir apps/desktop check",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.rs": [
+      "cargo fmt --check"
+    ],
+    "*.{ts,tsx}": [
+      "pnpm -C apps/desktop check"
+    ]
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0"
   }
 }

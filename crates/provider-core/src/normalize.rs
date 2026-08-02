@@ -97,7 +97,9 @@ fn validate_message(message: &Message) -> Result<(), ProviderError> {
                     return Err(fatal("tool call parts require tool_call_id"));
                 }
                 if part.content.as_ref().is_none_or(|c| c.is_empty()) {
-                    return Err(fatal("tool call parts require content (serialized arguments)"));
+                    return Err(fatal(
+                        "tool call parts require content (serialized arguments)",
+                    ));
                 }
             }
             MessagePartKind::Image | MessagePartKind::File => {

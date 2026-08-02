@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
-import { ChatView } from './ChatView';
+import { ChatView, describeInvokeError } from './ChatView';
 
 const baseSettings: AppSettings = {
   activeProvider: 'anthropic',
@@ -93,6 +93,53 @@ function renderChatView(overrides: {
 
   return { onStatus, onSettingsChange };
 }
+
+describe('describeInvokeError', () => {
+  it('returns message from Error objects', () => {
+    expect(describeInvokeError(new Error('stream failed'))).toBe('stream failed');
+  });
+
+  it('returns plain string errors directly', () => {
+    expect(describeInvokeError('provider unavailable')).toBe('provider unavailable');
+    expect(describeInvokeError('')).toBe('');
+  });
+
+  it('extracts message from object with message property', () => {
+    expect(describeInvokeError({ message: 'rate limited' })).toBe('rate limited');
+  });
+
+  it('extracts error from object with error property', () => {
+    expect(describeInvokeError({ error: 'connection refused' })).toBe('connection refused');
+  });
+
+  it('stringifies unknown objects', () => {
+    const result = describeInvokeError({ code: 500, detail: 'timeout' });
+    expect(result).toContain('code');
+    expect(result).toContain('500');
+  });
+
+  it('returns fallback for null', () => {
+    expect(describeInvokeError(null)).toBe('Stream failed');
+  });
+
+  it('returns fallback for undefined', () => {
+    expect(describeInvokeError(undefined)).toBe('Stream failed');
+  });
+
+  it('returns fallback for numbers', () => {
+    expect(describeInvokeError(42)).toBe('Stream failed');
+  });
+
+  it('message property wins over error property', () => {
+    expect(describeInvokeError({ message: 'msg', error: 'err' })).toBe('msg');
+  });
+
+  it('returns fallback for objects that throw on JSON.stringify', () => {
+    const circular: Record<string, unknown> = { a: null };
+    circular.a = circular;
+    expect(describeInvokeError(circular)).toBe('Stream failed');
+  });
+});
 
 describe('ChatView suggested prompts', () => {
   beforeEach(() => {

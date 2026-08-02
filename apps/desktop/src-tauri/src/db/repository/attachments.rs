@@ -242,19 +242,19 @@ pub async fn list_blob_refs_for_conversation(
     pool: &SqlitePool,
     conversation_id: &str,
 ) -> Result<Vec<AttachmentBlobRef>, DbError> {
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT path, hash FROM attachments WHERE conversation_id = ?",
-    )
-    .bind(conversation_id)
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT path, hash FROM attachments WHERE conversation_id = ?")
+            .bind(conversation_id)
+            .fetch_all(pool)
+            .await?;
     Ok(rows)
 }
 
 /// List attachment blob paths (and hashes) across all conversations.
 pub async fn list_all_blob_refs(pool: &SqlitePool) -> Result<Vec<AttachmentBlobRef>, DbError> {
-    let rows: Vec<(String, Option<String>)> =
-        sqlx::query_as("SELECT path, hash FROM attachments").fetch_all(pool).await?;
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as("SELECT path, hash FROM attachments")
+        .fetch_all(pool)
+        .await?;
     Ok(rows)
 }
 

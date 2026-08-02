@@ -3,6 +3,7 @@ import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/
 import { getArtifactContentBytes, readArtifactFileBytes, revealArtifact } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
+import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
 import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon } from '../icons';
 import { Menu } from './Menu';
@@ -618,6 +619,7 @@ export function DocumentPanel({
       </div>
 
       <div className="doc-body scroll">
+        <DocumentPanelErrorBoundary>
         {pendingArtifact?.mode === 'edit' && (
           <div className="doc-banner hold" role="status">
             <strong>Updating document…</strong> The assistant is revising this artifact.
@@ -719,6 +721,7 @@ export function DocumentPanel({
             </aside>
           )}
         </div>
+        </DocumentPanelErrorBoundary>
       </div>
     </section>
   );

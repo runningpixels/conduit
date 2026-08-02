@@ -48,13 +48,23 @@ async fn persist_request_messages_keeps_user_turns_across_conversations() {
     // (UUIDs / DB PKs), both must survive.
     messages::persist_request_messages(
         &pool,
-        &[user_message(&convo_a.id, "uuid-A1", "hello from A", "2026-07-02T10:00:00Z")],
+        &[user_message(
+            &convo_a.id,
+            "uuid-A1",
+            "hello from A",
+            "2026-07-02T10:00:00Z",
+        )],
     )
     .await
     .unwrap();
     messages::persist_request_messages(
         &pool,
-        &[user_message(&convo_b.id, "uuid-B1", "hello from B", "2026-07-02T10:00:05Z")],
+        &[user_message(
+            &convo_b.id,
+            "uuid-B1",
+            "hello from B",
+            "2026-07-02T10:00:05Z",
+        )],
     )
     .await
     .unwrap();
@@ -83,11 +93,15 @@ async fn persist_request_messages_is_idempotent_within_a_conversation() {
     let convo = conversations::create(&pool, None).await.unwrap();
 
     let msg = user_message(&convo.id, "uuid-1", "first", "2026-07-02T10:00:00Z");
-    messages::persist_request_messages(&pool, &[msg.clone()]).await.unwrap();
+    messages::persist_request_messages(&pool, std::slice::from_ref(&msg))
+        .await
+        .unwrap();
     // Persist the same message again alongside a new one (simulating a second
     // turn re-sending history).
     let msg2 = user_message(&convo.id, "uuid-2", "second", "2026-07-02T10:00:10Z");
-    messages::persist_request_messages(&pool, &[msg, msg2]).await.unwrap();
+    messages::persist_request_messages(&pool, &[msg, msg2])
+        .await
+        .unwrap();
 
     let loaded = messages::load_conversation_messages(&pool, &convo.id)
         .await

@@ -123,7 +123,8 @@ pub fn parse_zen_models(response: &Value) -> Vec<ZenModelMeta> {
                 .or_else(|| item.get("name"))
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
-            let protocol = protocol_from_model_object(item).unwrap_or_else(|| protocol_from_model_id(&id));
+            let protocol =
+                protocol_from_model_object(item).unwrap_or_else(|| protocol_from_model_id(&id));
             Some(ZenModelMeta {
                 id,
                 display_name,
@@ -263,11 +264,9 @@ impl ProviderAdapter for OpenCodeZenAdapter {
                 message: "Hosted web search is not available through OpenCode Zen. Falling back to a no-search response.".to_string(),
             });
             request.web_search = None;
-            request.tool_definitions = request
+            request
                 .tool_definitions
-                .into_iter()
-                .filter(|tool| !matches!(tool.kind, Some(ToolKind::Hosted)))
-                .collect();
+                .retain(|tool| !matches!(tool.kind, Some(ToolKind::Hosted)));
         }
 
         let inner = match protocol {
@@ -314,7 +313,11 @@ mod tests {
             serde_json::from_str(include_str!("../../tests/fixtures/zen/models.json"))
                 .expect("zen models fixture");
         let models = parse_zen_models(&fixture);
-        assert!(models.len() >= 40, "expected full zen catalog, got {}", models.len());
+        assert!(
+            models.len() >= 40,
+            "expected full zen catalog, got {}",
+            models.len()
+        );
 
         let claude = models
             .iter()
@@ -344,7 +347,10 @@ mod tests {
             protocol_from_model_id("claude-sonnet-4-5"),
             ZenProtocol::Messages
         );
-        assert_eq!(protocol_from_model_id("qwen3.5-plus"), ZenProtocol::Messages);
+        assert_eq!(
+            protocol_from_model_id("qwen3.5-plus"),
+            ZenProtocol::Messages
+        );
         assert_eq!(protocol_from_model_id("gpt-5.4"), ZenProtocol::Responses);
         assert_eq!(
             protocol_from_model_id("gpt-5.3-codex"),
@@ -358,7 +364,10 @@ mod tests {
             protocol_from_model_id("deepseek-v4-flash"),
             ZenProtocol::ChatCompletions
         );
-        assert_eq!(protocol_from_model_id("glm-5"), ZenProtocol::ChatCompletions);
+        assert_eq!(
+            protocol_from_model_id("glm-5"),
+            ZenProtocol::ChatCompletions
+        );
         assert_eq!(
             protocol_from_model_id("kimi-k2.5"),
             ZenProtocol::ChatCompletions

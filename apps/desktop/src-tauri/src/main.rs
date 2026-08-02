@@ -102,6 +102,7 @@ fn main() {
             reveal_path,
             reveal_artifacts_dir,
             reveal_artifact,
+            search_messages,
             // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
             reset_local_database,
         ])

@@ -5,8 +5,8 @@ use crate::adapters::{
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
-    ContentAnnotation, GenerationControls, MessagePart, MessagePartKind, MessageRole, ProviderError,
-    ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
+    ContentAnnotation, GenerationControls, MessagePart, MessagePartKind, MessageRole,
+    ProviderError, ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
 };
 use crate::transport::{get_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -76,6 +76,7 @@ impl OpenAiAdapter {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn preset(
         provider_id: &'static str,
         display: &'static str,
@@ -98,7 +99,10 @@ impl OpenAiAdapter {
         }
     }
 
-    fn request_headers(&self, ctx: &AdapterContext) -> Result<reqwest::header::HeaderMap, ProviderError> {
+    fn request_headers(
+        &self,
+        ctx: &AdapterContext,
+    ) -> Result<reqwest::header::HeaderMap, ProviderError> {
         let token = if let Some(key) = ctx.api_key.as_deref() {
             key
         } else if self.optional_api_key {
@@ -335,9 +339,7 @@ impl StreamParser for OpenAiParser {
         // The two helpers below keep the dispatch table out of `parse_chunk`
         // so the chat-completions path above stays untouched.
         // -----------------------------------------------------------------
-        if let Some(events_from_item) =
-            self.parse_openai_response_item(request_id, &value, index)
-        {
+        if let Some(events_from_item) = self.parse_openai_response_item(request_id, &value, index) {
             events.extend(events_from_item);
         }
         // Text deltas must be parsed before annotations so `ContentBlockStart`
@@ -386,16 +388,13 @@ impl OpenAiParser {
         // Locate the item, whether it is wrapped (`response.output_item.*`)
         // or top-level. We accept either shape so the parser stays robust if
         // the upstream serialization changes.
-        let item = value
-            .get("item")
-            .filter(|v| v.is_object())
-            .or_else(|| {
-                if value.get("type").is_some() {
-                    Some(value)
-                } else {
-                    None
-                }
-            })?;
+        let item = value.get("item").filter(|v| v.is_object()).or_else(|| {
+            if value.get("type").is_some() {
+                Some(value)
+            } else {
+                None
+            }
+        })?;
         let item_type = item.get("type").and_then(|v| v.as_str())?;
         if item_type != "web_search_call" {
             return None;
@@ -464,8 +463,7 @@ impl OpenAiParser {
             });
             *index += 1;
             self.search_calls.remove(&item_id);
-            self.completed_search_calls =
-                self.completed_search_calls.saturating_add(1);
+            self.completed_search_calls = self.completed_search_calls.saturating_add(1);
             // Forward sources as a discrete event so the renderer can show a
             // sources list separately from the search block. Only emit when
             // the provider actually returned sources.
@@ -609,9 +607,7 @@ impl OpenAiParser {
                 }
             }
         }
-        if let Some(item_content) =
-            value.pointer("/item/content").and_then(|v| v.as_array())
-        {
+        if let Some(item_content) = value.pointer("/item/content").and_then(|v| v.as_array()) {
             for part in item_content {
                 if let Some(arr) = part.get("annotations").and_then(|v| v.as_array()) {
                     annotations.extend(arr.iter());
@@ -1055,7 +1051,11 @@ impl ProviderAdapter for OpenAiAdapter {
         // outright when local-only is on; this is defense-in-depth so a
         // direct adapter call (e.g. from a future tenant-provided MCP server)
         // cannot bypass the user's local-only intent.
-        let web_search_intent = request.web_search.as_ref().map(|w| w.enabled).unwrap_or(false);
+        let web_search_intent = request
+            .web_search
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or(false);
         if ctx.local_only && web_search_intent {
             return Err(ProviderError {
                 provider_code: Some("local_only_block".to_string()),
@@ -1213,7 +1213,9 @@ mod tests {
             })
             .collect();
         assert!(
-            starts.iter().any(|(_, id, n)| id == "web_search" && n == "web_search"),
+            starts
+                .iter()
+                .any(|(_, id, n)| id == "web_search" && n == "web_search"),
             "expected a ToolCallStart with tool_id=name=web_search, got {starts:?}"
         );
 
@@ -1222,9 +1224,11 @@ mod tests {
         let deltas: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ProviderEvent::ToolCallDelta { tool_call_id, content, .. } => {
-                    Some((tool_call_id.clone(), content.clone()))
-                }
+                ProviderEvent::ToolCallDelta {
+                    tool_call_id,
+                    content,
+                    ..
+                } => Some((tool_call_id.clone(), content.clone())),
                 _ => None,
             })
             .collect();
@@ -1237,15 +1241,18 @@ mod tests {
         let completes: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ProviderEvent::ToolCallComplete { tool_call_id, arguments, .. } => {
-                    Some((tool_call_id.clone(), arguments.clone()))
-                }
+                ProviderEvent::ToolCallComplete {
+                    tool_call_id,
+                    arguments,
+                    ..
+                } => Some((tool_call_id.clone(), arguments.clone())),
                 _ => None,
             })
             .collect();
         assert!(
-            completes.iter().any(|(_, args)| args.get("query").is_some()
-                && args.get("status").is_some()),
+            completes
+                .iter()
+                .any(|(_, args)| args.get("query").is_some() && args.get("status").is_some()),
             "expected ToolCallComplete with query+status, got {completes:?}"
         );
     }
@@ -1258,14 +1265,16 @@ mod tests {
         let deltas: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ProviderEvent::ContentDelta { block_id, content, .. } => {
-                    Some((block_id.clone(), content.clone()))
-                }
+                ProviderEvent::ContentDelta {
+                    block_id, content, ..
+                } => Some((block_id.clone(), content.clone())),
                 _ => None,
             })
             .collect();
         assert!(
-            deltas.iter().any(|(id, c)| id == "block-1" && c.contains("Anora")),
+            deltas
+                .iter()
+                .any(|(id, c)| id == "block-1" && c.contains("Anora")),
             "expected ContentDelta for block-1 with the answer text, got {deltas:?}"
         );
 
@@ -1288,7 +1297,9 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 ProviderEvent::Citation {
-                    annotation, block_id, ..
+                    annotation,
+                    block_id,
+                    ..
                 } => Some((block_id.clone(), annotation.clone())),
                 _ => None,
             })
@@ -1401,11 +1412,20 @@ mod tests {
 
         let body = build_payload(&NormalizedRequest { request }, false);
         // Responses-API field shape, not chat-completions.
-        assert!(body.get("input").is_some(), "must use Responses-API `input` field");
-        assert!(body.get("messages").is_none(), "must not emit chat-completions `messages`");
+        assert!(
+            body.get("input").is_some(),
+            "must use Responses-API `input` field"
+        );
+        assert!(
+            body.get("messages").is_none(),
+            "must not emit chat-completions `messages`"
+        );
 
         // Hosted tool injection.
-        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
+        let tools = body
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .expect("tools array");
         let ws_tool = tools
             .iter()
             .find(|t| t.get("type").and_then(|v| v.as_str()) == Some("web_search"))
@@ -1425,14 +1445,21 @@ mod tests {
             Some(true)
         );
         assert_eq!(
-            ws_tool.pointer("/user_location/approximate/country").and_then(|v| v.as_str()),
+            ws_tool
+                .pointer("/user_location/approximate/country")
+                .and_then(|v| v.as_str()),
             Some("FR")
         );
 
         // include directive when sources are requested.
-        let includes = body.get("include").and_then(|v| v.as_array()).expect("include array");
+        let includes = body
+            .get("include")
+            .and_then(|v| v.as_array())
+            .expect("include array");
         assert!(
-            includes.iter().any(|v| v.as_str() == Some("web_search_call.action.sources")),
+            includes
+                .iter()
+                .any(|v| v.as_str() == Some("web_search_call.action.sources")),
             "include must request sources when include_sources=true"
         );
 
@@ -1555,10 +1582,20 @@ mod tests {
         };
 
         let body = build_payload(&NormalizedRequest { request }, false);
-        assert!(body.get("messages").is_some(), "chat-completions path keeps `messages`");
-        assert!(body.get("input").is_none(), "must not emit Responses-API `input`");
         assert!(
-            body.get("tools").is_none() || body.get("tools").and_then(|v| v.as_array()).map_or(true, |a| a.is_empty()),
+            body.get("messages").is_some(),
+            "chat-completions path keeps `messages`"
+        );
+        assert!(
+            body.get("input").is_none(),
+            "must not emit Responses-API `input`"
+        );
+        assert!(
+            body.get("tools").is_none()
+                || body
+                    .get("tools")
+                    .and_then(|v| v.as_array())
+                    .is_none_or(|a| a.is_empty()),
             "must not inject hosted tools on the chat-completions path"
         );
     }
@@ -1594,10 +1631,21 @@ mod tests {
         // Web search is not on the request itself, but the catalog is exposing
         // a hosted tool. build_payload should still emit it as a hosted tool
         // object, not a function tool.
-        let body = build_payload(&NormalizedRequest { request: request.clone() }, false);
-        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
+        let body = build_payload(
+            &NormalizedRequest {
+                request: request.clone(),
+            },
+            false,
+        );
+        let tools = body
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .expect("tools array");
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].get("type").and_then(|v| v.as_str()), Some("web_search"));
+        assert_eq!(
+            tools[0].get("type").and_then(|v| v.as_str()),
+            Some("web_search")
+        );
         assert_eq!(
             tools[0].get("search_context_size").and_then(|v| v.as_str()),
             Some("high"),
@@ -1617,8 +1665,14 @@ mod tests {
             tenant_scope: None,
         }];
         let body = build_payload(&NormalizedRequest { request }, false);
-        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
-        assert_eq!(tools[0].get("type").and_then(|v| v.as_str()), Some("function"));
+        let tools = body
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .expect("tools array");
+        assert_eq!(
+            tools[0].get("type").and_then(|v| v.as_str()),
+            Some("function")
+        );
         assert_eq!(
             tools[0].pointer("/function/name").and_then(|v| v.as_str()),
             Some("get_weather")

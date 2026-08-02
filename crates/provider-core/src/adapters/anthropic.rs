@@ -4,7 +4,8 @@ use crate::adapters::{
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
-    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest, ToolChoice,
+    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
+    ToolChoice,
 };
 use crate::transport::{api_key_header, get_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -259,8 +260,8 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                             .unwrap_or("");
                         let raw_args = p.content.as_deref().unwrap_or("{}");
                         // Anthropic expects tool_use.input as a JSON object, not a string.
-                        let input: serde_json::Value = serde_json::from_str(raw_args)
-                            .unwrap_or(serde_json::json!({}));
+                        let input: serde_json::Value =
+                            serde_json::from_str(raw_args).unwrap_or(serde_json::json!({}));
                         content.push(json!({
                             "type": "tool_use",
                             "id": p.tool_call_id.as_deref().unwrap_or(""),

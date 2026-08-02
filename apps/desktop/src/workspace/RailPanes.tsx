@@ -704,6 +704,7 @@ export function RailPanes({
         onConversationRenamed={onConversationRenamed}
       />
       <ArtifactsPane
+        key={activeConversationId ?? 'no-conversation'}
         paneActive={active === 'artifacts'}
         artifacts={artifacts}
         fileStateMap={fileStateMap}

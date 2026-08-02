@@ -295,6 +295,9 @@ mod tests {
     #[test]
     fn resolve_display_title_falls_back_when_empty() {
         assert_eq!(resolve_display_title(None, None), "Untitled chat");
-        assert_eq!(resolve_display_title(Some("   "), Some("   ")), "Untitled chat");
+        assert_eq!(
+            resolve_display_title(Some("   "), Some("   ")),
+            "Untitled chat"
+        );
     }
 }

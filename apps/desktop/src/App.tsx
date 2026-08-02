@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppPaths, AppSettings, Artifact, ArtifactContent, ConversationSummary, FileState, OnboardingState } from './ipc/contracts';
+import type { AppPaths, AppSettings, Artifact, ArtifactContent, ConversationSummary, FileState, OnboardingState, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
 import { ToastStack } from './workspace/ToastStack';
@@ -18,6 +18,7 @@ import {
   getSettings,
   listConversations,
   revealArtifactsDir,
+  searchMessages,
   setArtifactContent,
   setArtifactTitle,
   updateSettings,
@@ -338,6 +339,19 @@ export default function App() {
     [clearWorkspaceArtifactSelection],
   );
 
+  const handleSelectSearchResult = useCallback(
+    (result: SearchResult) => {
+      setActiveConversationId(result.conversationId);
+      setActiveTab('chat');
+      clearWorkspaceArtifactSelection();
+      // ChatView loads messages on conversationId change; scroll after render
+      setTimeout(() => {
+        chatViewRef.current?.scrollToMessage(result.messageId);
+      }, 200);
+    },
+    [clearWorkspaceArtifactSelection],
+  );
+
   const handleDeleteConversation = useCallback((id: string) => {
     setConfirmDeleteId(id);
   }, []);
@@ -508,6 +522,9 @@ export default function App() {
 
   useEffect(() => {
     if (!activeArtifact) return;
+    // Only poll file-backed artifacts — inline-payload artifacts never change
+    // on disk, so the periodic check is wasted work.
+    if (!activeArtifact.contentPath) return;
     const tick = () => {
       if (document.visibilityState !== 'visible') return;
       if (docPanelCollapsed) return;
@@ -868,6 +885,8 @@ export default function App() {
         onToggleDocPanel={toggleDocPanel}
         conversations={paletteConversations}
         onSelectConversation={handleSelectConversation}
+        onSearchMessages={(query) => searchMessages({ query })}
+        onSelectSearchResult={handleSelectSearchResult}
       />
 
       <ConfirmDialog

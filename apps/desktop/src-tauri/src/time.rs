@@ -10,7 +10,7 @@ use chrono::Utc;
 
 /// Canonical timestamp for `created_at` / `*_at` fields: ISO-8601 UTC.
 pub fn now_iso8601() -> String {
-    Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
 /// Unix seconds since epoch, for filenames and non-field uses only.
@@ -42,8 +42,15 @@ mod tests {
     #[test]
     fn iso8601_sorts_lexicographically() {
         // Two strings a second apart must sort in creation order.
-        let earlier = "2026-06-22T13:45:00Z";
-        let later = "2026-06-22T13:45:01Z";
+        let earlier = "2026-06-22T13:45:00.000Z";
+        let later = "2026-06-22T13:45:01.000Z";
         assert!(earlier < later);
+
+        // Millisecond precision must be present.
+        let s = now_iso8601();
+        assert!(
+            s.contains('.') && s.contains('Z'),
+            "expected millisecond precision, got {s}"
+        );
     }
 }

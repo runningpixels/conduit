@@ -73,6 +73,7 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, artifactCount
             aria-label={btn.label}
             title={btn.label}
             aria-current={isCurrent ? 'page' : undefined}
+            aria-selected={isCurrent}
             onClick={() => onSelect(btn.tab)}
           >
             {badge !== undefined && <span className="badge">{badge}</span>}
@@ -90,6 +91,7 @@ export function Rail({ active, onSelect, expanded, onToggleExpand, artifactCount
           aria-label="Settings"
           title="Settings"
           aria-current={active === 'settings' ? 'page' : undefined}
+          aria-selected={active === 'settings'}
           onClick={() => onSelect('settings')}
         >
           <SettingsIcon />

@@ -16,14 +16,8 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt clippy
           rustup default stable
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -82,14 +76,8 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-smoke-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4

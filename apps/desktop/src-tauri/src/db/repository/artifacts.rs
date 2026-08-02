@@ -462,12 +462,11 @@ pub async fn list_file_refs_for_conversation(
     pool: &SqlitePool,
     conversation_id: &str,
 ) -> Result<Vec<ArtifactFileRef>, DbError> {
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT id, content_path FROM artifacts WHERE conversation_id = ?",
-    )
-    .bind(conversation_id)
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT id, content_path FROM artifacts WHERE conversation_id = ?")
+            .bind(conversation_id)
+            .fetch_all(pool)
+            .await?;
     Ok(rows)
 }
 

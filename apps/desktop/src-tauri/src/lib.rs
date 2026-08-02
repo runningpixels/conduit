@@ -20,3 +20,4 @@ pub mod stream_manager;
 pub mod stream_persistence;
 pub mod time;
 pub mod updater;
+pub mod validation;

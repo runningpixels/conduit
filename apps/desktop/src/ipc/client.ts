@@ -34,6 +34,8 @@ import type {
   UpdateInfo,
   OnboardingState,
   ProviderDescriptor,
+  SearchMessagesRequest,
+  SearchResult,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -296,6 +298,17 @@ export async function listArtifacts(conversationId: string): Promise<Artifact[]>
 /// Resolve the persisted message row id for a chat stream `requestId`.
 export async function getMessageIdByRequest(requestId: string): Promise<string | null> {
   return invoke<string | null>('get_message_id_by_request', { requestId });
+}
+
+// =============================================================================
+// FTS5 Full-Text Search
+// =============================================================================
+
+/// Search messages using the FTS5 index. Returns results ordered by relevance.
+export async function searchMessages(
+  request: SearchMessagesRequest,
+): Promise<SearchResult[]> {
+  return invoke<SearchResult[]>('search_messages', { request });
 }
 
 /// Fetch a single payload-bearing artifact (inline content decrypted).

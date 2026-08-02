@@ -12,14 +12,13 @@
 
 use provider_core::schema::{
     AgentGuardrails, AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition,
-    ConnectorGrant,
-    ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation,
-    Conversation, ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls,
-    GrantScope, GrantStatus, LicenseClaims, Message, MessagePart, MessagePartKind, MessageRole,
-    ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig, ProviderError,
-    ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint, RetentionState,
-    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SupportState,
-    TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt,
+    ContentAnnotation, Conversation, ConversationSummary, CredentialRequest, CredentialSummary,
+    GenerationControls, GrantScope, GrantStatus, LicenseClaims, Message, MessagePart,
+    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig,
+    ProviderError, ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint,
+    RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch,
+    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
     ToolDefinition, ToolKind, Transport, UserLocation, WebSearchDefaults, WebSearchFilters,
     WebSearchRequest,
 };

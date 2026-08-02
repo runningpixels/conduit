@@ -3,7 +3,9 @@ use crate::adapters::{
     message_text, normalized_or_err, parse_fixture_stream, role_to_string, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
-use crate::schema::{MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest};
+use crate::schema::{
+    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
+};
 use crate::transport::{get_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::Stream;

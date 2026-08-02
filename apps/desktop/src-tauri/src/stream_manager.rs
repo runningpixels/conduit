@@ -428,6 +428,7 @@ impl StreamManager {
     /// Execute a batch of tool calls resolved from a provider round.
     /// This is the direct in-process invocation of the Phase 4 execution pipeline
     /// from the agent loop, preserving consent, redaction, and persistence.
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute_resolved_tool_calls(
         &self,
         state: &AppState,
@@ -662,7 +663,7 @@ impl StreamManager {
             });
         }
 
-// 4. Persist tool-call metadata on the event-folded assistant message
+        // 4. Persist tool-call metadata on the event-folded assistant message
         // so tool calls survive conversation reload (R1 of the Phase A plan).
         if !tool_call_tuples.is_empty() {
             match messages::get_message_id_by_request(pool, &previous_request.request_id).await {
@@ -739,9 +740,15 @@ impl StreamManager {
         // Add ToolCall-kind parts (one per tool call) so the adapters can
         // serialize them directly without digging into metadata.
         for tc in &tool_call_meta {
-            let tc_id = tc.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("");
+            let tc_id = tc
+                .get("tool_call_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let tc_name = tc.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let tc_args = tc.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
+            let tc_args = tc
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             let idx = assistant_parts.len() as u32;
             assistant_parts.push(MessagePart {
                 id: format!("{}/tc-{}", previous_request.request_id, tc_id),
@@ -954,9 +961,21 @@ impl StreamManager {
             if let Some(ref round_usage) = outcome.usage {
                 cumulative_usage = Some(match cumulative_usage.take() {
                     Some(acc) => provider_core::schema::ProviderUsage {
-                        input_tokens: acc.input_tokens.zip(round_usage.input_tokens).map(|(a, b)| a + b).or(acc.input_tokens.or(round_usage.input_tokens)),
-                        output_tokens: acc.output_tokens.zip(round_usage.output_tokens).map(|(a, b)| a + b).or(acc.output_tokens.or(round_usage.output_tokens)),
-                        cache_tokens: acc.cache_tokens.zip(round_usage.cache_tokens).map(|(a, b)| a + b).or(acc.cache_tokens.or(round_usage.cache_tokens)),
+                        input_tokens: acc
+                            .input_tokens
+                            .zip(round_usage.input_tokens)
+                            .map(|(a, b)| a + b)
+                            .or(acc.input_tokens.or(round_usage.input_tokens)),
+                        output_tokens: acc
+                            .output_tokens
+                            .zip(round_usage.output_tokens)
+                            .map(|(a, b)| a + b)
+                            .or(acc.output_tokens.or(round_usage.output_tokens)),
+                        cache_tokens: acc
+                            .cache_tokens
+                            .zip(round_usage.cache_tokens)
+                            .map(|(a, b)| a + b)
+                            .or(acc.cache_tokens.or(round_usage.cache_tokens)),
                         cost_hint: round_usage.cost_hint.clone(),
                     },
                     None => round_usage.clone(),
@@ -974,7 +993,7 @@ impl StreamManager {
                 break;
             }
 
-        // Emit executing_tools phase before executing tools.
+            // Emit executing_tools phase before executing tools.
             let total = max_steps as u32;
             let round_num = (step + 1) as u32;
             let _ = channel.send(ProviderEvent::AgentPhase {

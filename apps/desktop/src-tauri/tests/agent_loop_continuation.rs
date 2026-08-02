@@ -8,11 +8,11 @@ use conduit_desktop::{
     state::AppState,
     stream_manager::StreamManager,
 };
+use provider_core::normalize::validate;
 use provider_core::schema::{
     Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
     ToolCallRecord, ToolCallStatus,
 };
-use provider_core::normalize::validate;
 use serde_json::json;
 
 fn test_paths(root: &Path) -> AppPaths {
@@ -424,7 +424,14 @@ async fn seed_round_with_tool(
         .unwrap();
 
     for (tool_call_id, _name, result_value) in tool_results {
-        insert_call(pool, request_id, tool_call_id, ToolCallStatus::Completed, None).await;
+        insert_call(
+            pool,
+            request_id,
+            tool_call_id,
+            ToolCallStatus::Completed,
+            None,
+        )
+        .await;
         tool_calls::insert_tool_result(pool, encryption, tool_call_id, result_value, false)
             .await
             .unwrap();
@@ -451,7 +458,11 @@ async fn continuation_accumulates_messages_across_rounds() {
         .build_continuation_request(&state, &request(&conversation_id, "req-1"), &[])
         .await
         .unwrap();
-    assert_eq!(r1.messages.len(), 3, "user + assistant + tool after round 1");
+    assert_eq!(
+        r1.messages.len(),
+        3,
+        "user + assistant + tool after round 1"
+    );
 
     // Round 2: assistant says "Result is 42." → calls search again → result "99"
     let r2_req_id = r1.request_id.clone();
@@ -469,16 +480,31 @@ async fn continuation_accumulates_messages_across_rounds() {
         .build_continuation_request(&state, &r1, &[])
         .await
         .unwrap();
-    assert_eq!(r2.messages.len(), 5, "user + r1-assistant + r1-tool + r2-assistant + r2-tool");
+    assert_eq!(
+        r2.messages.len(),
+        5,
+        "user + r1-assistant + r1-tool + r2-assistant + r2-tool"
+    );
 
     // Verify the assistant messages carry the round text
-    let assistants: Vec<&Message> = r2.messages.iter().filter(|m| m.role == MessageRole::Assistant).collect();
+    let assistants: Vec<&Message> = r2
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Assistant)
+        .collect();
     assert_eq!(assistants.len(), 2);
     // Round 1 assistant text is in the event-folded part (metadata-less)
-    assert!(assistants[0].parts.iter().any(|p| p.content.as_deref() == Some("Let me search.")));
+    assert!(assistants[0]
+        .parts
+        .iter()
+        .any(|p| p.content.as_deref() == Some("Let me search.")));
 
     // Verify tool messages carry the correct results in order
-    let tools: Vec<&Message> = r2.messages.iter().filter(|m| m.role == MessageRole::Tool).collect();
+    let tools: Vec<&Message> = r2
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .collect();
     assert_eq!(tools.len(), 2);
     assert_eq!(tools[0].parts[0].tool_call_id.as_deref(), Some("call-1"));
     assert_eq!(tools[1].parts[0].tool_call_id.as_deref(), Some("call-2"));
@@ -491,7 +517,10 @@ async fn continuation_threeround_accumulation() {
 
     // Round 1
     seed_round_with_tool(
-        &pool, &state.encryption, &conversation_id, "req-1",
+        &pool,
+        &state.encryption,
+        &conversation_id,
+        "req-1",
         "Step 1.",
         &[("c1", "search", json!("r1"))],
     )
@@ -504,7 +533,10 @@ async fn continuation_threeround_accumulation() {
     // Round 2
     let r2_id = r1.request_id.clone();
     seed_round_with_tool(
-        &pool, &state.encryption, &conversation_id, &r2_id,
+        &pool,
+        &state.encryption,
+        &conversation_id,
+        &r2_id,
         "Step 2.",
         &[("c2", "search", json!("r2"))],
     )
@@ -517,7 +549,10 @@ async fn continuation_threeround_accumulation() {
     // Round 3
     let r3_id = r2.request_id.clone();
     seed_round_with_tool(
-        &pool, &state.encryption, &conversation_id, &r3_id,
+        &pool,
+        &state.encryption,
+        &conversation_id,
+        &r3_id,
         "Step 3.",
         &[("c3", "search", json!("r3"))],
     )
@@ -533,10 +568,18 @@ async fn continuation_threeround_accumulation() {
         "user + 3×(assistant+tool) after 3 rounds"
     );
 
-    let assistants: Vec<&Message> = r3.messages.iter().filter(|m| m.role == MessageRole::Assistant).collect();
+    let assistants: Vec<&Message> = r3
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Assistant)
+        .collect();
     assert_eq!(assistants.len(), 3);
 
-    let tools: Vec<&Message> = r3.messages.iter().filter(|m| m.role == MessageRole::Tool).collect();
+    let tools: Vec<&Message> = r3
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .collect();
     assert_eq!(tools.len(), 3);
 
     // Verify tool_call_ids are in order
@@ -562,7 +605,11 @@ async fn continuation_with_multiple_parallel_tools_in_one_round() {
         let tool_id = format!("call-par-{i}");
         insert_call(&pool, "req-1", &tool_id, ToolCallStatus::Completed, None).await;
         tool_calls::insert_tool_result(
-            &pool, &state.encryption, &tool_id, &json!(format!("result-{i}")), false,
+            &pool,
+            &state.encryption,
+            &tool_id,
+            &json!(format!("result-{i}")),
+            false,
         )
         .await
         .unwrap();
@@ -578,7 +625,11 @@ async fn continuation_with_multiple_parallel_tools_in_one_round() {
         .iter()
         .find(|m| m.role == MessageRole::Tool)
         .unwrap();
-    assert_eq!(tool.parts.len(), 3, "all 3 tool results in one tool message");
+    assert_eq!(
+        tool.parts.len(),
+        3,
+        "all 3 tool results in one tool message"
+    );
     for i in 0..3 {
         let expected_id = format!("call-par-{i}");
         assert_eq!(
@@ -598,7 +649,10 @@ async fn continuation_preserves_prior_assistant_text_in_transcript() {
 
     // Round 1: assistant says "Let me check." and calls a tool
     seed_round_with_tool(
-        &pool, &state.encryption, &conversation_id, "req-1",
+        &pool,
+        &state.encryption,
+        &conversation_id,
+        "req-1",
         "Let me check the database.",
         &[("call-db", "query_db", json!("found 5 records"))],
     )
@@ -611,7 +665,10 @@ async fn continuation_preserves_prior_assistant_text_in_transcript() {
     // Round 2: assistant says "Here are the results." and calls another tool
     let r2_id = r1.request_id.clone();
     seed_round_with_tool(
-        &pool, &state.encryption, &conversation_id, &r2_id,
+        &pool,
+        &state.encryption,
+        &conversation_id,
+        &r2_id,
         "Here are the results from the database.",
         &[("call-format", "format", json!("formatted output"))],
     )
@@ -630,28 +687,27 @@ async fn continuation_preserves_prior_assistant_text_in_transcript() {
     );
 
     // Round 1 assistant should have tool-call metadata persisted
-    let round1 = messages_before
-        .iter()
-        .find(|m| {
-            m.role == MessageRole::Assistant
-                && m.parts
-                    .iter()
-                    .any(|p| p.metadata.as_ref().and_then(|m| m.get("tool_calls")).is_some())
-        });
+    let round1 = messages_before.iter().find(|m| {
+        m.role == MessageRole::Assistant
+            && m.parts.iter().any(|p| {
+                p.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("tool_calls"))
+                    .is_some()
+            })
+    });
     assert!(
         round1.is_some(),
         "round 1 assistant should have tool-call metadata persisted"
     );
 
     // Round 2 should also have a persisted assistant message (event fold)
-    let round2 = messages_before
-        .iter()
-        .find(|m| {
-            m.role == MessageRole::Assistant
-                && m.parts
-                    .iter()
-                    .any(|p| p.content.as_deref() == Some("Here are the results from the database."))
-        });
+    let round2 = messages_before.iter().find(|m| {
+        m.role == MessageRole::Assistant
+            && m.parts
+                .iter()
+                .any(|p| p.content.as_deref() == Some("Here are the results from the database."))
+    });
     assert!(
         round2.is_some(),
         "round 2 assistant should be persisted by the event fold"
@@ -676,7 +732,10 @@ async fn continuation_preserves_prior_assistant_text_in_transcript() {
         .await
         .unwrap();
 
-    let tool_msgs: Vec<&Message> = messages_after.iter().filter(|m| m.role == MessageRole::Tool).collect();
+    let tool_msgs: Vec<&Message> = messages_after
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .collect();
     assert_eq!(
         tool_msgs.len(),
         2,
@@ -695,13 +754,12 @@ async fn continuation_preserves_prior_assistant_text_in_transcript() {
 #[tokio::test]
 async fn round_outcome_usage_defaults_to_none() {
     // RoundOutcome's `usage` field must default to None for the Default impl.
-    let outcome =
-        conduit_desktop::stream_manager::RoundOutcome {
-            completed_tool_calls: Vec::new(),
-            finished_normally: false,
-            error_message: None,
-            usage: None,
-        };
+    let outcome = conduit_desktop::stream_manager::RoundOutcome {
+        completed_tool_calls: Vec::new(),
+        finished_normally: false,
+        error_message: None,
+        usage: None,
+    };
     assert!(outcome.usage.is_none());
 }
 
@@ -787,9 +845,21 @@ async fn cumulative_usage_handles_none_first_round() {
     // Second round: accumulate None + round2
     cumulative = Some(match cumulative.take() {
         Some(acc) => ProviderUsage {
-            input_tokens: acc.input_tokens.zip(round2.input_tokens).map(|(a, b)| a + b).or(acc.input_tokens.or(round2.input_tokens)),
-            output_tokens: acc.output_tokens.zip(round2.output_tokens).map(|(a, b)| a + b).or(acc.output_tokens.or(round2.output_tokens)),
-            cache_tokens: acc.cache_tokens.zip(round2.cache_tokens).map(|(a, b)| a + b).or(acc.cache_tokens.or(round2.cache_tokens)),
+            input_tokens: acc
+                .input_tokens
+                .zip(round2.input_tokens)
+                .map(|(a, b)| a + b)
+                .or(acc.input_tokens.or(round2.input_tokens)),
+            output_tokens: acc
+                .output_tokens
+                .zip(round2.output_tokens)
+                .map(|(a, b)| a + b)
+                .or(acc.output_tokens.or(round2.output_tokens)),
+            cache_tokens: acc
+                .cache_tokens
+                .zip(round2.cache_tokens)
+                .map(|(a, b)| a + b)
+                .or(acc.cache_tokens.or(round2.cache_tokens)),
             cost_hint: round2.cost_hint.clone(),
         },
         None => round2.clone(),

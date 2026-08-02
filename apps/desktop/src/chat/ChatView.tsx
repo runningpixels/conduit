@@ -33,6 +33,7 @@ import {
 import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
+import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { Composer, type ComposerHandle } from './Composer';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
 import { SuggestedPrompts } from './SuggestedPrompts';
@@ -66,6 +67,8 @@ export interface ChatViewHandle {
   stopStreaming: () => void;
   copyLastAssistantMessage: () => Promise<boolean>;
   isStreaming: () => boolean;
+  /// Scroll a message into view (used by FTS5 search navigation).
+  scrollToMessage: (messageId: string) => void;
 }
 
 interface ChatViewProps {
@@ -98,7 +101,7 @@ interface ChatViewProps {
 /// error (a plain string, or an object), not an `Error` instance — so
 /// `error instanceof Error` is false and the generic "Stream failed" would
 /// otherwise swallow the real reason. Fall back through the common shapes.
-function describeInvokeError(error: unknown): string {
+export function describeInvokeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   if (error && typeof error === 'object') {
@@ -825,6 +828,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         return false;
       }
     },
+    scrollToMessage: (messageId: string) => {
+      // Small delay to let the DOM settle after conversation switch
+      setTimeout(() => {
+        const el = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('message-highlight');
+          setTimeout(() => el.classList.remove('message-highlight'), 2000);
+        }
+      }, 100);
+    },
   }));
 
   function handleWebSearchToggle() {
@@ -873,6 +887,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       data-active={paneActive ? 'true' : 'false'}
       aria-label="Chat session"
     >
+      <ChatErrorBoundary>
       <div className="thread scroll" ref={threadRef}>
         <div className="thread-inner">
           {threadLoading && (
@@ -900,7 +915,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           )}
           {!threadLoading && turns.map((turn) =>
             turn.role === 'user' ? (
-              <div key={turn.id} className="msg enter">
+              <div key={turn.id} className="msg enter" data-message-id={turn.id}>
                 <div className="av-role you">You</div>
                 <div className="msg-body">
                   <div className="msg-from">
@@ -935,7 +950,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 onOpenArtifact={onOpenArtifact}
               />
             ) : (
-              <div key={turn.id} className="msg enter">
+              <div key={turn.id} className="msg enter" data-message-id={turn.id}>
                 <div className="av-role bot" />
                 <div className="msg-body">
                   <div className="msg-from">
@@ -979,6 +994,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           )}
         </div>
       </div>
+      </ChatErrorBoundary>
 
       {showJumpPill && !stuckToBottom && (
         <button

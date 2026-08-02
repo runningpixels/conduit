@@ -276,3 +276,23 @@ export interface Attachment {
   retentionState: string;
   createdAt: string;
 }
+
+// =============================================================================
+// FTS5 Full-Text Search (Competitive Feature — Conversation Search)
+// =============================================================================
+
+export interface SearchResult {
+  messageId: string;
+  conversationId: string;
+  conversationTitle?: string;
+  role: string;
+  snippet: string;
+  matchStart: number;
+  matchEnd: number;
+  createdAt: string;
+}
+
+export interface SearchMessagesRequest {
+  query: string;
+  limit?: number;
+}

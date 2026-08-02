@@ -10,7 +10,8 @@ pub mod transport;
 
 pub use adapter::{get_adapter, AdapterContext, ModelInfo, ProviderAdapter};
 pub use catalog::{
-    descriptor, has_usable_provider_credential, list_descriptors, CredentialMode, ProviderDescriptor,
+    descriptor, has_usable_provider_credential, list_descriptors, CredentialMode,
+    ProviderDescriptor,
 };
 pub use normalize::{validate, NormalizedRequest};
 pub use schema::*;

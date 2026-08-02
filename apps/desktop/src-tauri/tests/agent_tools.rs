@@ -84,7 +84,7 @@ async fn write_html_document_creates_when_artifact_id_unknown() {
     .await
     .expect("tool runs");
 
-    assert_eq!(result.is_error, false);
+    assert!(!result.is_error);
     let artifact_id = result
         .output
         .get("artifact_id")

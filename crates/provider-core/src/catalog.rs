@@ -210,9 +210,6 @@ mod tests {
 
     #[test]
     fn credential_gate_any_stored_cloud_key() {
-        assert!(has_usable_provider_credential(
-            "anthropic",
-            |id| id == "openrouter"
-        ));
+        assert!(has_usable_provider_credential("anthropic", |id| id == "openrouter"));
     }
 }

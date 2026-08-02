@@ -1,0 +1,21 @@
+/* ── Syntax highlighting tokens (chat inline + artifact code preview) ─── */
+.inline-code-block-body .token,
+.artifact-code-body .token { unicode-bidi: isolate; }
+.inline-code-block-body .token.comment, .artifact-code-body .token.comment,
+.inline-code-block-body .token.prolog, .artifact-code-body .token.prolog,
+.inline-code-block-body .token.doctype, .artifact-code-body .token.doctype { color: var(--syn-comment); font-style: italic; }
+.inline-code-block-body .token.keyword, .artifact-code-body .token.keyword { color: var(--syn-keyword); }
+.inline-code-block-body .token.string, .artifact-code-body .token.string,
+.inline-code-block-body .token.char, .artifact-code-body .token.char,
+.inline-code-block-body .token.attr-value, .artifact-code-body .token.attr-value { color: var(--syn-string); }
+.inline-code-block-body .token.number, .artifact-code-body .token.number,
+.inline-code-block-body .token.boolean, .artifact-code-body .token.boolean { color: var(--syn-number); }
+.inline-code-block-body .token.function, .artifact-code-body .token.function { color: var(--syn-function); }
+.inline-code-block-body .token.tag, .artifact-code-body .token.tag,
+.inline-code-block-body .token.class-name, .artifact-code-body .token.class-name { color: var(--syn-tag); }
+.inline-code-block-body .token.attr-name, .artifact-code-body .token.attr-name,
+.inline-code-block-body .token.property, .artifact-code-body .token.property { color: var(--syn-property); }
+.inline-code-block-body .token.builtin, .artifact-code-body .token.builtin,
+.inline-code-block-body .token.constant, .artifact-code-body .token.constant { color: var(--syn-const); }
+.inline-code-block-body .token.punctuation, .artifact-code-body .token.punctuation,
+.inline-code-block-body .token.operator, .artifact-code-body .token.operator { color: var(--syn-punct); }

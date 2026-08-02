@@ -44,7 +44,10 @@ async fn delete_with_files_removes_artifact_blob() {
     .unwrap();
 
     assert!(conversations::get(&pool, &conv.id).await.unwrap().is_none());
-    assert!(!abs.exists(), "artifact blob should be removed after delete");
+    assert!(
+        !abs.exists(),
+        "artifact blob should be removed after delete"
+    );
     assert!(
         !artifacts_dir.path().join(&art.id).exists(),
         "artifact directory should be removed after delete"
@@ -66,13 +69,9 @@ async fn delete_all_with_files_clears_conversations_but_preserves_settings() {
         .await
         .unwrap();
 
-    conversations::delete_all_with_files(
-        &pool,
-        artifacts_dir.path(),
-        attachments_dir.path(),
-    )
-    .await
-    .unwrap();
+    conversations::delete_all_with_files(&pool, artifacts_dir.path(), attachments_dir.path())
+        .await
+        .unwrap();
 
     assert!(conversations::list(&pool).await.unwrap().is_empty());
 
@@ -114,5 +113,8 @@ async fn delete_with_files_removes_unshared_attachment_blob() {
     .await
     .unwrap();
 
-    assert!(!blob_abs.exists(), "attachment blob should be removed when unreferenced");
+    assert!(
+        !blob_abs.exists(),
+        "attachment blob should be removed when unreferenced"
+    );
 }

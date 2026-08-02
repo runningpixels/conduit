@@ -70,7 +70,10 @@ impl GeminiParser {
             return events;
         };
 
-        if let Some(parts) = candidate.pointer("/content/parts").and_then(|p| p.as_array()) {
+        if let Some(parts) = candidate
+            .pointer("/content/parts")
+            .and_then(|p| p.as_array())
+        {
             for part in parts {
                 if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
                     if part.get("thought").and_then(|v| v.as_bool()) == Some(true) {
@@ -114,12 +117,8 @@ impl GeminiParser {
             events.push(ProviderEvent::Usage {
                 request_id: request_id.to_string(),
                 usage: crate::schema::ProviderUsage {
-                    input_tokens: usage
-                        .get("promptTokenCount")
-                        .and_then(|v| v.as_u64()),
-                    output_tokens: usage
-                        .get("candidatesTokenCount")
-                        .and_then(|v| v.as_u64()),
+                    input_tokens: usage.get("promptTokenCount").and_then(|v| v.as_u64()),
+                    output_tokens: usage.get("candidatesTokenCount").and_then(|v| v.as_u64()),
                     cache_tokens: usage
                         .get("cachedContentTokenCount")
                         .and_then(|v| v.as_u64()),
@@ -377,7 +376,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                             .as_ref()
                             .and_then(|m| m.get("name"))
                             .and_then(|v| v.as_str())
-                            .or_else(|| p.tool_call_id.as_deref())
+                            .or(p.tool_call_id.as_deref())
                             .unwrap_or("tool");
                         let response_body = if let Ok(parsed) =
                             serde_json::from_str::<Value>(p.content.as_deref().unwrap_or("{}"))
@@ -616,7 +615,11 @@ impl ProviderAdapter for GeminiAdapter {
         ctx: AdapterContext,
         cancel: CancellationToken,
     ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
-        let web_search_intent = request.web_search.as_ref().map(|w| w.enabled).unwrap_or(false);
+        let web_search_intent = request
+            .web_search
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or(false);
         if ctx.local_only && web_search_intent {
             return Err(ProviderError {
                 provider_code: Some("local_only_block".to_string()),
@@ -661,9 +664,9 @@ mod tests {
     fn parses_plain_text_fixture() {
         let fixture = include_str!("../../tests/fixtures/gemini/plain_text.sse");
         let events = parse_fixture("req-1", fixture);
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, ProviderEvent::ContentDelta { content, .. } if content == "Hello")));
+        assert!(events.iter().any(
+            |e| matches!(e, ProviderEvent::ContentDelta { content, .. } if content == "Hello")
+        ));
     }
 
     #[test]
@@ -692,7 +695,9 @@ mod tests {
             .collect();
         assert_eq!(starts.len(), 2);
         assert_ne!(starts[0], starts[1]);
-        assert!(starts.iter().all(|id| id.starts_with("gemini-fc-get_weather-")));
+        assert!(starts
+            .iter()
+            .all(|id| id.starts_with("gemini-fc-get_weather-")));
 
         let completes: Vec<_> = events
             .iter()
@@ -726,9 +731,9 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| matches!(e, ProviderEvent::Citation { .. })));
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, ProviderEvent::ToolCallStart { name, .. } if name == "web_search")));
+        assert!(events.iter().any(
+            |e| matches!(e, ProviderEvent::ToolCallStart { name, .. } if name == "web_search")
+        ));
     }
 
     #[test]
@@ -807,7 +812,10 @@ mod tests {
         };
 
         let body = build_payload(&NormalizedRequest { request });
-        let contents = body.get("contents").and_then(|v| v.as_array()).expect("contents");
+        let contents = body
+            .get("contents")
+            .and_then(|v| v.as_array())
+            .expect("contents");
         let tool_turn = contents
             .iter()
             .find(|c| c.get("role").and_then(|v| v.as_str()) == Some("user"))
@@ -849,7 +857,10 @@ mod tests {
 
     #[test]
     fn normalize_model_id_strips_models_prefix() {
-        assert_eq!(normalize_model_id("models/gemini-2.5-flash"), "gemini-2.5-flash");
+        assert_eq!(
+            normalize_model_id("models/gemini-2.5-flash"),
+            "gemini-2.5-flash"
+        );
         assert_eq!(normalize_model_id("gemini-2.5-flash"), "gemini-2.5-flash");
     }
 

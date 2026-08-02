@@ -541,12 +541,11 @@ pub async fn enrich_assistant_with_tool_calls(
 
     // Find the next available index in the message.
     let max_idx: i64 = {
-        let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT COALESCE(MAX(idx), -1) FROM message_parts WHERE message_id = ?",
-        )
-        .bind(message_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT COALESCE(MAX(idx), -1) FROM message_parts WHERE message_id = ?")
+                .bind(message_id)
+                .fetch_optional(&mut *tx)
+                .await?;
         row.map(|(v,)| v).unwrap_or(-1)
     };
 

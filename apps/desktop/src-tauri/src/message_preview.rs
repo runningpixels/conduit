@@ -175,7 +175,10 @@ fn truncate_chars(s: &str, max: usize) -> String {
 
 fn match_open_fence(line: &str) -> Option<(String, String)> {
     let trimmed = line.trim_start();
-    let fence_chars: Vec<char> = trimmed.chars().take_while(|c| *c == '`' || *c == '~').collect();
+    let fence_chars: Vec<char> = trimmed
+        .chars()
+        .take_while(|c| *c == '`' || *c == '~')
+        .collect();
     if fence_chars.len() < 3 {
         return None;
     }
@@ -190,7 +193,10 @@ fn match_open_fence(line: &str) -> Option<(String, String)> {
 
 fn is_close_fence(line: &str, open_char: char) -> bool {
     let trimmed = line.trim();
-    let fence_chars: Vec<char> = trimmed.chars().take_while(|c| *c == '`' || *c == '~').collect();
+    let fence_chars: Vec<char> = trimmed
+        .chars()
+        .take_while(|c| *c == '`' || *c == '~')
+        .collect();
     if fence_chars.len() < 3 {
         return false;
     }
@@ -235,8 +241,12 @@ fn parse_message_segments(content: &str) -> Vec<MessageSegment> {
                 i = j;
             } else {
                 prose_lines.push(lines[i].to_string());
-                for k in (i + 1)..=j.min(lines.len().saturating_sub(1)) {
-                    prose_lines.push(lines[k].to_string());
+                for item in lines
+                    .iter()
+                    .take(j.min(lines.len().saturating_sub(1)) + 1)
+                    .skip(i + 1)
+                {
+                    prose_lines.push(item.to_string());
                 }
                 i = j;
             }
@@ -261,9 +271,8 @@ fn summarize_fence_for_preview(candidate: &ArtifactCandidate) -> String {
     let label = candidate.kind.label();
     let line_count = candidate.body.lines().count().max(1);
     let title = candidate.title.trim();
-    let generic_title = title == "Markdown artifact"
-        || title == "Text artifact"
-        || title.ends_with(" snippet");
+    let generic_title =
+        title == "Markdown artifact" || title == "Text artifact" || title.ends_with(" snippet");
     if !title.is_empty() && !generic_title {
         return format!("{label} artifact · {title} · {line_count} lines");
     }

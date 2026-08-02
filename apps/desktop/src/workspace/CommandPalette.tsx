@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import type { SearchResult } from '../ipc/contracts';
 
 export interface CommandPaletteConversation {
   id: string;
@@ -15,6 +16,10 @@ interface CommandPaletteProps {
   onToggleDocPanel?: () => void;
   conversations: CommandPaletteConversation[];
   onSelectConversation: (id: string) => void;
+  /** FTS5 full-text search over messages (debounced 300ms, min 2 chars). */
+  onSearchMessages?: (query: string) => Promise<SearchResult[]>;
+  /** Fired when the user picks a search result. */
+  onSelectSearchResult?: (result: SearchResult) => void;
 }
 
 interface PaletteItem {
@@ -22,9 +27,30 @@ interface PaletteItem {
   label: string;
   hint?: string;
   run: () => void;
+  /** Present only for FTS5 search results, so the renderer can highlight. */
+  result?: SearchResult;
 }
 
-/** App command palette (Mod+K): jump to actions and conversations. */
+/** Escape HTML in a snippet so message content can't inject markup. */
+function escapeSnippetHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Wrap the [matchStart, matchEnd) range of a snippet in <mark> tags. */
+function highlightSnippet(result: SearchResult): string {
+  const escaped = escapeSnippetHtml(result.snippet);
+  const start = Math.max(0, result.matchStart);
+  const end = Math.min(escaped.length, result.matchEnd);
+  if (start >= end) return escaped;
+  return `${escaped.slice(0, start)}<mark>${escaped.slice(start, end)}</mark>${escaped.slice(end)}`;
+}
+
+/** App command palette (Mod+K): jump to actions, conversations, and search messages. */
 export function CommandPalette({
   open,
   onClose,
@@ -35,10 +61,15 @@ export function CommandPalette({
   onToggleDocPanel,
   conversations,
   onSelectConversation,
+  onSearchMessages,
+  onSelectSearchResult,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const items = useMemo((): PaletteItem[] => {
     const isMac =
@@ -127,9 +158,50 @@ export function CommandPalette({
     query,
   ]);
 
+  // Merge palette items + search results into a single list for arrow-key
+  // navigation. Search results are appended after the filtered actions/convos.
+  const allItems = useMemo((): PaletteItem[] => {
+    const searchItems: PaletteItem[] = results.map((r) => ({
+      id: `msg-${r.messageId}`,
+      label: r.snippet || '(message)',
+      hint: r.conversationTitle ?? (r.role === 'user' ? 'You' : 'Assistant'),
+      result: r,
+      run: () => {
+        onSelectSearchResult?.(r);
+        onClose();
+      },
+    }));
+    return [...items, ...searchItems];
+  }, [items, results, onSelectSearchResult, onClose]);
+
+  const handleQueryChange = (q: string) => {
+    setQuery(q);
+    setActiveIndex(0);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (q.trim().length >= 2 && onSearchMessages) {
+      setSearching(true);
+      debounceRef.current = setTimeout(() => {
+        void onSearchMessages(q.trim())
+          .then((next) => {
+            setResults(next.slice(0, 5));
+            setSearching(false);
+          })
+          .catch(() => {
+            setResults([]);
+            setSearching(false);
+          });
+      }, 300);
+    } else {
+      setResults([]);
+      setSearching(false);
+    }
+  };
+
   useEffect(() => {
     if (!open) {
       setQuery('');
+      setResults([]);
+      setSearching(false);
       setActiveIndex(0);
       return;
     }
@@ -143,15 +215,21 @@ export function CommandPalette({
   }, [query]);
 
   useEffect(() => {
-    if (activeIndex >= items.length) {
-      setActiveIndex(Math.max(0, items.length - 1));
+    if (activeIndex >= allItems.length) {
+      setActiveIndex(Math.max(0, allItems.length - 1));
     }
-  }, [activeIndex, items.length]);
+  }, [activeIndex, allItems.length]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   if (!open) return null;
 
   function runActive() {
-    const item = items[activeIndex];
+    const item = allItems[activeIndex];
     if (item) item.run();
   }
 
@@ -164,12 +242,12 @@ export function CommandPalette({
     }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setActiveIndex((i) => (items.length === 0 ? 0 : (i + 1) % items.length));
+      setActiveIndex((i) => (allItems.length === 0 ? 0 : (i + 1) % allItems.length));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setActiveIndex((i) => (items.length === 0 ? 0 : (i - 1 + items.length) % items.length));
+      setActiveIndex((i) => (allItems.length === 0 ? 0 : (i - 1 + allItems.length) % allItems.length));
       return;
     }
     if (event.key === 'Enter') {
@@ -196,32 +274,42 @@ export function CommandPalette({
         <input
           ref={inputRef}
           type="search"
-          placeholder="Search commands and conversations…"
+          placeholder="Search commands, conversations, and messages…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search commands"
+          onChange={(e) => handleQueryChange(e.target.value)}
+          aria-label="Search commands, conversations, and messages"
           autoComplete="off"
         />
         <div className="command-palette-list" role="listbox">
-          {items.length === 0 ? (
+          {allItems.length === 0 ? (
             <div className="command-palette-item" aria-disabled="true">
-              No matches
+              {searching ? 'Searching…' : 'No matches'}
             </div>
           ) : (
-            items.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                role="option"
-                aria-selected={index === activeIndex}
-                className={`command-palette-item${index === activeIndex ? ' active' : ''}`}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => item.run()}
-              >
-                {item.label}
-                {item.hint && <small>{item.hint}</small>}
-              </button>
-            ))
+            allItems.map((item, index) => {
+              const isSearch = item.result != null;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  className={`command-palette-item${index === activeIndex ? ' active' : ''}${isSearch ? ' search-result' : ''}`}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => item.run()}
+                >
+                  {isSearch ? (
+                    <span
+                      className="search-result-snippet"
+                      dangerouslySetInnerHTML={{ __html: highlightSnippet(item.result!) }}
+                    />
+                  ) : (
+                    item.label
+                  )}
+                  {item.hint && <small>{item.hint}</small>}
+                </button>
+              );
+            })
           )}
         </div>
         <div className="command-palette-footer">

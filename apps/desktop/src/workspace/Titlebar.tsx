@@ -50,6 +50,7 @@ export function Titlebar({
           <button
             className="workspace-chip"
             type="button"
+            aria-label="Reveal artifacts folder in Explorer"
             title="Reveal artifacts folder in Explorer"
             onClick={onRevealWorkspace}
           >
@@ -60,6 +61,7 @@ export function Titlebar({
         <button
           className={`connection-chip state-${connectionState}`}
           type="button"
+          aria-label={CONNECTION_LABEL[connectionState]}
           title={CONNECTION_TITLE[connectionState]}
           onClick={onConnectionClick}
         >

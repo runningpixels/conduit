@@ -294,6 +294,50 @@ pub async fn get_usage_summary(
 }
 
 // ---------------------------------------------------------------------------
+// Retry & Fork (Competitive Feature)
+// ---------------------------------------------------------------------------
+
+/// Remove the last assistant turn's messages/parts/event-log rows for a
+/// conversation. Returns the number of remaining messages in the conversation.
+#[tauri::command]
+pub async fn remove_last_turn(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<i64, String> {
+    conversations::remove_last_assistant_turn(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
+    )
+    .bind(&conversation_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+/// Fork a conversation at a specific message. Returns the new conversation.
+#[tauri::command]
+pub async fn fork_conversation(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    fork_message_id: String,
+) -> Result<Conversation, String> {
+    // Derive a label from the source conversation title
+    let source = conversations::get(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let label = match source.and_then(|c| c.title) {
+        Some(title) => format!("Fork of {title}"),
+        None => "Fork".to_string(),
+    };
+    conversations::fork_at(&state.db, &conversation_id, &fork_message_id, Some(&label))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Mock streams (UI development without a live provider)
 // ---------------------------------------------------------------------------
 

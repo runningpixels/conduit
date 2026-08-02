@@ -730,3 +730,67 @@ pub async fn load_conversation_messages(
     }
     Ok(messages)
 }
+
+/// Insert pre-loaded messages (with their parts) into a destination conversation
+/// inside an existing transaction. Generates new UUIDs for each message row
+/// and remaps `message_id` references in `message_parts`.
+pub(crate) async fn insert_copied_messages_in_txn(
+    tx: &mut Transaction<'_, sqlx::Sqlite>,
+    dest_conversation_id: &str,
+    source_messages: &[&Message],
+) -> Result<(), DbError> {
+    // Build id map: old message id -> new message id
+    let mut id_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for msg in source_messages {
+        id_map.insert(msg.id.clone(), Uuid::new_v4().to_string());
+    }
+
+    for msg in source_messages {
+        let new_id = id_map.get(&msg.id).unwrap();
+        sqlx::query(
+            "INSERT INTO messages \
+             (id, conversation_id, role, author_label, provider_message_id, request_id, \
+              interrupted_at, finalized, finish_reason, metadata, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(new_id)
+        .bind(dest_conversation_id)
+        .bind(role_to_str(&msg.role))
+        .bind(&msg.author_label)
+        .bind(&msg.provider_message_id)
+        .bind(&msg.request_id)
+        .bind(&msg.interrupted_at)
+        .bind(0_i64)
+        .bind(&None::<String>)
+        .bind(msg.metadata.as_ref().map(|v| v.to_string()))
+        .bind(&msg.created_at)
+        .execute(&mut **tx)
+        .await?;
+
+        for part in &msg.parts {
+            let new_part_id = Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO message_parts \
+                 (id, message_id, idx, kind, content, mime_type, tool_call_id, \
+                  artifact_id, attachment_id, blob_ref, metadata, created_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&new_part_id)
+            .bind(new_id)
+            .bind(part.index as i64)
+            .bind(part_kind_to_str(&part.kind))
+            .bind(&part.content)
+            .bind(&part.mime_type)
+            .bind(&part.tool_call_id)
+            .bind(&part.artifact_id)
+            .bind(&part.attachment_id)
+            .bind(&part.blob_ref)
+            .bind(part.metadata.as_ref().map(|v| v.to_string()))
+            .bind(&part.created_at)
+            .execute(&mut **tx)
+            .await?;
+        }
+    }
+
+    Ok(())
+}

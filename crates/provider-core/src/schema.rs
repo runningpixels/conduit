@@ -133,6 +133,9 @@ pub struct ConversationSummary {
     pub message_count: u32,
     #[ts(optional)]
     pub last_message_preview: Option<String>,
+    /// If this conversation is a fork of another, the source conversation's id.
+    #[ts(optional)]
+    pub forked_from_conversation_id: Option<String>,
 }
 
 // =============================================================================

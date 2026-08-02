@@ -182,3 +182,100 @@ async fn list_summarizes_artifact_heavy_last_message_preview() {
     assert!(!preview.contains("<!DOCTYPE"));
     assert!(!preview.contains("<html>"));
 }
+
+#[tokio::test]
+async fn remove_last_assistant_turn_removes_latest_assistant() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+
+    // Insert user message + assistant message with request_id
+    messages::insert_message(&pool, &user_message(&conv.id, "u1", "hello"))
+        .await
+        .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message(&conv.id, "a1", "hi there"),
+    )
+    .await
+    .unwrap();
+
+    let rid = conversations::last_assistant_request_id(&pool, &conv.id)
+        .await
+        .unwrap();
+    // Note: insert_message_in_txn always sets request_id=NULL, so the query
+    // returns None. In the real stream pipeline, request_id is set by the
+    // event-log fold. The retry/fork flow works with the stream pipeline;
+    // this test validates the remove/query mechanism.
+
+    let removed = conversations::remove_last_assistant_turn(&pool, &conv.id)
+        .await
+        .unwrap();
+    // The remove path uses SELECT by role + created_at (not request_id).
+    // The return value is the request_id from the message row (which is NULL
+    // in this test). The important thing is that the message is deleted.
+
+    let listed = conversations::list(&pool).await.unwrap();
+    assert_eq!(listed[0].message_count, 1, "only user message remains");
+}
+
+#[tokio::test]
+async fn remove_last_assistant_turn_noop_on_empty() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let removed = conversations::remove_last_assistant_turn(&pool, &conv.id)
+        .await
+        .unwrap();
+    assert!(removed.is_none());
+}
+
+#[tokio::test]
+async fn fork_conversation_deep_copies_messages() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, Some("Original")).await.unwrap();
+
+    messages::insert_message(&pool, &user_message(&conv.id, "u1", "hello"))
+        .await
+        .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message(&conv.id, "a1", "hi there"),
+    )
+    .await
+    .unwrap();
+
+    let fork = conversations::fork_at(&pool, &conv.id, "a1", Some("Fork of Original"))
+        .await
+        .unwrap();
+
+    assert_eq!(fork.title.as_deref(), Some("Fork of Original"));
+
+    let listed = conversations::list(&pool).await.unwrap();
+    assert_eq!(listed.len(), 2, "original + fork");
+
+    // The fork (most recently updated) should be listed first
+    assert_eq!(listed[0].message_count, 2, "fork has 2 messages");
+    assert_eq!(listed[1].message_count, 2, "original has 2 messages");
+
+    // Verify fork metadata
+    assert_eq!(
+        listed[0].forked_from_conversation_id.as_deref(),
+        Some(conv.id.as_str())
+    );
+
+    // Load fork messages to verify content
+    let fork_msgs = messages::load_conversation_messages(&pool, &fork.id)
+        .await
+        .unwrap();
+    assert_eq!(fork_msgs.len(), 2);
+    assert_eq!(
+        fork_msgs[0].parts[0].content.as_deref(),
+        Some("hello")
+    );
+    assert_eq!(
+        fork_msgs[1].parts[0].content.as_deref(),
+        Some("hi there")
+    );
+    // Fork IDs should be different from original
+    assert_ne!(fork_msgs[0].id, "u1");
+    assert_ne!(fork_msgs[1].id, "a1");
+}

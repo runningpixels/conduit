@@ -105,6 +105,11 @@ fn main() {
             search_messages,
             // Competitive Feature: usage analytics
             get_usage_summary,
+            // Competitive Feature: built-in agent tools
+            // (tool definitions built into agent_tools.rs, no new commands needed)
+            // Competitive Feature: retry & fork
+            remove_last_turn,
+            fork_conversation,
             // Competitive Feature: prompts library
             create_prompt,
             list_prompts,

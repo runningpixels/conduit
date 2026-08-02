@@ -139,6 +139,23 @@ pub async fn load_all_turns(pool: &SqlitePool) -> Result<Vec<(String, String)>, 
     Ok(rows)
 }
 
+/// Delete all event log rows for a given request_id in a conversation.
+/// Used by retry (replace mode) to erase the last turn's event history.
+pub async fn delete_events_for_request(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    request_id: &str,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?",
+    )
+    .bind(conversation_id)
+    .bind(request_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 fn event_kind_tag(event: &ProviderEvent) -> &'static str {
     match event {
         ProviderEvent::MessageStart { .. } => "messageStart",

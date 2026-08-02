@@ -9,4 +9,8 @@ export type ConversationSummary = { id: string, title?: string,
  * Display-ready label for the history rail: explicit title, else the first
  * words of the first user prompt, else `"Untitled chat"`.
  */
-displayTitle: string, updatedAt: string, messageCount: number, lastMessagePreview?: string, };
+displayTitle: string, updatedAt: string, messageCount: number, lastMessagePreview?: string, 
+/**
+ * If this conversation is a fork of another, the source conversation's id.
+ */
+forkedFromConversationId?: string, };

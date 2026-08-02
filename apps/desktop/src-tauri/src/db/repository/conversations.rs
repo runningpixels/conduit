@@ -20,12 +20,13 @@ use crate::{
     time::now_iso8601,
 };
 
-/// Row shape for [`list`] (id, title, updated_at, message_count, last preview, first user prompt).
+/// Row shape for [`list`] (id, title, updated_at, message_count, last preview, first user prompt, fork columns).
 type ConversationSummaryRow = (
     String,
     Option<String>,
     String,
     i64,
+    Option<String>,
     Option<String>,
     Option<String>,
 );
@@ -83,7 +84,8 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
                    JOIN message_parts mp ON mp.message_id = um.id \
                    WHERE um.conversation_id = c.id AND um.role = 'user' \
                      AND mp.kind = 'text' AND mp.content IS NOT NULL AND TRIM(mp.content) != '' \
-                   ORDER BY um.created_at ASC, mp.idx ASC LIMIT 1) AS first_user_prompt \
+                   ORDER BY um.created_at ASC, mp.idx ASC LIMIT 1) AS first_user_prompt, \
+                c.forked_from_conversation_id \
          FROM conversations c \
          ORDER BY c.updated_at DESC",
     )
@@ -93,7 +95,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
     Ok(rows
         .into_iter()
         .map(
-            |(id, title, updated_at, message_count, last_message_preview, first_user_prompt)| {
+            |(id, title, updated_at, message_count, last_message_preview, first_user_prompt, forked_from)| {
                 ConversationSummary {
                     id,
                     display_title: resolve_display_title(
@@ -106,6 +108,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
                     last_message_preview: last_message_preview
                         .as_deref()
                         .and_then(summarize_message_content_for_preview),
+                    forked_from_conversation_id: forked_from,
                 }
             },
         )
@@ -262,6 +265,126 @@ fn truncate_chars(s: &str, max: usize) -> String {
     }
     let truncated: String = s.chars().take(max).collect();
     format!("{truncated}…")
+}
+
+// ---------------------------------------------------------------------------
+// Retry & Fork support (Competitive Feature)
+// ---------------------------------------------------------------------------
+
+/// Get the request_id of the most recent assistant turn, if any.
+/// In the real stream pipeline, the request_id is set by the event-log fold.
+/// For messages inserted via `insert_message_in_txn`, request_id may be NULL.
+pub async fn last_assistant_request_id(
+    pool: &SqlitePool,
+    conversation_id: &str,
+) -> Result<Option<String>, DbError> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT COALESCE(request_id, id) FROM messages \
+         WHERE conversation_id = ? AND role = 'assistant' \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(conversation_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|(r,)| r))
+}
+
+/// Remove the last assistant turn (messages, parts, event log, tool calls)
+/// in a transaction. Returns the turn identifier (request_id or message id)
+/// of the removed turn, or None if the conversation has no assistant turns.
+pub async fn remove_last_assistant_turn(
+    pool: &SqlitePool,
+    conversation_id: &str,
+) -> Result<Option<String>, DbError> {
+    let turn_id = last_assistant_request_id(pool, conversation_id).await?;
+    if let Some(ref tid) = turn_id {
+        let mut tx = pool.begin().await?;
+        // Delete tool calls for this request_id (match by request_id or id)
+        sqlx::query("DELETE FROM tool_calls WHERE request_id = ?")
+            .bind(tid)
+            .execute(&mut *tx)
+            .await?;
+        // Delete event log rows for this turn
+        sqlx::query(
+            "DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?",
+        )
+        .bind(conversation_id)
+        .bind(tid)
+        .execute(&mut *tx)
+        .await?;
+        // Delete message (message_parts cascade via FK). Match by request_id
+        // or message id (for manually-inserted messages without request_id).
+        sqlx::query(
+            "DELETE FROM messages WHERE conversation_id = ? AND (request_id = ? OR id = ?)",
+        )
+        .bind(conversation_id)
+        .bind(tid)
+        .bind(tid)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+    }
+    Ok(turn_id)
+}
+
+/// Create a fork of a conversation up to a specific message.
+/// Copies the source conversation's messages up to and including
+/// `fork_point_message_id` into a new conversation with branch metadata.
+pub async fn fork_at(
+    pool: &SqlitePool,
+    source_conversation_id: &str,
+    fork_point_message_id: &str,
+    fork_label: Option<&str>,
+) -> Result<Conversation, DbError> {
+    use crate::db::repository::messages;
+
+    // Load the source messages + parts into memory FIRST (before opening the
+    // transaction) to avoid holding the pool's only connection while reading.
+    let source_msgs = messages::load_conversation_messages(pool, source_conversation_id).await?;
+    // Keep messages up to and including the fork point
+    let cutoff = source_msgs
+        .iter()
+        .find(|m| m.id == fork_point_message_id)
+        .map(|m| m.created_at.clone())
+        .ok_or_else(|| DbError::Query("fork point message not found".into()))?;
+    let to_copy: Vec<&provider_core::schema::Message> = source_msgs
+        .iter()
+        .filter(|m| m.created_at <= cutoff)
+        .collect();
+
+    let mut tx = pool.begin().await?;
+
+    let fork_id = Uuid::new_v4().to_string();
+    let now = now_iso8601();
+    let label = fork_label.unwrap_or("Fork");
+
+    sqlx::query(
+        "INSERT INTO conversations \
+         (id, title, forked_from_conversation_id, fork_point_message_id, \
+          created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&fork_id)
+    .bind(label)
+    .bind(source_conversation_id)
+    .bind(fork_point_message_id)
+    .bind(&now)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+
+    messages::insert_copied_messages_in_txn(&mut tx, &fork_id, &to_copy).await?;
+
+    tx.commit().await?;
+
+    Ok(Conversation {
+        id: fork_id,
+        title: Some(label.to_string()),
+        created_at: now.clone(),
+        updated_at: now,
+        cloud_id: None,
+        metadata: None,
+    })
 }
 
 #[cfg(test)]

@@ -320,6 +320,21 @@ export async function getUsageSummary(period: UsagePeriod): Promise<UsageSummary
   return invoke<UsageSummaryResponse>('get_usage_summary', { period });
 }
 
+// --- Retry & Fork ----------------------------------------------------------
+
+/** Remove the last assistant turn's data; returns remaining message count. */
+export async function removeLastTurn(conversationId: string): Promise<number> {
+  return invoke<number>('remove_last_turn', { conversationId });
+}
+
+/** Fork a conversation at a message; returns the new conversation. */
+export async function forkConversation(
+  conversationId: string,
+  forkMessageId: string,
+): Promise<Conversation> {
+  return invoke<Conversation>('fork_conversation', { conversationId, forkMessageId });
+}
+
 // --- Prompts Library -------------------------------------------------------
 
 export async function createPrompt(

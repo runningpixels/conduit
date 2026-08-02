@@ -235,7 +235,25 @@ pub async fn apply_event_in_txn(
             .execute(&mut **tx)
             .await?;
         }
-        // ContentBlockStop, ToolCallDelta, ToolCallComplete, Usage, Ping: no
+        ProviderEvent::Usage { usage, .. } => {
+            // Persist usage data on the message row. The message row already exists
+            // from MessageStart. Usage is best-effort — never fail the stream.
+            let cost_estimate = usage.cost_hint.as_deref();
+            let _ = sqlx::query(
+                "UPDATE messages SET input_tokens = ?, output_tokens = ?, \
+                 cache_read_tokens = ?, cache_write_tokens = ?, cost_estimate = ? \
+                 WHERE request_id = ?",
+            )
+            .bind(usage.input_tokens.map(|v| v as i64))
+            .bind(usage.output_tokens.map(|v| v as i64))
+            .bind(usage.cache_read_tokens.map(|v| v as i64))
+            .bind(usage.cache_write_tokens.map(|v| v as i64))
+            .bind(cost_estimate)
+            .bind(request_id)
+            .execute(&mut **tx)
+            .await;
+        }
+        // ContentBlockStop, ToolCallDelta, ToolCallComplete, Ping: no
         // view change (matches stream_persistence::apply_to_message `_ => {}`).
         _ => {}
     }

@@ -298,6 +298,35 @@ export interface SearchMessagesRequest {
 }
 
 // =============================================================================
+// Usage Analytics (Competitive Feature)
+// =============================================================================
+
+export type UsagePeriod = 'today' | 'thisWeek' | 'thisMonth' | 'allTime';
+
+export interface ProviderUsageBreakdown {
+  providerId: string;
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  costCents: number;
+}
+
+export interface DailyUsage {
+  date: string;
+  costCents: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface UsageSummaryResponse {
+  totalCostCents: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  byProvider: ProviderUsageBreakdown[];
+  dailyTotals: DailyUsage[];
+}
+
+// =============================================================================
 // Prompts Library (Competitive Feature)
 // =============================================================================
 

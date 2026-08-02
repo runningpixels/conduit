@@ -772,18 +772,24 @@ async fn cumulative_usage_sums_tokens_across_rounds() {
         input_tokens: Some(100),
         output_tokens: Some(50),
         cache_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
         cost_hint: None,
     };
     let round2 = ProviderUsage {
         input_tokens: Some(200),
         output_tokens: Some(75),
         cache_tokens: Some(10),
+        cache_read_tokens: Some(10),
+        cache_write_tokens: Some(5),
         cost_hint: Some("$0.01".into()),
     };
     let round3 = ProviderUsage {
         input_tokens: None,
         output_tokens: Some(25),
         cache_tokens: Some(5),
+        cache_read_tokens: Some(5),
+        cache_write_tokens: None,
         cost_hint: None,
     };
 
@@ -808,6 +814,16 @@ async fn cumulative_usage_sums_tokens_across_rounds() {
                     .zip(round_usage.cache_tokens)
                     .map(|(a, b)| a + b)
                     .or(acc.cache_tokens.or(round_usage.cache_tokens)),
+                cache_read_tokens: acc
+                    .cache_read_tokens
+                    .zip(round_usage.cache_read_tokens)
+                    .map(|(a, b)| a + b)
+                    .or(acc.cache_read_tokens.or(round_usage.cache_read_tokens)),
+                cache_write_tokens: acc
+                    .cache_write_tokens
+                    .zip(round_usage.cache_write_tokens)
+                    .map(|(a, b)| a + b)
+                    .or(acc.cache_write_tokens.or(round_usage.cache_write_tokens)),
                 cost_hint: round_usage.cost_hint.clone(),
             },
             None => round_usage.clone(),
@@ -837,6 +853,8 @@ async fn cumulative_usage_handles_none_first_round() {
         input_tokens: Some(50),
         output_tokens: Some(25),
         cache_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
         cost_hint: None,
     };
 
@@ -860,6 +878,16 @@ async fn cumulative_usage_handles_none_first_round() {
                 .zip(round2.cache_tokens)
                 .map(|(a, b)| a + b)
                 .or(acc.cache_tokens.or(round2.cache_tokens)),
+            cache_read_tokens: acc
+                .cache_read_tokens
+                .zip(round2.cache_read_tokens)
+                .map(|(a, b)| a + b)
+                .or(acc.cache_read_tokens.or(round2.cache_read_tokens)),
+            cache_write_tokens: acc
+                .cache_write_tokens
+                .zip(round2.cache_write_tokens)
+                .map(|(a, b)| a + b)
+                .or(acc.cache_write_tokens.or(round2.cache_write_tokens)),
             cost_hint: round2.cost_hint.clone(),
         },
         None => round2.clone(),

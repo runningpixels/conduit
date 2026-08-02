@@ -1,7 +1,7 @@
 use crate::{
     agent_tools,
     credentials::CredentialStore,
-    db::repository::{connectors, conversations, event_log, messages, tool_calls},
+    db::repository::{connectors, conversations, event_log, messages, tool_calls, usage_summary},
     state::AppState,
 };
 use futures::StreamExt;
@@ -908,6 +908,7 @@ impl StreamManager {
         let deadline =
             tokio::time::Instant::now() + std::time::Duration::from_secs(wall_clock_secs as u64);
 
+        let active_model_id = initial_request.model_id.clone();
         let mut current_request = initial_request;
         current_request.request_id = request_id.clone();
         let mut ended_with_pending_tools = false;
@@ -976,6 +977,16 @@ impl StreamManager {
                             .zip(round_usage.cache_tokens)
                             .map(|(a, b)| a + b)
                             .or(acc.cache_tokens.or(round_usage.cache_tokens)),
+                        cache_read_tokens: acc
+                            .cache_read_tokens
+                            .zip(round_usage.cache_read_tokens)
+                            .map(|(a, b)| a + b)
+                            .or(acc.cache_read_tokens.or(round_usage.cache_read_tokens)),
+                        cache_write_tokens: acc
+                            .cache_write_tokens
+                            .zip(round_usage.cache_write_tokens)
+                            .map(|(a, b)| a + b)
+                            .or(acc.cache_write_tokens.or(round_usage.cache_write_tokens)),
                         cost_hint: round_usage.cost_hint.clone(),
                     },
                     None => round_usage.clone(),
@@ -1080,8 +1091,39 @@ impl StreamManager {
         if let Some(usage) = cumulative_usage {
             let _ = channel.send(ProviderEvent::Usage {
                 request_id: request_id.clone(),
-                usage,
+                usage: usage.clone(),
             });
+
+            // Persist usage for analytics. Best-effort: analytics must never
+            // break a chat turn, so failures are logged and swallowed.
+            if let Ok(settings) = state.settings() {
+                let provider_id = settings.active_provider;
+                let model_id = active_model_id.clone();
+                if let Ok(Some(message_id)) = messages::get_message_id_by_request(&pool, &request_id).await {
+                    let pricing = provider_core::catalog::lookup_pricing(&provider_id, &model_id);
+                    let cost = provider_core::catalog::estimate_cost_cents(&usage, &pricing);
+                    if let Err(e) = usage_summary::insert_usage_summary(
+                        &pool,
+                        &message_id,
+                        &conversation_id,
+                        &provider_id,
+                        &model_id,
+                        usage.input_tokens.unwrap_or(0) as i64,
+                        usage.output_tokens.unwrap_or(0) as i64,
+                        usage.cache_read_tokens.unwrap_or(0) as i64,
+                        usage.cache_write_tokens.unwrap_or(0) as i64,
+                        cost.as_deref(),
+                    )
+                    .await
+                    {
+                        warn!(
+                            request_id = %request_id,
+                            error = %e,
+                            "usage analytics persistence failed (non-fatal)"
+                        );
+                    }
+                }
+            }
         }
 
         // Ensure the active entry is cleared (run_provider_round cleans per-round,

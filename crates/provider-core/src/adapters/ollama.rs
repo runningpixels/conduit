@@ -80,6 +80,8 @@ impl StreamParser for OllamaParser {
                         input_tokens: Some(prompt_eval),
                         output_tokens: eval_count,
                         cache_tokens: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
                         cost_hint: None,
                     },
                 });

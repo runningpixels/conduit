@@ -188,7 +188,15 @@ impl StreamParser for AnthropicParser {
                         usage: crate::schema::ProviderUsage {
                             input_tokens: usage.get("input_tokens").and_then(|v| v.as_u64()),
                             output_tokens: usage.get("output_tokens").and_then(|v| v.as_u64()),
-                            cache_tokens: None,
+                            cache_tokens: usage
+                                .get("cache_read_input_tokens")
+                                .and_then(|v| v.as_u64()),
+                            cache_read_tokens: usage
+                                .get("cache_read_input_tokens")
+                                .and_then(|v| v.as_u64()),
+                            cache_write_tokens: usage
+                                .get("cache_creation_input_tokens")
+                                .and_then(|v| v.as_u64()),
                             cost_hint: None,
                         },
                     });

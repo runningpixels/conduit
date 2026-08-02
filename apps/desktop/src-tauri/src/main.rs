@@ -103,6 +103,8 @@ fn main() {
             reveal_artifacts_dir,
             reveal_artifact,
             search_messages,
+            // Competitive Feature: usage analytics
+            get_usage_summary,
             // Competitive Feature: prompts library
             create_prompt,
             list_prompts,

@@ -37,6 +37,8 @@ import type {
   Prompt,
   SearchMessagesRequest,
   SearchResult,
+  UsagePeriod,
+  UsageSummaryResponse,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -310,6 +312,12 @@ export async function searchMessages(
   request: SearchMessagesRequest,
 ): Promise<SearchResult[]> {
   return invoke<SearchResult[]>('search_messages', { request });
+}
+
+// --- Usage Analytics -------------------------------------------------------
+
+export async function getUsageSummary(period: UsagePeriod): Promise<UsageSummaryResponse> {
+  return invoke<UsageSummaryResponse>('get_usage_summary', { period });
 }
 
 // --- Prompts Library -------------------------------------------------------

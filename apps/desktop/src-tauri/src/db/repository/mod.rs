@@ -19,3 +19,4 @@ pub mod tenant_cache;
 pub mod prompts;
 pub mod search;
 pub mod tool_calls;
+pub mod usage_summary;

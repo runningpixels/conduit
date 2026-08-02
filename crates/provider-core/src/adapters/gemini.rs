@@ -122,6 +122,10 @@ impl GeminiParser {
                     cache_tokens: usage
                         .get("cachedContentTokenCount")
                         .and_then(|v| v.as_u64()),
+                    cache_read_tokens: usage
+                        .get("cachedContentTokenCount")
+                        .and_then(|v| v.as_u64()),
+                    cache_write_tokens: None,
                     cost_hint: None,
                 },
             });

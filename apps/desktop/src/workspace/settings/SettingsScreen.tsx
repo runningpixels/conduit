@@ -12,6 +12,7 @@ import { AboutSection } from './AboutSection';
 import { WebSearchSection } from './WebSearchSection';
 import { AgentSection } from './AgentSection';
 import { PromptsSection } from './PromptsSection';
+import { UsageSection } from './UsageSection';
 import { useAutoSave } from './useAutoSave';
 import type { ConnectionState } from '../Titlebar';
 
@@ -39,6 +40,7 @@ export type SettingsTab =
   | 'web-search'
   | 'agent'
   | 'prompts'
+  | 'usage'
   | 'updates'
   | 'connectors'
   | 'diagnostics'
@@ -57,6 +59,7 @@ const SETTINGS_TABS: TabDef[] = [
   { id: 'web-search', label: 'Web Search' },
   { id: 'agent', label: 'Agent' },
   { id: 'prompts', label: 'Prompts' },
+  { id: 'usage', label: 'Usage & Cost' },
   { id: 'updates', label: 'Updates' },
   { id: 'connectors', label: 'Connectors' },
   { id: 'diagnostics', label: 'Diagnostics' },
@@ -138,6 +141,9 @@ export function SettingsScreen({
         )}
         {activeTab === 'prompts' && (
           <PromptsSection onStatus={onStatus} onInsertPrompt={onInsertPrompt ?? (() => {})} />
+        )}
+        {activeTab === 'usage' && (
+          <UsageSection />
         )}
         {activeTab === 'updates' && (
           <UpdatesSection settings={settings} onUpdate={save} onStatus={onStatus} />

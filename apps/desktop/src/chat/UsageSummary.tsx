@@ -11,9 +11,13 @@ export function UsageSummary({ usage }: UsageSummaryProps) {
     return null;
   }
   const parts: string[] = [];
-  if (usage.inputTokens !== undefined) parts.push(`in: ${usage.inputTokens}`);
-  if (usage.outputTokens !== undefined) parts.push(`out: ${usage.outputTokens}`);
-  if (usage.cacheTokens !== undefined) parts.push(`cache: ${usage.cacheTokens}`);
+  if (usage.inputTokens !== undefined) parts.push(`in: ${usage.inputTokens.toLocaleString()}`);
+  if (usage.outputTokens !== undefined) parts.push(`out: ${usage.outputTokens.toLocaleString()}`);
+  if (usage.cacheReadTokens !== undefined && usage.cacheWriteTokens !== undefined) {
+    parts.push(`cache: ${usage.cacheReadTokens.toLocaleString()}⇠ ${usage.cacheWriteTokens.toLocaleString()}⇢`);
+  } else if (usage.cacheTokens !== undefined) {
+    parts.push(`cache: ${usage.cacheTokens.toLocaleString()}`);
+  }
   if (usage.costHint) parts.push(usage.costHint);
 
   if (parts.length === 0) return null;

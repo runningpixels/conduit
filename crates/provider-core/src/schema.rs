@@ -413,6 +413,12 @@ pub struct ProviderUsage {
     pub output_tokens: Option<u64>,
     #[ts(optional)]
     pub cache_tokens: Option<u64>,
+    /// Cache read (hit) tokens — separate from `cache_tokens` for cost estimation.
+    #[ts(optional)]
+    pub cache_read_tokens: Option<u64>,
+    /// Cache write (creation) tokens — separate from `cache_tokens` for cost estimation.
+    #[ts(optional)]
+    pub cache_write_tokens: Option<u64>,
     #[ts(optional)]
     pub cost_hint: Option<String>,
 }

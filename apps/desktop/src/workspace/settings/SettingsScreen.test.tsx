@@ -53,6 +53,13 @@ vi.mock('../../ipc/client', () => ({
   revokeConnectorGrant: vi.fn().mockResolvedValue(undefined),
   addLocalConnector: vi.fn().mockResolvedValue({ connectorId: 'c1', connectorVersionId: 'v1' }),
   resetLocalDatabase: vi.fn().mockResolvedValue({ backupPath: '/backup' }),
+  getUsageSummary: vi.fn().mockResolvedValue({
+    totalCostCents: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    byProvider: [],
+    dailyTotals: [],
+  }),
 }));
 
 const paths: AppPaths = {

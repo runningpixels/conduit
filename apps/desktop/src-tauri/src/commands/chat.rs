@@ -265,6 +265,35 @@ pub async fn search_messages(
 }
 
 // ---------------------------------------------------------------------------
+// Usage analytics
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UsagePeriod {
+    Today,
+    ThisWeek,
+    ThisMonth,
+    AllTime,
+}
+
+#[tauri::command]
+pub async fn get_usage_summary(
+    state: State<'_, AppState>,
+    period: UsagePeriod,
+) -> Result<crate::db::repository::usage_summary::UsageSummaryResponse, String> {
+    let period_str = match period {
+        UsagePeriod::Today => "today",
+        UsagePeriod::ThisWeek => "thisWeek",
+        UsagePeriod::ThisMonth => "thisMonth",
+        UsagePeriod::AllTime => "all",
+    };
+    crate::db::repository::usage_summary::get_usage_summary(&state.db, period_str)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Mock streams (UI development without a live provider)
 // ---------------------------------------------------------------------------
 

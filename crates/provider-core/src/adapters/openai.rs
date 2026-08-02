@@ -317,6 +317,11 @@ impl StreamParser for OpenAiParser {
                         .get("prompt_tokens_details")
                         .and_then(|d| d.get("cached_tokens"))
                         .and_then(|v| v.as_u64()),
+                    cache_read_tokens: usage
+                        .get("prompt_tokens_details")
+                        .and_then(|d| d.get("cached_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    cache_write_tokens: None,
                     cost_hint: usage
                         .pointer("/cost_hint")
                         .and_then(|v| v.as_str())

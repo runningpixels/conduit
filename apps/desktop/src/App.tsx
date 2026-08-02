@@ -48,6 +48,7 @@ import { refreshArtifactList } from './workspace/useArtifacts';
 import { ChevronLeft, PlusIcon } from './icons';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { ConfirmDialog } from '@conduit/ui';
+import { forkConversation } from './ipc/client';
 
 const DOC_PANEL_HINT_KEY = 'conduit:v5-doc-panel-hint-seen';
 
@@ -355,6 +356,23 @@ export default function App() {
   const handleDeleteConversation = useCallback((id: string) => {
     setConfirmDeleteId(id);
   }, []);
+
+  const handleForkConversation = useCallback(
+    async (conversationId: string, forkMessageId: string) => {
+      try {
+        const fork = await forkConversation(conversationId, forkMessageId);
+        setActiveConversationId(fork.id);
+        clearWorkspaceArtifactSelection();
+        setActiveTab('chat');
+        setStatus(makeStatus('Forked conversation', 'success'));
+      } catch (error) {
+        setStatus(
+          makeStatus(error instanceof Error ? error.message : 'Failed to fork conversation', 'error'),
+        );
+      }
+    },
+    [clearWorkspaceArtifactSelection],
+  );
 
   const performDeleteConversation = useCallback(
     async (id: string) => {
@@ -769,6 +787,9 @@ export default function App() {
             <div className={`panel-head${activeTab === 'chat' ? ' panel-head-chat' : ''}`}>
               <div className="panel-title">
                 <b>{panelTitle}</b>
+                {activeConversationSummary?.forkedFromConversationId && (
+                  <span className="fork-badge" title="Forked conversation">⑂</span>
+                )}
                 {panelSubtitle ? <small>{panelSubtitle}</small> : null}
               </div>
               {activeTab !== 'settings' && (
@@ -803,6 +824,7 @@ export default function App() {
               onOpenArtifact={(id) => void handleOpenArtifact(id)}
               onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
               onDocumentToolActivity={handleDocumentToolActivity}
+            onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
               paneActive={activeTab === 'chat'}
             />
             <RailPanes

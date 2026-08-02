@@ -94,6 +94,8 @@ interface ChatViewProps {
   onChatTurnComplete?: (streamState: AssistantStreamState) => void;
   /// Fired when a document create/edit tool starts or finishes argument streaming.
   onDocumentToolActivity?: (activity: DocumentToolActivity) => void;
+  /// Fired when the user requests to fork the conversation at a message.
+  onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// Whether this pane is the active workspace tab (`data-active` for CSS). Defaults true for tests.
   paneActive?: boolean;
 }
@@ -295,6 +297,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onOpenArtifact,
     onChatTurnComplete,
     onDocumentToolActivity,
+    onForkConversation,
     paneActive = true,
   },
   ref,
@@ -946,6 +949,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                         onClick={() => handleEditUserTurn(turn.content)}
                       >
                         Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                        title="Fork conversation at this message"
+                      >
+                        Fork
                       </button>
                     </div>
                   </div>

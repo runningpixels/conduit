@@ -7,9 +7,11 @@
 pub mod artifacts;
 pub mod chat;
 pub mod connectors;
+pub mod prompts;
 pub mod settings;
 
 pub use artifacts::*;
 pub use chat::*;
 pub use connectors::*;
+pub use prompts::*;
 pub use settings::*;

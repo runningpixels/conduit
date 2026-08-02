@@ -267,6 +267,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
         <textarea
           ref={textareaRef}
+          className="composer-textarea"
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={handleKeyDown}

@@ -11,6 +11,7 @@ import { DiagnosticsSection } from './DiagnosticsSection';
 import { AboutSection } from './AboutSection';
 import { WebSearchSection } from './WebSearchSection';
 import { AgentSection } from './AgentSection';
+import { PromptsSection } from './PromptsSection';
 import { useAutoSave } from './useAutoSave';
 import type { ConnectionState } from '../Titlebar';
 
@@ -26,6 +27,8 @@ interface SettingsScreenProps {
   connectionState?: ConnectionState;
   boundaryOk?: boolean;
   hasCredential?: boolean;
+  /// Callback to insert prompt text into the composer.
+  onInsertPrompt?: (body: string) => void;
 }
 
 export type SettingsTab =
@@ -35,6 +38,7 @@ export type SettingsTab =
   | 'artifact-security'
   | 'web-search'
   | 'agent'
+  | 'prompts'
   | 'updates'
   | 'connectors'
   | 'diagnostics'
@@ -52,6 +56,7 @@ const SETTINGS_TABS: TabDef[] = [
   { id: 'artifact-security', label: 'Artifact Security' },
   { id: 'web-search', label: 'Web Search' },
   { id: 'agent', label: 'Agent' },
+  { id: 'prompts', label: 'Prompts' },
   { id: 'updates', label: 'Updates' },
   { id: 'connectors', label: 'Connectors' },
   { id: 'diagnostics', label: 'Diagnostics' },
@@ -69,6 +74,7 @@ export function SettingsScreen({
   connectionState,
   boundaryOk,
   hasCredential,
+  onInsertPrompt,
 }: SettingsScreenProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'provider');
   const save = useAutoSave(onSettingsChange, onStatus);
@@ -129,6 +135,9 @@ export function SettingsScreen({
         )}
         {activeTab === 'agent' && (
           <AgentSection settings={settings} onUpdate={save} onStatus={onStatus} />
+        )}
+        {activeTab === 'prompts' && (
+          <PromptsSection onStatus={onStatus} onInsertPrompt={onInsertPrompt ?? (() => {})} />
         )}
         {activeTab === 'updates' && (
           <UpdatesSection settings={settings} onUpdate={save} onStatus={onStatus} />

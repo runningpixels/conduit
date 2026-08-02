@@ -296,3 +296,19 @@ export interface SearchMessagesRequest {
   query: string;
   limit?: number;
 }
+
+// =============================================================================
+// Prompts Library (Competitive Feature)
+// =============================================================================
+
+export interface Prompt {
+  id: string;
+  title: string;
+  body: string;
+  variables?: string[];
+  folder?: string;
+  tags?: string[];
+  sortOrder: number;
+  createdAt: string;
+  updatedAt?: string;
+}

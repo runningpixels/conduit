@@ -34,6 +34,7 @@ import type {
   UpdateInfo,
   OnboardingState,
   ProviderDescriptor,
+  Prompt,
   SearchMessagesRequest,
   SearchResult,
 } from './contracts';
@@ -309,6 +310,43 @@ export async function searchMessages(
   request: SearchMessagesRequest,
 ): Promise<SearchResult[]> {
   return invoke<SearchResult[]>('search_messages', { request });
+}
+
+// --- Prompts Library -------------------------------------------------------
+
+export async function createPrompt(
+  title: string,
+  body: string,
+  folder?: string,
+  tags?: string[],
+): Promise<Prompt> {
+  return invoke<Prompt>('create_prompt', { title, body, folder, tags });
+}
+
+export async function listPrompts(folder?: string): Promise<Prompt[]> {
+  return invoke<Prompt[]>('list_prompts', { folder });
+}
+
+export async function getPrompt(id: string): Promise<Prompt | null> {
+  return invoke<Prompt | null>('get_prompt', { id });
+}
+
+export async function updatePrompt(
+  id: string,
+  title: string,
+  body: string,
+  folder?: string,
+  tags?: string[],
+): Promise<Prompt> {
+  return invoke<Prompt>('update_prompt', { id, title, body, folder, tags });
+}
+
+export async function deletePrompt(id: string): Promise<void> {
+  return invoke<void>('delete_prompt', { id });
+}
+
+export async function listPromptFolders(): Promise<string[]> {
+  return invoke<string[]>('list_prompt_folders');
 }
 
 /// Fetch a single payload-bearing artifact (inline content decrypted).

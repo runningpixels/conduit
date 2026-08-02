@@ -103,6 +103,13 @@ fn main() {
             reveal_artifacts_dir,
             reveal_artifact,
             search_messages,
+            // Competitive Feature: prompts library
+            create_prompt,
+            list_prompts,
+            get_prompt,
+            update_prompt,
+            delete_prompt,
+            list_prompt_folders,
             // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
             reset_local_database,
         ])

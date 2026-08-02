@@ -16,5 +16,6 @@ pub mod event_log;
 pub mod licenses;
 pub mod messages;
 pub mod tenant_cache;
+pub mod prompts;
 pub mod search;
 pub mod tool_calls;

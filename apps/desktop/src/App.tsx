@@ -830,6 +830,7 @@ export default function App() {
               connectionState={connectionState}
               boundaryOk={boundaryOk}
               hasCredential={hasCredential}
+              onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
             />
           </div>
         </section>

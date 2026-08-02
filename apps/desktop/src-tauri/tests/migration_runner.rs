@@ -53,8 +53,8 @@ async fn all_tables_created_by_initial_migration() {
     }
 
     // The public audit table mirrors the runner's internal table. The count is
-    // the number of shipped migrations (0001 initial schema + 0004 encryption
-    // key version + 0005 artifact single-payload; 0002/0003 reserved).
+    // the number of shipped migrations (0001 + 0004 + 0005 + 0006 FTS search
+    // + 0007 prompts library).
     let (public,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
         .fetch_one(&pool)
         .await
@@ -65,7 +65,7 @@ async fn all_tables_created_by_initial_migration() {
             .await
             .unwrap();
     assert_eq!(public, internal, "schema_migrations out of sync");
-    assert_eq!(public, 3, "expected all shipped migrations applied");
+    assert_eq!(public, 5, "expected all shipped migrations applied");
 }
 
 #[tokio::test]

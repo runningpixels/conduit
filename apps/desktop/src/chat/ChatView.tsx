@@ -69,6 +69,8 @@ export interface ChatViewHandle {
   isStreaming: () => boolean;
   /// Scroll a message into view (used by FTS5 search navigation).
   scrollToMessage: (messageId: string) => void;
+  /// Insert text at the composer cursor position (used by prompts library).
+  insertPrompt: (text: string) => void;
 }
 
 interface ChatViewProps {
@@ -838,6 +840,21 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           setTimeout(() => el.classList.remove('message-highlight'), 2000);
         }
       }, 100);
+    },
+    insertPrompt: (text: string) => {
+      setPrompt((prev) => {
+        const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
+        if (ta && document.activeElement === ta) {
+          const start = ta.selectionStart;
+          const end = ta.selectionEnd;
+          return prev.slice(0, start) + text + prev.slice(end);
+        }
+        return prev + (prev ? '\n' : '') + text;
+      });
+      requestAnimationFrame(() => {
+        const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
+        ta?.focus();
+      });
     },
   }));
 

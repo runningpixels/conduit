@@ -110,6 +110,90 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     permissionLevel: 'sensitive',
     displayGroup: DOCUMENT_TOOL_GROUP,
   },
+  // ---------------------------------------------------------------------------
+  // Utility tools (ReadOnly — always injected, no MCP needed)
+  // ---------------------------------------------------------------------------
+  {
+    toolId: 'current_time',
+    name: 'current_time',
+    description: 'Get the current date and time in ISO-8601 format. No arguments needed.',
+    inputSchema: schema([]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Utilities',
+  },
+  {
+    toolId: 'uuid',
+    name: 'uuid',
+    description: 'Generate a new UUID v4. No arguments needed.',
+    inputSchema: schema([]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Utilities',
+  },
+  {
+    toolId: 'random',
+    name: 'random',
+    description: 'Generate a random integer in a range. Provide `min` (default 0) and `max` (default 100).',
+    inputSchema: schema([
+      { name: 'min', type: 'integer' },
+      { name: 'max', type: 'integer' },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Utilities',
+  },
+  {
+    toolId: 'calculator',
+    name: 'calculator',
+    description: 'Evaluate a simple arithmetic expression. Accepts `expression` (e.g. "(5 + 3) * 2"). Uses safe evaluation — no code execution.',
+    inputSchema: schema([
+      { name: 'expression', type: 'string', required: true },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Utilities',
+  },
+  // ---------------------------------------------------------------------------
+  // Web tools (search-gated)
+  // ---------------------------------------------------------------------------
+  {
+    toolId: 'web_search',
+    name: 'web_search',
+    description: 'Search the web for information. Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs.',
+    inputSchema: schema([
+      { name: 'query', type: 'string', required: true },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Web',
+  },
+  {
+    toolId: 'web_fetch',
+    name: 'web_fetch',
+    description: 'Fetch the contents of a web page. Provide a `url` string. Returns the page content as text (may be truncated at 50KB).',
+    inputSchema: schema([
+      { name: 'url', type: 'string', required: true },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Web',
+  },
+  // ---------------------------------------------------------------------------
+  // Clipboard tools
+  // ---------------------------------------------------------------------------
+  {
+    toolId: 'clipboard_read',
+    name: 'clipboard_read',
+    description: 'Read the current contents of the system clipboard. Returns text content if available.',
+    inputSchema: schema([]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: 'Clipboard',
+  },
+  {
+    toolId: 'clipboard_write',
+    name: 'clipboard_write',
+    description: 'Write text to the system clipboard. Provide `text` to copy.',
+    inputSchema: schema([
+      { name: 'text', type: 'string', required: true },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: 'Clipboard',
+  },
 ];
 
 export const DOCUMENT_TOOL_NAMES = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name));
@@ -145,21 +229,32 @@ export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
   return 'text';
 }
 
+const UTILITY_TOOL_NAMES = new Set(['current_time', 'uuid', 'random', 'calculator']);
+const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch']);
+const CLIPBOARD_TOOL_NAMES = new Set(['clipboard_read', 'clipboard_write']);
+
 /** Built-in document tools exposed to the model for a given turn intent. */
 export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefinition[] {
+  const utilityTools = BUILTIN_TOOL_DEFINITIONS.filter((t) => UTILITY_TOOL_NAMES.has(t.name));
   switch (intent) {
     case 'create':
-      return BUILTIN_TOOL_DEFINITIONS.filter(
-        (tool) => tool.name.startsWith('write_') || tool.name === 'export_document',
-      );
+      return [
+        ...utilityTools,
+        ...BUILTIN_TOOL_DEFINITIONS.filter(
+          (tool) => tool.name.startsWith('write_') || tool.name === 'export_document',
+        ),
+      ];
     case 'edit':
-      return BUILTIN_TOOL_DEFINITIONS.filter(
-        (tool) => tool.name.startsWith('edit_') || tool.name === 'export_document',
-      );
+      return [
+        ...utilityTools,
+        ...BUILTIN_TOOL_DEFINITIONS.filter(
+          (tool) => tool.name.startsWith('edit_') || tool.name === 'export_document',
+        ),
+      ];
     case 'info':
     case 'general':
     default:
-      return [];
+      return utilityTools;
   }
 }
 

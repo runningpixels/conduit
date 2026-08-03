@@ -78,6 +78,12 @@ export interface ChatViewHandle {
   scrollToMessage: (messageId: string) => void;
   /// Insert text at the composer cursor position (used by prompts library).
   insertPrompt: (text: string) => void;
+  /// V7 — toggle the per-turn web-search flag (⌘⇧W / command palette).
+  /// No-op when the composer's web toggle would not be visible.
+  toggleWebSearch: () => void;
+  /// V7 — fork the conversation at the current (last) turn (⌘⇧F / palette).
+  /// Resolves true when a turn existed and the fork was requested.
+  forkConversationHere: () => Promise<boolean>;
 }
 
 interface ChatViewProps {
@@ -890,6 +896,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
         ta?.focus();
       });
+    },
+    toggleWebSearch: () => {
+      // Only reachable when the composer's web toggle would be visible.
+      if (settings.webSearchEnabled && !settings.localOnly) {
+        handleWebSearchToggle();
+      }
+    },
+    forkConversationHere: async () => {
+      if (!conversationId) return false;
+      const last = turns[turns.length - 1];
+      if (!last) return false;
+      onForkConversation?.(conversationId, last.id);
+      return true;
     },
   }));
 

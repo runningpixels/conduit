@@ -1,6 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { Artifact, SearchResult } from '../ipc/contracts';
-import { FileIcon } from '../icons';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import type {
+  Artifact,
+  ModelInfo,
+  ProviderDescriptor,
+  SearchResult,
+} from '../ipc/contracts';
+import { listProviderDescriptors, listProviderModels } from '../ipc/client';
+import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../icons';
+import { providerDisplayName } from '../lib/providerIdentity';
+import { getModelPrices, type ModelPrices } from '../lib/costTable';
 
 export interface CommandPaletteConversation {
   id: string;
@@ -11,15 +19,23 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   onNewChat: () => void;
-  onOpenHistory: () => void;
-  onOpenSettings: () => void;
+  /** Open the settings sheet, optionally at a section ('providers' | …). */
+  onOpenSettings: (section?: string) => void;
   onToggleTheme: () => void;
-  onToggleDocPanel?: () => void;
+  onToggleDocPanel: () => void;
+  onToggleSidebar: () => void;
+  onToggleWebSearch: () => void;
+  onForkConversationHere: () => void;
+  onRenameChat: () => void;
+  onExportDiagnostics: () => void;
+  onCopyConversationAsMarkdown: () => void;
+  onDeleteChat: () => void;
+  /** Switch the active provider + model from the / models corpus. */
+  onSelectModel: (providerId: string, modelId: string) => void;
   conversations: CommandPaletteConversation[];
   onSelectConversation: (id: string) => void;
-  /** P4.1 — artifacts for the Files & artifacts palette section. */
+  /** V7 — @ artifacts corpus. */
   artifacts?: Artifact[];
-  /** P4.1 — open an artifact from the palette (App owns the doc-panel flow). */
   onOpenArtifact?: (artifactId: string) => void;
   /** FTS5 full-text search over messages (debounced 300ms, min 2 chars). */
   onSearchMessages?: (query: string) => Promise<SearchResult[]>;
@@ -27,13 +43,18 @@ interface CommandPaletteProps {
   onSelectSearchResult?: (result: SearchResult) => void;
 }
 
+type PaletteKind = 'chat' | 'cmd' | 'file' | 'model' | 'search';
+
 interface PaletteItem {
   id: string;
+  group: string;
+  kind: PaletteKind;
   label: string;
-  hint?: string;
-  run: () => void;
-  /** Present only for FTS5 search results, so the renderer can highlight. */
+  /** Mono right-aligned tail (shortcut / size / price). */
+  tail?: string;
+  /** FTS snippet, rendered with <mark> highlight. */
   result?: SearchResult;
+  run: () => void;
 }
 
 /** Escape HTML in a snippet so message content can't inject markup. */
@@ -55,15 +76,54 @@ function highlightSnippet(result: SearchResult): string {
   return `${escaped.slice(0, start)}<mark>${escaped.slice(start, end)}</mark>${escaped.slice(end)}`;
 }
 
-/** App command palette (Mod+K): jump to actions, conversations, and search messages. */
+function formatSize(bytes?: number): string {
+  if (bytes == null) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function trimPrice(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+}
+
+/** "$3 / $15" style per-Mtok tail for the / models corpus. */
+function priceTail(prices: ModelPrices): string {
+  return `$${trimPrice(prices.inputPerMtokCents / 100)} / $${trimPrice(prices.outputPerMtokCents / 100)}`;
+}
+
+const MODE_LABEL: Record<string, string> = {
+  '>': 'commands',
+  '@': 'artifacts',
+  '/': 'models',
+};
+
+function PaletteIcon({ kind }: { kind: PaletteKind }) {
+  if (kind === 'chat') return <ChatIcon />;
+  if (kind === 'cmd') return <ChevronRight />;
+  if (kind === 'file') return <FilesIcon />;
+  if (kind === 'model') return <ModelIcon />;
+  return null;
+}
+
+/** App command palette (⌘K): prefix modes — > commands · @ artifacts ·
+ *  / models — plus recent conversations and FTS message search. The power
+ *  surface: every capability removed from persistent chrome lives here. */
 export function CommandPalette({
   open,
   onClose,
   onNewChat,
-  onOpenHistory,
   onOpenSettings,
   onToggleTheme,
   onToggleDocPanel,
+  onToggleSidebar,
+  onToggleWebSearch,
+  onForkConversationHere,
+  onRenameChat,
+  onExportDiagnostics,
+  onCopyConversationAsMarkdown,
+  onDeleteChat,
+  onSelectModel,
   conversations,
   onSelectConversation,
   artifacts = [],
@@ -75,135 +135,164 @@ export function CommandPalette({
   const [activeIndex, setActiveIndex] = useState(0);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
+  const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // P4.5 — restore focus to the previously-focused element on close.
+  // Restore focus to the previously-focused element on close.
   const lastFocusRef = useRef<HTMLElement | null>(null);
 
-  const items = useMemo((): PaletteItem[] => {
-    const isMac =
-      typeof navigator !== 'undefined' &&
-      /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-    const modJ = `${isMac ? '⌘' : 'Ctrl'}+J`;
+  const prefix = /^[>@/]/.test(query) ? query[0] : '';
+  const q = (prefix ? query.slice(1) : query).trim().toLowerCase();
 
-    const actions: PaletteItem[] = [
-      {
-        id: 'new-chat',
-        label: 'New chat',
-        hint: 'Start a fresh conversation',
-        run: () => {
-          onNewChat();
-          onClose();
-        },
-      },
-      {
-        id: 'history',
-        label: 'Open history',
-        hint: 'Browse local conversations',
-        run: () => {
-          onOpenHistory();
-          onClose();
-        },
-      },
-      {
-        id: 'settings',
-        label: 'Open settings',
-        hint: 'Provider, privacy, appearance',
-        run: () => {
-          onOpenSettings();
-          onClose();
-        },
-      },
-      {
-        id: 'theme',
-        label: 'Toggle theme',
-        hint: 'Switch light / dark',
-        run: () => {
-          onToggleTheme();
-          onClose();
-        },
-      },
+  // Load provider descriptors + models once per open (small N) for the
+  // / models corpus; also used by the workspace-chip counts in the sidebar.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const descriptors = await listProviderDescriptors();
+        if (cancelled) return;
+        setProviders(descriptors);
+        const entries = await Promise.all(
+          descriptors.map(async (d) => {
+            const models = await listProviderModels(d.id).catch(() => [] as ModelInfo[]);
+            return [d.id, models] as const;
+          }),
+        );
+        if (!cancelled) setModelsByProvider(Object.fromEntries(entries));
+      } catch {
+        if (!cancelled) setProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const commands = useMemo((): PaletteItem[] => {
+    const close = () => onClose();
+    return [
+      { id: 'cmd-new-chat', group: 'Commands', kind: 'cmd', label: 'New chat', tail: '⌘N', run: () => { onNewChat(); close(); } },
+      { id: 'cmd-fork', group: 'Commands', kind: 'cmd', label: 'Fork conversation here', tail: '⌘⇧F', run: () => { onForkConversationHere(); close(); } },
+      { id: 'cmd-toggle-panel', group: 'Commands', kind: 'cmd', label: 'Toggle context panel', tail: '⌘J', run: () => { onToggleDocPanel(); close(); } },
+      { id: 'cmd-toggle-sidebar', group: 'Commands', kind: 'cmd', label: 'Toggle sidebar', tail: '⌘\\', run: () => { onToggleSidebar(); close(); } },
+      { id: 'cmd-toggle-web', group: 'Commands', kind: 'cmd', label: 'Toggle web search for this turn', tail: '⌘⇧W', run: () => { onToggleWebSearch(); close(); } },
+      { id: 'cmd-settings', group: 'Commands', kind: 'cmd', label: 'Open settings', tail: '⌘,', run: () => { onOpenSettings(); close(); } },
+      { id: 'cmd-providers', group: 'Commands', kind: 'cmd', label: 'Manage providers & keys', run: () => { onOpenSettings('providers'); close(); } },
+      { id: 'cmd-connectors', group: 'Commands', kind: 'cmd', label: 'Connect a service', run: () => { onOpenSettings('connectors'); close(); } },
+      { id: 'cmd-rename', group: 'Commands', kind: 'cmd', label: 'Rename this chat', run: () => { onRenameChat(); close(); } },
+      { id: 'cmd-export-diag', group: 'Commands', kind: 'cmd', label: 'Export diagnostics bundle', run: () => { onExportDiagnostics(); close(); } },
+      { id: 'cmd-copy-md', group: 'Commands', kind: 'cmd', label: 'Copy conversation as Markdown', run: () => { onCopyConversationAsMarkdown(); close(); } },
+      { id: 'cmd-delete', group: 'Commands', kind: 'cmd', label: 'Delete this chat', run: () => { onDeleteChat(); close(); } },
+      { id: 'cmd-theme', group: 'Commands', kind: 'cmd', label: 'Toggle theme', run: () => { onToggleTheme(); close(); } },
     ];
-
-    if (onToggleDocPanel) {
-      actions.push({
-        id: 'toggle-doc-panel',
-        label: 'Toggle artifact panel',
-        hint: modJ,
-        run: () => {
-          onToggleDocPanel();
-          onClose();
-        },
-      });
-    }
-
-    const convItems: PaletteItem[] = conversations.map((c) => ({
-      id: `conv-${c.id}`,
-      label: c.title || 'Untitled chat',
-      hint: 'Open conversation',
-      run: () => {
-        onSelectConversation(c.id);
-        onClose();
-      },
-    }));
-
-    // P4.1 — Files & artifacts section (filtered by the same query).
-    const artifactItems: PaletteItem[] = artifacts.map((a) => ({
-      id: `art-${a.id}`,
-      label: a.title || a.contentPath?.split(/[\\/]/).pop() || 'Untitled artifact',
-      hint: a.kind,
-      run: () => {
-        onOpenArtifact?.(a.id);
-        onClose();
-      },
-    }));
-
-    const all = [...actions, ...convItems, ...artifactItems];
-    const q = query.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter(
-      (item) =>
-        item.label.toLowerCase().includes(q) ||
-        (item.hint?.toLowerCase().includes(q) ?? false),
-    );
   }, [
-    artifacts,
-    conversations,
-    onClose,
-    onNewChat,
-    onOpenHistory,
-    onOpenSettings,
-    onOpenArtifact,
-    onSelectConversation,
-    onToggleDocPanel,
-    onToggleTheme,
-    query,
+    onClose, onNewChat, onForkConversationHere, onToggleDocPanel, onToggleSidebar,
+    onToggleWebSearch, onOpenSettings, onRenameChat, onExportDiagnostics,
+    onCopyConversationAsMarkdown, onDeleteChat, onToggleTheme,
   ]);
 
-  // Merge palette items + search results into a single list for arrow-key
-  // navigation. Search results are appended after the filtered actions/convos.
-  const allItems = useMemo((): PaletteItem[] => {
+  const modelItems = useMemo((): PaletteItem[] => {
+    const items: PaletteItem[] = [];
+    for (const provider of providers) {
+      const models = modelsByProvider[provider.id] ?? [];
+      if (models.length === 0) continue;
+      for (const model of models) {
+        const label = `${providerDisplayName(provider.id)} / ${model.displayName ?? model.id}`;
+        const prices = getModelPrices(model.id);
+        const tail =
+          provider.credentialMode === 'none'
+            ? 'local'
+            : prices
+              ? priceTail(prices)
+              : undefined;
+        items.push({
+          id: `model-${provider.id}-${model.id}`,
+          group: providerDisplayName(provider.id),
+          kind: 'model',
+          label,
+          tail,
+          run: () => {
+            onSelectModel(provider.id, model.id);
+            onClose();
+          },
+        });
+      }
+    }
+    return items;
+  }, [providers, modelsByProvider, onSelectModel, onClose]);
+
+  const items = useMemo((): PaletteItem[] => {
+    if (prefix === '>') {
+      return commands.filter((c) => c.label.toLowerCase().includes(q));
+    }
+    if (prefix === '@') {
+      return artifacts
+        .map((a) => ({
+          id: `art-${a.id}`,
+          group: 'Artifacts',
+          kind: 'file' as const,
+          label: a.title ?? a.contentPath?.split(/[\\/]/).pop() ?? 'Untitled artifact',
+          tail: formatSize(a.sizeBytes),
+          run: () => {
+            onOpenArtifact?.(a.id);
+            onClose();
+          },
+        }))
+        .filter((a) => a.label.toLowerCase().includes(q));
+    }
+    if (prefix === '/') {
+      return modelItems.filter((m) => m.label.toLowerCase().includes(q));
+    }
+    // Default corpus: New chat (empty query) + recent conversations + FTS hits.
+    const convItems: PaletteItem[] = conversations
+      .filter((c) => (c.title || 'Untitled chat').toLowerCase().includes(q))
+      .map((c) => ({
+        id: `conv-${c.id}`,
+        group: 'Chats',
+        kind: 'chat' as const,
+        label: c.title || 'Untitled chat',
+        run: () => {
+          onSelectConversation(c.id);
+          onClose();
+        },
+      }));
     const searchItems: PaletteItem[] = results.map((r) => ({
       id: `msg-${r.messageId}`,
+      group: 'Messages',
+      kind: 'search' as const,
       label: r.snippet || '(message)',
-      hint: r.conversationTitle ?? (r.role === 'user' ? 'You' : 'Assistant'),
       result: r,
       run: () => {
         onSelectSearchResult?.(r);
         onClose();
       },
     }));
-    return [...items, ...searchItems];
-  }, [items, results, onSelectSearchResult, onClose]);
+    if (!q) {
+      return [
+        { id: 'cmd-new-chat', group: 'Chats', kind: 'cmd', label: 'New chat', tail: '⌘N', run: () => { onNewChat(); onClose(); } },
+        ...convItems,
+        ...searchItems,
+      ];
+    }
+    return [...convItems, ...searchItems];
+  }, [
+    prefix, q, commands, artifacts, modelItems, conversations, results,
+    onClose, onNewChat, onOpenArtifact, onSelectConversation, onSelectSearchResult,
+  ]);
 
-  const handleQueryChange = (q: string) => {
-    setQuery(q);
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
     setActiveIndex(0);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (q.trim().length >= 2 && onSearchMessages) {
+    const isDefault = !/^[>@/]/.test(value);
+    const qq = value.trim().length >= 2 && isDefault ? value.trim() : '';
+    if (qq && onSearchMessages) {
       setSearching(true);
       debounceRef.current = setTimeout(() => {
-        void onSearchMessages(q.trim())
+        void onSearchMessages(qq)
           .then((next) => {
             setResults(next.slice(0, 5));
             setSearching(false);
@@ -225,7 +314,6 @@ export function CommandPalette({
       setResults([]);
       setSearching(false);
       setActiveIndex(0);
-      // P4.5 — restore focus to whatever was focused before the palette opened.
       if (lastFocusRef.current && document.contains(lastFocusRef.current)) {
         lastFocusRef.current.focus();
         lastFocusRef.current = null;
@@ -243,10 +331,10 @@ export function CommandPalette({
   }, [query]);
 
   useEffect(() => {
-    if (activeIndex >= allItems.length) {
-      setActiveIndex(Math.max(0, allItems.length - 1));
+    if (items.length > 0 && activeIndex >= items.length) {
+      setActiveIndex(items.length - 1);
     }
-  }, [activeIndex, allItems.length]);
+  }, [activeIndex, items.length]);
 
   useEffect(() => {
     return () => {
@@ -257,7 +345,7 @@ export function CommandPalette({
   if (!open) return null;
 
   function runActive() {
-    const item = allItems[activeIndex];
+    const item = items[activeIndex];
     if (item) item.run();
   }
 
@@ -270,12 +358,12 @@ export function CommandPalette({
     }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setActiveIndex((i) => (allItems.length === 0 ? 0 : (i + 1) % allItems.length));
+      setActiveIndex((i) => (items.length === 0 ? 0 : (i + 1) % items.length));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setActiveIndex((i) => (allItems.length === 0 ? 0 : (i - 1 + allItems.length) % allItems.length));
+      setActiveIndex((i) => (items.length === 0 ? 0 : (i - 1 + items.length) % items.length));
       return;
     }
     if (event.key === 'Enter') {
@@ -284,71 +372,94 @@ export function CommandPalette({
     }
   }
 
+  const modeLabel = prefix ? MODE_LABEL[prefix] : undefined;
+
   return (
     <div
-      className="command-palette-backdrop"
-      role="presentation"
-      onMouseDown={(e) => {
+      className="scrim palette-scrim"
+      data-open="true"
+      onPointerDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="command-palette"
+        className="palette"
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
         onKeyDown={onKeyDown}
       >
-        <input
-          ref={inputRef}
-          type="search"
-          placeholder="Search commands, conversations, and messages…"
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          aria-label="Search commands, conversations, and messages"
-          autoComplete="off"
-        />
-        <div className="command-palette-list" role="listbox">
-          {allItems.length === 0 ? (
-            <div className="command-palette-item" aria-disabled="true">
-              {searching ? 'Searching…' : 'No matches'}
+        <div className="pal-input">
+          <SearchIcon />
+          <input
+            ref={inputRef}
+            type="search"
+            placeholder="Search chats…  >commands  @artifacts  /models"
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            aria-label="Search chats, commands, artifacts, and models"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {modeLabel ? <span className="pal-mode">{modeLabel}</span> : null}
+        </div>
+
+        <div className="pal-list scroll" role="listbox" aria-label="Results">
+          {items.length === 0 ? (
+            <div className="pal-empty" role="status">
+              {searching ? 'Searching…' : (
+                <>
+                  No matches. Try <b>&gt;</b> for commands.
+                </>
+              )}
             </div>
           ) : (
-            allItems.map((item, index) => {
-              const isSearch = item.result != null;
-              const isArtifact = item.id.startsWith('art-');
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  className={`command-palette-item${index === activeIndex ? ' active' : ''}${isSearch ? ' search-result' : ''}${isArtifact ? ' artifact-result' : ''}`}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => item.run()}
-                >
-                  {isSearch ? (
-                    <span
-                      className="search-result-snippet"
-                      dangerouslySetInnerHTML={{ __html: highlightSnippet(item.result!) }}
-                    />
-                  ) : isArtifact ? (
-                    <span className="palette-item-label">
-                      <FileIcon /> {item.label}
-                    </span>
-                  ) : (
-                    item.label
-                  )}
-                  {item.hint && <small>{item.hint}</small>}
-                </button>
-              );
-            })
+            (() => {
+              const rows: ReactNode[] = [];
+              let lastGroup = '';
+              items.forEach((item, index) => {
+                if (item.group !== lastGroup) {
+                  rows.push(
+                    <div className="pal-group" key={`g-${item.group}`}>{item.group}</div>,
+                  );
+                  lastGroup = item.group;
+                }
+                rows.push(
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    className="pal-item"
+                    data-sel={index === activeIndex}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => item.run()}
+                  >
+                    <PaletteIcon kind={item.kind} />
+                    {item.result ? (
+                      <b
+                        className="pal-snippet"
+                        dangerouslySetInnerHTML={{ __html: highlightSnippet(item.result) }}
+                      />
+                    ) : (
+                      <b>{item.label}</b>
+                    )}
+                    {item.tail ? <span className="tail">{item.tail}</span> : null}
+                  </button>,
+                );
+              });
+              return rows;
+            })()
           )}
         </div>
-        <div className="command-palette-footer">
+
+        <div className="pal-foot">
           <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> select</span>
-          <span><kbd>esc</kbd> close</span>
+          <span><kbd>↵</kbd> open</span>
+          <span><kbd>&gt;</kbd> commands</span>
+          <span><kbd>@</kbd> artifacts</span>
+          <span><kbd>/</kbd> models</span>
+          <span style={{ marginLeft: 'auto' }}><kbd>esc</kbd> close</span>
         </div>
       </div>
     </div>

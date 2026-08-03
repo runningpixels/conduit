@@ -49,7 +49,7 @@ import { refreshArtifactList } from './workspace/useArtifacts';
 import { ChevronLeft } from './icons';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { ConfirmDialog } from '@conduit/ui';
-import { forkConversation } from './ipc/client';
+import { forkConversation, exportDiagnostics, getConversationMessages, setConversationTitle } from './ipc/client';
 
 const DOC_PANEL_HINT_KEY = 'conduit:v5-doc-panel-hint-seen';
 const CONVO_PROVIDERS_KEY = 'conduit:v7-convo-providers';
@@ -153,6 +153,8 @@ export default function App() {
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
   const [toasts, setToasts] = useState<StatusState[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteConversations, setPaletteConversations] = useState<{ id: string; title: string }[]>([]);
@@ -160,7 +162,7 @@ export default function App() {
 
   const { onPointerDown, onKeyDown: onResizeKeyDown, ariaValueNow, ariaValueMin, ariaValueMax } =
     useColumnResize();
-  const { open: openSidebar, toggle: toggleSidebar } = useSidebarCollapse();
+  const { toggle: toggleSidebar } = useSidebarCollapse();
   const { collapsed: docPanelCollapsed, collapse: collapseDocPanel, expand: expandDocPanel, toggle: toggleDocPanel } = useDocPanelCollapse();
   // Rich status: accepts either a string (legacy) or a StatusState object.
   const setStatusMessage = useCallback((message: string | StatusState) => {
@@ -651,6 +653,86 @@ export default function App() {
     [activeConversationId, refreshArtifacts],
   );
 
+  // V7 ⌘K — rename this chat (inline dialog, preserved capability).
+  const handleRenameChat = useCallback(() => {
+    setRenameValue(activeConversationSummary?.displayTitle ?? '');
+    setRenameDialogOpen(true);
+  }, [activeConversationSummary]);
+
+  const commitRenameChat = useCallback(async () => {
+    const title = renameValue.trim();
+    setRenameDialogOpen(false);
+    if (!title || !activeConversationId) return;
+    try {
+      await setConversationTitle(activeConversationId, title);
+      await refreshConversations();
+      await refreshActiveConversationSummary(activeConversationId);
+      setStatus(makeStatus('Conversation renamed', 'success'));
+    } catch (error) {
+      setStatus(
+        makeStatus(error instanceof Error ? error.message : 'Failed to rename conversation', 'error'),
+      );
+    }
+  }, [activeConversationId, renameValue, refreshConversations, refreshActiveConversationSummary]);
+
+  const handleExportDiagnostics = useCallback(async () => {
+    try {
+      const result = await exportDiagnostics();
+      setStatus(makeStatus(`Diagnostics exported to ${result.exportedTo}`, 'success'));
+    } catch (error) {
+      setStatus(
+        makeStatus(error instanceof Error ? error.message : 'Failed to export diagnostics', 'error'),
+      );
+    }
+  }, []);
+
+  const handleCopyConversationAsMarkdown = useCallback(async () => {
+    if (!activeConversationId) {
+      setStatus(makeStatus('Nothing to copy', 'warning'));
+      return;
+    }
+    try {
+      const messages = await getConversationMessages(activeConversationId);
+      const md = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => {
+          const body = (m.parts ?? [])
+            .map((p) => p.content ?? '')
+            .join('')
+            .trim();
+          return `## ${m.role === 'user' ? 'You' : 'Assistant'}\n\n${body}`;
+        })
+        .filter((block) => block.trim().length > 0)
+        .join('\n\n');
+      if (!md.trim()) {
+        setStatus(makeStatus('Nothing to copy', 'warning'));
+        return;
+      }
+      await navigator.clipboard.writeText(md);
+      setStatus(makeStatus('Conversation copied as Markdown', 'success'));
+    } catch (error) {
+      setStatus(
+        makeStatus(error instanceof Error ? error.message : 'Failed to copy conversation', 'error'),
+      );
+    }
+  }, [activeConversationId]);
+
+  // V7 ⌘K — switch provider + model from the / models corpus; re-tints via
+  // the Phase A data-provider effect.
+  const handleSelectModel = useCallback(
+    (providerId: string, modelId: string) => {
+      const next: AppSettings = { ...settings, activeProvider: providerId, activeModel: modelId };
+      setSettings(next);
+      void updateSettingsPersisted(next);
+    },
+    [settings],
+  );
+
+  // V7 ⌘K — delete this chat routes through the existing confirm flow.
+  const handleDeleteChatRequest = useCallback(() => {
+    if (activeConversationId) setConfirmDeleteId(activeConversationId);
+  }, [activeConversationId]);
+
   const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>(() => resolveTheme(settings.theme));
   useEffect(() => {
     const eff = applyTheme(settings.theme);
@@ -927,10 +1009,21 @@ export default function App() {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         onNewChat={() => void handleNewChat()}
-        onOpenHistory={() => openSidebar()}
-        onOpenSettings={() => openSettings()}
+        onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
         onToggleTheme={handleToggleTheme}
         onToggleDocPanel={toggleDocPanel}
+        onToggleSidebar={toggleSidebar}
+        onToggleWebSearch={() => chatViewRef.current?.toggleWebSearch()}
+        onForkConversationHere={() => {
+          void chatViewRef.current?.forkConversationHere().then((ok) => {
+            if (ok) setStatus(makeStatus('Forked conversation', 'success'));
+          });
+        }}
+        onRenameChat={handleRenameChat}
+        onExportDiagnostics={() => void handleExportDiagnostics()}
+        onCopyConversationAsMarkdown={() => void handleCopyConversationAsMarkdown()}
+        onDeleteChat={handleDeleteChatRequest}
+        onSelectModel={handleSelectModel}
         conversations={paletteConversations}
         artifacts={artifacts}
         onOpenArtifact={(id) => void handleOpenArtifact(id)}
@@ -938,6 +1031,60 @@ export default function App() {
         onSearchMessages={(query) => searchMessages({ query })}
         onSelectSearchResult={handleSelectSearchResult}
       />
+
+      {renameDialogOpen && (
+        <div
+          className="cu-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setRenameDialogOpen(false);
+          }}
+        >
+          <div
+            className="cu-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rename chat"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 className="cu-dialog-title">Rename this chat</h2>
+            <div className="cu-dialog-body">Choose a title for this conversation.</div>
+            <label className="cu-dialog-phrase">
+              <span>Title</span>
+              <input
+                autoFocus
+                type="text"
+                value={renameValue}
+                aria-label="Conversation title"
+                autoComplete="off"
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void commitRenameChat();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setRenameDialogOpen(false);
+                  }
+                }}
+              />
+            </label>
+            <div className="cu-dialog-actions">
+              <button className="btn ghost" type="button" onClick={() => setRenameDialogOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={!renameValue.trim()}
+                onClick={() => void commitRenameChat()}
+              >
+                Rename
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmDeleteId != null}

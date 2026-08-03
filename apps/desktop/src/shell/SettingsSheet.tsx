@@ -31,6 +31,8 @@ import {
   writeShowReasoning,
   readSendWith,
   writeSendWith,
+  readExportMetadata,
+  writeExportMetadata,
 } from './uiPrefs';
 import { ChatIcon, ConnectorsIcon, LockIcon, SettingsIcon } from '../icons';
 
@@ -138,6 +140,7 @@ export function SettingsSheet({
   const [reduceMotion, setReduceMotion] = useState(readReduceMotion);
   const [showReasoning, setShowReasoning] = useState(readShowReasoning);
   const [sendWith, setSendWith] = useState(readSendWith);
+  const [exportMetadata, setExportMetadata] = useState(readExportMetadata);
 
   // Reset to the requested section each time the sheet opens; focus + restore.
   useEffect(() => {
@@ -364,6 +367,24 @@ export function SettingsSheet({
             <>
               <h2 className="sheet-h">Advanced</h2>
               <p className="sheet-sub">Escape hatches and diagnostics. Most people never open this.</p>
+              <div className="grp">
+                <div className="grp-label">Document export</div>
+                <div className="srow">
+                  <span className="srow-text">
+                    <b>Include metadata on export</b>
+                    <small>Write a metadata sidecar when saving a copy of an artifact</small>
+                  </span>
+                  <Toggle
+                    label="Include metadata on export"
+                    pressed={exportMetadata === 'on'}
+                    onChange={() => {
+                      const next = exportMetadata === 'on' ? 'off' : 'on';
+                      setExportMetadata(next);
+                      writeExportMetadata(next);
+                    }}
+                  />
+                </div>
+              </div>
               <div style={{ marginBottom: 24 }}>
                 <UsageSection />
               </div>

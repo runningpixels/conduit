@@ -14,11 +14,13 @@ const PROVIDER_COLOUR_KEY = 'conduit:v7-provider-colour';
 const REDUCE_MOTION_KEY = 'conduit:v7-reduce-motion';
 const SHOW_REASONING_KEY = 'conduit:v7-show-reasoning';
 const SEND_WITH_KEY = 'conduit:v7-send-with';
+const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
 
 export type ProviderColourPref = 'on' | 'off';
 export type ReduceMotionPref = 'on' | 'off';
 export type ShowReasoningPref = 'on' | 'off';
 export type SendWithPref = 'enter' | 'cmd-enter';
+export type ExportMetadataPref = 'on' | 'off';
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -88,6 +90,16 @@ export function readSendWith(): SendWithPref {
 
 export function writeSendWith(value: SendWithPref): void {
   writePref(SEND_WITH_KEY, value);
+}
+
+/* ── Export metadata sidecar (document panel ⋯ menu → Save a copy…) ──── */
+
+export function readExportMetadata(): ExportMetadataPref {
+  return readPref(EXPORT_METADATA_KEY, ['on', 'off'], 'on');
+}
+
+export function writeExportMetadata(value: ExportMetadataPref): void {
+  writePref(EXPORT_METADATA_KEY, value);
 }
 
 /** Apply every document-level pref on boot (idempotent). */

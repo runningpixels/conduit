@@ -73,7 +73,8 @@ export function Menu({ open, onClose, triggerRef, children, className, label }: 
   return (
     <div
       ref={menuRef}
-      className={className ?? 'doc-overflow-menu'}
+      className={className ?? 'menu'}
+      data-open="true"
       role="menu"
       aria-label={label}
       aria-labelledby={label ? undefined : labelId}

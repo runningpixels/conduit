@@ -97,19 +97,54 @@ describe('DocumentPanel Source tab (M3)', () => {
 });
 
 describe('DocumentPanel Export (M5)', () => {
-  it('Export calls onExport with the artifact id and the metadata toggle state', async () => {
+  it('Save a copy… calls onExport with the artifact id and the metadata pref (default on)', async () => {
     const { onExport } = renderPanel();
     openOverflowMenu();
-    const exportBtn = screen.getByRole('menuitem', { name: 'Export' });
-    fireEvent.click(exportBtn);
-    await waitFor(() => expect(onExport).toHaveBeenCalledWith('a1', false));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Save a copy…' }));
+    await waitFor(() => expect(onExport).toHaveBeenCalledWith('a1', true));
+  });
 
+  it('honours the export-metadata pref when off', async () => {
+    localStorage.setItem('conduit:v7-export-metadata', 'off');
+    try {
+      const { onExport } = renderPanel();
+      openOverflowMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Save a copy…' }));
+      await waitFor(() => expect(onExport).toHaveBeenCalledWith('a1', false));
+    } finally {
+      localStorage.removeItem('conduit:v7-export-metadata');
+    }
+  });
+});
+
+describe('DocumentPanel V7 chrome', () => {
+  it('⋯ menu carries the actions and a metadata block (no details column)', () => {
+    renderPanel({ docTab: 'preview' });
     openOverflowMenu();
-    const toggle = screen.getByLabelText('Include metadata sidecar') as HTMLInputElement;
-    fireEvent.click(toggle);
-    expect(toggle.checked).toBe(true);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Export' }));
-    await waitFor(() => expect(onExport).toHaveBeenLastCalledWith('a1', true));
+    expect(screen.getByRole('menuitem', { name: 'Copy contents' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Save a copy…' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeDisabled();
+    // Metadata block: path label + size · modified row.
+    expect(screen.getAllByText('(inline payload)').length).toBeGreaterThan(0);
+    expect(screen.getByText(/14 B · modified/)).toBeInTheDocument();
+    // The V6 details column is gone.
+    expect(screen.queryByRole('button', { name: 'Hide details' })).not.toBeInTheDocument();
+    expect(document.querySelector('.doc-details')).toBeNull();
+  });
+
+  it('shows a version tail in the metadata block when the sidecar has one', () => {
+    const versioned: Artifact = { ...baseArtifact, metadata: { version: 3 } };
+    renderPanel({ artifact: versioned, openArtifacts: [versioned], docTab: 'preview' });
+    openOverflowMenu();
+    expect(screen.getByText('v3')).toBeInTheDocument();
+  });
+
+  it('renders the persistent foot strip with path and size · saved', () => {
+    renderPanel({ docTab: 'preview' });
+    const foot = screen.getByLabelText('Artifact metadata');
+    expect(foot).toHaveTextContent('(inline payload)');
+    expect(foot).toHaveTextContent(/14 B/);
+    expect(foot).toHaveTextContent(/saved/);
   });
 });
 

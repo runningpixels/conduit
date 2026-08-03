@@ -5,8 +5,9 @@ import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
-import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon } from '../icons';
+import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, FolderIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
+import { readExportMetadata } from '../shell/uiPrefs';
 import type { PendingArtifact } from '../artifacts/pendingArtifact';
 
 type DocTab = 'preview' | 'source';
@@ -51,6 +52,29 @@ function formatSize(bytes?: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/// Compact relative timestamp for the foot strip + ⋯ metadata block.
+function timeAgo(iso?: string): string {
+  if (!iso) return 'never';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return 'just now';
+  const mins = Math.round(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/// Version label for the metadata block + foot (sidecar metadata only; the
+/// artifact model has no version history — contracts.ts note).
+function versionLabel(artifact: Artifact): string | undefined {
+  const v = artifact.metadata?.version;
+  if (v == null || v === '') return undefined;
+  return `v${String(v)}`;
 }
 
 function DocPlaceholder({ children }: { children: ReactNode }) {
@@ -162,7 +186,6 @@ export function DocumentPanel({
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabValue, setEditingTabValue] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -204,9 +227,11 @@ export function DocumentPanel({
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedSource, setSavedSource] = useState(false);
-  const [includeMetadata, setIncludeMetadata] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [dismissedModified, setDismissedModified] = useState(false);
+  // V7 §8.7 — the metadata sidecar is a persistent preference (Settings →
+  // Advanced), not a per-export checkbox inside an action menu.
+  const includeMetadata = readExportMetadata() === 'on';
 
   useEffect(() => {
     setDraft(sourceText);
@@ -215,12 +240,7 @@ export function DocumentPanel({
 
   useEffect(() => {
     setDismissedModified(false);
-    setShowDetails(false);
     setMenuOpen(false);
-  }, [artifact?.id, activeFileState]);
-
-  useEffect(() => {
-    if (activeFileState === 'missing') setShowDetails(true);
   }, [artifact?.id, activeFileState]);
 
   useEffect(() => {
@@ -345,12 +365,11 @@ export function DocumentPanel({
     }
   }
 
-  const fileMeta: Array<{ k: string; v: string }> = [
-    { k: 'Path', v: artifact.contentPath ?? '(inline)' },
-    { k: 'Type', v: artifact.mimeType ?? kindLabel },
-    { k: 'Updated', v: artifact.updatedAt ?? artifact.createdAt },
-    ...(isFilePayload ? [{ k: 'Size', v: formatSize(artifact.sizeBytes) }] : []),
-  ];
+  const artifactPath = artifact.contentPath ?? '(inline payload)';
+  const metaModified = timeAgo(artifact.updatedAt ?? artifact.createdAt);
+  const metaSize = formatSize(artifact.sizeBytes);
+  const metaVersion = versionLabel(artifact);
+  const footMeta = [metaSize, ...(metaVersion ? [metaVersion] : []), `saved ${metaModified}`].join(' · ');
 
   function beginRename(id: string, currentTitle: string) {
     setEditingTabId(id);
@@ -546,51 +565,36 @@ export function DocumentPanel({
               open={menuOpen}
               onClose={() => setMenuOpen(false)}
               triggerRef={menuTriggerRef}
+              className="menu doc-more-menu"
               label="Artifact actions"
             >
-              <button className="doc-overflow-item" type="button" role="menuitem" disabled={!raw} onClick={() => void handleCopy()}>
-                {copied ? 'Copied' : 'Copy'}
+              <button className="menu-item" type="button" role="menuitem" disabled={!raw} onClick={() => void handleCopy()}>
+                <CopyIcon />
+                {copied ? 'Copied' : 'Copy contents'}
               </button>
               <button
-                className="doc-overflow-item"
+                className="menu-item"
                 type="button"
                 role="menuitem"
                 disabled={!isFilePayload}
                 onClick={() => void handleReveal()}
               >
+                <FolderIcon />
                 Reveal in Explorer
               </button>
               <button
-                className="doc-overflow-item"
+                className="menu-item"
                 type="button"
                 role="menuitem"
                 disabled={exporting || saving}
                 onClick={() => void handleExport()}
               >
-                {exporting ? 'Exporting…' : 'Export'}
-              </button>
-              <label className="doc-overflow-item doc-overflow-check">
-                <input
-                  type="checkbox"
-                  checked={includeMetadata}
-                  onChange={(e) => setIncludeMetadata(e.target.checked)}
-                />
-                Include metadata sidecar
-              </label>
-              <button
-                className="doc-overflow-item"
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setShowDetails((open) => !open);
-                  setMenuOpen(false);
-                }}
-              >
-                {showDetails ? 'Hide details' : 'Details'}
+                <DownloadIcon />
+                {exporting ? 'Exporting…' : 'Save a copy…'}
               </button>
               {onCloseTab && (
                 <button
-                  className="doc-overflow-item"
+                  className="menu-item"
                   type="button"
                   role="menuitem"
                   onClick={() => {
@@ -598,9 +602,16 @@ export function DocumentPanel({
                     onCloseTab(artifact.id);
                   }}
                 >
+                  <ChevronRight />
                   Close
                 </button>
               )}
+              <div className="menu-sep" role="separator" />
+              <div className="menu-label" title={artifactPath}>{artifactPath}</div>
+              <div className="doc-meta-row">
+                {metaSize} · modified {metaModified}
+                {metaVersion ? <span className="tail">{metaVersion}</span> : null}
+              </div>
             </Menu>
           </div>
           {onCollapsePanel && (
@@ -702,26 +713,14 @@ export function DocumentPanel({
             )}
           </div>
 
-          {showDetails && (
-            <aside className="doc-details" aria-label="Artifact details">
-              <div className="doc-details-head">
-                <strong>Details</strong>
-                <button className="icon-btn" type="button" aria-label="Hide details" onClick={() => setShowDetails(false)}>
-                  &times;
-                </button>
-              </div>
-              <div className="file-meta compact">
-                {fileMeta.map((row) => (
-                  <div className="row" key={row.k}>
-                    <span className="k">{row.k}</span>
-                    <span className="v">{row.v}</span>
-                  </div>
-                ))}
-              </div>
-            </aside>
-          )}
         </div>
         </DocumentPanelErrorBoundary>
+      </div>
+
+      <div className="panel-foot" aria-label="Artifact metadata">
+        <span className="foot-path" title={artifactPath}>{artifactPath}</span>
+        <span className="spacer" aria-hidden="true" />
+        <span className="foot-meta mono">{footMeta}</span>
       </div>
     </section>
   );

@@ -22,27 +22,19 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 9px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  height: 44px;
   border-bottom: 1px solid var(--line-soft);
   background: var(--raised);
-  min-height: 44px;
 }
 .doc-toolbar-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   min-width: 0;
 }
-.doc-toolbar-title .ficon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--hue-weak);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
+.doc-toolbar-title .ficon { flex: none; }
 .doc-toolbar-title .ficon svg { width: 15px; height: 15px; color: var(--hue); }
 .doc-toolbar-spacer { flex: 1; min-width: 8px; }
 .doc-title { min-width: 0; line-height: 1.25; }
@@ -70,64 +62,63 @@
 .tab-state.inline.bad { background: var(--err); }
 .doc-actions { display: flex; gap: 2px; flex: none; }
 .doc-view-toggle {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
   gap: 1px;
   padding: 2px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line-soft);
-  background: var(--card);
+  border-radius: 7px;
+  border: 0;
+  background: var(--bg);
   flex: none;
 }
 .doc-view-btn {
-  padding: 5px 10px;
+  padding: 3px 10px;
   font: 500 11.5px/1 var(--font-ui);
   color: var(--ink-3);
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-sm) - 2px);
+  border-radius: 5px;
   transition: var(--tap);
 }
 .doc-view-btn:hover { color: var(--ink); }
 .doc-view-btn.active {
   color: var(--ink);
   background: var(--card);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-color) 12%, transparent);
 }
 .doc-overflow { position: relative; }
-.doc-overflow-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 20;
-  min-width: 196px;
-  padding: 4px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
-  background: var(--card);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-color) 18%, transparent);
+.doc-more-menu { top: 40px; right: 8px; }
+.doc-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  cursor: default;
 }
-.doc-overflow-item {
-  display: block;
-  width: 100%;
-  padding: 7px 10px;
-  font: 500 12px/1.2 var(--font-ui);
-  color: var(--ink);
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: calc(var(--r-sm) - 2px);
-  transition: var(--tap);
-}
-.doc-overflow-item:hover:not(:disabled) { background: var(--card); }
-.doc-overflow-item:disabled { color: var(--ink-3); cursor: default; }
-.doc-overflow-check {
+.doc-meta-row .tail { margin-left: auto; color: var(--ink-2); }
+
+/* V7 §8.7 — persistent mono foot strip: path left · size · version · saved right */
+.panel-foot {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
-  color: var(--ink-2);
+  padding: 8px var(--sp-3);
+  background: var(--raised);
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
 }
+.panel-foot .foot-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.panel-foot .spacer { flex: 1; }
+.panel-foot .foot-meta { flex: none; white-space: nowrap; }
 .doc-overflow-check input { accent-color: var(--hue); }
 .artifact-tabs {
   flex: 1;
@@ -255,10 +246,6 @@
   min-height: 0;
 }
 [data-doc-tab="preview"] .doc-pane[data-doc-pane="preview"] .doc-placeholder { padding: 16px 18px; text-align: left; }
-[data-doc-tab="preview"] .doc-details {
-  margin: 0 18px 18px;
-  flex: none;
-}
 
 .doc-banner {
   display: block;
@@ -283,27 +270,6 @@
 .doc-pane { display: none; }
 [data-doc-tab="preview"] .doc-pane[data-doc-pane="preview"],
 [data-doc-tab="source"] .doc-pane[data-doc-pane="source"] { display: block; }
-.doc-details {
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
-  background: var(--card);
-  overflow: hidden;
-}
-.doc-details-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--line-soft);
-  font-size: 12px;
-}
-.doc-details-head .icon-btn {
-  width: 24px;
-  height: 24px;
-  font-size: 16px;
-  line-height: 1;
-}
 
 /* M6: Preview pane sizing so renderers (esp. iframe) fill available width */
 .doc-pane[data-doc-pane="preview"] {

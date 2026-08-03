@@ -1077,11 +1077,17 @@ ol.citations li { margin-bottom: 6px; }
 /* P2.4 — pane cross-fade */
 @keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-/* P5.3 — skip links */
+/* P5.3 — skip links: off-screen until keyboard focus. The resting state is
+   truly invisible (opacity 0 + pointer-events none) and only `:focus-visible`
+   reveals it — mouse users never see it, and it cannot overlap the panel-head
+   title because it stays inside the chat pane at top: 8px. */
 .skip-link {
   position: absolute;
   left: 8px;
-  top: -40px;
+  top: 8px;
+  transform: translateY(-250%);
+  opacity: 0;
+  pointer-events: none;
   z-index: 1300;
   padding: 8px 12px;
   border-radius: var(--r-sm);
@@ -1089,9 +1095,15 @@ ol.citations li { margin-bottom: 6px; }
   border: 1px solid var(--accent-line);
   color: var(--text);
   font-size: var(--fs-xl);
-  transition: top var(--duration-fast) var(--ease-standard);
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
-.skip-link:focus { top: 8px; }
+.skip-link:focus-visible {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
 
 /* P5.2 — visually-hidden live region for streaming announcements */
 .sr-only {

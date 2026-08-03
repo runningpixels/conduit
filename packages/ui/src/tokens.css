@@ -242,6 +242,8 @@
   [data-provider="openai"]    { --hue-weak: rgba(16, 163, 127, .14); }
   [data-provider="ollama"]    { --hue-weak: rgba(139, 139, 150, .16); }
   [data-provider="custom"]    { --hue-weak: rgba(111, 124, 255, .14); }
+  /* Theme-neutral gray for the off state when color-mix() is unavailable. */
+  html[data-provider-colour="off"] [data-provider] { --hue-weak: rgba(128, 128, 128, .16); }
 }
 
 [data-rail="expanded"] { --rail-w: 184px; }
@@ -249,6 +251,14 @@
 /* ── V7 UI prefs (renderer-only; spec §8.9) ────────────────────────────── */
 /* Provider colour off: pin the hue to the neutral ink scale, layout unchanged. */
 html[data-provider-colour="off"] {
+  --hue: var(--ink-2);
+  --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
+  --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
+}
+/* The [data-provider] attribute selectors above match ANY element carrying
+   data-provider (assistant .turn, sidebar .convo rows), which would override
+   the <html> neutralization. Neutralize per-element hue too. */
+html[data-provider-colour="off"] [data-provider] {
   --hue: var(--ink-2);
   --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
   --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);

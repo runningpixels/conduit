@@ -251,6 +251,11 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
   transition: background var(--tap), color var(--tap);
 }
 .menu-item:hover { background: var(--card-hi); color: var(--ink); }
+.menu-item.danger { color: var(--err); }
+.menu-item.danger:hover {
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: var(--err);
+}
 .menu-item svg { width: 14px; height: 14px; flex: 0 0 auto; }
 .menu-item kbd { margin-left: auto; }
 .menu-item .tail { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); }

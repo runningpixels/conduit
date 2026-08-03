@@ -19,7 +19,7 @@ import { AssistantArtifactStrip } from './ArtifactRefChip';
 import { BotGlyph, CopyIcon, ForkIcon, PencilIcon } from '../icons';
 import { TurnModelLine, shouldShowModelLine } from './TurnModelLine';
 import { InterruptedBanner } from './InterruptedBanner';
-import { providerHueId } from '../lib/providerIdentity';
+import { providerHueId, providerDisplayName } from '../lib/providerIdentity';
 import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
@@ -1051,7 +1051,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       data-active={paneActive ? 'true' : 'false'}
       aria-label="Chat session"
     >
-      <a className="skip-link" href="#composer-anchor" aria-label="Skip to composer">Skip to composer</a>
+      <a
+        className="skip-link"
+        href="#composer-anchor"
+        aria-label="Skip to composer"
+        onClick={(e) => {
+          e.preventDefault();
+          composerRef.current?.focusPrompt();
+        }}
+      >
+        Skip to composer
+      </a>
       <ChatErrorBoundary>
       <div className="thread scroll" ref={threadRef}>
         <div className="thread-inner">
@@ -1070,8 +1080,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           {!threadLoading && turns.length === 0 && !activeStream && (
             <div className="welcome">
               <BotGlyph className="brand-mark" aria-hidden="true" />
-              <h1>Good day</h1>
-              <p className="lede">Ask anything, draft an artifact, or put your connectors to work. Everything stays on this machine — your keys, your files, your data.</p>
+              <h1>New chat</h1>
+              <div className="turn-model empty-model">
+                <i className="pdot" aria-hidden="true" />
+                <b>{providerDisplayName(settings.activeProvider)}</b> / {settings.activeModel}
+              </div>
               <SuggestedPrompts
                 prompts={suggestedPrompts}
                 variant="empty"
@@ -1256,7 +1269,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onOpenSettings={onOpenSettings}
         usage={accumulatedUsage}
       />
-      <div id="composer-anchor" />
+      <div id="composer-anchor" tabIndex={-1} />
     </section>
       {/* Phase 7 / M-WebSearch: first-use consent dialog for the chat-bar toggle. */}
       <WebSearchConsentDialog

@@ -17,7 +17,9 @@ import {
   getOnboardingState,
   getSettings,
   listConversations,
+  listConnectorGrants,
   listProviderDescriptors,
+  listProviderModels,
   revealArtifactsDir,
   searchMessages,
   setArtifactContent,
@@ -151,6 +153,7 @@ export default function App() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [convoProviders, setConvoProviders] = useState<Record<string, string>>(readConvoProviders);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
+  const [connectorCount, setConnectorCount] = useState<number | undefined>(undefined);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -254,6 +257,24 @@ export default function App() {
   useEffect(() => {
     void refreshActiveConversationSummary(activeConversationId);
   }, [activeConversationId, refreshActiveConversationSummary]);
+
+  // Best-effort active connector count for the sidebar workspace menu tail.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const grants = await listConnectorGrants();
+        if (!cancelled) {
+          setConnectorCount(grants.filter((g) => g.status === 'active').length);
+        }
+      } catch {
+        if (!cancelled) setConnectorCount(undefined);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const clearWorkspaceArtifactSelection = useCallback(() => {
     setActiveArtifact(null);
@@ -797,6 +818,16 @@ export default function App() {
         activeProvider: next.id,
         providerEndpoints: nextEndpoints,
       };
+      // Keep the active model only if the new provider still offers it;
+      // otherwise fall back to its first model so sends don't break.
+      try {
+        const models = await listProviderModels(next.id);
+        if (models.length > 0 && !models.some((m) => m.id === settings.activeModel)) {
+          nextSettings.activeModel = models[0].id;
+        }
+      } catch {
+        /* keep the current model; the send path surfaces any mismatch */
+      }
       setSettings(nextSettings);
       void updateSettingsPersisted(nextSettings);
       setStatusMessage(makeStatus(`Switched to ${providerDisplayName(next.id)}`, 'success'));
@@ -818,6 +849,14 @@ export default function App() {
       historySearch: () => openPalette(),
       cycleProvider: () => {
         void handleCycleProvider();
+      },
+      toggleWebSearch: () => {
+        chatViewRef.current?.toggleWebSearch();
+      },
+      forkConversationHere: () => {
+        void chatViewRef.current?.forkConversationHere().then((ok) => {
+          if (ok) setStatus(makeStatus('Forked conversation', 'success'));
+        });
       },
       copyLastAssistant: () => {
         void chatViewRef.current?.copyLastAssistantMessage().then((ok) => {
@@ -917,10 +956,13 @@ export default function App() {
           workspaceLabel={workspaceLabel}
           localOnly={settings.localOnly}
           providerCount={providers.length > 0 ? providers.length : undefined}
+          connectorCount={connectorCount}
           onSelectConversation={handleSelectConversation}
           onNewChat={() => void handleNewChat()}
           onRevealWorkspace={handleRevealWorkspace}
           onOpenSettings={(section) => openSettings(section as SettingsSection)}
+          onExportDiagnostics={() => void handleExportDiagnostics()}
+          onDeleteAllHistory={handleDeleteAllHistory}
         />
 
         <main className="center">
@@ -1023,6 +1065,7 @@ export default function App() {
         onExportDiagnostics={() => void handleExportDiagnostics()}
         onCopyConversationAsMarkdown={() => void handleCopyConversationAsMarkdown()}
         onDeleteChat={handleDeleteChatRequest}
+        onDeleteAllHistory={handleDeleteAllHistory}
         onSelectModel={handleSelectModel}
         conversations={paletteConversations}
         artifacts={artifacts}

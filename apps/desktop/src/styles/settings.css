@@ -67,21 +67,6 @@
   color: var(--ink-3);
   margin-bottom: var(--sp-2);
 }
-.prow {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 13px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r);
-  margin-bottom: 7px;
-  transition: border-color var(--tap);
-}
-.prow:hover { border-color: var(--line); }
-.prow .pdot { width: 9px; height: 9px; }
-.prow-text { flex: 1 1 auto; min-width: 0; }
-.prow-text b { display: block; font-size: 13px; font-weight: 500; }
-.prow-text small { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); }
 .pill {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -381,41 +366,3 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
 }
 .pal-foot span { display: inline-flex; align-items: center; gap: 5px; }
 
-/* ── P4.2 — settings search + P4.3 keyboard nav roving highlight ────────── */
-.settings-search {
-  flex: none;
-  margin: 0 10px 8px;
-  position: relative;
-}
-.settings-search svg {
-  position: absolute;
-  left: 9px;
-  top: 50%;
-  width: 13px;
-  height: 13px;
-  transform: translateY(-50%);
-  color: var(--ink-3);
-  pointer-events: none;
-}
-.settings-search input {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--card);
-  color: var(--ink);
-  padding: 8px 10px 8px 28px;
-  font: 500 var(--fs-2xl)/1.2 var(--font-ui);
-}
-.settings-search input::placeholder { color: var(--ink-3); }
-.settings-search input:focus { border-color: var(--line); box-shadow: var(--glow); }
-.settings-tab-btn.roving { outline: 2px solid var(--hue); outline-offset: -2px; }
-.settings-search-empty {
-  padding: 10px 12px;
-  color: var(--ink-3);
-  font-size: var(--fs-xl);
-}
-
-/* P4.1 — palette file-result rows (V7: artifact rows carry a mono size tail) */
-
-/* ── P2.4 — settings content cross-fade on tab switch ── */
-.settings-tab-content .settings-section { animation: pane-in var(--duration-normal) var(--ease-emphasized) both; }

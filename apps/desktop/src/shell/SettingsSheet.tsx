@@ -34,6 +34,7 @@ import {
   readExportMetadata,
   writeExportMetadata,
 } from './uiPrefs';
+import { useFocusTrap } from './useFocusTrap';
 import { ChatIcon, ConnectorsIcon, LockIcon, SettingsIcon } from '../icons';
 
 export type SettingsSection =
@@ -134,6 +135,7 @@ export function SettingsSheet({
   const save = useAutoSave(onSettingsChange, onStatus);
   const navRef = useRef<HTMLElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
   const lastFocusRef = useRef<HTMLElement | null>(null);
 
   const [providerColour, setProviderColour] = useState(readProviderColour);
@@ -183,11 +185,14 @@ export function SettingsSheet({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  // V7 §9.2: Tab cannot escape the sheet while it is open.
+  useFocusTrap(sheetRef, open);
+
   if (!open) return null;
 
   return (
     <div className="scrim" data-open="true" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sheet" role="dialog" aria-label="Settings" aria-modal="true">
+      <div ref={sheetRef} className="sheet" role="dialog" aria-label="Settings" aria-modal="true">
         <nav ref={navRef} className="sheet-nav" aria-label="Settings sections">
           <div className="sheet-nav-title">Settings</div>
           {NAV_ITEMS.map((item) => (

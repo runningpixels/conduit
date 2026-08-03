@@ -9,6 +9,7 @@ import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../icons';
 import { providerDisplayName } from '../lib/providerIdentity';
 import { getModelPrices, type ModelPrices } from '../lib/costTable';
+import { useFocusTrap } from '../shell/useFocusTrap';
 
 export interface CommandPaletteConversation {
   id: string;
@@ -30,6 +31,8 @@ interface CommandPaletteProps {
   onExportDiagnostics: () => void;
   onCopyConversationAsMarkdown: () => void;
   onDeleteChat: () => void;
+  /** V7 — delete all conversation history (routes through the confirm dialog). */
+  onDeleteAllHistory: () => void;
   /** Switch the active provider + model from the / models corpus. */
   onSelectModel: (providerId: string, modelId: string) => void;
   conversations: CommandPaletteConversation[];
@@ -123,6 +126,7 @@ export function CommandPalette({
   onExportDiagnostics,
   onCopyConversationAsMarkdown,
   onDeleteChat,
+  onDeleteAllHistory,
   onSelectModel,
   conversations,
   onSelectConversation,
@@ -138,6 +142,7 @@ export function CommandPalette({
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Restore focus to the previously-focused element on close.
   const lastFocusRef = useRef<HTMLElement | null>(null);
@@ -186,12 +191,13 @@ export function CommandPalette({
       { id: 'cmd-export-diag', group: 'Commands', kind: 'cmd', label: 'Export diagnostics bundle', run: () => { onExportDiagnostics(); close(); } },
       { id: 'cmd-copy-md', group: 'Commands', kind: 'cmd', label: 'Copy conversation as Markdown', run: () => { onCopyConversationAsMarkdown(); close(); } },
       { id: 'cmd-delete', group: 'Commands', kind: 'cmd', label: 'Delete this chat', run: () => { onDeleteChat(); close(); } },
+      { id: 'cmd-delete-all', group: 'Commands', kind: 'cmd', label: 'Delete all chats…', tail: '⌫', run: () => { onDeleteAllHistory(); close(); } },
       { id: 'cmd-theme', group: 'Commands', kind: 'cmd', label: 'Toggle theme', run: () => { onToggleTheme(); close(); } },
     ];
   }, [
     onClose, onNewChat, onForkConversationHere, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onExportDiagnostics,
-    onCopyConversationAsMarkdown, onDeleteChat, onToggleTheme,
+    onCopyConversationAsMarkdown, onDeleteChat, onDeleteAllHistory, onToggleTheme,
   ]);
 
   const modelItems = useMemo((): PaletteItem[] => {
@@ -342,6 +348,9 @@ export function CommandPalette({
     };
   }, []);
 
+  // V7 §9.2: Tab cannot escape the palette while it is open.
+  useFocusTrap(rootRef, open);
+
   if (!open) return null;
 
   function runActive() {
@@ -376,6 +385,7 @@ export function CommandPalette({
 
   return (
     <div
+      ref={rootRef}
       className="scrim palette-scrim"
       data-open="true"
       onPointerDown={(e) => {

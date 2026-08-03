@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   readProviderColour,
   writeProviderColour,
@@ -65,5 +66,28 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     applyUiPrefs();
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
+  });
+
+  it('provider-colour off neutralizes per-element data-provider hue (CSS rule exists after the hue selectors)', () => {
+    // jsdom does not load tokens.css, so computed custom properties cannot be
+    // verified there; assert the rule text in the real stylesheet instead.
+    // (vitest rewrites import.meta.url to an http dev-server URL and returns
+    // empty modules for CSS, so resolve the file from the process cwd.)
+    const css = readFileSync(
+      `${process.cwd()}/../../packages/ui/src/tokens.css`,
+      'utf8',
+    );
+    const hueSelector = '[data-provider="anthropic"]';
+    const neutralize = 'html[data-provider-colour="off"] [data-provider]';
+    expect(css).toContain(hueSelector);
+    expect(css).toContain(neutralize);
+    // The neutralizer must come after the hue selectors so it wins the cascade.
+    expect(css.indexOf(neutralize)).toBeGreaterThan(css.indexOf(hueSelector));
+    // And the main rule pins --hue to the neutral ink scale (the first
+    // occurrence may be the no-color-mix fallback, so match the full rule).
+    const normalized = css.replace(/\r\n/g, '\n');
+    expect(normalized).toContain(
+      'html[data-provider-colour="off"] [data-provider] {\n  --hue: var(--ink-2);',
+    );
   });
 });

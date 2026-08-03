@@ -60,6 +60,7 @@ function renderPalette(overrides: Partial<Parameters<typeof CommandPalette>[0]> 
     onExportDiagnostics: vi.fn(),
     onCopyConversationAsMarkdown: vi.fn(),
     onDeleteChat: vi.fn(),
+    onDeleteAllHistory: vi.fn(),
     onSelectModel: vi.fn(),
     conversations: [
       { id: 'c1', title: 'Triage notes' },
@@ -139,6 +140,14 @@ describe('CommandPalette prefix modes', () => {
     type('>delete');
     fireEvent.click(screen.getByRole('option', { name: /Delete this chat/ }));
     expect(props.onDeleteChat).toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('> exposes Delete all chats… wired to onDeleteAllHistory', () => {
+    const props = renderPalette();
+    type('>delete all');
+    fireEvent.click(screen.getByRole('option', { name: /Delete all chats…/ }));
+    expect(props.onDeleteAllHistory).toHaveBeenCalledTimes(1);
     expect(props.onClose).toHaveBeenCalled();
   });
 

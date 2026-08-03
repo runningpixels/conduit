@@ -15,6 +15,10 @@ export interface HotkeyHandlers {
   historySearch?: HotkeyHandler;
   /** Mod+Shift+P — cycle the active provider (V7; re-tints the app) */
   cycleProvider?: HotkeyHandler;
+  /** Mod+Shift+W — toggle web search for this turn (V7 §9.1) */
+  toggleWebSearch?: HotkeyHandler;
+  /** Mod+Shift+F — fork conversation at current position (V7 §9.1) */
+  forkConversationHere?: HotkeyHandler;
   /** Mod+Shift+C — copy last assistant message */
   copyLastAssistant?: HotkeyHandler;
   /** Escape — close menus/dialogs; stop stream when composer focused */
@@ -77,6 +81,16 @@ export function useHotkeys(handlers: HotkeyHandlers): void {
       if (key === 'p' && event.shiftKey) {
         event.preventDefault();
         handlers.cycleProvider?.(event);
+        return;
+      }
+      if (key === 'w' && event.shiftKey) {
+        event.preventDefault();
+        handlers.toggleWebSearch?.(event);
+        return;
+      }
+      if (key === 'f' && event.shiftKey) {
+        event.preventDefault();
+        handlers.forkConversationHere?.(event);
         return;
       }
       if (key === 'c' && event.shiftKey) {

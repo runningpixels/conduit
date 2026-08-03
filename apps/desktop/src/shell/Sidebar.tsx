@@ -13,6 +13,7 @@ import {
   LockIcon,
   PlusIcon,
   SettingsIcon,
+  TrashIcon,
 } from '../icons';
 
 interface SidebarProps {
@@ -29,6 +30,10 @@ interface SidebarProps {
   onNewChat: () => void;
   onRevealWorkspace: () => void;
   onOpenSettings: (section: string) => void;
+  /** Export a redacted diagnostics bundle (workspace menu). */
+  onExportDiagnostics: () => void;
+  /** Delete all conversation history (routes through the confirm dialog). */
+  onDeleteAllHistory: () => void;
 }
 
 /** "2m" relative label, hover-only per §8.2. */
@@ -79,15 +84,6 @@ function groupConversations(
   return Array.from(buckets.entries());
 }
 
-function SwitchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M3 9h18" />
-    </svg>
-  );
-}
-
 function KeyIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
@@ -127,6 +123,8 @@ export function Sidebar({
   onNewChat,
   onRevealWorkspace,
   onOpenSettings,
+  onExportDiagnostics,
+  onDeleteAllHistory,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -164,6 +162,28 @@ export function Sidebar({
     first?.focus();
   }, [menuOpen]);
 
+  // F-12 — arrow-key navigation within the workspace menu.
+  function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [],
+    );
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      items[(index + 1) % items.length]?.focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      items[(index - 1 + items.length) % items.length]?.focus();
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      items[0]?.focus();
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      items[items.length - 1]?.focus();
+    }
+  }
+
   function openSection(section: string) {
     closeMenu();
     onOpenSettings(section);
@@ -182,16 +202,23 @@ export function Sidebar({
     label,
     tail,
     kbd,
+    danger,
     onClick,
   }: {
     icon: ReactNode;
     label: string;
     tail?: string;
     kbd?: string;
+    danger?: boolean;
     onClick: () => void;
   }) {
     return (
-      <button className="menu-item" type="button" role="menuitem" onClick={onClick}>
+      <button
+        className={`menu-item${danger ? ' danger' : ''}`}
+        type="button"
+        role="menuitem"
+        onClick={onClick}
+      >
         {icon}
         {label}
         {kbd ? <kbd>{kbd}</kbd> : null}
@@ -263,9 +290,15 @@ export function Sidebar({
           </svg>
         </button>
 
-        <div ref={menuRef} className="menu ws-menu" data-open={menuOpen ? 'true' : 'false'} role="menu" aria-label="Workspace">
+        <div
+          ref={menuRef}
+          className="menu ws-menu"
+          data-open={menuOpen ? 'true' : 'false'}
+          role="menu"
+          aria-label="Workspace"
+          onKeyDown={handleMenuKeyDown}
+        >
           <div className="menu-label">Workspace</div>
-          <MenuItem icon={<SwitchIcon />} label="Switch workspace" kbd="⌘⇧O" onClick={() => openSection('providers')} />
           <MenuItem icon={<FolderIcon />} label="Reveal in Explorer" onClick={() => { closeMenu(); onRevealWorkspace(); }} />
           <div className="menu-sep" />
           <div className="menu-label">Configure</div>
@@ -284,7 +317,17 @@ export function Sidebar({
           <MenuItem icon={<LockIcon />} label="Privacy &amp; data" onClick={() => openSection('privacy')} />
           <MenuItem icon={<SettingsIcon />} label="Settings" kbd="⌘," onClick={() => openSection('appearance')} />
           <div className="menu-sep" />
-          <MenuItem icon={<DiagnosticsIcon />} label="Export diagnostics" onClick={() => openSection('advanced')} />
+          <MenuItem
+            icon={<DiagnosticsIcon />}
+            label="Export diagnostics"
+            onClick={() => { closeMenu(); onExportDiagnostics(); }}
+          />
+          <MenuItem
+            icon={<TrashIcon />}
+            label="Delete all chats"
+            danger
+            onClick={() => { closeMenu(); onDeleteAllHistory(); }}
+          />
         </div>
       </div>
     </aside>

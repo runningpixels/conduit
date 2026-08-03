@@ -158,64 +158,6 @@
 }
 .source-host { color: var(--ink-3); }
 
-/* Web search tool group */
-.search-call-group .search-queries summary {
-  font-size: 12px;
-  color: var(--ink-2);
-  cursor: pointer;
-  margin-bottom: 6px;
-}
-.search-query-preview {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 8px 10px;
-  background: var(--card);
-  border-radius: 6px;
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-.search-query-preview .search-query {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.search-source-count {
-  color: var(--ink-3);
-  font-size: 12px;
-  flex: none;
-}
-.search-query-list {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-}
-.search-query-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
-  padding: 8px 10px;
-  background: var(--card);
-  border-radius: 6px;
-  font-size: 12.5px;
-}
-.search-query-status {
-  display: inline-block;
-  width: 14px;
-  color: var(--ink-3);
-  font-weight: 600;
-}
-.search-query-status.done { color: var(--ok); }
-.search-query { color: var(--ink); line-height: 1.45; }
-.search-sources { margin-top: 4px; font-size: 12px; }
-.search-sources summary { cursor: pointer; color: var(--ink-2); }
-.search-sources-list { margin: 6px 0 0; padding-left: 1.2em; }
-.search-sources-list .src-title { color: var(--ink); }
-.search-sources-list .src-url { color: var(--hue); }
 .search-unavailable {
   margin-top: 8px;
   font-size: 12px;
@@ -337,18 +279,6 @@
   color: var(--ink-3);
   white-space: pre-wrap;
 }
-
-/* legacy single-search-call renderer (unused path; kept styled) */
-.tool-detail { padding: 0 12px 11px; }
-.args {
-  font: 500 11.5px/1.6 var(--font-mono);
-  color: var(--ink-2);
-  background: var(--bg);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
-  padding: 8px 10px;
-  white-space: pre-wrap;
-}
 .tico {
   width: 22px;
   height: 22px;
@@ -440,10 +370,6 @@
   color: inherit;
 }
 
-.doc-meta { font: 500 11.5px/1.5 var(--font-mono); color: var(--ink-2); margin: 8px 0; }
-.doc-full-args { margin-top: 8px; }
-.doc-full-args summary { cursor: pointer; font: 600 11px/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
-.doc-full-args pre { margin: 6px 0 0; white-space: pre-wrap; color: var(--ink-2); font: 500 11px/1.5 var(--font-mono); background: var(--bg); padding: 6px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
 .inline-title-input {
   font: inherit;
   color: inherit;
@@ -833,21 +759,6 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
   cursor: pointer;
 }
 .thread-skeleton { display: grid; gap: 10px; padding: 8px 0 18px; }
-.skeleton-row {
-  height: 14px;
-  border-radius: var(--r-xs);
-  background: linear-gradient(90deg, var(--card), var(--card-hi), var(--card));
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.2s ease-in-out infinite;
-}
-.skeleton-row.short { width: 62%; }
-@keyframes skeleton-shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-row { animation: none; }
-}
 .composer.drop-active {
   border-color: var(--hue);
   box-shadow: var(--glow);
@@ -1040,7 +951,6 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
   }
   .streaming, .streaming.thinking-trailing { opacity: 1; }
   .tool.running::before { display: none; }
-  .skeleton-row { animation: none; }
 }
 
 /* ── msg-time is gone (timestamps live in .turn-model) ──────────────────── */
@@ -1080,10 +990,6 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 /* P2.7 — send/stop morph (buttons swap; crossfade on mount) */
 @keyframes btn-morph { from { opacity: .4; transform: scale(.92); } to { opacity: 1; transform: none; } }
 .send, .send.stop { animation: btn-morph var(--duration-fast) var(--ease-emphasized) both; }
-
-/* P2.8 / P3.4 — tool card collapse: `.tool-body` grid-rows animation
- * (defined with the V7 tool block above; this rule keeps the click affordance). */
-.tool .tool-detail { padding: 0 12px 11px; }
 
 /* P3.5 — grouped sub-rows: one per call, path + duration */
 .tool-sub { border-top: 1px solid var(--line-soft); background: color-mix(in srgb, var(--card) 35%, transparent); }
@@ -1203,18 +1109,8 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 }
 .welcome .brand-mark { width: 44px; height: 44px; color: var(--hue); margin-bottom: 12px; }
 .welcome h1 { margin: 0 0 6px; font-size: var(--fs-display); font-weight: 600; letter-spacing: -.01em; }
-.welcome .lede {
-  margin: 0 0 22px;
-  color: var(--ink-2);
-  font-size: var(--fs-6xl);
-  max-width: 46ch;
-  line-height: var(--leading-prose);
-}
-.welcome .sugg-grid { display: grid; grid-template-columns: repeat(2, minmax(200px, 280px)); gap: 8px; margin-bottom: 22px; }
 .welcome .suggested-prompt-card { text-align: left; }
 .welcome .suggested-prompts-empty { display: grid; grid-template-columns: repeat(2, minmax(200px, 280px)); gap: 8px; margin-bottom: 22px; margin-top: 0; text-align: left; }
-.welcome .recent-row { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; justify-content: center; }
-.welcome .recent-label { font: 600 var(--fs-sm)/1 var(--font-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
 .welcome .hint-row { display: flex; align-items: center; gap: 14px; color: var(--ink-3); font-size: var(--fs-xl); flex-wrap: wrap; justify-content: center; }
 .welcome .hint-row .hint { display: inline-flex; align-items: center; gap: 5px; }
 
@@ -1223,8 +1119,8 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 
 /* P5.3 — skip links: off-screen until keyboard focus. The resting state is
    truly invisible (opacity 0 + pointer-events none) and only `:focus-visible`
-   reveals it — mouse users never see it, and it cannot overlap the panel-head
-   title because it stays inside the chat pane at top: 8px. */
+   reveals it — mouse users never see it, and it stays inside the thread pane
+   at top: 8px, clear of the composer below. */
 .skip-link {
   position: absolute;
   left: 8px;

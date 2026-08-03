@@ -108,7 +108,19 @@ export function ProvenanceStrip({
 
       <span className="prov">{contextLabel}</span>
 
-      {spendLabel != null && <span className="prov">{spendLabel}</span>}
+      {spendLabel != null &&
+        (onOpenSettings ? (
+          <button
+            type="button"
+            className="prov"
+            onClick={() => onOpenSettings('advanced')}
+            title="Usage and cost"
+          >
+            {spendLabel}
+          </button>
+        ) : (
+          <span className="prov">{spendLabel}</span>
+        ))}
 
       {onOpenSettings ? (
         <button

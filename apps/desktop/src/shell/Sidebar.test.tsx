@@ -50,6 +50,8 @@ describe('Sidebar', () => {
     onNewChat: vi.fn(),
     onRevealWorkspace: vi.fn(),
     onOpenSettings: vi.fn(),
+    onExportDiagnostics: vi.fn(),
+    onDeleteAllHistory: vi.fn(),
   };
 
   beforeEach(() => {
@@ -57,6 +59,8 @@ describe('Sidebar', () => {
     props.onNewChat.mockClear();
     props.onRevealWorkspace.mockClear();
     props.onOpenSettings.mockClear();
+    props.onExportDiagnostics.mockClear();
+    props.onDeleteAllHistory.mockClear();
   });
 
   it('renders grouped rows with group labels', () => {
@@ -104,6 +108,55 @@ describe('Sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: /workspace/i }));
     fireEvent.click(screen.getByText('Reveal in Explorer').closest('button')!);
     expect(props.onRevealWorkspace).toHaveBeenCalled();
+  });
+
+  it('export diagnostics runs onExportDiagnostics (not the settings sheet)', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /workspace/i }));
+    fireEvent.click(screen.getByText('Export diagnostics').closest('button')!);
+    expect(props.onExportDiagnostics).toHaveBeenCalledTimes(1);
+    expect(props.onOpenSettings).not.toHaveBeenCalledWith('advanced');
+  });
+
+  it('delete all chats routes to onDeleteAllHistory with a danger treatment', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /workspace/i }));
+    const item = screen.getByText('Delete all chats').closest('button')!;
+    expect(item.className).toContain('danger');
+    fireEvent.click(item);
+    expect(props.onDeleteAllHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not advertise a Switch workspace item (no workspace-switcher IPC)', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /workspace/i }));
+    expect(screen.queryByText('Switch workspace')).toBeNull();
+    expect(screen.queryByText('⌘⇧O')).toBeNull();
+  });
+
+  it('arrow keys navigate the workspace menu items', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /workspace/i }));
+    const items = screen.getAllByRole('menuitem');
+    expect(items.length).toBeGreaterThan(1);
+    items[0].focus();
+    fireEvent.keyDown(items[0], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(items[1], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[2]);
+    fireEvent.keyDown(items[2], { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(items[1], { key: 'End' });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    fireEvent.keyDown(items[items.length - 1], { key: 'Home' });
+    expect(document.activeElement).toBe(items[0]);
+  });
+
+  it('renders the connector count tail on the Connectors item', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /workspace/i }));
+    const connectorsItem = screen.getByText('Connectors').closest('button')!;
+    expect(connectorsItem.querySelector('.tail')?.textContent).toBe('1');
   });
 
   it('New chat calls onNewChat', () => {

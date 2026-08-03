@@ -146,4 +146,33 @@ describe('ProvenanceStrip', () => {
     screen.getByText('● local only').click();
     expect(onOpenSettings).toHaveBeenCalledWith('privacy');
   });
+
+  it('spend segment is a button that opens Advanced (Usage & Cost) when onOpenSettings is present', () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <ProvenanceStrip
+        {...baseProps}
+        onOpenSettings={onOpenSettings}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+      />,
+    );
+    const spend = screen.getByText('$0.0144 this chat');
+    expect(spend.tagName).toBe('BUTTON');
+    spend.click();
+    expect(onOpenSettings).toHaveBeenCalledWith('advanced');
+  });
+
+  it('spend segment stays an inert span when onOpenSettings is absent', () => {
+    render(
+      <ProvenanceStrip
+        settings={settings}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+        composerTokenEstimate={0}
+        credentialMode="required"
+        credentialRef="keychain://conduit/anthropic"
+        modelMenuOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('$0.0144 this chat').tagName).toBe('SPAN');
+  });
 });

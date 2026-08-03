@@ -20,4 +20,31 @@ describe('UsageSummary', () => {
     const { container } = render(<UsageSummary searchCost={4} />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('does not crash when optional token fields are null (IPC bridge sends null for Rust None)', () => {
+    // Rust Option<u64> serializes to null over the IPC bridge, not undefined.
+    const { container } = render(
+      <UsageSummary
+        usage={{
+          inputTokens: null as unknown as bigint,
+          outputTokens: null as unknown as bigint,
+          cacheTokens: null as unknown as bigint,
+          cacheReadTokens: null as unknown as bigint,
+          cacheWriteTokens: null as unknown as bigint,
+        }}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders partial usage when some fields are null', () => {
+    render(
+      <UsageSummary
+        usage={{ inputTokens: 100n, outputTokens: null as unknown as bigint, cacheTokens: null as unknown as bigint }}
+      />,
+    );
+    expect(screen.getByText(/in: 100/)).toBeInTheDocument();
+    expect(screen.queryByText(/out:/)).toBeNull();
+    expect(screen.queryByText(/cache:/)).toBeNull();
+  });
 });

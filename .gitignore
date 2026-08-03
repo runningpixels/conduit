@@ -13,3 +13,4 @@ apps/desktop/src-tauri/.tauri-updater-private.key.pub
 .mcp.json
 .pi/
 .pi-subagents/
+.pi-scan/

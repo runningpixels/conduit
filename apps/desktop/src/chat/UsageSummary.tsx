@@ -11,11 +11,11 @@ export function UsageSummary({ usage }: UsageSummaryProps) {
     return null;
   }
   const parts: string[] = [];
-  if (usage.inputTokens !== undefined) parts.push(`in: ${usage.inputTokens.toLocaleString()}`);
-  if (usage.outputTokens !== undefined) parts.push(`out: ${usage.outputTokens.toLocaleString()}`);
-  if (usage.cacheReadTokens !== undefined && usage.cacheWriteTokens !== undefined) {
+  if (usage.inputTokens != null) parts.push(`in: ${usage.inputTokens.toLocaleString()}`);
+  if (usage.outputTokens != null) parts.push(`out: ${usage.outputTokens.toLocaleString()}`);
+  if (usage.cacheReadTokens != null && usage.cacheWriteTokens != null) {
     parts.push(`cache: ${usage.cacheReadTokens.toLocaleString()}⇠ ${usage.cacheWriteTokens.toLocaleString()}⇢`);
-  } else if (usage.cacheTokens !== undefined) {
+  } else if (usage.cacheTokens != null) {
     parts.push(`cache: ${usage.cacheTokens.toLocaleString()}`);
   }
   if (usage.costHint) parts.push(usage.costHint);

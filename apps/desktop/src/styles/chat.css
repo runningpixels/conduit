@@ -411,7 +411,7 @@ ol.citations li { margin-bottom: 6px; }
 /* ── Composer ───────────────────────────────────────────────────────────── */
 .composer-wrap { flex: none; padding: 0 14px 14px; background: var(--surface-2); }
 .caps { display: flex; align-items: center; gap: 7px; padding: 0 4px 8px; flex-wrap: wrap; }
-.caps-websearch { padding-bottom: 6px; }
+.caps-websearch { padding: 6px 4px; }
 .caps .lbl { font: 500 10.5px/1 var(--font-mono); color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; }
 .cap { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-pill); padding: 4px 9px; }
 .cap i { width: 5px; height: 5px; border-radius: 50%; background: var(--success); }

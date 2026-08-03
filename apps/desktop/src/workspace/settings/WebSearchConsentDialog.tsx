@@ -50,7 +50,7 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
       <div
         className="consent-dialog"
         style={{
-          background: 'var(--surface)',
+          background: 'var(--card)',
           borderRadius: 'var(--r-md, 8px)',
           padding: '24px',
           maxWidth: '440px',
@@ -63,16 +63,16 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
         <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
           Enable web search?
         </h2>
-        <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
           When you turn on web search, the model can look things up on the
           internet during this conversation. Search queries are sent to the
           model provider (e.g. OpenAI), not to Conduit.
         </p>
-        <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
           Each search call incurs a per-call cost on your provider account.
           See your provider's pricing page for current rates.
         </p>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-3)', lineHeight: 1.5 }}>
           Conduit never caches, indexes, or proxies web pages. Citations in the
           response come directly from the provider's search results.
         </p>

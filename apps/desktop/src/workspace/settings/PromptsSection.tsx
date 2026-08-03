@@ -157,7 +157,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
       </div>
 
       {editing && (
-        <div className="prompts-editor" style={{ marginBottom: 16, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
+        <div className="prompts-editor" style={{ marginBottom: 16, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
           <h4 style={{ margin: '0 0 8px', fontSize: '13px' }}>
             {editing.id ? 'Edit prompt' : 'New prompt'}
           </h4>
@@ -166,14 +166,14 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
               placeholder="Title"
               value={editing.title}
               onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px' }}
+              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
             />
             <textarea
               placeholder="Prompt body — use {{variable}} for variable substitution"
               value={editing.body}
               onChange={(e) => setEditing({ ...editing, body: e.target.value })}
               rows={6}
-              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px', resize: 'vertical' }}
+              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px', resize: 'vertical' }}
             />
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -181,7 +181,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                 value={editing.folder}
                 onChange={(e) => setEditing({ ...editing, folder: e.target.value })}
                 list="prompt-folders"
-                style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px' }}
+                style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
               />
               <datalist id="prompt-folders">
                 {allFolders.map((f) => (
@@ -192,7 +192,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                 placeholder="Tags (comma-separated)"
                 value={editing.tags}
                 onChange={(e) => setEditing({ ...editing, tags: e.target.value })}
-                style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px' }}
+                style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
               />
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -209,12 +209,12 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
 
       <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 12 }}>
         {/* Folder sidebar */}
-        <div className="prompts-folder-sidebar" style={{ borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', padding: 8 }}>
+        <div className="prompts-folder-sidebar" style={{ borderRadius: 'var(--r-sm)', background: 'var(--card)', padding: 8 }}>
           <button
             className={`folder-btn${selectedFolder === null ? ' active' : ''}`}
             type="button"
             onClick={() => setSelectedFolder(null)}
-            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '12px', borderRadius: 'var(--r-sm)', border: 'none', background: selectedFolder === null ? 'var(--accent)' : 'transparent', color: selectedFolder === null ? 'var(--accent-text)' : 'var(--text)', cursor: 'pointer' }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '12px', borderRadius: 'var(--r-sm)', border: 'none', background: selectedFolder === null ? 'var(--hue)' : 'transparent', color: selectedFolder === null ? 'var(--hue)' : 'var(--ink)', cursor: 'pointer' }}
           >
             All prompts
           </button>
@@ -224,13 +224,13 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
               className={`folder-btn${selectedFolder === f ? ' active' : ''}`}
               type="button"
               onClick={() => setSelectedFolder(f)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '12px', borderRadius: 'var(--r-sm)', border: 'none', background: selectedFolder === f ? 'var(--accent)' : 'transparent', color: selectedFolder === f ? 'var(--accent-text)' : 'var(--text)', cursor: 'pointer' }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '12px', borderRadius: 'var(--r-sm)', border: 'none', background: selectedFolder === f ? 'var(--hue)' : 'transparent', color: selectedFolder === f ? 'var(--hue)' : 'var(--ink)', cursor: 'pointer' }}
             >
               {f}
             </button>
           ))}
           {allFolders.length === 0 && (
-            <span style={{ fontSize: '11px', color: 'var(--text-3)', padding: '6px 8px', display: 'block' }}>
+            <span style={{ fontSize: '11px', color: 'var(--ink-3)', padding: '6px 8px', display: 'block' }}>
               No folders
             </span>
           )}
@@ -239,7 +239,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
         {/* Prompt list */}
         <div className="prompts-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
           {prompts.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', fontSize: '13px', color: 'var(--text-3)' }}>
+            <div style={{ padding: 24, textAlign: 'center', fontSize: '13px', color: 'var(--ink-3)' }}>
               {selectedFolder ? `No prompts in "${selectedFolder}"` : 'No prompts yet. Create your first one!'}
             </div>
           )}
@@ -251,9 +251,9 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                 padding: 12,
                 marginBottom: 8,
                 borderRadius: 'var(--r-sm)',
-                background: 'var(--surface-2)',
+                background: 'var(--card)',
                 cursor: 'pointer',
-                border: editing?.id === p.id ? '1px solid var(--accent)' : '1px solid transparent',
+                border: editing?.id === p.id ? '1px solid var(--hue)' : '1px solid transparent',
               }}
               onClick={() => handleEdit(p)}
             >
@@ -261,7 +261,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                 <div>
                   <strong style={{ fontSize: '13px' }}>{p.title}</strong>
                   {p.folder && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-3)', marginLeft: 8 }}>
+                    <span style={{ fontSize: '11px', color: 'var(--ink-3)', marginLeft: 8 }}>
                       {p.folder}
                     </span>
                   )}
@@ -293,20 +293,20 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                   </button>
                 </div>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-2)', marginTop: 4, lineHeight: 1.4 }}>
+              <div style={{ fontSize: '12px', color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}>
                 {highlightVariables(previewBody(p.body))}
               </div>
               {p.tags && p.tags.length > 0 && (
                 <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                   {p.tags.map((tag) => (
-                    <span key={tag} className="prompt-tag" style={{ fontSize: '10px', padding: '1px 6px', borderRadius: 'var(--r-sm)', background: 'var(--surface-3)', color: 'var(--text-3)' }}>
+                    <span key={tag} className="prompt-tag" style={{ fontSize: '10px', padding: '1px 6px', borderRadius: 'var(--r-sm)', background: 'var(--card-hi)', color: 'var(--ink-3)' }}>
                       {tag}
                     </span>
                   ))}
                 </div>
               )}
               {p.variables && p.variables.length > 0 && (
-                <div style={{ fontSize: '10px', color: 'var(--accent)', marginTop: 4 }}>
+                <div style={{ fontSize: '10px', color: 'var(--hue)', marginTop: 4 }}>
                   Variables: {p.variables.join(', ')}
                 </div>
               )}

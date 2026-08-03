@@ -58,7 +58,7 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
       <div className="settings-section-header">
         <span>Agent</span>
       </div>
-      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--text-2)' }}>
+      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
         These guardrails cap how long a single chat message can run autonomously
         when the model uses tools (web search, connectors, artifacts). Each tool
         call and follow-up counts as one step.
@@ -77,7 +77,7 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
             onChange={(e) => handleMaxStepsChange(e.target.value)}
             style={{ maxWidth: 120 }}
           />
-          <span style={{ fontSize: '12px', color: 'var(--text-2)' }}>
+          <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>
             Provider rounds per message (tool calls + follow-ups). Range: {MIN_STEPS}–{MAX_STEPS}.
           </span>
         </label>
@@ -94,7 +94,7 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
             onChange={(e) => handleWallClockChange(e.target.value)}
             style={{ maxWidth: 120 }}
           />
-          <span style={{ fontSize: '12px', color: 'var(--text-2)' }}>
+          <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>
             {agent.wallClockBudgetSecs}s = {formatMinutes(agent.wallClockBudgetSecs)}. Range:{' '}
             {MIN_WALL_CLOCK_SECS}s–{formatMinutes(MAX_WALL_CLOCK_SECS)}.
           </span>

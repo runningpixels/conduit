@@ -44,7 +44,7 @@ export function UsageSection() {
         <div className="settings-section-header">
           <span>Usage & Cost</span>
         </div>
-        <p style={{ fontSize: '13px', color: 'var(--text-2)', padding: '12px 0' }}>
+        <p style={{ fontSize: '13px', color: 'var(--ink-2)', padding: '12px 0' }}>
           No usage data yet. Start chatting to see analytics.
         </p>
       </div>
@@ -65,9 +65,9 @@ export function UsageSection() {
             fontSize: '13px',
             padding: '4px 8px',
             borderRadius: 'var(--r-sm)',
-            border: '1px solid var(--border)',
-            background: 'var(--surface)',
-            color: 'var(--text)',
+            border: '1px solid var(--line)',
+            background: 'var(--card)',
+            color: 'var(--ink)',
           }}
         >
           <option value="today">Today</option>
@@ -91,11 +91,11 @@ export function UsageSection() {
             minWidth: 120,
             padding: 12,
             borderRadius: 'var(--r-sm)',
-            background: 'var(--surface-2)',
+            background: 'var(--card)',
           }}
         >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatCents(data.totalCostCents)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-2)' }}>Total cost (est.)</div>
+          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>Total cost (est.)</div>
         </div>
         <div
           style={{
@@ -103,11 +103,11 @@ export function UsageSection() {
             minWidth: 120,
             padding: 12,
             borderRadius: 'var(--r-sm)',
-            background: 'var(--surface-2)',
+            background: 'var(--card)',
           }}
         >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatTokens(data.totalInputTokens)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-2)' }}>Input tokens</div>
+          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>Input tokens</div>
         </div>
         <div
           style={{
@@ -115,11 +115,11 @@ export function UsageSection() {
             minWidth: 120,
             padding: 12,
             borderRadius: 'var(--r-sm)',
-            background: 'var(--surface-2)',
+            background: 'var(--card)',
           }}
         >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatTokens(data.totalOutputTokens)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-2)' }}>Output tokens</div>
+          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>Output tokens</div>
         </div>
       </div>
 
@@ -133,7 +133,7 @@ export function UsageSection() {
           }}
         >
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+            <tr style={{ borderBottom: '1px solid var(--line)' }}>
               <th style={{ textAlign: 'left', padding: '6px 8px' }}>Provider</th>
               <th style={{ textAlign: 'left', padding: '6px 8px' }}>Model</th>
               <th style={{ textAlign: 'right', padding: '6px 8px' }}>Input</th>
@@ -145,7 +145,7 @@ export function UsageSection() {
             {data.byProvider.map((row) => (
               <tr
                 key={`${row.providerId}-${row.modelId}`}
-                style={{ borderBottom: '1px solid var(--border)' }}
+                style={{ borderBottom: '1px solid var(--line)' }}
               >
                 <td style={{ padding: '6px 8px' }}>{row.providerId}</td>
                 <td style={{ padding: '6px 8px' }}>{row.modelId}</td>
@@ -189,12 +189,12 @@ export function UsageSection() {
                   width: '100%',
                   maxWidth: 32,
                   minHeight: 2,
-                  background: 'var(--accent)',
+                  background: 'var(--hue)',
                   borderRadius: '2px 2px 0 0',
                   height: `${Math.max((day.costCents / maxCost) * 100, 2)}%`,
                 }}
               />
-              <span style={{ fontSize: '9px', color: 'var(--text-3)', marginTop: 2 }}>
+              <span style={{ fontSize: '9px', color: 'var(--ink-3)', marginTop: 2 }}>
                 {day.date.slice(5)}
               </span>
             </div>
@@ -202,7 +202,7 @@ export function UsageSection() {
         </div>
       )}
 
-      <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 8 }}>
+      <p style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: 8 }}>
         Costs are estimates based on published pricing. Actual billing may differ.
       </p>
     </div>

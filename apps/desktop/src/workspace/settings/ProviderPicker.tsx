@@ -135,11 +135,11 @@ export function ProviderPicker({
   return (
     <div className="form-grid" style={{ display: 'grid', gap: 12 }}>
       <label className="field" style={{ display: 'grid', gap: 6 }}>
-        <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider</span>
         <select
           value={settings.activeProvider}
           onChange={(e) => handleProviderChange(e.target.value)}
-          style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
+          style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
         >
           {sortedProviders.length > 0 ? (
             sortedProviders.map((p) => (
@@ -162,16 +162,16 @@ export function ProviderPicker({
           )}
         </select>
         {activeDescriptor?.description ? (
-          <span style={{ color: 'var(--text-3)', fontSize: '12px' }}>{activeDescriptor.description}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>{activeDescriptor.description}</span>
         ) : null}
       </label>
       <label className="field" style={{ display: 'grid', gap: 6 }}>
-        <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Model</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Model</span>
         {models.length > 0 ? (
           <select
             value={settings.activeModel}
             onChange={(e) => onSettingsChange({ ...settings, activeModel: e.target.value })}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           >
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.displayName ?? m.id}</option>
@@ -181,30 +181,30 @@ export function ProviderPicker({
           <input
             value={settings.activeModel}
             onChange={(e) => onSettingsChange({ ...settings, activeModel: e.target.value })}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           />
         )}
       </label>
       {activeDescriptor?.showBaseUrlField && (
         <label className="field" style={{ display: 'grid', gap: 6 }}>
-          <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Base URL</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Base URL</span>
           <input
             value={providerBaseUrl}
             onChange={(e) => updateProviderBaseUrl(e.target.value)}
             placeholder={activeDescriptor.defaultBaseUrl ?? 'https://your-endpoint.example/v1'}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           />
         </label>
       )}
       {activeDescriptor?.credentialMode !== 'none' && (
         <label className="field" style={{ display: 'grid', gap: 6 }}>
-          <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider secret</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider secret</span>
           <input
             type="password"
             value={providerSecret}
             onChange={(e) => setProviderSecret(e.target.value)}
             placeholder="Stored only through Rust"
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           />
         </label>
       )}
@@ -213,8 +213,8 @@ export function ProviderPicker({
         <button className="btn" type="button" disabled={busy} onClick={() => void handleLoadModels()}>Load models</button>
         <button className="btn" type="button" disabled={busy} onClick={() => void handleValidateProvider()}>Test connection</button>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
-        <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Credential reference</span>
+      <div className="status-item" style={{ display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Credential reference</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
           {credentialSummary?.storedInKeychain
             ? `${credentialSummary.credentialRef} (active provider)`

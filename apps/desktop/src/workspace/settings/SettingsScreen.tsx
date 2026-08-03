@@ -183,7 +183,7 @@ export function SettingsScreen({
             <div className="settings-section-header">
               <span>Provider & Model</span>
             </div>
-            <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--text-2)' }}>
+            <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
               Provider selection and BYOK entry stay inside Rust and the OS keychain.
             </p>
             <ProviderPicker settings={settings} onSettingsChange={save} onStatus={onStatus} />

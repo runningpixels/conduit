@@ -156,7 +156,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
       <div className="settings-section-header">
         <span>Connectors</span>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
+      <div className="status-item" style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
         {rows.length === 0 ? (
           <span style={{ fontSize: '13px' }}>No connectors registered yet. Add a local stdio connector below.</span>
         ) : (
@@ -167,12 +167,12 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
             return (
               <div key={s.connectorVersionId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
                 <span style={{ flex: 1 }}>
-                  <b>{s.connectorName}</b> <small style={{ color: 'var(--text-3)' }}>v{s.version} · {s.transport}</small>
-                  <small style={{ display: 'block', color: 'var(--text-3)' }}>
+                  <b>{s.connectorName}</b> <small style={{ color: 'var(--ink-3)' }}>v{s.version} · {s.transport}</small>
+                  <small style={{ display: 'block', color: 'var(--ink-3)' }}>
                     Tools: {toolCaps.length > 0 ? toolCaps.map((cap) => cap.name).join(', ') : 'none discovered'}
                   </small>
                   {s.lastError && (st.tone === 'bad' || st.tone === 'warn') && (
-                    <small style={{ display: 'block', color: 'var(--text-3)' }}>{s.lastError}</small>
+                    <small style={{ display: 'block', color: 'var(--ink-3)' }}>{s.lastError}</small>
                   )}
                 </span>
                 <span className={`status-pill ${st.tone}`} style={{ fontSize: '11px' }}>{st.label}</span>
@@ -213,32 +213,32 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
             placeholder="Connector name (e.g. Echo)"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <input
             placeholder="Command (absolute path, no shell)"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <input
             placeholder="Arguments (space-separated)"
             value={args}
             onChange={(e) => setArgs(e.target.value)}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <textarea
             placeholder="Env (one KEY=VALUE per line)"
             value={env}
             onChange={(e) => setEnv(e.target.value)}
             rows={2}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
           />
           <input
             placeholder="Consent copy shown to users (optional)"
             value={consentCopy}
             onChange={(e) => setConsentCopy(e.target.value)}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '8px 10px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <button className="btn primary" type="button" onClick={() => void handleAdd()}>Add local connector</button>
         </div>

@@ -87,8 +87,8 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
       <div className="settings-section-header">
         <span>Diagnostics</span>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
-        <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--text-2)' }}>
+      <div className="status-item" style={{ display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+        <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--ink-2)' }}>
           A diagnostics bundle contains your active provider/model, flags, theme, and redacted app paths. It never contains secrets, base URLs, allowlists, or conversation content.
         </p>
         <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -102,7 +102,7 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
             Export diagnostics
           </button>
           {!settings.diagnosticsEnabled && (
-            <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>Enable diagnostics in Privacy & Data to export a support bundle.</span>
+            <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>Enable diagnostics in Privacy & Data to export a support bundle.</span>
           )}
           {diagnostics && (
             <button className="btn" type="button" onClick={() => void handleRevealExports()}>Reveal in folder</button>
@@ -110,9 +110,9 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
         </div>
         {diagnostics && (
           <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-            <span style={{ color: 'var(--text-3)', fontSize: '12px' }}>Exported to</span>
+            <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>Exported to</span>
             <code style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', wordBreak: 'break-all' }}>{diagnostics.exportedTo}</code>
-            <pre className="code-block" style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
+            <pre className="code-block" style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
               {prettyJson(diagnostics)}
             </pre>
           </div>

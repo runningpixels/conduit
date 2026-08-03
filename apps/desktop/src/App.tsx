@@ -17,6 +17,7 @@ import {
   getOnboardingState,
   getSettings,
   listConversations,
+  listProviderDescriptors,
   revealArtifactsDir,
   searchMessages,
   setArtifactContent,
@@ -35,6 +36,7 @@ import {
 import type { AssistantStreamState } from './chat/streamState';
 import type { PendingArtifact } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
+import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { Titlebar, deriveConnectionState } from './workspace/Titlebar';
 import { Rail, type WorkspaceTab } from './workspace/Rail';
 import { RailPanes } from './workspace/RailPanes';
@@ -614,6 +616,11 @@ export default function App() {
     document.documentElement.setAttribute('data-tab', activeTab);
   }, [activeTab]);
 
+  // V7 — the active provider's identity tints the app (spec §5.4).
+  useEffect(() => {
+    document.documentElement.setAttribute('data-provider', providerHueId(settings.activeProvider));
+  }, [settings.activeProvider]);
+
   const [panelTitleBase, panelSubtitleBase] = TAB_TITLES[activeTab];
   const panelTitle =
     activeTab === 'chat'
@@ -667,6 +674,34 @@ export default function App() {
       });
   }, []);
 
+  // V7 — ⌘⇧P cycles the active provider and re-tints the app (spec §9.1).
+  const handleCycleProvider = useCallback(async () => {
+    try {
+      const descriptors = await listProviderDescriptors();
+      if (descriptors.length === 0) return;
+      const currentIndex = descriptors.findIndex((d) => d.id === settings.activeProvider);
+      const next = descriptors[(currentIndex + 1 + descriptors.length) % descriptors.length];
+      if (!next) return;
+      const existingEndpoint = settings.providerEndpoints?.[next.id];
+      const nextEndpoints = { ...settings.providerEndpoints };
+      if (next.defaultBaseUrl && !existingEndpoint?.baseUrl) {
+        nextEndpoints[next.id] = { ...existingEndpoint, baseUrl: next.defaultBaseUrl };
+      }
+      const nextSettings: AppSettings = {
+        ...settings,
+        activeProvider: next.id,
+        providerEndpoints: nextEndpoints,
+      };
+      setSettings(nextSettings);
+      void updateSettingsPersisted(nextSettings);
+      setStatusMessage(makeStatus(`Switched to ${providerDisplayName(next.id)}`, 'success'));
+    } catch (error) {
+      setStatusMessage(
+        makeStatus(error instanceof Error ? error.message : 'Failed to switch provider', 'error'),
+      );
+    }
+  }, [settings, setStatusMessage]);
+
   const hotkeyHandlers = useMemo(
     () => ({
       newChat: () => {
@@ -676,6 +711,9 @@ export default function App() {
       toggleRail: () => toggleRail(),
       toggleDocPanel: () => toggleDocPanel(),
       historySearch: () => openPalette(),
+      cycleProvider: () => {
+        void handleCycleProvider();
+      },
       copyLastAssistant: () => {
         void chatViewRef.current?.copyLastAssistantMessage().then((ok) => {
           if (ok) setStatus(makeStatus('Copied last assistant message', 'success'));
@@ -705,6 +743,7 @@ export default function App() {
     [
       confirmDeleteAll,
       confirmDeleteId,
+      handleCycleProvider,
       handleNewChat,
       openPalette,
       openSettings,

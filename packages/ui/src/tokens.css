@@ -61,51 +61,64 @@
   src: url("./fonts/GeistMono-SemiBold.woff2") format("woff2");
 }
 
-/* ───────────────────────── v5 token set (dark, default) ───────────────────────── */
+/* ───────────────────────── v7 token set (dark, default) — conduit-v7-design-spec §5 ───────────────────────── */
 :root {
   --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   --r-xs: 5px;
-  --r-sm: 7px;
-  --r: 10px;
-  --r-lg: 15px;
+  --r-sm: 6px;
+  --r: 9px;
+  --r-lg: 14px;
   --r-pill: 999px;
-  --tap: .14s cubic-bezier(.2,.6,.2,1);
+  --tap: .15s cubic-bezier(.22,.61,.24,1);
   --rail-w: 52px;
   --chat-w: 43vw;
 
-  --bg: #08090b;
-  --panel: #101317;
-  --surface: #191d21;
-  --surface-2: #23282d;
-  --surface-3: #2d3339;
-  --border: #333940;
-  --border-soft: #262b30;
-  --border-strong: #454d56;
-  --text: #e9ebed;
-  --text-2: #969da4;
-  --text-3: #8b9299;
-  --accent: #2dd4bf;
-  --accent-text: #5eead4;
-  --accent-weak: rgba(45,212,191,.13);
-  --accent-line: rgba(45,212,191,.55);
-  --success: #34d399;
-  --warn: #f4bf4f;
-  --danger: #f87171;
-  --accent-contrast: #04140f;
-  --accent-hover: #5eead4;
+  /* Structural (spec §5.1) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --sidebar-w: 236px;
+  --panel-w: 400px;
+  --measure: 52rem;
+
+  /* Surfaces (spec §5.2): 3 levels, one border weight, one soft divider */
+  --bg: #111112;
+  --raised: #171718;
+  --card: #1d1d1f;
+  --card-hi: #26262a;
+  --line: #2c2c30;
+  --line-soft: #212123;
+  --ink: #eceae7;
+  --ink-2: #a09d99;
+  --ink-3: #6f6c69;
+  --shade: rgba(0,0,0,.6);
+  --lift: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -8px rgba(0,0,0,.65);
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --err: #f87171;
+
+  /* Hue is provider identity (spec §5.4); neutral fallback until data-provider lands */
+  --hue: var(--ink-2);
+  --hue-weak: transparent;
   --shadow-color: rgba(0,0,0,.55);
-  --shadow: var(--elevation-1);
-  --glow: 0 0 0 1px var(--accent-weak), 0 0 22px -8px var(--accent-line);
+  --shadow: var(--lift);
+  --glow: 0 0 0 1px var(--hue-weak), 0 0 22px -8px var(--hue);
+
+  /* Hue alpha derivatives (kept for existing consumers) */
+  --hue-a08: color-mix(in srgb, var(--hue) 8%, transparent);
+  --hue-a12: color-mix(in srgb, var(--hue) 12%, transparent);
+  --hue-a20: color-mix(in srgb, var(--hue) 20%, transparent);
+  --hue-a40: color-mix(in srgb, var(--hue) 40%, transparent);
+
+  /* Syntax highlighting palette (kept; restyled in later phases) */
   --syn-keyword: #7dd3fc;
   --syn-string: #86efac;
   --syn-number: #fbbf24;
-  --syn-function: var(--accent-text);
+  --syn-function: var(--hue);
   --syn-tag: #f0abfc;
   --syn-property: #93c5fd;
   --syn-const: #fca5a5;
-  --syn-comment: var(--text-3);
-  --syn-punct: var(--text-2);
+  --syn-comment: var(--ink-3);
+  --syn-punct: var(--ink-2);
   color-scheme: dark;
 
   /* Readability multiplier applied by Appearance settings */
@@ -161,27 +174,21 @@
   --ease-standard: cubic-bezier(.2, .6, .2, 1);
   --ease-emphasized: cubic-bezier(.2, .7, .2, 1);
   --ease-in: cubic-bezier(.4, 0, .6, 1);
-  --tap: var(--duration-fast) var(--ease-standard);
+  --tap: .15s cubic-bezier(.22,.61,.24,1);
 
-  /* ── P1.2 elevation tiers (cards / popovers / dialogs+toasts) ── */
-  --elevation-1: 0 20px 48px -28px rgba(0, 0, 0, .85);
-  --elevation-2: 0 12px 32px -12px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .35);
-  --elevation-3: 0 24px 64px -16px rgba(0, 0, 0, .75), 0 4px 16px rgba(0, 0, 0, .45);
+  /* ── Elevation: only overlays carry shadows in v7 (--lift) ── */
+  --elevation-1: var(--lift);
+  --elevation-2: var(--lift);
+  --elevation-3: var(--lift);
 
   /* ── P1.3 focus ring tokens ── */
   --ring-width: 2px;
-  --ring-color: var(--accent);
+  --ring-color: var(--hue);
   --ring-offset: 2px;
 
-  /* ── P1.9 alpha scale (color-mix derivatives of the accent) ── */
-  --accent-a08: color-mix(in srgb, var(--accent) 8%, transparent);
-  --accent-a12: color-mix(in srgb, var(--accent) 12%, transparent);
-  --accent-a20: color-mix(in srgb, var(--accent) 20%, transparent);
-  --accent-a40: color-mix(in srgb, var(--accent) 40%, transparent);
-
   /* ── D3 glass surfaces (palette / toasts) ── */
-  --glass-bg: color-mix(in srgb, var(--surface) 82%, transparent);
-  --glass-border: color-mix(in srgb, var(--text) 10%, transparent);
+  --glass-bg: color-mix(in srgb, var(--card) 82%, transparent);
+  --glass-border: color-mix(in srgb, var(--ink) 10%, transparent);
   --glass-blur: 16px;
 
   /* ── Primitive sizing (derived from the scales above) ── */
@@ -191,64 +198,50 @@
 }
 
 [data-theme="light"] {
-  --bg: #e8ebee;
-  --panel: #f7f8fa;
-  --surface: #ffffff;
-  --surface-2: #eef1f4;
-  --surface-3: #e2e6eb;
-  --border: #d2d7dd;
-  --border-soft: #e2e5e9;
-  --border-strong: #b6bec7;
-  --text: #15181b;
-  --text-2: #59616a;
-  --text-3: #6b737c;
-  --accent: #0d9488;
-  --accent-text: #0f766e;
-  --accent-weak: rgba(13,148,136,.10);
-  --accent-line: rgba(13,148,136,.45);
-  --success: #0f9d63;
-  --warn: #c98a13;
-  --danger: #dc4b4b;
-  --accent-contrast: #fff;
-  --accent-hover: #0f766e;
+  --bg: #faf9f8;
+  --raised: #f2f0ee;
+  --card: #ffffff;
+  --card-hi: #f5f3f1;
+  --line: #e2dfdb;
+  --line-soft: #ece9e6;
+  --ink: #1a1918;
+  --ink-2: #5d5a56;
+  --ink-3: #8d8984;
+  --shade: rgba(28,25,23,.28);
+  --lift: 0 1px 2px rgba(28,25,23,.06), 0 14px 34px -10px rgba(28,25,23,.18);
+  --ok: #15803d;
+  --warn: #b45309;
+  --err: #b91c1c;
   --shadow-color: rgba(20,30,40,.25);
-  --shadow: var(--elevation-1);
-  --glow: 0 0 0 1px var(--accent-weak), 0 0 18px -8px var(--accent-line);
+  --shadow: var(--lift);
+  --glow: 0 0 0 1px var(--hue-weak), 0 0 18px -8px var(--hue);
   --syn-keyword: #0369a1;
   --syn-string: #15803d;
   --syn-number: #b45309;
-  --syn-function: var(--accent-text);
+  --syn-function: var(--hue);
   --syn-tag: #a21caf;
   --syn-property: #1d4ed8;
   --syn-const: #b91c1c;
-  --syn-comment: var(--text-3);
-  --syn-punct: var(--text-2);
+  --syn-comment: var(--ink-3);
+  --syn-punct: var(--ink-2);
   color-scheme: light;
-  --elevation-1: 0 18px 38px -24px rgba(20, 30, 40, .30);
-  --elevation-2: 0 10px 28px -10px rgba(20, 30, 40, .22), 0 2px 6px rgba(20, 30, 40, .12);
-  --elevation-3: 0 20px 52px -14px rgba(20, 30, 40, .32), 0 4px 12px rgba(20, 30, 40, .16);
+  --elevation-1: var(--lift);
+  --elevation-2: var(--lift);
+  --elevation-3: var(--lift);
 }
 
-/* P1.8 · oklch accent primary (D4) — perceptually uniform derivatives with
-   sRGB fallback for older WebKitGTK. The hex values above remain the default;
-   this block upgrades the accent family when oklch() is supported. */
-@supports (color: oklch(0.5 0.1 180)) {
-  :root {
-    --accent-oklch: oklch(0.84 0.13 178);
-    --accent: var(--accent-oklch);
-    --accent-text: oklch(0.88 0.11 176);
-    --accent-hover: oklch(0.88 0.11 176);
-    --accent-weak: color-mix(in oklch, var(--accent-oklch) 13%, transparent);
-    --accent-line: color-mix(in oklch, var(--accent-oklch) 55%, transparent);
-  }
-  [data-theme="light"] {
-    --accent-oklch: oklch(0.62 0.10 185);
-    --accent: var(--accent-oklch);
-    --accent-text: oklch(0.55 0.09 188);
-    --accent-hover: oklch(0.55 0.09 188);
-    --accent-weak: color-mix(in oklch, var(--accent-oklch) 11%, transparent);
-    --accent-line: color-mix(in oklch, var(--accent-oklch) 45%, transparent);
-  }
+/* ── Provider identity — the only hue in the product (spec §5.4) ───────── */
+[data-provider="anthropic"] { --hue: #d97757; --hue-weak: color-mix(in srgb, #d97757 14%, transparent); --hue-weak-solid: rgba(217, 119, 87, .14); }
+[data-provider="openai"]    { --hue: #10a37f; --hue-weak: color-mix(in srgb, #10a37f 14%, transparent); --hue-weak-solid: rgba(16, 163, 127, .14); }
+[data-provider="ollama"]    { --hue: #8b8b96; --hue-weak: color-mix(in srgb, #8b8b96 16%, transparent); --hue-weak-solid: rgba(139, 139, 150, .16); }
+[data-provider="custom"]    { --hue: #6f7cff; --hue-weak: color-mix(in srgb, #6f7cff 14%, transparent); --hue-weak-solid: rgba(111, 124, 255, .14); }
+
+/* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
+@supports not (color: color-mix(in srgb, red 10%, transparent)) {
+  [data-provider="anthropic"] { --hue-weak: rgba(217, 119, 87, .14); }
+  [data-provider="openai"]    { --hue-weak: rgba(16, 163, 127, .14); }
+  [data-provider="ollama"]    { --hue-weak: rgba(139, 139, 150, .16); }
+  [data-provider="custom"]    { --hue-weak: rgba(111, 124, 255, .14); }
 }
 
 [data-rail="expanded"] { --rail-w: 184px; }
@@ -260,7 +253,7 @@ body {
   margin: 0;
   font-family: var(--font-ui);
   font-size: calc(var(--fs-4xl) * var(--fs-scale, 1));
-  color: var(--text);
+  color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -272,11 +265,11 @@ button { cursor: pointer; }
 :focus { outline: none; }
 :focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); border-radius: var(--r-xs); }
 textarea:focus-visible { outline: none; box-shadow: var(--glow); }
-::selection { background: var(--accent-weak); }
-.scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+::selection { background: var(--hue-weak); }
+.scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .scroll::-webkit-scrollbar { width: var(--space-6); height: var(--space-6); }
-.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--r-pill); border: var(--space-3) solid transparent; background-clip: padding-box; }
-.scroll::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: padding-box; }
+.scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--r-pill); border: var(--space-3) solid transparent; background-clip: padding-box; }
+.scroll::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: padding-box; }
 
 /* ───────────────────────── Primitives (token + scale driven) ────────────
  * These are v5's shared component classes, extracted here so React primitives
@@ -290,28 +283,28 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   display: inline-flex;
   align-items: center;
   gap: var(--space-5);
-  border: var(--space-1) solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
+  border: var(--space-1) solid var(--line);
+  background: var(--card);
+  color: var(--ink);
   border-radius: var(--r-sm);
   padding: var(--space-5) var(--space-11);
   font-size: var(--fs-2xl);
   font-weight: 500;
   transition: var(--tap);
 }
-.btn:hover { border-color: var(--border-strong); }
-.btn.primary { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
-.btn.primary:hover { background: var(--accent-hover); }
+.btn:hover { border-color: var(--line); }
+.btn.primary { background: var(--hue); color: var(--bg); border-color: transparent; }
+.btn.primary:hover { background: var(--hue); filter: brightness(1.08); }
 .btn.ghost { background: transparent; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn.danger {
-  background: color-mix(in srgb, var(--danger) 16%, var(--surface-2));
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--err) 16%, var(--card));
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, var(--line));
 }
 .btn.danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger) 24%, var(--surface-2));
-  border-color: var(--danger);
+  background: color-mix(in srgb, var(--err) 24%, var(--card));
+  border-color: var(--err);
 }
 
 /* IconButton — .icon-btn */
@@ -323,11 +316,11 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   border-radius: var(--r-sm);
   border: var(--space-1) solid transparent;
   background: transparent;
-  color: var(--text-2);
+  color: var(--ink-2);
   transition: var(--tap);
 }
-.icon-btn:hover { background: var(--surface-2); color: var(--text); }
-.icon-btn.on { color: var(--accent-text); background: var(--accent-weak); }
+.icon-btn:hover { background: var(--card); color: var(--ink); }
+.icon-btn.on { color: var(--hue); background: var(--hue-weak); }
 .icon-btn svg { width: 17px; height: 17px; }
 
 /* Pill (tool status) — .pill.ran/.hold/.local */
@@ -342,9 +335,9 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   display: inline-flex;
   align-items: center;
 }
-.pill.ran { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.pill.ran { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .pill.hold { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
-.pill.local { color: var(--accent-text); background: var(--accent-weak); }
+.pill.local { color: var(--hue); background: var(--hue-weak); }
 
 /* StatusPill — .status-pill.ok/.warn/.bad */
 .status-pill {
@@ -355,9 +348,9 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   letter-spacing: .03em;
   flex: none;
 }
-.status-pill.ok { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.status-pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .status-pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
-.status-pill.bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.status-pill.bad { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
 
 /* Chip — generic label chip (.cu-chip; titlebar chips keep their own classes) */
 .cu-chip {
@@ -365,9 +358,9 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   align-items: center;
   gap: var(--space-5);
   border-radius: var(--r-pill);
-  border: var(--space-1) solid var(--border);
-  background: var(--surface);
-  color: var(--text-2);
+  border: var(--space-1) solid var(--line);
+  background: var(--card);
+  color: var(--ink-2);
   font: 500 var(--fs-lg)/1 var(--font-ui);
   padding: var(--space-6) var(--space-8);
   white-space: nowrap;
@@ -382,32 +375,32 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   width: var(--cu-icon-sm);
   height: var(--cu-icon-sm);
   transform: translateY(-50%);
-  color: var(--text-3);
+  color: var(--ink-3);
   pointer-events: none;
 }
 .search-box input {
   width: 100%;
-  border: var(--space-1) solid var(--border);
+  border: var(--space-1) solid var(--line);
   border-radius: var(--r);
-  background: var(--surface);
-  color: var(--text);
+  background: var(--card);
+  color: var(--ink);
   padding: var(--space-9) var(--space-9) var(--space-9) 34px;
   font: 500 var(--fs-2xl)/1 var(--font-ui);
 }
-.search-box input::placeholder { color: var(--text-3); }
-.search-box input:focus { border-color: var(--border-strong); box-shadow: var(--glow); }
+.search-box input::placeholder { color: var(--ink-3); }
+.search-box input:focus { border-color: var(--line); box-shadow: var(--glow); }
 
 /* InfoCard — .info-card */
 .info-card {
-  border: var(--space-1) solid var(--border);
-  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  border: var(--space-1) solid var(--line);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
   border-radius: var(--r-lg);
   padding: var(--space-10);
   margin: 0 0 var(--space-10);
   box-shadow: var(--shadow);
 }
 .info-card h3 { margin: 0 0 var(--space-6); font-size: var(--fs-3xl); font-weight: 600; }
-.info-card p { margin: 0; color: var(--text-2); line-height: 1.5; }
+.info-card p { margin: 0; color: var(--ink-2); line-height: 1.5; }
 
 /* SectionLabel — .section-label */
 .section-label {
@@ -417,7 +410,7 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   font: 600 var(--fs-sm)/1 var(--font-mono);
   letter-spacing: .07em;
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--ink-3);
   margin: var(--space-8) 0;
 }
 .section-label:first-child { margin-top: 0; }
@@ -433,8 +426,8 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   font-size: var(--fs-xs);
   flex: none;
 }
-.av-role.you { background: var(--surface-2); border: var(--space-1) solid var(--border); color: var(--text-2); }
-.av-role.bot { background: var(--accent-weak); color: var(--accent-text); }
+.av-role.you { background: var(--card); border: var(--space-1) solid var(--line); color: var(--ink-2); }
+.av-role.bot { background: var(--hue-weak); color: var(--hue); }
 .av-role.bot svg { width: 16px; height: 16px; }
 
 /* ConfirmDialog */
@@ -449,9 +442,9 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
 }
 .cu-dialog {
   width: min(420px, 100%);
-  border: var(--space-1) solid var(--border);
+  border: var(--space-1) solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--surface);
+  background: var(--card);
   box-shadow: var(--shadow);
   padding: var(--space-14);
 }
@@ -461,7 +454,7 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   font-weight: 600;
 }
 .cu-dialog-body {
-  color: var(--text-2);
+  color: var(--ink-2);
   font-size: var(--fs-4xl);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -471,27 +464,27 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   gap: var(--space-6);
   margin-top: var(--space-12);
   font-size: var(--fs-xl);
-  color: var(--text-2);
+  color: var(--ink-2);
 }
 .cu-dialog-phrase kbd {
   font: 600 var(--fs-md)/1 var(--font-mono);
-  color: var(--text);
-  background: var(--surface-2);
-  border: var(--space-1) solid var(--border);
+  color: var(--ink);
+  background: var(--card);
+  border: var(--space-1) solid var(--line);
   border-radius: var(--r-xs);
   padding: var(--space-2) var(--space-4);
 }
 .cu-dialog-phrase input {
   width: 100%;
-  border: var(--space-1) solid var(--border);
+  border: var(--space-1) solid var(--line);
   border-radius: var(--r-sm);
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
   padding: var(--space-8) var(--space-10);
   font: 500 var(--fs-4xl)/1.2 var(--font-ui);
 }
 .cu-dialog-phrase input:focus {
-  border-color: var(--border-strong);
+  border-color: var(--line);
   box-shadow: var(--glow);
 }
 .cu-dialog-actions {

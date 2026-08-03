@@ -50,7 +50,7 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
       <div
         className="variable-fill-dialog"
         style={{
-          background: 'var(--surface)',
+          background: 'var(--card)',
           borderRadius: 'var(--r-lg)',
           padding: 20,
           maxWidth: 420,
@@ -60,7 +60,7 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
         onClick={(e) => e.stopPropagation()}
       >
         <h3 style={{ margin: '0 0 4px', fontSize: '14px' }}>Fill in variables</h3>
-        <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--text-2)' }}>
+        <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--ink-2)' }}>
           Prompt: <strong>{prompt.title}</strong>
         </p>
 
@@ -82,9 +82,9 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
                 style={{
                   width: '100%',
                   borderRadius: 'var(--r-sm)',
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface-2)',
-                  color: 'var(--text)',
+                  border: '1px solid var(--line)',
+                  background: 'var(--card)',
+                  color: 'var(--ink)',
                   padding: '8px 10px',
                 }}
               />

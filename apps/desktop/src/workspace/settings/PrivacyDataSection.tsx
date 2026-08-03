@@ -77,18 +77,18 @@ export function PrivacyDataSection({
         <span>Privacy & Data</span>
       </div>
 
-      <div className="status-item trust-health" style={{ marginBottom: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
-        <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+      <div className="status-item trust-health" style={{ marginBottom: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           Trust & connection
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span className={`health ${trust.health}`} aria-hidden="true" />
           <strong style={{ fontSize: '13px' }}>{trust.label}</strong>
         </div>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {trust.detail}
         </p>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.55 }}>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.55 }}>
           <li>Boundary: {boundaryOk ? 'online' : 'unreachable'}</li>
           <li>API key: {hasCredential ? 'stored in OS keychain' : 'not stored'}</li>
           <li>Local-only mode: {settings.localOnly ? 'on' : 'off'}</li>
@@ -112,16 +112,16 @@ export function PrivacyDataSection({
           />
           Diagnostics export enabled
         </label>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           When diagnostics is enabled, you can export a support bundle from the Diagnostics tab.
           It contains only redacted paths and your active provider/model/toggles/theme — never secrets,
           base URLs, allowlists, or conversation content.
         </p>
       </div>
 
-      <div className="status-item" style={{ marginTop: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
-        <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Local data</span>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
+      <div className="status-item" style={{ marginTop: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Local data</span>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           Reset the local SQLite store if migrations fail or you want a clean slate. Your previous
           database file is backed up first (same as automatic recovery at startup).
         </p>
@@ -132,7 +132,7 @@ export function PrivacyDataSection({
         </div>
         {lastBackupPath && (
           <div style={{ display: 'grid', gap: 4 }}>
-            <span style={{ color: 'var(--text-3)', fontSize: '12px' }}>Last backup</span>
+            <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>Last backup</span>
             <code style={{ fontSize: '11px', wordBreak: 'break-all' }}>{lastBackupPath}</code>
           </div>
         )}

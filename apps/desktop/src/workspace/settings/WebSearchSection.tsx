@@ -50,7 +50,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
       <div className="settings-section-header">
         <span>Web Search</span>
       </div>
-      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--text-2)' }}>
+      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
         When enabled, the model can search the live web during a conversation.
         Search queries are sent to the model provider, not to Conduit. Per-turn
         opt-in is required — the toggle in the chat bar defaults to off.
@@ -112,7 +112,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
         >
           {/* Search context size */}
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               Search context size
             </span>
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -128,7 +128,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 </label>
               ))}
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-3)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
               How much search-result context the model sees. Low = simple lookups; High = research-heavy queries.
             </p>
           </div>
@@ -142,13 +142,13 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
             />
             Live internet access
           </label>
-          <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--text-3)' }}>
+          <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
             Unchecked = cache-only / offline mode. Provider ignores this for some models.
           </p>
 
           {/* Returned-token budget */}
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               Returned-token budget
             </span>
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -164,14 +164,14 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 </label>
               ))}
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-3)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
               Unlimited removes the returned-token cap for long research runs. GPT-5+ reasoning models only.
             </p>
           </div>
 
           {/* Allowed domains */}
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               Allowed domains
             </span>
             <textarea
@@ -187,14 +187,14 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 resize: 'vertical',
               }}
             />
-            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-3)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
               One bare domain per line (no http(s) prefix). Max 100 entries. Leave empty for unfiltered search.
             </p>
           </div>
 
           {/* Blocked domains */}
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               Blocked domains
             </span>
             <textarea
@@ -210,14 +210,14 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 resize: 'vertical',
               }}
             />
-            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-3)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
               One bare domain per line. Max 100 entries.
             </p>
           </div>
 
           {/* User location */}
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               Approximate user location
             </span>
             <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
@@ -249,7 +249,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 style={{ flex: 1, minWidth: '8em', fontSize: '12px' }}
               />
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-3)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
               ISO 3166-1 alpha-2 country code. Used to localize search results. Approximate — not stored server-side by Conduit.
             </p>
           </div>
@@ -263,7 +263,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
             />
             Show source list in search results
           </label>
-          <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--text-3)' }}>
+          <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
             When on, the provider returns the raw source list alongside citations. May increase response size.
           </p>
         </fieldset>

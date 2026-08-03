@@ -49,13 +49,13 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
       <div className="settings-section-header">
         <span>Updates</span>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
+      <div className="status-item" style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
         <label className="field" style={{ display: 'grid', gap: 6 }}>
-          <span style={{ color: 'var(--text-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Channel</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Channel</span>
           <select
             value={settings.updateChannel}
             onChange={(e) => onUpdate({ ...settings, updateChannel: e.target.value as RolloutChannel })}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '10px 12px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           >
             <option value="stable">Stable</option>
             <option value="beta">Beta</option>
@@ -69,7 +69,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
           />
           Allow update checks
         </label>
-        <span style={{ fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
+        <span style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           Conduit checks for updates only when you choose — there is no background
           telemetry. Sent: your Conduit version, release notes, and the download
           URL. Updates are signature-verified and applied only after a migration
@@ -97,20 +97,20 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
           )}
         </div>
         {update && (
-          <div style={{ fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
             <b>Conduit {update.version}</b> is available.
             {update.notes && (
-              <pre className="code-block" style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
+              <pre className="code-block" style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
                 {update.notes}
               </pre>
             )}
           </div>
         )}
         {!update && !checking && settings.updateCheckEnabled && (
-          <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>No update checked yet — use "Check now".</span>
+          <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>No update checked yet — use "Check now".</span>
         )}
         {error && (
-          <span style={{ fontSize: '12px', color: 'var(--text-2)' }}>{error}</span>
+          <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>{error}</span>
         )}
       </div>
     </div>

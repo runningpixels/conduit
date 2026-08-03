@@ -13,6 +13,8 @@ export interface HotkeyHandlers {
   toggleDocPanel?: HotkeyHandler;
   /** Mod+K — open command palette */
   historySearch?: HotkeyHandler;
+  /** Mod+Shift+P — cycle the active provider (V7; re-tints the app) */
+  cycleProvider?: HotkeyHandler;
   /** Mod+Shift+C — copy last assistant message */
   copyLastAssistant?: HotkeyHandler;
   /** Escape — close menus/dialogs; stop stream when composer focused */
@@ -70,6 +72,11 @@ export function useHotkeys(handlers: HotkeyHandlers): void {
       if (key === 'k' && !event.shiftKey) {
         event.preventDefault();
         handlers.historySearch?.(event);
+        return;
+      }
+      if (key === 'p' && event.shiftKey) {
+        event.preventDefault();
+        handlers.cycleProvider?.(event);
         return;
       }
       if (key === 'c' && event.shiftKey) {

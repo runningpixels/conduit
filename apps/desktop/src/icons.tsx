@@ -189,6 +189,14 @@ export const MoreIcon = (p: IconProps) => (
     <circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none" />
   </Svg>
 );
+export const ForkIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="6" cy="6" r="2.5" />
+    <circle cx="18" cy="6" r="2.5" />
+    <circle cx="12" cy="19" r="2.5" />
+    <path d="M6 8.5v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-3" />
+  </Svg>
+);
 export const PencilIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 20h9" />

@@ -9,7 +9,7 @@ export function CitationMarker({ citation }: CitationMarkerProps) {
   const title = citation.title || citation.url;
   const host = hostOf(citation.url);
   return (
-    <sup className="citation-marker">
+    <sup className="cite">
       <a
         href={citation.url}
         target="_blank"
@@ -17,7 +17,7 @@ export function CitationMarker({ citation }: CitationMarkerProps) {
         title={`${title} — ${host}`}
         aria-label={`Citation ${citation.index}: ${title}`}
       >
-        [{citation.index}]
+        {citation.index}
       </a>
     </sup>
   );

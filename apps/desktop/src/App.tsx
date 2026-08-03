@@ -868,6 +868,7 @@ export default function App() {
             onDocumentToolActivity={handleDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
+            convoProviders={convoProviders}
           />
         </main>
 

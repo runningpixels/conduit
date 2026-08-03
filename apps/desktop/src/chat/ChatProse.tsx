@@ -68,7 +68,7 @@ export function ChatProse({
           return (
             <div key={`p${idx}`} className="chat-prose-segment">
               {prose}
-              {streaming && isLast && <span className="cursor" />}
+              {streaming && isLast && <span className="streaming" aria-hidden="true" />}
             </div>
           );
         }
@@ -85,23 +85,22 @@ export function ChatProse({
         );
       })}
       {showCitations && footnotes.length > 0 && (
-        <ol className="citations">
+        <div className="sources">
           {footnotes.map((c) => (
-            <li key={`fn-${c.index}-${c.url}`}>
-              <span className="citation-index">[{c.index}]</span>{' '}
-              <a
-                className="citation-link"
-                href={c.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={c.title || c.url}
-              >
-                {c.title || c.url}
-              </a>
-              <span className="citation-host"> — {hostOf(c.url)}</span>
-            </li>
+            <a
+              key={`src-${c.index}-${c.url}`}
+              className="source"
+              href={c.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={c.title || c.url}
+            >
+              <i>{c.index}</i>
+              {c.title || c.url}
+              <span className="source-host"> · {hostOf(c.url)}</span>
+            </a>
           ))}
-        </ol>
+        </div>
       )}
     </div>
   );

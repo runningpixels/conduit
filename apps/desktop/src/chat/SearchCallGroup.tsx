@@ -3,6 +3,7 @@ import type { AssistantStreamState, ToolCallState } from './streamState';
 import { isWebSearchToolCall } from './SearchCallBlock';
 import { hostOf } from './citationUtils';
 import type { SearchSource } from './streamState';
+import { SearchIcon } from '../icons';
 
 interface SearchCallGroupProps {
   toolCalls: ToolCallState[];
@@ -28,104 +29,93 @@ function totalSourceCount(searchCalls: ToolCallState[]): number {
   return searchCalls.reduce((acc, tc) => acc + (tc.sources?.length ?? 0), 0);
 }
 
-function renderSources(sources: SearchSource[]) {
+function sourceCountFor(tc: ToolCallState): number {
+  return tc.sources?.length ?? 0;
+}
+
+function renderSources(sources: SearchSource[], callIndex: number) {
   if (sources.length === 0) return null;
   return (
-    <details className="search-sources">
-      <summary>
-        {sources.length} {sources.length === 1 ? 'source' : 'sources'}
-      </summary>
-      <ol className="search-sources-list">
-        {sources.map((src, i) => {
-          const title = pickString(src.raw, ['title', 'name']) ?? `Source ${i + 1}`;
-          const url = pickString(src.raw, ['url', 'link']) ?? '';
-          return (
-            <li key={i}>
-              <span className="src-title">{title}</span>
-              {url && (
-                <>
-                  {' — '}
-                  <a className="src-url" href={url} target="_blank" rel="noopener noreferrer">
-                    {hostOf(url)}
-                  </a>
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </details>
+    <div className="q-sources">
+      {sources.map((src, i) => {
+        const title = pickString(src.raw, ['title', 'name']) ?? `Source ${i + 1}`;
+        const url = pickString(src.raw, ['url', 'link']) ?? '';
+        return (
+          <span className="q-source" key={`${callIndex}-${i}`}>
+            <span className="src-title">{title}</span>
+            {url && (
+              <>
+                {' — '}
+                <a className="src-url" href={url} target="_blank" rel="noopener noreferrer">
+                  {hostOf(url)}
+                </a>
+              </>
+            )}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
-/** Compact grouped view for one or more hosted web_search tool calls. */
+/** V7 web-search tool card (§8.4): one collapsed line ("N queries · M
+ *  sources"), one level of expansion into a flat list of query rows. */
 export function SearchCallGroup({ toolCalls, unavailable, cost }: SearchCallGroupProps) {
-  const [queriesOpen, setQueriesOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const searchCalls = toolCalls.filter(isWebSearchToolCall);
   if (searchCalls.length === 0) return null;
 
   const allComplete = searchCalls.every((tc) => tc.complete);
-  const statusTone = allComplete ? 'ran' : 'running';
   const queryCount = cost ?? searchCalls.length;
-  const latestCall = searchCalls[searchCalls.length - 1];
-  const latestQuery = queryText(latestCall);
   const sourceCount = totalSourceCount(searchCalls);
+  const statusSuffix = allComplete ? '' : 'running…';
 
   return (
-    <div className="tool search-call-group">
-      <div className="tool-head">
-        <span className="tico" aria-hidden>
-          ⌕
+    <div
+      className="tool search-call-group"
+      data-open={open ? 'true' : 'false'}
+      {...(allComplete ? {} : { 'data-running': 'true' })}
+    >
+      <button
+        type="button"
+        className="tool-head"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="tool-icon">
+          <SearchIcon />
         </span>
-        <span className="tname">
-          Searched the web
-          {queryCount > 0 ? (
-            <span className="search-count">
-              {' '}
-              · {queryCount} {queryCount === 1 ? 'query' : 'queries'}
-            </span>
-          ) : null}
+        <span className="tool-name">Web search</span>
+        <span className="tool-sum">
+          {queryCount} {queryCount === 1 ? 'query' : 'queries'}
+          {sourceCount > 0 ? ` · ${sourceCount} ${sourceCount === 1 ? 'source' : 'sources'}` : ''}
         </span>
-        <span className={`pill ${statusTone}`}>{allComplete ? 'ran' : 'running'}</span>
-      </div>
-      <div className="tool-detail">
-        {!queriesOpen && (
-          <div className="search-query-preview" aria-live="polite">
-            <span className={`search-query-status ${latestCall.complete ? 'done' : 'pending'}`}>
-              {latestCall.complete ? '✓' : '…'}
-            </span>
-            <span className="search-query">{latestQuery}</span>
-            {sourceCount > 0 && (
-              <span className="search-source-count">
-                {' '}
-                · {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
-              </span>
+        {statusSuffix && <span className="tool-status">{statusSuffix}</span>}
+        <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
+      </button>
+      <div className="tool-body">
+        <div>
+          <div className="tool-inner">
+            {searchCalls.map((tc, i) => (
+              <div key={tc.toolCallId}>
+                <div className="q">
+                  <span className="q-str">{queryText(tc)}</span>
+                  {tc.complete && sourceCountFor(tc) > 0 && (
+                    <span className="q-n">
+                      {sourceCountFor(tc)} {sourceCountFor(tc) === 1 ? 'source' : 'sources'}
+                    </span>
+                  )}
+                </div>
+                {tc.complete && tc.sources && renderSources(tc.sources, i)}
+              </div>
+            ))}
+            {unavailable && (
+              <div className="search-unavailable" role="status">
+                <b>Web search unavailable.</b> {unavailable.message}
+              </div>
             )}
           </div>
-        )}
-        <details
-          className="search-queries"
-          open={queriesOpen}
-          onToggle={(e) => setQueriesOpen((e.currentTarget as HTMLDetailsElement).open)}
-        >
-          <summary>Search queries</summary>
-          <ol className="search-query-list">
-            {searchCalls.map((tc) => (
-              <li key={tc.toolCallId} className="search-query-item">
-                <span className={`search-query-status ${tc.complete ? 'done' : 'pending'}`}>
-                  {tc.complete ? '✓' : '…'}
-                </span>
-                <span className="search-query">{queryText(tc)}</span>
-                {tc.sources && tc.sources.length > 0 && renderSources(tc.sources)}
-              </li>
-            ))}
-          </ol>
-        </details>
-        {unavailable && (
-          <div className="search-unavailable" role="status">
-            <b>Web search unavailable.</b> {unavailable.message}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

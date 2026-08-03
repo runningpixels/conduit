@@ -16,7 +16,10 @@ import {
 } from '../ipc/client';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactRefChip';
-import { BotGlyph } from '../icons';
+import { BotGlyph, CopyIcon, ForkIcon, PencilIcon } from '../icons';
+import { TurnModelLine, shouldShowModelLine } from './TurnModelLine';
+import { InterruptedBanner } from './InterruptedBanner';
+import { providerHueId } from '../lib/providerIdentity';
 import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
@@ -104,6 +107,9 @@ interface ChatViewProps {
   paneActive?: boolean;
   /// Open a settings section ('providers' | 'privacy' …) from the provenance strip.
   onOpenSettings?: (tab?: string) => void;
+  /// Renderer-only conversation → last-used provider map (sidebar row dots).
+  /// Falls back to `settings.activeProvider` for per-turn hue + model line.
+  convoProviders?: Record<string, string>;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -291,6 +297,20 @@ function formatMsgTime(iso: string): string {
   return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+/** Session-scoped map of turn id → { provider, model }.
+ *
+ *  The backend does not persist provider/model per message (out of scope for
+ *  V7 — §12 lists the renderer as the only changed surface), so mid-session
+ *  provider/model switches are tracked here. Hydrated turns from previous
+ *  sessions fall back to the conversation's last-used provider (§6.4
+ *  degradation: the model line then shows on the first turn of such a
+ *  conversation and at every switch within the current session). */
+const sessionTurnProviders = new Map<string, { provider: string; model: string }>();
+
+function recordSessionTurnProvider(turnId: string, provider: string, model: string): void {
+  sessionTurnProviders.set(turnId, { provider, model });
+}
+
 export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatView(
   {
     settings,
@@ -306,6 +326,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onForkConversation,
     paneActive = true,
     onOpenSettings,
+    convoProviders = {},
   },
   ref,
 ) {
@@ -618,6 +639,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     streamStateRef.current = initialStream;
     setActiveRequestId(request.requestId);
     setActiveStream(initialStream);
+    // Track the provider/model that produced this turn so the conditional
+    // model line (§6.4) can show switches within the session.
+    recordSessionTurnProvider(`assistant-${request.requestId}`, settings.activeProvider, settings.activeModel);
 
     // `start_chat_stream` spawns the provider stream and returns a handle
     // immediately — the invoke promise resolves *before* any provider events
@@ -742,6 +766,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 modelId: settings.activeModel,
               },
             ]);
+            recordSessionTurnProvider(turnId, settings.activeProvider, settings.activeModel);
 
           })();
           if (!errorText && onChatTurnComplete) {
@@ -905,6 +930,65 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     activeRequestId == null &&
     !prompt.trim();
 
+  // Per-turn provider/model for the conditional model line (§6.4).
+  // Session-tracked turns win; hydrated turns fall back to the conversation's
+  // last-used provider (or the active provider) and the active model.
+  const turnModelInfo = useMemo(() => {
+    const info: Record<
+      string,
+      { provider: string; model: string; switchedFrom?: string; showModelLine: boolean; time?: string }
+    > = {};
+    let lastProvider: string | undefined;
+    let lastModel: string | undefined;
+    for (const turn of turns) {
+      if (turn.role !== 'assistant') continue;
+      const session = sessionTurnProviders.get(turn.id);
+      const provider =
+        session?.provider ?? convoProviders[conversationId ?? ''] ?? settings.activeProvider;
+      const model = session?.model ?? turn.modelId ?? settings.activeModel;
+      const prev =
+        lastProvider !== undefined && lastModel !== undefined
+          ? { provider: lastProvider, model: lastModel }
+          : undefined;
+      info[turn.id] = {
+        provider,
+        model,
+        switchedFrom: prev && prev.provider !== provider ? prev.provider : undefined,
+        showModelLine: shouldShowModelLine(prev, { provider, model }),
+        time: turn.createdAt ? formatMsgTime(turn.createdAt) : undefined,
+      };
+      lastProvider = provider;
+      lastModel = model;
+    }
+    return info;
+  }, [turns, convoProviders, conversationId, settings.activeProvider, settings.activeModel]);
+
+  // Provider/model of the last committed assistant turn (for the live turn's
+  // model line + "switched from …" note).
+  const lastAssistantTurn = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const turn = turns[i];
+      if (turn.role !== 'assistant') continue;
+      const info = turnModelInfo[turn.id];
+      if (info) return { provider: info.provider, model: info.model };
+    }
+    return undefined;
+  }, [turns, turnModelInfo]);
+
+  const liveTurnInfo = useMemo(() => {
+    const provider = settings.activeProvider;
+    const model = settings.activeModel;
+    return {
+      provider,
+      model,
+      switchedFrom:
+        lastAssistantTurn && lastAssistantTurn.provider !== provider
+          ? lastAssistantTurn.provider
+          : undefined,
+      showModelLine: shouldShowModelLine(lastAssistantTurn, { provider, model }),
+    };
+  }, [lastAssistantTurn, settings.activeProvider, settings.activeModel]);
+
   function handleEditUserTurn(content: string) {
     setPrompt(content);
     requestAnimationFrame(() => composerRef.current?.focusPrompt());
@@ -931,7 +1015,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
-  async function handleCopyAssistantTurn(content: string) {
+  async function handleCopyText(content: string) {
     if (!content.trim()) return;
     try {
       await navigator.clipboard.writeText(content);
@@ -982,93 +1066,138 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               </div>
             </div>
           )}
-          {!threadLoading && turns.map((turn) =>
-            turn.role === 'user' ? (
-              <div key={turn.id} className="msg enter" data-message-id={turn.id}>
-                <div className="av-role you">You</div>
-                <div className="msg-body">
-                  <div className="msg-from">
-                    <b>You</b>
-                    {turn.createdAt && (
-                      <span className="msg-time">{formatMsgTime(turn.createdAt)}</span>
-                    )}
-                    <div className="msg-actions">
-                      <button
-                        type="button"
-                        onClick={() => handleEditUserTurn(turn.content)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
-                        title="Fork conversation at this message"
-                      >
-                        Fork
-                      </button>
-                    </div>
-                  </div>
-                  <div className="prose user-prose">
+          {!threadLoading && turns.map((turn) => {
+            if (turn.role === 'user') {
+              return (
+                <article key={turn.id} className="turn user" data-message-id={turn.id}>
+                  <div className="bubble">
                     <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
                   </div>
-                  {turn.interrupted && <div className="interrupted-banner">Generation was interrupted.</div>}
-                </div>
-              </div>
-            ) : turn.streamState ? (
-              <AssistantMessage
-                key={turn.id}
-                state={turn.streamState}
-                modelId={turn.modelId ?? settings.activeModel}
-                messageId={turn.id}
-                artifacts={artifacts}
-                fileStateMap={fileStateMap}
-                onPromoteArtifact={onPromoteArtifact}
-                onOpenArtifact={onOpenArtifact}
-                isLast={turn.id === turns[turns.length - 1]?.id}
-                onRetry={() => void handleRemoveLastAssistantTurn()}
-                onDelete={() => void handleRemoveLastAssistantTurn()}
-              />
-            ) : (
-              <div key={turn.id} className="msg enter" data-message-id={turn.id}>
-                <div className="av-role bot" />
-                <div className="msg-body">
-                  <div className="msg-from">
-                    <b>Assistant</b>
-                    <span className="model">{settings.activeModel}</span>
-                    {turn.createdAt && (
-                      <span className="msg-time">{formatMsgTime(turn.createdAt)}</span>
-                    )}
-                    <div className="msg-actions">
-                      <button
-                        type="button"
-                        onClick={() => void handleCopyAssistantTurn(turn.content)}
-                      >
-                        Copy
-                      </button>
-                    </div>
+                  {turn.interrupted && <InterruptedBanner visible />}
+                  <div className="turn-actions">
+                    <button
+                      type="button"
+                      className="act"
+                      onClick={() => handleEditUserTurn(turn.content)}
+                    >
+                      <PencilIcon />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="act"
+                      onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                      title="Fork conversation at this message"
+                    >
+                      <ForkIcon />
+                      Fork
+                    </button>
+                    <button
+                      type="button"
+                      className="act"
+                      onClick={() => void handleCopyText(turn.content)}
+                    >
+                      <CopyIcon />
+                      Copy
+                    </button>
                   </div>
-                  <ChatMessageContent
-                    content={turn.content}
-                    messageId={turn.id}
-                    artifacts={artifacts}
-                    onPromoteArtifact={onPromoteArtifact}
-                    onOpenArtifact={onOpenArtifact}
+                </article>
+              );
+            }
+            const info = turnModelInfo[turn.id];
+            const provider = info?.provider ?? settings.activeProvider;
+            const model = info?.model ?? settings.activeModel;
+            if (turn.streamState) {
+              return (
+                <AssistantMessage
+                  key={turn.id}
+                  state={turn.streamState}
+                  provider={provider}
+                  modelId={model}
+                  time={info?.time}
+                  switchedFrom={info?.switchedFrom}
+                  showModelLine={info?.showModelLine ?? true}
+                  messageId={turn.id}
+                  artifacts={artifacts}
+                  fileStateMap={fileStateMap}
+                  onPromoteArtifact={onPromoteArtifact}
+                  onOpenArtifact={onOpenArtifact}
+                  isLast={turn.id === turns[turns.length - 1]?.id}
+                  onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onDelete={() => void handleRemoveLastAssistantTurn()}
+                  onCopy={() => void handleCopyText(turn.content)}
+                  onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                />
+              );
+            }
+            return (
+              <article
+                key={turn.id}
+                className="turn assistant"
+                data-provider={providerHueId(provider)}
+                data-message-id={turn.id}
+              >
+                {info?.showModelLine && (
+                  <TurnModelLine
+                    provider={provider}
+                    model={model}
+                    time={info?.time}
+                    switchedFrom={info?.switchedFrom}
                   />
-                  {turn.interrupted && <div className="interrupted-banner">Generation was interrupted.</div>}
-                  <AssistantArtifactStrip
-                    messageId={turn.id}
-                    artifacts={artifacts}
-                    fileStateMap={fileStateMap}
-                    onOpenArtifact={onOpenArtifact}
-                  />
+                )}
+                <ChatMessageContent
+                  content={turn.content}
+                  messageId={turn.id}
+                  artifacts={artifacts}
+                  onPromoteArtifact={onPromoteArtifact}
+                  onOpenArtifact={onOpenArtifact}
+                />
+                <InterruptedBanner
+                  visible={Boolean(turn.interrupted)}
+                  onRetry={() => void handleRemoveLastAssistantTurn()}
+                />
+                <AssistantArtifactStrip
+                  messageId={turn.id}
+                  artifacts={artifacts}
+                  fileStateMap={fileStateMap}
+                  onOpenArtifact={onOpenArtifact}
+                />
+                <div className="turn-actions">
+                  <button
+                    type="button"
+                    className="act"
+                    onClick={() => void handleCopyText(turn.content)}
+                  >
+                    <CopyIcon />
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    className="act"
+                    onClick={() => void handleRemoveLastAssistantTurn()}
+                  >
+                    <PencilIcon />
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    className="act"
+                    onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                  >
+                    <ForkIcon />
+                    Fork
+                  </button>
                 </div>
-              </div>
-            ),
-          )}
+              </article>
+            );
+          })}
           {activeStream && (
             <AssistantMessage
               state={{ ...activeStream, agentPhase: agentPhase ?? activeStream.agentPhase }}
-              modelId={settings.activeModel}
+              provider={liveTurnInfo.provider}
+              modelId={liveTurnInfo.model}
+              switchedFrom={liveTurnInfo.switchedFrom}
+              showModelLine={liveTurnInfo.showModelLine}
             />
           )}
         </div>

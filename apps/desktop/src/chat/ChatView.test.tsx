@@ -336,6 +336,6 @@ describe('ChatView suggested prompts', () => {
       return el?.tagName === 'P' && el.textContent === multiLine;
     });
     expect(paragraph.textContent).toBe(multiLine);
-    expect(paragraph.closest('.user-prose')).not.toBeNull();
+    expect(paragraph.closest('.bubble')).not.toBeNull();
   });
 });

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppPaths, AppSettings } from '../../ipc/contracts';
 import type { WebSearchDefaults } from '@conduit/config-schema';
+import { SearchIcon } from '../../icons';
 import { ProviderPicker } from './ProviderPicker';
 import { AppearanceSection } from './AppearanceSection';
 import { PrivacyDataSection } from './PrivacyDataSection';
@@ -66,7 +67,8 @@ const SETTINGS_TABS: TabDef[] = [
   { id: 'about', label: 'About' },
 ];
 
-/** Settings screen: a first-class workspace screen with tab-based navigation and auto-save. */
+/** Settings screen: a first-class workspace screen with tab-based navigation and auto-save.
+ *  V6 P4.2: search filter over the sidebar. V6 P4.3: ArrowUp/Down/Home/End keyboard nav. */
 export function SettingsScreen({
   settings,
   onSettingsChange,
@@ -80,11 +82,60 @@ export function SettingsScreen({
   onInsertPrompt,
 }: SettingsScreenProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'provider');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [rovingIndex, setRovingIndex] = useState(-1);
   const save = useAutoSave(onSettingsChange, onStatus);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
+
+  // P4.2 — filter tabs by label (and a few keyword aliases) as the user types.
+  const filteredTabs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return SETTINGS_TABS;
+    const alias = (t: TabDef): string => {
+      const byId: Record<string, string> = {
+        provider: 'provider model key byok credential api',
+        appearance: 'appearance theme font density dark light',
+        privacy: 'privacy data trust encryption local diagnostics',
+        'artifact-security': 'artifact security remote allowlist html csp',
+        'web-search': 'web search domains tokens location',
+        agent: 'agent steps budget loop rounds',
+        prompts: 'prompts library variables templates',
+        usage: 'usage cost tokens analytics spend',
+        updates: 'updates channel beta stable release',
+        connectors: 'connectors mcp stdio tools runtime',
+        diagnostics: 'diagnostics export disclosure support',
+        about: 'about paths version app',
+      };
+      return `${t.label} ${byId[t.id] ?? ''}`.toLowerCase();
+    };
+    return SETTINGS_TABS.filter((t) => alias(t).includes(q));
+  }, [searchQuery]);
+
+  // P4.3 — roving keyboard navigation over the (filtered) sidebar.
+  function handleSidebarKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    const count = filteredTabs.length;
+    if (count === 0) return;
+    let next = -1;
+    if (event.key === 'ArrowDown') next = (rovingIndex + 1) % count;
+    else if (event.key === 'ArrowUp') next = (rovingIndex - 1 + count) % count;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = count - 1;
+    else return;
+    event.preventDefault();
+    const targetId = filteredTabs[next].id;
+    setRovingIndex(next);
+    setActiveTab(targetId);
+    tabRefs.current[next]?.focus();
+  }
+
+  function selectTab(id: SettingsTab, index: number) {
+    setActiveTab(id);
+    setRovingIndex(index);
+  }
 
   return (
     <section
@@ -93,17 +144,38 @@ export function SettingsScreen({
       data-active={paneActive ? 'true' : 'false'}
       aria-label="Settings"
     >
-      <nav className="settings-tab-sidebar" aria-label="Settings sections">
-        {SETTINGS_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={`settings-tab-btn${activeTab === tab.id ? ' active' : ''}`}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <nav className="settings-tab-sidebar" aria-label="Settings sections" onKeyDown={handleSidebarKeyDown}>
+        {/* P4.2 — settings search */}
+        <div className="settings-search">
+          <SearchIcon />
+          <input
+            type="search"
+            placeholder="Search settings…"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setRovingIndex(-1);
+            }}
+            aria-label="Search settings"
+          />
+        </div>
+        {filteredTabs.length === 0 ? (
+          <div className="settings-search-empty">No settings match “{searchQuery}”.</div>
+        ) : (
+          filteredTabs.map((tab, index) => (
+            <button
+              key={tab.id}
+              ref={(el) => {
+                tabRefs.current[index] = el;
+              }}
+              className={`settings-tab-btn${activeTab === tab.id ? ' active' : ''}${rovingIndex === index ? ' roving' : ''}`}
+              type="button"
+              onClick={() => selectTab(tab.id, index)}
+            >
+              {tab.label}
+            </button>
+          ))
+        )}
       </nav>
       <div className="settings-tab-content">
         {activeTab === 'provider' && (

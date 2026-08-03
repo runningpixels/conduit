@@ -44,16 +44,57 @@ type Block =
   | { type: 'code'; lang?: string; code: string }
   | { type: 'heading'; level: number; inline: string }
   | { type: 'blockquote'; inline: string }
-  | { type: 'ul'; items: string[] }
+  | { type: 'ul'; items: ListItem[] }
   | { type: 'ol'; items: string[] }
+  | { type: 'table'; header: string[]; align: string[]; rows: string[][] }
   | { type: 'rule' }
   | { type: 'paragraph'; inline: string };
+
+/** V6 P3.6 — GFM task-list item: `- [ ]` / `- [x]` markers. */
+interface ListItem {
+  text: string;
+  checked?: boolean;
+}
 
 const FENCE = /^```(.*)$/;
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const UL_ITEM = /^[-*+]\s+(.*)$/;
 const OL_ITEM = /^(\d+)\.\s+(.*)$/;
 const RULE = /^(?:-{3,}|\*{3,}|_{3,})\s*$/;
+const TASK = /^\[([ xX])\]\s+(.*)$/;
+
+/** Linear (non-backtracking) GFM table separator check: `| --- | :--: | ---: |`. */
+function isTableSeparator(line: string): boolean {
+  const cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+  if (cells.length < 2) return false;
+  return cells.every((cell) => /^\s*:?-+:?\s*$/.test(cell));
+}
+
+function parseListItems(item: string): ListItem {
+  const task = TASK.exec(item);
+  if (task) {
+    return { checked: task[1].toLowerCase() === 'x', text: task[2].trim() };
+  }
+  return { text: item };
+}
+
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+  if (!trimmed.includes('|')) return [trimmed.trim()];
+  return trimmed.split('|').map((cell) => cell.trim());
+}
+
+function isTableLine(line: string): boolean {
+  // Cheap hot-path reject: no pipe char means it can't be a table row.
+  if (!line.includes('|')) return false;
+  const trimmed = line.trim();
+  return (
+    trimmed.includes('|') &&
+    !FENCE.test(trimmed) &&
+    !HEADING.test(line) &&
+    !RULE.test(trimmed)
+  );
+}
 
 function parseBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n?/g, '\n').split('\n');
@@ -112,12 +153,31 @@ function parseBlocks(src: string): Block[] {
 
     // Unordered list (consecutive list items).
     if (UL_ITEM.test(line)) {
-      const items: string[] = [];
+      const items: ListItem[] = [];
       while (i < lines.length && UL_ITEM.test(lines[i])) {
-        items.push(UL_ITEM.exec(lines[i])![1].trim());
+        items.push(parseListItems(UL_ITEM.exec(lines[i])![1].trim()));
         i++;
       }
       blocks.push({ type: 'ul', items });
+      continue;
+    }
+
+    // GFM table: header row + separator row (P3.6).
+    if (isTableLine(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const header = splitTableRow(line);
+      const align = splitTableRow(lines[i + 1]).map((cell) => {
+        const c = cell.trim();
+        if (c.startsWith(':') && c.endsWith(':')) return 'center';
+        if (c.endsWith(':')) return 'right';
+        return 'left';
+      });
+      const rows: string[][] = [];
+      i += 2;
+      while (i < lines.length && isTableLine(lines[i])) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      blocks.push({ type: 'table', header, align, rows });
       continue;
     }
 
@@ -269,9 +329,14 @@ export function renderMarkdown(src: string): ReactNode {
             );
           case 'ul':
             return (
-              <ul key={key}>
+              <ul key={key} className={block.items.some((it) => it.checked != null) ? 'task-list' : undefined}>
                 {block.items.map((item, j) => (
-                  <li key={`${key}-li${j}`}>{renderInline(item, `${key}-li${j}`)}</li>
+                  <li key={`${key}-li${j}`} className={item.checked != null ? (item.checked ? 'done' : 'todo') : undefined}>
+                    {item.checked != null && (
+                      <input type="checkbox" checked={item.checked} readOnly tabIndex={-1} aria-label={item.text} />
+                    )}
+                    <span>{renderInline(item.text, `${key}-li${j}`)}</span>
+                  </li>
                 ))}
               </ul>
             );
@@ -282,6 +347,31 @@ export function renderMarkdown(src: string): ReactNode {
                   <li key={`${key}-li${j}`}>{renderInline(item, `${key}-li${j}`)}</li>
                 ))}
               </ol>
+            );
+          case 'table':
+            return (
+              <table key={key} className="md-table">
+                <thead>
+                  <tr>
+                    {block.header.map((cell, j) => (
+                      <th key={`${key}-th${j}`} className={block.align[j] === 'right' || block.align[j] === 'center' ? 'num' : undefined} style={block.align[j] === 'center' ? { textAlign: 'center' } : undefined}>
+                        {renderInline(cell, `${key}-th${j}`)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, r) => (
+                    <tr key={`${key}-tr${r}`}>
+                      {row.map((cell, c) => (
+                        <td key={`${key}-td${r}-${c}`} className={block.align[c] === 'right' || block.align[c] === 'center' ? 'num' : undefined} style={block.align[c] === 'center' ? { textAlign: 'center' } : undefined}>
+                          {renderInline(cell, `${key}-td${r}-${c}`)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             );
           case 'rule':
             return <hr key={key} className="md-rule" />;

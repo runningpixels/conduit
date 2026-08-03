@@ -51,8 +51,28 @@ export function ComposerModelPicker({
         setOpen(false);
       }
     }
+    // P5.1 — focus trap: keep Tab/Shift+Tab cycling inside the popover.
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const popover = rootRef.current?.querySelector('.composer-popover');
+      if (!popover) return;
+      const focusables = Array.from(
+        popover.querySelectorAll<HTMLElement>('select, input, button, [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => !el.hasAttribute('disabled'));
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -118,7 +138,7 @@ export function ComposerModelPicker({
         </span>
       </button>
       {open && (
-        <div className="composer-popover" role="dialog" aria-label="Model switcher">
+        <div className="composer-popover" role="dialog" aria-label="Model switcher" aria-modal="true">
           <div className="composer-popover-head">
             <span>Model</span>
             {activeDescriptor?.displayName ? (

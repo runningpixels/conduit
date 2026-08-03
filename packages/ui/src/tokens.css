@@ -73,7 +73,6 @@
   --tap: .14s cubic-bezier(.2,.6,.2,1);
   --rail-w: 52px;
   --chat-w: 43vw;
-  --doc-w: 57vw;
 
   --bg: #08090b;
   --panel: #101317;
@@ -96,7 +95,7 @@
   --accent-contrast: #04140f;
   --accent-hover: #5eead4;
   --shadow-color: rgba(0,0,0,.55);
-  --shadow: 0 20px 48px -28px rgba(0,0,0,.85);
+  --shadow: var(--elevation-1);
   --glow: 0 0 0 1px var(--accent-weak), 0 0 22px -8px var(--accent-line);
   --syn-keyword: #7dd3fc;
   --syn-string: #86efac;
@@ -143,7 +142,47 @@
   --fs-4xl: 13.5px;
   --fs-5xl: 14px;
   --fs-6xl: 14.5px;
+  --fs-8xl: 16px;
+  --fs-9xl: 18px;
+  --fs-10xl: 20px;
   --fs-7xl: 25px;
+  --fs-display: 25px;
+
+  /* ── Scale tokens: line-height ── */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-prose: 1.58;
+
+  /* ── P1.1 motion tokens (durations + easings) ── */
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-normal: 200ms;
+  --duration-slow: 320ms;
+  --ease-standard: cubic-bezier(.2, .6, .2, 1);
+  --ease-emphasized: cubic-bezier(.2, .7, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, .6, 1);
+  --tap: var(--duration-fast) var(--ease-standard);
+
+  /* ── P1.2 elevation tiers (cards / popovers / dialogs+toasts) ── */
+  --elevation-1: 0 20px 48px -28px rgba(0, 0, 0, .85);
+  --elevation-2: 0 12px 32px -12px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .35);
+  --elevation-3: 0 24px 64px -16px rgba(0, 0, 0, .75), 0 4px 16px rgba(0, 0, 0, .45);
+
+  /* ── P1.3 focus ring tokens ── */
+  --ring-width: 2px;
+  --ring-color: var(--accent);
+  --ring-offset: 2px;
+
+  /* ── P1.9 alpha scale (color-mix derivatives of the accent) ── */
+  --accent-a08: color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-a12: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-a20: color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-a40: color-mix(in srgb, var(--accent) 40%, transparent);
+
+  /* ── D3 glass surfaces (palette / toasts) ── */
+  --glass-bg: color-mix(in srgb, var(--surface) 82%, transparent);
+  --glass-border: color-mix(in srgb, var(--text) 10%, transparent);
+  --glass-blur: 16px;
 
   /* ── Primitive sizing (derived from the scales above) ── */
   --cu-icon-sm: 17px;
@@ -173,7 +212,7 @@
   --accent-contrast: #fff;
   --accent-hover: #0f766e;
   --shadow-color: rgba(20,30,40,.25);
-  --shadow: 0 18px 38px -24px rgba(20,30,40,.30);
+  --shadow: var(--elevation-1);
   --glow: 0 0 0 1px var(--accent-weak), 0 0 18px -8px var(--accent-line);
   --syn-keyword: #0369a1;
   --syn-string: #15803d;
@@ -185,6 +224,31 @@
   --syn-comment: var(--text-3);
   --syn-punct: var(--text-2);
   color-scheme: light;
+  --elevation-1: 0 18px 38px -24px rgba(20, 30, 40, .30);
+  --elevation-2: 0 10px 28px -10px rgba(20, 30, 40, .22), 0 2px 6px rgba(20, 30, 40, .12);
+  --elevation-3: 0 20px 52px -14px rgba(20, 30, 40, .32), 0 4px 12px rgba(20, 30, 40, .16);
+}
+
+/* P1.8 · oklch accent primary (D4) — perceptually uniform derivatives with
+   sRGB fallback for older WebKitGTK. The hex values above remain the default;
+   this block upgrades the accent family when oklch() is supported. */
+@supports (color: oklch(0.5 0.1 180)) {
+  :root {
+    --accent-oklch: oklch(0.84 0.13 178);
+    --accent: var(--accent-oklch);
+    --accent-text: oklch(0.88 0.11 176);
+    --accent-hover: oklch(0.88 0.11 176);
+    --accent-weak: color-mix(in oklch, var(--accent-oklch) 13%, transparent);
+    --accent-line: color-mix(in oklch, var(--accent-oklch) 55%, transparent);
+  }
+  [data-theme="light"] {
+    --accent-oklch: oklch(0.62 0.10 185);
+    --accent: var(--accent-oklch);
+    --accent-text: oklch(0.55 0.09 188);
+    --accent-hover: oklch(0.55 0.09 188);
+    --accent-weak: color-mix(in oklch, var(--accent-oklch) 11%, transparent);
+    --accent-line: color-mix(in oklch, var(--accent-oklch) 45%, transparent);
+  }
 }
 
 [data-rail="expanded"] { --rail-w: 184px; }
@@ -206,8 +270,8 @@ body {
 button, textarea { font-family: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus { outline: none; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: var(--space-2); border-radius: var(--r-xs); }
-textarea:focus-visible { outline: none; }
+:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); border-radius: var(--r-xs); }
+textarea:focus-visible { outline: none; box-shadow: var(--glow); }
 ::selection { background: var(--accent-weak); }
 .scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 .scroll::-webkit-scrollbar { width: var(--space-6); height: var(--space-6); }

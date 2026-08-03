@@ -88,17 +88,57 @@ describe('safeMarkdown structure', () => {
     expect(container.querySelectorAll('ol > li').length).toBe(2);
   });
 
+  // V6 P3.6 — GFM tables
+  it('renders a GFM table with header + rows + alignment', () => {
+    const md = '| Provider | p95 ms |\n| --- | ---: |\n| Anthropic | 1,940 |\n| Ollama | 6,580 |';
+    const { container } = render(<>{renderMarkdown(md)}</>);
+    const table = container.querySelector('table');
+    expect(table).not.toBeNull();
+    expect(table?.querySelectorAll('thead th').length).toBe(2);
+    expect(table?.querySelectorAll('tbody tr').length).toBe(2);
+    expect(table?.querySelector('thead th')?.textContent).toBe('Provider');
+    // right-aligned numeric column gets the num class
+    expect(table?.querySelectorAll('th.num').length).toBe(1);
+  });
+
+  it('does not treat a bare pipe line as a table without a separator row', () => {
+    const { container } = render(<>{renderMarkdown('a | b')}</>);
+    expect(container.querySelector('table')).toBeNull();
+    expect(container.textContent).toContain('a | b');
+  });
+
+  // V6 P3.6 — GFM task lists
+  it('renders a GFM task list with checked + unchecked boxes', () => {
+    const { container } = render(
+      <>{renderMarkdown('- [x] done item\n- [ ] todo item')}</>,
+    );
+    const list = container.querySelector('ul.task-list');
+    expect(list).not.toBeNull();
+    const boxes = list?.querySelectorAll('input[type="checkbox"]');
+    expect(boxes?.length).toBe(2);
+    expect(boxes?.[0].getAttribute('checked')).not.toBeNull();
+    expect(list?.querySelector('li.done')?.textContent).toContain('done item');
+  });
+
+  it('treats a plain dash list without task markers as a normal list', () => {
+    const { container } = render(<>{renderMarkdown('- plain\n- items')}</>);
+    expect(container.querySelector('ul.task-list')).toBeNull();
+    expect(container.querySelectorAll('ul > li').length).toBe(2);
+  });
+
   it('handles empty input', () => {
     const { container } = render(<>{renderMarkdown('')}</>);
     expect(container.textContent).toBe('');
   });
 
-  it('is bounded on a large input (10k paragraphs)', () => {
+  it('is bounded on a large input (10k paragraphs)', { timeout: 20_000 }, () => {
     const big = Array.from({ length: 10_000 }, (_, i) => `paragraph ${i}`).join('\n\n');
     const start = performance.now();
     const { container } = render(<>{renderMarkdown(big)}</>);
     const elapsed = performance.now() - start;
     expect(container.querySelectorAll('p').length).toBe(10_000);
-    expect(elapsed).toBeLessThan(2000); // generous bound for jsdom under test
+    // Generous bound: the goal is catching quadratic blowups, not wall-clock
+    // under parallel-suite load (jsdom is slow on loaded machines).
+    expect(elapsed).toBeLessThan(6_000);
   });
 });

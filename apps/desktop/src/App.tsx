@@ -907,6 +907,8 @@ export default function App() {
         onToggleTheme={handleToggleTheme}
         onToggleDocPanel={toggleDocPanel}
         conversations={paletteConversations}
+        artifacts={artifacts}
+        onOpenArtifact={(id) => void handleOpenArtifact(id)}
         onSelectConversation={handleSelectConversation}
         onSearchMessages={(query) => searchMessages({ query })}
         onSelectSearchResult={handleSelectSearchResult}

@@ -43,6 +43,9 @@ export interface ToolCallState {
   argumentsText: string;
   arguments?: Record<string, unknown>;
   complete: boolean;
+  /** P3.5 — wall-clock timestamps for the duration pill. */
+  startedAt?: number;
+  endedAt?: number;
   /// Sources from `SearchSources` events scoped to this web_search call.
   sources?: SearchSource[];
   /** Real consent tier from the MCP runtime (Phase 4). Absent means
@@ -194,6 +197,7 @@ export function applyProviderEvent(
             name: event.name,
             argumentsText: '',
             complete: false,
+            startedAt: Date.now(),
           },
         ],
       };
@@ -230,6 +234,7 @@ export function applyProviderEvent(
                 ...(embeddedSources
                   ? { sources: [...(toolCall.sources ?? []), ...embeddedSources] }
                   : {}),
+                endedAt: Date.now(),
               }
             : toolCall,
         ),
@@ -349,6 +354,7 @@ export function applyProviderEvent(
                 ...tc,
                 status: event.isError ? 'failed' as ToolCallStatus : 'completed' as ToolCallStatus,
                 error: event.error ?? tc.error,
+                endedAt: Date.now(),
               }
             : tc,
         ),
@@ -420,6 +426,7 @@ export function applyConnectorRuntimeEvent(
                 complete: true,
                 status: event.status,
                 error: event.error,
+                endedAt: Date.now(),
                 consent:
                   tc.consent === 'pending'
                     ? denied

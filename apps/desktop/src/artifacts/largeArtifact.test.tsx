@@ -7,7 +7,7 @@ import { MarkdownRenderer } from './renderers';
 /// browser, so the bound is generous; the goal is to catch quadratic blowups.
 
 describe('large artifact rendering', () => {
-  it('renders a ~5MB markdown document in bounded time', () => {
+  it('renders a ~5MB markdown document in bounded time', { timeout: 20_000 }, () => {
     // ~5 MB of paragraph text: 50k paragraphs of ~100 chars each.
     const para = 'The quick brown fox jumps over the lazy dog. '.repeat(2).trim();
     const big = Array.from({ length: 50_000 }, () => para).join('\n\n');

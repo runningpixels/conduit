@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { SearchResult } from '../ipc/contracts';
+import type { Artifact, SearchResult } from '../ipc/contracts';
+import { FileIcon } from '../icons';
 
 export interface CommandPaletteConversation {
   id: string;
@@ -16,6 +17,10 @@ interface CommandPaletteProps {
   onToggleDocPanel?: () => void;
   conversations: CommandPaletteConversation[];
   onSelectConversation: (id: string) => void;
+  /** P4.1 — artifacts for the Files & artifacts palette section. */
+  artifacts?: Artifact[];
+  /** P4.1 — open an artifact from the palette (App owns the doc-panel flow). */
+  onOpenArtifact?: (artifactId: string) => void;
   /** FTS5 full-text search over messages (debounced 300ms, min 2 chars). */
   onSearchMessages?: (query: string) => Promise<SearchResult[]>;
   /** Fired when the user picks a search result. */
@@ -61,6 +66,8 @@ export function CommandPalette({
   onToggleDocPanel,
   conversations,
   onSelectConversation,
+  artifacts = [],
+  onOpenArtifact,
   onSearchMessages,
   onSelectSearchResult,
 }: CommandPaletteProps) {
@@ -70,6 +77,8 @@ export function CommandPalette({
   const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // P4.5 — restore focus to the previously-focused element on close.
+  const lastFocusRef = useRef<HTMLElement | null>(null);
 
   const items = useMemo((): PaletteItem[] => {
     const isMac =
@@ -138,7 +147,18 @@ export function CommandPalette({
       },
     }));
 
-    const all = [...actions, ...convItems];
+    // P4.1 — Files & artifacts section (filtered by the same query).
+    const artifactItems: PaletteItem[] = artifacts.map((a) => ({
+      id: `art-${a.id}`,
+      label: a.title || a.contentPath?.split(/[\\/]/).pop() || 'Untitled artifact',
+      hint: a.kind,
+      run: () => {
+        onOpenArtifact?.(a.id);
+        onClose();
+      },
+    }));
+
+    const all = [...actions, ...convItems, ...artifactItems];
     const q = query.trim().toLowerCase();
     if (!q) return all;
     return all.filter(
@@ -147,11 +167,13 @@ export function CommandPalette({
         (item.hint?.toLowerCase().includes(q) ?? false),
     );
   }, [
+    artifacts,
     conversations,
     onClose,
     onNewChat,
     onOpenHistory,
     onOpenSettings,
+    onOpenArtifact,
     onSelectConversation,
     onToggleDocPanel,
     onToggleTheme,
@@ -203,8 +225,14 @@ export function CommandPalette({
       setResults([]);
       setSearching(false);
       setActiveIndex(0);
+      // P4.5 — restore focus to whatever was focused before the palette opened.
+      if (lastFocusRef.current && document.contains(lastFocusRef.current)) {
+        lastFocusRef.current.focus();
+        lastFocusRef.current = null;
+      }
       return;
     }
+    lastFocusRef.current = document.activeElement as HTMLElement | null;
     setActiveIndex(0);
     const id = window.requestAnimationFrame(() => inputRef.current?.focus());
     return () => window.cancelAnimationFrame(id);
@@ -288,13 +316,14 @@ export function CommandPalette({
           ) : (
             allItems.map((item, index) => {
               const isSearch = item.result != null;
+              const isArtifact = item.id.startsWith('art-');
               return (
                 <button
                   key={item.id}
                   type="button"
                   role="option"
                   aria-selected={index === activeIndex}
-                  className={`command-palette-item${index === activeIndex ? ' active' : ''}${isSearch ? ' search-result' : ''}`}
+                  className={`command-palette-item${index === activeIndex ? ' active' : ''}${isSearch ? ' search-result' : ''}${isArtifact ? ' artifact-result' : ''}`}
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => item.run()}
                 >
@@ -303,6 +332,10 @@ export function CommandPalette({
                       className="search-result-snippet"
                       dangerouslySetInnerHTML={{ __html: highlightSnippet(item.result!) }}
                     />
+                  ) : isArtifact ? (
+                    <span className="palette-item-label">
+                      <FileIcon /> {item.label}
+                    </span>
                   ) : (
                     item.label
                   )}

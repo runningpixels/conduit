@@ -475,12 +475,14 @@ ol.citations li { margin-bottom: 6px; }
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  padding: 5px 8px;
-  border-radius: var(--r-sm);
+  padding: 4px 9px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--border);
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text-2);
   font-size: 11.5px;
+  box-shadow: var(--elevation-1);
+  transition: var(--tap);
 }
 .composer-attachment-chip svg { width: 14px; height: 14px; flex: none; }
 .composer-attachment-name {
@@ -492,7 +494,13 @@ ol.citations li { margin-bottom: 6px; }
 }
 .composer-attachment-meta { color: var(--text-3); font: 500 10.5px/1 var(--font-mono); white-space: nowrap; }
 .composer-attachment-chip[data-status="failed"] { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
-.composer-attachment-chip[data-status="uploading"] { opacity: .85; }
+.composer-attachment-chip[data-status="uploading"] {
+  opacity: .85;
+  border-color: var(--accent-line);
+}
+.composer-attachment-chip[data-status="uploading"] .composer-attachment-meta {
+  color: var(--accent-text);
+}
 .composer-attachment-action,
 .composer-attachment-remove {
   border: 0;
@@ -864,3 +872,248 @@ ol.citations li { margin-bottom: 6px; }
   opacity: 0;
 }
 .msg:hover .msg-time { opacity: 1; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   V6 revamp additions (docs/plans/frontend-revamp-plan.md)
+   P0.1 · P2 motion · P3 chat parity · P4 welcome · P5 a11y
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* P0.1 — message-highlight: FTS5 search jump flashes the target message */
+@keyframes message-highlight-flash {
+  0% { background: transparent; }
+  30% { background: var(--accent-a12); }
+  100% { background: transparent; }
+}
+.message-highlight {
+  animation: message-highlight-flash 1.6s var(--ease-standard) both;
+  border-radius: var(--r);
+}
+
+/* P2.2 — streaming text reveal: blocks fade in as they arrive */
+.chat-prose-segment { animation: stream-in var(--duration-normal) var(--ease-standard) both; }
+@keyframes stream-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* P2.6 — toast enter/exit */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translateX(16px); }
+}
+.toast { animation: toast-in var(--duration-normal) var(--ease-emphasized) both; }
+.toast.leaving { animation: toast-out var(--duration-fast) var(--ease-in) both; }
+
+/* P2.7 — send/stop morph (buttons swap; crossfade on mount) */
+@keyframes btn-morph { from { opacity: .4; transform: scale(.92); } to { opacity: 1; transform: none; } }
+.send, .send.stop { animation: btn-morph var(--duration-fast) var(--ease-emphasized) both; }
+
+/* P2.8 / P3.4 — tool card collapse (grid-rows animation, no JS measuring) */
+.tool-head { cursor: pointer; user-select: none; }
+.tool-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-normal) var(--ease-emphasized);
+}
+.tool.open .tool-collapse { grid-template-rows: 1fr; }
+.tool-collapse > .tool-collapse-inner { overflow: hidden; min-height: 0; }
+.tool .tool-detail { padding: 0 12px 11px; }
+
+/* P3.3 — grouped tool-call count badge */
+.t-count {
+  font: 700 var(--fs-xs)/1 var(--font-mono);
+  color: var(--accent-text);
+  background: var(--accent-a12);
+  border-radius: var(--r-pill);
+  padding: 2px 6px;
+  margin-left: 6px;
+  flex: none;
+}
+
+/* P3.5 — tool-call duration in the head row */
+.t-duration {
+  margin-left: auto;
+  font: 500 var(--fs-sm)/1 var(--font-mono);
+  color: var(--text-3);
+  flex: none;
+}
+.tool-head .pill { margin-left: 0; }
+.tool-head .t-duration + .pill { margin-left: 8px; }
+
+/* P3.5 — grouped sub-rows: one per call, path + duration */
+.tool-sub { border-top: 1px solid var(--border-soft); background: color-mix(in srgb, var(--surface-2) 35%, transparent); }
+.tool-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font: 500 var(--fs-lg)/1.4 var(--font-mono);
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+.tool-sub-row:last-child { border-bottom: none; }
+.tool-sub-row .t-sub-ok { color: var(--success); flex: none; }
+.tool-sub-row .t-sub-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-sub-row .t-sub-dur { margin-left: auto; color: var(--text-3); font: 500 var(--fs-sm)/1 var(--font-mono); flex: none; }
+
+/* P3.6 — GFM: tables, blockquotes, task lists, hr inside chat prose */
+.chat-prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0 11px;
+  font-size: var(--fs-2xl);
+  display: block;
+  overflow-x: auto;
+}
+.chat-prose th, .chat-prose td {
+  border: 1px solid var(--border-soft);
+  padding: 5px 8px;
+  text-align: left;
+}
+.chat-prose th {
+  background: var(--surface-2);
+  font-weight: 600;
+  font-size: var(--fs-xl);
+  color: var(--text-2);
+}
+.chat-prose tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface-2) 35%, transparent); }
+.chat-prose td.num, .chat-prose th.num { text-align: right; font-family: var(--font-mono); }
+.chat-prose blockquote {
+  margin: 8px 0 11px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent-line);
+  background: var(--accent-a08);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--text-2);
+}
+.chat-prose blockquote p { margin: 0; }
+.chat-prose ul.task-list { list-style: none; padding-left: 0; }
+.chat-prose ul.task-list li { display: flex; gap: 6px; align-items: baseline; }
+.chat-prose ul.task-list input { accent-color: var(--accent); margin: 0; translate: 0 1px; }
+.chat-prose ul.task-list li.done span { text-decoration: line-through; text-decoration-color: var(--text-3); color: var(--text-3); }
+.chat-prose hr { border: none; border-top: 1px solid var(--border-soft); margin: 12px 0; }
+
+/* P3.9 — live generation meta (elapsed · tokens) in the message header */
+.msg-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 var(--fs-sm)/1 var(--font-mono);
+  color: var(--text-3);
+}
+.msg-meta .live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: dot-pulse 1.1s var(--ease-standard) infinite;
+}
+@keyframes dot-pulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+
+/* P3.8 — bubble-shaped skeleton (avatar + varied lines) */
+.skel-msg {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 11px;
+  padding: 13px 0;
+}
+.skel-av {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  animation: shimmer 1.4s var(--ease-standard) infinite;
+}
+.skel-lines { display: grid; gap: 8px; padding-top: 4px; }
+.skel-line {
+  height: 11px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  animation: shimmer 1.4s var(--ease-standard) infinite;
+}
+.skel-line.w-90 { width: 90%; }
+.skel-line.w-75 { width: 75%; }
+.skel-line.w-40 { width: 40%; }
+.skel-line:nth-child(2) { animation-delay: .12s; }
+.skel-line:nth-child(3) { animation-delay: .24s; }
+@keyframes shimmer { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* P4.4 — welcome / empty-conversation screen */
+.thread-inner:has(.welcome) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 28px 24px;
+  min-height: 0;
+  animation: pane-in var(--duration-normal) var(--ease-emphasized) both;
+}
+.welcome .brand-mark { width: 44px; height: 44px; color: var(--accent-text); margin-bottom: 12px; }
+.welcome h1 { margin: 0 0 6px; font-size: var(--fs-display); font-weight: 600; letter-spacing: -.01em; }
+.welcome .lede {
+  margin: 0 0 22px;
+  color: var(--text-2);
+  font-size: var(--fs-6xl);
+  max-width: 46ch;
+  line-height: var(--leading-prose);
+}
+.welcome .sugg-grid { display: grid; grid-template-columns: repeat(2, minmax(200px, 280px)); gap: 8px; margin-bottom: 22px; }
+.welcome .suggested-prompt-card { text-align: left; }
+.welcome .suggested-prompts-empty { display: grid; grid-template-columns: repeat(2, minmax(200px, 280px)); gap: 8px; margin-bottom: 22px; margin-top: 0; text-align: left; }
+.welcome .recent-row { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; justify-content: center; }
+.welcome .recent-label { font: 600 var(--fs-sm)/1 var(--font-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); }
+.welcome .hint-row { display: flex; align-items: center; gap: 14px; color: var(--text-3); font-size: var(--fs-xl); flex-wrap: wrap; justify-content: center; }
+.welcome .hint-row .hint { display: inline-flex; align-items: center; gap: 5px; }
+
+/* P2.4 — pane cross-fade */
+@keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* P5.3 — skip links */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 1300;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--accent-line);
+  color: var(--text);
+  font-size: var(--fs-xl);
+  transition: top var(--duration-fast) var(--ease-standard);
+}
+.skip-link:focus { top: 8px; }
+
+/* P5.2 — visually-hidden live region for streaming announcements */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* P0.4 — reduced-motion coverage for every V6 animation (global kill switch
+   already exists in tokens.css; the block below re-asserts for these too). */
+@media (prefers-reduced-motion: reduce) {
+  .chat-prose-segment, .toast, .toast.leaving, .send, .send.stop,
+  .msg-meta .live-dot, .skel-av, .skel-line, .message-highlight,
+  .welcome, .tool-collapse, .tool-head {
+    animation: none !important;
+    transition-duration: .001ms !important;
+  }
+  .tool-collapse { grid-template-rows: 1fr !important; }
+}

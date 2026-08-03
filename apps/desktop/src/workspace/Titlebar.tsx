@@ -37,7 +37,7 @@ export function Titlebar({
   onConnectionClick,
 }: TitlebarProps) {
   return (
-    <header className="titlebar">
+    <header className="titlebar" data-tauri-drag-region>
       <div className="brand">
         <BrandMark className="mark" />
         <b>Conduit</b>

@@ -365,7 +365,7 @@
   white-space: pre-wrap;
   overflow: auto;
 }
-.source-textarea:focus { outline: none; border-color: var(--border-strong); }
+.source-textarea:focus { outline: none; border-color: var(--border-strong); box-shadow: var(--glow); }
 .source-readonly {
   font: 500 12.5px/1.55 var(--font-mono);
   color: var(--text-2);

@@ -63,17 +63,22 @@
   min-height: 0;
   overflow: hidden;
   position: relative;
+  /* P2.3 — animate the doc-panel collapse via grid-template-columns */
+  transition: grid-template-columns var(--duration-normal) var(--ease-emphasized);
 }
 [data-doc-panel="collapsed"] .body {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(420px, 1fr) 0 0;
 }
 [data-tab="settings"] .body {
   grid-template-columns: 1fr;
 }
 [data-doc-panel="collapsed"] .doc-panel,
 [data-doc-panel="collapsed"] .resize-handle {
-  display: none;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
+[data-doc-panel="collapsed"] .resize-handle { width: 0; }
 html[data-doc-panel="collapsed"]:not([data-tab="settings"]) .panel {
   padding-right: 28px;
 }
@@ -312,6 +317,8 @@ html[data-doc-panel="collapsed"]:not([data-tab="settings"]) .panel {
 .tab-pane[data-active="true"] {
   display: flex;
   flex-direction: column;
+  /* P2.4 — pane cross-fade on activation */
+  animation: pane-in var(--duration-normal) var(--ease-emphasized) both;
 }
 
 /* ── Streaming cursor + enter animation ────────────────────────────────── */
@@ -343,7 +350,7 @@ html[data-doc-panel="collapsed"]:not([data-tab="settings"]) .panel {
 
 /* ── Responsive breakpoints ─────────────────────────────────────────────── */
 @media (max-width: 1120px) {
-  .body { grid-template-columns: minmax(360px, var(--chat-w)) 12px minmax(460px, 1fr); }
+  .body { grid-template-columns: minmax(360px, var(--chat-w)) 12px minmax(460px, 1fr); transition: none; }
   .workspace-chip span,
   .connection-chip span:not(.connection-dot) { display: none; }
   .state-toggle { display: none; }

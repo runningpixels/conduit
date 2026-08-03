@@ -92,7 +92,7 @@
   color: var(--text-2);
   text-align: left;
   cursor: pointer;
-  font: 600 11.5px/1.2 var(--font);
+  font: 600 11.5px/1.2 var(--font-ui);
 }
 .artifact-dir-folder:hover {
   background: var(--surface-2);

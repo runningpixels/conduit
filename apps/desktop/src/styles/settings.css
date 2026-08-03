@@ -197,15 +197,22 @@
   display: grid;
   place-items: start center;
   padding: 12vh 16px 16px;
+  /* P2.5 — backdrop fade + panel scale/fade mount */
+  animation: backdrop-in var(--duration-fast) var(--ease-standard) both;
 }
 .command-palette {
   width: min(520px, 100%);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--elevation-3);
   overflow: hidden;
+  animation: palette-in var(--duration-normal) var(--ease-emphasized) both;
 }
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes palette-in { from { opacity: 0; transform: scale(.98) translateY(-6px); } to { opacity: 1; transform: none; } }
 .command-palette input {
   width: 100%;
   border: 0;
@@ -242,3 +249,48 @@
   font-size: 11.5px;
   margin-top: 2px;
 }
+
+/* ── P4.2 — settings search + P4.3 keyboard nav roving highlight ────────── */
+.settings-search {
+  flex: none;
+  margin: 0 10px 8px;
+  position: relative;
+}
+.settings-search svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+.settings-search input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px 8px 28px;
+  font: 500 var(--fs-2xl)/1.2 var(--font-ui);
+}
+.settings-search input::placeholder { color: var(--text-3); }
+.settings-search input:focus { border-color: var(--border-strong); box-shadow: var(--glow); }
+.settings-tab-btn.roving { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.settings-search-empty {
+  padding: 10px 12px;
+  color: var(--text-3);
+  font-size: var(--fs-xl);
+}
+
+/* P4.1 — palette file-result rows */
+.command-palette-item.artifact-result .palette-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.command-palette-item.artifact-result svg { width: 14px; height: 14px; color: var(--text-3); flex: none; }
+
+/* ── P2.4 — settings content cross-fade on tab switch ── */
+.settings-tab-content .settings-section { animation: pane-in var(--duration-normal) var(--ease-emphasized) both; }

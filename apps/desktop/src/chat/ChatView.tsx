@@ -8,12 +8,14 @@ import {
   getConversationMessages,
   invokeConnectorTool,
   listConnectorCapabilities,
+  removeLastTurn,
   startConnector,
   startChatStream,
   updateSettings,
 } from '../ipc/client';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactRefChip';
+import { BotGlyph } from '../icons';
 import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
@@ -890,6 +892,27 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     requestAnimationFrame(() => composerRef.current?.focusPrompt());
   }
 
+  /** P3.1/P3.2 — retry/delete the last assistant turn: remove it locally + in
+   *  the DB (`removeLastTurn` deletes the last assistant turn + its event log
+   *  + tool rows), then reload the thread. The user keeps their prompt so they
+   *  can re-send or edit. */
+  async function handleRemoveLastAssistantTurn() {
+    if (!conversationId || activeRequestId) return;
+    try {
+      const count = await removeLastTurn(conversationId);
+      const messages = await getConversationMessages(conversationId);
+      const nextTurns = (await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))).filter(
+        (t): t is ChatTurn => t !== null,
+      );
+      setTurns(nextTurns);
+      onStatus(makeStatus(count > 0 ? 'Removed last response' : 'Nothing to remove', 'success', 'chat'));
+    } catch (error) {
+      onStatus(
+        makeStatus(error instanceof Error ? error.message : 'Failed to remove response', 'error', 'chat'),
+      );
+    }
+  }
+
   async function handleCopyAssistantTurn(content: string) {
     if (!content.trim()) return;
     try {
@@ -907,29 +930,37 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       data-active={paneActive ? 'true' : 'false'}
       aria-label="Chat session"
     >
+      <a className="skip-link" href="#composer-anchor" aria-label="Skip to composer">Skip to composer</a>
       <ChatErrorBoundary>
       <div className="thread scroll" ref={threadRef}>
         <div className="thread-inner">
           {threadLoading && (
             <div className="thread-skeleton" aria-busy="true" aria-label="Loading conversation">
-              <div className="skeleton-row" />
-              <div className="skeleton-row short" />
-              <div className="skeleton-row" />
+              <div className="skel-msg">
+                <div className="skel-av" />
+                <div className="skel-lines">
+                  <div className="skel-line w-90" />
+                  <div className="skel-line w-75" />
+                  <div className="skel-line w-40" />
+                </div>
+              </div>
             </div>
           )}
           {!threadLoading && turns.length === 0 && !activeStream && (
-            <div className="msg enter">
-              <div className="av-role bot" aria-hidden="true" />
-              <div className="msg-body">
-                <div className="msg-from"><b>Conduit</b></div>
-                <div className="prose">
-                  <p>Reply, ask for an edit, or create a new artifact. Calls go straight to your provider with your key.</p>
-                </div>
-                <SuggestedPrompts
-                  prompts={suggestedPrompts}
-                  variant="empty"
-                  onSelect={handleSuggestionSelect}
-                />
+            <div className="welcome">
+              <BotGlyph className="brand-mark" aria-hidden="true" />
+              <h1>Good day</h1>
+              <p className="lede">Ask anything, draft an artifact, or put your connectors to work. Everything stays on this machine — your keys, your files, your data.</p>
+              <SuggestedPrompts
+                prompts={suggestedPrompts}
+                variant="empty"
+                onSelect={handleSuggestionSelect}
+              />
+              <div className="hint-row">
+                <span className="hint"><kbd>⌘K</kbd> command palette</span>
+                <span className="hint"><kbd>⌘N</kbd> new chat</span>
+                <span className="hint"><kbd>⌘J</kbd> toggle panel</span>
+                <span className="hint"><kbd>⌘,</kbd> settings</span>
               </div>
             </div>
           )}
@@ -975,6 +1006,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 fileStateMap={fileStateMap}
                 onPromoteArtifact={onPromoteArtifact}
                 onOpenArtifact={onOpenArtifact}
+                isLast={turn.id === turns[turns.length - 1]?.id}
+                onRetry={() => void handleRemoveLastAssistantTurn()}
+                onDelete={() => void handleRemoveLastAssistantTurn()}
               />
             ) : (
               <div key={turn.id} className="msg enter" data-message-id={turn.id}>
@@ -1054,6 +1088,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         webSearchOn={webSearchOn}
         onWebSearchToggle={handleWebSearchToggle}
       />
+      <div id="composer-anchor" />
     </section>
       {/* Phase 7 / M-WebSearch: first-use consent dialog for the chat-bar toggle. */}
       <WebSearchConsentDialog

@@ -1,12 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import type { AppSettings } from '@conduit/config-schema';
+import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
 import {
   deleteAttachment,
+  listProviderDescriptors,
   loadProviderCredentialReference,
   saveAttachment,
 } from '../ipc/client';
-import { AttachIcon, FilePlainIcon, LockIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
-import { ComposerModelPicker } from './ComposerModelPicker';
+import { AttachIcon, FilePlainIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
+import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
+import { ProvenanceStrip, type CredentialMode } from '../shell/ProvenanceStrip';
 import {
   ATTACHMENT_INLINE_CAP_BYTES,
   type PendingAttachment,
@@ -28,6 +30,10 @@ export interface ComposerProps {
   streaming: boolean;
   webSearchOn: boolean;
   onWebSearchToggle: () => void;
+  /// Open a settings section ('providers' | 'privacy' …) from the strip.
+  onOpenSettings?: (tab?: string) => void;
+  /// Accumulated usage for the whole conversation (turns + live stream).
+  usage?: ProviderUsage | null;
 }
 
 function formatBytes(bytes: number): string {
@@ -51,10 +57,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   streaming,
   webSearchOn,
   onWebSearchToggle,
+  onOpenSettings,
+  usage,
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [keychainOk, setKeychainOk] = useState(false);
+  const modelPickerRef = useRef<ComposerModelPickerHandle>(null);
+  const [credentialRef, setCredentialRef] = useState<string | null>(null);
+  const [credentialMode, setCredentialMode] = useState<CredentialMode>('loading');
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [dropActive, setDropActive] = useState(false);
 
@@ -70,10 +80,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     let cancelled = false;
     void (async () => {
       try {
-        const summary = await loadProviderCredentialReference(settings.activeProvider);
-        if (!cancelled) setKeychainOk(summary.storedInKeychain);
+        const [summary, descriptors] = await Promise.all([
+          loadProviderCredentialReference(settings.activeProvider),
+          listProviderDescriptors(),
+        ]);
+        if (cancelled) return;
+        setCredentialRef(summary.credentialRef || null);
+        const descriptor = descriptors.find((d) => d.id === settings.activeProvider);
+        setCredentialMode(descriptor?.credentialMode ?? 'required');
       } catch {
-        if (!cancelled) setKeychainOk(false);
+        if (cancelled) return;
+        setCredentialRef(null);
+        setCredentialMode('required');
       }
     })();
     return () => {
@@ -205,14 +223,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <div className="composer-wrap">
-      {settings.webSearchEnabled && !settings.localOnly && (
-        <div className="caps caps-websearch">
-          <span className="cap" data-state={webSearchOn ? 'ok' : 'warn'}>
-            <i style={webSearchOn ? undefined : { background: 'var(--warn)' }} />
-            web search {webSearchOn ? 'on' : 'off'}
-          </span>
-        </div>
-      )}
       <div
         className={`composer${dropActive ? ' drop-active' : ''}`}
         onDragOver={handleDragOver}
@@ -296,6 +306,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <AttachIcon />
           </button>
           <ComposerModelPicker
+            ref={modelPickerRef}
             settings={settings}
             onSettingsChange={onSettingsChange}
             disabled={streaming}
@@ -338,15 +349,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           )}
         </div>
       </div>
-      <div className="composer-foot">
-        <span className="meta">
-          ~{tokenCount} tokens (est.)
-        </span>
-        <span className="right">
-          <LockIcon />
-          {keychainOk ? 'key stored in OS keychain' : 'no key stored'}
-        </span>
-      </div>
+      <ProvenanceStrip
+        settings={settings}
+        onOpenSettings={onOpenSettings}
+        usage={usage ?? null}
+        composerTokenEstimate={tokenCount}
+        credentialMode={credentialMode}
+        credentialRef={credentialRef ?? ''}
+        modelMenuOpen={() => modelPickerRef.current?.open()}
+      />
     </div>
   );
 });

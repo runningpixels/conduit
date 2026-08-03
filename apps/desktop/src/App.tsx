@@ -646,6 +646,27 @@ export default function App() {
     setActiveTab('settings');
   }, []);
 
+  /** Map V7 surface section ids ('providers' | 'privacy' …) to the current
+   *  settings tabs until the settings sheet lands in Phase C. */
+  const openSettingsFromSurface = useCallback(
+    (tab?: string) => {
+      if (!tab) {
+        openSettings();
+        return;
+      }
+      const sectionToTab: Record<string, SettingsTab> = {
+        providers: 'provider',
+        connectors: 'connectors',
+        chat: 'agent',
+        appearance: 'appearance',
+        privacy: 'privacy',
+        advanced: 'updates',
+      };
+      openSettings(sectionToTab[tab] ?? undefined);
+    },
+    [openSettings],
+  );
+
   const handleRevealWorkspace = useCallback(() => {
     void revealArtifactsDir().catch((error) => {
       setStatus(
@@ -865,6 +886,7 @@ export default function App() {
               onDocumentToolActivity={handleDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
               paneActive={activeTab === 'chat'}
+              onOpenSettings={openSettingsFromSurface}
             />
             <RailPanes
               active={activeTab}

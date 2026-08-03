@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { AppSettings, MessageRole, ProviderRequest } from '@conduit/config-schema';
+import type { ProviderUsage } from '@conduit/config-schema';
 import {
   cancelChatStream,
   discoverConnector,
@@ -33,6 +34,7 @@ import {
   type AssistantStreamState,
 } from './streamState';
 import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
+import { mergeProviderUsage } from '../lib/contextWindows';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
@@ -100,6 +102,8 @@ interface ChatViewProps {
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// Whether this pane is the active workspace tab (`data-active` for CSS). Defaults true for tests.
   paneActive?: boolean;
+  /// Open a settings section ('providers' | 'privacy' …) from the provenance strip.
+  onOpenSettings?: (tab?: string) => void;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -301,6 +305,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onDocumentToolActivity,
     onForkConversation,
     paneActive = true,
+    onOpenSettings,
   },
   ref,
 ) {
@@ -881,6 +886,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     [turns, artifacts],
   );
 
+  // Accumulated usage across the whole conversation: every committed assistant
+  // turn's usage plus the live streaming turn. The provenance strip is the
+  // single canonical consumer of this figure (§6.3).
+  const accumulatedUsage = useMemo(() => {
+    let merged: ProviderUsage | null = null;
+    for (const turn of turns) {
+      const usage = turn.streamState?.usage;
+      if (usage) merged = mergeProviderUsage(merged, usage);
+    }
+    if (activeStream?.usage) merged = mergeProviderUsage(merged, activeStream.usage);
+    return merged;
+  }, [turns, activeStream]);
+
   const showInlineSuggestions =
     turns.length > 0 &&
     !activeStream &&
@@ -1087,6 +1105,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         streaming={activeRequestId != null}
         webSearchOn={webSearchOn}
         onWebSearchToggle={handleWebSearchToggle}
+        onOpenSettings={onOpenSettings}
+        usage={accumulatedUsage}
       />
       <div id="composer-anchor" />
     </section>

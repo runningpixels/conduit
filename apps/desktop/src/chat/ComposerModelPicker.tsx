@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { AppSettings, ModelInfo, ProviderDescriptor } from '../ipc/contracts';
 import { listProviderDescriptors, listProviderModels, updateSettings } from '../ipc/client';
 import { ModelIcon } from '../icons';
@@ -9,16 +9,32 @@ interface ComposerModelPickerProps {
   disabled?: boolean;
 }
 
-export function ComposerModelPicker({
-  settings,
-  onSettingsChange,
-  disabled = false,
-}: ComposerModelPickerProps) {
-  const [open, setOpen] = useState(false);
-  const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [busy, setBusy] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+export interface ComposerModelPickerHandle {
+  /// Open the model switcher popover (used by the provenance strip's
+  /// provider/model segment). No-op while disabled or busy.
+  open: () => void;
+}
+
+export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, ComposerModelPickerProps>(
+  function ComposerModelPicker(
+    {
+      settings,
+      onSettingsChange,
+      disabled = false,
+    }: ComposerModelPickerProps,
+    ref,
+  ) {
+    const [open, setOpen] = useState(false);
+    const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
+    const [models, setModels] = useState<ModelInfo[]>([]);
+    const [busy, setBusy] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useImperativeHandle(ref, () => ({
+      open: () => {
+        if (!disabled && !busy) setOpen(true);
+      },
+    }));
 
   const activeDescriptor = providers.find((p) => p.id === settings.activeProvider);
   const activeModelLabel =
@@ -197,4 +213,6 @@ export function ComposerModelPicker({
       )}
     </div>
   );
-}
+  },
+);
+

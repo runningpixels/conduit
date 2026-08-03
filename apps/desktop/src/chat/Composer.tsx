@@ -14,6 +14,7 @@ import {
   type PendingAttachment,
 } from './composerTypes';
 import { useComposerAutosize } from './useComposerAutosize';
+import { readSendWith } from '../shell/uiPrefs';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -178,7 +179,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    const sendWith = readSendWith();
+    const isEnter = event.key === 'Enter' && !event.shiftKey;
+    const isCmdEnter =
+      event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+    if ((sendWith === 'enter' && isEnter) || (sendWith === 'cmd-enter' && isCmdEnter)) {
       event.preventDefault();
       onSend();
     }
@@ -282,7 +287,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={(event) => void handlePaste(event)}
-          placeholder="Reply, ask for an edit, or create a new artifact"
+          placeholder="Message Conduit…  ⌘K for commands"
           rows={1}
           aria-label="Message the active provider"
         />

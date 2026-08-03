@@ -7,8 +7,8 @@ export interface HotkeyHandlers {
   newChat?: HotkeyHandler;
   /** Mod+, — settings */
   settings?: HotkeyHandler;
-  /** Mod+B — toggle rail */
-  toggleRail?: HotkeyHandler;
+  /** Mod+\ — toggle sidebar (V7: the rail is gone; the sidebar collapses) */
+  toggleSidebar?: HotkeyHandler;
   /** Mod+J — toggle document panel */
   toggleDocPanel?: HotkeyHandler;
   /** Mod+K — open command palette */
@@ -59,9 +59,9 @@ export function useHotkeys(handlers: HotkeyHandlers): void {
         handlers.settings?.(event);
         return;
       }
-      if (key === 'b' && !event.shiftKey) {
+      if (key === '\\' && !event.shiftKey) {
         event.preventDefault();
-        handlers.toggleRail?.(event);
+        handlers.toggleSidebar?.(event);
         return;
       }
       if (key === 'j' && !event.shiftKey) {

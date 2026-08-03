@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppPaths, AppSettings, Artifact, ArtifactContent, ConversationSummary, FileState, OnboardingState, SearchResult } from './ipc/contracts';
+import type { AppPaths, AppSettings, Artifact, ArtifactContent, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
 import { ToastStack } from './workspace/ToastStack';
@@ -38,32 +38,23 @@ import type { PendingArtifact } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { Titlebar, deriveConnectionState } from './workspace/Titlebar';
-import { Rail, type WorkspaceTab } from './workspace/Rail';
-import { RailPanes } from './workspace/RailPanes';
 import { DocumentPanel } from './workspace/DocumentPanel';
-import { SettingsScreen, type SettingsTab } from './workspace/settings/SettingsScreen';
-import { useColumnResize, useDocPanelCollapse, useRailExpand } from './workspace/useLayout';
-import { ACTIVITY_PANE_ENABLED } from './workspace/features';
+import { Sidebar } from './shell/Sidebar';
+import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
+import { applyUiPrefs } from './shell/uiPrefs';
+import { useColumnResize, useDocPanelCollapse, useSidebarCollapse } from './workspace/useLayout';
 import { useHotkeys } from './workspace/useHotkeys';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
-import { ChevronLeft, PlusIcon } from './icons';
+import { ChevronLeft } from './icons';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { ConfirmDialog } from '@conduit/ui';
 import { forkConversation } from './ipc/client';
 
 const DOC_PANEL_HINT_KEY = 'conduit:v5-doc-panel-hint-seen';
+const CONVO_PROVIDERS_KEY = 'conduit:v7-convo-providers';
 
-const TAB_TITLES: Record<WorkspaceTab, [string, string]> = {
-  chat: ['Untitled chat', ''],
-  history: ['Chat history', 'Local conversations and their artifacts'],
-  artifacts: ['Files and artifacts', 'Local workspace, versions, share state'],
-  connectors: ['Connectors', 'Tenant-granted tools and support state'],
-  activity: ['Activity and approvals', 'Tool runs, consent, recoverable events'],
-  settings: ['Settings', 'Provider, privacy, connectors, and more'],
-};
-
-/** Shorten an absolute path to the last few segments for the titlebar. */
+/** Shorten an absolute path to the last few segments for the sidebar chip. */
 function shortenWorkspacePath(absolutePath: string): string {
   const normalized = absolutePath.replace(/\\/g, '/');
   const parts = normalized.split('/').filter(Boolean);
@@ -71,17 +62,32 @@ function shortenWorkspacePath(absolutePath: string): string {
   return parts.slice(-3).join('/');
 }
 
-function formatChatSubtitle(summary: ConversationSummary | null): string {
-  if (!summary) return '';
-  const n = summary.messageCount;
-  return n === 1 ? '1 message' : `${n} messages`;
-}
-
 function modShortcutHint(key: string): string {
   const isMac =
     typeof navigator !== 'undefined' &&
     /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   return `${isMac ? '⌘' : 'Ctrl'}+${key}`;
+}
+
+/** Renderer-only map of conversationId → last-used provider id (the sidebar
+ *  row dot). Persisted to localStorage; the backend has no such field. */
+function readConvoProviders(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CONVO_PROVIDERS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeConvoProviders(map: Record<string, string>): void {
+  try {
+    localStorage.setItem(CONVO_PROVIDERS_KEY, JSON.stringify(map));
+  } catch {
+    /* storage may be unavailable; fail silently */
+  }
 }
 
 const defaultSettings: AppSettings = {
@@ -131,8 +137,8 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [status, setStatus] = useState<StatusState | null>(makeStatus('Booting desktop shell', 'active'));
   const [boundaryOk, setBoundaryOk] = useState(true);
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('chat');
-  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
@@ -142,6 +148,9 @@ export default function App() {
   const [docTab, setDocTab] = useState<'preview' | 'source'>('preview');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeConversationSummary, setActiveConversationSummary] = useState<ConversationSummary | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [convoProviders, setConvoProviders] = useState<Record<string, string>>(readConvoProviders);
+  const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [toasts, setToasts] = useState<StatusState[]>([]);
@@ -151,9 +160,8 @@ export default function App() {
 
   const { onPointerDown, onKeyDown: onResizeKeyDown, ariaValueNow, ariaValueMin, ariaValueMax } =
     useColumnResize();
-  const { expanded, toggle: toggleRail } = useRailExpand();
+  const { open: openSidebar, toggle: toggleSidebar } = useSidebarCollapse();
   const { collapsed: docPanelCollapsed, collapse: collapseDocPanel, expand: expandDocPanel, toggle: toggleDocPanel } = useDocPanelCollapse();
-
   // Rich status: accepts either a string (legacy) or a StatusState object.
   const setStatusMessage = useCallback((message: string | StatusState) => {
     const state = typeof message === 'string' ? fromString(message) : message;
@@ -175,7 +183,7 @@ export default function App() {
     setToasts((current) => current.filter((t) => t.timestamp !== timestamp));
   }, []);
 
-  // Auto-dismiss timer for transient panel-head status kinds (idle).
+  // Auto-dismiss timer for transient status kinds (idle).
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!status) return;
@@ -217,14 +225,25 @@ export default function App() {
     }
   }, [collapseDocPanel]);
 
+  const refreshConversations = useCallback(async () => {
+    try {
+      const listed = await listConversations();
+      setConversations(listed);
+      return listed;
+    } catch {
+      setConversations([]);
+      return [];
+    }
+  }, []);
+
   const refreshActiveConversationSummary = useCallback(async (conversationId: string | null) => {
     if (!conversationId) {
       setActiveConversationSummary(null);
       return;
     }
     try {
-      const conversations = await listConversations();
-      setActiveConversationSummary(conversations.find((c) => c.id === conversationId) ?? null);
+      const conversationsList = await listConversations();
+      setActiveConversationSummary(conversationsList.find((c) => c.id === conversationId) ?? null);
     } catch {
       setActiveConversationSummary(null);
     }
@@ -266,9 +285,9 @@ export default function App() {
 
   const ensureConversation = useCallback(async () => {
     try {
-      const conversations = await listConversations();
-      if (conversations.length > 0) {
-        setActiveConversationId(conversations[0].id);
+      const conversationsList = await listConversations();
+      if (conversationsList.length > 0) {
+        setActiveConversationId(conversationsList[0].id);
       } else {
         const created = await createConversation();
         setActiveConversationId(created.id);
@@ -289,6 +308,10 @@ export default function App() {
         setPaths(loadedPaths);
         setSettings(loadedSettings);
         setOnboarding(onboardingState);
+        applyUiPrefs();
+        void listProviderDescriptors()
+          .then(setProviders)
+          .catch(() => setProviders([]));
 
         const readyForWorkspace =
           onboardingState.onboardingCompleted &&
@@ -296,6 +319,7 @@ export default function App() {
           !onboardingState.migrationRecovery;
         if (readyForWorkspace) {
           await ensureConversation();
+          await refreshConversations();
           setBoundaryOk(true);
           setStatus(null);
         } else {
@@ -307,7 +331,7 @@ export default function App() {
         setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to load desktop state', 'error'));
       }
     })();
-  }, [ensureConversation]);
+  }, [ensureConversation, refreshConversations]);
 
   const refreshOnboarding = useCallback(async () => {
     try {
@@ -316,36 +340,44 @@ export default function App() {
       setSettings(await getSettings());
       if (next.onboardingCompleted && next.hasProviderCredential && !next.migrationRecovery) {
         await ensureConversation();
+        await refreshConversations();
       }
     } catch {
       /* leave current state; the user can retry */
     }
-  }, [ensureConversation]);
+  }, [ensureConversation, refreshConversations]);
 
   const handleNewChat = useCallback(async () => {
     try {
       const created = await createConversation();
       setActiveConversationId(created.id);
       clearWorkspaceArtifactSelection();
+      await refreshConversations();
       setStatus(makeStatus('Started a new chat', 'success'));
     } catch (error) {
       setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to create chat', 'error'));
     }
-  }, [clearWorkspaceArtifactSelection]);
+  }, [clearWorkspaceArtifactSelection, refreshConversations]);
 
   const handleSelectConversation = useCallback(
     (id: string) => {
       setActiveConversationId(id);
       clearWorkspaceArtifactSelection();
-      setActiveTab('chat');
+      // Seed the row dot with the active provider only when unknown — the
+      // map is a best-effort heuristic (decision: turn completion is truth).
+      setConvoProviders((current) => {
+        if (current[id]) return current;
+        const next = { ...current, [id]: settings.activeProvider };
+        writeConvoProviders(next);
+        return next;
+      });
     },
-    [clearWorkspaceArtifactSelection],
+    [clearWorkspaceArtifactSelection, settings.activeProvider],
   );
 
   const handleSelectSearchResult = useCallback(
     (result: SearchResult) => {
       setActiveConversationId(result.conversationId);
-      setActiveTab('chat');
       clearWorkspaceArtifactSelection();
       // ChatView loads messages on conversationId change; scroll after render
       setTimeout(() => {
@@ -365,7 +397,7 @@ export default function App() {
         const fork = await forkConversation(conversationId, forkMessageId);
         setActiveConversationId(fork.id);
         clearWorkspaceArtifactSelection();
-        setActiveTab('chat');
+        await refreshConversations();
         setStatus(makeStatus('Forked conversation', 'success'));
       } catch (error) {
         setStatus(
@@ -373,7 +405,7 @@ export default function App() {
         );
       }
     },
-    [clearWorkspaceArtifactSelection],
+    [clearWorkspaceArtifactSelection, refreshConversations],
   );
 
   const performDeleteConversation = useCallback(
@@ -381,6 +413,11 @@ export default function App() {
       const wasActive = activeConversationId === id;
       try {
         await deleteConversation(id);
+        setConvoProviders((current) => {
+          const { [id]: _removed, ...rest } = current;
+          writeConvoProviders(rest);
+          return rest;
+        });
         if (wasActive) {
           const remaining = await listConversations();
           if (remaining.length > 0) {
@@ -390,14 +427,14 @@ export default function App() {
             setActiveConversationId(created.id);
           }
           clearWorkspaceArtifactSelection();
-          setActiveTab('chat');
         }
+        await refreshConversations();
         setStatus(makeStatus('Conversation deleted', 'success'));
       } catch (error) {
         setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete conversation', 'error'));
       }
     },
-    [activeConversationId, clearWorkspaceArtifactSelection],
+    [activeConversationId, clearWorkspaceArtifactSelection, refreshConversations],
   );
 
   const handleDeleteAllHistory = useCallback(() => {
@@ -409,12 +446,14 @@ export default function App() {
       const created = await deleteAllConversations();
       setActiveConversationId(created.id);
       clearWorkspaceArtifactSelection();
-      setActiveTab('chat');
+      setConvoProviders({});
+      writeConvoProviders({});
+      await refreshConversations();
       setStatus(makeStatus('All conversation history deleted', 'success'));
     } catch (error) {
       setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete history', 'error'));
     }
-  }, [clearWorkspaceArtifactSelection]);
+  }, [clearWorkspaceArtifactSelection, refreshConversations]);
 
   const refreshArtifacts = useCallback(async (conversationId: string): Promise<Artifact[]> => {
     try {
@@ -439,8 +478,6 @@ export default function App() {
     setOpenArtifactIds((current) => (current.includes(artifactId) ? current : [...current, artifactId]));
   }, []);
 
-  // Artifact auto-open updates the right DocumentPanel only.
-  // The left rail tab reflects explicit user navigation and is never forced.
   const handleOpenArtifact = useCallback(
     async (artifactId: string) => {
       try {
@@ -463,6 +500,13 @@ export default function App() {
     async (streamState: AssistantStreamState) => {
       if (!activeConversationId) return;
       void refreshActiveConversationSummary(activeConversationId);
+      void refreshConversations();
+      // Record the provider that produced the last turn (sidebar row dot).
+      setConvoProviders((current) => {
+        const next = { ...current, [activeConversationId]: settings.activeProvider };
+        writeConvoProviders(next);
+        return next;
+      });
 
       if (hadFailedDocumentToolCalls(streamState) && !hadSuccessfulDocumentToolCalls(streamState)) {
         setPendingArtifact(null);
@@ -483,7 +527,9 @@ export default function App() {
     },
     [
       activeConversationId,
+      settings.activeProvider,
       refreshArtifacts,
+      refreshConversations,
       refreshActiveConversationSummary,
       handleOpenArtifact,
     ],
@@ -612,22 +658,10 @@ export default function App() {
     return watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
   }, [settings.theme]);
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-tab', activeTab);
-  }, [activeTab]);
-
   // V7 — the active provider's identity tints the app (spec §5.4).
   useEffect(() => {
     document.documentElement.setAttribute('data-provider', providerHueId(settings.activeProvider));
   }, [settings.activeProvider]);
-
-  const [panelTitleBase, panelSubtitleBase] = TAB_TITLES[activeTab];
-  const panelTitle =
-    activeTab === 'chat'
-      ? (activeConversationSummary?.displayTitle ?? 'Untitled chat')
-      : panelTitleBase;
-  const panelSubtitle =
-    activeTab === 'chat' ? formatChatSubtitle(activeConversationSummary) : panelSubtitleBase;
 
   const workspaceLabel = paths?.artifacts ? shortenWorkspacePath(paths.artifacts) : undefined;
 
@@ -637,35 +671,12 @@ export default function App() {
     hasCredential,
     localOnly: settings.localOnly,
   });
-  const showActivity =
-    status != null && (status.kind === 'active' || status.kind === 'thinking');
   const expandShortcut = modShortcutHint('J');
 
-  const openSettings = useCallback((tab?: SettingsTab) => {
-    if (tab) setSettingsInitialTab(tab);
-    setActiveTab('settings');
+  const openSettings = useCallback((section?: SettingsSection) => {
+    setSettingsSection(section ?? 'providers');
+    setSettingsOpen(true);
   }, []);
-
-  /** Map V7 surface section ids ('providers' | 'privacy' …) to the current
-   *  settings tabs until the settings sheet lands in Phase C. */
-  const openSettingsFromSurface = useCallback(
-    (tab?: string) => {
-      if (!tab) {
-        openSettings();
-        return;
-      }
-      const sectionToTab: Record<string, SettingsTab> = {
-        providers: 'provider',
-        connectors: 'connectors',
-        chat: 'agent',
-        appearance: 'appearance',
-        privacy: 'privacy',
-        advanced: 'updates',
-      };
-      openSettings(sectionToTab[tab] ?? undefined);
-    },
-    [openSettings],
-  );
 
   const handleRevealWorkspace = useCallback(() => {
     void revealArtifactsDir().catch((error) => {
@@ -673,15 +684,6 @@ export default function App() {
         makeStatus(error instanceof Error ? error.message : 'Could not reveal artifacts folder', 'error'),
       );
     });
-  }, []);
-
-  const handleSelectTab = useCallback((tab: WorkspaceTab) => {
-    if (tab === 'activity' && !ACTIVITY_PANE_ENABLED) {
-      setActiveTab('chat');
-      return;
-    }
-    if (tab !== 'settings') setSettingsInitialTab(undefined);
-    setActiveTab(tab);
   }, []);
 
   const openPalette = useCallback(() => {
@@ -729,7 +731,7 @@ export default function App() {
         void handleNewChat();
       },
       settings: () => openSettings(),
-      toggleRail: () => toggleRail(),
+      toggleSidebar: () => toggleSidebar(),
       toggleDocPanel: () => toggleDocPanel(),
       historySearch: () => openPalette(),
       cycleProvider: () => {
@@ -744,6 +746,10 @@ export default function App() {
       escape: () => {
         if (paletteOpen) {
           setPaletteOpen(false);
+          return;
+        }
+        if (settingsOpen) {
+          setSettingsOpen(false);
           return;
         }
         if (confirmDeleteId != null || confirmDeleteAll) {
@@ -769,8 +775,9 @@ export default function App() {
       openPalette,
       openSettings,
       paletteOpen,
+      settingsOpen,
       toggleDocPanel,
-      toggleRail,
+      toggleSidebar,
     ],
   );
   useHotkeys(hotkeyHandlers);
@@ -815,15 +822,27 @@ export default function App() {
       <Titlebar
         effectiveTheme={effectiveTheme}
         onToggleTheme={handleToggleTheme}
-        workspaceLabel={workspaceLabel}
-        onRevealWorkspace={handleRevealWorkspace}
-        connectionState={connectionState}
-        onConnectionClick={() => openSettings('privacy')}
+        onOpenPalette={openPalette}
+        panelOpen={!docPanelCollapsed}
+        onTogglePanel={toggleDocPanel}
       />
 
-      <main className="body">
-        <section className="left-workspace" aria-label="Assistant workspace">
-          {docPanelCollapsed && activeTab !== 'settings' && (
+      <div className="body">
+        <Sidebar
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          convoProviders={convoProviders}
+          workspaceLabel={workspaceLabel}
+          localOnly={settings.localOnly}
+          providerCount={providers.length > 0 ? providers.length : undefined}
+          onSelectConversation={handleSelectConversation}
+          onNewChat={() => void handleNewChat()}
+          onRevealWorkspace={handleRevealWorkspace}
+          onOpenSettings={(section) => openSettings(section as SettingsSection)}
+        />
+
+        <main className="center">
+          {docPanelCollapsed && (
             <button
               className="doc-panel-expand-tab"
               type="button"
@@ -835,97 +854,29 @@ export default function App() {
               <span className="doc-panel-expand-label">Artifacts</span>
             </button>
           )}
-          <Rail
-            active={activeTab}
-            onSelect={handleSelectTab}
-            expanded={expanded}
-            onToggleExpand={toggleRail}
-            artifactCount={artifacts.length}
-          />
-
-          <div className="panel">
-            <div className={`panel-head${activeTab === 'chat' ? ' panel-head-chat' : ''}`}>
-              <div className="panel-title">
-                <b>{panelTitle}</b>
-                {activeConversationSummary?.forkedFromConversationId && (
-                  <span className="fork-badge" title="Forked conversation">⑂</span>
-                )}
-                {panelSubtitle ? <small>{panelSubtitle}</small> : null}
-              </div>
-              {activeTab !== 'settings' && (
-                <div className="actions">
-                  {showActivity && status && (
-                    <div
-                      className="panel-activity"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      <span className={`status-icon kind-${status.kind}`} aria-hidden="true" />
-                      <span className="panel-activity-brief">{status.brief}</span>
-                    </div>
-                  )}
-                  <button className="new-btn" type="button" onClick={() => void handleNewChat()} title={`New chat (${modShortcutHint('N')})`}>
-                    <PlusIcon />
-                    New chat
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <ChatView
-              ref={chatViewRef}
-              settings={settings}
-              onSettingsChange={setSettings}
-              onStatus={setStatusMessage}
-              conversationId={activeConversationId}
-              artifacts={artifacts}
-              fileStateMap={fileStateMap}
-              onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
-              onOpenArtifact={(id) => void handleOpenArtifact(id)}
-              onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
-              onDocumentToolActivity={handleDocumentToolActivity}
+          <ChatView
+            ref={chatViewRef}
+            settings={settings}
+            onSettingsChange={setSettings}
+            onStatus={setStatusMessage}
+            conversationId={activeConversationId}
+            artifacts={artifacts}
+            fileStateMap={fileStateMap}
+            onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
+            onOpenArtifact={(id) => void handleOpenArtifact(id)}
+            onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
+            onDocumentToolActivity={handleDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
-              paneActive={activeTab === 'chat'}
-              onOpenSettings={openSettingsFromSurface}
-            />
-            <RailPanes
-              active={activeTab}
-              artifacts={artifacts}
-              fileStateMap={fileStateMap}
-              activeArtifactId={activeArtifact?.id ?? null}
-              onOpenArtifact={(id) => void handleOpenArtifact(id)}
-              activeConversationId={activeConversationId}
-              onSelectConversation={handleSelectConversation}
-              onDeleteConversation={(id) => void handleDeleteConversation(id)}
-              onDeleteAllHistory={() => void handleDeleteAllHistory()}
-              onNewChat={() => void handleNewChat()}
-              onRenameArtifact={handleRenameArtifact}
-              onManageConnectors={() => openSettings('connectors')}
-              onConversationRenamed={() => void refreshActiveConversationSummary(activeConversationId)}
-            />
-            <SettingsScreen
-              settings={settings}
-              onSettingsChange={setSettings}
-              paths={paths}
-              onStatus={setStatusMessage}
-              initialTab={settingsInitialTab}
-              paneActive={activeTab === 'settings'}
-              connectionState={connectionState}
-              boundaryOk={boundaryOk}
-              hasCredential={hasCredential}
-              onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
-            />
-          </div>
-        </section>
+            onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
+          />
+        </main>
 
-        {activeTab !== 'settings' && (
-          <>
         <div
           className="resize-handle"
           id="columnResize"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize chat and document columns"
+          aria-label="Resize document column"
           aria-valuenow={ariaValueNow}
           aria-valuemin={ariaValueMin}
           aria-valuemax={ariaValueMax}
@@ -953,9 +904,21 @@ export default function App() {
           onRenameArtifact={handleRenameArtifact}
           onStatus={setStatusMessage}
         />
-          </>
-        )}
-      </main>
+      </div>
+
+      <SettingsSheet
+        open={settingsOpen}
+        initialSection={settingsSection}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onSettingsChange={setSettings}
+        paths={paths}
+        onStatus={setStatusMessage}
+        connectionState={connectionState}
+        boundaryOk={boundaryOk}
+        hasCredential={hasCredential}
+        onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
+      />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
@@ -963,7 +926,7 @@ export default function App() {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         onNewChat={() => void handleNewChat()}
-        onOpenHistory={() => handleSelectTab('history')}
+        onOpenHistory={() => openSidebar()}
         onOpenSettings={() => openSettings()}
         onToggleTheme={handleToggleTheme}
         onToggleDocPanel={toggleDocPanel}

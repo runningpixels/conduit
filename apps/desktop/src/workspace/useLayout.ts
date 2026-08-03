@@ -1,86 +1,75 @@
 /*
- * v5 workspace layout interactions:
- *  - column-resize: pointer-event drag of --chat-w persisted to localStorage
- *  - rail-expand: [data-rail] toggle on <html>
- * Ported from docs/design/conduit-chat-v5.html.
+ * V7 workspace layout interactions:
+ *  - panel-resize: pointer drag of --panel-w persisted to localStorage
+ *  - sidebar-collapse: [data-sidebar] on <html> (open|closed)
+ *  - panel-collapse: [data-panel] on <html> (open|closed)
+ *
+ * Column collapse is a width animation, not a mount/unmount: the grid
+ * columns are driven by `--sidebar-w` / `--panel-w` and the html attributes
+ * zero them out (conduit-v7-design-spec §4.1).
  */
 import { useCallback, useEffect, useState } from 'react';
 
 const LAYOUT_KEY = 'conduit:v5-layout';
-const RAIL_KEY = 'conduit:v5-rail';
+const SIDEBAR_KEY = 'conduit:v5-sidebar';
 const DOC_PANEL_KEY = 'conduit:v5-doc-panel';
 
-type RailMode = 'collapsed' | 'expanded';
-type DocPanelMode = 'collapsed' | 'open';
+type SidebarMode = 'open' | 'closed';
+type PanelMode = 'open' | 'closed';
 
-const CHAT_MIN = 420;
-const CHAT_STEP = 10;
+const PANEL_MIN = 280;
+const PANEL_MAX = 560;
+const PANEL_STEP = 10;
 
-function readStoredChatWidth(): number | null {
+function readStoredPanelWidth(): number | null {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { chatW?: number };
-    return typeof parsed.chatW === 'number' ? parsed.chatW : null;
+    const parsed = JSON.parse(raw) as { panelW?: number };
+    return typeof parsed.panelW === 'number' ? parsed.panelW : null;
   } catch {
     return null;
   }
 }
 
-function writeStoredChatWidth(px: number) {
+function writeStoredPanelWidth(px: number) {
   try {
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ chatW: px }));
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ panelW: px }));
   } catch {
     /* storage may be unavailable; fail silently */
   }
 }
 
-function readStoredRail(): RailMode {
-  try {
-    const v = localStorage.getItem(RAIL_KEY);
-    return v === 'expanded' ? 'expanded' : 'collapsed';
-  } catch {
-    return 'collapsed';
-  }
+function panelMax(): number {
+  return Math.max(PANEL_MIN, Math.min(PANEL_MAX, window.innerWidth - 320));
 }
 
-function writeStoredRail(mode: RailMode) {
-  try {
-    localStorage.setItem(RAIL_KEY, mode);
-  } catch {
-    /* ignore */
-  }
-}
-
-function chatMax(): number {
-  return Math.max(CHAT_MIN, window.innerWidth - 520);
-}
-
-function setChatVar(px: number): number {
-  const max = chatMax();
-  const clamped = Math.max(CHAT_MIN, Math.min(max, px));
-  document.documentElement.style.setProperty('--chat-w', `${clamped}px`);
+function setPanelVar(px: number): number {
+  const max = panelMax();
+  const clamped = Math.max(PANEL_MIN, Math.min(max, px));
+  document.documentElement.style.setProperty('--panel-w', `${clamped}px`);
   return clamped;
 }
 
 function widthToPercent(px: number): number {
-  const max = chatMax();
-  if (max <= CHAT_MIN) return 0;
-  return Math.round(((px - CHAT_MIN) / (max - CHAT_MIN)) * 100);
+  const max = panelMax();
+  if (max <= PANEL_MIN) return 0;
+  return Math.round(((px - PANEL_MIN) / (max - PANEL_MIN)) * 100);
 }
 
-/** Column-resize: drag of --chat-w persisted to localStorage. Disabled below 820px. */
+/** Document-panel column resize: drag of --panel-w persisted to localStorage.
+ *  Disabled below 820px (breakpoint §4.3 force-collapses both side columns). */
 export function useColumnResize() {
   const [dragging, setDragging] = useState(false);
-  const [chatWidthPx, setChatWidthPx] = useState(() => {
-    if (typeof window === 'undefined') return CHAT_MIN;
-    return readStoredChatWidth() ?? CHAT_MIN;
+  const [panelWidthPx, setPanelWidthPx] = useState(() => {
+    if (typeof window === 'undefined') return PANEL_MIN;
+    return readStoredPanelWidth() ?? PANEL_MIN;
   });
 
   const applyWidth = useCallback((px: number, persist: boolean) => {
-    const next = setChatVar(px);
-    setChatWidthPx(next);
-    if (persist) writeStoredChatWidth(next);
+    const next = setPanelVar(px);
+    setPanelWidthPx(next);
+    if (persist) writeStoredPanelWidth(next);
     return next;
   }, []);
 
@@ -95,10 +84,10 @@ export function useColumnResize() {
     document.body.style.cursor = 'col-resize';
 
     const onMove = (ev: PointerEvent) => {
-      applyWidth(ev.clientX, false);
+      applyWidth(window.innerWidth - ev.clientX, false);
     };
     const onUp = (ev: PointerEvent) => {
-      applyWidth(ev.clientX, true);
+      applyWidth(window.innerWidth - ev.clientX, true);
       handle.releasePointerCapture(e.pointerId);
       handle.classList.remove('dragging');
       setDragging(false);
@@ -116,64 +105,83 @@ export function useColumnResize() {
 
   const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (window.matchMedia('(max-width: 820px)').matches) return;
-    const max = chatMax();
+    const max = panelMax();
     let next: number | null = null;
-    if (e.key === 'ArrowLeft') next = chatWidthPx - CHAT_STEP;
-    else if (e.key === 'ArrowRight') next = chatWidthPx + CHAT_STEP;
-    else if (e.key === 'Home') next = CHAT_MIN;
+    if (e.key === 'ArrowLeft') next = panelWidthPx - PANEL_STEP;
+    else if (e.key === 'ArrowRight') next = panelWidthPx + PANEL_STEP;
+    else if (e.key === 'Home') next = PANEL_MIN;
     else if (e.key === 'End') next = max;
     if (next == null) return;
     e.preventDefault();
     applyWidth(next, true);
-  }, [applyWidth, chatWidthPx]);
+  }, [applyWidth, panelWidthPx]);
 
   // Restore persisted width on mount.
   useEffect(() => {
-    const saved = readStoredChatWidth();
+    const saved = readStoredPanelWidth();
     if (saved !== null) applyWidth(saved, false);
   }, [applyWidth]);
 
-  const max = typeof window !== 'undefined' ? chatMax() : CHAT_MIN;
+  const max = typeof window !== 'undefined' ? panelMax() : PANEL_MIN;
   return {
     onPointerDown,
     onKeyDown,
     dragging,
-    chatWidthPx,
-    ariaValueNow: widthToPercent(chatWidthPx),
+    panelWidthPx,
+    ariaValueNow: widthToPercent(panelWidthPx),
     ariaValueMin: 0,
     ariaValueMax: 100,
-    chatMin: CHAT_MIN,
-    chatMax: max,
+    panelMin: PANEL_MIN,
+    panelMax: max,
   };
 }
 
-/** Rail expand/collapse: toggles [data-rail] on <html>, persisted. */
-export function useRailExpand() {
-  const [rail, setRail] = useState<RailMode>(readStoredRail);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-rail', rail);
-    writeStoredRail(rail);
-  }, [rail]);
-
-  const toggle = useCallback(() => {
-    setRail((current) => (current === 'expanded' ? 'collapsed' : 'expanded'));
-  }, []);
-
-  const expanded = rail === 'expanded';
-  return { expanded, toggle, ariaExpanded: expanded };
-}
-
-function readStoredDocPanel(): DocPanelMode {
+function readStoredSidebar(): SidebarMode {
   try {
-    const v = localStorage.getItem(DOC_PANEL_KEY);
-    return v === 'collapsed' ? 'collapsed' : 'open';
+    const v = localStorage.getItem(SIDEBAR_KEY);
+    return v === 'closed' ? 'closed' : 'open';
   } catch {
     return 'open';
   }
 }
 
-function writeStoredDocPanel(mode: DocPanelMode) {
+function writeStoredSidebar(mode: SidebarMode) {
+  try {
+    localStorage.setItem(SIDEBAR_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Sidebar collapse: toggles [data-sidebar="open"|"closed"] on <html>, persisted. */
+export function useSidebarCollapse() {
+  const [mode, setMode] = useState<SidebarMode>(readStoredSidebar);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-sidebar', mode);
+    writeStoredSidebar(mode);
+  }, [mode]);
+
+  const open = useCallback(() => setMode('open'), []);
+  const close = useCallback(() => setMode('closed'), []);
+  const toggle = useCallback(() => {
+    setMode((current) => (current === 'open' ? 'closed' : 'open'));
+  }, []);
+  const collapsed = mode === 'closed';
+
+  return { collapsed, open, close, toggle };
+}
+
+function readStoredDocPanel(): PanelMode {
+  try {
+    const v = localStorage.getItem(DOC_PANEL_KEY);
+    return v === 'closed' ? 'closed' : 'open';
+  } catch {
+    return 'open';
+  }
+}
+
+function writeStoredDocPanel(mode: PanelMode) {
   try {
     localStorage.setItem(DOC_PANEL_KEY, mode);
   } catch {
@@ -181,36 +189,41 @@ function writeStoredDocPanel(mode: DocPanelMode) {
   }
 }
 
-/** Document panel column collapse: toggles [data-doc-panel] on <html>, persisted. */
+/** Document panel column collapse: toggles [data-panel="open"|"closed"] on <html>, persisted. */
 export function useDocPanelCollapse() {
-  const [mode, setMode] = useState<DocPanelMode>(readStoredDocPanel);
+  const [mode, setMode] = useState<PanelMode>(readStoredDocPanel);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-doc-panel', mode);
+    document.documentElement.setAttribute('data-panel', mode);
     writeStoredDocPanel(mode);
   }, [mode]);
 
-  const collapse = useCallback(() => setMode('collapsed'), []);
+  const collapse = useCallback(() => setMode('closed'), []);
   const expand = useCallback(() => setMode('open'), []);
   const toggle = useCallback(() => {
-    setMode((current) => (current === 'collapsed' ? 'open' : 'collapsed'));
+    setMode((current) => (current === 'open' ? 'closed' : 'open'));
   }, []);
-  const collapsed = mode === 'collapsed';
+  const collapsed = mode === 'closed';
 
   return { collapsed, collapse, expand, toggle };
 }
 
 /** @internal test seam */
-export function __readStoredDocPanelForTest(): DocPanelMode {
+export function __readStoredDocPanelForTest(): PanelMode {
   return readStoredDocPanel();
 }
 
 /** @internal test seam */
-export function __writeStoredDocPanelForTest(mode: DocPanelMode): void {
+export function __writeStoredDocPanelForTest(mode: PanelMode): void {
   writeStoredDocPanel(mode);
 }
 
 /** @internal test seam */
-export function __readStoredRailForTest(): RailMode {
-  return readStoredRail();
+export function __readStoredSidebarForTest(): SidebarMode {
+  return readStoredSidebar();
+}
+
+/** @internal test seam */
+export function __writeStoredSidebarForTest(mode: SidebarMode): void {
+  writeStoredSidebar(mode);
 }

@@ -1,61 +1,160 @@
-/* ── Settings screen (workspace tab) ───────────────────────────────────── */
-/* Settings uses a sidebar + content two-column layout inside the pane. */
-.tab-pane.settings-screen[data-active="true"] {
-  display: flex;
-  flex-direction: row;
-  flex: 1;
-  min-height: 0;
+/* ── Settings sheet (V7 overlay; spec §8.9) ────────────────────────────── */
+/* A summoned modal, not a navigation destination: 186px nav + scroll main.
+   Auto-save on change; no Save button, no dirty state. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--shade);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
 }
+.scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
 
-.settings-screen {
-  flex: 1;
-  min-height: 0;
-  flex-direction: row;
-  align-items: stretch;
+.sheet {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(.985);
+  width: min(760px, 94vw);
+  height: min(560px, 86vh);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 186px minmax(0, 1fr);
+  transition: transform .17s cubic-bezier(.22, .61, .24, 1);
 }
-.settings-tab-sidebar {
-  flex: none;
-  width: 210px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 10px;
+.scrim[data-open="true"] .sheet { transform: translate(-50%, -50%); }
+.sheet-nav {
+  background: var(--raised);
   border-right: 1px solid var(--line-soft);
-  background: var(--card);
-  overflow-y: auto;
-}
-.settings-tab-btn {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 9px 12px;
-  border: none;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: var(--tap);
-  white-space: nowrap;
-}
-.settings-tab-btn:hover {
-  color: var(--ink);
-  background: var(--card);
-}
-.settings-tab-btn.active {
-  color: var(--hue);
-  background: var(--hue-weak);
-  font-weight: 600;
-}
-.settings-tab-content {
-  flex: 1;
-  min-width: 0;
+  padding: var(--sp-3) var(--sp-2);
   min-height: 0;
   overflow-y: auto;
-  padding: 20px 28px 32px;
-  background: var(--card);
 }
+.sheet-nav-title { padding: 4px 10px var(--sp-3); font-size: 14px; font-weight: 600; }
+.sheet-nav button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.sheet-nav button:hover { background: var(--card); color: var(--ink); }
+.sheet-nav button[aria-current="true"] { background: var(--card); color: var(--ink); font-weight: 500; }
+.sheet-nav svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.sheet-main { padding: var(--sp-5); overflow: auto; min-height: 0; }
+.sheet-h { font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+.sheet-sub { font-size: 12.5px; color: var(--ink-3); margin: 0 0 var(--sp-5); line-height: 1.5; }
+.grp { margin-bottom: var(--sp-5); }
+.grp-label {
+  font-size: 10.5px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--sp-2);
+}
+.prow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  margin-bottom: 7px;
+  transition: border-color var(--tap);
+}
+.prow:hover { border-color: var(--line); }
+.prow .pdot { width: 9px; height: 9px; }
+.prow-text { flex: 1 1 auto; min-width: 0; }
+.prow-text b { display: block; font-size: 13px; font-weight: 500; }
+.prow-text small { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); }
+.pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  color: var(--ink-3);
+  border: 1px solid var(--line-soft);
+}
+.pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap), border-color var(--tap);
+}
+.btn:hover { background: var(--card-hi); color: var(--ink); border-color: var(--ink-3); }
+.btn.primary { background: var(--hue); border-color: var(--hue); color: var(--bg); }
+html[data-theme="light"] .btn.primary { color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); background: var(--hue); color: var(--bg); }
+html[data-theme="light"] .btn.primary:hover { color: #fff; }
+
+.srow { display: flex; align-items: center; gap: var(--sp-4); padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.srow:last-child { border-bottom: 0; }
+.srow-text { flex: 1 1 auto; min-width: 0; }
+.srow-text b { display: block; font-size: 13px; font-weight: 500; }
+.srow-text small { display: block; font-size: 11.5px; color: var(--ink-3); }
+.toggle {
+  width: 34px;
+  height: 20px;
+  border-radius: 99px;
+  background: var(--line);
+  position: relative;
+  flex: 0 0 auto;
+  transition: background var(--tap);
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition: transform var(--tap), background var(--tap);
+}
+.toggle[aria-pressed="true"] { background: var(--hue); }
+.toggle[aria-pressed="true"]::after { transform: translateX(14px); background: #fff; }
+.sel {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.sheet-footnote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.sheet-footnote svg { width: 13px; height: 13px; }
+
 .settings-section {
   max-width: 720px;
 }

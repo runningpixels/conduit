@@ -246,6 +246,22 @@
 
 [data-rail="expanded"] { --rail-w: 184px; }
 
+/* ── V7 UI prefs (renderer-only; spec §8.9) ────────────────────────────── */
+/* Provider colour off: pin the hue to the neutral ink scale, layout unchanged. */
+html[data-provider-colour="off"] {
+  --hue: var(--ink-2);
+  --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
+  --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
+}
+/* Reduce motion: collapse all durations; the streaming caret renders solid. */
+html[data-reduce-motion="on"] *,
+html[data-reduce-motion="on"] *::before,
+html[data-reduce-motion="on"] *::after {
+  animation-duration: .001ms !important;
+  transition-duration: .001ms !important;
+}
+html[data-reduce-motion="on"] .streaming { animation: none !important; }
+
 /* ───────────────────────── Base reset ───────────────────────── */
 * { box-sizing: border-box; }
 html, body { height: 100%; }

@@ -1,6 +1,6 @@
 /* ── Chat thread ───────────────────────────────────────────────────────── */
-.thread { flex: 1; min-height: 0; overflow-y: auto; }
-.thread-inner { padding: 18px 18px 22px; max-width: 780px; margin: 0 auto; }
+.thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-5) var(--sp-5) var(--sp-4); }
+.thread-inner { max-width: var(--measure); margin: 0 auto; }
 .msg { display: grid; grid-template-columns: 28px 1fr; gap: 11px; padding: 13px 0; position: relative; }
 .msg + .msg { border-top: 1px solid var(--line-soft); }
 .msg.active::before {
@@ -409,7 +409,8 @@ ol.citations li { margin-bottom: 6px; }
 }
 
 /* ── Composer ───────────────────────────────────────────────────────────── */
-.composer-wrap { flex: none; padding: 0 14px 14px; background: var(--card); }
+.composer-wrap { flex: none; padding: 0 var(--sp-5) var(--sp-3); background: var(--bg); }
+.composer-wrap > .composer { max-width: var(--measure); margin: 0 auto; }
 .composer {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -430,7 +431,7 @@ ol.citations li { margin-bottom: 6px; }
   opacity: 0;
   transition: var(--tap);
 }
-.composer:focus-within { border-color: var(--line); box-shadow: var(--glow); }
+.composer:focus-within { border-color: var(--hue); box-shadow: 0 0 0 3px var(--hue-weak); }
 .composer:focus-within::before { opacity: 1; }
 .composer textarea {
   width: 100%;

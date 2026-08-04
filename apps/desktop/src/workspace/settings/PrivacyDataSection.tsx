@@ -95,7 +95,7 @@ export function PrivacyDataSection({
         </ul>
       </div>
 
-      <div className="form-grid" style={{ display: 'grid', gap: 12 }}>
+      <div className="form-grid">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
           <input
             type="checkbox"
@@ -119,7 +119,7 @@ export function PrivacyDataSection({
         </p>
       </div>
 
-      <div className="status-item" style={{ marginTop: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+      <div className="status-item" style={{ marginTop: 16 }}>
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Local data</span>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           Reset the local SQLite store if migrations fail or you want a clean slate. Your previous

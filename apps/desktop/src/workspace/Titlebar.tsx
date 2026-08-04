@@ -1,4 +1,5 @@
 import { BrandMark, MoonIcon, SearchIcon, SunIcon } from '../icons';
+import { WindowControls } from '../shell/WindowControls';
 
 export type ConnectionState = 'connected' | 'no-key' | 'local-only' | 'disconnected';
 
@@ -72,6 +73,7 @@ export function Titlebar({
             <path d="M15 4v16" />
           </svg>
         </button>
+        <WindowControls />
       </div>
     </header>
   );

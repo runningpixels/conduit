@@ -25,9 +25,13 @@
   padding: 0 var(--sp-3) 0 var(--sp-4);
   background: var(--raised);
   border-bottom: 1px solid var(--line-soft);
-  -webkit-app-region: drag;
+  /* Dragging is `data-tauri-drag-region` on the <header> (Titlebar.tsx), not
+   * `-webkit-app-region` — that is an Electron property and WebView2 ignores
+   * it. The mockup's version was carried over verbatim and never worked. */
 }
-.topbar > * { -webkit-app-region: no-drag; }
+/* The window controls run flush into the top-right corner, so the bar's own
+ * right padding has to come off when they are present (frameless shell). */
+.topbar:has(.wincontrols) { padding-right: 0; }
 .mark { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .mark-glyph { width: 15px; height: 15px; color: var(--hue); transition: color var(--tap); }
 .mark b { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
@@ -55,6 +59,30 @@
 .omni kbd { font-size: 10px; }
 
 .topbar-right { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+
+/* ── Window controls (frameless shell; §8.1 "one top bar") ─────────────── */
+/* Windows 11 metrics: 46x32 hit targets, no gap, close tints red on hover.
+   Rendered only when the Tauri bridge is present and not on macOS. */
+.wincontrols { display: flex; align-items: stretch; align-self: stretch; margin-left: 6px; }
+.wincontrol {
+  width: 46px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.wincontrol svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.wincontrol:hover { background: var(--card-hi); color: var(--ink); }
+.wincontrol.close:hover { background: #c42b1c; color: #fff; }
+/* The close button is the one control that must not read as "just another
+   icon button", so it keeps its colour rather than the neutral chrome. */
+.wincontrol:focus-visible { outline-offset: -2px; }
 
 kbd {
   font-family: var(--font-mono);

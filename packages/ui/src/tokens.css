@@ -287,7 +287,19 @@ body {
 [data-density="compact"] .msg { padding-top: 8px; padding-bottom: 8px; }
 [data-density="compact"] .composer-wrap { padding-bottom: 10px; }
 button, textarea { font-family: inherit; color: inherit; }
-button { cursor: pointer; }
+/* Zero the UA button chrome. Every V7 component class (.convo, .prov, .act,
+ * .tool-head, .iconbtn, .menu-item, .pal-item, .wschip …) is ported from
+ * conduit-v7-proposal.html, which establishes this reset before styling them,
+ * so none of them declare a background or border of their own. Without it they
+ * inherit Chromium's ButtonFace (#6b6b6b under color-scheme: dark) +
+ * ButtonBorder and the whole product reads as grey boxes. Each of those classes
+ * sets its own padding; see the CSS reset guard in tokens.reset.test.ts. */
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
 :focus { outline: none; }
 :focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); border-radius: var(--r-xs); }
 textarea:focus-visible { outline: none; box-shadow: var(--glow); }

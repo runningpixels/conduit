@@ -366,3 +366,68 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
 }
 .pal-foot span { display: inline-flex; align-items: center; gap: 5px; }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Settings section internals (V7 F3).
+ *
+ * The V7 sheet reuses the V6 section components, which mark up their layout
+ * with `.form-grid` / `.field` / `.status-item` / `.actions` — none of which
+ * had a rule. Most instances papered over it with an inline `style={{…}}`
+ * repeating the same values, and the instances that did not render unstyled.
+ * These rules are the canonical version; the duplicate inline styles are
+ * removed at the call sites so tokens stay the single source of truth (§4.1).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.form-grid { display: grid; gap: 12px; }
+
+.field { display: grid; gap: 6px; }
+.field-label {
+  color: var(--ink-3);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+/* A read-only block of resolved state (paths, versions, connector health). */
+.status-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+}
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Onboarding step wrapper — the steps' own children carry the styling. */
+.onboarding-step-body { display: grid; gap: 12px; }
+
+/* ── Prompts library ───────────────────────────────────────────────────── */
+/* `{{variable}}` spans inside a prompt body. */
+.variable-token {
+  color: var(--hue);
+  background: var(--hue-weak);
+  border-radius: var(--r-xs);
+  padding: 1px 3px;
+  font-family: var(--font-mono);
+  font-size: .95em;
+}
+
+.folder-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.folder-btn:hover { background: var(--card-hi); color: var(--ink); }
+/* The selected folder previously set background AND color to var(--hue),
+ * which rendered the label invisible against its own fill. */
+.folder-btn.active {
+  background: var(--hue-weak);
+  color: var(--hue);
+  font-weight: 500;
+}

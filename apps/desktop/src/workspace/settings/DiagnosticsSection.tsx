@@ -87,7 +87,7 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
       <div className="settings-section-header">
         <span>Diagnostics</span>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+      <div className="status-item">
         <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--ink-2)' }}>
           A diagnostics bundle contains your active provider/model, flags, theme, and redacted app paths. It never contains secrets, base URLs, allowlists, or conversation content.
         </p>

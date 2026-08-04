@@ -33,7 +33,7 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
       <div className="settings-section-header">
         <span>Artifact Security</span>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 6, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+      <div className="status-item">
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           Artifact remote allowlist
         </span>

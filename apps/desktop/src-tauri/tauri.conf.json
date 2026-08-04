@@ -16,7 +16,8 @@
         "title": "Conduit",
         "width": 1360,
         "height": 900,
-        "resizable": true
+        "resizable": true,
+        "decorations": false
       }
     ],
     "security": {

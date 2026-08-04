@@ -133,8 +133,8 @@ export function ProviderPicker({
   const sortedProviders = [...providers].sort((a, b) => a.tier - b.tier || a.displayName.localeCompare(b.displayName));
 
   return (
-    <div className="form-grid" style={{ display: 'grid', gap: 12 }}>
-      <label className="field" style={{ display: 'grid', gap: 6 }}>
+    <div className="form-grid">
+      <label className="field">
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider</span>
         <select
           value={settings.activeProvider}
@@ -165,7 +165,7 @@ export function ProviderPicker({
           <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>{activeDescriptor.description}</span>
         ) : null}
       </label>
-      <label className="field" style={{ display: 'grid', gap: 6 }}>
+      <label className="field">
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Model</span>
         {models.length > 0 ? (
           <select
@@ -186,7 +186,7 @@ export function ProviderPicker({
         )}
       </label>
       {activeDescriptor?.showBaseUrlField && (
-        <label className="field" style={{ display: 'grid', gap: 6 }}>
+        <label className="field">
           <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Base URL</span>
           <input
             value={providerBaseUrl}
@@ -197,7 +197,7 @@ export function ProviderPicker({
         </label>
       )}
       {activeDescriptor?.credentialMode !== 'none' && (
-        <label className="field" style={{ display: 'grid', gap: 6 }}>
+        <label className="field">
           <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider secret</span>
           <input
             type="password"
@@ -208,12 +208,12 @@ export function ProviderPicker({
           />
         </label>
       )}
-      <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="actions">
         <button className="btn primary" type="button" disabled={busy || activeDescriptor?.credentialMode === 'none'} onClick={() => void handleSaveCredential()}>Save provider key</button>
         <button className="btn" type="button" disabled={busy} onClick={() => void handleLoadModels()}>Load models</button>
         <button className="btn" type="button" disabled={busy} onClick={() => void handleValidateProvider()}>Test connection</button>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 4, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+      <div className="status-item">
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Credential reference</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
           {credentialSummary?.storedInKeychain

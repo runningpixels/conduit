@@ -8,6 +8,23 @@ declare module 'node:fs' {
     path: string | URL,
     encoding?: string | null,
   ): string;
+  export interface Dirent {
+    name: string;
+    isDirectory(): boolean;
+  }
+  export function readdirSync(
+    path: string,
+    options: { withFileTypes: true },
+  ): Dirent[];
+}
+// Minimal node:path / node:url surface, same rationale as node:fs above.
+declare module 'node:path' {
+  export function join(...parts: string[]): string;
+  export function dirname(path: string): string;
+  export function relative(from: string, to: string): string;
+}
+declare module 'node:url' {
+  export function fileURLToPath(url: string | URL): string;
 }
 // Minimal process surface for tests that resolve repo paths from the cwd.
 declare const process: { cwd(): string };

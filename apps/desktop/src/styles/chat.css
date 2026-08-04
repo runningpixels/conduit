@@ -1169,3 +1169,77 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
   }
   .tool-body { grid-template-rows: 1fr !important; }
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Unstyled-class sweep (V7 F3).
+ *
+ * These class names were emitted by the components but had no matching rule,
+ * so they fell back to UA defaults. Styled from the V7 token set to match the
+ * surfaces they sit inside.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Thinking indicator label — sits beside .thinking-dots (both above). */
+.thinking-label {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+/* Streaming caret inside an inline code block. Same signal as `.streaming`
+ * (§9.3) but sized to the mono line-height of `.inline-code-block-body`. */
+.inline-code-block-body .cursor {
+  display: inline-block;
+  width: 6px;
+  height: 13px;
+  vertical-align: -2px;
+  margin-left: 1px;
+  background: var(--hue);
+  border-radius: 1px;
+  animation: streaming-blink 1.1s steps(2, start) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .inline-code-block-body .cursor { animation: none !important; opacity: 1; }
+}
+
+/* Consent gate detail lines inside a tool card — secondary to `.consent p`. */
+.consent .data-summary,
+.consent .consent-copy {
+  margin: 0 0 9px;
+}
+.consent .data-summary small,
+.consent .consent-copy small {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.consent .data-summary small { font-family: var(--font-mono); word-break: break-word; }
+
+/* ── Chat error boundary ───────────────────────────────────────────────── */
+.chat-error-boundary {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 32px;
+}
+.chat-error-boundary-body {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  max-width: 420px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+.chat-error-boundary-detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.chat-error-boundary-message {
+  display: block;
+  margin-top: 6px;
+  font: 500 11.5px/1.5 var(--font-mono);
+  color: var(--err);
+  word-break: break-word;
+}

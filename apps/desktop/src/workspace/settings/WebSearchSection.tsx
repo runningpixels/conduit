@@ -62,7 +62,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
         </p>
       )}
 
-      <div className="form-grid" style={{ display: 'grid', gap: 12 }}>
+      <div className="form-grid">
         {/* Master toggle — intercept with consent dialog on first enable */}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
           <input

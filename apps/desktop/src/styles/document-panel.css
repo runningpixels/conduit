@@ -419,3 +419,159 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Artifact renderer internals (V7 F3).
+ *
+ * CodeRenderer, JsonRenderer and safeMarkdown emit these class names but no
+ * rule ever matched them, so the code gutter, the JSON tree and markdown
+ * tables rendered as unstyled UA defaults. Styled from the V7 token set to sit
+ * inside the shared `.artifact-code / .artifact-json / .artifact-markdown`
+ * baseline above.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Code preview: language chip + line-number gutter ──────────────────── */
+.artifact-code-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.lang-chip {
+  font: 600 10px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ink-2);
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  padding: 4px 8px;
+}
+.lang-chip.muted { color: var(--ink-3); }
+
+/* The gutter is a fixed 3ch column; `.line-text` carries the highlighted run.
+ * Both are inline inside a single <pre>, so the newline between rows does the
+ * line breaking — no block layout that would double the leading. */
+.artifact-code-body .line-no {
+  display: inline-block;
+  width: 3ch;
+  margin-right: 14px;
+  color: var(--ink-3);
+  text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.artifact-code-body .line-text { color: var(--ink); }
+
+/* ── JSON tree ─────────────────────────────────────────────────────────── */
+.artifact-json {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.json-line { white-space: pre-wrap; word-break: break-word; }
+.json-node { margin: 0; }
+.json-summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 11px;
+  list-style: none;
+  user-select: none;
+  -webkit-user-select: none;
+  border-radius: var(--r-xs);
+  padding: 1px 3px;
+  transition: color var(--tap);
+}
+.json-summary::-webkit-details-marker { display: none; }
+.json-summary::before {
+  content: '▾';
+  display: inline-block;
+  width: 12px;
+  color: var(--ink-3);
+  transition: transform var(--tap);
+}
+.json-node:not([open]) > .json-summary::before { transform: rotate(-90deg); }
+.json-summary:hover { color: var(--ink-2); }
+/* One indent step per nesting level, with a hairline to trace the depth. */
+.json-children {
+  margin-left: 5px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line-soft);
+}
+.json-entry { display: flex; gap: 6px; align-items: baseline; }
+.json-index,
+.json-key { color: var(--syn-property); flex: none; }
+.json-index { color: var(--ink-3); }
+.json-colon { color: var(--syn-punct); flex: none; }
+.json-str { color: var(--syn-string); }
+.json-num { color: var(--syn-number); }
+.json-bool { color: var(--syn-const); }
+.json-null { color: var(--syn-comment); font-style: italic; }
+.json-entry > .json-line,
+.json-entry > .json-node { min-width: 0; flex: 1 1 auto; }
+
+/* ── Markdown block elements (safeMarkdown) ────────────────────────────── */
+.md-quote {
+  margin: 0 0 11px;
+  padding: 2px 0 2px 13px;
+  border-left: 2px solid var(--line);
+  color: var(--ink-2);
+}
+.md-quote > :last-child { margin-bottom: 0; }
+.md-rule {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+}
+.md-table {
+  width: 100%;
+  margin: 0 0 13px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  /* Wide tables scroll their own container rather than the page (spec §4.2). */
+  display: block;
+  overflow-x: auto;
+}
+.md-table th,
+.md-table td {
+  border: 1px solid var(--line-soft);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.md-table th {
+  background: var(--raised);
+  color: var(--ink);
+  font-weight: 600;
+}
+.md-table td { color: var(--ink-2); }
+
+/* ── Document panel error boundary ─────────────────────────────────────── */
+.doc-error-boundary {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 28px;
+}
+.doc-error-boundary-body {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  max-width: 380px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.doc-error-boundary-detail {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.doc-error-boundary-message {
+  display: block;
+  margin-top: 6px;
+  font: 500 11.5px/1.5 var(--font-mono);
+  color: var(--err);
+  word-break: break-word;
+}

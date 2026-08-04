@@ -156,7 +156,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
       <div className="settings-section-header">
         <span>Connectors</span>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+      <div className="status-item">
         {rows.length === 0 ? (
           <span style={{ fontSize: '13px' }}>No connectors registered yet. Add a local stdio connector below.</span>
         ) : (

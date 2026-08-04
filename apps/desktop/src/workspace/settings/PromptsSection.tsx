@@ -214,7 +214,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
             className={`folder-btn${selectedFolder === null ? ' active' : ''}`}
             type="button"
             onClick={() => setSelectedFolder(null)}
-            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '12px', borderRadius: 'var(--r-sm)', border: 'none', background: selectedFolder === null ? 'var(--hue)' : 'transparent', color: selectedFolder === null ? 'var(--hue)' : 'var(--ink)', cursor: 'pointer' }}
+            aria-pressed={selectedFolder === null}
           >
             All prompts
           </button>
@@ -224,7 +224,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
               className={`folder-btn${selectedFolder === f ? ' active' : ''}`}
               type="button"
               onClick={() => setSelectedFolder(f)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '12px', borderRadius: 'var(--r-sm)', border: 'none', background: selectedFolder === f ? 'var(--hue)' : 'transparent', color: selectedFolder === f ? 'var(--hue)' : 'var(--ink)', cursor: 'pointer' }}
+              aria-pressed={selectedFolder === f}
             >
               {f}
             </button>

@@ -64,7 +64,7 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
         call and follow-up counts as one step.
       </p>
 
-      <div className="form-grid" style={{ display: 'grid', gap: 12 }}>
+      <div className="form-grid">
         <label htmlFor="agent-max-steps" style={{ display: 'grid', gap: 4, fontSize: '13px' }}>
           Max agent steps
           <input

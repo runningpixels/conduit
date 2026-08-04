@@ -49,7 +49,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
       <div className="settings-section-header">
         <span>Updates</span>
       </div>
-      <div className="status-item" style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
+      <div className="status-item">
         <label className="field" style={{ display: 'grid', gap: 6 }}>
           <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Channel</span>
           <select

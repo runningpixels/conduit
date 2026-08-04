@@ -457,57 +457,44 @@
   font-size: 13px;
   line-height: 1.45;
 }
+/* Inline follow-ups share the composer's column: same --measure, same centring
+   and the same --bg, so the two read as one block. The previous version was a
+   full-bleed --card band sitting above a centred composer, which put a hard
+   edge across the pane at a width nothing else in the layout used. */
 .suggested-prompts-inline {
   flex: none;
-  padding: 0 14px 8px;
-  background: var(--card);
-}
-.suggested-prompts-heading {
-  display: block;
-  font: 500 10.5px/1 var(--font-mono);
-  color: var(--ink-3);
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  margin-bottom: 8px;
-  padding: 0 4px;
-}
-.suggested-prompt-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  width: 100%;
+  /* `.composer-wrap` puts --sp-5 on a full-width box and caps the composer
+     *inside* it at --measure. This element is both boxes at once, and the
+     global `box-sizing: border-box` counts padding against max-width — so the
+     cap has to include the padding for the chips to share the composer's
+     left edge at every width. */
+  max-width: calc(var(--measure) + 2 * var(--sp-5));
+  margin: 0 auto;
+  padding: 0 var(--sp-5) var(--sp-2);
+  background: var(--bg);
 }
+/* One line per chip, so --r-pill is the right radius and the caption reads in
+   full. `.suggested-prompt-chip-*` are gone with the two-line layout. */
 .suggested-prompt-chip {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  max-width: 100%;
-  text-align: left;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  padding: 6px 11px;
-  cursor: pointer;
-  transition: var(--tap);
-}
-.suggested-prompt-chip:hover {
-  background: var(--card);
-  border-color: var(--line);
-}
-.suggested-prompt-chip-label {
-  color: var(--hue);
-  font: 700 9.5px/1 var(--font-mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-.suggested-prompt-chip-text {
   color: var(--ink-2);
   font-size: 12px;
   line-height: 1.35;
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background var(--tap), border-color var(--tap), color var(--tap);
+}
+.suggested-prompt-chip:hover {
+  background: var(--card-hi);
+  border-color: var(--hue);
+  color: var(--ink);
 }
 
 /* ── Composer ───────────────────────────────────────────────────────────── */

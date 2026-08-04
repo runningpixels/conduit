@@ -9,6 +9,7 @@ import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../icons';
 import { providerDisplayName } from '../lib/providerIdentity';
 import { getModelPrices, type ModelPrices } from '../lib/costTable';
+import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { useFocusTrap } from '../shell/useFocusTrap';
 
 export interface CommandPaletteConversation {
@@ -179,12 +180,12 @@ export function CommandPalette({
   const commands = useMemo((): PaletteItem[] => {
     const close = () => onClose();
     return [
-      { id: 'cmd-new-chat', group: 'Commands', kind: 'cmd', label: 'New chat', tail: '⌘N', run: () => { onNewChat(); close(); } },
-      { id: 'cmd-fork', group: 'Commands', kind: 'cmd', label: 'Fork conversation here', tail: '⌘⇧F', run: () => { onForkConversationHere(); close(); } },
-      { id: 'cmd-toggle-panel', group: 'Commands', kind: 'cmd', label: 'Toggle context panel', tail: '⌘J', run: () => { onToggleDocPanel(); close(); } },
-      { id: 'cmd-toggle-sidebar', group: 'Commands', kind: 'cmd', label: 'Toggle sidebar', tail: '⌘\\', run: () => { onToggleSidebar(); close(); } },
-      { id: 'cmd-toggle-web', group: 'Commands', kind: 'cmd', label: 'Toggle web search for this turn', tail: '⌘⇧W', run: () => { onToggleWebSearch(); close(); } },
-      { id: 'cmd-settings', group: 'Commands', kind: 'cmd', label: 'Open settings', tail: '⌘,', run: () => { onOpenSettings(); close(); } },
+      { id: 'cmd-new-chat', group: 'Commands', kind: 'cmd', label: 'New chat', tail: modShortcutHint('N'), run: () => { onNewChat(); close(); } },
+      { id: 'cmd-fork', group: 'Commands', kind: 'cmd', label: 'Fork conversation here', tail: modShiftShortcutHint('F'), run: () => { onForkConversationHere(); close(); } },
+      { id: 'cmd-toggle-panel', group: 'Commands', kind: 'cmd', label: 'Toggle context panel', tail: modShortcutHint('J'), run: () => { onToggleDocPanel(); close(); } },
+      { id: 'cmd-toggle-sidebar', group: 'Commands', kind: 'cmd', label: 'Toggle sidebar', tail: modShortcutHint('\\'), run: () => { onToggleSidebar(); close(); } },
+      { id: 'cmd-toggle-web', group: 'Commands', kind: 'cmd', label: 'Toggle web search for this turn', tail: modShiftShortcutHint('W'), run: () => { onToggleWebSearch(); close(); } },
+      { id: 'cmd-settings', group: 'Commands', kind: 'cmd', label: 'Open settings', tail: modShortcutHint(','), run: () => { onOpenSettings(); close(); } },
       { id: 'cmd-providers', group: 'Commands', kind: 'cmd', label: 'Manage providers & keys', run: () => { onOpenSettings('providers'); close(); } },
       { id: 'cmd-connectors', group: 'Commands', kind: 'cmd', label: 'Connect a service', run: () => { onOpenSettings('connectors'); close(); } },
       { id: 'cmd-rename', group: 'Commands', kind: 'cmd', label: 'Rename this chat', run: () => { onRenameChat(); close(); } },
@@ -278,7 +279,7 @@ export function CommandPalette({
     }));
     if (!q) {
       return [
-        { id: 'cmd-new-chat', group: 'Chats', kind: 'cmd', label: 'New chat', tail: '⌘N', run: () => { onNewChat(); onClose(); } },
+        { id: 'cmd-new-chat', group: 'Chats', kind: 'cmd', label: 'New chat', tail: modShortcutHint('N'), run: () => { onNewChat(); onClose(); } },
         ...convItems,
         ...searchItems,
       ];

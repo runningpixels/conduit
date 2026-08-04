@@ -8,6 +8,7 @@ import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
 import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, FolderIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
 import { readExportMetadata } from '../shell/uiPrefs';
+import { modShortcutHint } from '../lib/shortcuts';
 import type { PendingArtifact } from '../artifacts/pendingArtifact';
 
 type DocTab = 'preview' | 'source';
@@ -79,13 +80,6 @@ function versionLabel(artifact: Artifact): string | undefined {
 
 function DocPlaceholder({ children }: { children: ReactNode }) {
   return <p className="doc-placeholder">{children}</p>;
-}
-
-function modShortcutHint(key: string): string {
-  const isMac =
-    typeof navigator !== 'undefined' &&
-    /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  return `${isMac ? '⌘' : 'Ctrl'}+${key}`;
 }
 
 interface DocumentPanelProps {

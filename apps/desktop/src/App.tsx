@@ -48,7 +48,7 @@ import { useColumnResize, useDocPanelCollapse, useSidebarCollapse } from './work
 import { useHotkeys } from './workspace/useHotkeys';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
-import { ChevronLeft } from './icons';
+import { modShortcutHint } from './lib/shortcuts';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { ConfirmDialog } from '@conduit/ui';
 import { forkConversation, exportDiagnostics, getConversationMessages, setConversationTitle } from './ipc/client';
@@ -62,13 +62,6 @@ function shortenWorkspacePath(absolutePath: string): string {
   const parts = normalized.split('/').filter(Boolean);
   if (parts.length <= 3) return parts.join('/') || absolutePath;
   return parts.slice(-3).join('/');
-}
-
-function modShortcutHint(key: string): string {
-  const isMac =
-    typeof navigator !== 'undefined' &&
-    /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  return `${isMac ? '⌘' : 'Ctrl'}+${key}`;
 }
 
 /** Renderer-only map of conversationId → last-used provider id (the sidebar
@@ -221,7 +214,7 @@ export default function App() {
       if (localStorage.getItem(DOC_PANEL_HINT_KEY) === '1') return;
       localStorage.setItem(DOC_PANEL_HINT_KEY, '1');
       const hint = makeStatus(
-        `Artifact panel hidden. Press ${modShortcutHint('J')} or use the edge tab to bring it back.`,
+        `Artifact panel hidden. Press ${modShortcutHint('J')} or use the panel button in the top bar to bring it back.`,
         'success',
       );
       setToasts((current) => [...current.slice(-4), hint]);
@@ -774,7 +767,9 @@ export default function App() {
     hasCredential,
     localOnly: settings.localOnly,
   });
-  const expandShortcut = modShortcutHint('J');
+  // Shown on the topbar toggle while the panel is hidden — the count is what
+  // replaces the old edge rail as the "there is something in there" signal.
+  const hiddenArtifactCount = docPanelCollapsed ? artifacts.length : 0;
 
   const openSettings = useCallback((section?: SettingsSection) => {
     setSettingsSection(section ?? 'providers');
@@ -946,6 +941,7 @@ export default function App() {
         onOpenPalette={openPalette}
         panelOpen={!docPanelCollapsed}
         onTogglePanel={toggleDocPanel}
+        hiddenArtifactCount={hiddenArtifactCount}
       />
 
       <div className="body">
@@ -965,19 +961,10 @@ export default function App() {
           onDeleteAllHistory={handleDeleteAllHistory}
         />
 
+        {/* The full-height "Artifacts" rail that used to live here was a second
+            affordance for the topbar's own panel toggle. It is gone; the toggle
+            carries the artifact count so the panel stays discoverable. */}
         <main className="center">
-          {docPanelCollapsed && (
-            <button
-              className="doc-panel-expand-tab"
-              type="button"
-              aria-label="Show artifact panel"
-              title={`Show artifact panel (${expandShortcut})`}
-              onClick={expandDocPanel}
-            >
-              <ChevronLeft />
-              <span className="doc-panel-expand-label">Artifacts</span>
-            </button>
-          )}
           <ChatView
             ref={chatViewRef}
             settings={settings}

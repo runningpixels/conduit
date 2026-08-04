@@ -29,23 +29,27 @@ export function SuggestedPrompts({ prompts, variant, onSelect }: SuggestedPrompt
     );
   }
 
+  // Inline follow-ups sit directly above the composer, so they get one line
+  // each: the short caption reads in full, and `text` — the prompt that is
+  // actually sent — stays available as the tooltip. The group is labelled, so
+  // the row needs no visible heading of its own.
   return (
-    <div className="suggested-prompts suggested-prompts-inline" aria-label="Suggested follow-ups">
-      <span className="suggested-prompts-heading">Suggestions</span>
-      <div className="suggested-prompt-chips">
-        {prompts.map((prompt) => (
-          <button
-            key={prompt.id}
-            type="button"
-            className="suggested-prompt-chip"
-            title={prompt.text}
-            onClick={() => onSelect(prompt.text)}
-          >
-            <span className="suggested-prompt-chip-label">{prompt.label}</span>
-            <span className="suggested-prompt-chip-text">{prompt.text}</span>
-          </button>
-        ))}
-      </div>
+    <div
+      className="suggested-prompts suggested-prompts-inline"
+      role="group"
+      aria-label="Suggested follow-ups"
+    >
+      {prompts.map((prompt) => (
+        <button
+          key={prompt.id}
+          type="button"
+          className="suggested-prompt-chip"
+          title={prompt.text}
+          onClick={() => onSelect(prompt.text)}
+        >
+          {prompt.short}
+        </button>
+      ))}
     </div>
   );
 }

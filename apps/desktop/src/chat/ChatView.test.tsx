@@ -305,9 +305,13 @@ describe('ChatView suggested prompts', () => {
 
     renderChatView({ artifacts: [artifact] });
     expect(await screen.findByLabelText('Suggested follow-ups')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Improve "API Overview"/i }),
-    ).toBeInTheDocument();
+    // The chip is named by its short caption — the full instruction would not
+    // fit on one line — and carries the prompt it sends as its description.
+    const chip = screen.getByRole('button', { name: 'Tighten the wording' });
+    expect(chip).toHaveAttribute(
+      'title',
+      'Improve "API Overview" — tighten the wording and fix any gaps.',
+    );
   });
 
   it('preserves line breaks in multi-line user messages', async () => {

@@ -87,9 +87,14 @@
   --card-hi: #26262a;
   --line: #2c2c30;
   --line-soft: #212123;
+  /* Three-step ink ramp. Every step clears WCAG AA (4.5:1) against every
+   * surface above, including --card-hi; tokenContrast.test.ts asserts it.
+   * --ink-3 in particular carries real copy (composer placeholder, sidebar
+   * group headers, tool status, .kv labels) and its previous value sat at
+   * 3.2:1 on --card, which read as unreadably dim. */
   --ink: #eceae7;
-  --ink-2: #a09d99;
-  --ink-3: #6f6c69;
+  --ink-2: #b8b4af;
+  --ink-3: #918d88;
   --shade: rgba(0,0,0,.6);
   --lift: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -8px rgba(0,0,0,.65);
   --ok: #4ade80;
@@ -205,8 +210,8 @@
   --line: #e2dfdb;
   --line-soft: #ece9e6;
   --ink: #1a1918;
-  --ink-2: #5d5a56;
-  --ink-3: #8d8984;
+  --ink-2: #53504c;
+  --ink-3: #6e6a65;
   --shade: rgba(28,25,23,.28);
   --lift: 0 1px 2px rgba(28,25,23,.06), 0 14px 34px -10px rgba(28,25,23,.18);
   --ok: #15803d;
@@ -233,15 +238,37 @@
 /* ── Provider identity — the only hue in the product (spec §5.4) ───────── */
 [data-provider="anthropic"] { --hue: #d97757; --hue-weak: color-mix(in srgb, #d97757 14%, transparent); --hue-weak-solid: rgba(217, 119, 87, .14); }
 [data-provider="openai"]    { --hue: #10a37f; --hue-weak: color-mix(in srgb, #10a37f 14%, transparent); --hue-weak-solid: rgba(16, 163, 127, .14); }
-[data-provider="ollama"]    { --hue: #8b8b96; --hue-weak: color-mix(in srgb, #8b8b96 16%, transparent); --hue-weak-solid: rgba(139, 139, 150, .16); }
-[data-provider="custom"]    { --hue: #6f7cff; --hue-weak: color-mix(in srgb, #6f7cff 14%, transparent); --hue-weak-solid: rgba(111, 124, 255, .14); }
+[data-provider="ollama"]    { --hue: #90909b; --hue-weak: color-mix(in srgb, #90909b 16%, transparent); --hue-weak-solid: rgba(144, 144, 155, .16); }
+[data-provider="custom"]    { --hue: #7f8bff; --hue-weak: color-mix(in srgb, #7f8bff 14%, transparent); --hue-weak-solid: rgba(127, 139, 255, .14); }
+
+/* The four hues above are tuned for the dark surfaces and land at 3.1–3.5:1 on
+   a light one, so every hue-coloured label (§8.4 tool titles, suggestion chip
+   captions, `.prov` names) fails AA in light mode. Darkened variants keep the
+   same identity and clear 4.5:1 on --card / --bg / --raised. --hue-weak is the
+   14% wash behind chips, so it tracks the hue it is derived from. */
+[data-theme="light"] [data-provider="anthropic"],
+[data-theme="light"][data-provider="anthropic"] { --hue: #b04f2b; --hue-weak: color-mix(in srgb, #b04f2b 14%, transparent); --hue-weak-solid: rgba(176, 79, 43, .14); }
+[data-theme="light"] [data-provider="openai"],
+[data-theme="light"][data-provider="openai"]    { --hue: #0a7a5e; --hue-weak: color-mix(in srgb, #0a7a5e 14%, transparent); --hue-weak-solid: rgba(10, 122, 94, .14); }
+[data-theme="light"] [data-provider="ollama"],
+[data-theme="light"][data-provider="ollama"]    { --hue: #6b6b78; --hue-weak: color-mix(in srgb, #6b6b78 16%, transparent); --hue-weak-solid: rgba(107, 107, 120, .16); }
+[data-theme="light"] [data-provider="custom"],
+[data-theme="light"][data-provider="custom"]    { --hue: #4d59da; --hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --hue-weak-solid: rgba(77, 89, 218, .14); }
 
 /* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
 @supports not (color: color-mix(in srgb, red 10%, transparent)) {
   [data-provider="anthropic"] { --hue-weak: rgba(217, 119, 87, .14); }
   [data-provider="openai"]    { --hue-weak: rgba(16, 163, 127, .14); }
-  [data-provider="ollama"]    { --hue-weak: rgba(139, 139, 150, .16); }
-  [data-provider="custom"]    { --hue-weak: rgba(111, 124, 255, .14); }
+  [data-provider="ollama"]    { --hue-weak: rgba(144, 144, 155, .16); }
+  [data-provider="custom"]    { --hue-weak: rgba(127, 139, 255, .14); }
+  [data-theme="light"] [data-provider="anthropic"],
+  [data-theme="light"][data-provider="anthropic"] { --hue-weak: rgba(176, 79, 43, .14); }
+  [data-theme="light"] [data-provider="openai"],
+  [data-theme="light"][data-provider="openai"]    { --hue-weak: rgba(10, 122, 94, .14); }
+  [data-theme="light"] [data-provider="ollama"],
+  [data-theme="light"][data-provider="ollama"]    { --hue-weak: rgba(107, 107, 120, .16); }
+  [data-theme="light"] [data-provider="custom"],
+  [data-theme="light"][data-provider="custom"]    { --hue-weak: rgba(77, 89, 218, .14); }
   /* Theme-neutral gray for the off state when color-mix() is unavailable. */
   html[data-provider-colour="off"] [data-provider] { --hue-weak: rgba(128, 128, 128, .16); }
 }

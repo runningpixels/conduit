@@ -1,5 +1,6 @@
 import { BrandMark, MoonIcon, SearchIcon, SunIcon } from '../icons';
 import { WindowControls } from '../shell/WindowControls';
+import { modShortcutHint } from '../lib/shortcuts';
 
 export type ConnectionState = 'connected' | 'no-key' | 'local-only' | 'disconnected';
 
@@ -10,6 +11,12 @@ interface TitlebarProps {
   onOpenPalette: () => void;
   panelOpen: boolean;
   onTogglePanel: () => void;
+  /**
+   * Artifacts sitting in the hidden panel. Badged onto the toggle so the panel
+   * stays discoverable now that the full-height edge rail is gone; pass 0 (or
+   * omit) whenever the panel is open, since the count is visible in it.
+   */
+  hiddenArtifactCount?: number;
 }
 
 /**
@@ -25,7 +32,13 @@ export function Titlebar({
   onOpenPalette,
   panelOpen,
   onTogglePanel,
+  hiddenArtifactCount = 0,
 }: TitlebarProps) {
+  const panelHint = modShortcutHint('J');
+  const panelLabel = hiddenArtifactCount
+    ? `Show context panel (${hiddenArtifactCount} artifact${hiddenArtifactCount === 1 ? '' : 's'})`
+    : 'Toggle context panel';
+
   return (
     <header className="topbar" data-tauri-drag-region>
       <div className="mark">
@@ -41,7 +54,7 @@ export function Titlebar({
       >
         <SearchIcon />
         <span>Search chats, run a command, switch model…</span>
-        <kbd>⌘K</kbd>
+        <kbd>{modShortcutHint('K')}</kbd>
       </button>
 
       <div className="topbar-right">
@@ -55,11 +68,11 @@ export function Titlebar({
           {effectiveTheme === 'light' ? <SunIcon /> : <MoonIcon />}
         </button>
         <button
-          className="iconbtn"
+          className="iconbtn panel-toggle"
           type="button"
           aria-pressed={panelOpen}
-          aria-label="Toggle context panel"
-          title="Toggle context panel  ⌘J"
+          aria-label={panelLabel}
+          title={`${panelLabel}  ${panelHint}`}
           onClick={onTogglePanel}
         >
           <svg
@@ -72,6 +85,11 @@ export function Titlebar({
             <rect x="3" y="4" width="18" height="16" rx="2.5" />
             <path d="M15 4v16" />
           </svg>
+          {hiddenArtifactCount > 0 && (
+            <span className="panel-toggle-badge" aria-hidden="true">
+              {hiddenArtifactCount > 9 ? '9+' : hiddenArtifactCount}
+            </span>
+          )}
         </button>
         <WindowControls />
       </div>

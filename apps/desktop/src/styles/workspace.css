@@ -108,6 +108,30 @@ kbd {
 .iconbtn svg { width: 15px; height: 15px; }
 .iconbtn[aria-pressed="true"] { color: var(--ink); background: var(--card); }
 
+/* ── Context-panel toggle: artifact count while the panel is hidden ─────── */
+/* The only badge in the top bar, and the sole replacement for the edge rail,
+   so it is tinted with the provider hue rather than the neutral chrome. */
+.panel-toggle { position: relative; }
+.panel-toggle-badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  /* Rides on the topbar's --raised fill, so it needs its own ring to stay
+     legible where it overlaps the icon glyph beneath. */
+  border: 1px solid var(--raised);
+  background: var(--hue);
+  color: var(--bg);
+  font: 600 9px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 /* ── Body grid: sidebar | thread | context panel ───────────────────────── */
 .body {
   display: grid;
@@ -332,38 +356,11 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
   box-shadow: 0 0 18px -4px var(--hue);
 }
 
-.doc-panel-expand-tab {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  z-index: 30;
-  width: 28px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  border: 0;
-  border-left: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-  color: var(--ink-2);
-  cursor: pointer;
-  transition: var(--tap);
-  padding: 12px 0;
-}
-.doc-panel-expand-tab:hover {
-  color: var(--hue);
-  background: color-mix(in srgb, var(--hue-weak) 55%, var(--card));
-}
-.doc-panel-expand-tab svg { width: 14px; height: 14px; flex: none; }
-.doc-panel-expand-label {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  font: 600 11px/1 var(--font-ui);
-  letter-spacing: .04em;
-}
+/* The 28px full-height `.doc-panel-expand-tab` rail that used to sit here is
+   gone: the topbar already carries a context-panel toggle on the same command,
+   and a permanent vertical bar spending 28px of chat width to duplicate it is
+   not worth the chrome. `.panel-toggle-badge` above carries the discoverability
+   it provided. */
 
 /* ── Doc panel column ──────────────────────────────────────────────────── */
 /* Children carry a min-width equal to their open width so content does not
@@ -398,7 +395,6 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
      insetting (spec §4.3) — the overlay behaviour is a follow-up affordance. */
   .body { --sidebar-w: 0px !important; --panel-w: 0px !important; }
   .resize-handle { display: none; }
-  .doc-panel-expand-tab { display: none; }
 }
 @media (max-width: 720px) {
   /* out of scope per spec §2 */

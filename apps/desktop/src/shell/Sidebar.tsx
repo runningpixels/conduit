@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
+import { modShortcutHint } from '../lib/shortcuts';
 import {
   ConnectorsIcon,
   FolderIcon,
@@ -233,14 +234,14 @@ export function Sidebar({
         <button className="newchat" type="button" onClick={onNewChat}>
           <PlusIcon />
           New chat
-          <kbd>⌘N</kbd>
+          <kbd>{modShortcutHint('N')}</kbd>
         </button>
       </div>
 
       <div className="sb-list scroll sidebar-inner">
         {conversations.length === 0 ? (
           <div className="sb-empty">
-            No chats yet. <kbd>⌘N</kbd> starts one.
+            No chats yet. <kbd>{modShortcutHint('N')}</kbd> starts one.
           </div>
         ) : (
           groups.map(([group, rows]) => (
@@ -315,7 +316,7 @@ export function Sidebar({
             onClick={() => openSection('connectors')}
           />
           <MenuItem icon={<LockIcon />} label="Privacy &amp; data" onClick={() => openSection('privacy')} />
-          <MenuItem icon={<SettingsIcon />} label="Settings" kbd="⌘," onClick={() => openSection('appearance')} />
+          <MenuItem icon={<SettingsIcon />} label="Settings" kbd={modShortcutHint(',')} onClick={() => openSection('appearance')} />
           <div className="menu-sep" />
           <MenuItem
             icon={<DiagnosticsIcon />}

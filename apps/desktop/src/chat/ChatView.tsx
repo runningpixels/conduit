@@ -47,6 +47,7 @@ import { SuggestedPrompts } from './SuggestedPrompts';
 import { deriveSuggestedPrompts } from './suggestedPromptLogic';
 import { getMessageIdByRequest } from '../ipc/client';
 import { resolveWebSearchForTurn } from './webSearchIntent';
+import { modShortcutHint } from '../lib/shortcuts';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
 import {
@@ -1091,10 +1092,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 onSelect={handleSuggestionSelect}
               />
               <div className="hint-row">
-                <span className="hint"><kbd>⌘K</kbd> command palette</span>
-                <span className="hint"><kbd>⌘N</kbd> new chat</span>
-                <span className="hint"><kbd>⌘J</kbd> toggle panel</span>
-                <span className="hint"><kbd>⌘,</kbd> settings</span>
+                <span className="hint"><kbd>{modShortcutHint('K')}</kbd> command palette</span>
+                <span className="hint"><kbd>{modShortcutHint('N')}</kbd> new chat</span>
+                <span className="hint"><kbd>{modShortcutHint('J')}</kbd> toggle panel</span>
+                <span className="hint"><kbd>{modShortcutHint(',')}</kbd> settings</span>
               </div>
             </div>
           )}

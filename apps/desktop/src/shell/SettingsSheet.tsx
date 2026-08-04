@@ -35,6 +35,7 @@ import {
   writeExportMetadata,
 } from './uiPrefs';
 import { useFocusTrap } from './useFocusTrap';
+import { modKey } from '../lib/shortcuts';
 import { ChatIcon, ConnectorsIcon, LockIcon, SettingsIcon } from '../icons';
 
 export type SettingsSection =
@@ -302,7 +303,7 @@ export function SettingsSheet({
                     }}
                   >
                     <option value="enter">Enter</option>
-                    <option value="cmd-enter">⌘ + Enter</option>
+                    <option value="cmd-enter">{modKey()} + Enter</option>
                   </select>
                 </div>
               </div>

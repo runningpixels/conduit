@@ -154,21 +154,15 @@ describe('ChatView suggested prompts', () => {
     });
   });
 
-  it('shows starter prompts in an empty chat', async () => {
+  // The empty thread is a greeting and the composer (§10). The starter cards,
+  // the shortcut hint row and the duplicated model line were all removed, so
+  // the only suggestion surface left is the contextual follow-up row below.
+  it('shows only the greeting in an empty chat', async () => {
     renderChatView();
-    expect(await screen.findByLabelText('Suggested prompts')).toBeInTheDocument();
-    expect(screen.getByText('Draft a triage note summarizing our open GitHub issues.')).toBeInTheDocument();
-  });
-
-  it('fills the composer when a starter prompt is clicked', async () => {
-    renderChatView();
-    const promptButton = await screen.findByRole('button', {
-      name: /Draft a triage note summarizing our open GitHub issues/i,
-    });
-    fireEvent.click(promptButton);
-
-    const textarea = screen.getByLabelText('Message the active provider') as HTMLTextAreaElement;
-    expect(textarea.value).toBe('Draft a triage note summarizing our open GitHub issues.');
+    expect(
+      await screen.findByRole('heading', { name: /What are we working on\?/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Suggested follow-ups' })).not.toBeInTheDocument();
   });
 
   it('shows contextual follow-ups for a non-empty conversation', async () => {

@@ -3,10 +3,9 @@ import { looksLikeArtifactCreationRequest } from './artifactPrompt';
 import { resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
 import { looksLikeInformationalQuestion } from './documentTurnIntent';
 import type { ChatTurn } from './conversationHydration';
-import { STARTER_SUGGESTED_PROMPTS, type SuggestedPrompt } from './suggestedPromptData';
+import type { SuggestedPrompt } from './suggestedPromptData';
 
 export type { SuggestedPrompt } from './suggestedPromptData';
-export { STARTER_SUGGESTED_PROMPTS } from './suggestedPromptData';
 
 const MAX_SUGGESTIONS = 4;
 
@@ -14,25 +13,21 @@ const MAX_SUGGESTIONS = 4;
 const GENERIC_FOLLOW_UPS: readonly SuggestedPrompt[] = [
   {
     id: 'followup-summarize',
-    label: 'Summarize',
     text: 'Summarize the key points from your last reply in a short bullet list.',
     short: 'Summarize the key points',
   },
   {
     id: 'followup-clarify',
-    label: 'Clarify',
     text: 'What assumptions did you make, and what should I clarify?',
     short: 'What assumptions did you make?',
   },
   {
     id: 'followup-next',
-    label: 'Next steps',
     text: 'What are the concrete next steps I should take based on this?',
     short: 'Next steps',
   },
   {
     id: 'followup-markdown',
-    label: 'Markdown',
     text: 'Turn your last reply into a markdown artifact I can promote.',
     short: 'Turn this into an artifact',
   },
@@ -49,25 +44,21 @@ function artifactEditFollowUps(artifact: Artifact | undefined): SuggestedPrompt[
     // quoted title in every chip is what made them unreadable.
     {
       id: 'artifact-edit-improve',
-      label: 'Improve',
       text: `Improve ${subject} — tighten the wording and fix any gaps.`,
       short: 'Tighten the wording',
     },
     {
       id: 'artifact-edit-style',
-      label: 'Style',
       text: `Update ${subject} with a cleaner layout and better visual hierarchy.`,
       short: 'Clean up the layout',
     },
     {
       id: 'artifact-edit-section',
-      label: 'Add section',
       text: `Add a new section to ${subject} that covers edge cases and examples.`,
       short: 'Add a section',
     },
     {
       id: 'artifact-edit-convert',
-      label: 'Convert',
       text: `Convert ${subject} to a different format while keeping the same content.`,
       short: 'Convert the format',
     },
@@ -78,25 +69,21 @@ function artifactEditFollowUps(artifact: Artifact | undefined): SuggestedPrompt[
 const INFORMATIONAL_FOLLOW_UPS: readonly SuggestedPrompt[] = [
   {
     id: 'info-summarize',
-    label: 'Summarize',
     text: 'Summarize your explanation in three bullet points.',
     short: 'Summarize in three points',
   },
   {
     id: 'info-action-items',
-    label: 'Action items',
     text: 'Extract actionable next steps from your last reply.',
     short: 'Extract action items',
   },
   {
     id: 'info-markdown',
-    label: 'Markdown',
     text: 'Turn your last reply into a markdown artifact I can promote.',
     short: 'Turn this into an artifact',
   },
   {
     id: 'info-example',
-    label: 'Example',
     text: 'Show a concrete example that illustrates what you just explained.',
     short: 'Show an example',
   },
@@ -106,25 +93,21 @@ const INFORMATIONAL_FOLLOW_UPS: readonly SuggestedPrompt[] = [
 const CREATION_RETRY_FOLLOW_UPS: readonly SuggestedPrompt[] = [
   {
     id: 'create-retry-html',
-    label: 'HTML',
     text: 'Create a new HTML artifact with the full page in a ```html fence.',
     short: 'As HTML',
   },
   {
     id: 'create-retry-markdown',
-    label: 'Markdown',
     text: 'Create a new markdown artifact with the full document in a ```markdown fence.',
     short: 'As markdown',
   },
   {
     id: 'create-retry-json',
-    label: 'JSON',
     text: 'Create a new JSON artifact with the schema in a ```json fence.',
     short: 'As JSON',
   },
   {
     id: 'create-retry-outline',
-    label: 'Outline first',
     text: 'Outline the artifact structure first, then generate the full content.',
     short: 'Outline it first',
   },
@@ -147,12 +130,15 @@ export interface SuggestedPromptContext {
 }
 
 /**
- * Derive suggested prompts for the current chat state.
- * Empty thread → starter prompts; active conversation → contextual follow-ups.
+ * Derive contextual follow-up suggestions for the current chat state.
+ *
+ * An empty thread has none: it shows a greeting and the composer, and the
+ * starter prompt cards that used to fill it were removed with the rest of the
+ * empty-state furniture (§10).
  */
 export function deriveSuggestedPrompts({ turns, artifacts }: SuggestedPromptContext): SuggestedPrompt[] {
   if (turns.length === 0) {
-    return [...STARTER_SUGGESTED_PROMPTS];
+    return [];
   }
 
   const lastUser = lastTurn(turns, 'user');

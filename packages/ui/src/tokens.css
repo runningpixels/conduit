@@ -87,6 +87,10 @@
   --card-hi: #26262a;
   --line: #2c2c30;
   --line-soft: #212123;
+  /* Raised border weight. The composer's focus state is achromatic (spec §8.6),
+   * so the only signal it has is this step up from --line. It has to be legible
+   * on its own — colour is not carrying any of the load. */
+  --line-hi: #3f3f46;
   /* Three-step ink ramp. Every step clears WCAG AA (4.5:1) against every
    * surface above, including --card-hi; tokenContrast.test.ts asserts it.
    * --ink-3 in particular carries real copy (composer placeholder, sidebar
@@ -100,6 +104,12 @@
   --ok: #4ade80;
   --warn: #fbbf24;
   --err: #f87171;
+  /* Code that Prism cannot tokenise — inline spans, ```text, unknown languages.
+   * Deliberately not var(--hue): hue is provider identity, so code would change
+   * colour when you switch model and go grey under provider-colour: off. Code
+   * is a machine fact (§7's register rule), not provenance. Clears AA on all
+   * four surfaces; tokenContrast.test.ts checks it. */
+  --code: #e0a080;
 
   /* Hue is provider identity (spec §5.4); neutral fallback until data-provider lands */
   --hue: var(--ink-2);
@@ -165,6 +175,9 @@
   --fs-10xl: 20px;
   --fs-7xl: 25px;
   --fs-display: 25px;
+  /* One step above --fs-display, for the empty-thread greeting only (spec §7).
+   * Set at 400, not 600: at this size weight would read as shouting. */
+  --fs-hero: 32px;
 
   /* ── Scale tokens: line-height ── */
   --leading-tight: 1.25;
@@ -209,6 +222,7 @@
   --card-hi: #f5f3f1;
   --line: #e2dfdb;
   --line-soft: #ece9e6;
+  --line-hi: #c9c5c0;
   --ink: #1a1918;
   --ink-2: #53504c;
   --ink-3: #6e6a65;
@@ -217,6 +231,7 @@
   --ok: #15803d;
   --warn: #b45309;
   --err: #b91c1c;
+  --code: #a2532b;
   --shadow-color: rgba(20,30,40,.25);
   --shadow: var(--lift);
   --glow: 0 0 0 1px var(--hue-weak), 0 0 18px -8px var(--hue);

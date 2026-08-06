@@ -4,6 +4,7 @@ import { approveConnectorToolCall, denyConnectorToolCall } from '../ipc/client';
 import { splitToolDisplayName } from './connectorTools';
 import {
   DOCUMENT_TOOL_NAMES,
+  explainToolError,
   redactDocumentToolArguments,
   summarizeDocumentToolCall,
 } from './agentTools';
@@ -151,11 +152,15 @@ export function ToolCallBlock({
     }
     const redacted = redactDocumentToolArguments(toolCall.arguments ?? {}, toolCall.name);
     const json = JSON.stringify(redacted, null, 2);
+    const docFallback = 'The document was not created or updated.';
+    const docExplained = explainToolError(toolCall.error, docFallback);
     resultText =
       status === 'failed' ? (
         <>
-          <b>Document tool failed.</b>{' '}
-          {toolCall.error ?? 'The document was not created or updated.'}
+          <b>Couldn&rsquo;t {docSummary.action.toLowerCase()} the document.</b> {docExplained}
+          {toolCall.error && toolCall.error !== docExplained && (
+            <div className="tool-raw">{toolCall.error}</div>
+          )}
         </>
       ) : status === 'cancelled' ? (
         <b>Document tool cancelled.</b>
@@ -166,7 +171,7 @@ export function ToolCallBlock({
       <>
         {kvRows(rows)}
         {toolCall.complete && (
-          <div className="tool-out">{resultText}</div>
+          <div className={`tool-out${status === 'failed' ? ' tool-out-prose' : ''}`}>{resultText}</div>
         )}
         {!toolCall.complete && json && json !== '{}' && (
           <div className="tool-out">{json}</div>
@@ -183,10 +188,11 @@ export function ToolCallBlock({
       <>
         {kvRows(rows)}
         {toolCall.complete && consent !== 'denied' && (
-          <div className="tool-out">
+          <div className={`tool-out${status === 'failed' ? ' tool-out-prose' : ''}`}>
             {status === 'failed' ? (
               <>
-                <b>Tool call failed.</b> {toolCall.error ?? 'Result stored locally.'}
+                <b>Tool call failed.</b>{' '}
+                {explainToolError(toolCall.error, 'The tool returned no result.')}
               </>
             ) : status === 'cancelled' ? (
               <b>Tool call cancelled.</b>

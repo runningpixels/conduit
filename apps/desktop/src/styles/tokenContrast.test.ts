@@ -105,6 +105,12 @@ describe.each(Object.entries(THEMES))('%s theme', (_theme, block) => {
     expect(contrast(hex, surfaces.bg)).toBeGreaterThanOrEqual(AA);
     expect(contrast(hex, surfaces.card)).toBeGreaterThanOrEqual(AA);
   });
+
+  // --code carries body text (inline spans, plain fence bodies), so it is held
+  // to every surface it can sit on, like the ink ramp above.
+  it.each(SURFACES)('--code clears AA on --%s', (surface) => {
+    expect(contrast(readToken(block, 'code'), surfaces[surface])).toBeGreaterThanOrEqual(AA);
+  });
 });
 
 /**

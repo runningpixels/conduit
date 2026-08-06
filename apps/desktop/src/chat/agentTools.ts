@@ -196,11 +196,25 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-export const DOCUMENT_TOOL_NAMES = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name));
+/**
+ * The Documents group only.
+ *
+ * This was built from *every* builtin definition, so `uuid`, `calculator`,
+ * `web_search` and the clipboard tools all counted as document tools. A `uuid`
+ * call then rendered through `summarizeDocumentToolCall`, where the action and
+ * kind lookups miss and fall through to `?? 'Document'` and the content field
+ * is absent — printing "Documents / Document · Document / lines 0 / Document
+ * updated." for a tool that touched no document at all.
+ */
+export const DOCUMENT_TOOL_NAMES = new Set(
+  BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.displayGroup === DOCUMENT_TOOL_GROUP).map(
+    (tool) => tool.name,
+  ),
+);
 
 /** Document tools that create or edit content (excludes export). */
 export const DOCUMENT_CONTENT_TOOL_NAMES = new Set(
-  BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.name !== 'export_document').map((tool) => tool.name),
+  [...DOCUMENT_TOOL_NAMES].filter((name) => name !== 'export_document'),
 );
 
 export type DocumentToolPhase = 'start' | 'complete' | 'error';
@@ -361,6 +375,38 @@ export function summarizeDocumentToolCall(toolCall: ToolCallState): DocumentTool
     lineCount,
     charCount,
   };
+}
+
+/// Artifact `kind` as it appears in backend error strings → display word.
+const KIND_WORD: Record<string, string> = {
+  markdown: 'Markdown',
+  html: 'HTML',
+  code: 'Code',
+  json: 'JSON',
+  text: 'Text',
+};
+
+/// `ensure_kind` in `src-tauri/src/agent_tools.rs` — the only tool error whose
+/// wording maps to something a reader can act on.
+const KIND_MISMATCH = /^artifact '[^']+' is '([^']+)' not '([^']+)'$/;
+
+/**
+ * Translate a backend tool error into plain language.
+ *
+ * Tool errors are written for whoever is reading a log, and the raw string was
+ * previously the visible conclusion of a failed turn. Recognised errors get a
+ * sentence that says what happened and what to do; everything else falls back
+ * to the original text. Callers keep the raw string available either way.
+ */
+export function explainToolError(error: string | undefined, fallback: string): string {
+  if (!error) return fallback;
+  const mismatch = KIND_MISMATCH.exec(error.trim());
+  if (mismatch) {
+    const actual = KIND_WORD[mismatch[1]] ?? mismatch[1];
+    const expected = KIND_WORD[mismatch[2]] ?? mismatch[2];
+    return `This document is ${actual} and a document's format is fixed once it is created. Ask for a new ${expected} document instead of converting this one.`;
+  }
+  return error;
 }
 
 /** Redact the large content field(s) from arguments for compact display. */

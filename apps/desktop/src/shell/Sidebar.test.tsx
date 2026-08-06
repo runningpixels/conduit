@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, afterAll, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ConversationSummary } from '../ipc/contracts';
 import { Sidebar, conversationGroup } from './Sidebar';
@@ -53,6 +53,18 @@ describe('Sidebar', () => {
     onExportDiagnostics: vi.fn(),
     onDeleteAllHistory: vi.fn(),
   };
+
+  // `conversationGroup` is called with the real clock inside the component, so
+  // the fixtures above only mean "Today" and "Yesterday" on 2026-08-03. Pin the
+  // clock to that date: the pure-function tests already pass an explicit NOW,
+  // and without this the suite breaks every time the date rolls over.
+  beforeAll(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+  });
+  afterAll(() => {
+    vi.useRealTimers();
+  });
 
   beforeEach(() => {
     props.onSelectConversation.mockClear();

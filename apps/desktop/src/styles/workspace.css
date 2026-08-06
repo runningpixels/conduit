@@ -267,10 +267,18 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
 .wschip > svg { width: 13px; height: 13px; color: var(--ink-3); flex: 0 0 auto; }
 
 /* ── Menus (shared) ────────────────────────────────────────────────────── */
+/* A menu anchored `right: n` with `left: auto` and no width is shrink-to-fit:
+ * it sizes to its max-content and grows *leftward* from that anchor, with
+ * nothing to stop it. `.doc-more-menu` renders a full Windows artifact path,
+ * which is one unbreakable token (no spaces, and `\` is not a break
+ * opportunity), so the menu widened to the whole path and ran off the left edge
+ * of the window. The cap is the same idiom `.toast-stack` and
+ * `.composer-popover` already use. */
 .menu {
   position: absolute;
   z-index: 60;
   min-width: 216px;
+  max-width: min(360px, calc(100vw - 32px));
   padding: 5px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -283,12 +291,18 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
 }
 .menu[data-open="true"] { opacity: 1; transform: none; pointer-events: auto; }
 .ws-menu { left: 8px; right: 8px; bottom: 52px; }
+/* Carries the artifact path in the panel's ⋯ menu. Ellipsised rather than
+ * wrapped, matching `.panel-foot .foot-path` — the element already has a
+ * `title` with the full path, so truncation loses nothing. */
 .menu-label {
   padding: 7px 9px 4px;
   font-size: 10px;
   letter-spacing: .07em;
   text-transform: uppercase;
   color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .menu-item {
   width: 100%;

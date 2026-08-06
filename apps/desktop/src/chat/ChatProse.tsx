@@ -10,8 +10,10 @@ import {
   uniqueFootnotes,
 } from './citationUtils';
 import type { CitationAnnotation } from './streamState';
-import type { Artifact } from '../ipc/contracts';
+import type { Artifact, FileState } from '../ipc/contracts';
 import { InlineCodeBlock } from './InlineCodeBlock';
+import { InlineArtifactCard } from './InlineArtifactCard';
+import { findPromotedArtifact, shouldRenderAsCard } from './inlineArtifact';
 
 interface ChatProseProps {
   content: string;
@@ -20,8 +22,12 @@ interface ChatProseProps {
   showCitations?: boolean;
   messageId?: string;
   artifacts?: Artifact[];
+  /// Per-artifact file state, for the state dot on inline artifact cards.
+  fileStateMap?: Record<string, FileState>;
   onPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
   onOpenArtifact?: (artifactId: string) => void;
+  /// Surfaces artifact-card IPC results on the app status line.
+  onStatus?: (message: string) => void;
 }
 
 function renderMarkdownWithCitations(
@@ -48,8 +54,10 @@ export function ChatProse({
   showCitations = true,
   messageId,
   artifacts,
+  fileStateMap,
   onPromoteArtifact,
   onOpenArtifact,
+  onStatus,
 }: ChatProseProps) {
   const raw = content || '';
   const deduped = showCitations ? dedupeCitationsByUrl(citations) : [];
@@ -72,11 +80,32 @@ export function ChatProse({
             </div>
           );
         }
+        // Documents render as a card; snippets stay readable as source. While
+        // streaming the source always wins — it is the only place generation
+        // is visible until the turn completes (§8.5).
+        const fenceStreaming = streaming && isLast;
+        if (shouldRenderAsCard(seg.candidate, fenceStreaming)) {
+          const promoted = messageId
+            ? findPromotedArtifact(artifacts ?? [], messageId, seg.candidate)
+            : undefined;
+          return (
+            <InlineArtifactCard
+              key={`f${idx}`}
+              candidate={seg.candidate}
+              promoted={promoted}
+              messageId={messageId}
+              fileState={promoted ? fileStateMap?.[promoted.id] : undefined}
+              onPromote={onPromoteArtifact}
+              onOpenArtifact={onOpenArtifact}
+              onStatus={onStatus}
+            />
+          );
+        }
         return (
           <InlineCodeBlock
             key={`f${idx}`}
             candidate={seg.candidate}
-            streaming={streaming && isLast}
+            streaming={fenceStreaming}
             messageId={messageId}
             artifacts={artifacts}
             onPromote={onPromoteArtifact}

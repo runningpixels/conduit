@@ -6,7 +6,7 @@ import { DocumentPanel } from './DocumentPanel';
 vi.mock('../ipc/client', () => ({
   getArtifactContentBytes: vi.fn().mockResolvedValue([]),
   readArtifactFileBytes: vi.fn().mockResolvedValue([]),
-  revealArtifact: vi.fn().mockResolvedValue(undefined),
+  revealPath: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
@@ -123,7 +123,9 @@ describe('DocumentPanel V7 chrome', () => {
     openOverflowMenu();
     expect(screen.getByRole('menuitem', { name: 'Copy contents' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Save a copy…' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeDisabled();
+    // "Reveal in Explorer" is gone: a text-backed artifact has no file on disk,
+    // so the item was permanently disabled. Save a copy… now reveals the export.
+    expect(screen.queryByRole('menuitem', { name: /reveal/i })).toBeNull();
     // Metadata block: path label + size · modified row.
     expect(screen.getAllByText('(inline payload)').length).toBeGreaterThan(0);
     expect(screen.getByText(/14 B · modified/)).toBeInTheDocument();
@@ -169,9 +171,11 @@ describe('DocumentPanel chrome', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
-  it('shows collapse control on the empty state when provided', () => {
-    const onCollapsePanel = vi.fn();
-    render(
+  // The empty panel renders no toolbar at all. The bar it used to show held
+  // nothing but a spacer and this button — 44px of blank chrome above a state
+  // that already says the panel is empty. Hiding is the top bar's job (and ⌘J).
+  it('renders no toolbar or collapse control on the empty state', () => {
+    const { container } = render(
       <DocumentPanel
         artifact={null}
         openArtifacts={[]}
@@ -183,11 +187,12 @@ describe('DocumentPanel chrome', () => {
         onOpenArtifact={vi.fn()}
         onSaveContent={vi.fn()}
         onExport={vi.fn()}
-        onCollapsePanel={onCollapsePanel}
+        onCollapsePanel={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Hide artifact panel' }));
-    expect(onCollapsePanel).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Hide artifact panel' })).toBeNull();
+    expect(container.querySelector('.doc-toolbar')).toBeNull();
+    expect(screen.getByText('Artifacts live here')).toBeInTheDocument();
   });
 
   it('shows a close control when only one artifact is open', () => {

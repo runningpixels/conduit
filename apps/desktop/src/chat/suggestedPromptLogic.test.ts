@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Artifact } from '../ipc/contracts';
 import type { ChatTurn } from './conversationHydration';
-import { deriveSuggestedPrompts, STARTER_SUGGESTED_PROMPTS } from './suggestedPromptLogic';
+import { deriveSuggestedPrompts } from './suggestedPromptLogic';
 
 const htmlArtifact: Artifact = {
   id: 'art-1',
@@ -12,9 +12,11 @@ const htmlArtifact: Artifact = {
 };
 
 describe('deriveSuggestedPrompts', () => {
-  it('returns starter prompts for an empty thread', () => {
+  // The empty thread is a greeting and the composer — no suggestion surface at
+  // all — so there is nothing to derive until a turn exists (§10).
+  it('returns no prompts for an empty thread', () => {
     const prompts = deriveSuggestedPrompts({ turns: [], artifacts: [] });
-    expect(prompts).toEqual([...STARTER_SUGGESTED_PROMPTS]);
+    expect(prompts).toEqual([]);
   });
 
   it('suggests artifact edits when a document artifact is in scope', () => {

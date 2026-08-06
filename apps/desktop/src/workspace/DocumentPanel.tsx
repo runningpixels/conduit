@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
-import { getArtifactContentBytes, readArtifactFileBytes, revealArtifact } from '../ipc/client';
+import { getArtifactContentBytes, readArtifactFileBytes, revealPath } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
-import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, FolderIcon, DownloadIcon } from '../icons';
+import { formatSize, inlineArtifactText, timeAgo } from '../artifacts/format';
+import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
 import { readExportMetadata } from '../shell/uiPrefs';
 import { modShortcutHint } from '../lib/shortcuts';
@@ -34,41 +35,6 @@ function tabStateClass(state: FileState): string {
   return '';
 }
 
-/// Derive the raw inline text for Copy + Source pane: prefer `contentText`,
-/// fall back to pretty-printed `contentJson`, else empty.
-function rawInlineText(artifact: Artifact): string {
-  if (artifact.contentText != null) return artifact.contentText;
-  if (artifact.contentJson != null) {
-    try {
-      return JSON.stringify(artifact.contentJson, null, 2);
-    } catch {
-      return String(artifact.contentJson);
-    }
-  }
-  return '';
-}
-
-function formatSize(bytes?: number): string {
-  if (bytes == null) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-/// Compact relative timestamp for the foot strip + ⋯ metadata block.
-function timeAgo(iso?: string): string {
-  if (!iso) return 'never';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms) || ms < 0) return 'just now';
-  const mins = Math.round(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 /// Version label for the metadata block + foot (sidecar metadata only; the
 /// artifact model has no version history — contracts.ts note).
@@ -183,7 +149,7 @@ export function DocumentPanel({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const raw = useMemo(() => (artifact ? rawInlineText(artifact) : ''), [artifact]);
+  const raw = useMemo(() => (artifact ? inlineArtifactText(artifact) : ''), [artifact]);
   const isFilePayload = artifact?.contentPath != null;
   const multiOpen = openArtifacts.length > 1;
   const collapseHint = modShortcutHint('J');
@@ -217,7 +183,7 @@ export function DocumentPanel({
     return artifact;
   }, [artifact, loadedText]);
 
-  const sourceText = useMemo(() => (effectiveArtifact ? rawInlineText(effectiveArtifact) : ''), [effectiveArtifact]);
+  const sourceText = useMemo(() => (effectiveArtifact ? inlineArtifactText(effectiveArtifact) : ''), [effectiveArtifact]);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedSource, setSavedSource] = useState(false);
@@ -283,12 +249,7 @@ export function DocumentPanel({
   }
 
   if (!artifact) {
-    return (
-      <ArtifactEmptyState
-        onCollapsePanel={onCollapsePanel}
-        collapseShortcutHint={collapseHint}
-      />
-    );
+    return <ArtifactEmptyState />;
   }
 
   const name = artifact.title ?? 'Untitled artifact';
@@ -336,26 +297,27 @@ export function DocumentPanel({
     }
   }
 
+  /// Export, then show the user where the file landed. This absorbs the old
+  /// "Reveal in Explorer" item, which was disabled in every real session:
+  /// artifact payloads live in the database as text, so `contentPath` is never
+  /// set and there is no file to reveal until an export writes one.
   async function handleExport() {
     if (!artifact || exporting) return;
     setExporting(true);
     try {
       await onExport(artifact.id, includeMetadata);
       setMenuOpen(false);
+      // The export has already been reported by the App status line; a file
+      // manager that refuses to open must not make it look like a failure.
+      try {
+        await revealPath();
+      } catch {
+        /* export succeeded; revealing is a convenience */
+      }
     } catch {
       /* failure surfaces via the App status line */
     } finally {
       setExporting(false);
-    }
-  }
-
-  async function handleReveal() {
-    if (!artifact || !isFilePayload) return;
-    setMenuOpen(false);
-    try {
-      await revealArtifact(artifact.id);
-    } catch (e) {
-      onStatus?.(e instanceof Error ? e.message : 'Could not reveal artifact');
     }
   }
 
@@ -565,16 +527,6 @@ export function DocumentPanel({
               <button className="menu-item" type="button" role="menuitem" disabled={!raw} onClick={() => void handleCopy()}>
                 <CopyIcon />
                 {copied ? 'Copied' : 'Copy contents'}
-              </button>
-              <button
-                className="menu-item"
-                type="button"
-                role="menuitem"
-                disabled={!isFilePayload}
-                onClick={() => void handleReveal()}
-              >
-                <FolderIcon />
-                Reveal in Explorer
               </button>
               <button
                 className="menu-item"

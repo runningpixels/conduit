@@ -1,18 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ChatProse } from './ChatProse';
 import { TurnModelLine } from './TurnModelLine';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
-import type { ArtifactCandidate } from './artifactCandidates';
+import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
+import { inlineArtifactIds } from './inlineArtifact';
 import { CheckIcon, CopyIcon, ForkIcon, PencilIcon, TrashIcon } from '../icons';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ToolCallBlock } from './ToolCallBlock';
 import { SearchCallGroup } from './SearchCallGroup';
 import { isWebSearchToolCall } from './SearchCallBlock';
 import { UsageSummary } from './UsageSummary';
-import { AssistantArtifactStrip } from './ArtifactRefChip';
+import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { providerHueId } from '../lib/providerIdentity';
 
 interface AssistantMessageProps {
@@ -30,15 +31,18 @@ interface AssistantMessageProps {
   /// Real persisted message id (for artifact linkage). Absent for the
   /// still-streaming live message — the strip hides promote affordances then.
   messageId?: string;
-  /// Conversation artifacts, for the in-chat reference chips.
+  /// Conversation artifacts, for the in-chat result cards.
   artifacts?: Artifact[];
-  /// Per-artifact file-state, for the chip state dots.
+  /// Per-artifact file-state, for the card state dots.
   fileStateMap?: Record<string, FileState>;
   /// Promote a detected fenced-block candidate to an artifact (App handles the
   /// create + setContent + open flow).
   onPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
-  /// Open an existing artifact in the DocumentPanel (chip click).
+  /// Open an existing artifact in the DocumentPanel (result-card primary action).
   onOpenArtifact?: (artifactId: string) => void;
+  /// Surface artifact-card IPC results (export destination, failures) on the
+  /// app status line.
+  onStatus?: (message: string) => void;
   /// P3.1 — retry this turn (remove last assistant turn + resend the prompt).
   onRetry?: () => void;
   /// P3.2 — delete this turn (removes the last assistant turn from local history).
@@ -108,6 +112,7 @@ export function AssistantMessage({
   fileStateMap,
   onPromoteArtifact,
   onOpenArtifact,
+  onStatus,
   onRetry,
   onDelete,
   onCopy,
@@ -121,6 +126,14 @@ export function AssistantMessage({
   const grouped = groupToolCalls(otherToolCalls);
   const elapsed = useLiveElapsed(state.streaming);
   const tokenCount = Math.round(text.length / 4);
+
+  // Artifacts already shown as a card inside the message body. Without this the
+  // same artifact appears twice in one turn — once where it was produced and
+  // again in the end-of-turn strip.
+  const inlineCardIds = useMemo(
+    () => inlineArtifactIds(detectArtifactCandidates(text), artifacts ?? [], messageId),
+    [text, artifacts, messageId],
+  );
 
   async function handleCopy() {
     if (!text) return;
@@ -150,22 +163,17 @@ export function AssistantMessage({
         <TurnModelLine provider={provider} model={modelId ?? ''} time={time} switchedFrom={switchedFrom} />
       )}
 
-      {/* Live generation meta + agent phase: transient mono facts, shown only
-          while streaming or in the agent loop. */}
-      {(state.agentPhase || (state.streaming && elapsed > 0)) && (
+      {/* Live generation meta: transient, streaming-only. The "Round n/m" badge
+          that used to sit here reported the agent-loop step against `max_steps`
+          — a ceiling that is essentially never approached, so it read as
+          alarming progress toward a limit that was not real. `ThinkingIndicator`
+          still surfaces the phase in words ("Running 2 tools…"). */}
+      {state.streaming && elapsed > 0 && (
         <div className="turn-meta">
-          {state.agentPhase && (
-            <span className="phase-badge" title={state.agentPhase.subPhase}>
-              Round {state.agentPhase.round}
-              {state.agentPhase.totalRounds ? `/${state.agentPhase.totalRounds}` : ''}
-            </span>
-          )}
-          {state.streaming && (
-            <span className="msg-meta">
-              <span className="live-dot" aria-hidden="true" />
-              {elapsed}s · {tokenCount} tok
-            </span>
-          )}
+          <span className="msg-meta">
+            <span className="live-dot" aria-hidden="true" />
+            {elapsed}s · {tokenCount} tok
+          </span>
         </div>
       )}
 
@@ -209,8 +217,10 @@ export function AssistantMessage({
             streaming={state.streaming}
             messageId={messageId}
             artifacts={artifacts}
+            fileStateMap={fileStateMap}
             onPromoteArtifact={onPromoteArtifact}
             onOpenArtifact={onOpenArtifact}
+            onStatus={onStatus}
           />
         ))
       ) : (
@@ -219,8 +229,10 @@ export function AssistantMessage({
           streaming={state.streaming}
           messageId={messageId}
           artifacts={artifacts}
+          fileStateMap={fileStateMap}
           onPromoteArtifact={onPromoteArtifact}
           onOpenArtifact={onOpenArtifact}
+          onStatus={onStatus}
         />
       )}
       {grouped.map((entry, i) =>
@@ -241,7 +253,9 @@ export function AssistantMessage({
           messageId={messageId}
           artifacts={artifacts ?? []}
           fileStateMap={fileStateMap}
+          excludeArtifactIds={inlineCardIds}
           onOpenArtifact={onOpenArtifact}
+          onStatus={onStatus}
         />
       )}
 

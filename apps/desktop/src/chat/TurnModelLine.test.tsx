@@ -3,8 +3,11 @@ import { render, screen } from '@testing-library/react';
 import { shouldShowModelLine, TurnModelLine } from './TurnModelLine';
 
 describe('shouldShowModelLine (§6.4)', () => {
-  it('shows for the first assistant turn', () => {
-    expect(shouldShowModelLine(undefined, { provider: 'anthropic', model: 'claude-sonnet-4' })).toBe(true);
+  // The line reports a *change*. On the first turn nothing has changed yet, and
+  // the provenance strip under the composer already names the active model, so
+  // opening every conversation with this caption reported nothing new.
+  it('hides on the first assistant turn', () => {
+    expect(shouldShowModelLine(undefined, { provider: 'anthropic', model: 'claude-sonnet-4' })).toBe(false);
   });
 
   it('hides when provider and model are unchanged', () => {

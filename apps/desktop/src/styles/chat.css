@@ -6,11 +6,21 @@
 .turn { position: relative; margin-bottom: var(--sp-6); }
 .turn:last-child { margin-bottom: var(--sp-4); }
 
-.turn.user { display: flex; justify-content: flex-end; }
+/* Column, not row: `.bubble`, the interrupted banner and `.turn-actions` are all
+   children of `.turn.user`. As a row, the `opacity: 0` action bar still claimed
+   ~170px of track to the right of the bubble, so `justify-content: flex-end`
+   right-aligned the *pair* and every bubble stopped short of the column edge —
+   reading as centred, and shrinking long bubbles below their max-width. */
+.turn.user { display: flex; flex-direction: column; align-items: flex-end; }
 .bubble {
-  max-width: 82%;
-  background: var(--card);
-  border: 1px solid var(--line-soft);
+  /* 72%, not 82%: at 82% a long message spans nearly the full column and the
+     left/right rhythm that carries the speaker distinction disappears. */
+  max-width: 72%;
+  /* --card-hi rather than --card: it moves away from --bg in both themes
+     (lighter in dark, darker in light), so the bubble reads as raised in each.
+     --card is only ~12/255 off --bg in dark, which was invisible. */
+  background: var(--card-hi);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
   padding: 11px 15px;
   font-size: 14.5px;
@@ -18,17 +28,13 @@
 }
 .bubble p { margin: 0; white-space: pre-wrap; }
 
-/* assistant: full width, flat, identified only by the 2px provider rule */
-.turn.assistant { padding-left: var(--sp-4); border-left: 2px solid var(--hue); }
-.turn.assistant::before {
-  content: "";
-  position: absolute;
-  left: -2px;
-  top: 0;
-  width: 2px;
-  height: 100%;
-  background: linear-gradient(to bottom, var(--hue), transparent 88%);
-}
+/* Assistant: full width, flat, no rule and no indent — role is carried by shape
+ * and alignment alone (§8.3), which the user bubble's right alignment already
+ * provides. The 2px --hue rule this replaces was reporting provider identity,
+ * and the provenance strip under the composer is that fact's one home (§6.3).
+ * Prose now starts flush with the thread column's left edge, mirroring the user
+ * bubble's right edge. The `padding-left` went with the border: it existed only
+ * to clear it, and would otherwise have left an orphan 16px indent. */
 
 /* the model line appears only when provider/model differs from the previous turn */
 .turn-model {
@@ -81,8 +87,17 @@
 .prose { font-size: 14.5px; line-height: 1.68; color: var(--ink); }
 .prose p { margin: 0 0 var(--sp-3); }
 .prose p:last-child { margin-bottom: 0; }
-.prose code {
-  font: 500 12.5px/1 var(--font-mono);
+/* Inline code. `.md-code` is what safeMarkdown emits; the bare `code` catches
+ * non-markdown spans (user bubbles). These were two byte-identical rules, so a
+ * change to one silently skipped the other — one selector list now.
+ *
+ * The colour is the point: this rule previously declared none, so inline code
+ * inherited `--ink` and read as prose in a box. Code is a machine fact, and §7
+ * already gives that category its own face; this gives it its own colour too. */
+.prose code,
+.chat-prose .md-code {
+  font: 600 12.5px/1 var(--font-mono);
+  color: var(--code);
   background: var(--card);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-xs);
@@ -100,13 +115,6 @@
 .chat-prose ul, .chat-prose ol { margin: 0 0 11px; padding-left: 1.35em; }
 .chat-prose li { margin-bottom: 4px; }
 .chat-prose-segment { margin-bottom: 4px; }
-.chat-prose .md-code {
-  font: 500 12.5px/1 var(--font-mono);
-  background: var(--card);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-xs);
-  padding: 2px 5px;
-}
 .cite {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -237,6 +245,17 @@
   white-space: pre-wrap;
 }
 .tool-out b { color: var(--ink); font-weight: 500; }
+/* A failure explanation is a sentence, not machine output. The mono column
+   below it (.tool-raw) is where the original backend string still lives. */
+.tool-out-prose { font-family: var(--font-ui); font-size: 12.5px; line-height: 1.5; }
+.tool-raw {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
 
 /* running tool card: hue left edge + slow sweep (same signal as the V6 pill) */
 .tool.running { border-left: 2px solid var(--hue); position: relative; }
@@ -291,9 +310,18 @@
 .tico svg { width: 13px; height: 13px; color: var(--ink-2); }
 .tname { font: 600 12px/1 var(--font-mono); }
 
-/* Inline code blocks in chat (inline-first rendering) */
+/* Inline code blocks in chat (inline-first rendering).
+ *
+ * Symmetric margin. `.chat-prose` is a plain block container — no flex/grid
+ * `gap` — so every gap here comes from adjacent-sibling margin collapsing, and
+ * neither `.chat-prose-segment` nor `.prose p` sets a `margin-top`. A
+ * bottom-margin of 0 therefore left the following paragraph flush against the
+ * block's border while the 10px top margin made the gap above look correct.
+ * --sp-3 matches `.prose p`'s bottom margin, so blocks sit on the paragraph
+ * rhythm; collapsing keeps the gap at 12px rather than summing with the
+ * neighbour's 4px. */
 .inline-code-block {
-  margin: 10px 0 0;
+  margin: var(--sp-3) 0;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-sm);
   background: var(--card);
@@ -342,6 +370,14 @@
   color: var(--ink-2);
   font: 500 11.5px/1.55 var(--font-mono);
 }
+/* Only when Prism produced no tokens — a ```text formula, or a language with no
+ * grammar. Those rendered flat --ink-2, i.e. *dimmer* than the prose around
+ * them, which is backwards for the one thing in the paragraph that is machine
+ * output. Colouring the body unconditionally would repaint the plain runs and
+ * punctuation of a highlighted block and fight the --syn-* palette, so the
+ * component sets data-plain only when `highlighted` came back null. */
+.inline-code-block-body[data-plain="true"],
+.inline-artifact-source[data-plain="true"] { color: var(--code); }
 .inline-code-block-body code {
   background: none;
   border: none;
@@ -350,8 +386,10 @@
   color: inherit;
 }
 
+/* Markdown fallback block (fences that fail `resolveKind`). Same symmetric
+ * margin as `.inline-code-block` above, for the same reason. */
 .chat-prose .md-pre {
-  margin: 10px 0 0;
+  margin: var(--sp-3) 0;
   padding: 10px 12px;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-sm);
@@ -360,7 +398,9 @@
   max-height: 420px;
   white-space: pre-wrap;
   font: 500 11.5px/1.55 var(--font-mono);
-  color: var(--ink-2);
+  /* Never tokenised — safeMarkdown emits no token spans and this class is not
+   * in syntax.css's scope list — so it takes the code colour unconditionally. */
+  color: var(--code);
 }
 .chat-prose .md-pre code {
   background: none;
@@ -388,75 +428,99 @@
 .consent p { margin: 0 0 9px; font-size: 12.5px; color: var(--ink); }
 .consent .row { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ── M2: in-chat artifact affordances (promote buttons + reference chips) ── */
+/* ── Inline artifact card (§8.5) ────────────────────────────────────────────
+ * A document fence renders here instead of as a source dump. Same vertical
+ * rhythm as `.inline-code-block`, which it replaces in the prose flow. */
+.inline-artifact { margin: var(--sp-3) 0; }
+/* Quiet by design: the card above it carries the turn's result, and this only
+   exists for the reader who wants to check the source without leaving the
+   transcript. */
+.inline-artifact-toggle {
+  margin-top: 6px;
+  padding: 3px 0;
+  font: 500 11.5px/1 var(--font-ui);
+  color: var(--ink-3);
+  transition: var(--tap);
+}
+.inline-artifact-toggle:hover { color: var(--ink-2); }
+.inline-artifact-source {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 500 11.5px/1.55 var(--font-mono);
+  color: var(--ink-2);
+}
+.inline-artifact-source code {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+/* ── In-chat artifact affordances (result cards) ────────────────────────── */
+/* Column, not a wrapped pill row: each artifact is a full-width result, so two
+   of them stack rather than competing for one line. */
 .artifact-strip {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   margin-top: 10px;
 }
 .artifact-strip:empty { display: none; }
-.artifact-promote {
-  display: inline-flex;
+/* Result card. The pill this replaces opened the context panel on click, but
+   nothing on screen said so; the card states the kind, the size and the action. */
+.artifact-card {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  font: 500 12px/1 var(--font-ui);
-  border-radius: var(--r-pill);
-}
-.artifact-promote svg { width: 14px; height: 14px; flex: none; }
-.artifact-ref-chip {
-  cursor: pointer;
-  gap: 6px;
-  max-width: 280px;
-}
-.artifact-ref-chip:hover { border-color: var(--line); color: var(--ink); }
-.artifact-ref-chip svg { width: 13px; height: 13px; flex: none; color: var(--ink-3); }
-.artifact-ref-chip .arc-kind { color: var(--ink-3); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
-.artifact-ref-chip .arc-title { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
-.artifact-ref-chip .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--ink-3); }
-.artifact-ref-chip .dot.ok { background: var(--ok); }
-.artifact-ref-chip .dot.warn { background: var(--warn); }
-.artifact-ref-chip .dot.bad { background: var(--err); }
-.artifact-ref-chip .dot.hold { background: var(--ink-3); }
-
-/* ── Suggested prompts ──────────────────────────────────────────────────── */
-.suggested-prompts-empty {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
-  text-align: left;
-}
-.suggested-prompt-card {
-  display: block;
-  width: 100%;
-  text-align: left;
+  gap: 12px;
+  padding: 10px 12px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r);
-  padding: 12px 14px;
-  cursor: pointer;
-  transition: var(--tap);
+  transition: background var(--tap), border-color var(--tap);
 }
-.suggested-prompt-card:hover {
-  background: var(--card);
-  border-color: var(--line);
-}
-.suggested-prompt-label {
-  display: block;
+.artifact-card:hover { background: var(--card-hi); }
+/* Hue-weak tile with a hue glyph — the artifact file icon treatment (§6.2). */
+.artifact-card-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--hue-weak);
   color: var(--hue);
-  font: 700 10.5px/1 var(--font-mono);
-  letter-spacing: .08em;
-  margin-bottom: 4px;
-  text-transform: uppercase;
 }
-.suggested-prompt-text {
-  display: block;
+.artifact-card-icon svg { width: 16px; height: 16px; }
+.artifact-card-body { flex: 1; min-width: 0; }
+.artifact-card-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.artifact-card-name {
   color: var(--ink);
   font-size: 13px;
-  line-height: 1.45;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.artifact-card-meta { margin-top: 2px; color: var(--ink-3); font-size: 11.5px; }
+.artifact-card .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--ink-3); }
+.artifact-card .dot.ok { background: var(--ok); }
+.artifact-card .dot.warn { background: var(--warn); }
+.artifact-card .dot.bad { background: var(--err); }
+.artifact-card .dot.hold { background: var(--ink-3); }
+.artifact-card-open { flex: none; }
+.artifact-card-overflow { position: relative; flex: none; }
+/* Own offsets rather than .doc-more-menu's, which are tuned to the 44px panel head. */
+.artifact-card-menu { top: 36px; right: 0; }
+
+/* ── Suggested prompts ──────────────────────────────────────────────────── */
 /* Inline follow-ups share the composer's column: same --measure, same centring
    and the same --bg, so the two read as one block. The previous version was a
    full-bleed --card band sitting above a centred composer, which put a hard
@@ -509,19 +573,17 @@
   overflow: hidden;
   --composer-max-height: 180px;
 }
-.composer::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--hue);
-  opacity: 0;
-  transition: var(--tap);
-}
-.composer:focus-within { border-color: var(--hue); box-shadow: 0 0 0 3px var(--hue-weak); }
-.composer:focus-within::before { opacity: 1; }
+/* Achromatic focus (spec §2 principle 4, §8.6). The resting composer is chrome,
+ * not provenance, so it carries no hue: focus is a single step from --line to
+ * --line-hi. This replaced four stacked accent effects — a --hue border, a 3px
+ * --hue-weak ring, a 2px --hue rail on ::before, and the textarea's own
+ * `box-shadow: var(--glow)` from tokens.css — which together read as an alert
+ * state rather than a caret position. */
+.composer:focus-within { border-color: var(--line-hi); }
+/* `:focus-visible` always matches for text inputs, including mouse focus, so
+ * the global textarea glow fired on every click. The container's border is the
+ * composer's focus signal; the glow would be a second one in --hue. */
+.composer textarea:focus-visible { box-shadow: none; }
 .composer textarea {
   width: 100%;
   border: 0;
@@ -678,22 +740,27 @@
 }
 .tool-btn:hover { background: var(--card); color: var(--ink); }
 .tool-btn svg { width: 16px; height: 16px; }
-/* Phase 7 / M-WebSearch: active search toggle. */
-.tool-btn.search-active { background: var(--hue); color: var(--bg); }
-.tool-btn.search-active:hover { background: var(--hue); }
+/* Phase 7 / M-WebSearch: active search toggle. Per-turn state, so it keeps its
+ * accent — but as the --hue-weak wash the spec specifies (§8.6), not the solid
+ * fill it shipped with, which competed with the send button beside it. */
+.tool-btn.search-active { background: var(--hue-weak); color: var(--hue); }
+.tool-btn.search-active:hover { background: var(--hue-weak); color: var(--hue); }
+/* The accent arrives with the ability to act. `disabled` tracks
+ * `!prompt.trim()` in Composer.tsx, so the armed state needs no extra state. */
 .send {
   margin-left: auto;
   width: 34px;
   height: 34px;
   border-radius: var(--r);
-  background: var(--hue);
-  color: var(--bg);
+  background: var(--card-hi);
+  color: var(--ink-3);
   border: 0;
   display: grid;
   place-items: center;
   transition: var(--tap);
 }
-.send:hover { background: var(--hue); filter: none; }
+.send:not(:disabled) { background: var(--hue); color: var(--bg); }
+.send:hover { filter: none; }
 .send svg { width: 17px; height: 17px; }
 .send.stop { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
 .send.stop:hover { border-color: var(--err); color: var(--err); filter: none; }
@@ -781,8 +848,22 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
   border-color: color-mix(in srgb, var(--err) 40%, var(--line));
 }
 .toast-body { display: grid; gap: 4px; min-width: 0; flex: 1; }
-.toast-brief { font: 600 12.5px/1.3 var(--font-ui); }
-.toast-detail { color: var(--ink-2); font-size: 12px; line-height: 1.4; }
+/* `min-width: 0` on the body caps the flex item, but the grid track inside is
+ * still floored at its children's min-content. A toast reports export paths and
+ * raw IPC errors, and a Windows path is one unbreakable token — without these
+ * the track blew out through the card's right edge. */
+.toast-brief {
+  font: 600 12.5px/1.3 var(--font-ui);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast-detail {
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .toast-dismiss {
   border: 0;
   background: transparent;
@@ -867,23 +948,6 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
   40% { opacity: 1; transform: scale(1); }
 }
 
-/* ── Agent loop: phase badge ───────────────────────────────────────────── */
-.phase-badge {
-  font: 500 10px/1 var(--font-mono);
-  color: var(--hue);
-  background: var(--hue-weak);
-  border: 1px solid var(--hue);
-  border-radius: var(--r-pill);
-  padding: 3px 9px;
-  animation: phase-pulse 2.4s ease-in-out infinite;
-  margin-left: 8px;
-}
-
-@keyframes phase-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .7; }
-}
-
 /* ── Panel activity status icon ────────────────────────────────────────── */
 .panel-activity .status-icon.kind-thinking,
 .panel-activity .status-icon.kind-active {
@@ -930,7 +994,6 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 /* ── Reduced motion ────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .thinking-dot,
-  .phase-badge,
   .streaming,
   .streaming.thinking-trailing,
   .tool.running::before {
@@ -1077,29 +1140,42 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 .skel-line:nth-child(3) { animation-delay: .24s; }
 @keyframes shimmer { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 
-/* P4.4 — welcome / empty-conversation screen */
-.thread-inner:has(.welcome) {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-}
+/* Welcome / empty-conversation screen (spec §10).
+ *
+ * One line. The V7 build put eight things here — brand mark, "New chat", a
+ * model line, four labelled prompt cards, four shortcut chips — above a
+ * five-segment provenance strip. The model line duplicated the strip and the
+ * composer chip (principle 3), and the card captions were mono uppercase in
+ * --hue, which is interface language dressed as machine output (principles 4
+ * and 5). The greeting is affordable precisely because nothing competes. */
 .welcome {
-  flex: 1;
   display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 28px 24px;
-  min-height: 0;
+  padding: 0 24px var(--sp-5);
   animation: pane-in var(--duration-normal) var(--ease-emphasized) both;
 }
-.welcome .brand-mark { width: 44px; height: 44px; color: var(--hue); margin-bottom: 12px; }
-.welcome h1 { margin: 0 0 6px; font-size: var(--fs-display); font-weight: 600; letter-spacing: -.01em; }
-.welcome .suggested-prompt-card { text-align: left; }
-.welcome .suggested-prompts-empty { display: grid; grid-template-columns: repeat(2, minmax(200px, 280px)); gap: 8px; margin-bottom: 22px; margin-top: 0; text-align: left; }
-.welcome .hint-row { display: flex; align-items: center; gap: 14px; color: var(--ink-3); font-size: var(--fs-xl); flex-wrap: wrap; justify-content: center; }
-.welcome .hint-row .hint { display: inline-flex; align-items: center; gap: 5px; }
+.welcome h1 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-size: var(--fs-hero);
+  font-weight: 400;
+  letter-spacing: -.02em;
+}
+/* The one accent on this screen, and the only decorative-looking hue in the
+ * product — sanctioned in §6.2 on the grounds that it is exactly one mark in
+ * exactly one place. */
+.welcome .brand-mark { width: 34px; height: 34px; color: var(--hue); flex: none; }
+
+/* Empty thread: greeting and composer centre as a single group rather than
+ * pinning the composer to the floor of an empty room. `.tab-pane` is already
+ * the flex column holding `.thread` and `.composer-wrap`, so this is layout
+ * only — the Composer never unmounts and keeps its attachment/credential
+ * state and its focusPrompt ref. */
+.tab-pane[data-pane="chat"][data-empty="true"] { justify-content: center; }
+.tab-pane[data-pane="chat"][data-empty="true"] .thread { flex: 0 1 auto; }
 
 /* P2.4 — pane cross-fade */
 @keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

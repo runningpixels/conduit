@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import {
+  DOCUMENT_TOOL_NAMES,
+  explainToolError,
   summarizeDocumentToolCall,
   redactDocumentToolArguments,
   documentToolArtifactKind,
@@ -111,5 +113,63 @@ describe('document tool activity helpers', () => {
       },
     ];
     expect(resolveDocumentArtifactId(state, listed)).toBe('newest');
+  });
+});
+
+describe('explainToolError', () => {
+  it('falls back when there is no error string', () => {
+    expect(explainToolError(undefined, 'Nothing happened.')).toBe('Nothing happened.');
+    expect(explainToolError('', 'Nothing happened.')).toBe('Nothing happened.');
+  });
+
+  it('translates the kind-mismatch error into an actionable sentence', () => {
+    // `ensure_kind` in src-tauri/src/agent_tools.rs — the error a user hits by
+    // asking to convert an existing markdown document to HTML.
+    const out = explainToolError(
+      "artifact 'c71e929c-7379-40c4-b9d5-6fa4a51fbbfa' is 'markdown' not 'html'",
+      'unused',
+    );
+    expect(out).toContain('Markdown');
+    expect(out).toContain('HTML');
+    expect(out).toContain('fixed once it is created');
+    // The opaque id has no meaning to a reader and must not survive.
+    expect(out).not.toContain('c71e929c');
+  });
+
+  it('passes unrecognised errors through unchanged', () => {
+    expect(explainToolError('connector is not running', 'unused')).toBe('connector is not running');
+  });
+});
+
+describe('document tool classification', () => {
+  // These sets used to be built from every builtin definition, so a `uuid` or
+  // `calculator` call was treated as a document tool: it rendered as
+  // "Document · Document / lines 0 / Document updated." and tripped the
+  // panel's "Updating document…" state.
+  it('counts only the Documents group', () => {
+    expect(DOCUMENT_TOOL_NAMES.has('write_html_document')).toBe(true);
+    expect(DOCUMENT_TOOL_NAMES.has('edit_markdown_document')).toBe(true);
+    expect(DOCUMENT_TOOL_NAMES.has('export_document')).toBe(true);
+    for (const name of ['uuid', 'calculator', 'current_time', 'random', 'web_search', 'web_fetch', 'clipboard_read', 'clipboard_write']) {
+      expect(DOCUMENT_TOOL_NAMES.has(name), `${name} must not be a document tool`).toBe(false);
+    }
+  });
+
+  it('excludes export and every non-document tool from the content set', () => {
+    expect(isDocumentContentTool('write_text_document')).toBe(true);
+    expect(isDocumentContentTool('export_document')).toBe(false);
+    expect(isDocumentContentTool('uuid')).toBe(false);
+    expect(isDocumentContentTool('calculator')).toBe(false);
+  });
+
+  it('does not summarize a non-document tool as a document', () => {
+    const summary = summarizeDocumentToolCall({
+      toolCallId: 'call-1',
+      name: 'uuid',
+      arguments: {},
+      status: 'completed',
+      complete: true,
+    } as Parameters<typeof summarizeDocumentToolCall>[0]);
+    expect(summary).toBeUndefined();
   });
 });

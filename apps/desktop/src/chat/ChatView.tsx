@@ -15,13 +15,14 @@ import {
   updateSettings,
 } from '../ipc/client';
 import { AssistantMessage } from './AssistantMessage';
-import { AssistantArtifactStrip } from './ArtifactRefChip';
+import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { BotGlyph, CopyIcon, ForkIcon, PencilIcon } from '../icons';
 import { TurnModelLine, shouldShowModelLine } from './TurnModelLine';
 import { InterruptedBanner } from './InterruptedBanner';
-import { providerHueId, providerDisplayName } from '../lib/providerIdentity';
+import { providerHueId } from '../lib/providerIdentity';
 import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
+import { inlineArtifactIds } from './inlineArtifact';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
 import { webSearchDeveloperPromptFor } from './webSearchDeveloperPrompt';
 import {
@@ -47,7 +48,6 @@ import { SuggestedPrompts } from './SuggestedPrompts';
 import { deriveSuggestedPrompts } from './suggestedPromptLogic';
 import { getMessageIdByRequest } from '../ipc/client';
 import { resolveWebSearchForTurn } from './webSearchIntent';
-import { modShortcutHint } from '../lib/shortcuts';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
 import {
@@ -950,6 +950,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     activeRequestId == null &&
     !prompt.trim();
 
+  // Drives both the greeting and the `data-empty` hook that centres the
+  // greeting and composer as one group (§10). One condition, one source.
+  const threadEmpty = !threadLoading && turns.length === 0 && !activeStream;
+
   // Per-turn provider/model for the conditional model line (§6.4).
   // Session-tracked turns win; hydrated turns fall back to the conversation's
   // last-used provider (or the active provider) and the active model.
@@ -1050,6 +1054,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       className="tab-pane"
       data-pane="chat"
       data-active={paneActive ? 'true' : 'false'}
+      data-empty={threadEmpty ? 'true' : 'false'}
       aria-label="Chat session"
     >
       <a
@@ -1078,25 +1083,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               </div>
             </div>
           )}
-          {!threadLoading && turns.length === 0 && !activeStream && (
+          {threadEmpty && (
             <div className="welcome">
-              <BotGlyph className="brand-mark" aria-hidden="true" />
-              <h1>New chat</h1>
-              <div className="turn-model empty-model">
-                <i className="pdot" aria-hidden="true" />
-                <b>{providerDisplayName(settings.activeProvider)}</b> / {settings.activeModel}
-              </div>
-              <SuggestedPrompts
-                prompts={suggestedPrompts}
-                variant="empty"
-                onSelect={handleSuggestionSelect}
-              />
-              <div className="hint-row">
-                <span className="hint"><kbd>{modShortcutHint('K')}</kbd> command palette</span>
-                <span className="hint"><kbd>{modShortcutHint('N')}</kbd> new chat</span>
-                <span className="hint"><kbd>{modShortcutHint('J')}</kbd> toggle panel</span>
-                <span className="hint"><kbd>{modShortcutHint(',')}</kbd> settings</span>
-              </div>
+              <h1>
+                <BotGlyph className="brand-mark" aria-hidden="true" />
+                What are we working on?
+              </h1>
             </div>
           )}
           {!threadLoading && turns.map((turn) => {
@@ -1149,12 +1141,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   modelId={model}
                   time={info?.time}
                   switchedFrom={info?.switchedFrom}
-                  showModelLine={info?.showModelLine ?? true}
+                  showModelLine={info?.showModelLine ?? false}
                   messageId={turn.id}
                   artifacts={artifacts}
                   fileStateMap={fileStateMap}
                   onPromoteArtifact={onPromoteArtifact}
                   onOpenArtifact={onOpenArtifact}
+                  onStatus={onStatus}
                   isLast={turn.id === turns[turns.length - 1]?.id}
                   onRetry={() => void handleRemoveLastAssistantTurn()}
                   onDelete={() => void handleRemoveLastAssistantTurn()}
@@ -1182,8 +1175,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   content={turn.content}
                   messageId={turn.id}
                   artifacts={artifacts}
+                  fileStateMap={fileStateMap}
                   onPromoteArtifact={onPromoteArtifact}
                   onOpenArtifact={onOpenArtifact}
+                  onStatus={onStatus}
                 />
                 <InterruptedBanner
                   visible={Boolean(turn.interrupted)}
@@ -1193,7 +1188,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   messageId={turn.id}
                   artifacts={artifacts}
                   fileStateMap={fileStateMap}
+                  excludeArtifactIds={inlineArtifactIds(
+                    detectArtifactCandidates(turn.content),
+                    artifacts,
+                    turn.id,
+                  )}
                   onOpenArtifact={onOpenArtifact}
+                  onStatus={onStatus}
                 />
                 <div className="turn-actions">
                   <button
@@ -1248,11 +1249,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       )}
 
       {showInlineSuggestions && (
-        <SuggestedPrompts
-          prompts={suggestedPrompts}
-          variant="inline"
-          onSelect={handleSuggestionSelect}
-        />
+        <SuggestedPrompts prompts={suggestedPrompts} onSelect={handleSuggestionSelect} />
       )}
 
       <Composer

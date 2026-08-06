@@ -135,6 +135,36 @@ describe('button reset', () => {
   });
 });
 
+describe('user turn alignment', () => {
+  // `.turn.user` holds three children: `.bubble`, the interrupted banner and
+  // `.turn-actions`. As a row, the `opacity: 0` action bar still claimed ~170px
+  // of track to the right of the bubble, so `justify-content: flex-end`
+  // right-aligned the *pair* — every user bubble stopped short of the column
+  // edge and read as centred, and long ones shrank below their max-width.
+  // Invisible to tsc and to every rendering test, so it is pinned here.
+  const chat = readFileSync(join(srcRoot, 'styles', 'chat.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+  const rule = chat.match(/(^|\})\s*\.turn\.user\s*\{([^}]*)\}/);
+
+  it('has a .turn.user rule', () => {
+    expect(rule, 'no `.turn.user { … }` rule found in chat.css').not.toBeNull();
+  });
+
+  it('stacks its children so the action bar cannot displace the bubble', () => {
+    expect(rule?.[2] ?? '').toMatch(/flex-direction\s*:\s*column/);
+  });
+
+  it('right-aligns the stack via align-items, not justify-content', () => {
+    const decls = rule?.[2] ?? '';
+    expect(decls).toMatch(/align-items\s*:\s*flex-end/);
+    // justify-content on a column would push the bubble down the cross axis,
+    // not to the right — the exact confusion that produced the bug.
+    expect(decls).not.toMatch(/justify-content\s*:\s*flex-end/);
+  });
+});
+
 describe('no orphan classes', () => {
   it('every DOM element with a className has at least one styled class', () => {
     const styled = styledClasses();

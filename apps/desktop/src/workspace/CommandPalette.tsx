@@ -6,6 +6,7 @@ import type {
   SearchResult,
 } from '../ipc/contracts';
 import { listProviderDescriptors, listProviderModels } from '../ipc/client';
+import { formatSize } from '../artifacts/format';
 import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../icons';
 import { providerDisplayName } from '../lib/providerIdentity';
 import { getModelPrices, type ModelPrices } from '../lib/costTable';
@@ -78,13 +79,6 @@ function highlightSnippet(result: SearchResult): string {
   const end = Math.min(escaped.length, result.matchEnd);
   if (start >= end) return escaped;
   return `${escaped.slice(0, start)}<mark>${escaped.slice(start, end)}</mark>${escaped.slice(end)}`;
-}
-
-function formatSize(bytes?: number): string {
-  if (bytes == null) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function trimPrice(v: number): string {
@@ -242,7 +236,7 @@ export function CommandPalette({
           group: 'Artifacts',
           kind: 'file' as const,
           label: a.title ?? a.contentPath?.split(/[\\/]/).pop() ?? 'Untitled artifact',
-          tail: formatSize(a.sizeBytes),
+          tail: formatSize(a.sizeBytes, ''),
           run: () => {
             onOpenArtifact?.(a.id);
             onClose();

@@ -15,7 +15,6 @@ import {
 } from './composerTypes';
 import { useComposerAutosize } from './useComposerAutosize';
 import { readSendWith } from '../shell/uiPrefs';
-import { modShortcutHint } from '../lib/shortcuts';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -288,7 +287,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={(event) => void handlePaste(event)}
-          placeholder={`Message Conduit…  ${modShortcutHint('K')} for commands`}
+          placeholder="Message Conduit…"
           rows={1}
           aria-label="Message the active provider"
         />

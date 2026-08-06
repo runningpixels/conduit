@@ -3,6 +3,7 @@ import type { Artifact } from '../ipc/contracts';
 import { languageFromMime } from '../artifacts/selectRenderer';
 import { renderHighlightedCode, useHighlightTokens } from '../artifacts/codeHighlight';
 import type { ArtifactCandidate } from './messageSegments';
+import { findPromotedArtifact, isPromotable } from './inlineArtifact';
 import { CheckIcon, CopyIcon, PlusIcon } from '../icons';
 
 const KIND_LABEL: Record<ArtifactCandidate['kind'], string> = {
@@ -19,19 +20,6 @@ function languageLabel(candidate: ArtifactCandidate): string {
   const infoLang = candidate.info.split(/\s+/)[0]?.toLowerCase();
   if (infoLang) return infoLang;
   return KIND_LABEL[candidate.kind] ?? candidate.kind;
-}
-
-function findPromotedArtifact(
-  artifacts: Artifact[],
-  messageId: string,
-  candidate: ArtifactCandidate,
-): Artifact | undefined {
-  return artifacts.find(
-    (a) =>
-      a.sourceMessageId === messageId &&
-      a.kind === candidate.kind &&
-      a.title === candidate.title,
-  );
 }
 
 interface InlineCodeBlockProps {
@@ -60,7 +48,9 @@ export function InlineCodeBlock({
   const lang = languageLabel(candidate);
   const highlighted = useHighlightTokens(candidate.body, lang);
   const promoted = messageId ? findPromotedArtifact(artifacts, messageId, candidate) : undefined;
-  const canPromote = !!messageId && !!onPromote && !streaming && !promoted;
+  // A formula or a one-line command is part of the answer, not a document.
+  const canPromote =
+    !!messageId && !!onPromote && !streaming && !promoted && isPromotable(candidate);
   const canOpen = !!promoted && !!onOpenArtifact;
 
   async function handleCopy() {
@@ -122,7 +112,9 @@ export function InlineCodeBlock({
           )}
         </div>
       </div>
-      <pre className="inline-code-block-body">
+      {/* `data-plain` marks a body Prism could not tokenise, so CSS can colour
+          it without repainting a highlighted block's syntax palette. */}
+      <pre className="inline-code-block-body" data-plain={highlighted ? undefined : 'true'}>
         <code>
           {highlighted ? renderHighlightedCode(highlighted) : candidate.body}
           {streaming && <span className="cursor" aria-hidden="true" />}

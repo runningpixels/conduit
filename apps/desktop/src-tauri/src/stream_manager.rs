@@ -23,6 +23,23 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uuid::Uuid;
 
+/// Who is responsible for telling the UI that the turn is over.
+///
+/// The renderer treats `MessageComplete` as end-of-turn: it settles the stream
+/// and discards every event that arrives afterwards. A multi-round agent turn
+/// emits one `MessageComplete` per round, so forwarding the first one made the
+/// UI drop everything the model produced after its first tool call — the final
+/// answer was generated and persisted, but never displayed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionDelivery {
+    /// Single-round path: the round forwards `MessageComplete` itself.
+    Immediate,
+    /// Agent loop: the round withholds `MessageComplete` and hands it back in
+    /// [`RoundOutcome::completion_event`], so the loop can emit exactly one
+    /// terminal event once every round is done.
+    Deferred,
+}
+
 /// Outcome of a single provider streaming round.
 /// Used by the agent loop to decide whether to execute tools and continue.
 #[derive(Debug, Clone, Default)]
@@ -35,6 +52,9 @@ pub struct RoundOutcome {
     pub error_message: Option<String>,
     /// Provider usage (tokens, cost) reported for this round, if any.
     pub usage: Option<provider_core::schema::ProviderUsage>,
+    /// The round's `MessageComplete`, withheld from the channel under
+    /// [`CompletionDelivery::Deferred`]. Always `None` for `Immediate`.
+    pub completion_event: Option<ProviderEvent>,
 }
 
 /// A tool call that was requested by the provider and is ready for execution.
@@ -199,9 +219,16 @@ impl StreamManager {
         provider_request.request_id = request_id.clone();
 
         // Delegate to the reusable round runner. For the single-round public API
-        // we surface any setup or round-level error as before.
+        // we surface any setup or round-level error as before. There is no loop
+        // behind this call, so the round's completion is the turn's completion.
         let outcome = self
-            .run_provider_round(state, provider_request, channel, cancel)
+            .run_provider_round(
+                state,
+                provider_request,
+                channel,
+                cancel,
+                CompletionDelivery::Immediate,
+            )
             .await;
 
         if let Some(err) = outcome.error_message {
@@ -281,6 +308,7 @@ impl StreamManager {
         request: ProviderRequest,
         channel: Channel<ProviderEvent>,
         cancel: CancellationToken,
+        completion: CompletionDelivery,
     ) -> RoundOutcome {
         let settings = match state.settings() {
             Ok(s) => s,
@@ -342,6 +370,7 @@ impl StreamManager {
         let mut finished_normally = false;
         let mut error_message: Option<String> = None;
         let mut round_usage: Option<provider_core::schema::ProviderUsage> = None;
+        let mut completion_event: Option<ProviderEvent> = None;
 
         futures::pin_mut!(stream);
         while let Some(event) = stream.next().await {
@@ -390,16 +419,23 @@ impl StreamManager {
                 _ => {}
             }
 
-            // Persist + forward
+            // Persist + forward. Persistence is unconditional: the event log is
+            // the replay source for rebuilding a turn, so it records every round's
+            // completion even when the channel does not see it.
             let _ = event_log::append_and_apply(&pool, &conversation_id, &request_id, &event).await;
 
-            if channel.send(event.clone()).is_err() {
+            let is_completion = matches!(event, ProviderEvent::MessageComplete { .. });
+            let withhold = is_completion && completion == CompletionDelivery::Deferred;
+
+            if withhold {
+                completion_event = Some(event.clone());
+            } else if channel.send(event.clone()).is_err() {
                 cancel.cancel();
                 let _ = messages::mark_interrupted_by_request(&pool, &request_id).await;
                 break;
             }
 
-            if matches!(event, ProviderEvent::MessageComplete { .. }) {
+            if is_completion {
                 finished_normally = true;
                 let _ = conversations::touch(&pool, &conversation_id).await;
                 break;
@@ -422,6 +458,7 @@ impl StreamManager {
             finished_normally,
             error_message,
             usage: round_usage,
+            completion_event,
         }
     }
 
@@ -914,13 +951,21 @@ impl StreamManager {
         let mut ended_with_pending_tools = false;
         let mut cumulative_usage: Option<provider_core::schema::ProviderUsage> = None;
 
+        // Exactly one terminal event reaches the UI per turn, emitted after the
+        // loop so the cumulative usage lands first. `terminal` holds the event
+        // still owed; `terminal_forwarded` records the case where a round has
+        // already sent one itself (rounds forward `Error` immediately, since an
+        // errored round ends the turn).
+        let mut terminal: Option<ProviderEvent> = None;
+        let mut terminal_forwarded = false;
+
         for step in 0..max_steps {
             if cancel.is_cancelled() {
                 break;
             }
             if tokio::time::Instant::now() > deadline {
-                // Surface a terminal error to the UI via the channel and stop.
-                let _ = channel.send(ProviderEvent::Error {
+                // Terminal error, emitted below so it lands after the usage total.
+                terminal = Some(ProviderEvent::Error {
                     request_id: request_id.clone(),
                     error: provider_core::schema::ProviderError {
                         provider_code: None,
@@ -955,6 +1000,7 @@ impl StreamManager {
                     current_request.clone(),
                     channel.clone(),
                     cancel.clone(),
+                    CompletionDelivery::Deferred,
                 )
                 .await;
 
@@ -993,9 +1039,17 @@ impl StreamManager {
                 });
             }
 
+            // The round withheld its `MessageComplete`; carry it forward. If the
+            // loop continues, the next round's replaces it, so what survives is
+            // the completion of whichever round turned out to be last.
+            if outcome.completion_event.is_some() {
+                terminal = outcome.completion_event;
+            }
+
             if let Some(err) = outcome.error_message {
                 // Error already forwarded by the round; stop the turn.
                 warn!(request_id = %request_id, step, error = %err, "agent turn aborted due to round error");
+                terminal_forwarded = true;
                 break;
             }
 
@@ -1075,7 +1129,9 @@ impl StreamManager {
         }
 
         if ended_with_pending_tools {
-            let _ = channel.send(ProviderEvent::Error {
+            // Supersedes any withheld completion: the turn did not finish, it ran
+            // out of steps, and that is what the reader needs to be told.
+            terminal = Some(ProviderEvent::Error {
                 request_id: request_id.clone(),
                 error: provider_core::schema::ProviderError {
                     provider_code: None,
@@ -1099,7 +1155,9 @@ impl StreamManager {
             if let Ok(settings) = state.settings() {
                 let provider_id = settings.active_provider;
                 let model_id = active_model_id.clone();
-                if let Ok(Some(message_id)) = messages::get_message_id_by_request(&pool, &request_id).await {
+                if let Ok(Some(message_id)) =
+                    messages::get_message_id_by_request(&pool, &request_id).await
+                {
                     let pricing = provider_core::catalog::lookup_pricing(&provider_id, &model_id);
                     let cost = provider_core::catalog::estimate_cost_cents(&usage, &pricing);
                     if let Err(e) = usage_summary::insert_usage_summary(
@@ -1123,6 +1181,35 @@ impl StreamManager {
                         );
                     }
                 }
+            }
+        }
+
+        // Close the turn — last, so every content, tool and usage event has
+        // already reached the UI. The UI settles the stream here and ignores
+        // anything that follows, which is precisely why nothing may be emitted
+        // after this point.
+        //
+        // A turn can legitimately end with nothing owed: cancellation breaks the
+        // loop mid-round, so no completion was ever produced and the cancel path
+        // owns the UI state.
+        if !terminal_forwarded {
+            if let Some(event) = terminal {
+                let event = match event {
+                    // Re-stamp with the turn's canonical id. Continuation rounds
+                    // carry a fresh request_id (see `build_continuation_request`),
+                    // and every other turn-level event uses the original.
+                    ProviderEvent::MessageComplete {
+                        index,
+                        finish_reason,
+                        ..
+                    } => ProviderEvent::MessageComplete {
+                        request_id: request_id.clone(),
+                        index,
+                        finish_reason,
+                    },
+                    other => other,
+                };
+                let _ = channel.send(event);
             }
         }
 

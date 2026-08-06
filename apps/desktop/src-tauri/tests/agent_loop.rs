@@ -18,7 +18,7 @@ use std::path::Path;
 use conduit_desktop::{
     db::repository::{conversations, event_log, messages, tool_calls},
     paths::AppPaths,
-    stream_manager::{CompletedToolCall, RoundOutcome, StreamManager},
+    stream_manager::{CompletedToolCall, CompletionDelivery, RoundOutcome, StreamManager},
     validation,
 };
 use provider_core::schema::{
@@ -68,6 +68,7 @@ fn round_outcome_with_error() {
         finished_normally: false,
         error_message: Some("provider unavailable".to_string()),
         usage: None,
+        completion_event: None,
     };
     assert_eq!(
         outcome.error_message.as_deref(),
@@ -89,10 +90,47 @@ fn round_outcome_with_tool_calls() {
         finished_normally: true,
         error_message: None,
         usage: None,
+        completion_event: None,
     };
     assert_eq!(outcome.completed_tool_calls.len(), 1);
     assert_eq!(outcome.completed_tool_calls[0].tool_call_id, "call-1");
     assert!(outcome.finished_normally);
+}
+
+// ─── Turn completion delivery ─────────────────────────────────────────────
+//
+// The UI treats `MessageComplete` as end-of-turn: it settles the stream and
+// discards everything after it. A multi-round agent turn emits one per round,
+// so forwarding the first one made the UI drop the model's final answer — it
+// was generated and persisted, but never displayed. `CompletionDelivery`
+// withholds each round's completion so the loop can emit exactly one.
+
+#[test]
+fn completion_delivery_distinguishes_the_two_paths() {
+    assert_ne!(CompletionDelivery::Immediate, CompletionDelivery::Deferred);
+}
+
+#[test]
+fn round_outcome_carries_a_withheld_completion() {
+    let completion = ProviderEvent::MessageComplete {
+        request_id: "req-1".into(),
+        index: 0,
+        finish_reason: "stop".into(),
+    };
+    let outcome = RoundOutcome {
+        completed_tool_calls: Vec::new(),
+        finished_normally: true,
+        error_message: None,
+        usage: None,
+        completion_event: Some(completion.clone()),
+    };
+    assert_eq!(outcome.completion_event, Some(completion));
+}
+
+#[test]
+fn round_outcome_default_withholds_nothing() {
+    // The `Immediate` path forwards its own completion, so nothing is owed.
+    assert!(RoundOutcome::default().completion_event.is_none());
 }
 
 // ─── CompletedToolCall ────────────────────────────────────────────────────

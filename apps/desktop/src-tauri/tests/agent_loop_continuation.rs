@@ -759,6 +759,7 @@ async fn round_outcome_usage_defaults_to_none() {
         finished_normally: false,
         error_message: None,
         usage: None,
+        completion_event: None,
     };
     assert!(outcome.usage.is_none());
 }

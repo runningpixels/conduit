@@ -474,15 +474,13 @@ pub async fn execute_builtin_tool(
         // ---------------------------------------------------------------------
         // Clipboard tools
         // ---------------------------------------------------------------------
-        CLIPBOARD_READ_TOOL => {
-            match clipboard_read().await {
-                Ok(text) => Ok(serde_json::json!({
-                    "ok": true,
-                    "text": text,
-                })),
-                Err(e) => Err(format!("clipboard read error: {e}")),
-            }
-        }
+        CLIPBOARD_READ_TOOL => match clipboard_read().await {
+            Ok(text) => Ok(serde_json::json!({
+                "ok": true,
+                "text": text,
+            })),
+            Err(e) => Err(format!("clipboard read error: {e}")),
+        },
         CLIPBOARD_WRITE_TOOL => {
             let input: ClipboardWriteInput = parse_args(tool_name, arguments)?;
             match clipboard_write(&input.text).await {
@@ -874,12 +872,30 @@ fn tokenize(s: &str) -> Result<Vec<Token>, String> {
             continue;
         }
         match ch {
-            '+' => { tokens.push(Token::Plus); chars.next(); }
-            '-' => { tokens.push(Token::Minus); chars.next(); }
-            '*' => { tokens.push(Token::Star); chars.next(); }
-            '/' => { tokens.push(Token::Slash); chars.next(); }
-            '(' => { tokens.push(Token::LParen); chars.next(); }
-            ')' => { tokens.push(Token::RParen); chars.next(); }
+            '+' => {
+                tokens.push(Token::Plus);
+                chars.next();
+            }
+            '-' => {
+                tokens.push(Token::Minus);
+                chars.next();
+            }
+            '*' => {
+                tokens.push(Token::Star);
+                chars.next();
+            }
+            '/' => {
+                tokens.push(Token::Slash);
+                chars.next();
+            }
+            '(' => {
+                tokens.push(Token::LParen);
+                chars.next();
+            }
+            ')' => {
+                tokens.push(Token::RParen);
+                chars.next();
+            }
             '0'..='9' | '.' => {
                 let mut num = String::new();
                 while let Some(&c) = chars.peek() {
@@ -903,8 +919,14 @@ fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<f64, String> {
     let mut left = parse_term(tokens, pos)?;
     while *pos < tokens.len() {
         match tokens[*pos] {
-            Token::Plus => { *pos += 1; left += parse_term(tokens, pos)?; }
-            Token::Minus => { *pos += 1; left -= parse_term(tokens, pos)?; }
+            Token::Plus => {
+                *pos += 1;
+                left += parse_term(tokens, pos)?;
+            }
+            Token::Minus => {
+                *pos += 1;
+                left -= parse_term(tokens, pos)?;
+            }
             _ => break,
         }
     }
@@ -915,8 +937,12 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<f64, String> {
     let mut left = parse_factor(tokens, pos)?;
     while *pos < tokens.len() {
         match tokens[*pos] {
-            Token::Star => { *pos += 1; left *= parse_factor(tokens, pos)?; }
-            Token::Slash => { *pos += 1;
+            Token::Star => {
+                *pos += 1;
+                left *= parse_factor(tokens, pos)?;
+            }
+            Token::Slash => {
+                *pos += 1;
                 let right = parse_factor(tokens, pos)?;
                 if right == 0.0 {
                     return Err("division by zero".to_string());
@@ -934,7 +960,10 @@ fn parse_factor(tokens: &[Token], pos: &mut usize) -> Result<f64, String> {
         return Err("unexpected end of expression".to_string());
     }
     match tokens[*pos] {
-        Token::Number(n) => { *pos += 1; Ok(n) }
+        Token::Number(n) => {
+            *pos += 1;
+            Ok(n)
+        }
         Token::LParen => {
             *pos += 1;
             let result = parse_expr(tokens, pos)?;
@@ -978,8 +1007,14 @@ async fn web_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
     // Abstract / answer
     if let Some(answer) = body.get("AbstractText").and_then(|v| v.as_str()) {
         if !answer.is_empty() {
-            let source = body.get("AbstractSource").and_then(|v| v.as_str()).unwrap_or("");
-            let url = body.get("AbstractURL").and_then(|v| v.as_str()).unwrap_or("");
+            let source = body
+                .get("AbstractSource")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let url = body
+                .get("AbstractURL")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             results.push(serde_json::json!({
                 "title": source,
                 "snippet": answer,
@@ -1099,8 +1134,8 @@ async fn web_fetch(url: &str) -> Result<String, String> {
 
 async fn clipboard_read() -> Result<String, String> {
     // Use arboard for cross-platform clipboard access
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| format!("clipboard init failed: {e}"))?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("clipboard init failed: {e}"))?;
     clipboard
         .get_text()
         .map_err(|e| format!("clipboard read failed: {e}"))
@@ -1108,8 +1143,8 @@ async fn clipboard_read() -> Result<String, String> {
 }
 
 async fn clipboard_write(text: &str) -> Result<(), String> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| format!("clipboard init failed: {e}"))?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("clipboard init failed: {e}"))?;
     clipboard
         .set_text(text.to_owned())
         .map_err(|e| format!("clipboard write failed: {e}"))
@@ -1221,4 +1256,3 @@ mod tests {
         assert_eq!(defs.len(), 15);
     }
 }
-

@@ -146,13 +146,11 @@ pub async fn delete_events_for_request(
     conversation_id: &str,
     request_id: &str,
 ) -> Result<(), DbError> {
-    sqlx::query(
-        "DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?",
-    )
-    .bind(conversation_id)
-    .bind(request_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?")
+        .bind(conversation_id)
+        .bind(request_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

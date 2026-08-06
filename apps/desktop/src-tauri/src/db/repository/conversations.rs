@@ -95,7 +95,15 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
     Ok(rows
         .into_iter()
         .map(
-            |(id, title, updated_at, message_count, last_message_preview, first_user_prompt, forked_from)| {
+            |(
+                id,
+                title,
+                updated_at,
+                message_count,
+                last_message_preview,
+                first_user_prompt,
+                forked_from,
+            )| {
                 ConversationSummary {
                     id,
                     display_title: resolve_display_title(
@@ -305,13 +313,11 @@ pub async fn remove_last_assistant_turn(
             .execute(&mut *tx)
             .await?;
         // Delete event log rows for this turn
-        sqlx::query(
-            "DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?",
-        )
-        .bind(conversation_id)
-        .bind(tid)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?")
+            .bind(conversation_id)
+            .bind(tid)
+            .execute(&mut *tx)
+            .await?;
         // Delete message (message_parts cascade via FK). Match by request_id
         // or message id (for manually-inserted messages without request_id).
         sqlx::query(

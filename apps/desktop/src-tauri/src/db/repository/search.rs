@@ -226,7 +226,9 @@ mod tests {
         let (_conv_id, _msg_id) = insert_test_data(&pool).await;
         reindex_all(&pool).await.unwrap();
 
-        let results = search_messages(&pool, "zzzzzznonexistent", 10).await.unwrap();
+        let results = search_messages(&pool, "zzzzzznonexistent", 10)
+            .await
+            .unwrap();
         assert!(results.is_empty());
     }
 

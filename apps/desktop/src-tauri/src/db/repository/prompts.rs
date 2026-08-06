@@ -124,7 +124,11 @@ pub async fn create(
         id,
         title: title.to_string(),
         body: body.to_string(),
-        variables: if variables.is_empty() { None } else { Some(variables) },
+        variables: if variables.is_empty() {
+            None
+        } else {
+            Some(variables)
+        },
         folder: folder.map(|s| s.to_string()),
         tags: tags.map(|t| t.to_vec()),
         sort_order: 0,
@@ -162,11 +166,7 @@ pub async fn list(
 }
 
 /// Get a single prompt by ID.
-pub async fn get(
-    pool: &SqlitePool,
-    enc: &Encryption,
-    id: &str,
-) -> Result<Option<Prompt>, DbError> {
+pub async fn get(pool: &SqlitePool, enc: &Encryption, id: &str) -> Result<Option<Prompt>, DbError> {
     let row: Option<PromptRow> = sqlx::query_as(
         "SELECT id, title, body, variables, folder, tags, sort_order, created_at, updated_at \
          FROM prompts WHERE id = ?",
@@ -221,11 +221,17 @@ pub async fn update(
     let existing = get(pool, enc, id).await?;
     match existing {
         Some(p) => Ok(Prompt {
-            variables: if variables.is_empty() { None } else { Some(variables) },
+            variables: if variables.is_empty() {
+                None
+            } else {
+                Some(variables)
+            },
             tags: tags.map(|t| t.to_vec()),
             ..p
         }),
-        None => Err(DbError::Query(format!("prompt {id} not found after update"))),
+        None => Err(DbError::Query(format!(
+            "prompt {id} not found after update"
+        ))),
     }
 }
 
@@ -240,10 +246,11 @@ pub async fn delete(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
 
 /// List distinct folder names (non-NULL), ordered alphabetically.
 pub async fn list_folders(pool: &SqlitePool) -> Result<Vec<String>, DbError> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT DISTINCT folder FROM prompts WHERE folder IS NOT NULL ORDER BY folder")
-            .fetch_all(pool)
-            .await?;
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT folder FROM prompts WHERE folder IS NOT NULL ORDER BY folder",
+    )
+    .fetch_all(pool)
+    .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
@@ -266,9 +273,16 @@ mod tests {
         let p = pool().await;
         let e = enc();
 
-        let prompt = create(&p, &e, "Test Prompt", "Hello {{name}}!", Some("General"), None)
-            .await
-            .unwrap();
+        let prompt = create(
+            &p,
+            &e,
+            "Test Prompt",
+            "Hello {{name}}!",
+            Some("General"),
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(prompt.title, "Test Prompt");
         assert_eq!(prompt.variables, Some(vec!["name".to_string()]));
 
@@ -282,7 +296,9 @@ mod tests {
         let p = pool().await;
         let e = enc();
 
-        let prompt = create(&p, &e, "Simple", "Just text", None, None).await.unwrap();
+        let prompt = create(&p, &e, "Simple", "Just text", None, None)
+            .await
+            .unwrap();
         assert!(prompt.variables.is_none());
 
         let got = get(&p, &e, &prompt.id).await.unwrap().unwrap();
@@ -295,9 +311,16 @@ mod tests {
         let e = enc();
 
         let tags = vec!["code".to_string(), "review".to_string()];
-        let prompt = create(&p, &e, "Code Review", "Review {{code}}", Some("Dev"), Some(&tags))
-            .await
-            .unwrap();
+        let prompt = create(
+            &p,
+            &e,
+            "Code Review",
+            "Review {{code}}",
+            Some("Dev"),
+            Some(&tags),
+        )
+        .await
+        .unwrap();
         assert_eq!(prompt.tags, Some(tags.clone()));
 
         let got = get(&p, &e, &prompt.id).await.unwrap().unwrap();
@@ -313,9 +336,17 @@ mod tests {
             .await
             .unwrap();
 
-        let updated = update(&p, &e, &prompt.id, "Updated", "Hi {{user}}", Some("Work"), None)
-            .await
-            .unwrap();
+        let updated = update(
+            &p,
+            &e,
+            &prompt.id,
+            "Updated",
+            "Hi {{user}}",
+            Some("Work"),
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(updated.title, "Updated");
         assert_eq!(updated.variables, Some(vec!["user".to_string()]));
         assert_eq!(updated.folder, Some("Work".to_string()));
@@ -338,8 +369,12 @@ mod tests {
         let p = pool().await;
         let e = enc();
 
-        create(&p, &e, "P1", "Body", Some("Work"), None).await.unwrap();
-        create(&p, &e, "P2", "Body", Some("Personal"), None).await.unwrap();
+        create(&p, &e, "P1", "Body", Some("Work"), None)
+            .await
+            .unwrap();
+        create(&p, &e, "P2", "Body", Some("Personal"), None)
+            .await
+            .unwrap();
         create(&p, &e, "P3", "Body", None, None).await.unwrap();
 
         let folders = list_folders(&p).await.unwrap();
@@ -353,8 +388,12 @@ mod tests {
         let p = pool().await;
         let e = enc();
 
-        create(&p, &e, "P1", "Body", Some("Work"), None).await.unwrap();
-        create(&p, &e, "P2", "Body", Some("Personal"), None).await.unwrap();
+        create(&p, &e, "P1", "Body", Some("Work"), None)
+            .await
+            .unwrap();
+        create(&p, &e, "P2", "Body", Some("Personal"), None)
+            .await
+            .unwrap();
 
         let work = list(&p, &e, Some("Work")).await.unwrap();
         assert_eq!(work.len(), 1);
@@ -386,7 +425,7 @@ mod tests {
 
         // Create with encryption On
         let e = Encryption::off(); // We can't easily test On in unit tests w/o keychain
-        // So test that Off works and doesn't mangle the body
+                                   // So test that Off works and doesn't mangle the body
         let prompt = create(&p, &e, "Secret", "Sensitive: {{data}}", None, None)
             .await
             .unwrap();

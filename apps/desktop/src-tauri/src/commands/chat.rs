@@ -307,13 +307,12 @@ pub async fn remove_last_turn(
     conversations::remove_last_assistant_turn(&state.db, &conversation_id)
         .await
         .map_err(|e| e.to_string())?;
-    let (count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
-    )
-    .bind(&conversation_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| e.to_string())?;
+    let (count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM messages WHERE conversation_id = ?")
+            .bind(&conversation_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(count)
 }
 

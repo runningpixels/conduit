@@ -192,12 +192,9 @@ async fn remove_last_assistant_turn_removes_latest_assistant() {
     messages::insert_message(&pool, &user_message(&conv.id, "u1", "hello"))
         .await
         .unwrap();
-    messages::insert_message(
-        &pool,
-        &assistant_message(&conv.id, "a1", "hi there"),
-    )
-    .await
-    .unwrap();
+    messages::insert_message(&pool, &assistant_message(&conv.id, "a1", "hi there"))
+        .await
+        .unwrap();
 
     let rid = conversations::last_assistant_request_id(&pool, &conv.id)
         .await
@@ -231,17 +228,16 @@ async fn remove_last_assistant_turn_noop_on_empty() {
 #[tokio::test]
 async fn fork_conversation_deep_copies_messages() {
     let pool = common::setup_pool().await;
-    let conv = conversations::create(&pool, Some("Original")).await.unwrap();
+    let conv = conversations::create(&pool, Some("Original"))
+        .await
+        .unwrap();
 
     messages::insert_message(&pool, &user_message(&conv.id, "u1", "hello"))
         .await
         .unwrap();
-    messages::insert_message(
-        &pool,
-        &assistant_message(&conv.id, "a1", "hi there"),
-    )
-    .await
-    .unwrap();
+    messages::insert_message(&pool, &assistant_message(&conv.id, "a1", "hi there"))
+        .await
+        .unwrap();
 
     let fork = conversations::fork_at(&pool, &conv.id, "a1", Some("Fork of Original"))
         .await
@@ -267,14 +263,8 @@ async fn fork_conversation_deep_copies_messages() {
         .await
         .unwrap();
     assert_eq!(fork_msgs.len(), 2);
-    assert_eq!(
-        fork_msgs[0].parts[0].content.as_deref(),
-        Some("hello")
-    );
-    assert_eq!(
-        fork_msgs[1].parts[0].content.as_deref(),
-        Some("hi there")
-    );
+    assert_eq!(fork_msgs[0].parts[0].content.as_deref(), Some("hello"));
+    assert_eq!(fork_msgs[1].parts[0].content.as_deref(), Some("hi there"));
     // Fork IDs should be different from original
     assert_ne!(fork_msgs[0].id, "u1");
     assert_ne!(fork_msgs[1].id, "a1");

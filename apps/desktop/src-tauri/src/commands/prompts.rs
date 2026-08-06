@@ -37,10 +37,7 @@ pub async fn list_prompts(
 }
 
 #[tauri::command]
-pub async fn get_prompt(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Option<Prompt>, String> {
+pub async fn get_prompt(state: State<'_, AppState>, id: String) -> Result<Option<Prompt>, String> {
     prompts::get(&state.db, &state.encryption, &id)
         .await
         .map_err(|e| e.to_string())
@@ -69,10 +66,7 @@ pub async fn update_prompt(
 }
 
 #[tauri::command]
-pub async fn delete_prompt(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_prompt(state: State<'_, AppState>, id: String) -> Result<(), String> {
     prompts::delete(&state.db, &id)
         .await
         .map_err(|e| e.to_string())

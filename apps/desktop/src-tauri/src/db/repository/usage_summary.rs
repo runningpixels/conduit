@@ -161,12 +161,14 @@ pub async fn get_usage_summary(
 
     let daily_totals = daily_rows
         .into_iter()
-        .map(|(date, input_tokens, output_tokens, cost_cents)| DailyUsage {
-            date,
-            input_tokens,
-            output_tokens,
-            cost_cents,
-        })
+        .map(
+            |(date, input_tokens, output_tokens, cost_cents)| DailyUsage {
+                date,
+                input_tokens,
+                output_tokens,
+                cost_cents,
+            },
+        )
         .collect();
 
     Ok(UsageSummaryResponse {
@@ -208,8 +210,16 @@ mod tests {
         let pool = test_pool().await;
 
         insert_usage_summary(
-            &pool, "msg-1", "conv-1", "anthropic", "claude-sonnet-4",
-            1000, 200, 50, 500, Some("0.3200"),
+            &pool,
+            "msg-1",
+            "conv-1",
+            "anthropic",
+            "claude-sonnet-4",
+            1000,
+            200,
+            50,
+            500,
+            Some("0.3200"),
         )
         .await
         .expect("insert");
@@ -227,8 +237,7 @@ mod tests {
         let pool = test_pool().await;
 
         insert_usage_summary(
-            &pool, "msg-2", "conv-1", "ollama", "llama3",
-            500, 100, 0, 0, None,
+            &pool, "msg-2", "conv-1", "ollama", "llama3", 500, 100, 0, 0, None,
         )
         .await
         .expect("insert");

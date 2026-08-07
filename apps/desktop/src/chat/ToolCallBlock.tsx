@@ -8,7 +8,7 @@ import {
   redactDocumentToolArguments,
   summarizeDocumentToolCall,
 } from './agentTools';
-import { GithubIcon, SlackIcon } from '../icons';
+import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
 
 interface ToolCallBlockProps {
   toolCall: ToolCallState;
@@ -75,9 +75,18 @@ export function ToolCallBlock({
   const status = toolCall.status;
   const consent = toolCall.consent;
 
-  const toolIcon = toolCall.name.toLowerCase().startsWith('slack') ? <SlackIcon /> : <GithubIcon />;
   const displayName = splitToolDisplayName(toolCall.name);
   const isDocumentTool = DOCUMENT_TOOL_NAMES.has(toolCall.name);
+  // A connector logo is a claim about where the tool came from. Defaulting to
+  // GitHub gave the octocat to `uuid`, `calculator`, the clipboard tools and
+  // every Documents card — none of which touch GitHub.
+  const toolIcon = (() => {
+    const lower = toolCall.name.toLowerCase();
+    if (lower.startsWith('slack')) return <SlackIcon />;
+    if (lower.startsWith('github')) return <GithubIcon />;
+    if (isDocumentTool) return <FilePlainIcon />;
+    return <ConnectorsIcon />;
+  })();
   const docSummary = isDocumentTool ? summarizeDocumentToolCall(toolCall) : undefined;
 
   const activeCalls = group?.calls ?? [toolCall];
@@ -179,7 +188,14 @@ export function ToolCallBlock({
       </>
     );
   } else {
-    name = `${displayName.connector}${displayName.tool ? ` · ${displayName.tool}` : ''}`;
+    // `splitToolDisplayName` returns {connector: name, tool: name} for a bare
+    // name — no `__` or `.` — so a built-in like `uuid` read "uuid · uuid".
+    // The grouped branch above already avoids this, which meant one call and two
+    // consecutive calls of the same tool were labelled differently.
+    name =
+      displayName.tool && displayName.tool !== displayName.connector
+        ? `${displayName.connector} · ${displayName.tool}`
+        : displayName.connector;
     const rows: [string, string][] = Object.entries(toolCall.arguments ?? {})
       .slice(0, 6)
       .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]);

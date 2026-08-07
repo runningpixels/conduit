@@ -145,7 +145,7 @@ export function InlineArtifactCard({
         {showCode ? 'Hide code' : 'Show code'}
       </button>
       {showCode && (
-        <pre className="inline-artifact-source" data-plain={highlighted ? undefined : 'true'}>
+        <pre className="inline-artifact-source scroll" data-plain={highlighted ? undefined : 'true'}>
           <code>{highlighted ? renderHighlightedCode(highlighted) : candidate.body}</code>
         </pre>
       )}

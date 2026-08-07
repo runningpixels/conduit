@@ -21,3 +21,14 @@ import 'prismjs/components/prism-powershell';
 import 'prismjs/components/prism-docker';
 import 'prismjs/components/prism-ini';
 import 'prismjs/components/prism-diff';
+// Languages `CODE_LANG` already accepts as fence labels but whose grammars were
+// never loaded, so they silently fell back to plain text. That went unnoticed
+// because highlighting produced no colour at all until the `token` base class
+// was fixed — these are the labels that would still fail afterwards.
+import 'prismjs/components/prism-dart';
+import 'prismjs/components/prism-elixir';
+import 'prismjs/components/prism-haskell';
+import 'prismjs/components/prism-clojure';
+import 'prismjs/components/prism-makefile';
+// Gradle build files are Groovy; Prism ships no `gradle` grammar.
+import 'prismjs/components/prism-groovy';

@@ -135,6 +135,25 @@ describe('button reset', () => {
   });
 });
 
+/**
+ * The orphan-class test below only inspects elements that *have* a `className`,
+ * so unclassed DOM inheriting a UA style is its blind spot. That is exactly how
+ * markdown links shipped in Chromium's periwinkle: `safeMarkdown` emits a bare
+ * `<a>`, and no `a` selector existed anywhere in the product.
+ */
+describe('unclassed element defaults', () => {
+  const allCss = cssFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
+
+  it('styles anchors, so links never fall back to the UA colour', () => {
+    const stripped = allCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Any selector ending in a bare `a` — `a {`, `.chat-prose a {`, `a:hover {`.
+    const anchorRule = /(^|[},])\s*[^{}]*(^|[\s>~+])a\s*(:[a-z-]+)?\s*(,[^{}]*)?\{[^}]*color\s*:/m.test(
+      stripped,
+    );
+    expect(anchorRule, 'no rule sets `color` on an anchor in any stylesheet').toBe(true);
+  });
+});
+
 describe('user turn alignment', () => {
   // `.turn.user` holds three children: `.bubble`, the interrupted banner and
   // `.turn-actions`. As a row, the `opacity: 0` action bar still claimed ~170px

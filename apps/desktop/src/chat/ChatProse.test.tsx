@@ -70,12 +70,29 @@ describe('ChatProse inline rendering', () => {
     expect(document.querySelector('.md-pre')).not.toBeNull();
   });
 
+  // Queried as `.token.keyword`, which is what `syntax.css` actually selects.
+  // These assertions used to omit `.token` — and passed, because the component
+  // omitted it too. That is precisely how syntax highlighting shipped inert:
+  // every rule in syntax.css is `.token.<type>`, so nothing ever matched.
   it('syntax-highlights labeled python fences with token spans', () => {
     const src = '```python\nprint("hi")\n```';
     const { container } = render(<ChatProse content={src} />);
 
     expect(container.textContent).toContain('print("hi")');
-    expect(document.querySelectorAll('.inline-code-block-body .keyword').length).toBeGreaterThan(0);
+    expect(
+      document.querySelectorAll('.inline-code-block-body .token.keyword').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('marks a highlighted block as not plain', () => {
+    render(<ChatProse content={'```python\nprint("hi")\n```'} />);
+    expect(document.querySelector('.inline-code-block[data-plain="true"]')).toBeNull();
+  });
+
+  it('marks a text fence as plain so it takes the code colour', () => {
+    render(<ChatProse content={'```text\nExpected Return = 13.5%\n```'} />);
+    expect(document.querySelector('.inline-code-block[data-plain="true"]')).not.toBeNull();
+    expect(document.querySelector('.inline-code-block-body[data-plain="true"]')).not.toBeNull();
   });
 
   it('falls back to plain text for unsupported fence languages', () => {
@@ -83,7 +100,16 @@ describe('ChatProse inline rendering', () => {
     const { container } = render(<ChatProse content={src} />);
 
     expect(container.textContent).toContain('let x = 1');
-    expect(document.querySelectorAll('.inline-code-block-body .keyword').length).toBe(0);
+    expect(document.querySelectorAll('.inline-code-block-body .token.keyword').length).toBe(0);
+  });
+
+  it('styles prose links rather than leaving them to the UA', () => {
+    const { container } = render(<ChatProse content={'See [the docs](https://example.com).'} />);
+    const link = container.querySelector('a');
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute('href')).toBe('https://example.com');
+    // The rule is `.chat-prose a`, so the anchor must sit inside that scope.
+    expect(container.querySelector('.chat-prose a')).not.toBeNull();
   });
 });
 

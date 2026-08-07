@@ -330,7 +330,7 @@
   white-space: pre-wrap;
   overflow: auto;
 }
-.source-textarea:focus { outline: none; border-color: var(--line); box-shadow: var(--glow); }
+.source-textarea:focus { outline: none; border-color: var(--line-hi); }
 .doc-banner .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .doc { font-size: 14px; line-height: 1.68; color: var(--ink); max-width: 860px; }
 .doc h1 { font-size: 25px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 6px; }

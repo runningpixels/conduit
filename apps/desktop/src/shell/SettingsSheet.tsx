@@ -194,7 +194,7 @@ export function SettingsSheet({
   return (
     <div className="scrim" data-open="true" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={sheetRef} className="sheet" role="dialog" aria-label="Settings" aria-modal="true">
-        <nav ref={navRef} className="sheet-nav" aria-label="Settings sections">
+        <nav ref={navRef} className="sheet-nav scroll" aria-label="Settings sections">
           <div className="sheet-nav-title">Settings</div>
           {NAV_ITEMS.map((item) => (
             <button

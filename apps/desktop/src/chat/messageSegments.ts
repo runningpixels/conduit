@@ -80,7 +80,7 @@ export const CODE_LANG: Record<string, string> = {
   r: 'r',
   dockerfile: 'dockerfile',
   makefile: 'makefile',
-  gradle: 'gradle',
+  gradle: 'groovy',
   ps1: 'powershell',
   powershell: 'powershell',
   pwsh: 'powershell',

@@ -16,7 +16,7 @@ export interface PlainTextRendererProps {
 /// Plain text in a `<pre>` (whitespace preserved). React escapes text children
 /// by construction — no injected markup possible.
 export function PlainTextRenderer({ text, styledPreview = true }: PlainTextRendererProps) {
-  return <pre className={`artifact-plain${styledPreview ? ' styled' : ''}`}>{text}</pre>;
+  return <pre className={`artifact-plain scroll${styledPreview ? ' styled' : ''}`}>{text}</pre>;
 }
 
 export interface MarkdownRendererProps {
@@ -26,7 +26,7 @@ export interface MarkdownRendererProps {
 
 /// Markdown → safe-subset React nodes (see `markdown/safeMarkdown.ts`).
 export function MarkdownRenderer({ source, styledPreview = true }: MarkdownRendererProps) {
-  return <div className={`artifact-markdown${styledPreview ? ' styled' : ''}`}>{renderMarkdown(source)}</div>;
+  return <div className={`artifact-markdown scroll${styledPreview ? ' styled' : ''}`}>{renderMarkdown(source)}</div>;
 }
 
 export interface CodeRendererProps {
@@ -41,7 +41,7 @@ export function CodeRenderer({ code, language, styledPreview = true }: CodeRende
   const lines = code.length === 0 ? [''] : code.split('\n');
   const highlighted = useHighlightTokens(code, language);
   return (
-    <div className={`artifact-code${styledPreview ? ' styled' : ''}`}>
+    <div className={`artifact-code scroll${styledPreview ? ' styled' : ''}`}>
       <div className="artifact-code-head">
         {language ? <span className="lang-chip">{language}</span> : <span className="lang-chip muted">text</span>}
       </div>
@@ -72,7 +72,7 @@ export interface JsonRendererProps {
 /// Recursive JSON tree with `<details>` summaries + type-tinted value spans.
 /// Falls back to a pretty-printed `<pre>` for primitives or malformed input.
 export function JsonRenderer({ data, styledPreview = true }: JsonRendererProps) {
-  return <div className={`artifact-json${styledPreview ? ' styled' : ''}`}>{renderJson(data, '$')}</div>;
+  return <div className={`artifact-json scroll${styledPreview ? ' styled' : ''}`}>{renderJson(data, '$')}</div>;
 }
 
 function renderJson(value: unknown, key: string): ReactNode {

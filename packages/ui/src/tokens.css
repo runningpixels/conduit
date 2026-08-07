@@ -344,12 +344,45 @@ button {
 }
 :focus { outline: none; }
 :focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); border-radius: var(--r-xs); }
-textarea:focus-visible { outline: none; box-shadow: var(--glow); }
+/* Achromatic, matching the composer (§8.6). Focus is not provenance, so it does
+ * not take the provider hue — and a glow that changes colour with the model,
+ * then greys out entirely under `provider-colour: off`, was reporting nothing. */
+textarea:focus-visible { outline: none; border-color: var(--line-hi); }
 ::selection { background: var(--hue-weak); }
-.scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.scroll::-webkit-scrollbar { width: var(--space-6); height: var(--space-6); }
-.scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--r-pill); border: var(--space-3) solid transparent; background-clip: padding-box; }
-.scroll::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: padding-box; }
+/* The one scrollbar treatment in the product. Apply `.scroll` to anything that
+ * scrolls; it sets no `overflow`, so it is purely additive.
+ *
+ * The thumb was `--line`, which is 1.36:1 against `--bg` in dark and 1.26:1 in
+ * light — subtle to the point of being unfindable. Alpha ink reads in both
+ * themes while still disappearing into the surface. The track stays fully
+ * transparent: that, more than width, is what stops a scrollbar looking like a
+ * grey gutter. */
+.scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink-3) 45%, transparent) transparent;
+}
+/* Fallback for engines without standard scrollbar properties. Chromium >= 121
+ * takes the standard path above and ignores these entirely, so they are inert
+ * on a current WebView2 — kept only for a pinned/older runtime, alongside the
+ * `color-mix()` fallback further up this file.
+ *
+ * Geometry is the mockup's: a 10px bar with a 3px transparent border clipped to
+ * the content box leaves a 4px thumb. The previous values substituted scale
+ * tokens for the literals, but that scale is indexed by position rather than
+ * value (`--space-3` is 5px, not 3px), which asked for 10px of border inside an
+ * 8px box. Nobody noticed because the block never ran. */
+.scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+.scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-3) 45%, transparent);
+  border-radius: var(--r-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink-2) 55%, transparent);
+  background-clip: content-box;
+}
 
 /* ───────────────────────── Primitives (token + scale driven) ────────────
  * These are v5's shared component classes, extracted here so React primitives
@@ -468,7 +501,7 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   font: 500 var(--fs-2xl)/1 var(--font-ui);
 }
 .search-box input::placeholder { color: var(--ink-3); }
-.search-box input:focus { border-color: var(--line); box-shadow: var(--glow); }
+.search-box input:focus { border-color: var(--line-hi); }
 
 /* InfoCard — .info-card */
 .info-card {
@@ -564,8 +597,7 @@ textarea:focus-visible { outline: none; box-shadow: var(--glow); }
   font: 500 var(--fs-4xl)/1.2 var(--font-ui);
 }
 .cu-dialog-phrase input:focus {
-  border-color: var(--line);
-  box-shadow: var(--glow);
+  border-color: var(--line-hi);
 }
 .cu-dialog-actions {
   display: flex;

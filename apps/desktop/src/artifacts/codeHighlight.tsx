@@ -15,9 +15,9 @@ const PRISM_LANG_ALIASES: Record<string, string> = {
   gql: 'graphql',
   htm: 'html',
   md: 'markdown',
-  txt: 'text',
-  plain: 'text',
-  plaintext: 'text',
+  // `txt`/`plain`/`plaintext` deliberately absent: they used to map to `text`,
+  // a Prism alias for an empty grammar. Plain text has no lexical categories to
+  // colour, so it should fall through unsupported and take `--code` instead.
   patch: 'diff',
   dockerfile: 'docker',
   conf: 'ini',
@@ -33,8 +33,18 @@ export function normalizeCodeLanguage(raw?: string): string | undefined {
   return PRISM_LANG_ALIASES[mapped] ?? mapped;
 }
 
+/** Whether Prism has a grammar that will actually produce tokens.
+ *
+ *  `Boolean(Prism.languages[x])` alone is not enough. prism-react-renderer
+ *  registers `plain`/`plaintext`/`text`/`txt` as aliases of one shared **empty
+ *  object**, which is truthy — so tokenising a ```text fence "succeeded",
+ *  returned a single `plain` token per line, and callers concluded the content
+ *  was highlighted. That left plain text rendering as dim `--ink-2` prose
+ *  instead of taking `--code`, which is the opposite of the intent. An empty
+ *  grammar has no rules, so it is not support. */
 function isLanguageSupported(language: string): boolean {
-  return Boolean(Prism.languages[language]);
+  const grammar = Prism.languages[language] as Record<string, unknown> | undefined;
+  return Boolean(grammar) && Object.keys(grammar as Record<string, unknown>).length > 0;
 }
 
 /** Tokenize code synchronously; returns null when unsupported or on failure. */
@@ -60,10 +70,18 @@ export function useHighlightTokens(code: string, language?: string): HighlightTo
   );
 }
 
-/** Render a single tokenized line as class-named spans (no inline theme styles). */
+/** Render a single tokenized line as class-named spans (no inline theme styles).
+ *
+ *  The `token` base class is required: every rule in `syntax.css` is qualified
+ *  as `.token.keyword`, `.token.string` and so on, matching Prism's own output.
+ *  `token.types` carries only the specific types (`["tag","punctuation"]`), so
+ *  emitting it alone produced `class="tag punctuation"` and **no syntax rule
+ *  ever matched, for any language, in any scope** — the whole `--syn-*` palette
+ *  was unreachable. prism-react-renderer's own `getTokenProps` prepends it; this
+ *  renders spans by hand and has to do the same. */
 export function renderHighlightLine(tokens: Token[], keyPrefix: string): ReactNode {
   return tokens.map((token, idx) => (
-    <span key={`${keyPrefix}-${idx}`} className={token.types.join(' ')}>
+    <span key={`${keyPrefix}-${idx}`} className={['token', ...token.types].join(' ')}>
       {token.content}
     </span>
   ));

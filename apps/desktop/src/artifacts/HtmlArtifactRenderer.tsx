@@ -48,6 +48,12 @@ export interface HtmlArtifactRendererProps {
 const RESET_STYLE = [
   'html,body{margin:0;padding:0;color:inherit;background:transparent;font:inherit}',
   'img{max-width:100%}',
+  // The frame is sandboxed srcdoc, so parent CSS cannot reach its scrollbar —
+  // without this it renders the default chunky bar inside an otherwise quiet
+  // panel. Literal colours because the frame has no access to our tokens. This
+  // lives in the reset, not the styled baseline, so it applies even when the
+  // "styled preview" pref is off.
+  'html{scrollbar-width:thin;scrollbar-color:rgba(145,141,136,.45) transparent}',
 ].join('\n');
 
 /// Richer baseline applied when `styledPreview` is true. Conservative set:

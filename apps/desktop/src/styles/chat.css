@@ -1,5 +1,9 @@
 /* ── Chat thread ───────────────────────────────────────────────────────── */
-.thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-5) var(--sp-5) var(--sp-4); }
+/* `overflow-x: hidden` is load-bearing, not tidiness: a computed `visible` next
+ * to a non-`visible` value becomes `auto`, so leaving it off made the thread a
+ * horizontal scroll container. One long URL or Windows path then dragged the
+ * entire transcript sideways. */
+.thread { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--sp-5) var(--sp-5) var(--sp-4); }
 .thread-inner { max-width: var(--measure); margin: 0 auto; }
 /* V7 turn (§8.3): two shapes, no avatars, no role names. User = right-aligned
  * raised bubble; assistant = full width with a 2px provider rule on the left. */
@@ -26,7 +30,7 @@
   font-size: 14.5px;
   line-height: 1.55;
 }
-.bubble p { margin: 0; white-space: pre-wrap; }
+.bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Assistant: full width, flat, no rule and no indent — role is carried by shape
  * and alignment alone (§8.3), which the user bubble's right alignment already
@@ -84,7 +88,25 @@
 .act:hover { background: var(--card); color: var(--ink); }
 .act svg { width: 13px; height: 13px; }
 
-.prose { font-size: 14.5px; line-height: 1.68; color: var(--ink); }
+/* `overflow-wrap: anywhere` because prose routinely carries tokens with no break
+ * opportunity — URLs, Windows paths, hashes, base64. Without it they overflow
+ * `--measure` and, before `.thread` gained `overflow-x: hidden`, scrolled the
+ * whole transcript. Same reasoning as `.toast-brief` further down. */
+.prose { font-size: 14.5px; line-height: 1.68; color: var(--ink); overflow-wrap: anywhere; }
+
+/* Links had no rule anywhere in the product, so every one rendered in
+ * Chromium's UA colour — a saturated periwinkle that is not in the palette, is
+ * not `--hue`, and ignores `provider-colour: off`. Ink plus a quiet underline
+ * marks a link without importing a colour the design does not own. */
+.chat-prose a,
+.bubble a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-hi);
+  text-underline-offset: 2px;
+}
+.chat-prose a:hover,
+.bubble a:hover { text-decoration-color: var(--ink-3); }
 .prose p { margin: 0 0 var(--sp-3); }
 .prose p:last-child { margin-bottom: 0; }
 /* Inline code. `.md-code` is what safeMarkdown emits; the bare `code` catches
@@ -127,7 +149,7 @@
   text-decoration: none;
   padding: 0 1px;
 }
-.cite a:hover { color: var(--hue); }
+.cite a:hover { color: var(--ink); }
 
 /* sources: pill chips beneath the message (§8.4) */
 .sources {
@@ -228,12 +250,12 @@
 .q-sources { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 2px 0 8px; font-size: 11.5px; }
 .q-source { color: var(--ink-3); }
 .q-source .src-title { color: var(--ink-2); }
-.q-source .src-url { color: var(--hue); }
+.q-source .src-url { color: var(--ink-3); }
 
 /* non-search tools: args as a mono kv list + a result block */
 .kv { display: flex; gap: 9px; padding: 5px 0; font-family: var(--font-mono); font-size: 11px; }
 .kv dt { color: var(--ink-3); min-width: 76px; }
-.kv dd { margin: 0; color: var(--ink-2); }
+.kv dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
 .tool-out {
   margin-top: 9px;
   padding: 8px 10px;
@@ -242,6 +264,9 @@
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-2);
+  /* `.tool` is `overflow: hidden`, so an unbreakable argument value was clipped
+     dead — no ellipsis, no scroll. */
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 .tool-out b { color: var(--ink); font-weight: 500; }
@@ -342,6 +367,11 @@
   text-transform: uppercase;
   letter-spacing: .04em;
 }
+/* When the body could not be tokenised it takes `--code`, so the chip follows —
+ * the block then reads as one unit rather than a dim label over coloured text.
+ * On a highlighted block the chip stays `--ink-3`: the body already carries the
+ * `--syn-*` palette and a coloured chip would compete with it. */
+.inline-code-block[data-plain="true"] .inline-code-block-lang { color: var(--code); }
 .inline-code-block-actions {
   display: flex;
   align-items: center;
@@ -557,7 +587,7 @@
 }
 .suggested-prompt-chip:hover {
   background: var(--card-hi);
-  border-color: var(--hue);
+  border-color: var(--line-hi);
   color: var(--ink);
 }
 
@@ -597,19 +627,12 @@
   padding: 15px 16px 6px;
   max-height: var(--composer-max-height);
   overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--ink-3) 45%, transparent) transparent;
 }
+/* Scrollbar comes from the shared `.scroll` class on the textarea. This rule
+ * used to carry its own copy — the treatment `.scroll` has now adopted — which
+ * meant two scrollbar idioms in the codebase and only one of them applied
+ * anywhere else. */
 .composer textarea[data-capped="true"] { overflow-y: auto; }
-.composer textarea::-webkit-scrollbar { width: 6px; }
-.composer textarea::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
-.composer textarea::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ink-3) 45%, transparent);
-  border-radius: 999px;
-}
-.composer textarea::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ink-2) 55%, transparent);
-}
 .composer textarea::placeholder { color: var(--ink-3); }
 .composer-attachments {
   display: flex;
@@ -906,17 +929,19 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 /* Per-turn usage is audit detail — hidden until the turn is hovered or
  * focused. The provenance strip beneath the composer is the canonical report
  * (§6.3). */
+/* `display: none` rather than `opacity: 0`: the hidden state used to keep its
+ * box, so ~19px of dead vertical space sat under every streamed turn between the
+ * prose and the action bar. It also kept the token counts in the accessibility
+ * tree and in Ctrl+A, which is not what "hidden audit detail" means. */
 .usage-summary {
-  display: flex;
+  display: none;
   gap: 12px;
   margin-top: 8px;
   color: var(--ink-3);
   font: 500 10.5px/1 var(--font-mono);
-  opacity: 0;
-  transition: opacity var(--tap);
 }
 .turn:hover .usage-summary,
-.turn:focus-within .usage-summary { opacity: 1; }
+.turn:focus-within .usage-summary { display: flex; }
 
 /* ── Agent feedback: thinking indicator ────────────────────────────────── */
 .thinking-indicator {
@@ -1082,15 +1107,15 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 .chat-prose blockquote {
   margin: 8px 0 11px;
   padding: 6px 10px;
-  border-left: 2px solid var(--hue);
-  background: var(--hue-a08);
+  border-left: 2px solid var(--line-hi);
+  background: color-mix(in srgb, var(--card) 55%, transparent);
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
   color: var(--ink-2);
 }
 .chat-prose blockquote p { margin: 0; }
 .chat-prose ul.task-list { list-style: none; padding-left: 0; }
 .chat-prose ul.task-list li { display: flex; gap: 6px; align-items: baseline; }
-.chat-prose ul.task-list input { accent-color: var(--hue); margin: 0; translate: 0 1px; }
+.chat-prose ul.task-list input { accent-color: var(--ink-3); margin: 0; translate: 0 1px; }
 .chat-prose ul.task-list li.done span { text-decoration: line-through; text-decoration-color: var(--ink-3); color: var(--ink-3); }
 .chat-prose hr { border: none; border-top: 1px solid var(--line-soft); margin: 12px 0; }
 

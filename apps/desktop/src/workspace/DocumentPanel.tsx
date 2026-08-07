@@ -649,7 +649,7 @@ export function DocumentPanel({
                   </button>
                 </div>
                 <textarea
-                  className="source-textarea"
+                  className="source-textarea scroll"
                   value={draft}
                   spellCheck={false}
                   onChange={(e) => setDraft(e.target.value)}

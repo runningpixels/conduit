@@ -74,8 +74,13 @@ export function InlineCodeBlock({
     }
   }
 
+  // `data-plain` marks a block Prism could not tokenise. It sits on the wrapper
+  // so the language chip can match the body's colour, and on the <pre> so the
+  // body itself takes it.
+  const plain = highlighted ? undefined : 'true';
+
   return (
-    <div className="inline-code-block">
+    <div className="inline-code-block" data-plain={plain}>
       <div className="inline-code-block-head">
         <span className="inline-code-block-lang">{lang}</span>
         <div className="inline-code-block-actions">
@@ -112,9 +117,7 @@ export function InlineCodeBlock({
           )}
         </div>
       </div>
-      {/* `data-plain` marks a body Prism could not tokenise, so CSS can colour
-          it without repainting a highlighted block's syntax palette. */}
-      <pre className="inline-code-block-body" data-plain={highlighted ? undefined : 'true'}>
+      <pre className="inline-code-block-body scroll" data-plain={plain}>
         <code>
           {highlighted ? renderHighlightedCode(highlighted) : candidate.body}
           {streaming && <span className="cursor" aria-hidden="true" />}

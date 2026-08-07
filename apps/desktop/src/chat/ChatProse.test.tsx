@@ -228,3 +228,74 @@ describe('ChatProse document fences', () => {
     expect(onPromote).not.toHaveBeenCalled();
   });
 });
+/**
+ * Hosted web search annotates a *range*, and for OpenAI that range is exactly
+ * the `([host](url))` link the model wrote. Reproduced from a real reply.
+ */
+describe('ChatProse citations', () => {
+  const bullet1 = '- **Earnings are still driving individual stocks.** Companies that beat expectations were rewarded.';
+  const bullet2 = '- **Oil moved higher**, which pressured sentiment in parts of the market.';
+  const link1 = ' ([apnews.com](https://apnews.com/article/aaa))';
+  const link2 = ' ([apnews.com](https://apnews.com/article/bbb))';
+  const content = `Here is the takeaway.\n\n${bullet1}${link1}\n${bullet2}${link2}`;
+
+  const citations = [
+    {
+      index: 1,
+      url: 'https://apnews.com/article/aaa',
+      title: 'How major US stock indexes fared',
+      startIndex: content.indexOf(link1),
+      endIndex: content.indexOf(link1) + link1.length,
+    },
+    {
+      index: 2,
+      url: 'https://apnews.com/article/bbb',
+      title: 'US stocks edge lower',
+      startIndex: content.indexOf(link2),
+      endIndex: content.indexOf(link2) + link2.length,
+    },
+  ];
+
+  function renderCited() {
+    return render(<ChatProse content={content} citations={citations} />);
+  }
+
+  // The bug: the source was sliced at citation offsets and each slice was block
+  // parsed on its own, so the <ul> was closed and reopened around every
+  // citation and the cited span rendered as its own paragraph.
+  it('keeps a cited list as a single list', () => {
+    const { container } = renderCited();
+    expect(container.querySelectorAll('ul')).toHaveLength(1);
+    expect(container.querySelectorAll('ul li')).toHaveLength(2);
+  });
+
+  it('places each marker inside its own list item', () => {
+    const { container } = renderCited();
+    const items = container.querySelectorAll('ul li');
+    expect(items[0].querySelector('.cite')?.textContent).toBe('1');
+    expect(items[1].querySelector('.cite')?.textContent).toBe('2');
+  });
+
+  it('replaces the cited span rather than rendering it as well', () => {
+    const { container } = renderCited();
+    // The redundant "(apnews.com)" link text is gone from the prose; the marker
+    // and the footnote row carry the citation instead.
+    expect(container.querySelector('.chat-prose-segment')?.textContent).not.toContain('(apnews.com)');
+    expect(container.textContent).toContain('Companies that beat expectations were rewarded.');
+  });
+
+  it('still lists the sources beneath the message', () => {
+    const { container } = renderCited();
+    const sources = container.querySelectorAll('.sources .source');
+    expect(sources).toHaveLength(2);
+    expect(sources[0].textContent).toContain('How major US stock indexes fared');
+  });
+
+  it('leaves uncited markdown untouched', () => {
+    const { container } = render(<ChatProse content={content} />);
+    expect(container.querySelectorAll('ul')).toHaveLength(1);
+    expect(container.querySelectorAll('.cite')).toHaveLength(0);
+    // Without annotations the model's own link is all there is, so it stays.
+    expect(container.textContent).toContain('apnews.com');
+  });
+});

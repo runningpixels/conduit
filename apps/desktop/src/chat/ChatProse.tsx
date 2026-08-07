@@ -1,14 +1,12 @@
-import { Fragment } from 'react';
-import { renderMarkdown } from '../artifacts/markdown/safeMarkdown';
+import {
+  PLACEHOLDER_CLOSE,
+  PLACEHOLDER_OPEN,
+  renderMarkdown,
+} from '../artifacts/markdown/safeMarkdown';
 import { parseMessageSegments } from './messageSegments';
 import type { ArtifactCandidate } from './messageSegments';
 import { CitationMarker } from './CitationMarker';
-import {
-  buildCitationSegments,
-  dedupeCitationsByUrl,
-  hostOf,
-  uniqueFootnotes,
-} from './citationUtils';
+import { dedupeCitationsByUrl, hostOf, uniqueFootnotes } from './citationUtils';
 import type { CitationAnnotation } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { InlineCodeBlock } from './InlineCodeBlock';
@@ -30,20 +28,54 @@ interface ChatProseProps {
   onStatus?: (message: string) => void;
 }
 
-function renderMarkdownWithCitations(
+/**
+ * Substitute each cited span with a placeholder, so the document can be parsed
+ * once and the marker rendered inline where the citation belongs.
+ *
+ * The provider annotates a *range*, and for hosted web search that range is
+ * exactly the `([host](url))` link the model wrote. Two things follow. The span
+ * is replaced rather than preceded, so the citation is reported once instead of
+ * as a marker plus a redundant `(apnews.com)` plus a footnote row. And the
+ * source is never split: `renderMarkdown` is a block parser, so rendering
+ * slices independently closed and reopened the enclosing `<ul>` around every
+ * citation, tearing a cited list into fragments.
+ */
+function citedMarkdown(
   raw: string,
   citations: CitationAnnotation[],
-  keyPrefix: string,
-): React.ReactNode {
-  const segments = buildCitationSegments(raw, citations);
-  return segments.map((seg, i) => (
-    <Fragment key={`${keyPrefix}-seg${i}`}>
-      {seg.citationsAtStart.map((c) => (
-        <CitationMarker key={`${keyPrefix}-cite-${c.index}-${c.startIndex}`} citation={c} />
-      ))}
-      {seg.text ? renderMarkdown(seg.text) : null}
-    </Fragment>
-  ));
+): { source: string; byId: Map<string, CitationAnnotation> } {
+  const byId = new Map<string, CitationAnnotation>();
+  const usable = citations
+    .filter((c) => c.startIndex >= 0 && c.endIndex > c.startIndex && c.endIndex <= raw.length)
+    .sort((a, b) => a.startIndex - b.startIndex);
+
+  let source = '';
+  let cursor = 0;
+  usable.forEach((citation, i) => {
+    // Overlapping ranges would corrupt the offsets; keep the first.
+    if (citation.startIndex < cursor) return;
+    const id = String(i);
+    source += raw.slice(cursor, citation.startIndex);
+    source += `${PLACEHOLDER_OPEN}${id}${PLACEHOLDER_CLOSE}`;
+    byId.set(id, citation);
+    cursor = citation.endIndex;
+  });
+  source += raw.slice(cursor);
+  return { source, byId };
+}
+
+const PLACEHOLDER_ANYWHERE = new RegExp(`${PLACEHOLDER_OPEN}[^${PLACEHOLDER_CLOSE}]*${PLACEHOLDER_CLOSE}`, 'g');
+
+/** Remove any placeholder that leaked into a fence, whose body may be persisted. */
+function cleanCandidate(candidate: ArtifactCandidate): ArtifactCandidate {
+  if (!candidate.body.includes(PLACEHOLDER_OPEN) && !candidate.title.includes(PLACEHOLDER_OPEN)) {
+    return candidate;
+  }
+  return {
+    ...candidate,
+    body: candidate.body.replace(PLACEHOLDER_ANYWHERE, ''),
+    title: candidate.title.replace(PLACEHOLDER_ANYWHERE, ''),
+  };
 }
 
 /** Unified assistant prose: safe markdown, inline fenced blocks, and citations. */
@@ -62,17 +94,32 @@ export function ChatProse({
   const raw = content || '';
   const deduped = showCitations ? dedupeCitationsByUrl(citations) : [];
   const footnotes = showCitations ? uniqueFootnotes(deduped) : [];
-  const segments = parseMessageSegments(raw);
+
+  // Offsets are absolute over `content`, so placeholders go in before the
+  // message is split into prose and fences. The delimiters are private-use
+  // codepoints, so they carry no markdown or fence meaning on the way through.
+  const { source, byId } =
+    deduped.length > 0
+      ? citedMarkdown(raw, deduped)
+      : { source: raw, byId: new Map<string, CitationAnnotation>() };
+  const segments = parseMessageSegments(source);
+
+  const markdownOptions =
+    byId.size > 0
+      ? {
+          renderPlaceholder: (id: string, key: string) => {
+            const citation = byId.get(id);
+            return citation ? <CitationMarker key={key} citation={citation} /> : null;
+          },
+        }
+      : undefined;
 
   return (
     <div className="prose chat-prose">
       {segments.map((seg, idx) => {
         const isLast = idx === segments.length - 1;
         if (seg.type === 'prose') {
-          const prose =
-            deduped.length > 0
-              ? renderMarkdownWithCitations(seg.text, deduped, `p${idx}`)
-              : renderMarkdown(seg.text || (streaming && isLast ? '' : ''));
+          const prose = renderMarkdown(seg.text, markdownOptions);
           return (
             <div key={`p${idx}`} className="chat-prose-segment">
               {prose}
@@ -84,14 +131,19 @@ export function ChatProse({
         // streaming the source always wins — it is the only place generation
         // is visible until the turn completes (§8.5).
         const fenceStreaming = streaming && isLast;
-        if (shouldRenderAsCard(seg.candidate, fenceStreaming)) {
+        // A citation range should never intersect a fence, but if one did the
+        // placeholder would ride into the fence body — and from there into a
+        // promoted artifact's stored content. Strip it at the boundary rather
+        // than trusting the provider's offsets.
+        const candidate = cleanCandidate(seg.candidate);
+        if (shouldRenderAsCard(candidate, fenceStreaming)) {
           const promoted = messageId
-            ? findPromotedArtifact(artifacts ?? [], messageId, seg.candidate)
+            ? findPromotedArtifact(artifacts ?? [], messageId, candidate)
             : undefined;
           return (
             <InlineArtifactCard
               key={`f${idx}`}
-              candidate={seg.candidate}
+              candidate={candidate}
               promoted={promoted}
               messageId={messageId}
               fileState={promoted ? fileStateMap?.[promoted.id] : undefined}
@@ -104,7 +156,7 @@ export function ChatProse({
         return (
           <InlineCodeBlock
             key={`f${idx}`}
-            candidate={seg.candidate}
+            candidate={candidate}
             streaming={fenceStreaming}
             messageId={messageId}
             artifacts={artifacts}

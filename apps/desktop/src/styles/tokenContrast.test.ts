@@ -111,6 +111,12 @@ describe.each(Object.entries(THEMES))('%s theme', (_theme, block) => {
   it.each(SURFACES)('--code clears AA on --%s', (surface) => {
     expect(contrast(readToken(block, 'code'), surfaces[surface])).toBeGreaterThanOrEqual(AA);
   });
+
+  // --link is the only thing marking a link as actionable, so it has to be
+  // legible on every surface prose can sit on.
+  it.each(SURFACES)('--link clears AA on --%s', (surface) => {
+    expect(contrast(readToken(block, 'link'), surfaces[surface])).toBeGreaterThanOrEqual(AA);
+  });
 });
 
 /**

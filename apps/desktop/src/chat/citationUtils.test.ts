@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildCitationSegments,
   dedupeCitationsByUrl,
   uniqueFootnotes,
 } from './citationUtils';
@@ -21,14 +20,8 @@ describe('dedupeCitationsByUrl', () => {
   });
 });
 
-describe('buildCitationSegments', () => {
-  it('places citation markers at startIndex boundaries', () => {
-    const text = 'Hello world';
-    const citations: CitationAnnotation[] = [
-      { index: 1, url: 'https://x.com', title: 'X', startIndex: 0, endIndex: 5 },
-    ];
-    const segments = buildCitationSegments(text, citations);
-    expect(segments[0].citationsAtStart).toHaveLength(1);
-    expect(segments[0].text).toBe('Hello');
-  });
-});
+// `buildCitationSegments` was deleted with this test. It sliced the source at
+// citation offsets so each slice could be rendered separately — but
+// `renderMarkdown` is a block parser, so slicing closed and reopened the
+// enclosing list around every citation and tore cited lists into fragments.
+// Placeholder substitution replaces it; see `ChatProse.test.tsx`.

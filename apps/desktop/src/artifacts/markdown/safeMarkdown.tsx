@@ -213,9 +213,27 @@ function parseBlocks(src: string): Block[] {
   return blocks;
 }
 
+/// Private-use delimiters wrapping a caller-supplied placeholder id. A caller
+/// substitutes `<id>` into the source *before* parsing, and gets a
+/// node back for it here. Private-use codepoints carry no Markdown meaning, so
+/// a placeholder cannot alter block structure — which is the whole point:
+/// splitting the source and parsing the pieces separately does.
+export const PLACEHOLDER_OPEN = '\uE000';
+export const PLACEHOLDER_CLOSE = '\uE001';
+const PLACEHOLDER_RE = /^\uE000([^\uE001]*)\uE001/;
+
+export interface MarkdownOptions {
+  /// Render a substituted placeholder. Returning null drops it silently.
+  renderPlaceholder?: (id: string, key: string) => ReactNode;
+}
+
 /// Inline parser. Walks the string with a cursor, emitting React nodes. Raw
 /// HTML (`<...>`) is treated as ordinary text — React escapes it on render.
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
+function renderInline(
+  text: string,
+  keyPrefix: string,
+  options?: MarkdownOptions,
+): ReactNode[] {
   const nodes: ReactNode[] = [];
   let buf = '';
   let i = 0;
@@ -233,6 +251,17 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 
   while (i < text.length) {
     const rest = text.slice(i);
+
+    // Caller-substituted placeholder. Checked first so nothing else can claim
+    // the delimiters.
+    const placeholder = PLACEHOLDER_RE.exec(rest);
+    if (placeholder) {
+      flush();
+      const node = options?.renderPlaceholder?.(placeholder[1], `${keyPrefix}-ph${k}`);
+      if (node != null) push(node);
+      i += placeholder[0].length;
+      continue;
+    }
 
     // Inline code span: `...` (single backticks; content is escaped plain text).
     const codeMatch = /^`([^`]+)`/.exec(rest);
@@ -304,8 +333,9 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 }
 
 /// Render a Markdown source string into a fragment of block elements.
-export function renderMarkdown(src: string): ReactNode {
+export function renderMarkdown(src: string, options?: MarkdownOptions): ReactNode {
   const blocks = parseBlocks(src);
+  const inline = (text: string, key: string) => renderInline(text, key, options);
   return (
     <>
       {blocks.map((block, idx) => {
@@ -319,12 +349,12 @@ export function renderMarkdown(src: string): ReactNode {
             );
           case 'heading': {
             const Tag = (`h${Math.min(Math.max(block.level, 1), 6)}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6');
-            return <Tag key={key}>{renderInline(block.inline, key)}</Tag>;
+            return <Tag key={key}>{inline(block.inline, key)}</Tag>;
           }
           case 'blockquote':
             return (
               <blockquote key={key} className="md-quote">
-                {renderInline(block.inline, key)}
+                {inline(block.inline, key)}
               </blockquote>
             );
           case 'ul':
@@ -335,7 +365,7 @@ export function renderMarkdown(src: string): ReactNode {
                     {item.checked != null && (
                       <input type="checkbox" checked={item.checked} readOnly tabIndex={-1} aria-label={item.text} />
                     )}
-                    <span>{renderInline(item.text, `${key}-li${j}`)}</span>
+                    <span>{inline(item.text, `${key}-li${j}`)}</span>
                   </li>
                 ))}
               </ul>
@@ -344,7 +374,7 @@ export function renderMarkdown(src: string): ReactNode {
             return (
               <ol key={key}>
                 {block.items.map((item, j) => (
-                  <li key={`${key}-li${j}`}>{renderInline(item, `${key}-li${j}`)}</li>
+                  <li key={`${key}-li${j}`}>{inline(item, `${key}-li${j}`)}</li>
                 ))}
               </ol>
             );
@@ -355,7 +385,7 @@ export function renderMarkdown(src: string): ReactNode {
                   <tr>
                     {block.header.map((cell, j) => (
                       <th key={`${key}-th${j}`} className={block.align[j] === 'right' || block.align[j] === 'center' ? 'num' : undefined} style={block.align[j] === 'center' ? { textAlign: 'center' } : undefined}>
-                        {renderInline(cell, `${key}-th${j}`)}
+                        {inline(cell, `${key}-th${j}`)}
                       </th>
                     ))}
                   </tr>
@@ -365,7 +395,7 @@ export function renderMarkdown(src: string): ReactNode {
                     <tr key={`${key}-tr${r}`}>
                       {row.map((cell, c) => (
                         <td key={`${key}-td${r}-${c}`} className={block.align[c] === 'right' || block.align[c] === 'center' ? 'num' : undefined} style={block.align[c] === 'center' ? { textAlign: 'center' } : undefined}>
-                          {renderInline(cell, `${key}-td${r}-${c}`)}
+                          {inline(cell, `${key}-td${r}-${c}`)}
                         </td>
                       ))}
                     </tr>
@@ -376,7 +406,7 @@ export function renderMarkdown(src: string): ReactNode {
           case 'rule':
             return <hr key={key} className="md-rule" />;
           case 'paragraph':
-            return <p key={key}>{renderInline(block.inline, key)}</p>;
+            return <p key={key}>{inline(block.inline, key)}</p>;
         }
       })}
     </>

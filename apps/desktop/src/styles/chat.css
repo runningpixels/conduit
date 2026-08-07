@@ -95,18 +95,23 @@
 .prose { font-size: 14.5px; line-height: 1.68; color: var(--ink); overflow-wrap: anywhere; }
 
 /* Links had no rule anywhere in the product, so every one rendered in
- * Chromium's UA colour — a saturated periwinkle that is not in the palette, is
- * not `--hue`, and ignores `provider-colour: off`. Ink plus a quiet underline
- * marks a link without importing a colour the design does not own. */
-.chat-prose a,
+ * Chromium's UA colour. The first fix — ink with a `--line-hi` underline —
+ * overcorrected: that underline is 1.81:1 against `--bg`, so a link read
+ * exactly like the prose around it and nothing said it was clickable. Colour is
+ * the affordance; see `--link` in tokens.css. */
+/* `.source` chips and `.cite` markers are excluded: both are already marked as
+ * navigation by shape (a pill, a superscript), and `.chat-prose a` outranks
+ * `.source` on specificity — 0,1,1 against 0,1,0 — so without this the footnote
+ * row turns into a line of blue underlined links. */
+.chat-prose a:not(.source),
 .bubble a {
-  color: var(--ink);
+  color: var(--link);
   text-decoration: underline;
-  text-decoration-color: var(--line-hi);
+  text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
   text-underline-offset: 2px;
 }
-.chat-prose a:hover,
-.bubble a:hover { text-decoration-color: var(--ink-3); }
+.chat-prose a:not(.source):hover,
+.bubble a:hover { text-decoration-color: var(--link); }
 .prose p { margin: 0 0 var(--sp-3); }
 .prose p:last-child { margin-bottom: 0; }
 /* Inline code. `.md-code` is what safeMarkdown emits; the bare `code` catches
@@ -144,11 +149,15 @@
   vertical-align: super;
   margin-left: 1px;
 }
+/* Scoped with `.chat-prose` so it outranks the prose link rule above rather
+ * than relying on source order. */
+.chat-prose .cite a,
 .cite a {
   color: var(--ink-3);
   text-decoration: none;
   padding: 0 1px;
 }
+.chat-prose .cite a:hover,
 .cite a:hover { color: var(--ink); }
 
 /* sources: pill chips beneath the message (§8.4) */

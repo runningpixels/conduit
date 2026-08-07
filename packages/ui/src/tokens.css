@@ -110,6 +110,13 @@
    * is a machine fact (§7's register rule), not provenance. Clears AA on all
    * four surfaces; tokenContrast.test.ts checks it. */
   --code: #e0a080;
+  /* Links. A link's colour is its affordance — it reports that the text is
+   * actionable, which is information rather than decoration (§6.2). Ink plus a
+   * faint underline was tried first and failed: the underline measured 1.81:1
+   * against --bg, so a link was indistinguishable from the prose around it.
+   * Deliberately not --hue (provider identity) and not --code (machine output);
+   * a link is neither. */
+  --link: #8ab4f8;
 
   /* Hue is provider identity (spec §5.4); neutral fallback until data-provider lands */
   --hue: var(--ink-2);
@@ -232,6 +239,7 @@
   --warn: #b45309;
   --err: #b91c1c;
   --code: #a2532b;
+  --link: #1f5fa8;
   --shadow-color: rgba(20,30,40,.25);
   --shadow: var(--lift);
   --glow: 0 0 0 1px var(--hue-weak), 0 0 18px -8px var(--hue);

@@ -38,40 +38,8 @@ export function hostOf(url: string): string {
   }
 }
 
-export interface CitationSegment {
-  text: string;
-  citationsAtStart: CitationAnnotation[];
-}
-
-/** Split prose into segments with citations that begin at each segment's start offset. */
-export function buildCitationSegments(
-  raw: string,
-  citations: CitationAnnotation[],
-): CitationSegment[] {
-  const sorted = [...citations].sort((a, b) => a.startIndex - b.startIndex);
-  const byStart = new Map<number, CitationAnnotation[]>();
-  for (const c of sorted) {
-    const list = byStart.get(c.startIndex) ?? [];
-    list.push(c);
-    byStart.set(c.startIndex, list);
-  }
-
-  const boundaries = new Set<number>([0, raw.length]);
-  for (const c of sorted) {
-    boundaries.add(c.startIndex);
-    boundaries.add(c.endIndex);
-  }
-  const points = [...boundaries].sort((a, b) => a - b);
-
-  const segments: CitationSegment[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const start = points[i];
-    const end = points[i + 1];
-    if (start === end) continue;
-    segments.push({
-      text: raw.slice(start, end),
-      citationsAtStart: byStart.get(start) ?? [],
-    });
-  }
-  return segments;
-}
+// `buildCitationSegments` lived here. It split prose at citation offsets so each
+// piece could be rendered independently — which cannot work, because
+// `renderMarkdown` parses blocks: slicing mid-list closed and reopened the
+// `<ul>` around every citation. `ChatProse` substitutes placeholders and parses
+// once instead (§8.4).

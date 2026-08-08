@@ -10,10 +10,10 @@
   },
   "lint-staged": {
     "*.rs": [
-      "cargo fmt --check"
+      "bash -c 'cargo fmt --all --check'"
     ],
     "*.{ts,tsx}": [
-      "pnpm -C apps/desktop check"
+      "bash -c 'pnpm -C apps/desktop check'"
     ]
   },
   "devDependencies": {

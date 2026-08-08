@@ -61,49 +61,73 @@
   src: url("./fonts/GeistMono-SemiBold.woff2") format("woff2");
 }
 
-/* ───────────────────────── v7 token set (dark, default) — conduit-v7-design-spec §5 ───────────────────────── */
+/* ───────────────────────── v9 token set (dark, default) — conduit-v9-design-spec §5 ───────────────────────── */
 :root {
+  /* Geist stays first (v9 plan D3): CSP stays 'self', the app launches offline,
+   * and metrics stay identical across Windows/macOS/Linux. V9 §5's system stack
+   * follows as the fallback. The calm V9 is after comes from temperature and
+   * type size (§2.4), not from the face. */
   --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  /* Artifact document titles only (§6). A pure system stack — no bundled
+   * webfont for a choice §10.2 itself flags as the first thing to kill. */
+  --font-serif: "Charter", "Iowan Old Style", Georgia, "Times New Roman", ui-serif, serif;
   --r-xs: 5px;
-  --r-sm: 6px;
-  --r: 9px;
-  --r-lg: 14px;
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
   --r-pill: 999px;
   --tap: .15s cubic-bezier(.22,.61,.24,1);
   --rail-w: 52px;
   --chat-w: 43vw;
 
-  /* Structural (spec §5.1) */
+  /* Structural (spec §5) */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-  --sidebar-w: 236px;
-  --panel-w: 400px;
-  --measure: 52rem;
+  --sidebar-w: 280px;
+  --panel-w: 420px;
+  --measure: 46rem;
 
-  /* Surfaces (spec §5.2): 3 levels, one border weight, one soft divider */
-  --bg: #111112;
-  --raised: #171718;
-  --card: #1d1d1f;
-  --card-hi: #26262a;
-  --line: #2c2c30;
-  --line-soft: #212123;
-  /* Raised border weight. The composer's focus state is achromatic (spec §8.6),
-   * so the only signal it has is this step up from --line. It has to be legible
-   * on its own — colour is not carrying any of the load. */
-  --line-hi: #3f3f46;
+  /* Surfaces (spec §5): warm charcoal, not blue-black. --bg-side is the sidebar
+   * / panel / sheet-nav surface; it replaced --raised, which was the same role
+   * under a name V9 does not use. One token per surface — two hex literals
+   * behind one surface is the drift tokenContrast.test.ts reads this file to
+   * prevent. */
+  --bg: #262624;
+  --bg-side: #1f1e1d;
+  --card: #30302e;
+  --card-hi: #3a3a37;
+  --line: #3d3d3a;
+  --line-soft: #343431;
+  /* Raised border weight: the step up from --line that carries a hovered or
+   * active edge on its own. */
+  --line-hi: #4d4d49;
   /* Three-step ink ramp. Every step clears WCAG AA (4.5:1) against every
-   * surface above, including --card-hi; tokenContrast.test.ts asserts it.
-   * --ink-3 in particular carries real copy (composer placeholder, sidebar
-   * group headers, tool status, .kv labels) and its previous value sat at
-   * 3.2:1 on --card, which read as unreadably dim. */
-  --ink: #eceae7;
-  --ink-2: #b8b4af;
-  --ink-3: #918d88;
-  --shade: rgba(0,0,0,.6);
-  --lift: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -8px rgba(0,0,0,.65);
+   * surface, including --card-hi; tokenContrast.test.ts asserts it.
+   * --ink-3 carries real copy (composer placeholder, sidebar group headers,
+   * tool summaries, the status sentence). V9 §5 specifies #8e8b83 and claims
+   * every ink step clears AA — measured, that value is 3.35:1 on --card-hi,
+   * because V9's surfaces are ~2 steps lighter than V8's. Lightened to the
+   * smallest value that clears 4.5 on the worst surface (v9 plan D1).
+   *
+   * Lifting --ink-3 squeezed it against --ink-2 (V9's #b8b5ac), leaving 1.23:1
+   * between them — legible but visually one step, which is what the ramp's
+   * separation assertion exists to catch. --ink-2 moves up with it. The warm
+   * palette simply has less usable range than V8's blue-black did: AA against
+   * --card-hi is a higher floor than AA against #26262a was. */
+  --ink: #eceae2;
+  --ink-2: #c4c2ba;
+  --ink-3: #a6a39d;
+  --shade: rgba(0,0,0,.55);
+  --lift: 0 1px 2px rgba(0,0,0,.35), 0 14px 40px -12px rgba(0,0,0,.6);
+  /* The composer's resting elevation (§7). Softer than --lift, which is for
+   * summoned overlays. */
+  --soft-lift: 0 1px 2px rgba(0,0,0,.25), 0 4px 16px -6px rgba(0,0,0,.35);
   --ok: #4ade80;
   --warn: #fbbf24;
-  --err: #f87171;
+  /* #f87171 measured 4.13:1 on --card-hi, and .tool-status.err sits on exactly
+   * that surface once the tool line is hovered. Lifted to clear AA there. */
+  --err: #f97e7e;
   /* Code that Prism cannot tokenise — inline spans, ```text, unknown languages.
    * Deliberately not var(--hue): hue is provider identity, so code would change
    * colour when you switch model and go grey under provider-colour: off. Code
@@ -116,10 +140,29 @@
    * against --bg, so a link was indistinguishable from the prose around it.
    * Deliberately not --hue (provider identity) and not --code (machine output);
    * a link is neither. */
-  --link: #8ab4f8;
+  --link: #9db8e8;
 
-  /* Hue is provider identity (spec §5.4); neutral fallback until data-provider lands */
+  /* Hue is provider identity (spec §3); neutral fallback until data-provider lands.
+   *
+   * V9 splits hue by role, because its warmer/lighter surfaces put the brand
+   * hexes below AA as text (v9 plan D1):
+   *   --hue        the identity colour. Graphics only — the assistant left rule,
+   *                provider dots, the streaming caret, focus rings. WCAG's
+   *                non-text floor is 3:1 and all four clear it (3.57–3.83).
+   *   --hue-text   the same identity, lightened to clear AA (4.5:1) wherever
+   *                hue is literal text: `.switched`, the armed web button, the
+   *                palette mode badge, sidebar "New chat".
+   *   --hue-solid  a display fill that keeps --on-hue legible on top of it.
+   *                V9 §5 names this token for exactly that job but leaves it
+   *                aliased to --hue, where white text measures 2.98–3.20:1.
+   *                Tuned by lowering HSL lightness only, so hue and saturation
+   *                — the identity — survive.
+   * White-labelling still swaps one identity per provider; the two derivatives
+   * are computed from it, not chosen independently. */
   --hue: var(--ink-2);
+  --hue-text: var(--ink-2);
+  --hue-solid: var(--ink-2);
+  --on-hue: #ffffff;
   --hue-weak: transparent;
   --shadow-color: rgba(0,0,0,.55);
   --shadow: var(--lift);
@@ -222,24 +265,35 @@
   --cu-tap: var(--tap);
 }
 
+/* Light maps to bone/paper (spec §5). In light mode the worst-contrast surface
+ * is the *darkest* one — --bg-side — which is what the status/ink values below
+ * are solved against. */
 [data-theme="light"] {
-  --bg: #faf9f8;
-  --raised: #f2f0ee;
+  --bg: #faf9f5;
+  --bg-side: #f0eee6;
   --card: #ffffff;
-  --card-hi: #f5f3f1;
-  --line: #e2dfdb;
-  --line-soft: #ece9e6;
-  --line-hi: #c9c5c0;
-  --ink: #1a1918;
-  --ink-2: #53504c;
-  --ink-3: #6e6a65;
-  --shade: rgba(28,25,23,.28);
-  --lift: 0 1px 2px rgba(28,25,23,.06), 0 14px 34px -10px rgba(28,25,23,.18);
-  --ok: #15803d;
-  --warn: #b45309;
+  --card-hi: #f5f4ee;
+  --line: #e4e1d7;
+  --line-soft: #edeae1;
+  --line-hi: #cfcbbf;
+  --ink: #29271f;
+  /* Moved down with --ink-3 to keep the ramp's three steps perceptible; see
+   * the dark block. */
+  --ink-2: #59564c;
+  /* V9 §5 specifies #7c786c, which measures 3.80:1 on --bg-side. Darkened to
+   * the smallest value clearing AA there (v9 plan D1). */
+  --ink-3: #706c61;
+  --shade: rgba(41,37,30,.3);
+  --lift: 0 1px 2px rgba(41,37,30,.06), 0 16px 40px -12px rgba(41,37,30,.16);
+  --soft-lift: 0 1px 2px rgba(41,37,30,.05), 0 4px 14px -6px rgba(41,37,30,.1);
+  /* Both sat at 4.32:1 on the new --bg-side; nudged to clear AA on every
+   * surface now that --bg-side is one of them. */
+  --ok: #147c3b;
+  --warn: #af5109;
   --err: #b91c1c;
   --code: #a2532b;
   --link: #1f5fa8;
+  --on-hue: #ffffff;
   --shadow-color: rgba(20,30,40,.25);
   --shadow: var(--lift);
   --glow: 0 0 0 1px var(--hue-weak), 0 0 18px -8px var(--hue);
@@ -258,25 +312,30 @@
   --elevation-3: var(--lift);
 }
 
-/* ── Provider identity — the only hue in the product (spec §5.4) ───────── */
-[data-provider="anthropic"] { --hue: #d97757; --hue-weak: color-mix(in srgb, #d97757 14%, transparent); --hue-weak-solid: rgba(217, 119, 87, .14); }
-[data-provider="openai"]    { --hue: #10a37f; --hue-weak: color-mix(in srgb, #10a37f 14%, transparent); --hue-weak-solid: rgba(16, 163, 127, .14); }
-[data-provider="ollama"]    { --hue: #90909b; --hue-weak: color-mix(in srgb, #90909b 16%, transparent); --hue-weak-solid: rgba(144, 144, 155, .16); }
-[data-provider="custom"]    { --hue: #7f8bff; --hue-weak: color-mix(in srgb, #7f8bff 14%, transparent); --hue-weak-solid: rgba(127, 139, 255, .14); }
+/* ── Provider identity — the only hue in the product (spec §3) ──────────────
+   Each provider declares three values: the identity itself (--hue, graphics),
+   the AA-legible text variant (--hue-text), and the display fill that keeps
+   --on-hue legible (--hue-solid). See the --hue comment in :root for why.
+   --hue-weak is the 14–16% wash behind chips, derived from the identity. */
+[data-provider="anthropic"] { --hue: #d97757; --hue-text: #e08f75; --hue-solid: #c5522d; --hue-weak: color-mix(in srgb, #d97757 14%, transparent); --hue-weak-solid: rgba(217, 119, 87, .14); }
+[data-provider="openai"]    { --hue: #10a37f; --hue-text: #40b599; --hue-solid: #0d8669; --hue-weak: color-mix(in srgb, #10a37f 14%, transparent); --hue-weak-solid: rgba(16, 163, 127, .14); }
+[data-provider="ollama"]    { --hue: #90909b; --hue-text: #a2a2ab; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #90909b 16%, transparent); --hue-weak-solid: rgba(144, 144, 155, .16); }
+[data-provider="custom"]    { --hue: #7f8bff; --hue-text: #919bff; --hue-solid: #5464ff; --hue-weak: color-mix(in srgb, #7f8bff 14%, transparent); --hue-weak-solid: rgba(127, 139, 255, .14); }
 
 /* The four hues above are tuned for the dark surfaces and land at 3.1–3.5:1 on
-   a light one, so every hue-coloured label (§8.4 tool titles, suggestion chip
-   captions, `.prov` names) fails AA in light mode. Darkened variants keep the
-   same identity and clear 4.5:1 on --card / --bg / --raised. --hue-weak is the
-   14% wash behind chips, so it tracks the hue it is derived from. */
+   a light one, so every hue-coloured label (`.switched`, the armed web button,
+   the palette mode badge) would fail AA in light mode. Darkened variants keep
+   the same identity and clear 4.5:1 on every light surface including
+   --bg-side, so light mode needs no separate --hue-text: the identity value is
+   already legible as text there, and --hue-text aliases it. */
 [data-theme="light"] [data-provider="anthropic"],
-[data-theme="light"][data-provider="anthropic"] { --hue: #b04f2b; --hue-weak: color-mix(in srgb, #b04f2b 14%, transparent); --hue-weak-solid: rgba(176, 79, 43, .14); }
+[data-theme="light"][data-provider="anthropic"] { --hue: #b04f2b; --hue-text: #b04f2b; --hue-solid: #bd5836; --hue-weak: color-mix(in srgb, #b04f2b 14%, transparent); --hue-weak-solid: rgba(176, 79, 43, .14); }
 [data-theme="light"] [data-provider="openai"],
-[data-theme="light"][data-provider="openai"]    { --hue: #0a7a5e; --hue-weak: color-mix(in srgb, #0a7a5e 14%, transparent); --hue-weak-solid: rgba(10, 122, 94, .14); }
+[data-theme="light"][data-provider="openai"]    { --hue: #0a7a5e; --hue-text: #0a7a5e; --hue-solid: #0d8667; --hue-weak: color-mix(in srgb, #0a7a5e 14%, transparent); --hue-weak-solid: rgba(10, 122, 94, .14); }
 [data-theme="light"] [data-provider="ollama"],
-[data-theme="light"][data-provider="ollama"]    { --hue: #6b6b78; --hue-weak: color-mix(in srgb, #6b6b78 16%, transparent); --hue-weak-solid: rgba(107, 107, 120, .16); }
+[data-theme="light"][data-provider="ollama"]    { --hue: #6b6b78; --hue-text: #6b6b78; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #6b6b78 16%, transparent); --hue-weak-solid: rgba(107, 107, 120, .16); }
 [data-theme="light"] [data-provider="custom"],
-[data-theme="light"][data-provider="custom"]    { --hue: #4d59da; --hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --hue-weak-solid: rgba(77, 89, 218, .14); }
+[data-theme="light"][data-provider="custom"]    { --hue: #4d59da; --hue-text: #4d59da; --hue-solid: #5a6ae7; --hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --hue-weak-solid: rgba(77, 89, 218, .14); }
 
 /* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
 @supports not (color: color-mix(in srgb, red 10%, transparent)) {
@@ -299,9 +358,17 @@
 [data-rail="expanded"] { --rail-w: 184px; }
 
 /* ── V7 UI prefs (renderer-only; spec §8.9) ────────────────────────────── */
-/* Provider colour off: pin the hue to the neutral ink scale, layout unchanged. */
+/* Provider colour off: pin the hue to the neutral ink scale, layout unchanged.
+ * All three hue roles have to be neutralized together, or the send button and
+ * the hue-coloured labels would keep reporting a provider the rest of the
+ * chrome has stopped showing. --hue-solid cannot fall back to --ink-2: it
+ * carries --on-hue (white) on top of it, and white on --ink-2 is ~1.6:1. The
+ * literal below is a warm neutral that clears AA against white in both themes
+ * (5.36:1), which is the one job --hue-solid has. */
 html[data-provider-colour="off"] {
   --hue: var(--ink-2);
+  --hue-text: var(--ink-2);
+  --hue-solid: #6b6b66;
   --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
   --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
 }
@@ -310,6 +377,8 @@ html[data-provider-colour="off"] {
    the <html> neutralization. Neutralize per-element hue too. */
 html[data-provider-colour="off"] [data-provider] {
   --hue: var(--ink-2);
+  --hue-text: var(--ink-2);
+  --hue-solid: #6b6b66;
   --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
   --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
 }

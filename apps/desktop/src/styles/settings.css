@@ -34,7 +34,7 @@
 }
 .scrim[data-open="true"] .sheet { transform: translate(-50%, -50%); }
 .sheet-nav {
-  background: var(--raised);
+  background: var(--bg-side);
   border-right: 1px solid var(--line-soft);
   padding: var(--sp-3) var(--sp-2);
   min-height: 0;

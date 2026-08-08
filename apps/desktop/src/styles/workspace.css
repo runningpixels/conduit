@@ -23,7 +23,7 @@
   align-items: center;
   gap: var(--sp-3);
   padding: 0 var(--sp-3) 0 var(--sp-4);
-  background: var(--raised);
+  background: var(--bg-side);
   border-bottom: 1px solid var(--line-soft);
   /* Dragging is `data-tauri-drag-region` on the <header> (Titlebar.tsx), not
    * `-webkit-app-region` — that is an Electron property and WebView2 ignores
@@ -122,9 +122,9 @@ kbd {
   display: grid;
   place-items: center;
   border-radius: var(--r-pill);
-  /* Rides on the topbar's --raised fill, so it needs its own ring to stay
+  /* Rides on the bar's --bg-side fill, so it needs its own ring to stay
      legible where it overlaps the icon glyph beneath. */
-  border: 1px solid var(--raised);
+  border: 1px solid var(--bg-side);
   background: var(--hue);
   color: var(--bg);
   font: 600 9px/1 var(--font-mono);
@@ -152,7 +152,7 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--raised);
+  background: var(--bg-side);
   border-right: 1px solid var(--line-soft);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;

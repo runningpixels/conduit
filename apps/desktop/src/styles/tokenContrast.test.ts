@@ -71,8 +71,16 @@ function blockFor(selector: string): string {
   return tokens.slice(open + 1, close);
 }
 
-/** Surfaces text can sit on, worst-contrast case last. */
-const SURFACES = ['bg', 'raised', 'card', 'card-hi'] as const;
+/** WCAG 1.4.11 non-text minimum, for graphical objects that carry no glyphs. */
+const AA_NON_TEXT = 3;
+
+/**
+ * Surfaces text can sit on. `--bg-side` (the sidebar / panel / sheet-nav fill,
+ * formerly `--raised`) is the worst case in light mode, where it is the
+ * *darkest* surface — the direction that catches the opposite failures from
+ * dark mode's `--card-hi`.
+ */
+const SURFACES = ['bg', 'bg-side', 'card', 'card-hi'] as const;
 /** Ink steps that carry text. All three must be legible on all four surfaces. */
 const INKS = ['ink', 'ink-2', 'ink-3'] as const;
 
@@ -100,10 +108,13 @@ describe.each(Object.entries(THEMES))('%s theme', (_theme, block) => {
   });
 
   // Status colours label errors and warnings; illegible ones defeat the point.
-  it.each(['ok', 'warn', 'err'] as const)('--%s clears AA on --bg and --card', (status) => {
-    const hex = readToken(block, status);
-    expect(contrast(hex, surfaces.bg)).toBeGreaterThanOrEqual(AA);
-    expect(contrast(hex, surfaces.card)).toBeGreaterThanOrEqual(AA);
+  // Checked on every surface, not just --bg/--card: `.tool-status.err` sits on
+  // a hovered tool line, which is --card-hi, and that is where --err was
+  // measured at 4.13:1 under the V9 palette.
+  it.each(
+    (['ok', 'warn', 'err'] as const).flatMap((s) => SURFACES.map((sf) => [s, sf] as const)),
+  )('--%s clears AA on --%s', (status, surface) => {
+    expect(contrast(readToken(block, status), surfaces[surface])).toBeGreaterThanOrEqual(AA);
   });
 
   // --code carries body text (inline spans, plain fence bodies), so it is held
@@ -120,29 +131,63 @@ describe.each(Object.entries(THEMES))('%s theme', (_theme, block) => {
 });
 
 /**
- * Provider hue doubles as a text colour (tool titles, `.prov` names, suggestion
- * chip captions), so each hue is checked against the theme it is scoped to.
+ * V9 splits provider hue into three roles, each with its own floor, because the
+ * warm palette's surfaces are light enough that one value cannot serve all
+ * three (v9 implementation plan D1):
+ *
+ *   --hue        graphics only — the assistant left rule, provider dots, the
+ *                streaming caret, focus rings. WCAG 1.4.11, so 3:1.
+ *   --hue-text   the same identity wherever it is literal text. AA, 4.5:1.
+ *   --hue-solid  a fill with --on-hue on top of it (the send button glyph, the
+ *                `.btn.primary` label). AA against --on-hue.
+ *
+ * Each is checked against the theme it is scoped to. Without the split, all
+ * four dark hues measure 3.57–4.43 on --card/--card-hi and white-on-hue
+ * measures 2.98–3.20 — the state the V9 spec ships and describes as legible.
  */
-describe('provider hues are legible as text', () => {
-  const PROVIDERS = ['anthropic', 'openai', 'ollama', 'custom'] as const;
+const PROVIDERS = ['anthropic', 'openai', 'ollama', 'custom'] as const;
+const THEME_PROVIDERS = (['dark', 'light'] as const).flatMap((theme) =>
+  PROVIDERS.map((provider) => [theme, provider] as const),
+);
 
-  it.each(
-    (['dark', 'light'] as const).flatMap((theme) =>
-      PROVIDERS.map((provider) => [theme, provider] as const),
-    ),
-  )('%s / %s clears AA on every surface', (theme, provider) => {
+function hueBlockFor(theme: 'dark' | 'light', provider: string): string {
+  return blockFor(
+    theme === 'light'
+      ? `[data-theme="light"][data-provider="${provider}"]`
+      : `\n[data-provider="${provider}"]`,
+  );
+}
+
+describe('provider hue: text role', () => {
+  it.each(THEME_PROVIDERS)('%s / %s --hue-text clears AA on every surface', (theme, provider) => {
     const surfaceBlock = THEMES[theme];
-    const hueBlock = blockFor(
-      theme === 'light'
-        ? `[data-theme="light"][data-provider="${provider}"]`
-        : `\n[data-provider="${provider}"]`,
-    );
-    const hue = readToken(hueBlock, 'hue');
+    const hueText = readToken(hueBlockFor(theme, provider), 'hue-text');
+    for (const surface of SURFACES) {
+      expect(
+        contrast(hueText, readToken(surfaceBlock, surface)),
+        `${theme}/${provider} --hue-text on --${surface}`,
+      ).toBeGreaterThanOrEqual(AA);
+    }
+  });
+});
+
+describe('provider hue: graphic role', () => {
+  it.each(THEME_PROVIDERS)('%s / %s --hue clears 3:1 on every surface', (theme, provider) => {
+    const surfaceBlock = THEMES[theme];
+    const hue = readToken(hueBlockFor(theme, provider), 'hue');
     for (const surface of SURFACES) {
       expect(
         contrast(hue, readToken(surfaceBlock, surface)),
-        `${theme}/${provider} on --${surface}`,
-      ).toBeGreaterThanOrEqual(AA);
+        `${theme}/${provider} --hue on --${surface}`,
+      ).toBeGreaterThanOrEqual(AA_NON_TEXT);
     }
+  });
+});
+
+describe('provider hue: solid fill role', () => {
+  it.each(THEME_PROVIDERS)('%s / %s --on-hue clears AA on --hue-solid', (theme, provider) => {
+    const onHue = readToken(THEMES[theme], 'on-hue');
+    const solid = readToken(hueBlockFor(theme, provider), 'hue-solid');
+    expect(contrast(onHue, solid)).toBeGreaterThanOrEqual(AA);
   });
 });

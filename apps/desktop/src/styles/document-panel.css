@@ -26,7 +26,7 @@
   padding: 0 var(--sp-2) 0 var(--sp-3);
   height: 44px;
   border-bottom: 1px solid var(--line-soft);
-  background: var(--raised);
+  background: var(--bg-side);
 }
 .doc-toolbar-title {
   display: flex;
@@ -105,7 +105,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px var(--sp-3);
-  background: var(--raised);
+  background: var(--bg-side);
   border-top: 1px solid var(--line-soft);
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -281,7 +281,7 @@
   height: 100%;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-sm);
-  background: var(--raised);
+  background: var(--bg-side);
   display: block;
 }
 [data-doc-tab="preview"] .artifact-html-frame {
@@ -441,7 +441,7 @@
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--ink-2);
-  background: var(--raised);
+  background: var(--bg-side);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-pill);
   padding: 4px 8px;
@@ -539,7 +539,7 @@
   vertical-align: top;
 }
 .md-table th {
-  background: var(--raised);
+  background: var(--bg-side);
   color: var(--ink);
   font-weight: 600;
 }

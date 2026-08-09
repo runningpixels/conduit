@@ -379,17 +379,6 @@
   color: var(--ink-3);
   white-space: pre-wrap;
 }
-.tico {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--card);
-  border: 1px solid var(--line-soft);
-  display: grid;
-  place-items: center;
-}
-.tico svg { width: 13px; height: 13px; color: var(--ink-2); }
-.tname { font: 600 12px/1 var(--font-mono); }
 
 /* Inline code blocks in chat (inline-first rendering).
  *
@@ -1075,21 +1064,6 @@
 @keyframes thinking-pulse {
   0%, 80%, 100% { opacity: .3; transform: scale(.85); }
   40% { opacity: 1; transform: scale(1); }
-}
-
-/* ── Panel activity status icon ────────────────────────────────────────── */
-.panel-activity .status-icon.kind-thinking,
-.panel-activity .status-icon.kind-active {
-  background: var(--hue);
-  animation: ping 2.6s ease-out infinite;
-}
-
-/* ── Tool call running animation ──────────────────────────────────────── */
-/* `.tool.running` (set by ToolCallBlock) gets the hue left edge + sweep;
- * the keyframe below is shared with that rule. */
-@keyframes running-dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: .35; transform: scale(.7); }
 }
 
 /* ── Streaming caret (§9.3): inline `--hue` block at the current text tail ── */

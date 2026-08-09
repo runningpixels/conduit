@@ -234,6 +234,104 @@ describe('assistant turn provider rule', () => {
   });
 });
 
+/**
+ * Guard G3 — the mirror of the orphan check: CSS no markup uses.
+ *
+ * The orphan test asks "does this className have a rule?"; this asks "does this
+ * rule have a className?". Without it a deleted component leaves its styling
+ * behind, and the next person reads dead rules as live ones — V7's Pass N
+ * recorded `.tico`, `.tname` and `.panel-activity` as known-dead and they were
+ * still here nine passes later, because nothing failed.
+ *
+ * The match is deliberately loose (any occurrence of the bare name anywhere in
+ * a `.ts`/`.tsx`), since class names are routinely composed — `` `kind-${k}` ``,
+ * `` `tool${running ? ' running' : ''}` ``. A loose test that runs beats a
+ * precise one that cries wolf; the allowlist below covers what no source file
+ * can mention at all.
+ */
+const NOT_IN_MARKUP: Record<string, string> = {
+  // Prism emits these onto tokens at runtime; syntax.css colours them.
+  'attr-name': 'prismjs token class',
+  'attr-value': 'prismjs token class',
+  constant: 'prismjs token class',
+  operator: 'prismjs token class',
+  prolog: 'prismjs token class',
+  // Matched out of `url("…/Geist-Regular.woff2")`, not a selector at all.
+  woff2: 'font filename extension inside url()',
+  // Composed as `kind-${toast.kind}` in ToastStack.tsx, so the literal never
+  // appears. These three are live; the pair that used to sit beside them
+  // (kind-thinking / kind-active, under .panel-activity) genuinely were not.
+  'kind-error': 'built from a template literal in ToastStack.tsx',
+  'kind-success': 'built from a template literal in ToastStack.tsx',
+  'kind-warning': 'built from a template literal in ToastStack.tsx',
+};
+
+describe('no dead rules', () => {
+  it('every styled class is used by some component', () => {
+    const sources = [
+      ...walk(srcRoot).filter((f) => /\.tsx?$/.test(f) && !/\.test\./.test(f)),
+      ...walk(join(repoRoot, 'packages', 'ui', 'src')).filter((f) => /\.tsx?$/.test(f)),
+    ].map((f) => readFileSync(f, 'utf8'));
+
+    const dead: string[] = [];
+    for (const cls of styledClasses()) {
+      if (cls in NOT_IN_MARKUP) continue;
+      if (!sources.some((src) => src.includes(cls))) dead.push(cls);
+    }
+
+    expect(
+      dead.sort(),
+      `CSS rules no component uses — delete them, or add them to NOT_IN_MARKUP with the reason:\n  ${dead.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('the not-in-markup allowlist has no stale entries', () => {
+    const styled = styledClasses();
+    for (const cls of Object.keys(NOT_IN_MARKUP)) {
+      expect(styled.has(cls), `${cls} is allowlisted but no longer styled`).toBe(true);
+    }
+  });
+});
+
+/**
+ * Guard G8 — the fonts stay bundled.
+ *
+ * Decision D3 keeps Geist local so the CSP stays `'self'` and the app launches
+ * offline with identical metrics on every OS. That is one `url()` away from
+ * being undone by someone "just adding a webfont", and the failure is invisible
+ * in development, where the network is always there.
+ */
+describe('bundled fonts', () => {
+  const tokens = readFileSync(join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'), 'utf8');
+
+  it('every font url resolves to a file on disk', () => {
+    const urls = Array.from(tokens.matchAll(/url\(["']?([^"')]+)["']?\)/g)).map((m) => m[1]);
+    expect(urls.length, 'no @font-face urls found at all').toBeGreaterThan(0);
+    const shipped = new Set(
+      readdirSync(join(repoRoot, 'packages', 'ui', 'src', 'fonts'), { withFileTypes: true }).map(
+        (e) => e.name,
+      ),
+    );
+    const missing = urls.filter((u) => !shipped.has(u.split('/').pop() ?? u));
+    expect(missing, 'font files must ship with the app').toEqual([]);
+  });
+
+  it('loads no font over the network', () => {
+    const remote = Array.from(tokens.matchAll(/url\(["']?([^"')]+)["']?\)/g))
+      .map((m) => m[1])
+      .filter((u) => /^(https?:)?\/\//.test(u));
+    expect(remote, 'a remote font breaks CSP self and offline launch').toEqual([]);
+  });
+
+  it('--font-serif ends in a generic family', () => {
+    // D3 ships the serif as a system stack. Whatever the preferred faces, the
+    // last entry has to be a family every platform can satisfy.
+    const decl = tokens.match(/--font-serif:\s*([^;]+);/);
+    expect(decl, 'no --font-serif declared').not.toBeNull();
+    expect(decl![1].trim()).toMatch(/(serif|ui-serif)\s*$/);
+  });
+});
+
 describe('no orphan classes', () => {
   it('every DOM element with a className has at least one styled class', () => {
     const styled = styledClasses();

@@ -10,7 +10,7 @@ interface ComposerModelPickerProps {
 }
 
 export interface ComposerModelPickerHandle {
-  /// Open the model switcher popover (used by the provenance strip's
+  /// Open the model switcher popover (used by the status line's
   /// provider/model segment). No-op while disabled or busy.
   open: () => void;
 }

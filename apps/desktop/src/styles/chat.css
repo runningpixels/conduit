@@ -35,7 +35,7 @@
 /* Assistant: full width, flat, no rule and no indent — role is carried by shape
  * and alignment alone (§8.3), which the user bubble's right alignment already
  * provides. The 2px --hue rule this replaces was reporting provider identity,
- * and the provenance strip under the composer is that fact's one home (§6.3).
+ * and the status line under the composer is that fact's one home (§6.3).
  * Prose now starts flush with the thread column's left edge, mirroring the user
  * bubble's right edge. The `padding-left` went with the border: it existed only
  * to clear it, and would otherwise have left an orphan 16px indent. */
@@ -797,35 +797,55 @@
 .send.stop { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
 .send.stop:hover { border-color: var(--err); color: var(--err); filter: none; }
 
-/* Provenance strip — the single canonical home for every provenance fact
- * (conduit-v7-design-spec §6.3). One mono line beneath the composer. */
-.provenance {
+/* Status sentence — the provenance strip at one volume (V9 §2.2). The five
+ * always-on chips become one muted mono line, centred under the composer and
+ * non-interactive-looking at rest; the fuller breakdown lives in a popover one
+ * click away. Every fact the strip reported is still here or one click down. */
+.status-wrap {
   max-width: var(--measure);
-  margin: 8px auto 0;
-  padding: 0 4px;
+  margin: 0 auto;
+  padding: 8px 4px 0;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+.status {
   display: flex;
   align-items: center;
-  gap: 0;
-  flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-3);
-}
-.prov {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  gap: 6px;
   padding: 2px 8px;
-  border-radius: 5px;
-  transition: var(--tap);
+  border-radius: var(--r-sm);
+  font: 400 11.5px/1 var(--font-mono);
+  color: var(--ink-3);
+  transition: color var(--tap), background var(--tap);
 }
-.prov + .prov { border-left: 1px solid var(--line-soft); }
-button.prov:hover { background: var(--card); color: var(--ink-2); }
-.prov .pdot { width: 6px; height: 6px; background: var(--hue); }
-.prov b { font-weight: 400; color: var(--ink-2); }
-.prov svg { width: 11px; height: 11px; }
-.prov.local { color: var(--ok); }
-.prov.warn { color: var(--warn); }
+.status:hover { color: var(--ink-2); background: var(--card); }
+.status .pdot { width: 5px; height: 5px; background: var(--hue); }
+/* The separators are punctuation, not data: dimmer than the facts they part. */
+.status .sep { opacity: .45; }
+.status .local { color: var(--ok); }
+/* A missing key is the one actionable fact on this line, so it keeps its
+ * colour instead of sitting in the muted register with the rest. */
+.status .warn { color: var(--warn); }
+
+/* Anchored above the line, centred on it, and clamped like every other .menu
+ * (Pass K5: an unbounded shrink-to-fit menu grows off-screen on a long path). */
+/* The centring has to be repeated on the open state: `.menu[data-open="true"]`
+ * resets `transform` to none to land its entry animation, and at 0,2,0 it
+ * outranks this rule's 0,1,0 — so a bare `translateX(-50%)` here would be
+ * dropped the moment the popover opened. */
+.status-menu {
+  bottom: calc(100% + 6px);
+  left: 50%;
+  min-width: 260px;
+  transform: translateX(-50%) translateY(4px) scale(.985);
+}
+.status-menu[data-open="true"] { transform: translateX(-50%); }
+.status-menu .menu-item.warn { color: var(--warn); }
+.status-menu .menu-item.local { color: var(--ok); }
+/* Read-only rows: present as text, not as something that will do anything. */
+.status-menu span.menu-item { cursor: default; }
+.status-menu span.menu-item:hover { background: none; color: var(--ink-2); }
 
 /* ── Jump-to-bottom + skeleton + toasts ────────────────────────────────── */
 .tab-pane[data-pane="chat"] { position: relative; }
@@ -936,7 +956,7 @@ button.prov:hover { background: var(--card); color: var(--ink-2); }
 .Interrupted-action:hover { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .error-text { color: var(--err); font-size: 12.5px; margin: 6px 0 0; }
 /* Per-turn usage is audit detail — hidden until the turn is hovered or
- * focused. The provenance strip beneath the composer is the canonical report
+ * focused. The status line beneath the composer is the canonical report
  * (§6.3). */
 /* `display: none` rather than `opacity: 0`: the hidden state used to keep its
  * box, so ~19px of dead vertical space sat under every streamed turn between the

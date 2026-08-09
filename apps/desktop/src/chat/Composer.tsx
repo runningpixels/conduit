@@ -8,7 +8,7 @@ import {
 } from '../ipc/client';
 import { AttachIcon, FilePlainIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
-import { ProvenanceStrip, type CredentialMode } from '../shell/ProvenanceStrip';
+import { StatusLine, type CredentialMode } from '../shell/StatusLine';
 import {
   ATTACHMENT_INLINE_CAP_BYTES,
   type PendingAttachment,
@@ -354,7 +354,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           )}
         </div>
       </div>
-      <ProvenanceStrip
+      <StatusLine
         settings={settings}
         onOpenSettings={onOpenSettings}
         usage={usage ?? null}

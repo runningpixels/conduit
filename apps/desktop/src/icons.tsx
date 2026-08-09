@@ -73,6 +73,17 @@ export const PanelIcon = (p: IconProps) => (
   </Svg>
 );
 
+/* Status-popover glyphs (V9 §2.2): context use, spend, network posture. */
+export const ContextIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M4 19V5m0 14h16M8 15v-4m4 4V8m4 7v-2" /></Svg>
+);
+export const SpendIcon = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Svg>
+);
+export const ShieldIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M12 3 5 6v6c0 4.5 3 8 7 9 4-1 7-4.5 7-9V6l-7-3Z" /></Svg>
+);
+
 export const FolderIcon = (p: IconProps) => (
   <Svg {...p}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></Svg>
 );

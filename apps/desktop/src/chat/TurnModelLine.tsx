@@ -17,7 +17,7 @@ interface TurnModelLineProps {
  *  never shows it.
  *
  *  The first turn used to show it too, which meant every conversation opened
- *  with a caption naming a model the provenance strip was already reporting
+ *  with a caption naming a model the status line was already reporting
  *  continuously. §6.4's own argument — that the switch "is the only moment it
  *  carries information" — applies just as well to the first turn, where nothing
  *  has changed yet. */

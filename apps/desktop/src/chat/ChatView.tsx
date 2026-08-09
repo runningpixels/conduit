@@ -112,7 +112,7 @@ interface ChatViewProps {
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// Whether this pane is the active workspace tab (`data-active` for CSS). Defaults true for tests.
   paneActive?: boolean;
-  /// Open a settings section ('providers' | 'privacy' …) from the provenance strip.
+  /// Open a settings section ('providers' | 'privacy' …) from the status line.
   onOpenSettings?: (tab?: string) => void;
   /// Renderer-only conversation → last-used provider map (sidebar row dots).
   /// Falls back to `settings.activeProvider` for per-turn hue + model line.
@@ -932,8 +932,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   );
 
   // Accumulated usage across the whole conversation: every committed assistant
-  // turn's usage plus the live streaming turn. The provenance strip is the
-  // single canonical consumer of this figure (§6.3).
+  // turn's usage plus the live streaming turn. The status line is the
+  // single canonical consumer of this figure (V9 §2.2).
   const accumulatedUsage = useMemo(() => {
     let merged: ProviderUsage | null = null;
     for (const turn of turns) {

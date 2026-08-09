@@ -1,5 +1,5 @@
 /**
- * Context-window + token-accounting helpers for the provenance strip's
+ * Context-window + token-accounting helpers for the status line's
  * context-use and spend segments (conduit-v7-design-spec §6.3, §15 Q2).
  *
  * Decision (implementation-plan Q2): bundle a small static map of known model

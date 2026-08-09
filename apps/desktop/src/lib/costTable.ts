@@ -1,5 +1,5 @@
 /**
- * Bundled per-model pricing for the provenance strip's spend segment
+ * Bundled per-model pricing for the status line's spend segment
  * (conduit-v7-design-spec §6.3, §15 Q1).
  *
  * Decision (implementation-plan Q1): bundle a small static table of per-Mtok

@@ -15,12 +15,14 @@ const REDUCE_MOTION_KEY = 'conduit:v7-reduce-motion';
 const SHOW_REASONING_KEY = 'conduit:v7-show-reasoning';
 const SEND_WITH_KEY = 'conduit:v7-send-with';
 const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
+const EXPANDED_STATUS_KEY = 'conduit:v9-expanded-status';
 
 export type ProviderColourPref = 'on' | 'off';
 export type ReduceMotionPref = 'on' | 'off';
 export type ShowReasoningPref = 'on' | 'off';
 export type SendWithPref = 'enter' | 'cmd-enter';
 export type ExportMetadataPref = 'on' | 'off';
+export type ExpandedStatusPref = 'on' | 'off';
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -102,8 +104,34 @@ export function writeExportMetadata(value: ExportMetadataPref): void {
   writePref(EXPORT_METADATA_KEY, value);
 }
 
+/* ── Expanded status line (V9 §2.2 / §10.1) ───────────────────────────────
+ * V9 collapses five always-on provenance chips into one muted sentence, and
+ * §10.1 names the honest risk: the always-on cost/context readout was the most
+ * power-user thing about V8, and some people will miss it at a glance. The
+ * spec's own answer is this toggle rather than reverting the strip — same
+ * facts, the same line re-inflated, no layout change.
+ *
+ * Shipped up front instead of after a dogfooding round, because the collapse is
+ * the part that needs an escape hatch on day one, not the part that needs
+ * proving. Renderer-only, so it lives here rather than in AppSettings. */
+
+export function readExpandedStatus(): ExpandedStatusPref {
+  return readPref(EXPANDED_STATUS_KEY, ['on', 'off'], 'off');
+}
+
+export function writeExpandedStatus(value: ExpandedStatusPref): void {
+  writePref(EXPANDED_STATUS_KEY, value);
+  applyExpandedStatus(value);
+}
+
+/** `html[data-expanded-status="on"]` widens the status line's register. */
+export function applyExpandedStatus(value: ExpandedStatusPref): void {
+  document.documentElement.setAttribute('data-expanded-status', value);
+}
+
 /** Apply every document-level pref on boot (idempotent). */
 export function applyUiPrefs(): void {
   applyProviderColour(readProviderColour());
   applyReduceMotion(readReduceMotion());
+  applyExpandedStatus(readExpandedStatus());
 }

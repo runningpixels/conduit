@@ -10,6 +10,8 @@ import {
   readSendWith,
   writeSendWith,
   applyUiPrefs,
+  readExpandedStatus,
+  writeExpandedStatus,
 } from './uiPrefs';
 
 describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
@@ -17,6 +19,7 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
+    document.documentElement.removeAttribute('data-expanded-status');
   });
 
   it('provider colour defaults on and applies the html attribute', () => {
@@ -58,14 +61,24 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(readSendWith()).toBe('enter');
   });
 
-  it('applyUiPrefs sets both document attributes idempotently', () => {
+  it('applyUiPrefs sets every document attribute idempotently', () => {
     writeProviderColour('off');
     writeReduceMotion('on');
+    writeExpandedStatus('on');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
+    document.documentElement.removeAttribute('data-expanded-status');
     applyUiPrefs();
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
+    expect(document.documentElement.getAttribute('data-expanded-status')).toBe('on');
+  });
+
+  it('expanded status defaults to off and round-trips', () => {
+    expect(readExpandedStatus()).toBe('off');
+    writeExpandedStatus('on');
+    expect(readExpandedStatus()).toBe('on');
+    expect(localStorage.getItem('conduit:v9-expanded-status')).toBe('on');
   });
 
   it('provider-colour off neutralizes per-element data-provider hue (CSS rule exists after the hue selectors)', () => {

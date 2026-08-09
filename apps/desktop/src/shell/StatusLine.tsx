@@ -32,6 +32,7 @@ import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
 import { providerDisplayName } from '../lib/providerIdentity';
 import { getContextWindow, sumUsageTokens } from '../lib/contextWindows';
 import { estimateCostCents, formatCostCents } from '../lib/costTable';
+import { readExpandedStatus } from './uiPrefs';
 import { ContextIcon, LockIcon, ModelIcon, ShieldIcon, SpendIcon } from '../icons';
 
 export type CredentialMode = 'none' | 'optional' | 'required' | 'loading';
@@ -130,12 +131,22 @@ export function StatusLine({
 
   const sep = <span className="sep" aria-hidden="true">·</span>;
 
+  /**
+   * V9 §10.1's escape hatch, read once per render from localStorage. When on,
+   * the line re-inflates to the facts V8's five chips carried — the key
+   * location and the raw context count join the sentence instead of waiting in
+   * the popover. Same data, same element, same place: only the volume changes,
+   * which is what §2.2 promised the toggle would do.
+   */
+  const expanded = readExpandedStatus() === 'on';
+
   return (
     <div className="status-wrap">
       <button
         ref={triggerRef}
         type="button"
         className="status"
+        data-expanded={expanded ? 'true' : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         title="Chat details"
@@ -143,8 +154,14 @@ export function StatusLine({
       >
         <i className="pdot" aria-hidden="true" />
         <span>{settings.activeModel}</span>
+        {expanded && keyResolved && !keyMissing && (
+          <>
+            {sep}
+            <span>{keyLabel}</span>
+          </>
+        )}
         {sep}
-        <span>{contextBrief}</span>
+        <span>{expanded ? contextFull : contextBrief}</span>
         {spendLabel != null && (
           <>
             {sep}

@@ -89,10 +89,12 @@
   transition: background var(--tap), color var(--tap), border-color var(--tap);
 }
 .btn:hover { background: var(--card-hi); color: var(--ink); border-color: var(--ink-3); }
-.btn.primary { background: var(--hue); border-color: var(--hue); color: var(--bg); }
-html[data-theme="light"] .btn.primary { color: #fff; }
-.btn.primary:hover { filter: brightness(1.08); background: var(--hue); color: var(--bg); }
-html[data-theme="light"] .btn.primary:hover { color: #fff; }
+/* The one place a hue fill carries real label text ("Add a provider",
+ * "Connect a service"). --hue-solid is the display tier phase A tuned so
+ * --on-hue clears AA on it; plain --hue with --bg text measured 3.5-4.3:1 and
+ * flipped to white in light mode to paper over it. One pair, both themes. */
+.btn.primary { background: var(--hue-solid); border-color: var(--hue-solid); color: var(--on-hue); }
+.btn.primary:hover { filter: brightness(1.08); background: var(--hue-solid); color: var(--on-hue); }
 
 .srow { display: flex; align-items: center; gap: var(--sp-4); padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
 .srow:last-child { border-bottom: 0; }
@@ -119,7 +121,9 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
   background: var(--ink-2);
   transition: transform var(--tap), background var(--tap);
 }
-.toggle[aria-pressed="true"] { background: var(--hue); }
+/* The knob is white, so the track is a fill carrying a light element on it —
+   --hue-solid is the tier tuned for exactly that (plan D1). */
+.toggle[aria-pressed="true"] { background: var(--hue-solid); }
 .toggle[aria-pressed="true"]::after { transform: translateX(14px); background: #fff; }
 .sel {
   height: 28px;
@@ -220,7 +224,7 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
   cursor: pointer;
 }
 .onboarding-step-dot.active {
-  color: var(--hue);
+  color: var(--hue-text);
   background: var(--hue-weak);
   border-color: var(--hue);
 }
@@ -275,12 +279,15 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
 }
 
 /* ── Command palette (V7 §8.8 — prefix modes: > commands · @ artifacts · / models) ── */
+/* Restyle only (V9 §7): the prefixes (`>` `@` `/`), the modes and the corpus
+   are unchanged — the palette was already the summoned layer V9 wants, so only
+   its proportions move. */
 .palette {
   position: absolute;
-  top: 14vh;
+  top: 12vh;
   left: 50%;
   transform: translateX(-50%) translateY(-6px) scale(.985);
-  width: min(620px, 92vw);
+  width: min(600px, 92vw);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -307,13 +314,16 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
   min-width: 0;
 }
 .pal-input input::placeholder { color: var(--ink-3); }
+/* The mode badge is hue-coloured *text*, so it takes the AA tier (plan D1).
+   --hue itself is the graphic tier and sits at the 3:1 non-text floor, which a
+   10px mono label on a tinted wash cannot spend. */
 .pal-mode {
   font-family: var(--font-mono);
   font-size: 10px;
   padding: 3px 7px;
   border-radius: 4px;
   background: var(--hue-weak);
-  color: var(--hue);
+  color: var(--hue-text);
   flex: none;
 }
 .pal-list { max-height: min(48vh, 400px); overflow: auto; padding: 5px; }
@@ -354,7 +364,6 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
   font-size: 13px;
   color: var(--ink-3);
 }
-.pal-empty b { color: var(--ink-2); }
 .pal-foot {
   display: flex;
   align-items: center;
@@ -405,7 +414,7 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
 /* ── Prompts library ───────────────────────────────────────────────────── */
 /* `{{variable}}` spans inside a prompt body. */
 .variable-token {
-  color: var(--hue);
+  color: var(--hue-text);
   background: var(--hue-weak);
   border-radius: var(--r-xs);
   padding: 1px 3px;
@@ -428,6 +437,6 @@ html[data-theme="light"] .btn.primary:hover { color: #fff; }
  * which rendered the label invisible against its own fill. */
 .folder-btn.active {
   background: var(--hue-weak);
-  color: var(--hue);
+  color: var(--hue-text);
   font-weight: 500;
 }

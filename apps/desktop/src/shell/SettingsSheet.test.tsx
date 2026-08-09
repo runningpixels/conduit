@@ -105,8 +105,9 @@ describe('SettingsSheet', () => {
     expect(screen.getByText('Chat defaults')).toBeTruthy();
     expect(screen.getByText('Appearance')).toBeTruthy();
     expect(screen.getByText('Privacy & data')).toBeTruthy();
-    expect(screen.getByText('Advanced')).toBeTruthy();
     expect(screen.getByText('Prompts')).toBeTruthy();
+    // Six, not seven: Advanced is dissolved (plan D4).
+    expect(screen.queryByText('Advanced')).toBeNull();
     expect(screen.getByTestId('provider-picker')).toBeTruthy();
   });
 
@@ -121,8 +122,22 @@ describe('SettingsSheet', () => {
   });
 
   it('honours initialSection', () => {
-    renderSheet({ initialSection: 'advanced' });
+    renderSheet({ initialSection: 'prompts' });
+    expect(screen.getByTestId('prompts-section')).toBeTruthy();
+  });
+
+  /**
+   * Everything that lived in Advanced still exists, now under Privacy & data.
+   * This is the assertion that makes the fold a relocation rather than a
+   * deletion — the old test only ever proved Usage rendered somewhere.
+   */
+  it('keeps every Advanced block reachable under Privacy & data', () => {
+    renderSheet({ initialSection: 'privacy' });
     expect(screen.getByTestId('usage-section')).toBeTruthy();
+    expect(screen.getByTestId('updates-section')).toBeTruthy();
+    expect(screen.getByTestId('diagnostics-section')).toBeTruthy();
+    expect(screen.getByTestId('about-section')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Include metadata on export' })).toBeTruthy();
   });
 
   it('provider colour toggle persists to localStorage and applies the html attribute', () => {
@@ -133,6 +148,17 @@ describe('SettingsSheet', () => {
     fireEvent.click(toggle);
     expect(localStorage.getItem('conduit:v7-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
+  });
+
+  /** V9 §10.1's escape hatch for the collapsed status line (plan D6). */
+  it('expanded status toggle persists to localStorage and applies the html attribute', () => {
+    renderSheet();
+    fireEvent.click(screen.getByText('Appearance'));
+    const toggle = screen.getByRole('switch', { name: 'Expanded status line' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(toggle);
+    expect(localStorage.getItem('conduit:v9-expanded-status')).toBe('on');
+    expect(document.documentElement.getAttribute('data-expanded-status')).toBe('on');
   });
 
   it('reduce motion toggle persists to localStorage and applies the html attribute', () => {

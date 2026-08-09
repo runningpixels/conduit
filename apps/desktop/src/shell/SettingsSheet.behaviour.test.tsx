@@ -107,16 +107,18 @@ describe('SettingsSheet behaviour (restored from SettingsScreen tests)', () => {
     expect(calledWith.localOnly).toBe(false);
   });
 
+  // Diagnostics moved from Advanced into Privacy & data (plan D4). The
+  // behaviour asserted below is unchanged; only the route to it is.
   it('diagnostics: disables Export when diagnosticsEnabled is false', () => {
     renderSheet({ diagnosticsEnabled: false });
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy & data' }));
     const btn = screen.getByRole('button', { name: 'Export diagnostics' });
     expect(btn).toBeDisabled();
   });
 
   it('diagnostics: exports and surfaces the bundle path on success', async () => {
     renderSheet({ diagnosticsEnabled: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy & data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Export diagnostics' }));
     await waitFor(() => expect(screen.getByText(/Exported to/)).toBeInTheDocument());
     expect(

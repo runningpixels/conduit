@@ -1,11 +1,28 @@
-/* ── Document panel ─────────────────────────────────────────────────────── */
+/* ── Document panel (V9 §4) ─────────────────────────────────────────────────
+ * An inset rounded card rather than a flush column. The gap and the radius are
+ * what stop it reading as a second application docked beside the thread: it is
+ * a surface the thread put there, so it floats on --bg like the composer does.
+ *
+ * Class prefixes stay `doc-*` (plan D11). The mockup calls this `.panel`, which
+ * would collide with the existing `.panel-toggle` and `.panel-foot`, and the
+ * import order in styles.css turns a collision into a regression somewhere
+ * unrelated rather than an error here. */
 .doc-panel {
   min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  margin: 10px 10px 10px 0;
+  background: var(--bg-side);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+/* Collapsed, the grid track is 0 wide — the margins and the border would still
+   claim 21px of it and leave a sliver of card hanging in the gutter. */
+html[data-panel="closed"] .doc-panel {
+  margin: 0;
+  border-width: 0;
 }
 .doc-panel-empty .doc-body {
   display: grid;
@@ -26,7 +43,6 @@
   padding: 0 var(--sp-2) 0 var(--sp-3);
   height: 44px;
   border-bottom: 1px solid var(--line-soft);
-  background: var(--bg-side);
 }
 .doc-toolbar-title {
   display: flex;
@@ -61,13 +77,15 @@
 .tab-state.inline.warn { background: var(--warn); }
 .tab-state.inline.bad { background: var(--err); }
 .doc-actions { display: flex; gap: 2px; flex: none; }
+/* The V9 `.seg` segmented control, kept under its existing name (D11): this
+   already was a segmented control, and a second name for it would be churn. */
 .doc-view-toggle {
   display: flex;
   gap: 1px;
   padding: 2px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   border: 0;
-  background: var(--bg);
+  background: var(--card-hi);
   flex: none;
 }
 .doc-view-btn {
@@ -83,7 +101,9 @@
 .doc-view-btn.active {
   color: var(--ink);
   background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
 }
+html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filter: brightness(1.25); }
 .doc-overflow { position: relative; }
 .doc-more-menu { top: 40px; right: 8px; }
 .doc-meta-row {
@@ -105,7 +125,6 @@
   align-items: center;
   gap: 8px;
   padding: 8px var(--sp-3);
-  background: var(--bg-side);
   border-top: 1px solid var(--line-soft);
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -333,7 +352,10 @@
 .source-textarea:focus { outline: none; border-color: var(--line-hi); }
 .doc-banner .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .doc { font-size: 14px; line-height: 1.68; color: var(--ink); max-width: 860px; }
-.doc h1 { font-size: 25px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 6px; }
+/* The only serif in the product (V9 §6). An artifact is a *document*, and the
+   reading-document register is the one place a second face earns its keep;
+   §10.2 flags it as the first thing to cut if it reads as drift. */
+.doc h1 { font: 600 21px/1.3 var(--font-serif); letter-spacing: -.01em; margin: 0 0 6px; }
 .doc .sub { color: var(--ink-3); font-size: 12px; margin: 0 0 18px; font-family: var(--font-mono); }
 .doc h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); margin: 20px 0 8px; }
 .doc p { margin: 0 0 11px; color: var(--ink-2); }

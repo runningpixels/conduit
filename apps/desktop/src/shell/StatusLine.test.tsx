@@ -229,6 +229,30 @@ describe('StatusLine — the detail popover', () => {
     expect(screen.getAllByText(pattern).length).toBeGreaterThan(0);
   });
 
+  /**
+   * The expanded mode (plan D6, V9 §10.1). The promise is "same data, the same
+   * line re-inflated, no layout change" — so the test is that facts move *onto*
+   * the sentence, not that a different surface appears.
+   */
+  it('re-inflates the sentence when the expanded pref is on', () => {
+    localStorage.setItem('conduit:v9-expanded-status', 'on');
+    render(<StatusLine {...baseProps} usage={{ inputTokens: 2800n, outputTokens: 400n }} />);
+    const line = screen.getByTitle('Chat details');
+    // The key location and the raw count join the line instead of waiting in
+    // the popover; the ratio-only form is gone.
+    expect(line).toHaveTextContent('keychain://conduit/anthropic');
+    expect(line).toHaveTextContent('3,200 of 200k');
+    expect(line).not.toHaveTextContent('2% of 200k');
+    localStorage.removeItem('conduit:v9-expanded-status');
+  });
+
+  it('stays collapsed by default', () => {
+    render(<StatusLine {...baseProps} usage={{ inputTokens: 2800n, outputTokens: 400n }} />);
+    const line = screen.getByTitle('Chat details');
+    expect(line).toHaveTextContent('2% of 200k');
+    expect(line).not.toHaveTextContent('keychain://conduit/anthropic');
+  });
+
   it('closes on Escape and returns focus to the line', () => {
     render(<StatusLine {...baseProps} />);
     openDetails();

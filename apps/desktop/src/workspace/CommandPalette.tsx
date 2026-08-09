@@ -400,13 +400,12 @@ export function CommandPalette({
         </div>
 
         <div className="pal-list scroll" role="listbox" aria-label="Results">
+          {/* V9 §7's empty state is an invitation rather than a dead end. "No
+              matches. Try > for commands." told the user what they had failed
+              to do; this tells them what they can do next. */}
           {items.length === 0 ? (
             <div className="pal-empty" role="status">
-              {searching ? 'Searching…' : (
-                <>
-                  No matches. Try <b>&gt;</b> for commands.
-                </>
-              )}
+              {searching ? 'Searching…' : 'Nothing matches. Try a different word, or start a new chat.'}
             </div>
           ) : (
             (() => {

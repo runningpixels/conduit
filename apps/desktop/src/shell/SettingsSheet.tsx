@@ -1,10 +1,11 @@
 /**
- * SettingsSheet — the V7 settings surface (spec §8.9). A summoned overlay
- * (⌘,), not a navigation destination: 186px nav + scrolling main, six
- * sections plus the documented seventh (Prompts) so the prompts library
- * capability survives. Settings-backed sections auto-save (useAutoSave);
+ * SettingsSheet — the settings surface (V9 §2.6). A summoned overlay (⌘,), not
+ * a navigation destination: 186px nav + scrolling main, six sections.
+ *
+ * V9 dissolves Advanced. Settings-backed sections auto-save (useAutoSave);
  * renderer-only prefs (provider colour, reduce motion, show reasoning,
- * send-with) persist to localStorage via uiPrefs.
+ * send-with, export metadata, expanded status) persist to localStorage via
+ * uiPrefs.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AppPaths, AppSettings, ModelInfo } from '../ipc/contracts';
@@ -33,18 +34,29 @@ import {
   writeSendWith,
   readExportMetadata,
   writeExportMetadata,
+  readExpandedStatus,
+  writeExpandedStatus,
 } from './uiPrefs';
 import { useFocusTrap } from './useFocusTrap';
 import { modKey } from '../lib/shortcuts';
 import { ChatIcon, ConnectorsIcon, LockIcon, SettingsIcon } from '../icons';
 
+/**
+ * Six sections (V9 §2.6, plan D4). `advanced` is gone: a tab whose own subtitle
+ * read "most people never open this" is a tab that should not exist. Its five
+ * blocks — export metadata, usage, updates, diagnostics, about — are all
+ * privacy-and-data facts, so they moved rather than being dropped.
+ *
+ * Not five, as §2.6 asserts. The spec counted Advanced as holding "two live
+ * rows" and never mentions Prompts at all; Prompts is a real capability with no
+ * other home, so it stays as its own section and the count lands on six.
+ */
 export type SettingsSection =
   | 'providers'
   | 'connectors'
   | 'chat'
   | 'appearance'
   | 'privacy'
-  | 'advanced'
   | 'prompts';
 
 interface SettingsSheetProps {
@@ -67,7 +79,6 @@ const NAV_ITEMS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
   { id: 'chat', label: 'Chat defaults', icon: <ChatIcon /> },
   { id: 'appearance', label: 'Appearance', icon: <SunNavIcon /> },
   { id: 'privacy', label: 'Privacy & data', icon: <LockIcon /> },
-  { id: 'advanced', label: 'Advanced', icon: <CodeNavIcon /> },
   { id: 'prompts', label: 'Prompts', icon: <ListNavIcon /> },
 ];
 
@@ -85,14 +96,6 @@ function SunNavIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3.2" />
       <path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4" />
-    </svg>
-  );
-}
-
-function CodeNavIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
-      <path d="m8 8-5 4 5 4M16 8l5 4-5 4" />
     </svg>
   );
 }
@@ -144,6 +147,7 @@ export function SettingsSheet({
   const [showReasoning, setShowReasoning] = useState(readShowReasoning);
   const [sendWith, setSendWith] = useState(readSendWith);
   const [exportMetadata, setExportMetadata] = useState(readExportMetadata);
+  const [expandedStatus, setExpandedStatus] = useState(readExpandedStatus);
 
   // Reset to the requested section each time the sheet opens; focus + restore.
   useEffect(() => {
@@ -347,10 +351,32 @@ export function SettingsSheet({
                     }}
                   />
                 </div>
+                {/* V9 §10.1's own contingency for the collapse: same facts, the
+                    same line re-inflated, no layout change. */}
+                <div className="srow">
+                  <span className="srow-text">
+                    <b>Expanded status line</b>
+                    <small>Show key, context and spend under the composer instead of on click</small>
+                  </span>
+                  <Toggle
+                    label="Expanded status line"
+                    pressed={expandedStatus === 'on'}
+                    onChange={() => {
+                      const next = expandedStatus === 'on' ? 'off' : 'on';
+                      setExpandedStatus(next);
+                      writeExpandedStatus(next);
+                    }}
+                  />
+                </div>
               </div>
             </>
           )}
 
+          {/* Privacy & data absorbed all of Advanced (plan §6). Every block
+              below was a privacy-or-data fact already: what leaves the machine
+              (updates), what is written beside an export (metadata sidecar),
+              what a diagnostics bundle contains, what the app spent, and where
+              its files live. */}
           {section === 'privacy' && (
             <>
               <h2 className="sheet-h">Privacy &amp; data</h2>
@@ -366,14 +392,7 @@ export function SettingsSheet({
               <div style={{ marginTop: 24 }}>
                 <ArtifactSecuritySection settings={settings} onUpdate={save} />
               </div>
-            </>
-          )}
-
-          {section === 'advanced' && (
-            <>
-              <h2 className="sheet-h">Advanced</h2>
-              <p className="sheet-sub">Escape hatches and diagnostics. Most people never open this.</p>
-              <div className="grp">
+              <div className="grp" style={{ marginTop: 24 }}>
                 <div className="grp-label">Document export</div>
                 <div className="srow">
                   <span className="srow-text">

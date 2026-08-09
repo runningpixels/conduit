@@ -180,10 +180,12 @@ describe('CommandPalette prefix modes', () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
-  it('shows the empty-state instruction when a corpus has no matches', () => {
+  // V9 §7 replaces the syntax hint with an invitation: the old copy told the
+  // user what they had failed to do, this tells them what they can do next.
+  it('offers a way forward when a corpus has no matches', () => {
     renderPalette();
     type('>zzzz');
-    expect(screen.getByText(/No matches/)).toBeInTheDocument();
-    expect(screen.getByText(/for commands/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing matches/)).toBeInTheDocument();
+    expect(screen.getByText(/start a new chat/)).toBeInTheDocument();
   });
 });

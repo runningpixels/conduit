@@ -478,8 +478,13 @@ html[data-sidebar="closed"] .sb-reveal { display: grid; }
 /* ── Doc panel column ──────────────────────────────────────────────────── */
 /* Children carry a min-width equal to their open width so content does not
    reflow during the collapse animation (spec §4.1); the item itself stays
-   min-width:0 so the grid track can collapse fully. */
-.doc-panel > * { min-width: 420px; }
+   min-width:0 so the grid track can collapse fully.
+   Derived from --panel-w rather than pinned at a literal, because V9 makes the
+   panel an inset card: its 10px right margin and 2px of border come out of the
+   track, and a literal equal to the full track width would overflow the card by
+   exactly that much. The column is user-resizable, so the arithmetic has to
+   follow it. */
+.doc-panel > * { min-width: calc(var(--panel-w) - 12px); }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
 @keyframes ping {

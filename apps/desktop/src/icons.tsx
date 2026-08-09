@@ -58,6 +58,21 @@ export const SunIcon = (p: IconProps) => (
   </Svg>
 );
 
+/* Sidebar / panel glyphs: the same frame with the divider on the side the
+ * surface lives on, so the two toggles read as a matched pair (V9 §4). */
+export const SidebarIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <path d="M9 4v16" />
+  </Svg>
+);
+export const PanelIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <path d="M15 4v16" />
+  </Svg>
+);
+
 export const FolderIcon = (p: IconProps) => (
   <Svg {...p}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></Svg>
 );

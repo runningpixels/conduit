@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
 import { resetLocalDatabase } from '../../ipc/client';
 import { ConfirmDialog } from '@conduit/ui';
-import type { ConnectionState } from '../Titlebar';
+import type { ConnectionState } from '../../lib/connectionState';
 
 interface PrivacyDataSectionProps {
   settings: AppSettings;

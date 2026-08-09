@@ -48,6 +48,8 @@ describe('Sidebar', () => {
     connectorCount: 1,
     onSelectConversation: vi.fn(),
     onNewChat: vi.fn(),
+    onOpenPalette: vi.fn(),
+    onCollapse: vi.fn(),
     onRevealWorkspace: vi.fn(),
     onOpenSettings: vi.fn(),
     onExportDiagnostics: vi.fn(),
@@ -69,6 +71,8 @@ describe('Sidebar', () => {
   beforeEach(() => {
     props.onSelectConversation.mockClear();
     props.onNewChat.mockClear();
+    props.onOpenPalette.mockClear();
+    props.onCollapse.mockClear();
     props.onRevealWorkspace.mockClear();
     props.onOpenSettings.mockClear();
     props.onExportDiagnostics.mockClear();
@@ -175,5 +179,29 @@ describe('Sidebar', () => {
     render(<Sidebar {...props} />);
     fireEvent.click(screen.getByRole('button', { name: /New chat/ }));
     expect(props.onNewChat).toHaveBeenCalled();
+  });
+
+  /**
+   * V9 deleted the top bar, taking the `.omni` pill with it. Search is that
+   * capability's only remaining pointer affordance — it opens the same ⌘K
+   * palette — so it has to be here and it has to be wired.
+   */
+  it('Search opens the command palette', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /Search/ }));
+    expect(props.onOpenPalette).toHaveBeenCalled();
+  });
+
+  it('collapses from the head button', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(props.onCollapse).toHaveBeenCalled();
+  });
+
+  // The sidebar is one of the two drag surfaces on a frameless window; the
+  // other is the title strip. shellContract.test.ts pins this statically too.
+  it('carries the Tauri drag region on its head', () => {
+    const { container } = render(<Sidebar {...props} />);
+    expect(container.querySelector('.sb-head')).toHaveAttribute('data-tauri-drag-region');
   });
 });

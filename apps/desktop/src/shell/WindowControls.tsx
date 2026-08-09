@@ -1,10 +1,17 @@
 /**
  * WindowControls — minimise / maximise / close for the frameless shell.
  *
- * V7 §8.1 specifies one 44px top bar. That only holds if the OS is not drawing
- * a second one above it, so the window runs with `decorations: false` and the
- * app owns its controls. `.topbar` carries `data-tauri-drag-region`, which
- * gives us dragging and double-click-to-maximise for free.
+ * The window runs with `decorations: false`, so the app owns its controls. V7
+ * parked them at the right end of the top bar; V9 deletes that bar, so they
+ * become a fixed cluster pinned to the window's top-right corner instead. That
+ * is the only placement correct in both panel states: with the artifact panel
+ * open the corner belongs to the panel, with it closed to the title strip, and
+ * `.wincontrols` sits above whichever is there while `.main-head` /
+ * `.doc-toolbar` reserve the width beneath it (workspace.css).
+ *
+ * Dragging and double-click-to-maximise come from `data-tauri-drag-region` on
+ * `.main-head` and `.sb-head` — never `-webkit-app-region`, which is an
+ * Electron property WebView2 ignores.
  *
  * Two environments render nothing here:
  *   - `dev:web` / vitest, where there is no Tauri bridge to call.
@@ -13,15 +20,11 @@
  */
 
 import { useEffect, useState } from 'react';
+import { isMacPlatform } from '../lib/shortcuts';
 
 /** Tauri v2 injects this before any app code runs. */
 function hasTauriBridge(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
-function isMacOS(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /Mac|iPhone|iPad/.test(navigator.userAgent);
 }
 
 /** Loaded lazily so the web build never pulls the window API into the bundle. */
@@ -31,7 +34,7 @@ async function currentWindow() {
 }
 
 export function WindowControls() {
-  const enabled = hasTauriBridge() && !isMacOS();
+  const enabled = hasTauriBridge() && !isMacPlatform();
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {

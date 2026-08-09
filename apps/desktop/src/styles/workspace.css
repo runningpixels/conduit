@@ -1,6 +1,7 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Conduit V7 — workspace shell (spec §4). One 44px top bar, three columns:
-   sidebar (236) | thread (minmax(0,1fr)) | context panel (400). Collapse is
+   Conduit V9 — workspace shell (spec §4). No top bar: three full-height
+   columns, sidebar (280) | thread (minmax(0,1fr)) | artifact panel (420),
+   with a 46px draggable title strip *inside* the centre column. Collapse is
    a column-width animation driven by --sidebar-w / --panel-w, not a
    mount/unmount. The height chain is load-bearing: every ancestor between
    .app and a scroller must be height-constrained (grid-template-rows:
@@ -9,61 +10,91 @@
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── App grid ──────────────────────────────────────────────────────────── */
+/* V7's first row held the 44px topbar. V9 deletes the bar, so .body is the
+   whole grid and the side columns reach the top of the window. */
 .app {
   height: 100vh;
   height: 100dvh;
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
-/* ── Topbar (single bar; the command entry is its centre) ──────────────── */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: 0 var(--sp-3) 0 var(--sp-4);
-  background: var(--bg-side);
-  border-bottom: 1px solid var(--line-soft);
-  /* Dragging is `data-tauri-drag-region` on the <header> (Titlebar.tsx), not
-   * `-webkit-app-region` — that is an Electron property and WebView2 ignores
-   * it. The mockup's version was carried over verbatim and never worked. */
-}
-/* The window controls run flush into the top-right corner, so the bar's own
- * right padding has to come off when they are present (frameless shell). */
-.topbar:has(.wincontrols) { padding-right: 0; }
-.mark { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.mark-glyph { width: 15px; height: 15px; color: var(--hue); transition: color var(--tap); }
-.mark b { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+/* The mark sits inside the sidebar's drag region and is never clicked, so it
+   opts out of hit-testing entirely — children included. Tagging the wrapper is
+   not enough on its own: Tauri targets the exact element under the cursor, so
+   the nested <b> and the glyph <svg> would each swallow the drag. Dropping
+   pointer events lets the grab fall through to .sb-head however deep the
+   markup goes, which is sturdier than tagging every leaf. */
+.mark { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; pointer-events: none; }
+.mark-glyph { width: 18px; height: 18px; color: var(--hue); transition: color var(--tap); }
+.mark b { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 
-/* The command entry IS the centre of the top bar — discoverability by placement. */
-.omni {
-  flex: 1 1 auto;
-  max-width: 520px;
-  margin: 0 auto;
-  height: 28px;
+/* ── Title strip (V9 §2.1) ─────────────────────────────────────────────── */
+/* 46px inside the centre column: the chat's name, the two toggles, and the
+   rest empty drag region. Deliberately no fill and no bottom border — it is
+   meant to read as the top of the thread's own surface, not as a bar above it.
+   Dragging is `data-tauri-drag-region` on the <header> (MainHead.tsx), not
+   `-webkit-app-region` — that is an Electron property and WebView2 ignores it.
+   The V9 proposal's CSS uses it throughout and would silently do nothing. */
+.main-head {
+  height: 46px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  background: var(--bg);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+}
+.main-title {
+  font-size: 13.5px;
+  font-weight: 500;
   color: var(--ink-3);
-  font-size: 12.5px;
-  transition: border-color var(--tap), color var(--tap);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 4px;
 }
-.omni:hover { border-color: var(--line); color: var(--ink-2); }
-.omni svg { width: 13px; height: 13px; flex: 0 0 auto; }
-.omni span { flex: 1 1 auto; text-align: left; }
-.omni kbd { font-size: 10px; }
+/* With the sidebar collapsed the floating reveal button takes the strip's left
+   end, so the title steps aside for it. */
+html[data-sidebar="closed"] .main-title { padding-left: 44px; }
+.head-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 
-.topbar-right { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
-
-/* ── Window controls (frameless shell; §8.1 "one top bar") ─────────────── */
+/* ── Window controls (frameless shell) ─────────────────────────────────── */
 /* Windows 11 metrics: 46x32 hit targets, no gap, close tints red on hover.
-   Rendered only when the Tauri bridge is present and not on macOS. */
-.wincontrols { display: flex; align-items: stretch; align-self: stretch; margin-left: 6px; }
+   Rendered only when the Tauri bridge is present and not on macOS.
+
+   Fixed to the window's top-right rather than parented to a bar, because with
+   the top bar gone no single element owns that corner: it belongs to the
+   artifact panel when the panel is open and to the title strip when it is not.
+   The reservation rules below keep whichever is beneath from running under it.
+
+   Above every summoned surface (the scrims are 80 and 1500, toasts 1100). The
+   V7 topbar sat below them, so a modal covered the window buttons — survivable
+   there because the bar was decoration, but these are the window's only close
+   and minimise affordance now, and an OS window stays operable whatever it is
+   showing. The scrim's blur does not apply to them for the same reason. */
+.wincontrols {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 2000;
+  height: 32px;
+  display: flex;
+  align-items: stretch;
+}
+/* Reserve the corner only when the controls actually render. They are absent on
+   macOS (native traffic lights) and in dev:web / vitest (no Tauri bridge), and
+   an ungated literal would leave 144px of dead space in all three. `:has()` is
+   the same idiom `.topbar:has(.wincontrols)` used before the bar was deleted,
+   so it is already proven on this WebView2. */
+.app { --wincontrols-w: 0px; }
+.app:has(.wincontrols) { --wincontrols-w: 144px; }
+html[data-panel="closed"] .main-head { padding-right: var(--wincontrols-w); }
+html[data-panel="open"] .doc-toolbar { padding-right: var(--wincontrols-w); }
+/* Under the panel breakpoint the panel is hidden whatever data-panel says, so
+   the strip owns the corner either way. */
+@media (max-width: 1100px) {
+  html[data-panel="open"] .main-head { padding-right: var(--wincontrols-w); }
+}
 .wincontrol {
   width: 46px;
   display: grid;
@@ -109,8 +140,10 @@ kbd {
 .iconbtn[aria-pressed="true"] { color: var(--ink); background: var(--card); }
 
 /* ── Context-panel toggle: artifact count while the panel is hidden ─────── */
-/* The only badge in the top bar, and the sole replacement for the edge rail,
-   so it is tinted with the provider hue rather than the neutral chrome. */
+/* The only badge in the title strip, and the sole replacement for the edge
+   rail, so it is tinted with the provider hue rather than the neutral chrome.
+   The hue here is a fill behind a numeral, not a text colour, so it stays
+   --hue; the numeral takes --bg for contrast against it. */
 .panel-toggle { position: relative; }
 .panel-toggle-badge {
   position: absolute;
@@ -155,28 +188,91 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
   background: var(--bg-side);
   border-right: 1px solid var(--line-soft);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* head · nav · list · foot — the nav row is V9's (New chat + Search). */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
-.sidebar-inner { width: var(--sidebar-w); min-width: 236px; }
+.sidebar-inner { width: var(--sidebar-w); min-width: 280px; }
 
-.sb-head { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
-.newchat {
+/* The head is the sidebar's share of the window drag region, and on macOS it
+   is also where the native traffic lights land: tauri.macos.conf.json keeps
+   `decorations` with titleBarStyle Overlay, which draws them at the window's
+   top-left — exactly where the brand mark now sits. The reservation below is
+   UNVERIFIED: it cannot be exercised from the Windows dev machine, and needs a
+   look on a Mac before it is trusted. */
+.sb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px var(--sp-3) 10px;
+}
+html[data-platform="macos"] .sb-head { padding-top: 28px; }
+.sb-collapse {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  transition: background var(--tap), color var(--tap);
+}
+.sb-collapse:hover { background: var(--card-hi); color: var(--ink); }
+.sb-collapse svg { width: 17px; height: 17px; }
+
+/* ── Sidebar nav — New chat + Search (V9 §2.1) ─────────────────────────── */
+/* Search is the `.omni` pill's capability rehoused. It opens the same ⌘K
+   palette; the pill was only ever a second door to it, and with the top bar
+   gone the sidebar is the only persistent chrome left to hold the affordance. */
+.sb-nav {
+  padding: 4px var(--sp-2) var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sb-item {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 32px;
-  padding: 0 10px;
+  gap: 10px;
+  padding: 8px 10px;
   border-radius: var(--r-sm);
-  background: var(--card);
-  border: 1px solid var(--line-soft);
-  font-size: 13px;
-  font-weight: 500;
-  transition: background var(--tap), border-color var(--tap);
+  font-size: 14px;
+  color: var(--ink-2);
+  text-align: left;
+  transition: background var(--tap), color var(--tap);
 }
-.newchat:hover { background: var(--card-hi); border-color: var(--line); }
-.newchat svg { width: 14px; height: 14px; color: var(--ink-2); }
-.newchat kbd { margin-left: auto; }
+.sb-item:hover { background: var(--card-hi); color: var(--ink); }
+.sb-item svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.sb-item kbd { margin-left: auto; background: transparent; border-color: var(--line-soft); }
+/* New chat is the one hue-tinted row in the sidebar, so it takes --hue-text:
+   it is a label, and --hue is 3.6:1 on --card-hi (v9 plan D1). */
+.sb-item.newchat { color: var(--hue-text); font-weight: 500; }
+.sb-item.newchat svg { color: var(--hue); }
+.sb-item.newchat:hover { background: color-mix(in srgb, var(--hue) 9%, transparent); color: var(--hue-text); }
+
+/* ── Sidebar reveal — the way back from a collapsed sidebar ────────────── */
+/* V7 could rely on the topbar being present. With it gone, a collapsed sidebar
+   would be reachable only by hotkey, so the collapse becomes a dead end
+   without this (V9 plan D6). */
+.sb-reveal {
+  position: fixed;
+  top: 8px;
+  left: 12px;
+  z-index: 30;
+  width: 34px;
+  height: 34px;
+  display: none;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--soft-lift);
+  transition: color var(--tap), border-color var(--tap);
+}
+.sb-reveal svg { width: 17px; height: 17px; }
+.sb-reveal:hover { color: var(--ink); border-color: var(--line-hi); }
+html[data-sidebar="closed"] .sb-reveal { display: grid; }
 
 .sb-list { min-height: 0; padding: 0 var(--sp-2) var(--sp-3); overflow-y: auto; }
 .sb-empty {
@@ -329,12 +425,15 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
 .pdot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 
 /* ── Centre column — the thread is the application ─────────────────────── */
+/* Two rows now: the 46px title strip, then the thread. The strip lives inside
+   this column rather than above the whole app, which is what lets the sidebar
+   and the artifact panel run the full height of the window (V9 §4). */
 .center {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   position: relative;
 }
 .center > .tab-pane { min-height: 0; }
@@ -371,16 +470,16 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
 }
 
 /* The 28px full-height `.doc-panel-expand-tab` rail that used to sit here is
-   gone: the topbar already carries a context-panel toggle on the same command,
-   and a permanent vertical bar spending 28px of chat width to duplicate it is
-   not worth the chrome. `.panel-toggle-badge` above carries the discoverability
-   it provided. */
+   gone: the title strip already carries a context-panel toggle on the same
+   command, and a permanent vertical bar spending 28px of chat width to
+   duplicate it is not worth the chrome. `.panel-toggle-badge` above carries
+   the discoverability it provided. */
 
 /* ── Doc panel column ──────────────────────────────────────────────────── */
 /* Children carry a min-width equal to their open width so content does not
    reflow during the collapse animation (spec §4.1); the item itself stays
    min-width:0 so the grid track can collapse fully. */
-.doc-panel > * { min-width: 340px; }
+.doc-panel > * { min-width: 420px; }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
 @keyframes ping {
@@ -400,9 +499,13 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
   to { opacity: 1; }
 }
 
-/* ── Breakpoints (spec §4.3) ───────────────────────────────────────────── */
-@media (max-width: 1180px) {
-  html[data-panel="open"] .body { --panel-w: 340px; }
+/* ── Breakpoints (V9 §4, §8) ───────────────────────────────────────────── */
+/* V9 hides the artifact panel below 1100px rather than narrowing it at 1180.
+   The wider panel (420) and narrower measure (46rem) leave less room to give,
+   so a half-width panel at that size costs the thread more than it returns. */
+@media (max-width: 1100px) {
+  html[data-panel="open"] .body { --panel-w: 0px; }
+  .resize-handle { visibility: hidden; }
 }
 @media (max-width: 900px) {
   /* Force-collapse both side columns; ⌘\ / ⌘J overlay them instead of

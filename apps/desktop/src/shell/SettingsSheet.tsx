@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AppPaths, AppSettings, ModelInfo } from '../ipc/contracts';
 import { listProviderModels } from '../ipc/client';
-import type { ConnectionState } from '../workspace/Titlebar';
+import type { ConnectionState } from '../lib/connectionState';
 import { useAutoSave } from '../workspace/settings/useAutoSave';
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { AppearanceSection } from '../workspace/settings/AppearanceSection';

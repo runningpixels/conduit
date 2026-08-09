@@ -39,7 +39,10 @@ import type { AssistantStreamState } from './chat/streamState';
 import type { PendingArtifact } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
-import { Titlebar, deriveConnectionState } from './workspace/Titlebar';
+import { MainHead } from './workspace/MainHead';
+import { WindowControls } from './shell/WindowControls';
+import { deriveConnectionState } from './lib/connectionState';
+import { SidebarIcon } from './icons';
 import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
@@ -48,7 +51,7 @@ import { useColumnResize, useDocPanelCollapse, useSidebarCollapse } from './work
 import { useHotkeys } from './workspace/useHotkeys';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
-import { modShortcutHint } from './lib/shortcuts';
+import { isMacPlatform, modShortcutHint } from './lib/shortcuts';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { ConfirmDialog } from '@conduit/ui';
 import { forkConversation, exportDiagnostics, getConversationMessages, setConversationTitle } from './ipc/client';
@@ -759,6 +762,14 @@ export default function App() {
     document.documentElement.setAttribute('data-provider', providerHueId(settings.activeProvider));
   }, [settings.activeProvider]);
 
+  // V9 — macOS keeps its native traffic lights (titleBarStyle: Overlay), which
+  // land at the window's top-left. That is now the sidebar's brand mark, so
+  // `.sb-head` reserves height for them. CSS has no platform selector, hence
+  // the attribute. Set once; the platform cannot change under a running app.
+  useEffect(() => {
+    if (isMacPlatform()) document.documentElement.setAttribute('data-platform', 'macos');
+  }, []);
+
   const workspaceLabel = paths?.artifacts ? shortenWorkspacePath(paths.artifacts) : undefined;
 
   const hasCredential = onboarding?.hasProviderCredential ?? false;
@@ -935,14 +946,23 @@ export default function App() {
 
   return (
     <div className="app" id="app">
-      <Titlebar
-        effectiveTheme={effectiveTheme}
-        onToggleTheme={handleToggleTheme}
-        onOpenPalette={openPalette}
-        panelOpen={!docPanelCollapsed}
-        onTogglePanel={toggleDocPanel}
-        hiddenArtifactCount={hiddenArtifactCount}
-      />
+      {/* Fixed to the window's top-right, above whichever column owns that
+          corner. Rendered once, here rather than inside a bar, because V9 has
+          no bar for it to live in — and without it a frameless window cannot
+          be moved or closed (shellContract.test.ts pins this). */}
+      <WindowControls />
+
+      {/* Only affordance for reopening a collapsed sidebar now the top bar is
+          gone; CSS reveals it on html[data-sidebar="closed"]. */}
+      <button
+        className="sb-reveal"
+        type="button"
+        aria-label="Open sidebar"
+        title={`Open sidebar  ${modShortcutHint('\\')}`}
+        onClick={() => toggleSidebar()}
+      >
+        <SidebarIcon />
+      </button>
 
       <div className="body">
         <Sidebar
@@ -955,6 +975,8 @@ export default function App() {
           connectorCount={connectorCount}
           onSelectConversation={handleSelectConversation}
           onNewChat={() => void handleNewChat()}
+          onOpenPalette={openPalette}
+          onCollapse={() => toggleSidebar()}
           onRevealWorkspace={handleRevealWorkspace}
           onOpenSettings={(section) => openSettings(section as SettingsSection)}
           onExportDiagnostics={() => void handleExportDiagnostics()}
@@ -962,9 +984,17 @@ export default function App() {
         />
 
         {/* The full-height "Artifacts" rail that used to live here was a second
-            affordance for the topbar's own panel toggle. It is gone; the toggle
-            carries the artifact count so the panel stays discoverable. */}
+            affordance for the title strip's own panel toggle. It is gone; the
+            toggle carries the artifact count so the panel stays discoverable. */}
         <main className="center">
+          <MainHead
+            title={activeConversationSummary?.displayTitle}
+            effectiveTheme={effectiveTheme}
+            onToggleTheme={handleToggleTheme}
+            panelOpen={!docPanelCollapsed}
+            onTogglePanel={toggleDocPanel}
+            hiddenArtifactCount={hiddenArtifactCount}
+          />
           <ChatView
             ref={chatViewRef}
             settings={settings}

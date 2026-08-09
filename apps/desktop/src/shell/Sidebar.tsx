@@ -1,19 +1,27 @@
 /**
- * Sidebar — the conversation list (spec §8.2). History is no longer a mode;
- * it is a list beside the thread. Three rows: head (New chat), scrollable
- * grouped list, footer workspace chip + menu. The footer menu absorbs the
- * V6 titlebar chips and the settings/connectors rail tabs.
+ * Sidebar — the conversation list (V9 §4). History is no longer a mode; it is a
+ * list beside the thread. Four rows: head (mark + collapse), nav (New chat,
+ * Search), scrollable grouped list, footer workspace chip + menu. The footer
+ * menu absorbs the V6 titlebar chips and the settings/connectors rail tabs.
+ *
+ * V9 deleted the top bar, which makes this the only persistent chrome in the
+ * product. Two things moved in as a result: the brand mark, and Search — the
+ * `.omni` pill's capability, which was always just a second door to the ⌘K
+ * palette. The head carries the window drag region alongside the title strip's.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
 import { modShortcutHint } from '../lib/shortcuts';
 import {
+  BrandMark,
   ConnectorsIcon,
   FolderIcon,
   LockIcon,
   PlusIcon,
+  SearchIcon,
   SettingsIcon,
+  SidebarIcon,
   TrashIcon,
 } from '../icons';
 
@@ -29,6 +37,10 @@ interface SidebarProps {
   connectorCount?: number;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
+  /** Open the ⌘K palette — the `.omni` pill's former job (V9 §2.1). */
+  onOpenPalette: () => void;
+  /** Collapse the sidebar; the floating reveal button brings it back. */
+  onCollapse: () => void;
   onRevealWorkspace: () => void;
   onOpenSettings: (section: string) => void;
   /** Export a redacted diagnostics bundle (workspace menu). */
@@ -122,6 +134,8 @@ export function Sidebar({
   connectorCount,
   onSelectConversation,
   onNewChat,
+  onOpenPalette,
+  onCollapse,
   onRevealWorkspace,
   onOpenSettings,
   onExportDiagnostics,
@@ -230,13 +244,39 @@ export function Sidebar({
 
   return (
     <aside className="sidebar" aria-label="Conversations">
-      <div className="sb-head sidebar-inner">
-        <button className="newchat" type="button" onClick={onNewChat}>
+      {/* Drag region, like the title strip: with no top bar, these two are the
+          only chrome the user can grab to move a frameless window. The mark
+          repeats the attribute because Tauri hit-tests the element under the
+          cursor rather than walking up to an ancestor that carries it — without
+          it the brand lettering is a dead patch in the drag region. */}
+      <div className="sb-head sidebar-inner" data-tauri-drag-region>
+        <span className="mark" data-tauri-drag-region>
+          <BrandMark className="mark-glyph" />
+          <b>Conduit</b>
+        </span>
+        <button
+          className="sb-collapse"
+          type="button"
+          aria-label="Collapse sidebar"
+          title={`Collapse sidebar  ${modShortcutHint('\\')}`}
+          onClick={onCollapse}
+        >
+          <SidebarIcon />
+        </button>
+      </div>
+
+      <nav className="sb-nav sidebar-inner" aria-label="Chats">
+        <button className="sb-item newchat" type="button" onClick={onNewChat}>
           <PlusIcon />
           New chat
           <kbd>{modShortcutHint('N')}</kbd>
         </button>
-      </div>
+        <button className="sb-item" type="button" onClick={onOpenPalette}>
+          <SearchIcon />
+          Search
+          <kbd>{modShortcutHint('K')}</kbd>
+        </button>
+      </nav>
 
       <div className="sb-list scroll sidebar-inner">
         {conversations.length === 0 ? (

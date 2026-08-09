@@ -1162,15 +1162,17 @@ impl StreamManager {
                     let cost = provider_core::catalog::estimate_cost_cents(&usage, &pricing);
                     if let Err(e) = usage_summary::insert_usage_summary(
                         &pool,
-                        &message_id,
-                        &conversation_id,
-                        &provider_id,
-                        &model_id,
-                        usage.input_tokens.unwrap_or(0) as i64,
-                        usage.output_tokens.unwrap_or(0) as i64,
-                        usage.cache_read_tokens.unwrap_or(0) as i64,
-                        usage.cache_write_tokens.unwrap_or(0) as i64,
-                        cost.as_deref(),
+                        usage_summary::UsageSummaryRow {
+                            message_id: &message_id,
+                            conversation_id: &conversation_id,
+                            provider_id: &provider_id,
+                            model_id: &model_id,
+                            input_tokens: usage.input_tokens.unwrap_or(0) as i64,
+                            output_tokens: usage.output_tokens.unwrap_or(0) as i64,
+                            cache_read_tokens: usage.cache_read_tokens.unwrap_or(0) as i64,
+                            cache_write_tokens: usage.cache_write_tokens.unwrap_or(0) as i64,
+                            cost_estimate: cost.as_deref(),
+                        },
                     )
                     .await
                     {

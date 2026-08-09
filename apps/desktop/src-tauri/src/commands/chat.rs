@@ -258,7 +258,7 @@ pub async fn search_messages(
     state: State<'_, AppState>,
     request: SearchMessagesRequest,
 ) -> Result<Vec<crate::db::repository::search::SearchResult>, String> {
-    let limit = request.limit.unwrap_or(20).max(1).min(100);
+    let limit = request.limit.unwrap_or(20).clamp(1, 100);
     crate::db::repository::search::search_messages(&state.db, &request.query, limit)
         .await
         .map_err(|e| e.to_string())

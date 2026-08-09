@@ -295,11 +295,16 @@ pub fn lookup_pricing(provider_id: &str, model_id: &str) -> ModelPricing {
 
 /// Compute a cost estimate in USD cents from usage + pricing.
 /// Returns None when the total cost rounds to zero.
-pub fn estimate_cost_cents(usage: &crate::schema::ProviderUsage, pricing: &ModelPricing) -> Option<String> {
+pub fn estimate_cost_cents(
+    usage: &crate::schema::ProviderUsage,
+    pricing: &ModelPricing,
+) -> Option<String> {
     let input = usage.input_tokens.unwrap_or(0) as f64 / 1_000_000.0 * pricing.input_per_mtok;
     let output = usage.output_tokens.unwrap_or(0) as f64 / 1_000_000.0 * pricing.output_per_mtok;
-    let cache_read = usage.cache_read_tokens.unwrap_or(0) as f64 / 1_000_000.0 * pricing.cache_read_per_mtok;
-    let cache_write = usage.cache_write_tokens.unwrap_or(0) as f64 / 1_000_000.0 * pricing.cache_write_per_mtok;
+    let cache_read =
+        usage.cache_read_tokens.unwrap_or(0) as f64 / 1_000_000.0 * pricing.cache_read_per_mtok;
+    let cache_write =
+        usage.cache_write_tokens.unwrap_or(0) as f64 / 1_000_000.0 * pricing.cache_write_per_mtok;
     let total = input + output + cache_read + cache_write;
     if total <= 0.0 {
         return None;

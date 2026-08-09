@@ -420,7 +420,7 @@ mod tests {
 
     #[sqlx::test]
     async fn test_encryption_round_trip() {
-        use crate::encryption::{Encryption, EncryptionTier};
+        use crate::encryption::Encryption;
         let p = pool().await;
 
         // Create with encryption On

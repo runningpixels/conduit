@@ -196,20 +196,24 @@ async fn remove_last_assistant_turn_removes_latest_assistant() {
         .await
         .unwrap();
 
-    let rid = conversations::last_assistant_request_id(&pool, &conv.id)
+    // Both bindings are deliberately unused: this test validates the
+    // remove/query mechanism, not the request_id itself.
+    //
+    // The comments here previously claimed both calls return `None`, because
+    // `insert_message_in_txn` always writes `request_id = NULL`. That is wrong.
+    // Turning the claims into assertions while clearing clippy failed on both:
+    // each returns `Some`. The comments were stale, not the code — corrected
+    // rather than encoded as a test that would have pinned a falsehood.
+    let _rid = conversations::last_assistant_request_id(&pool, &conv.id)
         .await
         .unwrap();
-    // Note: insert_message_in_txn always sets request_id=NULL, so the query
-    // returns None. In the real stream pipeline, request_id is set by the
-    // event-log fold. The retry/fork flow works with the stream pipeline;
-    // this test validates the remove/query mechanism.
 
-    let removed = conversations::remove_last_assistant_turn(&pool, &conv.id)
+    // The remove path selects by role + created_at, not by request_id.
+    let _removed = conversations::remove_last_assistant_turn(&pool, &conv.id)
         .await
         .unwrap();
-    // The remove path uses SELECT by role + created_at (not request_id).
-    // The return value is the request_id from the message row (which is NULL
-    // in this test). The important thing is that the message is deleted.
+
+    // What this test is actually about: the assistant message is gone.
 
     let listed = conversations::list(&pool).await.unwrap();
     assert_eq!(listed[0].message_count, 1, "only user message remains");

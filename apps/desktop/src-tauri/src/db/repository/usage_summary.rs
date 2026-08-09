@@ -40,19 +40,40 @@ pub struct UsageSummaryResponse {
     pub daily_totals: Vec<DailyUsage>,
 }
 
+/// One usage row's worth of facts.
+///
+/// A struct rather than ten positional parameters: four of them are `i64`
+/// token counts in a row, so a transposed pair would compile, persist and
+/// silently misreport cost forever. Named fields make that mistake visible at
+/// the call site.
+pub struct UsageSummaryRow<'a> {
+    pub message_id: &'a str,
+    pub conversation_id: &'a str,
+    pub provider_id: &'a str,
+    pub model_id: &'a str,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_write_tokens: i64,
+    pub cost_estimate: Option<&'a str>,
+}
+
 /// Insert one usage summary row for a completed assistant message.
 pub async fn insert_usage_summary(
     pool: &SqlitePool,
-    message_id: &str,
-    conversation_id: &str,
-    provider_id: &str,
-    model_id: &str,
-    input_tokens: i64,
-    output_tokens: i64,
-    cache_read_tokens: i64,
-    cache_write_tokens: i64,
-    cost_estimate: Option<&str>,
+    row: UsageSummaryRow<'_>,
 ) -> Result<(), sqlx::Error> {
+    let UsageSummaryRow {
+        message_id,
+        conversation_id,
+        provider_id,
+        model_id,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        cost_estimate,
+    } = row;
     let id = Uuid::new_v4().to_string();
     let now = now_iso8601();
     sqlx::query(
@@ -211,15 +232,17 @@ mod tests {
 
         insert_usage_summary(
             &pool,
-            "msg-1",
-            "conv-1",
-            "anthropic",
-            "claude-sonnet-4",
-            1000,
-            200,
-            50,
-            500,
-            Some("0.3200"),
+            UsageSummaryRow {
+                message_id: "msg-1",
+                conversation_id: "conv-1",
+                provider_id: "anthropic",
+                model_id: "claude-sonnet-4",
+                input_tokens: 1000,
+                output_tokens: 200,
+                cache_read_tokens: 50,
+                cache_write_tokens: 500,
+                cost_estimate: Some("0.3200"),
+            },
         )
         .await
         .expect("insert");
@@ -237,7 +260,18 @@ mod tests {
         let pool = test_pool().await;
 
         insert_usage_summary(
-            &pool, "msg-2", "conv-1", "ollama", "llama3", 500, 100, 0, 0, None,
+            &pool,
+            UsageSummaryRow {
+                message_id: "msg-2",
+                conversation_id: "conv-1",
+                provider_id: "ollama",
+                model_id: "llama3",
+                input_tokens: 500,
+                output_tokens: 100,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_estimate: None,
+            },
         )
         .await
         .expect("insert");

@@ -368,8 +368,8 @@ html[data-sidebar="closed"] .sb-reveal { display: grid; }
  * nothing to stop it. `.doc-more-menu` renders a full Windows artifact path,
  * which is one unbreakable token (no spaces, and `\` is not a break
  * opportunity), so the menu widened to the whole path and ran off the left edge
- * of the window. The cap is the same idiom `.toast-stack` and
- * `.composer-popover` already use. */
+ * of the window. The cap is the same idiom `.toast-stack` already uses, and it
+ * is why `.model-menu` can anchor `right: 0` safely. */
 .menu {
   position: absolute;
   z-index: 60;

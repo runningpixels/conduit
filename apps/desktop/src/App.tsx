@@ -734,11 +734,31 @@ export default function App() {
     }
   }, [activeConversationId]);
 
-  // V7 ⌘K — switch provider + model from the / models corpus; re-tints via
-  // the Phase A data-provider effect.
+  /**
+   * The one place a model switch is written (⌘K's `/models` corpus and the
+   * composer's model menu both route here). Provider and model move together in
+   * a single settings write, so a cross-provider pick cannot leave the two
+   * fields briefly disagreeing — and the app re-tints once, from the Phase A
+   * `data-provider` effect, rather than twice.
+   *
+   * `defaultBaseUrl` comes from the caller's provider descriptor: switching to a
+   * provider that has never been configured seeds its endpoint, which is what
+   * the composer's picker did before V9 folded its two writes into this one.
+   * An endpoint the user has already set is never overwritten.
+   */
   const handleSelectModel = useCallback(
-    (providerId: string, modelId: string) => {
-      const next: AppSettings = { ...settings, activeProvider: providerId, activeModel: modelId };
+    (providerId: string, modelId: string, defaultBaseUrl?: string | null) => {
+      const existing = settings.providerEndpoints?.[providerId];
+      const providerEndpoints = { ...settings.providerEndpoints };
+      if (defaultBaseUrl && !existing?.baseUrl) {
+        providerEndpoints[providerId] = { ...existing, baseUrl: defaultBaseUrl };
+      }
+      const next: AppSettings = {
+        ...settings,
+        activeProvider: providerId,
+        activeModel: modelId,
+        providerEndpoints,
+      };
       setSettings(next);
       void updateSettingsPersisted(next);
     },
@@ -998,7 +1018,7 @@ export default function App() {
           <ChatView
             ref={chatViewRef}
             settings={settings}
-            onSettingsChange={setSettings}
+            onSelectModel={handleSelectModel}
             onStatus={setStatusMessage}
             conversationId={activeConversationId}
             artifacts={artifacts}

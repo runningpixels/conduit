@@ -1,218 +1,291 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+/**
+ * ComposerModelPicker — the model switcher at the composer's bottom-right
+ * (V9 §2.3).
+ *
+ * V7 put two `<select>`s behind a popover: one for provider, one for model,
+ * each writing settings on change. That was two decisions and two writes for
+ * what is one act — "use this model" — and it meant a cross-provider switch
+ * briefly persisted a provider/model pair that did not go together.
+ *
+ * V9 makes it one flat menu grouped by provider: each group is labelled with
+ * its key posture, each row carries the provider's hue dot and its per-Mtok
+ * price, and picking a row writes provider and model together through
+ * `onSelectModel` — the same single path ⌘K's `/models` corpus uses. The
+ * control now sits where a switch is decided, next to the send button.
+ *
+ * Models are fetched on open rather than on mount: the list is only ever read
+ * from this menu, and a provider that is merely configured (a stopped Ollama,
+ * an unreachable self-hosted endpoint) should not be probed on every app start.
+ * The fan-out is parallel with a per-provider timeout, so one unreachable
+ * provider costs its group's rows and nothing else — never the whole menu.
+ */
+
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import type { AppSettings, ModelInfo, ProviderDescriptor } from '../ipc/contracts';
-import { listProviderDescriptors, listProviderModels, updateSettings } from '../ipc/client';
-import { ModelIcon } from '../icons';
+import { listProviderDescriptors, listProviderModels } from '../ipc/client';
+import { formatModelPriceLabel } from '../lib/costTable';
+import { providerHueId } from '../lib/providerIdentity';
+import { ChevronDown } from '../icons';
+
+/**
+ * How long a single provider gets to answer before its group renders empty.
+ * A stopped Ollama on localhost fails fast, but a self-hosted endpoint behind a
+ * dropped route hangs until the OS gives up — which is far longer than anyone
+ * will hold a menu open.
+ */
+const MODEL_FETCH_TIMEOUT_MS = 2500;
 
 interface ComposerModelPickerProps {
   settings: AppSettings;
-  onSettingsChange: (settings: AppSettings) => void;
+  /** Write provider + model in one settings update (App.handleSelectModel). */
+  onSelectModel: (providerId: string, modelId: string, defaultBaseUrl?: string | null) => void;
   disabled?: boolean;
 }
 
 export interface ComposerModelPickerHandle {
-  /// Open the model switcher popover (used by the status line's
-  /// provider/model segment). No-op while disabled or busy.
+  /// Open the model switcher (used by the status line's detail popover).
+  /// No-op while disabled.
   open: () => void;
 }
 
+/** The group caption's suffix: where this provider's key comes from. */
+function keyPosture(descriptor: ProviderDescriptor): string {
+  if (descriptor.credentialMode === 'none') return 'no key needed';
+  if (descriptor.isLocal) return 'local';
+  return 'keychain';
+}
+
+/**
+ * The row's right-hand tail. A bundled price when we know one; otherwise a
+ * posture word from the descriptor, never a guessed number.
+ */
+function modelTail(descriptor: ProviderDescriptor, modelId: string): string | undefined {
+  const price = formatModelPriceLabel(modelId);
+  if (price) return price;
+  if (descriptor.credentialMode === 'none' || descriptor.isLocal) return 'local';
+  if (descriptor.defaultBaseUrl) return 'self-hosted';
+  return undefined;
+}
+
+/**
+ * The fallback row for a provider that lists no models.
+ *
+ * V7's popover degraded to a free-text `Model id` input whenever the model list
+ * came back empty, and its provider `<select>` listed every configured provider
+ * regardless. A grouped menu built only from returned models drops both: a
+ * self-hosted endpoint that implements no model-listing route becomes
+ * unreachable from the composer entirely, not merely awkward. That is a
+ * capability loss rather than a relocation, so the group is still rendered and
+ * this row carries the typing affordance V7 had.
+ */
+function ModelIdRow({
+  provider,
+  initial,
+  onCommit,
+}: {
+  provider: ProviderDescriptor;
+  initial: string;
+  onCommit: (descriptor: ProviderDescriptor, modelId: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const commit = () => {
+    const next = value.trim();
+    if (next) onCommit(provider, next);
+  };
+  return (
+    <div className="menu-item menu-item-input">
+      <i className="pdot" aria-hidden="true" />
+      <input
+        className="model-id-input"
+        value={value}
+        placeholder="Model id"
+        aria-label={`Model id for ${provider.displayName}`}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          commit();
+        }}
+      />
+      <button type="button" className="tail" onClick={commit} disabled={!value.trim()}>
+        use
+      </button>
+    </div>
+  );
+}
+
+/** Resolve `p`, or `fallback` if it takes longer than `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    void p
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        resolve(fallback);
+      });
+  });
+}
+
 export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, ComposerModelPickerProps>(
-  function ComposerModelPicker(
-    {
-      settings,
-      onSettingsChange,
-      disabled = false,
-    }: ComposerModelPickerProps,
-    ref,
-  ) {
+  function ComposerModelPicker({ settings, onSelectModel, disabled = false }, ref) {
     const [open, setOpen] = useState(false);
     const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
-    const [models, setModels] = useState<ModelInfo[]>([]);
-    const [busy, setBusy] = useState(false);
+    const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
+    const [loading, setLoading] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    /** Session cache: the menu is opened repeatedly, the catalogue is stable. */
+    const loadedRef = useRef(false);
 
     useImperativeHandle(ref, () => ({
       open: () => {
-        if (!disabled && !busy) setOpen(true);
+        if (!disabled) setOpen(true);
       },
     }));
 
-  const activeDescriptor = providers.find((p) => p.id === settings.activeProvider);
-  const activeModelLabel =
-    models.find((m) => m.id === settings.activeModel)?.displayName ?? settings.activeModel;
-
-  useEffect(() => {
-    void (async () => {
+    const load = useCallback(async () => {
+      if (loadedRef.current) return;
+      setLoading(true);
       try {
-        setProviders(await listProviderDescriptors());
+        const descriptors = await listProviderDescriptors();
+        setProviders(descriptors);
+        // Parallel, and each provider settles independently: one unreachable
+        // endpoint must not hold the other groups behind it.
+        const entries = await Promise.all(
+          descriptors.map(async (d) => {
+            const models = await withTimeout(
+              listProviderModels(d.id),
+              MODEL_FETCH_TIMEOUT_MS,
+              [] as ModelInfo[],
+            );
+            return [d.id, models] as const;
+          }),
+        );
+        setModelsByProvider(Object.fromEntries(entries));
+        loadedRef.current = true;
       } catch {
         setProviders([]);
+      } finally {
+        setLoading(false);
       }
-    })();
-  }, []);
+    }, []);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setModels(await listProviderModels(settings.activeProvider));
-      } catch {
-        setModels([]);
-      }
-    })();
-  }, [settings.activeProvider]);
+    useEffect(() => {
+      if (open) void load();
+    }, [open, load]);
 
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+    // Outside click + Escape close the menu; focus returns to the trigger.
+    useEffect(() => {
+      if (!open) return;
+      function onPointerDown(event: PointerEvent) {
+        if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
       }
-    }
-    // P5.1 — focus trap: keep Tab/Shift+Tab cycling inside the popover.
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setOpen(false);
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const popover = rootRef.current?.querySelector('.composer-popover');
-      if (!popover) return;
-      const focusables = Array.from(
-        popover.querySelectorAll<HTMLElement>('select, input, button, [tabindex]:not([tabindex="-1"])'),
-      ).filter((el) => !el.hasAttribute('disabled'));
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      function onKeyDown(event: KeyboardEvent) {
+        if (event.key !== 'Escape') return;
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
+        setOpen(false);
+        triggerRef.current?.focus();
       }
-    }
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
-
-  async function persistSettings(next: AppSettings) {
-    setBusy(true);
-    try {
-      const persisted = await updateSettings(next);
-      onSettingsChange(persisted);
-    } catch {
-      onSettingsChange(next);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function handleProviderChange(providerId: string) {
-    const descriptor = providers.find((p) => p.id === providerId);
-    const existingEndpoint = settings.providerEndpoints?.[providerId];
-    const nextEndpoints = { ...settings.providerEndpoints };
-    if (descriptor?.defaultBaseUrl && !existingEndpoint?.baseUrl) {
-      nextEndpoints[providerId] = {
-        ...existingEndpoint,
-        baseUrl: descriptor.defaultBaseUrl,
+      document.addEventListener('pointerdown', onPointerDown);
+      document.addEventListener('keydown', onKeyDown);
+      return () => {
+        document.removeEventListener('pointerdown', onPointerDown);
+        document.removeEventListener('keydown', onKeyDown);
       };
+    }, [open]);
+
+    function pick(descriptor: ProviderDescriptor, modelId: string) {
+      setOpen(false);
+      onSelectModel(descriptor.id, modelId, descriptor.defaultBaseUrl);
     }
-    void persistSettings({
-      ...settings,
-      activeProvider: providerId,
-      providerEndpoints: nextEndpoints,
-    });
-  }
 
-  function handleModelChange(modelId: string) {
-    void persistSettings({ ...settings, activeModel: modelId });
-    setOpen(false);
-  }
+    const sortedProviders = [...providers].sort(
+      (a, b) => a.tier - b.tier || a.displayName.localeCompare(b.displayName),
+    );
+    // Every configured provider gets a group, including ones that listed no
+    // models — filtering those out would make them unselectable from here.
+    const settled = !loading && providers.length > 0;
 
-  const sortedProviders = [...providers].sort(
-    (a, b) => a.tier - b.tier || a.displayName.localeCompare(b.displayName),
-  );
+    return (
+      <div className="composer-model-picker" ref={rootRef}>
+        <button
+          ref={triggerRef}
+          className="cbtn model"
+          type="button"
+          title="Switch model"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <i className="pdot" aria-hidden="true" />
+          <span className="model-label">{settings.activeModel}</span>
+          <ChevronDown />
+        </button>
 
-  return (
-    <div className="composer-model-picker" ref={rootRef}>
-      <button
-        className="tool-btn model-trigger"
-        type="button"
-        title="Switch model"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        disabled={disabled || busy}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <ModelIcon />
-        <span className="model-label">{activeModelLabel}</span>
-        <span className="model-chevron" aria-hidden>
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div className="composer-popover" role="dialog" aria-label="Model switcher" aria-modal="true">
-          <div className="composer-popover-head">
-            <span>Model</span>
-            {activeDescriptor?.displayName ? (
-              <span className="composer-popover-sub">{activeDescriptor.displayName}</span>
-            ) : null}
-          </div>
-          <label className="composer-popover-field">
-            <span>Provider</span>
-            <select
-              value={settings.activeProvider}
-              onChange={(e) => handleProviderChange(e.target.value)}
-              disabled={busy}
-            >
-              {sortedProviders.length > 0 ? (
-                sortedProviders.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.displayName}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="ollama">Ollama</option>
-                </>
-              )}
-            </select>
-          </label>
-          <label className="composer-popover-field">
-            <span>Model</span>
-            {models.length > 0 ? (
-              <select
-                value={settings.activeModel}
-                onChange={(e) => handleModelChange(e.target.value)}
-                disabled={busy}
-              >
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.displayName ?? model.id}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={settings.activeModel}
-                onChange={(e) => handleModelChange(e.target.value)}
-                disabled={busy}
-                placeholder="Model id"
-              />
+        {open && (
+          <div className="menu model-menu" data-open="true" role="menu" aria-label="Switch model">
+            {settled &&
+              sortedProviders.map((provider) => {
+                const models = modelsByProvider[provider.id] ?? [];
+                return (
+                  <div key={provider.id} data-provider={providerHueId(provider.id)}>
+                    <div className="menu-label">
+                      {provider.displayName} · {keyPosture(provider)}
+                    </div>
+                    {models.length > 0 ? (
+                      models.map((model) => {
+                        const active =
+                          provider.id === settings.activeProvider &&
+                          model.id === settings.activeModel;
+                        const tail = modelTail(provider, model.id);
+                        return (
+                          <button
+                            key={model.id}
+                            type="button"
+                            role="menuitem"
+                            className="menu-item"
+                            aria-current={active || undefined}
+                            onClick={() => pick(provider, model.id)}
+                          >
+                            <i className="pdot" aria-hidden="true" />
+                            {model.displayName ?? model.id}
+                            {tail && <span className="tail">{tail}</span>}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <ModelIdRow
+                        provider={provider}
+                        initial={
+                          provider.id === settings.activeProvider ? settings.activeModel : ''
+                        }
+                        onCommit={pick}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+
+            {!settled && (
+              <div className="menu-empty">
+                {loading ? 'Loading models…' : 'No providers configured. Check Providers & keys.'}
+              </div>
             )}
-          </label>
-          <p className="composer-popover-note">
-            Changes apply app-wide. Manage credentials in Settings.
-          </p>
-        </div>
-      )}
-    </div>
-  );
+          </div>
+        )}
+      </div>
+    );
   },
 );
-

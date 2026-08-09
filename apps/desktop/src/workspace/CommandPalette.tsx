@@ -9,7 +9,7 @@ import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 import { formatSize } from '../artifacts/format';
 import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../icons';
 import { providerDisplayName } from '../lib/providerIdentity';
-import { getModelPrices, type ModelPrices } from '../lib/costTable';
+import { formatModelPriceLabel } from '../lib/costTable';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { useFocusTrap } from '../shell/useFocusTrap';
 
@@ -35,8 +35,10 @@ interface CommandPaletteProps {
   onDeleteChat: () => void;
   /** V7 — delete all conversation history (routes through the confirm dialog). */
   onDeleteAllHistory: () => void;
-  /** Switch the active provider + model from the / models corpus. */
-  onSelectModel: (providerId: string, modelId: string) => void;
+  /** Switch the active provider + model from the / models corpus.
+   *  `defaultBaseUrl` seeds an unconfigured provider's endpoint; see
+   *  App.handleSelectModel. */
+  onSelectModel: (providerId: string, modelId: string, defaultBaseUrl?: string | null) => void;
   conversations: CommandPaletteConversation[];
   onSelectConversation: (id: string) => void;
   /** V7 — @ artifacts corpus. */
@@ -79,15 +81,6 @@ function highlightSnippet(result: SearchResult): string {
   const end = Math.min(escaped.length, result.matchEnd);
   if (start >= end) return escaped;
   return `${escaped.slice(0, start)}<mark>${escaped.slice(start, end)}</mark>${escaped.slice(end)}`;
-}
-
-function trimPrice(v: number): string {
-  return Number.isInteger(v) ? String(v) : v.toFixed(2);
-}
-
-/** "$3 / $15" style per-Mtok tail for the / models corpus. */
-function priceTail(prices: ModelPrices): string {
-  return `$${trimPrice(prices.inputPerMtokCents / 100)} / $${trimPrice(prices.outputPerMtokCents / 100)}`;
 }
 
 const MODE_LABEL: Record<string, string> = {
@@ -202,13 +195,10 @@ export function CommandPalette({
       if (models.length === 0) continue;
       for (const model of models) {
         const label = `${providerDisplayName(provider.id)} / ${model.displayName ?? model.id}`;
-        const prices = getModelPrices(model.id);
         const tail =
           provider.credentialMode === 'none'
             ? 'local'
-            : prices
-              ? priceTail(prices)
-              : undefined;
+            : (formatModelPriceLabel(model.id) ?? undefined);
         items.push({
           id: `model-${provider.id}-${model.id}`,
           group: providerDisplayName(provider.id),
@@ -216,7 +206,7 @@ export function CommandPalette({
           label,
           tail,
           run: () => {
-            onSelectModel(provider.id, model.id);
+            onSelectModel(provider.id, model.id, provider.defaultBaseUrl);
             onClose();
           },
         });

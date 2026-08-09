@@ -168,7 +168,15 @@ describe('CommandPalette prefix modes', () => {
     expect(screen.getByText('$3 / $15')).toBeInTheDocument();
     expect(screen.getByText('local')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: /Anthropic \/ Claude Sonnet 4/ }));
-    expect(props.onSelectModel).toHaveBeenCalledWith('anthropic', 'claude-sonnet-4');
+    // The descriptor's default base url rides along so App can seed an
+    // unconfigured provider's endpoint — the palette and the composer's model
+    // menu now share one write path, and it was the composer's picker that
+    // carried the endpoint-seeding behaviour before V9 merged them.
+    expect(props.onSelectModel).toHaveBeenCalledWith(
+      'anthropic',
+      'claude-sonnet-4',
+      'https://api.anthropic.com',
+    );
     expect(props.onClose).toHaveBeenCalled();
   });
 

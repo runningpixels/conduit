@@ -62,10 +62,17 @@ vi.mock('../ipc/client', () => ({
       description: null,
     },
   ]),
-  listProviderModels: vi.fn().mockResolvedValue([
-    { id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' },
-    { id: 'claude-opus-4', displayName: 'Claude Opus 4' },
-  ]),
+  // Per-provider, not one shared list: the menu groups by provider, so a mock
+  // returning the same models for both would render duplicate rows and make
+  // every by-name query ambiguous.
+  listProviderModels: vi.fn().mockImplementation(async (id: string) =>
+    id === 'openai'
+      ? [{ id: 'gpt-4.1-mini', displayName: 'GPT-4.1 mini' }]
+      : [
+          { id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' },
+          { id: 'claude-opus-4', displayName: 'Claude Opus 4' },
+        ],
+  ),
   updateSettings: vi.fn().mockImplementation(async (settings: AppSettings) => settings),
   saveAttachment: vi.fn().mockResolvedValue({
     id: 'att-1',
@@ -84,13 +91,13 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
   const onSend = vi.fn();
   const onStop = vi.fn();
   const onPromptChange = vi.fn();
-  const onSettingsChange = vi.fn();
+  const onSelectModel = vi.fn();
   const onWebSearchToggle = vi.fn();
 
   render(
     <Composer
       settings={baseSettings}
-      onSettingsChange={onSettingsChange}
+      onSelectModel={onSelectModel}
       conversationId="conv-1"
       prompt=""
       onPromptChange={onPromptChange}
@@ -103,7 +110,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     />,
   );
 
-  return { onSend, onStop, onPromptChange, onSettingsChange, onWebSearchToggle };
+  return { onSend, onStop, onPromptChange, onSelectModel, onWebSearchToggle };
 }
 
 describe('Composer', () => {
@@ -149,20 +156,52 @@ describe('Composer', () => {
     });
   });
 
-  it('opens the model switcher and persists a new model selection', async () => {
-    const { updateSettings } = await import('../ipc/client');
-    const { onSettingsChange } = renderComposer();
+  it('opens the model menu grouped by provider and picks a model', async () => {
+    const { onSelectModel } = renderComposer();
 
     fireEvent.click(screen.getByTitle('Switch model'));
 
-    await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(2));
-    const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'claude-opus-4' } });
+    // Group captions carry the provider's key posture, not just its name.
+    expect(await screen.findByText('Anthropic · keychain')).toBeInTheDocument();
+    expect(screen.getByText('OpenAI · keychain')).toBeInTheDocument();
 
-    await waitFor(() => expect(updateSettings).toHaveBeenCalled());
-    expect(onSettingsChange).toHaveBeenCalledWith(
-      expect.objectContaining({ activeModel: 'claude-opus-4' }),
-    );
+    fireEvent.click(screen.getByRole('menuitem', { name: /Claude Opus 4/ }));
+
+    // One write, carrying provider and model together.
+    expect(onSelectModel).toHaveBeenCalledTimes(1);
+    expect(onSelectModel).toHaveBeenCalledWith('anthropic', 'claude-opus-4', null);
+  });
+
+  it('marks the active model and shows its price tail', async () => {
+    renderComposer();
+    fireEvent.click(screen.getByTitle('Switch model'));
+
+    const active = await screen.findByRole('menuitem', { name: /Claude Sonnet 4/ });
+    expect(active).toHaveAttribute('aria-current', 'true');
+    expect(active).toHaveTextContent('$3 / $15');
+  });
+
+  it('keeps an unreachable provider selectable instead of hiding it', async () => {
+    const { listProviderModels } = await import('../ipc/client');
+    // Risk R6: an unreachable provider costs its own rows and nothing else — but
+    // it keeps its group, degraded to the typed-id row. Dropping the group would
+    // make the provider unpickable from the composer, which is a capability
+    // loss rather than a graceful degradation.
+    vi.mocked(listProviderModels).mockImplementation(async (id: string) => {
+      if (id === 'openai') throw new Error('connection refused');
+      return [
+        { id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' },
+        { id: 'claude-opus-4', displayName: 'Claude Opus 4' },
+      ];
+    });
+
+    renderComposer();
+    fireEvent.click(screen.getByTitle('Switch model'));
+
+    expect(await screen.findByText('Anthropic · keychain')).toBeInTheDocument();
+    expect(screen.getByText('Claude Opus 4')).toBeInTheDocument();
+    expect(screen.getByText('OpenAI · keychain')).toBeInTheDocument();
+    expect(screen.getByLabelText('Model id for OpenAI')).toBeInTheDocument();
   });
 
   it('uploads attachments, shows chips, and removes them', async () => {

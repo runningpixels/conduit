@@ -78,3 +78,26 @@ export function formatCostCents(cents: number): string {
   const raw = dollars < 0.1 ? dollars.toFixed(4) : dollars.toFixed(2);
   return `$${raw.replace(/\.?0+$/, '')}`;
 }
+
+/** Per-Mtok dollars, trailing zeros trimmed: 300 → "3", 40 → "0.4". */
+function perMtokDollars(cents: number): string {
+  const dollars = cents / 100;
+  return Number.isInteger(dollars) ? String(dollars) : String(Number(dollars.toFixed(2)));
+}
+
+/**
+ * The `$3 / $15` input/output tail shown beside a model (V9 §2.3), or null when
+ * the model is not in the bundled table — the caller then falls back to a
+ * posture word (`local`, `self-hosted`) from the provider descriptor rather
+ * than guessing a price.
+ *
+ * Lives here rather than beside either of its two consumers: the composer's
+ * model menu and the palette's `/models` corpus both show this tail, and the
+ * same fact rendered two ways in two places is the drift `--code` and the ink
+ * ramp were each fixed for.
+ */
+export function formatModelPriceLabel(modelId: string): string | null {
+  const prices = getModelPrices(modelId);
+  if (!prices) return null;
+  return `$${perMtokDollars(prices.inputPerMtokCents)} / $${perMtokDollars(prices.outputPerMtokCents)}`;
+}

@@ -22,7 +22,10 @@ export interface ComposerHandle {
 
 export interface ComposerProps {
   settings: AppSettings;
-  onSettingsChange: (settings: AppSettings) => void;
+  /** Write provider + model in one settings update. The chat surface only
+   *  ever changes these two fields, so it takes the specific capability
+   *  rather than a general settings setter. */
+  onSelectModel: (providerId: string, modelId: string, defaultBaseUrl?: string | null) => void;
   conversationId: string | null;
   prompt: string;
   onPromptChange: (value: string) => void;
@@ -49,7 +52,7 @@ function fileToBytes(file: File): Promise<number[]> {
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({
   settings,
-  onSettingsChange,
+  onSelectModel,
   conversationId,
   prompt,
   onPromptChange,
@@ -301,7 +304,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onChange={(event) => void handleFileInputChange(event)}
           />
           <button
-            className="tool-btn attach-btn"
+            className="cbtn attach-btn"
             type="button"
             aria-label="Attach file"
             title={attachDisabled ? 'Start a conversation to attach files' : 'Attach file'}
@@ -310,15 +313,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           >
             <AttachIcon />
           </button>
-          <ComposerModelPicker
-            ref={modelPickerRef}
-            settings={settings}
-            onSettingsChange={onSettingsChange}
-            disabled={streaming}
-          />
           {settings.webSearchEnabled && !settings.localOnly && !streaming && (
             <button
-              className={`tool-btn${webSearchOn ? ' search-active' : ''}`}
+              className={`cbtn${webSearchOn ? ' armed' : ''}`}
               type="button"
               aria-label={
                 webSearchOn ? 'Web search on — click to disable' : 'Web search off — click to enable'
@@ -330,6 +327,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <SearchIcon />
             </button>
           )}
+          {/* Everything before the spacer acts on the message; everything after
+              it says who will answer and sends. */}
+          <span className="spacer" />
+          <ComposerModelPicker
+            ref={modelPickerRef}
+            settings={settings}
+            onSelectModel={onSelectModel}
+            disabled={streaming}
+          />
           {streaming ? (
             <button
               className="send stop"

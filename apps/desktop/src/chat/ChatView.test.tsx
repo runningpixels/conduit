@@ -74,14 +74,14 @@ function renderChatView(overrides: {
   artifacts?: Artifact[];
 } = {}) {
   const onStatus = vi.fn();
-  const onSettingsChange = vi.fn();
+  const onSelectModel = vi.fn();
   const onPromoteArtifact = vi.fn();
   const onOpenArtifact = vi.fn();
 
   render(
     <ChatView
       settings={baseSettings}
-      onSettingsChange={onSettingsChange}
+      onSelectModel={onSelectModel}
       onStatus={onStatus}
       conversationId="conv-1"
       artifacts={overrides.artifacts ?? []}
@@ -91,7 +91,7 @@ function renderChatView(overrides: {
     />,
   );
 
-  return { onStatus, onSettingsChange };
+  return { onStatus, onSelectModel };
 }
 
 describe('describeInvokeError', () => {

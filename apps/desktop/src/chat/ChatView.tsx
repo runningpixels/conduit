@@ -89,7 +89,10 @@ export interface ChatViewHandle {
 
 interface ChatViewProps {
   settings: AppSettings;
-  onSettingsChange: (settings: AppSettings) => void;
+  /** Write provider + model in one settings update. The chat surface only
+   *  ever changes these two fields, so it takes the specific capability
+   *  rather than a general settings setter. */
+  onSelectModel: (providerId: string, modelId: string, defaultBaseUrl?: string | null) => void;
   onStatus: (message: string | StatusState) => void;
   /// Active conversation id (owned by App; the history rail drives selection).
   /// `null` only briefly during boot before App ensures a conversation exists.
@@ -321,7 +324,7 @@ function recordSessionTurnProvider(turnId: string, provider: string, model: stri
 export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatView(
   {
     settings,
-    onSettingsChange,
+    onSelectModel,
     onStatus,
     conversationId,
     artifacts,
@@ -1255,7 +1258,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       <Composer
         ref={composerRef}
         settings={settings}
-        onSettingsChange={onSettingsChange}
+        onSelectModel={onSelectModel}
         conversationId={conversationId}
         prompt={prompt}
         onPromptChange={setPrompt}

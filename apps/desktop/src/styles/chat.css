@@ -603,22 +603,33 @@
 /* ── Composer ───────────────────────────────────────────────────────────── */
 .composer-wrap { flex: none; padding: 0 var(--sp-5) var(--sp-3); background: var(--bg); }
 .composer-wrap > .composer { max-width: var(--measure); margin: 0 auto; }
+/* One rounded card with a resting lift (V9 §7). --r-xl is the composer's alone;
+ * nothing else in the product is this round, which is what makes it read as the
+ * place you act rather than another panel. */
 .composer {
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-xl);
   background: var(--card);
-  transition: var(--tap);
+  box-shadow: var(--soft-lift);
+  transition: border-color var(--tap), box-shadow var(--tap);
   position: relative;
-  overflow: hidden;
   --composer-max-height: 180px;
+  /* Deliberately not `overflow: hidden`: the model menu opens upward out of the
+   * card, and clipping it to the composer's box would cut the list off. The
+   * textarea has no fill of its own, so nothing needs the corners clipped. */
 }
-/* Achromatic focus (spec §2 principle 4, §8.6). The resting composer is chrome,
- * not provenance, so it carries no hue: focus is a single step from --line to
- * --line-hi. This replaced four stacked accent effects — a --hue border, a 3px
- * --hue-weak ring, a 2px --hue rail on ::before, and the textarea's own
- * `box-shadow: var(--glow)` from tokens.css — which together read as an alert
- * state rather than a caret position. */
-.composer:focus-within { border-color: var(--line-hi); }
+/* Hue focus ring (V9 §7). This reverses Pass I, which made the focused composer
+ * achromatic — and Pass I was right about what it was looking at: four stacked
+ * accents at once (a --hue border, a 3px --hue-weak ring, a 2px --hue rail on
+ * ::before, and the textarea's own --glow) read as an alert state rather than a
+ * caret position. V9 specifies exactly one of those four. At that volume the
+ * hue earns its place: it reports which provider is about to receive what you
+ * type, which is the same fact the send button and the status dot carry, and
+ * the composer is where that fact matters most. */
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--hue) 45%, var(--line));
+  box-shadow: var(--soft-lift), 0 0 0 3px color-mix(in srgb, var(--hue) 10%, transparent);
+}
 /* `:focus-visible` always matches for text inputs, including mouse focus, so
  * the global textarea glow fired on every click. The container's border is the
  * composer's focus signal; the glow would be a second one in --hue. */
@@ -692,98 +703,98 @@
 .composer-attachment-action:hover,
 .composer-attachment-remove:hover { color: var(--ink); }
 .composer-attachment-remove { font-size: 15px; line-height: 1; }
-.composer-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px; }
+.composer-bar { display: flex; align-items: center; gap: 4px; padding: 8px 10px 10px; }
+/* Splits the bar in two (V9 §7): what acts on the message sits left of it, who
+ * answers and the send sit right. Replaces the `margin-left: auto` the send
+ * button used to carry — with three things on the right, the push has to happen
+ * once, in one place. */
+.spacer { flex: 1 1 auto; }
 .composer-model-picker { position: relative; min-width: 0; }
-.tool-btn.model-trigger { max-width: min(220px, 42vw); }
-.tool-btn.model-trigger .model-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tool-btn.model-trigger .model-chevron {
-  font-size: 10px;
-  color: var(--ink-3);
-  margin-left: -2px;
-}
-.composer-popover {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  z-index: 30;
-  width: min(280px, calc(100vw - 48px));
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--r);
-  border: 1px solid var(--line);
-  background: var(--card);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
-}
-.composer-popover-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  font: 600 12px/1.2 var(--font-mono);
-  color: var(--ink);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-.composer-popover-sub {
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--ink-3);
-  text-transform: none;
-  letter-spacing: normal;
-}
-.composer-popover-field {
-  display: grid;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--ink-3);
-}
-.composer-popover-field select,
-.composer-popover-field input {
-  width: 100%;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  padding: 8px 10px;
-  font: inherit;
-}
-.composer-popover-note {
-  margin: 0;
-  font-size: 10.5px;
-  line-height: 1.45;
-  color: var(--ink-3);
-}
-.tool-btn {
+
+/* Composer bar buttons. Renamed from `.tool-btn`, which collided conceptually
+ * with the `.tool-*` namespace of the tool-call card — these are composer
+ * controls and never appeared in a tool card. */
+.cbtn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  height: 32px;
+  padding: 0 8px;
   border-radius: var(--r-sm);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--ink-2);
-  font-size: 12px;
+  color: var(--ink-3);
+  font-size: 13px;
   transition: var(--tap);
 }
-.tool-btn:hover { background: var(--card); color: var(--ink); }
-.tool-btn svg { width: 16px; height: 16px; }
-/* Phase 7 / M-WebSearch: active search toggle. Per-turn state, so it keeps its
- * accent — but as the --hue-weak wash the spec specifies (§8.6), not the solid
- * fill it shipped with, which competed with the send button beside it. */
-.tool-btn.search-active { background: var(--hue-weak); color: var(--hue); }
-.tool-btn.search-active:hover { background: var(--hue-weak); color: var(--hue); }
+.cbtn:hover { background: var(--card-hi); color: var(--ink); }
+.cbtn:disabled { opacity: .5; }
+.cbtn svg { width: 16px; height: 16px; }
+/* Armed web search is per-turn state, so it keeps an accent — --hue-text, not
+ * --hue, because this is a coloured glyph beside coloured text and the text
+ * tier is the one held to AA (plan D1). */
+.cbtn.armed { color: var(--hue-text); }
+.cbtn.armed:hover { background: color-mix(in srgb, var(--hue) 9%, transparent); color: var(--hue-text); }
+
+/* The model trigger: provider dot, model name, chevron (V9 §2.3). */
+.cbtn.model { max-width: min(220px, 42vw); color: var(--ink-2); font-weight: 500; gap: 5px; }
+.cbtn.model .pdot { width: 6px; height: 6px; background: var(--hue); }
+.cbtn.model .model-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbtn.model svg { width: 13px; height: 13px; color: var(--ink-3); }
+
+/* The menu opens upward from the bar, right-aligned under the trigger. The
+ * open state repeats the position for the same reason .status-menu does:
+ * `.menu[data-open="true"]` resets `transform`, and at 0,2,0 it outranks this
+ * rule — anything positional expressed as a transform would be dropped on
+ * open. Kept to `right`/`bottom` here so there is no transform to lose. */
+.model-menu {
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 260px;
+  max-height: min(420px, 52vh);
+  overflow-y: auto;
+}
+.model-menu .menu-item .pdot { width: 7px; height: 7px; background: var(--hue); }
+.model-menu .menu-item[aria-current="true"] { background: var(--card-hi); color: var(--ink); }
+.menu-empty { padding: 14px 11px; font-size: 12.5px; color: var(--ink-3); text-align: center; }
+
+/* The free-text row a provider gets when it lists no models. V7's popover
+ * degraded to a `Model id` input in exactly this case, and a self-hosted
+ * endpoint with no model-listing route depends on it — without the row that
+ * provider is not merely awkward to reach, it is unreachable from the composer.
+ * Styled as a menu row rather than a form field so it reads as one of the
+ * options, not as a settings panel that wandered in. */
+.menu-item-input { cursor: default; }
+.menu-item-input:hover { background: none; }
+.model-id-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font: 400 13.5px/1 var(--font-mono);
+  color: var(--ink);
+}
+.model-id-input::placeholder { color: var(--ink-3); }
+.menu-item-input .tail {
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
+  color: var(--ink-2);
+  transition: border-color var(--tap), color var(--tap);
+}
+.menu-item-input .tail:hover:not(:disabled) { border-color: var(--line-hi); color: var(--ink); }
+.menu-item-input .tail:disabled { opacity: .45; cursor: default; }
+
 /* The accent arrives with the ability to act. `disabled` tracks
- * `!prompt.trim()` in Composer.tsx, so the armed state needs no extra state. */
+ * `!prompt.trim()` in Composer.tsx, so the armed state needs no extra state.
+ * --hue-solid rather than --hue: this fill carries a glyph in --on-hue, and
+ * only the solid tier is tuned to keep that legible (plan D1). */
 .send {
-  margin-left: auto;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--r);
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--r-sm);
   background: var(--card-hi);
   color: var(--ink-3);
   border: 0;
@@ -791,9 +802,10 @@
   place-items: center;
   transition: var(--tap);
 }
-.send:not(:disabled) { background: var(--hue); color: var(--bg); }
+.send:not(:disabled) { background: var(--hue-solid); color: var(--on-hue); }
 .send:hover { filter: none; }
-.send svg { width: 17px; height: 17px; }
+.send:not(:disabled):hover { opacity: .88; }
+.send svg { width: 16px; height: 16px; }
 .send.stop { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
 .send.stop:hover { border-color: var(--err); color: var(--err); filter: none; }
 

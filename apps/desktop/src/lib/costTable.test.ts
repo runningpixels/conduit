@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   estimateCostCents,
   formatCostCents,
+  formatModelPriceLabel,
   getModelPrices,
   toTokenNumber,
 } from './costTable';
@@ -68,6 +69,22 @@ describe('costTable', () => {
     expect(formatCostCents(100)).toBe('$1.00');
     expect(formatCostCents(0.3)).toBe('$0.003');
     expect(formatCostCents(1234.5)).toBe('$12.35');
+  });
+
+  it('formats a per-Mtok price tail, trimming trailing zeros', () => {
+    expect(formatModelPriceLabel('claude-sonnet-4')).toBe('$3 / $15');
+    expect(formatModelPriceLabel('claude-opus-4')).toBe('$15 / $75');
+    // 40 / 160 cents per Mtok — the fractional case that must not read
+    // "$0.40 / $1.60" beside whole-dollar rows in the same menu.
+    expect(formatModelPriceLabel('gpt-4.1-mini')).toBe('$0.4 / $1.6');
+    expect(formatModelPriceLabel('gpt-4o-mini')).toBe('$0.15 / $0.6');
+  });
+
+  it('returns null for a model with no bundled price', () => {
+    // The caller falls back to a posture word from the descriptor rather than
+    // inventing a number.
+    expect(formatModelPriceLabel('internal-llama')).toBeNull();
+    expect(formatModelPriceLabel('')).toBeNull();
   });
 
   it('converts null/bigint token values to safe numbers', () => {

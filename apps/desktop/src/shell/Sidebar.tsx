@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
+import { conversationGroup } from '../lib/dayGroup';
 import { modShortcutHint } from '../lib/shortcuts';
 import {
   BrandMark,
@@ -62,22 +63,6 @@ function relativeFromIso(iso: string): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
   return new Date(then).toLocaleDateString();
-}
-
-/** Group label: Today / Yesterday / month names (this year) / year. */
-export function conversationGroup(iso: string, now: Date = new Date()): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return 'Earlier';
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(startOfToday);
-  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-  if (then >= startOfToday.getTime()) return 'Today';
-  if (then >= startOfYesterday.getTime()) return 'Yesterday';
-  const d = new Date(then);
-  if (d.getFullYear() === now.getFullYear()) {
-    return d.toLocaleDateString(undefined, { month: 'long' });
-  }
-  return String(d.getFullYear());
 }
 
 /** Ordered [group, rows] buckets, newest first. */

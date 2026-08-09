@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AppSettings, MessageRole, ProviderRequest } from '@conduit/config-schema';
 import type { ProviderUsage } from '@conduit/config-schema';
 import {
@@ -39,6 +39,7 @@ import {
 } from './streamState';
 import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
 import { mergeProviderUsage } from '../lib/contextWindows';
+import { dayRuleLabel, sameCalendarDay } from '../lib/dayGroup';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
@@ -1094,9 +1095,27 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               </h1>
             </div>
           )}
-          {!threadLoading && turns.map((turn) => {
+          {!threadLoading && turns.flatMap((turn, turnIndex) => {
+            // Day separator (V9 §4): rendered only where the calendar day
+            // actually changes, so it marks a boundary instead of captioning
+            // every turn. Never above the first turn — there is no boundary
+            // between a thread and its own beginning.
+            const prevTurn = turnIndex > 0 ? turns[turnIndex - 1] : undefined;
+            const dayRule =
+              turn.createdAt &&
+              prevTurn?.createdAt &&
+              !sameCalendarDay(prevTurn.createdAt, turn.createdAt) ? (
+                <div className="day-rule" key={`day-${turn.id}`}>
+                  <span>{dayRuleLabel(turn.createdAt)}</span>
+                </div>
+              ) : null;
+            // Returned as a flat pair so the rule is a sibling of the turn
+            // rather than nested inside it — a separator that lived in the turn
+            // would inherit its left rule and indent. Both halves carry keys.
+            const withDay = (node: ReactNode) => (dayRule ? [dayRule, node] : node);
+
             if (turn.role === 'user') {
-              return (
+              return withDay(
                 <article key={turn.id} className="turn user" data-message-id={turn.id}>
                   <div className="bubble">
                     <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
@@ -1136,7 +1155,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             const provider = info?.provider ?? settings.activeProvider;
             const model = info?.model ?? settings.activeModel;
             if (turn.streamState) {
-              return (
+              return withDay(
                 <AssistantMessage
                   key={turn.id}
                   state={turn.streamState}
@@ -1159,7 +1178,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 />
               );
             }
-            return (
+            return withDay(
               <article
                 key={turn.id}
                 className="turn assistant"

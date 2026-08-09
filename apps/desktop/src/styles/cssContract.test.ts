@@ -37,11 +37,22 @@ const cssFiles = [
   join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'),
 ];
 
-/** Every class name that appears in any selector in any stylesheet. */
+/**
+ * Every class name that appears in any selector in any stylesheet.
+ *
+ * Comments are stripped first, and that is not tidiness. Without it, a class
+ * merely *named* in a comment counts as styled — so deleting a rule while some
+ * unrelated file still explains why it once existed leaves the orphan check
+ * green over an element with no styling at all. That is exactly how
+ * `.tool-status` survived its own deletion: a token comment in tokens.css
+ * mentioned `.tool-status.err` while reasoning about a contrast ratio, and the
+ * guard read it as a live selector.
+ */
 function styledClasses(): Set<string> {
   const out = new Set<string>();
   for (const f of cssFiles) {
-    for (const m of readFileSync(f, 'utf8').matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) out.add(m[1]);
+    const css = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) out.add(m[1]);
   }
   return out;
 }
@@ -181,6 +192,45 @@ describe('user turn alignment', () => {
     // justify-content on a column would push the bubble down the cross axis,
     // not to the right — the exact confusion that produced the bug.
     expect(decls).not.toMatch(/justify-content\s*:\s*flex-end/);
+  });
+});
+
+/**
+ * Guard G4 — the assistant turn's provider rule.
+ *
+ * This one selector has now been argued twice in opposite directions. V7's
+ * Pass K3 deleted it ("a colour that repeats on every turn is chrome, not
+ * data"); V9 §3 reinstates it as the first item of the signature. Both were
+ * right for the shape the turn had at the time: in V7 the assistant turn
+ * carried weight of its own, so the rule restated a role; in V9 the turn is
+ * flush prose, so the rule is the only per-turn mark of which provider produced
+ * it, and a mid-thread switch is legible from the left edge alone.
+ *
+ * Pinned because the argument is genuinely balanced and the next reviewer will
+ * meet it cold. A failure here is not "you broke a rule" — it is "this was
+ * decided twice, go read why before deciding it a third time."
+ */
+describe('assistant turn provider rule', () => {
+  const chat = readFileSync(join(srcRoot, 'styles', 'chat.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+  const rule = chat.match(/(^|\})\s*\.turn\.assistant\s*\{([^}]*)\}/);
+
+  it('has a .turn.assistant rule', () => {
+    expect(rule, 'no `.turn.assistant { … }` rule found in chat.css').not.toBeNull();
+  });
+
+  it('carries a 2px left border in the provider hue', () => {
+    const decls = rule?.[2] ?? '';
+    expect(decls).toMatch(/border-left\s*:\s*2px\s+solid/);
+    expect(decls, 'the rule must be hue-derived, not a neutral line').toMatch(/--hue/);
+  });
+
+  it('insets the prose to clear the border', () => {
+    // The padding and the border went together when K3 removed them, and they
+    // come back together: a border with no inset puts prose against the rule.
+    expect(rule?.[2] ?? '').toMatch(/padding-left\s*:/);
   });
 });
 

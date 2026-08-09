@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, afterAll, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ConversationSummary } from '../ipc/contracts';
-import { Sidebar, conversationGroup } from './Sidebar';
+import { Sidebar } from './Sidebar';
+import { conversationGroup } from '../lib/dayGroup';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
 

@@ -108,7 +108,7 @@ describe.each(Object.entries(THEMES))('%s theme', (_theme, block) => {
   });
 
   // Status colours label errors and warnings; illegible ones defeat the point.
-  // Checked on every surface, not just --bg/--card: `.tool-status.err` sits on
+  // Checked on every surface, not just --bg/--card: a failed tool summary sits on
   // a hovered tool line, which is --card-hi, and that is where --err was
   // measured at 4.13:1 under the V9 palette.
   it.each(

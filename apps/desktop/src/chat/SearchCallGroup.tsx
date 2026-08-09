@@ -68,7 +68,15 @@ export function SearchCallGroup({ toolCalls, unavailable, cost }: SearchCallGrou
   const allComplete = searchCalls.every((tc) => tc.complete);
   const queryCount = cost ?? searchCalls.length;
   const sourceCount = totalSourceCount(searchCalls);
-  const statusSuffix = allComplete ? '' : 'running…';
+  // One summary string, as in ToolCallBlock (V9 §2.5) — the status was a chip
+  // of its own until the tool line lost its chrome.
+  const summary = [
+    `${queryCount} ${queryCount === 1 ? 'query' : 'queries'}`,
+    sourceCount > 0 ? `${sourceCount} ${sourceCount === 1 ? 'source' : 'sources'}` : '',
+    allComplete ? '' : 'running…',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div
@@ -86,11 +94,7 @@ export function SearchCallGroup({ toolCalls, unavailable, cost }: SearchCallGrou
           <SearchIcon />
         </span>
         <span className="tool-name">Web search</span>
-        <span className="tool-sum">
-          {queryCount} {queryCount === 1 ? 'query' : 'queries'}
-          {sourceCount > 0 ? ` · ${sourceCount} ${sourceCount === 1 ? 'source' : 'sources'}` : ''}
-        </span>
-        {statusSuffix && <span className="tool-status">{statusSuffix}</span>}
+        <span className="tool-sum">{summary}</span>
         <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
       </button>
       <div className="tool-body">

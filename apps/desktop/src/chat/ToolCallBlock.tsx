@@ -223,6 +223,12 @@ export function ToolCallBlock({
     );
   }
 
+  // The one summary string the collapsed line carries. Detail, status and
+  // duration are joined rather than boxed separately (V9 §2.5); each part is
+  // still omitted when it has nothing to say, so a finished tool with no detail
+  // shows only its duration and a running one only "running…".
+  const toolSummary = [summary, statusSuffix, totalDur].filter(Boolean).join(' · ');
+
   return (
     <div
       className={`tool${running ? ' running' : ''}`}
@@ -236,9 +242,13 @@ export function ToolCallBlock({
       >
         <span className="tool-icon">{toolIcon}</span>
         <span className="tool-name">{name}</span>
-        {summary && <span className="tool-sum">{summary}</span>}
-        {statusSuffix && <span className={`tool-status${anyFailed ? ' err' : ''}`}>{statusSuffix}</span>}
-        {totalDur && <span className="tool-time">{totalDur}</span>}
+        {/* V9 §2.5: one summary string rather than a chip each for the detail,
+            the status and the duration. The facts are unchanged — "2 queries ·
+            5 sources · 1.4s" is what the mockup shows — but they stop being
+            three separately-boxed things reporting on one line. */}
+        {toolSummary && (
+          <span className={`tool-sum${anyFailed ? ' err' : ''}`}>{toolSummary}</span>
+        )}
         <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
       </button>
       <div className="tool-body">

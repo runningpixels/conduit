@@ -5,10 +5,23 @@
  * entire transcript sideways. */
 .thread { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--sp-5) var(--sp-5) var(--sp-4); }
 .thread-inner { max-width: var(--measure); margin: 0 auto; }
-/* V7 turn (§8.3): two shapes, no avatars, no role names. User = right-aligned
- * raised bubble; assistant = full width with a 2px provider rule on the left. */
+/* V9 turn (§7): two shapes, no avatars, no role names. User = right-aligned soft
+ * card; assistant = plain prose behind a 2px provider rule. */
 .turn { position: relative; margin-bottom: var(--sp-6); }
 .turn:last-child { margin-bottom: var(--sp-4); }
+
+/* Day separator (V9 §4). Only between turns that fall on different days, so it
+ * reports a boundary rather than decorating every turn. The label comes from
+ * Sidebar's conversationGroup, so the thread and the conversation list say
+ * "Today"/"Yesterday"/a month name in the same words. */
+.day-rule {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 var(--sp-6);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.day-rule span { padding: 2px 12px; }
 
 /* Column, not row: `.bubble`, the interrupted banner and `.turn-actions` are all
    children of `.turn.user`. As a row, the `opacity: 0` action bar still claimed
@@ -25,20 +38,38 @@
      --card is only ~12/255 off --bg in dark, which was invisible. */
   background: var(--card-hi);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
-  padding: 11px 15px;
-  font-size: 14.5px;
-  line-height: 1.55;
+  /* Evenly rounded at --r-lg (V9 §7). V7's asymmetric corner was a speech-bubble
+     tail; the right alignment already says who is speaking, so the tail was a
+     second telling of the same fact. */
+  border-radius: var(--r-lg);
+  padding: 11px 16px;
+  font-size: 15px;
+  line-height: 1.6;
 }
 .bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* Assistant: full width, flat, no rule and no indent — role is carried by shape
- * and alignment alone (§8.3), which the user bubble's right alignment already
- * provides. The 2px --hue rule this replaces was reporting provider identity,
- * and the status line under the composer is that fact's one home (§6.3).
- * Prose now starts flush with the thread column's left edge, mirroring the user
- * bubble's right edge. The `padding-left` went with the border: it existed only
- * to clear it, and would otherwise have left an orphan 16px indent. */
+/* Assistant: plain prose behind a 2px provider rule (V9 §3, the signature).
+ *
+ * This reinstates what V7's Pass K3 deleted, and K3's argument is worth stating
+ * because it was sound at the time: a colour that repeats on every turn is
+ * chrome, not data. What changed underneath it is the turn's shape. In V7 the
+ * assistant turn still had card-like weight of its own, so the rule was a
+ * second marker of a role the shape already carried. In V9 the assistant turn
+ * is flush prose with no fill, no border and no indent of its own — the rule is
+ * now the only per-turn mark of *which provider produced this*, and a thread
+ * that switched providers mid-conversation is legible from the left edge alone.
+ * It is 55% hue rather than solid so it reads as a margin, not a highlight.
+ *
+ * Pinned by cssContract.test.ts so a third pass cannot flip it silently. */
+.turn.assistant {
+  border-left: 2px solid color-mix(in srgb, var(--hue) 55%, transparent);
+  padding-left: 18px;
+  transition: border-color .3s;
+}
+/* No color-mix: fall back to the flat hue rather than to no rule at all. */
+@supports not (color: color-mix(in srgb, red 10%, transparent)) {
+  .turn.assistant { border-left-color: var(--hue); }
+}
 
 /* the model line appears only when provider/model differs from the previous turn */
 .turn-model {
@@ -52,7 +83,7 @@
 }
 .turn-model .pdot { width: 6px; height: 6px; background: var(--hue); }
 .turn-model b { font-weight: 500; color: var(--ink-2); }
-.turn-model .switched { color: var(--hue); }
+.turn-model .switched { color: var(--hue-text); }
 .turn-model-time { color: var(--ink-3); }
 
 /* transient live meta + agent phase (streaming / agent loop only) */
@@ -92,7 +123,7 @@
  * opportunity — URLs, Windows paths, hashes, base64. Without it they overflow
  * `--measure` and, before `.thread` gained `overflow-x: hidden`, scrolled the
  * whole transcript. Same reasoning as `.toast-brief` further down. */
-.prose { font-size: 14.5px; line-height: 1.68; color: var(--ink); overflow-wrap: anywhere; }
+.prose { font-size: 15.5px; line-height: 1.65; color: var(--ink); overflow-wrap: anywhere; }
 
 /* Links had no rule anywhere in the product, so every one rendered in
  * Chromium's UA colour. The first fix — ink with a `--line-hi` underline —
@@ -137,8 +168,8 @@
   margin: 0 0 8px;
   line-height: 1.35;
 }
-.chat-prose h2 { font-size: 15px; }
-.chat-prose h3 { font-size: 14px; }
+.chat-prose h2 { font-size: 19px; letter-spacing: -.01em; }
+.chat-prose h3 { font-size: 16px; }
 .chat-prose ul, .chat-prose ol { margin: 0 0 11px; padding-left: 1.35em; }
 .chat-prose li { margin-bottom: 4px; }
 .chat-prose-segment { margin-bottom: 4px; }
@@ -203,12 +234,18 @@
   color: var(--warn);
 }
 
-/* ── Tool card (§8.4): ONE collapsed line, ONE level of expansion ───────── */
+/* ── Tool use: one quiet line (V9 §2.5) ─────────────────────────────────────
+ * V8 gave "I searched" three nested surfaces: a header row, a body wrapped in
+ * kv chrome, and a timing chip. V9 keeps the disclosure and drops the staging —
+ * the collapsed line answers "did it do the right thing?" in the same register
+ * as the prose it interrupts, and one click still reaches the raw queries.
+ *
+ * No fill: the card tint was what made it read as a staged object rather than
+ * an aside. A border and the line's own restraint carry it. */
 .tool {
   margin: 0 0 var(--sp-4);
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
-  background: color-mix(in srgb, var(--card) 55%, transparent);
   overflow: hidden;
 }
 .tool-head {
@@ -216,45 +253,53 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 11px;
+  padding: 9px 13px;
   text-align: left;
   cursor: pointer;
   user-select: none;
+  font-size: 13.5px;
+  color: var(--ink-2);
   transition: background var(--tap);
 }
-.tool-head:hover { background: var(--card); }
+.tool-head:hover { background: var(--card-hi); }
 .tool-icon {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   color: var(--ink-3);
   flex: 0 0 auto;
   display: grid;
   place-items: center;
 }
-.tool-icon svg { width: 14px; height: 14px; }
-.tool-name { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.tool-icon svg { width: 15px; height: 15px; }
+.tool-name { font-weight: 500; color: var(--ink-2); }
+/* Status and duration fold into this one string ("2 queries · 5 sources · 1.4s")
+ * rather than keeping chips of their own — the facts survive, the chrome does
+ * not. `flex: 1` so the chevron stays pinned right without a second auto margin. */
 .tool-sum {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  flex: 1 1 auto;
   color: var(--ink-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tool-status { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); flex: none; }
-.tool-status.err { color: var(--err); }
-.tool-time { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); flex: none; }
-.tool-chev { width: 13px; height: 13px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
+.tool-sum.err { color: var(--err); }
+.tool-chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
 .tool[data-open="true"] .tool-chev { transform: rotate(90deg); }
 .tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .2s cubic-bezier(.22,.61,.24,1); }
 .tool[data-open="true"] .tool-body { grid-template-rows: 1fr; }
 .tool-body > div { overflow: hidden; min-height: 0; }
-.tool-inner { padding: 2px 11px 11px; border-top: 1px solid var(--line-soft); }
+.tool-inner {
+  padding: 4px 13px 12px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
 
 /* search queries: one flat list, no second-level disclosure */
 .q { display: flex; align-items: baseline; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
 .q:last-child { border-bottom: 0; padding-bottom: 0; }
-.q-str { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); flex: 1 1 auto; }
+.q-str { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); flex: 1 1 auto; }
 .q-n { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); flex: 0 0 auto; }
 .q-sources { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 2px 0 8px; font-size: 11.5px; }
 .q-source { color: var(--ink-3); }
@@ -262,7 +307,7 @@
 .q-source .src-url { color: var(--ink-3); }
 
 /* non-search tools: args as a mono kv list + a result block */
-.kv { display: flex; gap: 9px; padding: 5px 0; font-family: var(--font-mono); font-size: 11px; }
+.kv { display: flex; gap: 10px; padding: 5px 0; font-family: var(--font-mono); font-size: 12.5px; }
 .kv dt { color: var(--ink-3); min-width: 76px; }
 .kv dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
 .tool-out {
@@ -292,43 +337,45 @@
 }
 
 /* running tool card: hue left edge + slow sweep (same signal as the V6 pill) */
-.tool.running { border-left: 2px solid var(--hue); position: relative; }
-.tool.running::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0;
-  width: 2px;
-  height: 100%;
-  background: linear-gradient(to bottom, transparent 0%, var(--hue) 50%, transparent 100%);
-  animation: tool-edge-sweep 1.6s ease-in-out infinite;
-  pointer-events: none;
-}
+/* A running tool says so in its summary ("running…") and expands itself; it no
+ * longer also carries a hue rail with a sweeping gradient. Pass H3's rule
+ * decided this once already: the highest-contrast element in a streaming turn
+ * must be the answer, not the machine chrome. The rail was also the last place
+ * inside a turn using --hue for something other than provenance — with the
+ * assistant rule back, two hue edges would have sat 18px apart saying different
+ * things. */
 
-/* reasoning (§8.5): the same one-line pattern as a tool, dashed rule */
+/* Reasoning (V9 §2.5): the identical register to a tool line, so "it thought"
+ * and "it searched" report at the same volume instead of one of them shouting.
+ * The dashed rail is gone with the tool card's fill — same reasoning. */
 .think {
   margin: 0 0 var(--sp-4);
-  border-left: 1px dashed var(--line);
-  padding-left: var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
 }
 .think summary {
   list-style: none;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 12px;
+  gap: 9px;
+  padding: 9px 13px;
+  font-size: 13.5px;
   color: var(--ink-3);
-  transition: color var(--tap);
+  transition: color var(--tap), background var(--tap);
 }
 .think summary::-webkit-details-marker { display: none; }
-.think summary:hover { color: var(--ink-2); }
-.think summary svg { width: 12px; height: 12px; transition: transform var(--tap); }
+.think summary:hover { background: var(--card-hi); color: var(--ink-2); }
+.think[open] summary { border-radius: var(--r) var(--r) 0 0; }
+.think summary svg { width: 14px; height: 14px; transition: transform var(--tap); }
 .think[open] summary svg { transform: rotate(90deg); }
 .think pre {
-  margin: 9px 0 0;
+  margin: 0;
+  padding: 4px 13px 12px;
+  border-top: 1px solid var(--line-soft);
   font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.65;
+  font-size: 12.5px;
+  line-height: 1.6;
   color: var(--ink-3);
   white-space: pre-wrap;
 }
@@ -526,7 +573,13 @@
   transition: background var(--tap), border-color var(--tap);
 }
 .artifact-card:hover { background: var(--card-hi); }
-/* Hue-weak tile with a hue glyph — the artifact file icon treatment (§6.2). */
+/* Neutral glyph tile (V9 §7). It was a --hue-weak tile with a --hue glyph,
+ * which made an artifact's *file type* speak in the colour reserved for
+ * provider identity — the contradiction §6.2 names and Pass N drove to zero
+ * everywhere else inside a turn. It also meant the chip re-tinted when you
+ * switched model, as though the document had changed. With the assistant rule
+ * back in hue two phases on, a second hue object 18px away would have been the
+ * louder mistake. */
 .artifact-card-icon {
   display: grid;
   place-items: center;
@@ -534,8 +587,9 @@
   height: 34px;
   flex: none;
   border-radius: var(--r-sm);
-  background: var(--hue-weak);
-  color: var(--hue);
+  background: var(--card-hi);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
 }
 .artifact-card-icon svg { width: 16px; height: 16px; }
 .artifact-card-body { flex: 1; min-width: 0; }
@@ -689,7 +743,7 @@
   border-color: var(--hue);
 }
 .composer-attachment-chip[data-status="uploading"] .composer-attachment-meta {
-  color: var(--hue);
+  color: var(--hue-text);
 }
 .composer-attachment-action,
 .composer-attachment-remove {
@@ -1027,11 +1081,6 @@
 @keyframes running-dot-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: .35; transform: scale(.7); }
-}
-
-@keyframes tool-edge-sweep {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
 }
 
 /* ── Streaming caret (§9.3): inline `--hue` block at the current text tail ── */

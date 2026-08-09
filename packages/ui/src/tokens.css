@@ -125,7 +125,7 @@
   --soft-lift: 0 1px 2px rgba(0,0,0,.25), 0 4px 16px -6px rgba(0,0,0,.35);
   --ok: #4ade80;
   --warn: #fbbf24;
-  /* #f87171 measured 4.13:1 on --card-hi, and .tool-status.err sits on exactly
+  /* #f87171 measured 4.13:1 on --card-hi, and the failed tool summary sits on exactly
    * that surface once the tool line is hovered. Lifted to clear AA there. */
   --err: #f97e7e;
   /* Code that Prism cannot tokenise — inline spans, ```text, unknown languages.

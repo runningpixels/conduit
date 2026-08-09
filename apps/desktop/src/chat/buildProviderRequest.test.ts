@@ -29,6 +29,7 @@ const baseSettings = {
     maxSteps: 25,
     wallClockBudgetSecs: 300,
   },
+  keychainMode: 'os',
 } as AppSettings;
 
 function userTurn(id: string, content: string): ChatTurn {

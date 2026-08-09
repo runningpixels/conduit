@@ -65,6 +65,7 @@ const baseSettings: AppSettings = {
     maxSteps: 25,
     wallClockBudgetSecs: 300,
   },
+  keychainMode: 'os',
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {

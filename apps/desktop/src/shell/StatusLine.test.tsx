@@ -38,6 +38,7 @@ const settings: AppSettings = {
     maxSteps: 25,
     wallClockBudgetSecs: 300,
   },
+  keychainMode: 'os',
 };
 
 const baseProps = {

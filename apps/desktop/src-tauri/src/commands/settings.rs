@@ -1,7 +1,7 @@
 //! Settings, credentials, diagnostics, and app-path commands.
 
 use crate::{
-    credentials::{CredentialStore, CredentialSummary},
+    credentials::CredentialSummary,
     diagnostics::{self, DiagnosticsExport},
     state::{AppSettings, AppState, SettingsPatch},
 };
@@ -103,22 +103,25 @@ pub fn get_onboarding_state(state: State<'_, AppState>) -> Result<OnboardingStat
 
 #[tauri::command]
 pub fn save_provider_credential(
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
     request: CredentialRequest,
 ) -> Result<CredentialSummary, String> {
-    let store = CredentialStore::default_service();
+    let store = state.credential_store();
     let summary = store.save_provider_secret(&request.provider_id, &request.secret)?;
     Ok(summary)
 }
 
 #[tauri::command]
 pub fn load_provider_credential_reference(
+    state: State<'_, AppState>,
     provider_id: String,
 ) -> Result<CredentialSummary, String> {
-    let store = CredentialStore::default_service();
+    let store = state.credential_store();
     Ok(CredentialSummary {
         provider_id: provider_id.clone(),
         credential_ref: store.reference(&provider_id),
+        // Reports whether a secret is *available*, not which backend holds it;
+        // the reference above is what names the backend.
         stored_in_keychain: store.has_provider_secret(&provider_id),
     })
 }

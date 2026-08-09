@@ -30,6 +30,7 @@ const baseSettings: AppSettings = {
     maxSteps: 25,
     wallClockBudgetSecs: 300,
   },
+  keychainMode: 'os' as const,
 };
 
 vi.mock('../ipc/client', () => ({

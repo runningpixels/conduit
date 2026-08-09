@@ -1110,6 +1110,29 @@ pub enum Theme {
     Light,
 }
 
+/// Where provider secrets are stored (V9 design spec §2.6).
+///
+/// `Os` is the default and the only mode with real OS-level protection: the
+/// platform keychain guards the secret with the user's login session.
+///
+/// `File` exists for machines that have no usable keychain — headless CI, a
+/// locked-down container, a Linux box with no Secret Service. It is a strictly
+/// weaker posture and the app says so. Its key comes from the environment
+/// (`CONDUIT_CREDENTIAL_KEY`), never from a file beside the ciphertext: a key
+/// stored next to what it encrypts is obfuscation wearing encryption's clothes,
+/// and the setting would be misreporting the protection it provides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/keychain_mode.ts"
+)]
+pub enum KeychainMode {
+    #[default]
+    Os,
+    File,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -1184,6 +1207,12 @@ pub struct AppSettings {
     /// Agent loop guardrails: max provider rounds and wall-clock budget per turn.
     #[serde(default)]
     pub agent: AgentGuardrails,
+    /// V9 §2.6: where provider secrets live. Defaults to the OS keychain; the
+    /// file-backed store is an escape hatch for machines without one. Existing
+    /// settings files predate the field, so it must default rather than fail
+    /// to deserialize.
+    #[serde(default)]
+    pub keychain_mode: KeychainMode,
 }
 
 fn default_true() -> bool {
@@ -1208,6 +1237,7 @@ impl Default for AppSettings {
             web_search: WebSearchDefaults::default(),
             web_search_consent_acknowledged: false,
             agent: AgentGuardrails::default(),
+            keychain_mode: KeychainMode::default(),
         }
     }
 }

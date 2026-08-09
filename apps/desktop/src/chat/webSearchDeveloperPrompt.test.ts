@@ -38,6 +38,7 @@ describe('buildProviderRequest web search prompts', () => {
       maxSteps: 25,
       wallClockBudgetSecs: 300,
     },
+    keychainMode: 'os' as const,
   };
 
   it('uses search developer prompt and slims system prompt for search turns', () => {

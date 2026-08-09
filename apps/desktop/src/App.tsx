@@ -114,6 +114,7 @@ const defaultSettings: AppSettings = {
     maxSteps: 25,
     wallClockBudgetSecs: 300,
   },
+  keychainMode: 'os',
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';

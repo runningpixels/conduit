@@ -40,6 +40,7 @@ const settings: AppSettings = {
   },
   webSearchConsentAcknowledged: false,
   agent: { maxSteps: 25, wallClockBudgetSecs: 300 },
+  keychainMode: 'os',
 };
 
 /**

@@ -151,9 +151,22 @@ impl AppState {
     /// The keychain is the source of truth (matching the M2 credential design):
     /// a stored-but-not-active secret still satisfies the gate, because the user
     /// can switch to it without re-entering it.
+    /// The credential store the user's settings select.
+    ///
+    /// Every caller goes through here rather than `default_service()`: a store
+    /// built without the mode silently reads the OS keychain, which for a user
+    /// who chose the file backend means looking in the wrong place and
+    /// reporting "no key" for a key they configured.
+    pub fn credential_store(&self) -> credentials::CredentialStore {
+        let mode = self.settings().map(|s| s.keychain_mode).unwrap_or_default();
+        credentials::CredentialStore::default_service()
+            .with_mode(mode)
+            .with_data_dir(self.paths.root.clone())
+    }
+
     pub fn has_any_provider_credential(&self) -> bool {
         let settings = self.settings().unwrap_or_default();
-        let store = credentials::CredentialStore::default_service();
+        let store = self.credential_store();
         provider_core::has_usable_provider_credential(&settings.active_provider, |id| {
             store.has_provider_secret(id)
         })

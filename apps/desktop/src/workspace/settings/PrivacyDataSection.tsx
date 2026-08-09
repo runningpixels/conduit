@@ -119,6 +119,48 @@ export function PrivacyDataSection({
         </p>
       </div>
 
+      {/* V9 §2.6. The copy states the trade rather than presenting two equal
+          options: the file store is for machines with no usable keychain, and
+          it is weaker. Switching does not move secrets that already exist —
+          re-encrypting a secret into a different store is a decision about
+          where it lives, and a settings dropdown is not consent for it. */}
+      <div className="status-item" style={{ marginTop: 16 }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+          Where keys are stored
+        </span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+          <select
+            className="sel"
+            value={settings.keychainMode}
+            onChange={(e) =>
+              onUpdate({ ...settings, keychainMode: e.target.value as AppSettings['keychainMode'] })
+            }
+          >
+            <option value="os">OS keychain (recommended)</option>
+            <option value="file">File (encrypted)</option>
+          </select>
+          Keychain mode
+        </label>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+          {settings.keychainMode === 'file' ? (
+            <>
+              Keys are stored in an encrypted file under your data folder. The encryption key comes
+              from the <code>CONDUIT_CREDENTIAL_KEY</code> environment variable — a base64-encoded
+              32-byte value — and is never written to disk beside the file it protects. Without that
+              variable set, Conduit cannot read or save keys in this mode and will say so rather
+              than falling back to the keychain. This is weaker than the OS keychain and is intended
+              for machines that have none, such as headless CI.
+            </>
+          ) : (
+            <>
+              Keys live in the operating system&rsquo;s keychain, guarded by your login session.
+              Switch to the file store only on a machine without one — it is a weaker posture, and
+              switching does not move keys you have already saved.
+            </>
+          )}
+        </p>
+      </div>
+
       <div className="status-item" style={{ marginTop: 16 }}>
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Local data</span>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>

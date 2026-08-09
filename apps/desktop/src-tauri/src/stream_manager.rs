@@ -1,6 +1,5 @@
 use crate::{
     agent_tools,
-    credentials::CredentialStore,
     db::repository::{connectors, conversations, event_log, messages, tool_calls, usage_summary},
     state::AppState,
 };
@@ -95,7 +94,7 @@ impl StreamManager {
         provider_id: &str,
     ) -> Result<AdapterContext, String> {
         let settings = state.settings()?;
-        let store = CredentialStore::new("conduit");
+        let store = state.credential_store();
 
         let descriptor = provider_core::descriptor(provider_id)
             .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;

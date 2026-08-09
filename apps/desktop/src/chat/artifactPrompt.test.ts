@@ -66,6 +66,7 @@ describe('buildProviderRequest artifact prompts', () => {
       maxSteps: 25,
       wallClockBudgetSecs: 300,
     },
+    keychainMode: 'os' as const,
   };
 
   it('includes the artifact appendix in systemPrompt', () => {

@@ -14,7 +14,7 @@ use provider_core::schema::{
     AgentGuardrails, AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition,
     ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt,
     ContentAnnotation, Conversation, ConversationSummary, CredentialRequest, CredentialSummary,
-    GenerationControls, GrantScope, GrantStatus, LicenseClaims, Message, MessagePart,
+    GenerationControls, GrantScope, GrantStatus, KeychainMode, LicenseClaims, Message, MessagePart,
     MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig,
     ProviderError, ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint,
     RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch,
@@ -89,6 +89,7 @@ fn main() {
 
     // App shell config
     Theme::export().expect("export Theme");
+    KeychainMode::export().expect("export KeychainMode");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
     AgentGuardrails::export().expect("export AgentGuardrails");
     AppSettings::export().expect("export AppSettings");

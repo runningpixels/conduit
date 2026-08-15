@@ -757,7 +757,9 @@ async fn round_outcome_usage_defaults_to_none() {
     let outcome = conduit_desktop::stream_manager::RoundOutcome {
         completed_tool_calls: Vec::new(),
         finished_normally: false,
+        produced_text: false,
         error_message: None,
+        error_forwarded: false,
         usage: None,
         completion_event: None,
     };

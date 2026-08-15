@@ -7,16 +7,18 @@ import {
   type UiDensity,
   type UiFontSize,
 } from '../readability';
+import { readPalette, writePalette, type PalettePref } from '../../shell/uiPrefs';
 
 interface AppearanceSectionProps {
   settings: AppSettings;
   onUpdate: (next: AppSettings) => void;
 }
 
-/** Appearance settings: theme, readability, and artifact styled preview. */
+/** Appearance settings: palette, theme, readability, and artifact styled preview. */
 export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps) {
   const [fontSize, setFontSize] = useState<UiFontSize>(() => readUiFontSize());
   const [density, setDensity] = useState<UiDensity>(() => readUiDensity());
+  const [palette, setPalette] = useState<PalettePref>(() => readPalette());
 
   useEffect(() => {
     applyUiReadability(fontSize, density);
@@ -28,6 +30,22 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
         <span>Appearance</span>
       </div>
       <div className="form-grid appearance-form">
+        {/* Palette comes before Theme: it is the coarser choice, and Theme reads
+            as "light or dark *of the palette above*". Both run in both modes. */}
+        <label className="field">
+          <span className="field-label">Palette</span>
+          <select
+            value={palette}
+            onChange={(e) => {
+              const next = e.target.value as PalettePref;
+              setPalette(next);
+              writePalette(next);
+            }}
+          >
+            <option value="terra">Terra — warm charcoal, provider colour</option>
+            <option value="claude">Claude — dark charcoal, terracotta</option>
+          </select>
+        </label>
         <label className="field">
           <span className="field-label">Theme</span>
           <select

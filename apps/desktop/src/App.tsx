@@ -29,18 +29,20 @@ import {
 import { ChatView, type ChatViewHandle } from './chat/ChatView';
 import {
   documentToolArtifactKind,
-  hadFailedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
   isDocumentCreateTool,
   resolveDocumentArtifactId,
   type DocumentToolActivity,
 } from './chat/agentTools';
 import type { AssistantStreamState } from './chat/streamState';
-import type { PendingArtifact } from './artifacts/pendingArtifact';
+import {
+  resolveFailedPendingArtifact,
+  type PendingArtifact,
+} from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
-import { WindowControls } from './shell/WindowControls';
+import { TitleBar } from './shell/TitleBar';
 import { deriveConnectionState } from './lib/connectionState';
 import { SidebarIcon } from './icons';
 import { DocumentPanel } from './workspace/DocumentPanel';
@@ -51,7 +53,7 @@ import { useColumnResize, useDocPanelCollapse, useSidebarCollapse } from './work
 import { useHotkeys } from './workspace/useHotkeys';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
-import { isMacPlatform, modShortcutHint } from './lib/shortcuts';
+import { modShortcutHint } from './lib/shortcuts';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { ConfirmDialog } from '@conduit/ui';
 import { forkConversation, exportDiagnostics, getConversationMessages, setConversationTitle } from './ipc/client';
@@ -282,7 +284,11 @@ export default function App() {
   const handleDocumentToolActivity = useCallback(
     (activity: DocumentToolActivity) => {
       if (activity.phase === 'error') {
-        setPendingArtifact(null);
+        // Freeze the panel on the failure rather than dropping it: a skeleton
+        // that silently disappears reads as "still thinking about it".
+        setPendingArtifact((current) =>
+          current ? { ...current, status: 'failed', error: activity.error } : null,
+        );
         return;
       }
 
@@ -298,6 +304,8 @@ export default function App() {
         mode,
         title: activity.titleHint ?? current?.title,
         artifactId: activity.artifactId ?? current?.artifactId,
+        // A retry after a failure re-enters the generating state.
+        status: 'generating',
       }));
     },
     [expandDocPanel],
@@ -528,12 +536,13 @@ export default function App() {
         return next;
       });
 
-      if (hadFailedDocumentToolCalls(streamState) && !hadSuccessfulDocumentToolCalls(streamState)) {
-        setPendingArtifact(null);
-        return;
-      }
+      // This handler now runs for every ended turn, failures included, because
+      // it owns the only reset of the pending-artifact state. Nothing below may
+      // leave the panel generating.
       if (!hadSuccessfulDocumentToolCalls(streamState)) {
-        setPendingArtifact(null);
+        // The document was asked for and never arrived — freeze the panel on
+        // the reason, or drop it when there is nothing to explain.
+        setPendingArtifact((current) => resolveFailedPendingArtifact(current, streamState));
         return;
       }
 
@@ -783,14 +792,6 @@ export default function App() {
     document.documentElement.setAttribute('data-provider', providerHueId(settings.activeProvider));
   }, [settings.activeProvider]);
 
-  // V9 — macOS keeps its native traffic lights (titleBarStyle: Overlay), which
-  // land at the window's top-left. That is now the sidebar's brand mark, so
-  // `.sb-head` reserves height for them. CSS has no platform selector, hence
-  // the attribute. Set once; the platform cannot change under a running app.
-  useEffect(() => {
-    if (isMacPlatform()) document.documentElement.setAttribute('data-platform', 'macos');
-  }, []);
-
   const workspaceLabel = paths?.artifacts ? shortenWorkspacePath(paths.artifacts) : undefined;
 
   const hasCredential = onboarding?.hasProviderCredential ?? false;
@@ -950,31 +951,41 @@ export default function App() {
       .filter((a): a is Artifact => a != null);
   }, [artifacts, openArtifactIds]);
 
+  // Both pre-workspace routes keep the caption row. They bypass the shell
+  // otherwise, and on a `decorations: false` window that left the user with no
+  // way to move or close it until onboarding was finished.
   if (onboarding?.migrationRecovery) {
-    return <MigrationRecoveryNotice recovery={onboarding.migrationRecovery} onStatus={setStatusMessage} />;
+    return (
+      <div className="app" id="app">
+        <TitleBar />
+        <MigrationRecoveryNotice recovery={onboarding.migrationRecovery} onStatus={setStatusMessage} />
+      </div>
+    );
   }
   if (onboarding && (!onboarding.onboardingCompleted || !onboarding.hasProviderCredential)) {
     return (
-      <Onboarding
-        settings={settings}
-        onSettingsChange={setSettings}
-        onStatus={setStatusMessage}
-        status={status}
-        onComplete={() => void refreshOnboarding()}
-      />
+      <div className="app" id="app">
+        <TitleBar />
+        <Onboarding
+          settings={settings}
+          onSettingsChange={setSettings}
+          onStatus={setStatusMessage}
+          status={status}
+          onComplete={() => void refreshOnboarding()}
+        />
+      </div>
     );
   }
 
   return (
     <div className="app" id="app">
-      {/* Fixed to the window's top-right, above whichever column owns that
-          corner. Rendered once, here rather than inside a bar, because V9 has
-          no bar for it to live in — and without it a frameless window cannot
-          be moved or closed (shellContract.test.ts pins this). */}
-      <WindowControls />
+      {/* The window's caption row: drag region + minimise/maximise/close.
+          Without it a frameless window cannot be moved or closed at all
+          (shellContract.test.ts pins this). */}
+      <TitleBar />
 
-      {/* Only affordance for reopening a collapsed sidebar now the top bar is
-          gone; CSS reveals it on html[data-sidebar="closed"]. */}
+      {/* Only pointer affordance for reopening a collapsed sidebar; CSS
+          reveals it on html[data-sidebar="closed"]. */}
       <button
         className="sb-reveal"
         type="button"
@@ -1023,6 +1034,7 @@ export default function App() {
             onStatus={setStatusMessage}
             conversationId={activeConversationId}
             artifacts={artifacts}
+            activeArtifact={activeArtifact}
             fileStateMap={fileStateMap}
             onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
             onOpenArtifact={(id) => void handleOpenArtifact(id)}
@@ -1062,6 +1074,7 @@ export default function App() {
           onOpenArtifact={(id) => void handleOpenArtifact(id)}
           onCloseTab={handleCloseArtifactTab}
           onCollapsePanel={handleCollapseDocPanel}
+          onDismissPending={() => setPendingArtifact(null)}
           onSaveContent={(artifactId, content, mimeType) => handleSaveContent(artifactId, content, mimeType)}
           onExport={(artifactId, includeMetadata) => handleExport(artifactId, includeMetadata)}
           onRenameArtifact={handleRenameArtifact}

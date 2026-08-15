@@ -43,8 +43,25 @@
      second telling of the same fact. */
   border-radius: var(--r-lg);
   padding: 11px 16px;
+  /* Sans in both palettes, explicitly and not by inheritance, because the
+     alternative was tried: the bubble is your own text echoed back, so it
+     belongs to the input register with the composer rather than to the reading
+     surface. It is also the second speaker cue — the Claude palette drops the
+     border below, and with both turns in serif only alignment and a faint fill
+     would be left to separate them. */
+  font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.6;
+}
+/* Claude's user message is a fill without an outline. The border is what makes
+   the Conduit bubble read as a card; dropping it leaves the same shape sitting
+   in the prose column rather than on top of it. No size bump: the 16.5px on
+   `.prose` is optical compensation for the serif's smaller x-height, and the
+   bubble is not serif. */
+html[data-palette="claude"] .bubble {
+  border-color: transparent;
+  border-radius: 18px;
+  padding: 12px 18px;
 }
 .bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
@@ -123,7 +140,19 @@
  * opportunity — URLs, Windows paths, hashes, base64. Without it they overflow
  * `--measure` and, before `.thread` gained `overflow-x: hidden`, scrolled the
  * whole transcript. Same reasoning as `.toast-brief` further down. */
-.prose { font-size: 15.5px; line-height: 1.65; color: var(--ink); overflow-wrap: anywhere; }
+/* `--font-prose` is `var(--font-ui)` under the Conduit palette, so this is a
+ * no-op there; the Claude palette swaps it for the bundled serif. */
+.prose {
+  font-family: var(--font-prose);
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+/* Source Serif 4's x-height runs smaller than Geist's, so the same px reads a
+ * step down. The bump is optical compensation, not a size preference — the
+ * measure and leading are tuned together. */
+html[data-palette="claude"] .prose { font-size: 16.5px; line-height: 1.7; }
 
 /* Links had no rule anywhere in the product, so every one rendered in
  * Chromium's UA colour. The first fix — ink with a `--line-hi` underline —
@@ -1088,6 +1117,20 @@
   margin-left: 0;
   margin-top: 2px;
 }
+
+/* ── Live tail: dots + caret, always the last row of a streaming turn ───── */
+.turn-live-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+/* The wrapper owns the vertical rhythm so the row keeps the same height
+   whether or not the indicator is showing (it unmounts between phases). It
+   stays mounted for the whole stream — that is what preserves the indicator's
+   min-display hold — so collapse it when both children have gone. */
+.turn-live-tail .thinking-indicator { padding: 0; }
+.turn-live-tail:empty { display: none; }
 
 /* ── Reduced motion ────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {

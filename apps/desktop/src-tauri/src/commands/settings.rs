@@ -221,6 +221,23 @@ pub fn reveal_artifacts_dir(
         .map_err(|e| e.to_string())
 }
 
+/// Open a validated http(s) URL in the system browser.
+///
+/// ADR-008 exception: this is the only command that accepts a renderer-supplied
+/// string for `shell().open`, and only after `validate_external_open_url`. The
+/// capability still omits `shell:allow-open` — the renderer cannot call
+/// `plugin:shell|open` directly.
+#[tauri::command]
+#[allow(deprecated)]
+pub fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    let validated = crate::validation::validate_external_open_url(&url)
+        .ok_or_else(|| "Invalid or unsupported external URL".to_string())?;
+    app.shell()
+        .open(validated, None)
+        .map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Database reset
 // ---------------------------------------------------------------------------

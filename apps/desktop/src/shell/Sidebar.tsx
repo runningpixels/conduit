@@ -229,13 +229,12 @@ export function Sidebar({
 
   return (
     <aside className="sidebar" aria-label="Conversations">
-      {/* Drag region, like the title strip: with no top bar, these two are the
-          only chrome the user can grab to move a frameless window. The mark
-          repeats the attribute because Tauri hit-tests the element under the
-          cursor rather than walking up to an ancestor that carries it — without
-          it the brand lettering is a dead patch in the drag region. */}
-      <div className="sb-head sidebar-inner" data-tauri-drag-region>
-        <span className="mark" data-tauri-drag-region>
+      {/* Not a drag region: the caption row above owns moving the window. This
+          was one while the app had no top bar, which meant every non-interactive
+          child needed the attribute repeated onto it — Tauri hit-tests the
+          element under the cursor rather than walking up to an ancestor. */}
+      <div className="sb-head sidebar-inner">
+        <span className="mark">
           <BrandMark className="mark-glyph" />
           <b>Conduit</b>
         </span>

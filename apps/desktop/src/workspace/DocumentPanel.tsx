@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
-import { getArtifactContentBytes, readArtifactFileBytes, revealPath } from '../ipc/client';
+import { getArtifactContentBytes, openExternalUrl, readArtifactFileBytes, revealPath } from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
+import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
 import { formatSize, inlineArtifactText, timeAgo } from '../artifacts/format';
 import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
+import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
 import { readExportMetadata } from '../shell/uiPrefs';
 import { modShortcutHint } from '../lib/shortcuts';
 import type { PendingArtifact } from '../artifacts/pendingArtifact';
@@ -64,6 +66,8 @@ interface DocumentPanelProps {
   onExport: (artifactId: string, includeMetadata: boolean) => Promise<void>;
   onCloseTab?: (id: string) => void;
   onCollapsePanel?: () => void;
+  /// Clear a failed pending artifact (the panel's Dismiss action).
+  onDismissPending?: () => void;
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
   onStatus?: (message: string) => void;
 }
@@ -72,23 +76,34 @@ function ArtifactPendingState({
   pending,
   onCollapsePanel,
   collapseShortcutHint,
+  onDismissPending,
 }: {
   pending: PendingArtifact;
   onCollapsePanel?: () => void;
   collapseShortcutHint?: string;
+  onDismissPending?: () => void;
 }) {
   const kindLabel = KIND_LABEL[pending.kind] ?? pending.kind;
   const title = pending.title?.trim() || `${kindLabel} document`;
   const action = pending.mode === 'edit' ? 'Updating' : 'Generating';
+  // A turn that died mid-write leaves this panel as the only surface still
+  // claiming to be working. `failed` stops the shimmer and says what happened
+  // instead of vanishing, which would read as the document quietly succeeding
+  // somewhere else.
+  const failed = pending.status === 'failed';
 
   return (
-    <section className="doc-panel doc-panel-pending" aria-label="Document panel" aria-busy="true">
+    <section
+      className="doc-panel doc-panel-pending"
+      aria-label="Document panel"
+      {...(failed ? {} : { 'aria-busy': true as const })}
+    >
       <div className="doc-toolbar">
         <div className="doc-toolbar-title">
           <div className="ficon"><FilePlainIcon /></div>
           <div className="doc-title">
             <b title={title}>{title}</b>
-            <small>{kindLabel} · {action.toLowerCase()}…</small>
+            <small>{kindLabel} · {failed ? 'failed' : `${action.toLowerCase()}…`}</small>
           </div>
         </div>
         <span className="doc-toolbar-spacer" />
@@ -112,12 +127,26 @@ function ArtifactPendingState({
         )}
       </div>
       <div className="doc-body scroll">
-        <div className="artifact-pending">
-          <div className="artifact-skeleton" aria-hidden="true" />
-          <p className="artifact-pending-copy">
-            {action} {kindLabel.toLowerCase()} document…
-          </p>
-        </div>
+        {failed ? (
+          <div className="artifact-pending failed" role="alert">
+            <p className="artifact-pending-copy">
+              {action === 'Updating' ? 'Update' : 'Generation'} failed —{' '}
+              {pending.error?.trim() || 'the turn ended before the document was written.'}
+            </p>
+            {onDismissPending && (
+              <button type="button" className="btn" onClick={onDismissPending}>
+                Dismiss
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="artifact-pending">
+            <div className="artifact-skeleton" aria-hidden="true" />
+            <p className="artifact-pending-copy">
+              {action} {kindLabel.toLowerCase()} document…
+            </p>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -139,6 +168,7 @@ export function DocumentPanel({
   onExport,
   onCloseTab,
   onCollapsePanel,
+  onDismissPending,
   onRenameArtifact,
   onStatus,
 }: DocumentPanelProps) {
@@ -189,9 +219,56 @@ export function DocumentPanel({
   const [savedSource, setSavedSource] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [dismissedModified, setDismissedModified] = useState(false);
+  // Session-only: first "Open link" for an artifact+content unlocks later
+  // http(s) clicks in that same artifact until the content changes or the app restarts.
+  const externalLinkGrantsRef = useRef<Set<string>>(new Set());
+  const [pendingExternalUrl, setPendingExternalUrl] = useState<string | null>(null);
   // V7 §8.7 — the metadata sidecar is a persistent preference (Settings →
   // Advanced), not a per-export checkbox inside an action menu.
   const includeMetadata = readExportMetadata() === 'on';
+
+  const externalLinkGrantKey = useMemo(() => {
+    if (!effectiveArtifact) return null;
+    const content = effectiveArtifact.contentText ?? sourceText;
+    return artifactExternalLinkGrantKey(effectiveArtifact.id, content);
+  }, [effectiveArtifact, sourceText]);
+
+  const openValidatedExternalUrl = useCallback(
+    async (url: string) => {
+      try {
+        await openExternalUrl(url);
+      } catch (err) {
+        onStatus?.(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [onStatus],
+  );
+
+  const handleExternalLink = useCallback(
+    (url: string) => {
+      if (!isHttpOrHttpsUrl(url)) return;
+      if (externalLinkGrantKey && externalLinkGrantsRef.current.has(externalLinkGrantKey)) {
+        void openValidatedExternalUrl(url);
+        return;
+      }
+      setPendingExternalUrl(url);
+    },
+    [externalLinkGrantKey, openValidatedExternalUrl],
+  );
+
+  const handleConfirmExternalLink = useCallback(() => {
+    const url = pendingExternalUrl;
+    setPendingExternalUrl(null);
+    if (!url) return;
+    if (externalLinkGrantKey) {
+      externalLinkGrantsRef.current.add(externalLinkGrantKey);
+    }
+    void openValidatedExternalUrl(url);
+  }, [pendingExternalUrl, externalLinkGrantKey, openValidatedExternalUrl]);
+
+  const handleCancelExternalLink = useCallback(() => {
+    setPendingExternalUrl(null);
+  }, []);
 
   useEffect(() => {
     setDraft(sourceText);
@@ -201,6 +278,7 @@ export function DocumentPanel({
   useEffect(() => {
     setDismissedModified(false);
     setMenuOpen(false);
+    setPendingExternalUrl(null);
   }, [artifact?.id, activeFileState]);
 
   useEffect(() => {
@@ -244,6 +322,7 @@ export function DocumentPanel({
         pending={pendingArtifact}
         onCollapsePanel={onCollapsePanel}
         collapseShortcutHint={collapseHint}
+        onDismissPending={onDismissPending}
       />
     );
   }
@@ -620,7 +699,12 @@ export function DocumentPanel({
               if (!Preview || !props) {
                 return <DocPlaceholder>No content yet.</DocPlaceholder>;
               }
-              return <Preview {...props} />;
+              return (
+                <Preview
+                  {...props}
+                  onExternalLink={handleExternalLink}
+                />
+              );
             })()}
           </div>
 
@@ -668,6 +752,12 @@ export function DocumentPanel({
         <span className="spacer" aria-hidden="true" />
         <span className="foot-meta mono">{footMeta}</span>
       </div>
+
+      <OpenExternalLinkDialog
+        url={pendingExternalUrl}
+        onConfirm={handleConfirmExternalLink}
+        onCancel={handleCancelExternalLink}
+      />
     </section>
   );
 }

@@ -4,7 +4,7 @@
 /// DOM. This is the one place model content is treated as HTML — by design,
 /// contained by the layers below.
 ///
-/// Layers (see docs/decisions/artifact-rendering-security.md):
+/// Layers (see docs/adr/adr-007-artifact-rendering-security.md):
 /// 1. `sandbox="allow-scripts"` only — NO `allow-same-origin` (null origin →
 ///    no parent/ambient-DOM access, no same-origin requests to the app), NO
 ///    `allow-top-navigation`, `allow-popups`, `allow-forms`, `allow-modals`.
@@ -18,6 +18,9 @@
 /// 4. `srcdoc` delivery (in-memory, null origin). A dedicated origin is the
 ///    future defense-in-depth upgrade.
 /// 5. `referrerpolicy="no-referrer"`.
+/// 6. A trusted inline click interceptor posts http(s) link clicks to the
+///    parent via `postMessage` so the app can confirm and open them in the
+///    system browser. Sandbox flags stay unchanged — this is not a Tauri bridge.
 ///
 /// The `allowlist` widens ONLY passive resource loads (img/font/style) and
 /// only with validated http(s) origins; `script-src` and `connect-src` are
@@ -27,8 +30,12 @@
 /// CPU (DoS). Render-only means no bridge for a liveness heartbeat; mitigated
 /// by the user closing the artifact. A watchdog is a future follow-up.
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildArtifactCsp, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
+import {
+  ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE,
+  parseArtifactExternalLinkMessage,
+} from './externalUrl';
 
 export type ArtifactColorScheme = 'light' | 'dark';
 
@@ -41,6 +48,8 @@ export interface HtmlArtifactRendererProps {
   styledPreview?: boolean;
   /** Mirrors the app theme so artifact HTML can style itself for dark mode. */
   colorScheme?: ArtifactColorScheme;
+  /** Called when the user clicks an http(s) link inside the sandboxed preview. */
+  onExternalLink?: (url: string) => void;
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -82,8 +91,24 @@ const STYLED_STYLE_DARK = [
   'ul,ol{padding-left:1.4em}',
 ].join('\n');
 
+/// Trusted click interceptor (Conduit-owned, not model content). Captures
+/// http(s) anchor clicks and posts them to the parent. In-page `#` anchors are
+/// left alone. Not a Tauri bridge — no `__TAURI__`, no IPC inside the frame.
+export const ARTIFACT_LINK_INTERCEPTOR_SCRIPT =
+  `document.addEventListener('click',function(e){` +
+  `var t=e.target;while(t&&t.nodeType===1&&t.tagName!=='A')t=t.parentElement;` +
+  `if(!t||t.tagName!=='A')return;` +
+  `var raw=t.getAttribute('href')||'';` +
+  `if(raw.charAt(0)==='#')return;` +
+  `var u;try{u=new URL(raw,document.baseURI);}catch(_){return;}` +
+  `if(u.protocol!=='http:'&&u.protocol!=='https:')return;` +
+  `e.preventDefault();e.stopPropagation();` +
+  `parent.postMessage({type:'${ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE}',href:u.href},'*');` +
+  `},true);`;
+
 /// Assemble the full srcdoc: doctype + our CSP meta (FIRST in head) + reset
-/// style + (optional styled baseline) + body with the model HTML. Pure — exported for unit testing.
+/// style + (optional styled baseline) + link interceptor + body with the model
+/// HTML. Pure — exported for unit testing.
 export function assembleArtifactDoc(
   html: string,
   allowlist: string[],
@@ -98,6 +123,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${RESET_STYLE}</style>` +
     extra +
+    `<script>${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}</script>` +
     `</head><body>${html}</body></html>`
   );
 }
@@ -107,6 +133,7 @@ export function HtmlArtifactRenderer({
   allowlist,
   styledPreview = true,
   colorScheme = 'light',
+  onExternalLink,
 }: HtmlArtifactRendererProps) {
   const srcdoc = useMemo(
     () => assembleArtifactDoc(html, allowlist, styledPreview, colorScheme),
@@ -114,9 +141,23 @@ export function HtmlArtifactRenderer({
   );
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const onExternalLinkRef = useRef(onExternalLink);
+  onExternalLinkRef.current = onExternalLink;
 
   const handleLoad = useCallback(() => {
     setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      const frame = iframeRef.current;
+      if (!frame || event.source !== frame.contentWindow) return;
+      const href = parseArtifactExternalLinkMessage(event.data);
+      if (!href) return;
+      onExternalLinkRef.current?.(href);
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, []);
 
   return (

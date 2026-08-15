@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { HtmlArtifactRenderer, assembleArtifactDoc } from './HtmlArtifactRenderer';
 import { OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
+import { ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE } from './externalUrl';
 
 /// Structural assertions only — jsdom does NOT enforce the iframe sandbox or
 /// CSP. Behavioral enforcement (script actually blocked from network/parent) is
@@ -24,10 +25,12 @@ describe('assembleArtifactDoc', () => {
     expect(doc).toContain('<body><b>model</b></body>');
   });
 
-  it('never injects __TAURI__ or any script of our own', () => {
+  it('never injects __TAURI__ (no Tauri bridge) but does inject the link interceptor', () => {
     const doc = assembleArtifactDoc('<p>x</p>', []);
     expect(doc).not.toContain('__TAURI__');
-    expect(doc).not.toMatch(/<script/i);
+    expect(doc).toContain('<script>');
+    expect(doc).toContain('conduit:artifact-external-link');
+    expect(doc).toContain('parent.postMessage');
   });
 
   it('sets data-theme on the iframe document root from colorScheme', () => {
@@ -66,6 +69,7 @@ describe('HtmlArtifactRenderer', () => {
     expect(srcdoc).toContain('<div id="model">hello</div>');
     expect(srcdoc).toContain('Content-Security-Policy');
     expect(srcdoc).not.toContain('__TAURI__');
+    expect(srcdoc).toContain('conduit:artifact-external-link');
   });
 
   it('applies the allowlist to the CSP in srcDoc (passive origins only)', () => {
@@ -76,6 +80,20 @@ describe('HtmlArtifactRenderer', () => {
     expect(srcdoc).toContain('https://fonts.example.com');
     // script-src stays inline-only; connect-src stays 'none'.
     expect(srcdoc).toContain("connect-src 'none'");
+  });
+
+  it('ignores postMessage events that are not from the iframe contentWindow', () => {
+    const onExternalLink = vi.fn();
+    render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} onExternalLink={onExternalLink} />);
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE,
+          href: 'https://example.com',
+        },
+      }),
+    );
+    expect(onExternalLink).not.toHaveBeenCalled();
   });
 });
 

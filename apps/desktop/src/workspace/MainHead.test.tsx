@@ -70,14 +70,14 @@ describe('title strip', () => {
   });
 
   /**
-   * The window runs `decorations: false` on Windows and Linux, so this
-   * attribute is the only thing that lets the user move the window. It is
-   * asserted structurally in shellContract.test.ts too; this checks the
-   * rendered output rather than the source.
+   * The caption row is the window's drag surface; this strip is app content.
+   * Asserted in the negative because the strip *was* a drag region, and that
+   * arrangement obliged every non-interactive child to repeat the attribute —
+   * `.main-title` did not, leaving most of the bar dead to the pointer.
    */
-  it('carries the Tauri drag region', () => {
+  it('is not a drag region — TitleBar owns that', () => {
     const { container } = renderHead();
-    expect(container.querySelector('.main-head')).toHaveAttribute('data-tauri-drag-region');
+    expect(container.querySelector('.main-head')).not.toHaveAttribute('data-tauri-drag-region');
   });
 
   it('toggles the theme', async () => {

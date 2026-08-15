@@ -37,6 +37,16 @@ rich documents (styled text, diagrams, small interactive widgets) for the user.
 4. **`srcdoc` delivery** (null origin). A dedicated origin is the future
    defense-in-depth upgrade.
 5. **`referrerpolicy="no-referrer"`.**
+6. **Trusted link interceptor (Conduit-owned inline script).** Because the
+   sandbox omits `allow-popups` / `allow-top-navigation` and CSP sets
+   `navigate-to 'none'`, raw `<a href>` clicks do nothing useful. A small
+   interceptor Conduit injects into `srcdoc` (not model content) captures
+   absolute `http(s)` clicks and `postMessage`s them to the parent. The parent
+   confirms once per artifact+content for the session, then opens via the
+   validated `open_external_url` command. Sandbox flags stay unchanged;
+   `connect-src` remains `'none'` (OS browser open is a user action, not
+   artifact network). Hostile scripts can also `postMessage`; confirmation +
+   Rust URL validation remain the gate.
 
 ## Network policy — user-managed allowlist
 Default is **fully offline**: `connect-src 'none'`, `script-src 'unsafe-inline'`

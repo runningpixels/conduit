@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { applyConnectorRuntimeEvent, applyProviderEvent, createAssistantStreamState } from './streamState';
+import {
+  applyConnectorRuntimeEvent,
+  applyProviderEvent,
+  createAssistantStreamState,
+  markInterrupted,
+  rebuildAssistantStreamStateFromEvents,
+  toolCallAwaitsRuntimeFinish,
+} from './streamState';
 
 describe('streamState connector runtime events', () => {
   it('marks a tool call pending when consent is requested', () => {
@@ -407,5 +414,150 @@ describe('streamState web search', () => {
       code: 'unsupported',
       message: 'Hosted search is not available for this model.',
     });
+  });
+});
+
+describe('streamState terminal settling', () => {
+  const startCall = (state: ReturnType<typeof createAssistantStreamState>, id: string, name: string) =>
+    applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-1',
+      toolCallId: id,
+      index: 0,
+      toolId: name,
+      name,
+    });
+
+  it('fails tool calls the turn abandoned when it errors', () => {
+    let state = createAssistantStreamState('req-1');
+    state = startCall(state, 'call-1', 'write_html_document');
+    state = applyProviderEvent(state, {
+      kind: 'error',
+      requestId: 'req-1',
+      error: {
+        message: 'Agent turn exceeded wall-clock budget (300s) waiting on the provider.',
+        retryable: false,
+      },
+    });
+
+    expect(state.toolCalls[0]).toMatchObject({ status: 'failed' });
+    expect(state.toolCalls[0].endedAt).toBeTypeOf('number');
+    expect(state.toolCalls[0].error).toBeTruthy();
+  });
+
+  it('fails a call left mid-execution by the agent loop', () => {
+    let state = createAssistantStreamState('req-1');
+    state = startCall(state, 'call-1', 'write_html_document');
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionStarted',
+      requestId: 'req-1',
+      toolCallId: 'call-1',
+      toolName: 'write_html_document',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'error',
+      requestId: 'req-1',
+      error: { message: 'boom', retryable: false },
+    });
+
+    expect(state.toolCalls[0].status).toBe('failed');
+  });
+
+  it('leaves already-settled calls untouched on error', () => {
+    let state = createAssistantStreamState('req-1');
+    state = startCall(state, 'call-1', 'current_time');
+    state = applyProviderEvent(state, {
+      kind: 'toolExecutionFinished',
+      requestId: 'req-1',
+      toolCallId: 'call-1',
+      toolName: 'current_time',
+      isError: false,
+    });
+    const settledAt = state.toolCalls[0].endedAt;
+    state = applyProviderEvent(state, {
+      kind: 'error',
+      requestId: 'req-1',
+      error: { message: 'boom', retryable: false },
+    });
+
+    expect(state.toolCalls[0]).toMatchObject({ status: 'completed', endedAt: settledAt });
+    expect(state.toolCalls[0].error).toBeUndefined();
+  });
+
+  it('marks hosted web_search completed on toolCallComplete (no runtime finish)', () => {
+    let state = createAssistantStreamState('req-1');
+    state = startCall(state, 'ws-1', 'web_search');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallComplete',
+      requestId: 'req-1',
+      toolCallId: 'ws-1',
+      index: 1,
+      arguments: { query: 'q1' },
+    });
+    state = applyProviderEvent(state, {
+      kind: 'error',
+      requestId: 'req-1',
+      error: { message: 'boom', retryable: false },
+    });
+
+    expect(state.toolCalls[0].status).toBe('completed');
+    expect(state.toolCalls[0].complete).toBe(true);
+    expect(state.toolCalls[0].error).toBeUndefined();
+  });
+
+  it('toolCallAwaitsRuntimeFinish ignores hosted web_search', () => {
+    let state = createAssistantStreamState('req-1');
+    state = startCall(state, 'ws-1', 'web_search');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallComplete',
+      requestId: 'req-1',
+      toolCallId: 'ws-1',
+      index: 1,
+      arguments: { query: 'q1' },
+    });
+    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0])).toBe(false);
+
+    state = createAssistantStreamState('req-2');
+    state = startCall(state, 'call-1', 'write_html_document');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallComplete',
+      requestId: 'req-2',
+      toolCallId: 'call-1',
+      index: 0,
+      arguments: { html: '<p>x</p>' },
+    });
+    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0])).toBe(true);
+  });
+
+  it('cancels unfinished calls when the turn is interrupted', () => {
+    let state = createAssistantStreamState('req-1');
+    state = startCall(state, 'call-1', 'write_html_document');
+    const interrupted = markInterrupted(state);
+
+    expect(interrupted).toMatchObject({ interrupted: true, streaming: false });
+    expect(interrupted.toolCalls[0]).toMatchObject({ status: 'cancelled' });
+    expect(interrupted.toolCalls[0].endedAt).toBeTypeOf('number');
+  });
+
+  it('leaves no running calls when replaying a persisted turn', () => {
+    const state = rebuildAssistantStreamStateFromEvents('req-1', [
+      {
+        kind: 'toolCallStart',
+        requestId: 'req-1',
+        toolCallId: 'call-1',
+        index: 0,
+        toolId: 'write_html_document',
+        name: 'write_html_document',
+      },
+      {
+        kind: 'toolExecutionStarted',
+        requestId: 'req-1',
+        toolCallId: 'call-1',
+        toolName: 'write_html_document',
+      },
+    ]);
+
+    expect(state.streaming).toBe(false);
+    expect(state.toolCalls[0].status).toBe('failed');
   });
 });

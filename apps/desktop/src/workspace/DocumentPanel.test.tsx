@@ -228,6 +228,50 @@ describe('DocumentPanel chrome', () => {
     expect(screen.queryByText('Artifacts live here')).not.toBeInTheDocument();
   });
 
+  // A turn that dies mid-write leaves this panel as the only surface still
+  // claiming to be working. It must stop shimmering and say what happened.
+  it('shows the reason instead of a skeleton when the generation failed', () => {
+    const onDismissPending = vi.fn();
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        title: 'Today’s News',
+        toolName: 'write_html_document',
+        mode: 'create',
+        status: 'failed',
+        error: 'Agent turn exceeded wall-clock budget (300s).',
+      },
+      docTab: 'preview',
+      onDismissPending,
+    });
+
+    expect(screen.getByText(/wall-clock budget/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Generating html document/i)).not.toBeInTheDocument();
+    expect(document.querySelector('.artifact-skeleton')).toBeNull();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(onDismissPending).toHaveBeenCalled();
+  });
+
+  it('falls back to a generic reason when the failure carried no message', () => {
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        toolName: 'write_html_document',
+        mode: 'create',
+        status: 'failed',
+      },
+      docTab: 'preview',
+    });
+
+    expect(screen.getByText(/Generation failed/i)).toBeInTheDocument();
+  });
+
   it('shows an updating banner when an edit is pending on an open artifact', () => {
     renderPanel({
       docTab: 'preview',

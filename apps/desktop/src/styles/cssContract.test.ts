@@ -330,6 +330,46 @@ describe('bundled fonts', () => {
     expect(decl, 'no --font-serif declared').not.toBeNull();
     expect(decl![1].trim()).toMatch(/(serif|ui-serif)\s*$/);
   });
+
+  /**
+   * The prose face is the one register the Claude palette changes, and the
+   * Conduit palette must be provably untouched by it — a serif default here
+   * would restyle every existing user's transcript on upgrade.
+   */
+  it('--font-prose defaults to the UI face', () => {
+    const decl = tokens.match(/--font-prose:\s*([^;]+);/);
+    expect(decl, 'no --font-prose declared').not.toBeNull();
+    expect(decl![1].trim()).toBe('var(--font-ui)');
+  });
+
+  /**
+   * There is one serif in the product, and it is one *token*, not two stacks
+   * that happen to agree. `--font-serif` dresses artifact document titles and
+   * the Claude palette's prose, and those two render 18px apart in the same
+   * view — when this was a system stack and the palette named Source Serif
+   * directly, a title fell back to Georgia on Windows and Charter on macOS
+   * beside prose that did neither. Restating the stack here would let them
+   * drift apart again silently, so the override has to be the reference.
+   */
+  it('the palette dresses prose in the product serif, by reference', () => {
+    const decls = [...tokens.matchAll(/--font-prose:\s*([^;]+);/g)].map((m) => m[1].trim());
+    expect(decls.length, 'the palette never overrides --font-prose').toBeGreaterThan(1);
+    for (const decl of decls.slice(1)) {
+      expect(decl).toBe('var(--font-serif)');
+    }
+  });
+
+  /**
+   * The serif is bundled now, so the fallbacks only catch a failed load — but
+   * that is exactly when a missing generic family leaves prose on the UA
+   * default. The `--font-serif` assertion above covers the palette too, by
+   * reference; this pins the other half of the trade: bundling it means it has
+   * to resolve on disk, which the url() test already enforces.
+   */
+  it('the product serif leads with the bundled face', () => {
+    const decl = tokens.match(/--font-serif:\s*([^;]+);/);
+    expect(decl![1].trim()).toMatch(/^"Source Serif 4"/);
+  });
 });
 
 describe('no orphan classes', () => {

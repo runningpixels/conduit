@@ -164,6 +164,12 @@ export async function revealArtifact(artifactId: string): Promise<void> {
   await invoke('reveal_artifact', { artifactId });
 }
 
+/// Open a validated http(s) URL in the system browser. Rust rejects non-http(s)
+/// schemes, userinfo, empty hosts, and overlong strings before calling shell.
+export async function openExternalUrl(url: string): Promise<void> {
+  await invoke('open_external_url', { url });
+}
+
 // =============================================================================
 // Phase 6 — Consumer release: updater (trust-promise gate)
 //

@@ -127,6 +127,35 @@ pub fn validate_artifact_origin(raw: &str) -> Option<String> {
     Some(format!("{}://{}{}", parsed.scheme(), host, port))
 }
 
+/// Max length for a URL opened in the system browser via `open_external_url`.
+const MAX_EXTERNAL_OPEN_URL_LEN: usize = 2048;
+
+/// Validate a renderer-supplied URL before `shell().open`. Accepts only absolute
+/// `http(s)` URLs with a non-empty host and no userinfo. Keeps path / query /
+/// fragment (unlike `validate_artifact_origin`, which strips to origin). Returns
+/// the normalized URL string, or `None` for anything else.
+pub fn validate_external_open_url(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > MAX_EXTERNAL_OPEN_URL_LEN {
+        return None;
+    }
+    if trimmed.chars().any(|c| c.is_whitespace()) {
+        return None;
+    }
+    let parsed = url::Url::parse(trimmed).ok()?;
+    if parsed.username() != "" || parsed.password().is_some() {
+        return None;
+    }
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return None;
+    }
+    let host = parsed.host_str()?;
+    if host.is_empty() {
+        return None;
+    }
+    Some(parsed.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +195,44 @@ mod tests {
             validate_artifact_origin("https://user:pass@example.com"),
             None
         );
+    }
+
+    // -----------------------------------------------------------------
+    // External open URL validation
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn validate_external_open_url_keeps_path_query_fragment() {
+        assert_eq!(
+            validate_external_open_url(
+                "https://www.bloomberg.com/news/articles/2026-08-12/stock-market-today?q=1#frag"
+            ),
+            Some(
+                "https://www.bloomberg.com/news/articles/2026-08-12/stock-market-today?q=1#frag"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            validate_external_open_url("http://localhost:8080/path"),
+            Some("http://localhost:8080/path".to_string())
+        );
+    }
+
+    #[test]
+    fn validate_external_open_url_rejects_bad_schemes_userinfo_and_overlong() {
+        assert_eq!(validate_external_open_url("javascript:alert(1)"), None);
+        assert_eq!(validate_external_open_url("file:///etc/passwd"), None);
+        assert_eq!(validate_external_open_url("data:text/html,x"), None);
+        assert_eq!(validate_external_open_url("mailto:a@b.com"), None);
+        assert_eq!(
+            validate_external_open_url("https://user:pass@example.com/x"),
+            None
+        );
+        assert_eq!(validate_external_open_url("https://"), None);
+        assert_eq!(validate_external_open_url("https://a b.com"), None);
+        assert_eq!(validate_external_open_url(""), None);
+        let overlong = format!("https://example.com/{}", "x".repeat(2100));
+        assert_eq!(validate_external_open_url(&overlong), None);
     }
 
     // -----------------------------------------------------------------

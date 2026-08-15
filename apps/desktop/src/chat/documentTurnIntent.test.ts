@@ -17,6 +17,7 @@ describe('looksLikeInformationalQuestion', () => {
   it('does not flag explicit edit requests', () => {
     expect(looksLikeInformationalQuestion('can you update the header?')).toBe(false);
     expect(looksLikeInformationalQuestion('make it dark mode')).toBe(false);
+    expect(looksLikeInformationalQuestion('can you add urls to the document?')).toBe(false);
   });
 
   it('does not flag explicit creation requests', () => {
@@ -28,12 +29,19 @@ describe('looksLikeArtifactEditFollowUp', () => {
   it('does not flag capability questions about document types', () => {
     expect(looksLikeArtifactEditFollowUp('can you edit markdown?')).toBe(false);
   });
+
+  it('treats polite revision asks as edit follow-ups', () => {
+    expect(looksLikeArtifactEditFollowUp('can you add urls to the document?')).toBe(true);
+    expect(looksLikeArtifactEditFollowUp('can you update the header?')).toBe(true);
+    expect(looksLikeArtifactEditFollowUp('could you remove the footer?')).toBe(true);
+  });
 });
 
 describe('classifyDocumentTurnIntent', () => {
   it('classifies creation, edit, info, and general turns', () => {
     expect(classifyDocumentTurnIntent('create a new html artifact')).toBe('create');
     expect(classifyDocumentTurnIntent('make it dark mode')).toBe('edit');
+    expect(classifyDocumentTurnIntent('can you add urls to the document?')).toBe('edit');
     expect(classifyDocumentTurnIntent('what types of documents can you create?')).toBe('info');
     expect(classifyDocumentTurnIntent('hello')).toBe('general');
   });

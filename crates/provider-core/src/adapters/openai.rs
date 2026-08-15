@@ -126,6 +126,12 @@ struct OpenAiParser {
     /// Surfaced as `ProviderEvent::SearchCost { tool_calls }` so the
     /// usage summary can show "Web searches: N".
     completed_search_calls: u32,
+    /// Responses-API function calls, keyed by the item id (`fc_*`) that the
+    /// argument-delta events carry, holding the `call_id` the *rest of the
+    /// system* uses. The two ids are different and only the item id appears on
+    /// `response.function_call_arguments.delta`, so without this map the
+    /// streamed arguments cannot be attributed to the call they belong to.
+    function_calls: HashMap<String, String>,
 }
 
 impl OpenAiParser {
@@ -135,6 +141,7 @@ impl OpenAiParser {
             tool_calls: HashMap::new(),
             search_calls: HashMap::new(),
             completed_search_calls: 0,
+            function_calls: HashMap::new(),
         }
     }
 }
@@ -347,6 +354,11 @@ impl StreamParser for OpenAiParser {
         if let Some(events_from_item) = self.parse_openai_response_item(request_id, &value, index) {
             events.extend(events_from_item);
         }
+        if let Some(events_from_args) =
+            self.parse_openai_response_function_args(request_id, &value, index)
+        {
+            events.extend(events_from_args);
+        }
         // Text deltas must be parsed before annotations so `ContentBlockStart`
         // opens the target block before `Citation` events bind to it.
         if let Some(events_from_text) =
@@ -401,6 +413,9 @@ impl OpenAiParser {
             }
         })?;
         let item_type = item.get("type").and_then(|v| v.as_str())?;
+        if item_type == "function_call" {
+            return self.parse_openai_response_function_call(request_id, value, item, index);
+        }
         if item_type != "web_search_call" {
             return None;
         }
@@ -501,6 +516,128 @@ impl OpenAiParser {
         }
 
         Some(events)
+    }
+
+    /// Handle a Responses-API `function_call` output item.
+    ///
+    /// This is how *client* tools come back on `/responses` — as an output item
+    /// with `call_id` / `name` / `arguments`, not as `choices[].delta.tool_calls`,
+    /// which is the only shape the chat-completions branch above understands.
+    ///
+    /// Nothing parsed these, and the consequence was larger than a missing
+    /// feature: enabling web search switches the whole request to `/responses`
+    /// (see `build_payload`), and the request still declares every function
+    /// tool. So the model was offered `write_html`, called it, and the call was
+    /// dropped on the floor — the turn ended having produced no visible text and
+    /// no runnable tool call. Turning web search *on* silently disabled every
+    /// client-side tool, which is the opposite of what the toggle promises.
+    ///
+    /// The events emitted here are deliberately identical in shape to the
+    /// chat-completions branch, so `StreamManager`'s Start→Complete correlation,
+    /// the agent loop's declared-tool partition, and the renderer's tool card
+    /// all work unchanged.
+    fn parse_openai_response_function_call(
+        &mut self,
+        request_id: &str,
+        value: &Value,
+        item: &Value,
+        index: &mut usize,
+    ) -> Option<Vec<ProviderEvent>> {
+        // `call_id` is the id the continuation must echo back; `id` (`fc_*`) is
+        // only an addressing handle for the delta events. Falling back to `id`
+        // keeps a malformed item from producing an unroutable empty tool id.
+        let call_id = item
+            .get("call_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.get("id").and_then(|v| v.as_str()))?
+            .to_string();
+        let name = item
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("tool")
+            .to_string();
+        let item_id = item
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(call_id.as_str())
+            .to_string();
+
+        let event_type = value.get("type").and_then(|v| v.as_str());
+        let is_done = event_type
+            .map(|t| t == "response.output_item.done" || t == "function_call")
+            .unwrap_or(false);
+
+        let mut events = Vec::new();
+        if !self.function_calls.contains_key(&item_id) {
+            self.function_calls.insert(item_id.clone(), call_id.clone());
+            events.push(ProviderEvent::ToolCallStart {
+                request_id: request_id.to_string(),
+                tool_call_id: call_id.clone(),
+                index: *index,
+                tool_id: name.clone(),
+                name: name.clone(),
+            });
+            *index += 1;
+        }
+
+        if is_done {
+            // `output_item.done` carries the complete argument string, so the
+            // accumulated deltas are not needed to build the final object —
+            // which also means a stream that never sent deltas still completes.
+            let raw = item
+                .get("arguments")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let arguments = if raw.trim().is_empty() {
+                json!({})
+            } else {
+                serde_json::from_str(&raw).unwrap_or_else(|_| json!({ "raw": raw }))
+            };
+            self.function_calls.remove(&item_id);
+            events.push(ProviderEvent::ToolCallComplete {
+                request_id: request_id.to_string(),
+                tool_call_id: call_id,
+                index: *index,
+                arguments,
+            });
+            *index += 1;
+        }
+
+        Some(events)
+    }
+
+    /// Stream argument text for an in-flight Responses-API function call.
+    ///
+    /// Display only — `output_item.done` carries the full argument string, so
+    /// the tool still executes correctly if these never arrive. They are
+    /// forwarded so the tool card fills in as the model writes, matching the
+    /// chat-completions path.
+    fn parse_openai_response_function_args(
+        &mut self,
+        request_id: &str,
+        value: &Value,
+        index: &mut usize,
+    ) -> Option<Vec<ProviderEvent>> {
+        if value.get("type").and_then(|v| v.as_str())? != "response.function_call_arguments.delta" {
+            return None;
+        }
+        let item_id = value.get("item_id").and_then(|v| v.as_str())?;
+        // Only a call we opened: an unknown id would emit a delta against a
+        // tool call the renderer never saw start.
+        let call_id = self.function_calls.get(item_id)?.clone();
+        let delta = value.get("delta").and_then(|v| v.as_str())?;
+        if delta.is_empty() {
+            return None;
+        }
+        let event = ProviderEvent::ToolCallDelta {
+            request_id: request_id.to_string(),
+            tool_call_id: call_id,
+            index: *index,
+            content: delta.to_string(),
+        };
+        *index += 1;
+        Some(vec![event])
     }
 
     /// Open a Responses-API content block keyed by `output_index`. Reuses the
@@ -698,6 +835,75 @@ fn serialize_function_tool(tool: &crate::schema::ToolDefinition, responses_api: 
     }
 }
 
+/// Rewrite chat-completions messages into Responses-API `input` items.
+///
+/// Plain `{role, content}` messages pass through — the two shapes agree there,
+/// which is why one build step served both endpoints. Tool calls are where they
+/// diverge, and the divergence is silent: `/responses` does not recognise an
+/// assistant message carrying `tool_calls`, nor a `{"role":"tool"}` message. It
+/// wants flat items, and the id it correlates on is `call_id`, not
+/// `tool_call_id`.
+///
+/// Without this, the first round of a web-search turn could call a tool but the
+/// *continuation* carrying its result was malformed — so the fix that lets
+/// `function_call` items be parsed would have produced a turn that ran the tool
+/// and then failed on the next request instead of ending quietly. The two
+/// halves only work together.
+fn to_responses_input(messages: Vec<Value>) -> Vec<Value> {
+    let mut input = Vec::with_capacity(messages.len());
+    for message in messages {
+        let role = message.get("role").and_then(|v| v.as_str()).unwrap_or("");
+        let tool_calls = message
+            .get("tool_calls")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        if role == "tool" {
+            input.push(json!({
+                "type": "function_call_output",
+                "call_id": message.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                "output": message.get("content").and_then(|v| v.as_str()).unwrap_or(""),
+            }));
+            continue;
+        }
+
+        if role == "assistant" && !tool_calls.is_empty() {
+            // Any text the assistant produced alongside its calls is a separate
+            // item and has to keep its place ahead of them.
+            if let Some(text) = message.get("content").and_then(|v| v.as_str()) {
+                if !text.is_empty() {
+                    input.push(json!({ "role": "assistant", "content": text }));
+                }
+            }
+            for call in tool_calls {
+                let function = call.get("function");
+                input.push(json!({
+                    "type": "function_call",
+                    "call_id": call.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                    "name": function.and_then(|f| f.get("name")).and_then(|v| v.as_str()).unwrap_or(""),
+                    "arguments": function
+                        .and_then(|f| f.get("arguments"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("{}"),
+                }));
+            }
+            continue;
+        }
+
+        // `content: null` is legal in chat-completions and rejected here.
+        if message.get("content").map(Value::is_null).unwrap_or(false) {
+            let mut cleaned = message.clone();
+            cleaned["content"] = json!("");
+            input.push(cleaned);
+            continue;
+        }
+
+        input.push(message);
+    }
+    input
+}
+
 fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> Value {
     let request = &normalized.request;
     let mut messages = Vec::new();
@@ -841,7 +1047,7 @@ fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> V
     // shape directly under `input`. Rename the field so a single `messages`
     // build step serves both endpoints.
     if responses_api {
-        body["input"] = json!(messages);
+        body["input"] = json!(to_responses_input(messages));
     } else {
         body["messages"] = json!(messages);
     }
@@ -1725,5 +1931,178 @@ mod tests {
             endpoint_supports_hosted_search(Some(&resolved)),
             "official OpenAI default endpoint must host web search"
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // Responses-API function calls.
+    //
+    // Enabling web search switches the whole request to `/responses`, and the
+    // request still declares every function tool — so on a web-search turn the
+    // model is offered `write_html`, calls it, and the call arrives as a
+    // `function_call` output item. Nothing parsed that shape, so the call was
+    // dropped: the turn produced no visible text and no runnable tool call, and
+    // ended silently. Turning web search *on* disabled every client-side tool.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn parses_a_responses_api_function_call() {
+        let fixture = include_str!("../../tests/fixtures/openai/responses_function_call.sse");
+        let events = parse_fixture("req-fc-1", fixture);
+
+        let started = events.iter().any(|e| {
+            matches!(
+                e,
+                ProviderEvent::ToolCallStart { tool_call_id, name, .. }
+                    if tool_call_id == "call_write_1" && name == "write_html"
+            )
+        });
+        assert!(
+            started,
+            "the function call must open a tool call envelope: {events:?}"
+        );
+
+        let completed = events.iter().find_map(|e| match e {
+            ProviderEvent::ToolCallComplete {
+                tool_call_id,
+                arguments,
+                ..
+            } if tool_call_id == "call_write_1" => Some(arguments.clone()),
+            _ => None,
+        });
+        let arguments = completed.expect("the function call must complete");
+        assert_eq!(
+            arguments.get("title").and_then(|v| v.as_str()),
+            Some("Today"),
+            "arguments must be parsed into an object the tool can consume"
+        );
+    }
+
+    /// `call_id` is what the continuation echoes back; `id` (`fc_*`) only
+    /// addresses the delta events. Emitting the wrong one produces a
+    /// continuation the Responses API rejects.
+    #[test]
+    fn a_function_call_is_keyed_by_call_id_not_item_id() {
+        let fixture = include_str!("../../tests/fixtures/openai/responses_function_call.sse");
+        let events = parse_fixture("req-fc-2", fixture);
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                ProviderEvent::ToolCallStart { tool_call_id, .. } if tool_call_id == "fc_123"
+            )),
+            "the item id must not leak out as the tool call id"
+        );
+    }
+
+    /// Hosted and client tools coexist in one response; parsing one must not
+    /// consume the other.
+    #[test]
+    fn a_hosted_search_and_a_function_call_both_survive() {
+        let fixture = include_str!("../../tests/fixtures/openai/responses_function_call.sse");
+        let events = parse_fixture("req-fc-3", fixture);
+        let ids: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallComplete { tool_call_id, .. } => Some(tool_call_id.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(ids.contains(&"ws_abc"), "hosted search lost: {ids:?}");
+        assert!(ids.contains(&"call_write_1"), "function call lost: {ids:?}");
+    }
+
+    /// Display only — `output_item.done` carries the full argument string, so a
+    /// stream with no deltas still completes. But when they do arrive they must
+    /// bind to the call the renderer opened.
+    #[test]
+    fn streamed_arguments_bind_to_the_open_call() {
+        let fixture = include_str!("../../tests/fixtures/openai/responses_function_call.sse");
+        let events = parse_fixture("req-fc-4", fixture);
+        let deltas: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallDelta {
+                    tool_call_id,
+                    content,
+                    ..
+                } if tool_call_id == "call_write_1" => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(deltas.concat(), "{\"title\":\"Today\"}");
+    }
+
+    // ---------------------------------------------------------------------
+    // The continuation. `/responses` does not accept an assistant message
+    // carrying `tool_calls`, nor a `{"role":"tool"}` message — it wants flat
+    // `function_call` / `function_call_output` items keyed by `call_id`. Without
+    // this, parsing the call above would only move the failure one round later.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn tool_results_become_function_call_output_items() {
+        let input = to_responses_input(vec![
+            json!({"role": "user", "content": "make it"}),
+            json!({
+                "role": "assistant",
+                "content": Value::Null,
+                "tool_calls": [{
+                    "id": "call_write_1",
+                    "type": "function",
+                    "function": {"name": "write_html", "arguments": "{\"title\":\"Today\"}"}
+                }]
+            }),
+            json!({"role": "tool", "tool_call_id": "call_write_1", "content": "ok"}),
+        ]);
+
+        assert_eq!(input[0]["role"], "user");
+
+        assert_eq!(input[1]["type"], "function_call");
+        assert_eq!(input[1]["call_id"], "call_write_1");
+        assert_eq!(input[1]["name"], "write_html");
+        assert_eq!(input[1]["arguments"], "{\"title\":\"Today\"}");
+        assert!(
+            input[1].get("role").is_none(),
+            "a function_call is an item, not a message"
+        );
+
+        assert_eq!(input[2]["type"], "function_call_output");
+        assert_eq!(input[2]["call_id"], "call_write_1");
+        assert_eq!(input[2]["output"], "ok");
+    }
+
+    /// Text emitted alongside the calls is a separate item and keeps its place
+    /// ahead of them.
+    #[test]
+    fn assistant_text_alongside_a_call_survives_in_order() {
+        let input = to_responses_input(vec![json!({
+            "role": "assistant",
+            "content": "writing it now",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "write_html", "arguments": "{}"}
+            }]
+        })]);
+        assert_eq!(input.len(), 2);
+        assert_eq!(input[0]["role"], "assistant");
+        assert_eq!(input[0]["content"], "writing it now");
+        assert_eq!(input[1]["type"], "function_call");
+    }
+
+    /// `content: null` is legal in chat-completions and rejected by `/responses`.
+    #[test]
+    fn a_null_content_message_is_not_sent_as_null() {
+        let input = to_responses_input(vec![json!({"role": "assistant", "content": Value::Null})]);
+        assert_eq!(input[0]["content"], "");
+    }
+
+    /// Ordinary turns are the common case and must pass through untouched.
+    #[test]
+    fn plain_messages_are_unchanged() {
+        let messages = vec![
+            json!({"role": "system", "content": "be brief"}),
+            json!({"role": "user", "content": "hi"}),
+        ];
+        assert_eq!(to_responses_input(messages.clone()), messages);
     }
 }

@@ -61,6 +61,44 @@
   src: url("./fonts/GeistMono-SemiBold.woff2") format("woff2");
 }
 
+/* Source Serif 4 (SIL OFL 1.1 — see ./fonts/OFL-SourceSerif4.txt, which must
+ * ship alongside the binaries). The reading face for the Claude palette only;
+ * the Terra palette never requests it, so the browser never fetches it.
+ *
+ * Both italics are bundled rather than left to synthesis: a slanted serif is
+ * the one place faux-oblique is obvious, and markdown emphasis puts it in
+ * ordinary prose. The Semibold face claims 600–700 so `<strong>` — which the
+ * UA renders at 700, and nothing here resets — resolves to a real face instead
+ * of a synthesised bold. */
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-Italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: italic;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-SemiBoldItalic.woff2") format("woff2");
+}
+
 /* ───────────────────────── v9 token set (dark, default) — conduit-v9-design-spec §5 ───────────────────────── */
 :root {
   /* Geist stays first (v9 plan D3): CSP stays 'self', the app launches offline,
@@ -69,9 +107,28 @@
    * type size (§2.4), not from the face. */
   --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-  /* Artifact document titles only (§6). A pure system stack — no bundled
-   * webfont for a choice §10.2 itself flags as the first thing to kill. */
-  --font-serif: "Charter", "Iowan Old Style", Georgia, "Times New Roman", ui-serif, serif;
+  /* The product's one serif: artifact document titles (§6), and assistant prose
+   * under the Claude palette.
+   *
+   * It was a pure system stack, on the §12.3 reasoning that a bundled webfont
+   * was too much to spend on a choice §10.2 flags as the first thing to kill.
+   * The Claude palette spent it anyway, and once Source Serif 4 ships in the
+   * app that argument is not just void but inverted: leaving this as a system
+   * stack meant *two* serifs, and they render 18px apart — an artifact title in
+   * Georgia (Windows) or Charter (macOS) beside prose in Source Serif, at
+   * different colour and texture, differing per platform. One face, bundled,
+   * with the old stack demoted to fallback. */
+  --font-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
+  /* The reading surface: assistant prose. Defaults to the UI face, so the
+   * terra palette renders exactly as it did; the Claude palette points it at
+   * --font-serif rather than restating the stack, which is what keeps "one
+   * serif" a structural fact instead of two strings that happen to match.
+   *
+   * Not the user bubble. That is your own text echoed back — it belongs to the
+   * input register with the composer, and it is also the second speaker cue:
+   * the Claude palette drops the bubble's border, so with both turns in serif
+   * only alignment and a faint fill separate them. */
+  --font-prose: var(--font-ui);
   --r-xs: 5px;
   --r-sm: 8px;
   --r: 12px;
@@ -87,6 +144,10 @@
   --sidebar-w: 280px;
   --panel-w: 420px;
   --measure: 46rem;
+  /* The window's caption row (.titlebar). Windows 11 metrics: 32px tall, with
+   * 46px-wide control hit targets inside it. Also the strip macOS draws its
+   * native traffic lights into under titleBarStyle Overlay. */
+  --titlebar-h: 32px;
 
   /* Surfaces (spec §5): warm charcoal, not blue-black. --bg-side is the sidebar
    * / panel / sheet-nav surface; it replaced --raised, which was the same role
@@ -337,6 +398,84 @@
 [data-theme="light"] [data-provider="custom"],
 [data-theme="light"][data-provider="custom"]    { --hue: #4d59da; --hue-text: #4d59da; --hue-solid: #5a6ae7; --hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --hue-weak-solid: rgba(77, 89, 218, .14); }
 
+/* ── Palette preset: Claude (renderer-only; html[data-palette]) ─────────────
+   A second look, orthogonal to data-theme — four combinations, since either
+   palette runs in either theme. It is a *palette* and not the default because
+   it suspends the one thing spec §3 calls the product's signature: provider
+   identity as the only hue. Under it every provider wears one terracotta.
+
+   The blocks are a delta over :root / [data-theme="light"], not a replacement —
+   two hex literals behind one surface is the drift tokenContrast.test.ts reads
+   this file to prevent. Status colours fall through; surfaces do not — Claude
+   desktop sits ~two steps darker and less brown than Terra's warm charcoal
+   (#262624 / #1f1e1d), so --bg / --bg-side / card / line are declared here.
+
+   One trap worth naming, because it is silent and severe: this selector is
+   (0,1,1) and [data-theme="light"] is (0,1,0), so these dark values outrank the
+   light theme. The light block below therefore has to redeclare every colour
+   declared here, or light mode renders near-white ink on near-white paper.
+   tokenContrast.test.ts asserts that coverage rather than trusting it. */
+html[data-palette="claude"] {
+  /* Darker, near-neutral charcoal (Claude desktop); a whisper of warmth so
+   * the stack does not go blue-black. Status colours stay on Terra. */
+  --bg: #171716;
+  --bg-side: #0f0f0e;
+  --card: #222221;
+  --card-hi: #2c2c2b;
+  --line: #2e2e2c;
+  --line-soft: #232322;
+  --line-hi: #3d3d3b;
+  --ink: #efece3;
+  --ink-2: #cbc4b8;
+  --ink-3: #a9a396;
+  /* The identity, as private inputs rather than as --hue directly. The rule
+     that assigns --hue is theme-agnostic (see below), so the per-theme values
+     have to live somewhere the theme can override — here. */
+  --claude-hue: #d97757;
+  --claude-hue-text: #e08f75;
+  --claude-hue-solid: #c5522d;
+  --claude-hue-weak-solid: rgba(217, 119, 87, .14);
+  /* Theme-agnostic, so it is declared here and not repeated in the light block
+   * (the coverage guard only tracks colours). Prose is the one register that
+   * changes face: machine facts stay mono, UI chrome and the user bubble stay
+   * sans. Referencing --font-serif rather than restating its stack is what
+   * makes the artifact title and the prose beside it provably the same face. */
+  --font-prose: var(--font-serif);
+}
+html[data-palette="claude"][data-theme="light"] {
+  /* Must redeclare --bg / --bg-side: the dark block outranks [data-theme=light]. */
+  --bg: #faf9f5;
+  --bg-side: #f0eee6;
+  --card: #ffffff;
+  --card-hi: #f4f2ea;
+  --line: #e6e2d6;
+  --line-soft: #efece2;
+  --line-hi: #d2cdbf;
+  --ink: #2a2720;
+  --ink-2: #575043;
+  --ink-3: #6d6759;
+  --claude-hue: #b04f2b;
+  --claude-hue-text: #b04f2b;
+  --claude-hue-solid: #bd5836;
+  --claude-hue-weak-solid: rgba(176, 79, 43, .14);
+}
+/* One identity for every provider — the preset's most opinionated line.
+   Both selector members are needed: <html> carries data-provider (App.tsx sets
+   it from the active provider) and so do .turn.assistant and .convo rows.
+   Neither member mentions data-theme, which is the point. A pin scoped to
+   [data-theme="light"] would sit at (0,3,1) and silently outrank the
+   provider-colour-off switch below; keeping it theme-agnostic holds it at
+   (0,2,1), exactly equal to that switch, so source order decides — and off is
+   later, so an explicit "no accent" still wins. */
+html[data-palette="claude"][data-provider],
+html[data-palette="claude"] [data-provider] {
+  --hue: var(--claude-hue);
+  --hue-text: var(--claude-hue-text);
+  --hue-solid: var(--claude-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--claude-hue) 14%, transparent);
+  --hue-weak-solid: var(--claude-hue-weak-solid);
+}
+
 /* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
 @supports not (color: color-mix(in srgb, red 10%, transparent)) {
   [data-provider="anthropic"] { --hue-weak: rgba(217, 119, 87, .14); }
@@ -351,6 +490,8 @@
   [data-theme="light"][data-provider="ollama"]    { --hue-weak: rgba(107, 107, 120, .16); }
   [data-theme="light"] [data-provider="custom"],
   [data-theme="light"][data-provider="custom"]    { --hue-weak: rgba(77, 89, 218, .14); }
+  html[data-palette="claude"][data-provider],
+  html[data-palette="claude"] [data-provider] { --hue-weak: var(--claude-hue-weak-solid); }
   /* Theme-neutral gray for the off state when color-mix() is unavailable. */
   html[data-provider-colour="off"] [data-provider] { --hue-weak: rgba(128, 128, 128, .16); }
 }
@@ -364,8 +505,20 @@
  * chrome has stopped showing. --hue-solid cannot fall back to --ink-2: it
  * carries --on-hue (white) on top of it, and white on --ink-2 is ~1.6:1. The
  * literal below is a warm neutral that clears AA against white in both themes
- * (5.36:1), which is the one job --hue-solid has. */
-html[data-provider-colour="off"] {
+ * (5.36:1), which is the one job --hue-solid has.
+ *
+ * The second selector member is not redundant. <html> carries data-theme,
+ * data-provider and data-provider-colour at the same time, so this rule
+ * competes on that one element with [data-theme="light"][data-provider="x"]
+ * at (0,2,0) — which outranks the single-member form's (0,1,1). The effect was
+ * that in light mode, with provider colour off, everything reading --hue from
+ * <html> rather than from its own [data-provider] — the composer focus ring,
+ * .btn.primary, the --ring-color focus outline — stayed tinted. The compound
+ * member lifts this to (0,2,1), which also keeps it level with the Claude
+ * palette's pin above (later source order still decides in this rule's
+ * favour). */
+html[data-provider-colour="off"],
+html[data-provider-colour="off"][data-provider] {
   --hue: var(--ink-2);
   --hue-text: var(--ink-2);
   --hue-solid: #6b6b66;

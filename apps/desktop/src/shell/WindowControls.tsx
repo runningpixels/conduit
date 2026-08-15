@@ -1,17 +1,14 @@
 /**
  * WindowControls — minimise / maximise / close for the frameless shell.
  *
- * The window runs with `decorations: false`, so the app owns its controls. V7
- * parked them at the right end of the top bar; V9 deletes that bar, so they
- * become a fixed cluster pinned to the window's top-right corner instead. That
- * is the only placement correct in both panel states: with the artifact panel
- * open the corner belongs to the panel, with it closed to the title strip, and
- * `.wincontrols` sits above whichever is there while `.main-head` /
- * `.doc-toolbar` reserve the width beneath it (workspace.css).
+ * The window runs with `decorations: false`, so the app owns its controls.
+ * They sit at the right end of the caption row and are rendered only from
+ * `TitleBar` — an interlude where they floated `position: fixed` over the
+ * window's corner made every surface under that corner reserve space for them.
  *
  * Dragging and double-click-to-maximise come from `data-tauri-drag-region` on
- * `.main-head` and `.sb-head` — never `-webkit-app-region`, which is an
- * Electron property WebView2 ignores.
+ * `.titlebar` — never `-webkit-app-region`, which is an Electron property
+ * WebView2 ignores.
  *
  * Two environments render nothing here:
  *   - `dev:web` / vitest, where there is no Tauri bridge to call.

@@ -19,6 +19,7 @@ import {
   getArtifactContentBytes,
   checkArtifactFileState,
   exportArtifact,
+  openExternalUrl,
   saveAttachment,
   listAttachments,
   deleteAttachment,
@@ -91,6 +92,12 @@ describe('artifact + attachment IPC wrappers', () => {
     const res = await exportArtifact('a1', true);
     expect(invoke).toHaveBeenCalledWith('export_artifact', { artifactId: 'a1', includeMetadata: true });
     expect(res).toEqual({ exportedTo: '/o.md', bytesWritten: 10 });
+  });
+
+  it('openExternalUrl calls open_external_url with the url', async () => {
+    invoke.mockResolvedValue(undefined);
+    await openExternalUrl('https://example.com/a');
+    expect(invoke).toHaveBeenCalledWith('open_external_url', { url: 'https://example.com/a' });
   });
 
   it('saveAttachment / listAttachments / deleteAttachment / getAttachmentBytes', async () => {

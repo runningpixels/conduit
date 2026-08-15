@@ -18,6 +18,9 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
 }
+/* The card's 10px top inset is measured from the caption row's bottom edge, so
+   there is nothing to dodge. It previously started 42px down (10px inset + a
+   32px control cluster) because the window buttons floated over this corner. */
 /* Collapsed, the grid track is 0 wide — the margins and the border would still
    claim 21px of it and leave a sliver of card hanging in the gutter. */
 html[data-panel="closed"] .doc-panel {
@@ -436,6 +439,14 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   margin: 0;
   font-size: 13px;
   color: var(--ink-2);
+}
+/* Failed generation: no skeleton, no shimmer — the panel stops implying work
+   is still happening and states the reason instead. */
+.artifact-pending.failed {
+  align-items: flex-start;
+}
+.artifact-pending.failed .artifact-pending-copy {
+  color: var(--err);
 }
 @keyframes shimmer {
   0% { background-position: 200% 0; }

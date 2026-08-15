@@ -7,6 +7,12 @@ use std::pin::Pin;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+/// How long an opened SSE stream may go without producing a byte before it is
+/// treated as dead. Generous on purpose — it has to clear the slowest plausible
+/// wait for a first token, including a reasoning model thinking before it
+/// speaks — but bounded, because "forever" is not a latency.
+const SSE_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+
 pub struct SseRequest {
     pub url: String,
     pub headers: HeaderMap,
@@ -124,7 +130,37 @@ pub async fn post_sse(
         .bytes_stream()
         .map(|result| result.map_err(|e| retryable(e.to_string())));
 
-    Ok(Box::pin(byte_stream))
+    // Idle timeout, not a total one: a long answer is fine, a silent socket is
+    // not. `HttpClient` sets only `connect_timeout`, so a provider that accepts
+    // the connection and then sends nothing leaves the consumer parked in
+    // `next().await` with no way out — and the agent loop's wall-clock budget
+    // cannot help, because it is only checked between rounds.
+    //
+    // The error is *yielded*, then the stream ends. Simply ending it would be
+    // the same bug in a new place: the round would finish with neither a
+    // completion nor an error, and the turn would end having told the UI
+    // nothing.
+    let guarded = futures::stream::unfold(
+        (Box::pin(byte_stream), false),
+        |(mut stream, finished)| async move {
+            if finished {
+                return None;
+            }
+            match tokio::time::timeout(SSE_IDLE_TIMEOUT, stream.next()).await {
+                Ok(Some(item)) => Some((item, (stream, false))),
+                Ok(None) => None,
+                Err(_) => {
+                    let err = retryable(format!(
+                        "the provider sent nothing for {}s and the connection was still open",
+                        SSE_IDLE_TIMEOUT.as_secs()
+                    ));
+                    Some((Err(err), (stream, true)))
+                }
+            }
+        },
+    );
+
+    Ok(Box::pin(guarded))
 }
 
 /// GETs a URL and decodes JSON. The whole request is retried on retryable

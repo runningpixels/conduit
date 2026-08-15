@@ -10,6 +10,7 @@
  * tokens.css / styles.css can react without React re-rendering.
  */
 
+const PALETTE_KEY = 'conduit:v9-palette';
 const PROVIDER_COLOUR_KEY = 'conduit:v7-provider-colour';
 const REDUCE_MOTION_KEY = 'conduit:v7-reduce-motion';
 const SHOW_REASONING_KEY = 'conduit:v7-show-reasoning';
@@ -17,6 +18,7 @@ const SEND_WITH_KEY = 'conduit:v7-send-with';
 const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
 const EXPANDED_STATUS_KEY = 'conduit:v9-expanded-status';
 
+export type PalettePref = 'terra' | 'claude';
 export type ProviderColourPref = 'on' | 'off';
 export type ReduceMotionPref = 'on' | 'off';
 export type ShowReasoningPref = 'on' | 'off';
@@ -40,6 +42,43 @@ function writePref(key: string, value: string): void {
   } catch {
     /* storage may be unavailable; fail silently */
   }
+}
+
+/* ── Palette ──────────────────────────────────────────────────────────────
+ * A second look, orthogonal to `data-theme`: `terra` is the V9 warm-charcoal
+ * register (provider colour as the only hue); `claude` is the darker near-
+ * neutral charcoal from Claude desktop, with terracotta pinned and serif
+ * prose. Four combinations, since either palette runs in either theme.
+ *
+ * It is a *palette*, not the default, because `claude` suspends the one thing
+ * V9 §3 calls the product's signature — provider identity as the only hue.
+ * That is a choice worth offering and not worth imposing, so `terra` stays
+ * the default.
+ *
+ * Stored value `conduit` migrates to `terra` (the rename of the default look).
+ *
+ * Renderer-only for the same reason the prefs below are: AppSettings.theme is a
+ * Rust enum crossing the IPC boundary, and a look preset does not need to be.
+ */
+
+export function readPalette(): PalettePref {
+  try {
+    const v = localStorage.getItem(PALETTE_KEY);
+    if (v === 'conduit') return 'terra';
+  } catch {
+    /* storage unavailable */
+  }
+  return readPref(PALETTE_KEY, ['terra', 'claude'], 'terra');
+}
+
+export function writePalette(value: PalettePref): void {
+  writePref(PALETTE_KEY, value);
+  applyPalette(value);
+}
+
+/** `html[data-palette="claude"]` swaps surfaces, hue, and the prose face. */
+export function applyPalette(value: PalettePref): void {
+  document.documentElement.setAttribute('data-palette', value);
 }
 
 /* ── Provider colour ──────────────────────────────────────────────────── */
@@ -131,6 +170,7 @@ export function applyExpandedStatus(value: ExpandedStatusPref): void {
 
 /** Apply every document-level pref on boot (idempotent). */
 export function applyUiPrefs(): void {
+  applyPalette(readPalette());
   applyProviderColour(readProviderColour());
   applyReduceMotion(readReduceMotion());
   applyExpandedStatus(readExpandedStatus());

@@ -119,12 +119,51 @@ function isWebSearchToolCall(tc: ToolCallState): boolean {
   return tc.toolId === 'web_search' || tc.name === 'web_search';
 }
 
+/**
+ * True when a completed provider tool call still needs a runtime
+ * `toolCallFinished` / `toolExecutionFinished` before the turn can finalize.
+ *
+ * Provider-hosted `web_search` is finished by the provider itself — no local
+ * runtime event ever arrives — so it must not hold `waitForPendingRuntimeCalls`.
+ */
+export function toolCallAwaitsRuntimeFinish(tc: ToolCallState): boolean {
+  if (!tc.complete || tc.status) return false;
+  if (isWebSearchToolCall(tc)) return false;
+  return true;
+}
+
 /** Index of the most recently completed web_search call (for scoping SearchSources). */
 function lastCompletedWebSearchIndex(toolCalls: ToolCallState[]): number {
   for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
     if (isWebSearchToolCall(toolCalls[i]) && toolCalls[i].complete) return i;
   }
   return -1;
+}
+
+/** Statuses that mean the runtime already reported a terminal outcome. */
+const SETTLED_STATUSES: ToolCallStatus[] = ['completed', 'failed', 'cancelled'];
+
+/**
+ * Settle tool calls the turn abandoned. A call that got a `toolCallStart` (or
+ * a `toolExecutionStarted`) but never a matching finish keeps `endedAt`
+ * undefined, which `ToolCallBlock` renders as `running…` forever — the turn is
+ * over but the card still claims to be working. Every terminal path runs this
+ * so a dead turn leaves nothing pretending to be alive.
+ *
+ * Calls that already reported a terminal status (or that carry an `endedAt`,
+ * which includes provider-hosted `web_search` calls resolved by
+ * `toolCallComplete`) are left untouched.
+ */
+function settleUnfinishedToolCalls(
+  calls: ToolCallState[],
+  status: 'failed' | 'cancelled',
+  reason: string,
+): ToolCallState[] {
+  return calls.map((tc) =>
+    tc.endedAt === undefined && !SETTLED_STATUSES.includes(tc.status as ToolCallStatus)
+      ? { ...tc, status: status as ToolCallStatus, endedAt: Date.now(), error: tc.error ?? reason }
+      : tc,
+  );
 }
 
 function citationAlreadyPresent(
@@ -223,6 +262,10 @@ export function applyProviderEvent(
           raw: (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>,
         }));
       }
+      // Hosted web_search is already done on the provider side. Mark it
+      // completed here so the chat view does not wait 30s for a runtime finish
+      // that never comes (and so settle-on-error leaves it alone).
+      const hostedSearchDone = completed ? isWebSearchToolCall(completed) : false;
       return {
         ...state,
         toolCalls: state.toolCalls.map((toolCall) =>
@@ -231,6 +274,7 @@ export function applyProviderEvent(
                 ...toolCall,
                 arguments: event.arguments,
                 complete: true,
+                ...(hostedSearchDone ? { status: 'completed' as ToolCallStatus } : {}),
                 ...(embeddedSources
                   ? { sources: [...(toolCall.sources ?? []), ...embeddedSources] }
                   : {}),
@@ -242,13 +286,29 @@ export function applyProviderEvent(
     }
     case 'usage':
       return { ...state, usage: event.usage };
+    // Both terminal events clear the phase. It described what the turn was
+    // doing; once the turn is over it describes nothing, and leaving it set
+    // means any future reader of `agentPhase` shows a finished turn as still
+    // "Continuing…". Today that is invisible only because every consumer also
+    // gates on `streaming` — a coincidence, not a design.
     case 'messageComplete':
-      return { ...state, finishReason: event.finishReason, streaming: false };
+      return {
+        ...state,
+        finishReason: event.finishReason,
+        streaming: false,
+        agentPhase: undefined,
+      };
     case 'error':
       return {
         ...state,
         error: event.error.message,
         streaming: false,
+        agentPhase: undefined,
+        toolCalls: settleUnfinishedToolCalls(
+          state.toolCalls,
+          'failed',
+          'The turn ended before this tool finished.',
+        ),
       };
     case 'searchSources': {
       const incoming = event.sources.map((raw) => ({ raw }));
@@ -373,7 +433,19 @@ export function rebuildAssistantStreamStateFromEvents(
   for (const event of events) {
     state = applyProviderEvent(state, event);
   }
-  return { ...state, streaming: false };
+  // The replayed turn is definitionally over. Terminal events emitted by the
+  // agent loop (rather than a provider round) are not persisted, so a turn that
+  // died mid-execution replays with calls that never finished — settle them
+  // here or the reloaded conversation shows `running…` cards forever.
+  return {
+    ...state,
+    streaming: false,
+    toolCalls: settleUnfinishedToolCalls(
+      state.toolCalls,
+      'failed',
+      'The turn ended before this tool finished.',
+    ),
+  };
 }
 
 export function markInterrupted(state: AssistantStreamState): AssistantStreamState {
@@ -382,6 +454,12 @@ export function markInterrupted(state: AssistantStreamState): AssistantStreamSta
     interrupted: true,
     streaming: false,
     finishReason: 'cancelled',
+    agentPhase: undefined,
+    toolCalls: settleUnfinishedToolCalls(
+      state.toolCalls,
+      'cancelled',
+      'Stopped before this tool finished.',
+    ),
   };
 }
 

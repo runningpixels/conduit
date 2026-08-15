@@ -19,9 +19,18 @@
 /// render as plain escaped text. The hardened Code/JSON/Plain/HTML renderers
 /// live alongside this in `renderers.tsx` / `HtmlArtifactRenderer.tsx`.
 
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type MouseEvent, type ReactNode } from 'react';
 
 const LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+
+function isHttpOrHttpsScheme(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 /// True if `url` is an allowlisted, non-suspicious link target. Rejects
 /// `javascript:`/`data:`/`vbscript:`, and any URL whose first character is a
@@ -38,6 +47,23 @@ function isSafeUrl(url: string): boolean {
     return false;
   }
   return LINK_SCHEMES.has(parsed.protocol);
+}
+
+function linkProps(
+  url: string,
+  options?: MarkdownOptions,
+): { href: string; target: string; rel: string; onClick?: (e: MouseEvent<HTMLAnchorElement>) => void } {
+  const base = { href: url, target: '_blank', rel: 'noopener noreferrer' };
+  if (options?.onExternalLink && isHttpOrHttpsScheme(url)) {
+    return {
+      ...base,
+      onClick: (e) => {
+        e.preventDefault();
+        options.onExternalLink?.(url);
+      },
+    };
+  }
+  return base;
 }
 
 type Block =
@@ -225,6 +251,9 @@ const PLACEHOLDER_RE = /^\uE000([^\uE001]*)\uE001/;
 export interface MarkdownOptions {
   /// Render a substituted placeholder. Returning null drops it silently.
   renderPlaceholder?: (id: string, key: string) => ReactNode;
+  /// When set, http(s) link clicks call this instead of navigating / opening a
+  /// blank tab. `mailto:` and other safe schemes keep default anchor behavior.
+  onExternalLink?: (url: string) => void;
 }
 
 /// Inline parser. Walks the string with a cursor, emitting React nodes. Raw
@@ -280,7 +309,7 @@ function renderInline(
       if (isSafeUrl(url)) {
         flush();
         push(
-          <a key={`${keyPrefix}-l${k}`} href={url} target="_blank" rel="noopener noreferrer">
+          <a key={`${keyPrefix}-l${k}`} {...linkProps(url, options)}>
             {label}
           </a>,
         );
@@ -298,7 +327,7 @@ function renderInline(
       flush();
       const url = autoMatch[0];
       push(
-        <a key={`${keyPrefix}-a${k}`} href={url} target="_blank" rel="noopener noreferrer">
+        <a key={`${keyPrefix}-a${k}`} {...linkProps(url, options)}>
           {url}
         </a>,
       );

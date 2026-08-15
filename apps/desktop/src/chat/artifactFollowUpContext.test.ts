@@ -93,6 +93,7 @@ describe('looksLikeArtifactEditFollowUp', () => {
     expect(looksLikeArtifactEditFollowUp('make it dark mode')).toBe(true);
     expect(looksLikeArtifactEditFollowUp('can you update the header?')).toBe(true);
     expect(looksLikeArtifactEditFollowUp('add a section on loops')).toBe(true);
+    expect(looksLikeArtifactEditFollowUp('can you add urls to the document?')).toBe(true);
   });
 
   it('returns false for explicit new artifact requests', () => {
@@ -120,6 +121,20 @@ describe('resolveRecentDocumentArtifactId', () => {
 
   it('falls back to the newest listed document artifact', () => {
     expect(resolveRecentDocumentArtifactId([], listedArtifacts)).toBe('art-html-1');
+  });
+
+  it('prefers the open panel artifact when provided', () => {
+    const other: Artifact = {
+      id: 'art-open',
+      conversationId: 'c1',
+      kind: 'html',
+      title: 'Today\'s News',
+      createdAt: '2026-01-03T00:00:00Z',
+      updatedAt: '2026-01-03T00:00:00Z',
+    };
+    expect(
+      resolveRecentDocumentArtifactId([], [other, ...listedArtifacts], 'art-open'),
+    ).toBe('art-open');
   });
 });
 
@@ -220,6 +235,28 @@ describe('resolveFollowUpArtifactContext', () => {
       title: 'PHP Outline',
       content: '<html><body>light</body></html>',
     });
+  });
+
+  it('prefers the open panel artifact over a older listed document', async () => {
+    const openDoc: Artifact = {
+      id: 'art-news',
+      conversationId: 'c1',
+      kind: 'html',
+      title: 'Today\'s News',
+      contentText: '<html><body>news</body></html>',
+      createdAt: '2026-01-03T00:00:00Z',
+      updatedAt: '2026-01-03T00:00:00Z',
+    };
+    const ctx = await resolveFollowUpArtifactContext(
+      [],
+      'can you add urls to the document?',
+      listedArtifacts,
+      async (id) => (id === 'art-news' ? openDoc : { ...listedArtifacts[0], contentText: '<html></html>' }),
+      openDoc,
+    );
+    expect(ctx?.artifactId).toBe('art-news');
+    expect(ctx?.title).toBe('Today\'s News');
+    expect(ctx?.content).toContain('news');
   });
 
   it('returns undefined for informational questions after document tools', async () => {

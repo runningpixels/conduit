@@ -522,6 +522,29 @@ pub async fn execute_builtin_tool(
     }
 }
 
+/// Persist a builtin tool call as failed without running it — used when the
+/// agent loop clamps parallel / over-budget document creates so the model still
+/// sees a tool result on the continuation.
+pub async fn record_clamped_builtin_tool(
+    ctx: &AgentToolContext<'_>,
+    tool_call_id: &str,
+    request_id: &str,
+    tool_name: &str,
+    arguments: &Value,
+    error: &str,
+) -> Result<AgentToolExecution, String> {
+    finalize_tool_call(
+        ctx,
+        tool_call_id,
+        request_id,
+        tool_name,
+        arguments,
+        serde_json::json!({ "ok": false, "error": error }),
+        true,
+    )
+    .await
+}
+
 fn json_schema(fields: &[(&str, &str, bool)]) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
@@ -990,7 +1013,13 @@ async fn web_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
         "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
         urlencoding(query)
     );
-    let client = reqwest::Client::new();
+    // Same 15s bound `web_fetch` uses below. A bare `Client::new()` has no
+    // timeout at all, so an endpoint that accepts the connection and then goes
+    // quiet parks the agent turn on "Running 1 tool" indefinitely.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("http client error: {e}"))?;
     let resp = client
         .get(&url)
         .header("User-Agent", "Conduit/1.0")

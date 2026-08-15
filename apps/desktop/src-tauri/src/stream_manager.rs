@@ -49,11 +49,225 @@ pub struct RoundOutcome {
     pub finished_normally: bool,
     /// Error message if the round ended due to a provider error.
     pub error_message: Option<String>,
+    /// Whether the round already sent a terminal `ProviderEvent::Error` on the
+    /// channel.
+    ///
+    /// Only the mid-stream error path does. Every other way a round can fail —
+    /// settings unreadable, unknown provider, adapter context (missing key),
+    /// and `stream_chat` returning `Err`, which covers every HTTP >= 400 —
+    /// returns before touching the channel. Pass L's exit-path table recorded
+    /// them all as "the round already forwarded Error"; four of the five do
+    /// not, and the loop suppressed the terminal event on that word, leaving
+    /// the turn to hang with nothing sent at all. The loop reads this instead
+    /// of assuming.
+    pub error_forwarded: bool,
+    /// Whether the round emitted any assistant text.
+    ///
+    /// The loop's "no runnable tool calls means the assistant answered" exit is
+    /// only true when there *was* an answer. A round can finish normally, emit
+    /// `stop`, and produce nothing at all — see
+    /// [`round_produced_nothing`] — and without this the turn ends on a blank
+    /// bubble that reports no error because, as far as every other signal goes,
+    /// nothing went wrong.
+    pub produced_text: bool,
     /// Provider usage (tokens, cost) reported for this round, if any.
     pub usage: Option<provider_core::schema::ProviderUsage>,
     /// The round's `MessageComplete`, withheld from the channel under
     /// [`CompletionDelivery::Deferred`]. Always `None` for `Immediate`.
     pub completion_event: Option<ProviderEvent>,
+}
+
+/// Split completed tool calls into the ones this request declared and the ones
+/// it did not.
+///
+/// Tool dispatch is by *name*, against a registry far broader than any single
+/// turn's declarations, and nothing downstream re-checks. Two consequences:
+///
+///   - A provider-hosted tool call arrives as an ordinary `ToolCallComplete`.
+///     OpenAI's hosted search reports `web_search`, colliding with the local
+///     builtin of the same name — so the loop re-ran a search the provider had
+///     already performed, then built a continuation carrying the *hosted*
+///     call's id. The Responses API rejects that id, because it never issued a
+///     function call for it, and the turn died there.
+///   - A model naming any registered builtin would get it executed, whether or
+///     not the turn ever offered it.
+///
+/// Declared tools are the only ones we asked for, so they are the only ones we
+/// run. Continuations carry `tool_definitions` forward, so later rounds keep
+/// the same set.
+pub fn partition_declared_tool_calls(
+    calls: Vec<CompletedToolCall>,
+    declared: &[provider_core::schema::ToolDefinition],
+) -> (Vec<CompletedToolCall>, Vec<CompletedToolCall>) {
+    let names: std::collections::HashSet<&str> = declared.iter().map(|t| t.name.as_str()).collect();
+    calls
+        .into_iter()
+        .partition(|call| names.contains(call.name.as_str()))
+}
+
+/// Whether a round that ended cleanly nonetheless produced nothing the user can
+/// see: no assistant text, and no tool call this turn is allowed to run.
+///
+/// This is the shape a provider-hosted tool leaves behind. OpenAI's hosted web
+/// search is reported as an ordinary `ToolCallComplete` named `web_search` —
+/// a *record* that the provider already searched, not a request for us to search
+/// — and the renderer never declares the local builtin of that name, so
+/// [`partition_declared_tool_calls`] correctly refuses to run it. What is left
+/// is a round with two searches, zero text, and an empty runnable list, which
+/// the loop's next check reads as "the assistant produced a final answer" and
+/// ends the turn on.
+///
+/// Observed: response ends `stop` after two `ws_…` search items with no message
+/// item, and the user gets a search block, no answer, and no error. The failure
+/// is worse than a crash because every signal says success.
+///
+/// `undeclared` is a parameter rather than an implementation detail because a
+/// round that produced no text and asked for *nothing at all* is a different
+/// (and much rarer) event than one whose entire output we discarded; only the
+/// latter is worth explaining in the provider's terms.
+pub fn round_produced_nothing(
+    produced_text: bool,
+    runnable: &[CompletedToolCall],
+    undeclared: &[CompletedToolCall],
+) -> bool {
+    !produced_text && runnable.is_empty() && !undeclared.is_empty()
+}
+
+/// The message shown when a turn ends having produced nothing.
+///
+/// Names the tools whose output was dropped, because "nothing happened" is not
+/// actionable and "the provider ran web_search and then returned no answer" is.
+pub fn empty_turn_message(undeclared: &[CompletedToolCall]) -> String {
+    let mut names: Vec<&str> = undeclared.iter().map(|c| c.name.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+    format!(
+        "The model ran {} and then ended the turn without writing an answer. \
+         Conduit did not run {} — the provider reports it as one of its own hosted tools, \
+         so its results stayed on the provider's side and never reached the model's next step. \
+         Try turning off web search in Settings, or use a model whose hosted search returns an answer in the same turn.",
+        names.join(", "),
+        if names.len() == 1 { "it" } else { "them" },
+    )
+}
+
+/// The terminal event the loop still owes after a round reported an error.
+///
+/// `None` when the round already forwarded a `ProviderEvent::Error` itself —
+/// which only the mid-stream path does. The other four ways a round can fail
+/// return before touching the channel, and Pass L's exit-path table recorded
+/// all five as "already forwarded". Believing it meant the loop suppressed the
+/// only terminal event and the turn ended having said nothing at all, leaving
+/// the renderer waiting on a completion that was never coming.
+pub fn terminal_event_for_round_error(
+    request_id: &str,
+    error_message: String,
+    error_forwarded: bool,
+) -> Option<ProviderEvent> {
+    if error_forwarded {
+        return None;
+    }
+    Some(ProviderEvent::Error {
+        request_id: request_id.to_string(),
+        error: provider_core::schema::ProviderError {
+            provider_code: None,
+            message: error_message,
+            retryable: false,
+        },
+    })
+}
+
+/// Hard cap on successful `write_*_document` creates in a single agent turn.
+/// Prevents create+search thrash from spawning dozens of duplicate artifacts
+/// before `max_steps` fires.
+pub const MAX_DOCUMENT_CREATES_PER_TURN: u32 = 2;
+
+const PARALLEL_CREATE_REJECT: &str =
+    "Only one new document per round. Use edit_*_document with the returned artifact_id to revise.";
+const TURN_CREATE_CAP_REJECT: &str =
+    "This turn already created the maximum number of documents. Use edit_*_document with an existing artifact_id, or stop.";
+
+/// True when the tool name is a builtin `write_*_document` creator.
+pub fn is_document_write_tool(name: &str) -> bool {
+    name.starts_with("write_") && name.ends_with("_document")
+}
+
+/// True when a `write_*` call is asking to create a new document (no usable
+/// `artifact_id`). Writes that pass an id are upserts and are not coalesced.
+pub fn is_new_document_create(call: &CompletedToolCall) -> bool {
+    if !is_document_write_tool(&call.name) {
+        return false;
+    }
+    match call.arguments.get("artifact_id") {
+        None => true,
+        Some(value) if value.is_null() => true,
+        Some(value) => value
+            .as_str()
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(true),
+    }
+}
+
+/// Whether a completed tool output reports a newly created document artifact.
+pub fn tool_output_created_document(output: &serde_json::Value) -> bool {
+    output.get("created").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+/// Decision for one tool call under document-create clamps.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreateClampAction {
+    Run,
+    RejectParallel,
+    RejectTurnCap,
+}
+
+impl CreateClampAction {
+    pub fn reject_message(&self) -> Option<&'static str> {
+        match self {
+            Self::Run => None,
+            Self::RejectParallel => Some(PARALLEL_CREATE_REJECT),
+            Self::RejectTurnCap => Some(TURN_CREATE_CAP_REJECT),
+        }
+    }
+}
+
+/// Plan create clamps for a round: at most one new `write_*` create per round,
+/// and no creates once [`MAX_DOCUMENT_CREATES_PER_TURN`] successful creates
+/// have already landed this turn.
+pub fn classify_document_create_clamps(
+    calls: &[CompletedToolCall],
+    successful_creates_so_far: u32,
+) -> Vec<CreateClampAction> {
+    let mut actions = Vec::with_capacity(calls.len());
+    let mut create_reserved = 0u32;
+    for call in calls {
+        if !is_new_document_create(call) {
+            actions.push(CreateClampAction::Run);
+            continue;
+        }
+        if create_reserved >= 1 {
+            actions.push(CreateClampAction::RejectParallel);
+            continue;
+        }
+        if successful_creates_so_far + create_reserved >= MAX_DOCUMENT_CREATES_PER_TURN {
+            actions.push(CreateClampAction::RejectTurnCap);
+            continue;
+        }
+        actions.push(CreateClampAction::Run);
+        create_reserved += 1;
+    }
+    actions
+}
+
+/// After the first successful document create, later rounds must not offer
+/// `write_*` again — only edit/export/utilities (and any connector tools).
+pub fn narrow_tools_after_document_create(
+    defs: &[provider_core::schema::ToolDefinition],
+) -> Vec<provider_core::schema::ToolDefinition> {
+    defs.iter()
+        .filter(|t| !is_document_write_tool(&t.name))
+        .cloned()
+        .collect()
 }
 
 /// A tool call that was requested by the provider and is ready for execution.
@@ -370,6 +584,9 @@ impl StreamManager {
         let mut error_message: Option<String> = None;
         let mut round_usage: Option<provider_core::schema::ProviderUsage> = None;
         let mut completion_event: Option<ProviderEvent> = None;
+        // Reasoning is deliberately not text: a round that thought and then said
+        // nothing still answered nothing.
+        let mut produced_text = false;
 
         futures::pin_mut!(stream);
         while let Some(event) = stream.next().await {
@@ -386,6 +603,12 @@ impl StreamManager {
             // Capture usage event for the round outcome
             if let ProviderEvent::Usage { usage, .. } = &event {
                 round_usage = Some(usage.clone());
+            }
+
+            if let ProviderEvent::ContentDelta { content, .. } = &event {
+                if !content.is_empty() {
+                    produced_text = true;
+                }
             }
 
             // Correlate tool start/complete for round outcome
@@ -453,8 +676,16 @@ impl StreamManager {
             .map(|mut guard| guard.remove(&request_id));
 
         RoundOutcome {
+            // Reaching here means the stream opened, so the only way
+            // `error_message` is set is the mid-stream `ProviderEvent::Error`
+            // above — and that one went out on the channel with every other
+            // event. The four early returns never get this far; they build
+            // their outcome with `..Default::default()`, which leaves this
+            // false, and the loop then owes the terminal event.
+            error_forwarded: error_message.is_some(),
             completed_tool_calls,
             finished_normally,
+            produced_text,
             error_message,
             usage: round_usage,
             completion_event,
@@ -464,6 +695,10 @@ impl StreamManager {
     /// Execute a batch of tool calls resolved from a provider round.
     /// This is the direct in-process invocation of the Phase 4 execution pipeline
     /// from the agent loop, preserving consent, redaction, and persistence.
+    ///
+    /// `successful_creates_so_far` is the turn-wide count of `write_*` creates
+    /// that already succeeded; it is updated in place when this round creates
+    /// more. Returns how many new documents this round created.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_resolved_tool_calls(
         &self,
@@ -474,7 +709,8 @@ impl StreamManager {
         conversation_id: &str,
         runtime_channel: Option<&Channel<ConnectorRuntimeEvent>>,
         provider_channel: Option<&Channel<ProviderEvent>>,
-    ) {
+        successful_creates_so_far: &mut u32,
+    ) -> u32 {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
             Err(err) => {
@@ -500,7 +736,10 @@ impl StreamManager {
             }) as crate::connector_runtime::execution::EventSink
         });
 
-        for call in calls {
+        let clamp_actions = classify_document_create_clamps(calls, *successful_creates_so_far);
+        let mut created_this_round = 0u32;
+
+        for (call, action) in calls.iter().zip(clamp_actions.iter()) {
             let tool_name = if call.name.trim().is_empty() {
                 call.tool_id.clone().unwrap_or_default()
             } else {
@@ -516,6 +755,59 @@ impl StreamManager {
                 });
             }
 
+            if let Some(reject_msg) = action.reject_message() {
+                match agent_tools::record_clamped_builtin_tool(
+                    &ctx,
+                    &call.tool_call_id,
+                    request_id,
+                    &tool_name,
+                    &call.arguments,
+                    reject_msg,
+                )
+                .await
+                {
+                    Ok(exec) => {
+                        if let Some(channel) = runtime_channel {
+                            let _ = channel.send(ConnectorRuntimeEvent::ToolCallFinished {
+                                tool_call_id: exec.record.id.clone(),
+                                status: exec.record.status,
+                                is_error: Some(true),
+                                size_bytes: 0,
+                                mime_hints: Vec::new(),
+                                error: exec.record.error.clone(),
+                            });
+                        }
+                        if let Some(ch) = provider_channel {
+                            let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                                request_id: request_id.to_string(),
+                                tool_call_id: exec.record.id.clone(),
+                                tool_name: tool_name.clone(),
+                                is_error: true,
+                                error: exec.record.error.clone(),
+                            });
+                        }
+                    }
+                    Err(error) => {
+                        warn!(
+                            request_id = %request_id,
+                            tool_call_id = %call.tool_call_id,
+                            error = %error,
+                            "failed to record clamped tool rejection"
+                        );
+                        if let Some(ch) = provider_channel {
+                            let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                                request_id: request_id.to_string(),
+                                tool_call_id: call.tool_call_id.clone(),
+                                tool_name: tool_name.clone(),
+                                is_error: true,
+                                error: Some(error),
+                            });
+                        }
+                    }
+                }
+                continue;
+            }
+
             if agent_tools::is_builtin_tool_name(&tool_name) {
                 let outcome = agent_tools::execute_builtin_tool(
                     &ctx,
@@ -528,6 +820,11 @@ impl StreamManager {
                 if let Some(channel) = runtime_channel {
                     match outcome {
                         Ok(exec) => {
+                            if !exec.is_error && tool_output_created_document(&exec.output) {
+                                created_this_round += 1;
+                                *successful_creates_so_far =
+                                    successful_creates_so_far.saturating_add(1);
+                            }
                             let size = serde_json::to_vec(&exec.output)
                                 .map(|bytes| bytes.len() as u64)
                                 .unwrap_or(0);
@@ -571,6 +868,22 @@ impl StreamManager {
                             }
                         }
                     }
+                } else if let Ok(exec) = outcome {
+                    // No runtime channel (tests / single-path callers) — still
+                    // count creates so turn clamps stay accurate.
+                    if !exec.is_error && tool_output_created_document(&exec.output) {
+                        created_this_round += 1;
+                        *successful_creates_so_far = successful_creates_so_far.saturating_add(1);
+                    }
+                    if let Some(ch) = provider_channel {
+                        let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                            request_id: request_id.to_string(),
+                            tool_call_id: exec.record.id.clone(),
+                            tool_name: tool_name.clone(),
+                            is_error: exec.is_error,
+                            error: exec.record.error.clone(),
+                        });
+                    }
                 }
                 continue;
             }
@@ -598,6 +911,8 @@ impl StreamManager {
                 crate::connector_runtime::execution::execute_tool_call(state, runtime, &req, &sink)
                     .await;
         }
+
+        created_this_round
     }
 
     /// Build a continuation `ProviderRequest` for the next provider round.
@@ -949,6 +1264,7 @@ impl StreamManager {
         current_request.request_id = request_id.clone();
         let mut ended_with_pending_tools = false;
         let mut cumulative_usage: Option<provider_core::schema::ProviderUsage> = None;
+        let mut successful_document_creates: u32 = 0;
 
         // Exactly one terminal event reaches the UI per turn, emitted after the
         // loop so the cumulative usage lands first. `terminal` holds the event
@@ -993,15 +1309,43 @@ impl StreamManager {
                 sub_phase,
             });
 
-            let outcome = self
-                .run_provider_round(
-                    state,
-                    current_request.clone(),
-                    channel.clone(),
-                    cancel.clone(),
-                    CompletionDelivery::Deferred,
-                )
-                .await;
+            // Bounded by whatever is left of the wall-clock budget.
+            //
+            // The check at the top of this loop can only fire *between* rounds,
+            // so it cannot rescue a round that never returns — and nothing
+            // downstream bounds one either: the HTTP client sets a connect
+            // timeout but no read timeout, so a stream that opens and then goes
+            // quiet parks in `stream.next().await` forever. Observed in the
+            // wild at 368s against a 300s budget, still counting.
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let round = self.run_provider_round(
+                state,
+                current_request.clone(),
+                channel.clone(),
+                cancel.clone(),
+                CompletionDelivery::Deferred,
+            );
+            let mut outcome = match tokio::time::timeout(remaining, round).await {
+                Ok(outcome) => outcome,
+                Err(_) => {
+                    warn!(
+                        request_id = %request_id,
+                        step,
+                        "provider round exceeded the remaining wall-clock budget"
+                    );
+                    terminal = Some(ProviderEvent::Error {
+                        request_id: request_id.clone(),
+                        error: provider_core::schema::ProviderError {
+                            provider_code: None,
+                            message: format!(
+                                "Agent turn exceeded wall-clock budget ({wall_clock_secs}s) waiting on the provider. Increase it in Settings → Agent."
+                            ),
+                            retryable: false,
+                        },
+                    });
+                    break;
+                }
+            };
 
             // Accumulate usage across rounds.
             if let Some(ref round_usage) = outcome.usage {
@@ -1045,12 +1389,55 @@ impl StreamManager {
                 terminal = outcome.completion_event;
             }
 
-            if let Some(err) = outcome.error_message {
-                // Error already forwarded by the round; stop the turn.
+            if let Some(err) = outcome.error_message.take() {
                 warn!(request_id = %request_id, step, error = %err, "agent turn aborted due to round error");
-                terminal_forwarded = true;
+                match terminal_event_for_round_error(&request_id, err, outcome.error_forwarded) {
+                    Some(event) => terminal = Some(event),
+                    None => terminal_forwarded = true,
+                }
                 break;
             }
+
+            let (runnable, undeclared) = partition_declared_tool_calls(
+                std::mem::take(&mut outcome.completed_tool_calls),
+                &current_request.tool_definitions,
+            );
+            for call in &undeclared {
+                warn!(
+                    request_id = %request_id,
+                    step,
+                    tool = %call.name,
+                    tool_call_id = %call.tool_call_id,
+                    "ignoring a completed tool call this request never declared"
+                );
+            }
+
+            // A round can end cleanly and still leave the user with nothing: no
+            // text, and every tool call it made discarded as undeclared. The
+            // check below reads an empty runnable list as "the assistant
+            // produced a final answer", which is true when the model answered
+            // and false here — so this turn would finalize on a blank bubble
+            // with `stop` and no error, the exact shape the in-band error branch
+            // in `adapters/openai.rs` already exists to prevent.
+            if round_produced_nothing(outcome.produced_text, &runnable, &undeclared) {
+                warn!(
+                    request_id = %request_id,
+                    step,
+                    dropped = undeclared.len(),
+                    "turn produced no text and no runnable tool calls; reporting instead of ending silently"
+                );
+                terminal = Some(ProviderEvent::Error {
+                    request_id: request_id.clone(),
+                    error: provider_core::schema::ProviderError {
+                        provider_code: None,
+                        message: empty_turn_message(&undeclared),
+                        retryable: false,
+                    },
+                });
+                break;
+            }
+
+            outcome.completed_tool_calls = runnable;
 
             if outcome.completed_tool_calls.is_empty() {
                 // No tool calls requested; the assistant produced a final answer.
@@ -1076,16 +1463,25 @@ impl StreamManager {
                 sub_phase: "executing_tools".to_string(),
             });
 
-            self.execute_resolved_tool_calls(
-                state,
-                runtime,
-                &outcome.completed_tool_calls,
-                &request_id,
-                &conversation_id,
-                Some(&runtime_channel),
-                Some(&channel),
-            )
-            .await;
+            let created_this_round = self
+                .execute_resolved_tool_calls(
+                    state,
+                    runtime,
+                    &outcome.completed_tool_calls,
+                    &request_id,
+                    &conversation_id,
+                    Some(&runtime_channel),
+                    Some(&channel),
+                    &mut successful_document_creates,
+                )
+                .await;
+
+            // After the first successful create, later rounds must not offer
+            // write_* — revisions go through edit_* with the returned id.
+            if created_this_round > 0 || successful_document_creates > 0 {
+                current_request.tool_definitions =
+                    narrow_tools_after_document_create(&current_request.tool_definitions);
+            }
 
             // Emit reviewing phase after tool execution, before continuation.
             let _ = channel.send(ProviderEvent::AgentPhase {

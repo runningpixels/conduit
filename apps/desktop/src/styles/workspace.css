@@ -1,42 +1,40 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Conduit V9 — workspace shell (spec §4). No top bar: three full-height
-   columns, sidebar (280) | thread (minmax(0,1fr)) | artifact panel (420),
-   with a 46px draggable title strip *inside* the centre column. Collapse is
-   a column-width animation driven by --sidebar-w / --panel-w, not a
-   mount/unmount. The height chain is load-bearing: every ancestor between
-   .app and a scroller must be height-constrained (grid-template-rows:
-   minmax(0,1fr) + min-height:0 + overflow:hidden), or the thread grows to
-   its content and pushes the composer below the fold.
+   Conduit — workspace shell (spec §4). A 32px caption row across the top of
+   the window, then three columns beneath it: sidebar (280) | thread
+   (minmax(0,1fr)) | artifact panel (420), with a 46px title strip *inside*
+   the centre column. Collapse is a column-width animation driven by
+   --sidebar-w / --panel-w, not a mount/unmount. The height chain is
+   load-bearing: every ancestor between .app and a scroller must be
+   height-constrained (grid-template-rows: minmax(0,1fr) + min-height:0 +
+   overflow:hidden), or the thread grows to its content and pushes the
+   composer below the fold.
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── App grid ──────────────────────────────────────────────────────────── */
-/* V7's first row held the 44px topbar. V9 deletes the bar, so .body is the
-   whole grid and the side columns reach the top of the window. */
+/* Two rows: the caption row, then everything else. V7 had a first row too, but
+   it carried app content (a brand mark, an omnibox); V9 deleted it and floated
+   the window buttons in the corner instead, which forced every surface under
+   that corner to dodge them. This row carries window chrome only, so nothing
+   dodges anything — see .titlebar below. */
 .app {
   height: 100vh;
   height: 100dvh;
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
   overflow: hidden;
 }
 
-/* The mark sits inside the sidebar's drag region and is never clicked, so it
-   opts out of hit-testing entirely — children included. Tagging the wrapper is
-   not enough on its own: Tauri targets the exact element under the cursor, so
-   the nested <b> and the glyph <svg> would each swallow the drag. Dropping
-   pointer events lets the grab fall through to .sb-head however deep the
-   markup goes, which is sturdier than tagging every leaf. */
-.mark { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; pointer-events: none; }
+.mark { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .mark-glyph { width: 18px; height: 18px; color: var(--hue); transition: color var(--tap); }
 .mark b { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 
-/* ── Title strip (V9 §2.1) ─────────────────────────────────────────────── */
-/* 46px inside the centre column: the chat's name, the two toggles, and the
-   rest empty drag region. Deliberately no fill and no bottom border — it is
-   meant to read as the top of the thread's own surface, not as a bar above it.
-   Dragging is `data-tauri-drag-region` on the <header> (MainHead.tsx), not
-   `-webkit-app-region` — that is an Electron property and WebView2 ignores it.
-   The V9 proposal's CSS uses it throughout and would silently do nothing. */
+/* ── Title strip (spec §2.1) ───────────────────────────────────────────── */
+/* 46px inside the centre column: the chat's name and the two toggles.
+   Deliberately no fill and no bottom border — it is meant to read as the top
+   of the thread's own surface, not as a bar above it. It is *not* a drag
+   region: the caption row above owns dragging outright, which is what lets
+   this strip drop the per-child `data-tauri-drag-region` tagging that once
+   shipped a mostly-dead title bar. */
 .main-head {
   height: 46px;
   display: flex;
@@ -58,42 +56,35 @@
 html[data-sidebar="closed"] .main-title { padding-left: 44px; }
 .head-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 
-/* ── Window controls (frameless shell) ─────────────────────────────────── */
-/* Windows 11 metrics: 46x32 hit targets, no gap, close tints red on hover.
-   Rendered only when the Tauri bridge is present and not on macOS.
-
-   Fixed to the window's top-right rather than parented to a bar, because with
-   the top bar gone no single element owns that corner: it belongs to the
-   artifact panel when the panel is open and to the title strip when it is not.
-   The reservation rules below keep whichever is beneath from running under it.
-
-   Above every summoned surface (the scrims are 80 and 1500, toasts 1100). The
-   V7 topbar sat below them, so a modal covered the window buttons — survivable
-   there because the bar was decoration, but these are the window's only close
-   and minimise affordance now, and an OS window stays operable whatever it is
-   showing. The scrim's blur does not apply to them for the same reason. */
-.wincontrols {
-  position: fixed;
-  top: 0;
-  right: 0;
-  z-index: 2000;
-  height: 32px;
+/* ── Caption row (frameless shell) ─────────────────────────────────────── */
+/* The window's own strip: drag region plus the control cluster, no app content.
+   Transparent and border-free on purpose — the surfaces beneath should read as
+   running straight up to the window's edge, with only the buttons visible.
+   Because it is a grid row rather than a floating overlay, nothing underneath
+   has to reserve space for it. */
+.titlebar {
+  height: var(--titlebar-h);
   display: flex;
+  justify-content: flex-end;
   align-items: stretch;
 }
-/* Reserve the corner only when the controls actually render. They are absent on
-   macOS (native traffic lights) and in dev:web / vitest (no Tauri bridge), and
-   an ungated literal would leave 144px of dead space in all three. `:has()` is
-   the same idiom `.topbar:has(.wincontrols)` used before the bar was deleted,
-   so it is already proven on this WebView2. */
-.app { --wincontrols-w: 0px; }
-.app:has(.wincontrols) { --wincontrols-w: 144px; }
-html[data-panel="closed"] .main-head { padding-right: var(--wincontrols-w); }
-html[data-panel="open"] .doc-toolbar { padding-right: var(--wincontrols-w); }
-/* Under the panel breakpoint the panel is hidden whatever data-panel says, so
-   the strip owns the corner either way. */
-@media (max-width: 1100px) {
-  html[data-panel="open"] .main-head { padding-right: var(--wincontrols-w); }
+
+/* Windows 11 metrics: 46x32 hit targets, no gap, close tints red on hover.
+   Rendered only when the Tauri bridge is present and not on macOS — hence a
+   bar that is simply empty in dev:web, vitest and on macOS.
+
+   The z-index is on the cluster, not on `.titlebar`. These are the window's
+   only close and minimise affordance, so they stay above every summoned
+   surface (the scrims are 80 and 1500, toasts 1100) — an OS window stays
+   operable whatever it is showing, and the scrim's blur does not apply to them
+   for the same reason. Lifting the whole bar instead would put a full-width
+   drag region over the top 32px of every modal, swallowing clicks meant for
+   it; the cluster is 138px and sits where no modal content does. */
+.wincontrols {
+  position: relative;
+  z-index: 2000;
+  display: flex;
+  align-items: stretch;
 }
 .wincontrol {
   width: 46px;
@@ -193,19 +184,19 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
 }
 .sidebar-inner { width: var(--sidebar-w); min-width: 280px; }
 
-/* The head is the sidebar's share of the window drag region, and on macOS it
-   is also where the native traffic lights land: tauri.macos.conf.json keeps
-   `decorations` with titleBarStyle Overlay, which draws them at the window's
-   top-left — exactly where the brand mark now sits. The reservation below is
-   UNVERIFIED: it cannot be exercised from the Windows dev machine, and needs a
-   look on a Mac before it is trusted. */
+/* The head used to reserve 28px of top padding on macOS, where
+   tauri.macos.conf.json keeps `decorations` with titleBarStyle Overlay and the
+   native traffic lights land at the window's top-left. The caption row now
+   occupies that strip on every platform, so the reservation is gone — but it
+   is UNVERIFIED for the same reason the old one was: it cannot be exercised
+   from the Windows dev machine, and needs a look on a Mac before it is
+   trusted. */
 .sb-head {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px var(--sp-3) 10px;
 }
-html[data-platform="macos"] .sb-head { padding-top: 28px; }
 .sb-collapse {
   margin-left: auto;
   width: 30px;
@@ -249,14 +240,22 @@ html[data-platform="macos"] .sb-head { padding-top: 28px; }
 .sb-item.newchat { color: var(--hue-text); font-weight: 500; }
 .sb-item.newchat svg { color: var(--hue); }
 .sb-item.newchat:hover { background: color-mix(in srgb, var(--hue) 9%, transparent); color: var(--hue-text); }
+/* Under the Claude palette the accent no longer reports anything — it is one
+   identity everywhere — so spending it on a nav row makes "New chat" read as
+   the loudest thing in the sidebar. In the reference it is plain text, and the
+   terracotta is kept for the send button and the mark. */
+html[data-palette="claude"] .sb-item.newchat { color: var(--ink-2); font-weight: 400; }
+html[data-palette="claude"] .sb-item.newchat svg { color: currentColor; }
+html[data-palette="claude"] .sb-item.newchat:hover { background: var(--card-hi); color: var(--ink); }
 
 /* ── Sidebar reveal — the way back from a collapsed sidebar ────────────── */
-/* V7 could rely on the topbar being present. With it gone, a collapsed sidebar
-   would be reachable only by hotkey, so the collapse becomes a dead end
-   without this (V9 plan D6). */
+/* Without it a collapsed sidebar is reachable only by hotkey, so the collapse
+   becomes a dead end. Offset below the caption row rather than into it: the
+   bar is window chrome and holds no app affordances, so the button floats over
+   the title strip instead — which is why `.main-title` steps aside for it. */
 .sb-reveal {
   position: fixed;
-  top: 8px;
+  top: calc(var(--titlebar-h) + 8px);
   left: 12px;
   z-index: 30;
   width: 34px;
@@ -311,6 +310,15 @@ html[data-sidebar="closed"] .sb-reveal { display: grid; }
   flex: 0 0 auto;
   opacity: .85;
 }
+/* The dot is a provenance mark, and under the Claude palette every provider
+   wears the same hue — so it reports nothing and renders as a bullet on every
+   row. Hidden rather than restyled: a mark that carries no information should
+   not take space arguing for some. The base rule above stays, so the class is
+   still styled and the Conduit palette is untouched. */
+html[data-palette="claude"] .convo-dot { display: none; }
+/* With the dot gone the row loses its left anchor, so it takes a little more
+   size and roundness to hold the line — which is also how the reference reads. */
+html[data-palette="claude"] .convo { border-radius: var(--r); padding: 8px 10px; font-size: 13.5px; }
 .convo-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .convo-meta {
   font-family: var(--font-mono);

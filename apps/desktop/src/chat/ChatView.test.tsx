@@ -69,7 +69,7 @@ vi.mock('../ipc/client', () => ({
   invokeConnectorTool: vi.fn(),
 }));
 
-import { getConversationMessages } from '../ipc/client';
+import { getConversationMessages, getMessageIdByRequest, startChatStream } from '../ipc/client';
 
 function renderChatView(overrides: {
   artifacts?: Artifact[];
@@ -336,5 +336,85 @@ describe('ChatView suggested prompts', () => {
     });
     expect(paragraph.textContent).toBe(multiLine);
     expect(paragraph.closest('.bubble')).not.toBeNull();
+  });
+});
+
+/**
+ * A turn that dies mid-flight used to strand the workspace: `onChatTurnComplete`
+ * was gated on `!errorText`, and it is the only path that resolves the pending
+ * artifact state — so the document panel kept shimmering "Generating…" forever.
+ */
+describe('ChatView failed turn cleanup', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+  });
+
+  async function sendAndFail() {
+    const onChatTurnComplete = vi.fn();
+    const onDocumentToolActivity = vi.fn();
+
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      onEvent({
+        kind: 'toolCallStart',
+        requestId: request.requestId,
+        toolCallId: 'call-1',
+        index: 0,
+        toolId: 'write_html_document',
+        name: 'write_html_document',
+      });
+      onEvent({
+        kind: 'error',
+        requestId: request.requestId,
+        error: {
+          message: 'Agent turn exceeded wall-clock budget (300s) waiting on the provider.',
+          retryable: false,
+        },
+      });
+      return { requestId: request.requestId };
+    });
+
+    render(
+      <ChatView
+        settings={baseSettings}
+        onSelectModel={vi.fn()}
+        onStatus={vi.fn()}
+        conversationId="conv-1"
+        artifacts={[]}
+        fileStateMap={{}}
+        onPromoteArtifact={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onChatTurnComplete={onChatTurnComplete}
+        onDocumentToolActivity={onDocumentToolActivity}
+      />,
+    );
+
+    const textarea = await screen.findByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: 'make me an html artifact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => expect(onChatTurnComplete).toHaveBeenCalled());
+    return { onChatTurnComplete, onDocumentToolActivity };
+  }
+
+  it('notifies the workspace even when the turn ends in an error', async () => {
+    const { onChatTurnComplete, onDocumentToolActivity } = await sendAndFail();
+
+    expect(onDocumentToolActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'start', toolName: 'write_html_document' }),
+    );
+    const state = onChatTurnComplete.mock.calls[0][0];
+    expect(state.streaming).toBe(false);
+    expect(state.error).toMatch(/wall-clock budget/);
+  });
+
+  it('hands over a turn with no tool call still claiming to run', async () => {
+    const { onChatTurnComplete } = await sendAndFail();
+
+    const state = onChatTurnComplete.mock.calls[0][0];
+    expect(state.toolCalls).toHaveLength(1);
+    expect(state.toolCalls[0].status).toBe('failed');
+    expect(state.toolCalls[0].endedAt).toBeTypeOf('number');
   });
 });

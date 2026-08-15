@@ -115,8 +115,14 @@ argument. The renderer cannot direct the shell at an arbitrary location.
 - **`reveal_path` is safe by construction.** The one shell-opening command opens
   a fixed, server-owned directory. The rule going forward: **no custom command
   may pass a renderer-supplied value to `app.shell().open(…)`** (or any other
-  plugin Rust API that bypasses the scope). Derive the target server-side, or
-  validate it is within `AppPaths`.
+  plugin Rust API that bypasses the scope) **unless that value is validated
+  first**. Derive the target server-side, validate it is within `AppPaths`, or
+  (for URLs) pass it through `validate_external_open_url`.
+- **Exception — `open_external_url`:** accepts a renderer-supplied URL string
+  and opens it in the system browser **only after** `validate_external_open_url`
+  (absolute `http`/`https`, non-empty host, no userinfo, length-capped). Raw
+  strings must never reach `shell().open`. The capability still omits
+  `shell:allow-open`.
 - **Custom commands are NOT a permission surface.** Anyone adding a new
   `#[tauri::command]` gets it auto-exposed on every window. If a command should
   be restricted, it must enforce its own authorization in the function body —

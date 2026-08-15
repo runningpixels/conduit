@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render } from '@testing-library/react';
 import { renderMarkdown } from './safeMarkdown';
 
 /// Security + structure tests for the hand-rolled safe-subset Markdown renderer.
@@ -45,6 +45,27 @@ describe('safeMarkdown security', () => {
     expect(anchor?.getAttribute('href')).toBe('https://example.com/page');
     expect(anchor?.getAttribute('target')).toBe('_blank');
     expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('calls onExternalLink and preventDefault for http(s) clicks when provided', () => {
+    const onExternalLink = vi.fn();
+    const { container } = render(
+      <>{renderMarkdown('[docs](https://example.com/page)', { onExternalLink })}</>,
+    );
+    const anchor = container.querySelector('a');
+    expect(anchor).not.toBeNull();
+    fireEvent.click(anchor!);
+    expect(onExternalLink).toHaveBeenCalledWith('https://example.com/page');
+  });
+
+  it('does not intercept mailto: when onExternalLink is provided', () => {
+    const onExternalLink = vi.fn();
+    const { container } = render(
+      <>{renderMarkdown('[mail](mailto:a@b.com)', { onExternalLink })}</>,
+    );
+    const anchor = container.querySelector('a');
+    fireEvent.click(anchor!);
+    expect(onExternalLink).not.toHaveBeenCalled();
   });
 
   it('autolinks a bare https:// URL as a safe anchor', () => {

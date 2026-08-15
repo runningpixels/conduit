@@ -66,7 +66,9 @@ fn round_outcome_with_error() {
     let outcome = RoundOutcome {
         completed_tool_calls: Vec::new(),
         finished_normally: false,
+        produced_text: false,
         error_message: Some("provider unavailable".to_string()),
+        error_forwarded: false,
         usage: None,
         completion_event: None,
     };
@@ -88,7 +90,9 @@ fn round_outcome_with_tool_calls() {
     let outcome = RoundOutcome {
         completed_tool_calls: calls.clone(),
         finished_normally: true,
+        produced_text: false,
         error_message: None,
+        error_forwarded: false,
         usage: None,
         completion_event: None,
     };
@@ -120,7 +124,9 @@ fn round_outcome_carries_a_withheld_completion() {
     let outcome = RoundOutcome {
         completed_tool_calls: Vec::new(),
         finished_normally: true,
+        produced_text: false,
         error_message: None,
+        error_forwarded: false,
         usage: None,
         completion_event: Some(completion.clone()),
     };
@@ -777,4 +783,331 @@ fn stream_manager_default_impl_works() {
     // exercise this path; this test pins the Default impl explicitly).
     let manager = StreamManager::default();
     let _ = &manager;
+}
+
+// ---------------------------------------------------------------------------
+// A turn always terminates, and only runs tools it asked for.
+//
+// These pin the two halves of a hang seen in the running app: a web-search turn
+// that showed "Continuing…" and spun for 368s against a 300s budget with zero
+// tokens, having emitted no terminal event at all.
+// ---------------------------------------------------------------------------
+
+fn call(name: &str, id: &str) -> CompletedToolCall {
+    CompletedToolCall {
+        tool_call_id: id.to_string(),
+        tool_id: Some(name.to_string()),
+        name: name.to_string(),
+        arguments: json!({}),
+    }
+}
+
+fn tool_def(name: &str) -> provider_core::schema::ToolDefinition {
+    provider_core::schema::ToolDefinition {
+        tool_id: name.to_string(),
+        name: name.to_string(),
+        description: String::new(),
+        input_schema: json!({"type": "object", "properties": {}}),
+        permission_level: None,
+        display_group: None,
+        tenant_scope: None,
+        kind: None,
+        host_config: None,
+    }
+}
+
+#[test]
+fn runs_only_tool_calls_the_request_declared() {
+    let (runnable, undeclared) = conduit_desktop::stream_manager::partition_declared_tool_calls(
+        vec![call("write_document", "c1"), call("calculator", "c2")],
+        &[tool_def("write_document")],
+    );
+    assert_eq!(runnable.len(), 1);
+    assert_eq!(runnable[0].name, "write_document");
+    assert_eq!(
+        undeclared.len(),
+        1,
+        "calculator was never offered this turn"
+    );
+    assert_eq!(undeclared[0].name, "calculator");
+}
+
+/// The live bug. OpenAI's provider-hosted search reports a completed
+/// `web_search` call; the renderer never offers `web_search` as a client tool.
+/// Executing it re-ran a search the provider had already done and produced a
+/// continuation the Responses API had to reject.
+#[test]
+fn a_provider_hosted_search_is_not_executed_locally() {
+    let (runnable, undeclared) = conduit_desktop::stream_manager::partition_declared_tool_calls(
+        vec![call("web_search", "ws_68f0c1")],
+        // What a document turn actually declares — no web_search.
+        &[tool_def("write_document"), tool_def("current_time")],
+    );
+    assert!(
+        runnable.is_empty(),
+        "a hosted search must not dispatch to the local builtin of the same name"
+    );
+    assert_eq!(undeclared.len(), 1);
+}
+
+#[test]
+fn declaring_nothing_runs_nothing() {
+    let (runnable, undeclared) = conduit_desktop::stream_manager::partition_declared_tool_calls(
+        vec![call("clipboard_read", "c1")],
+        &[],
+    );
+    assert!(
+        runnable.is_empty(),
+        "a registered builtin is not an offered one"
+    );
+    assert_eq!(undeclared.len(), 1);
+}
+
+/// Only the mid-stream error path puts an `Error` on the channel. The other
+/// four return before touching it, so the loop owes the terminal event; without
+/// it the backend goes silent and the renderer waits forever.
+#[test]
+fn a_round_error_that_was_never_forwarded_still_terminates_the_turn() {
+    let event = conduit_desktop::stream_manager::terminal_event_for_round_error(
+        "req-1",
+        "HTTP 400: no tool call for that id".to_string(),
+        false,
+    );
+    match event {
+        Some(ProviderEvent::Error { request_id, error }) => {
+            assert_eq!(request_id, "req-1");
+            assert!(
+                error.message.contains("400"),
+                "the provider's reason must survive"
+            );
+        }
+        other => panic!("expected a terminal Error, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_round_error_already_forwarded_is_not_sent_twice() {
+    assert!(
+        conduit_desktop::stream_manager::terminal_event_for_round_error(
+            "req-1",
+            "stream died".to_string(),
+            true,
+        )
+        .is_none(),
+        "the mid-stream path already delivered one; a second would be a duplicate"
+    );
+}
+
+/// The four early returns build their outcome with `..Default::default()`, so
+/// the default is what decides whether they are treated as having forwarded.
+#[test]
+fn an_unforwarded_error_is_the_default() {
+    assert!(
+        !RoundOutcome::default().error_forwarded,
+        "defaulting to true would silently reinstate the hang"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A turn that ends having produced nothing must say so.
+//
+// Dropping a provider-hosted `web_search` is correct — it is a record that the
+// provider already searched, not a request for us to search. But the loop's
+// next check reads an empty runnable list as "the assistant produced a final
+// answer", and when the round also produced no text that reading is false.
+// Observed live: the response ends `stop` after two `ws_…` search items with no
+// message item, and the user gets a search block, no answer, and no error.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_turn_whose_only_output_was_discarded_is_reported() {
+    assert!(
+        conduit_desktop::stream_manager::round_produced_nothing(
+            false,
+            &[],
+            &[call("web_search", "ws_68f0c1")],
+        ),
+        "no text and nothing runnable is not a final answer"
+    );
+}
+
+#[test]
+fn a_turn_that_answered_is_not_reported() {
+    assert!(
+        !conduit_desktop::stream_manager::round_produced_nothing(
+            true,
+            &[],
+            &[call("web_search", "ws_68f0c1")],
+        ),
+        "the model searched and then answered; that is the normal hosted-search turn"
+    );
+}
+
+/// The ordinary end of an agent turn: text, no tool calls, nothing dropped.
+#[test]
+fn a_plain_final_answer_is_not_reported() {
+    assert!(!conduit_desktop::stream_manager::round_produced_nothing(
+        true,
+        &[],
+        &[]
+    ));
+}
+
+/// A round with work still to do is not an empty turn, whatever else it did.
+#[test]
+fn a_round_with_runnable_tools_is_not_reported() {
+    assert!(
+        !conduit_desktop::stream_manager::round_produced_nothing(
+            false,
+            &[call("write_document", "c1")],
+            &[call("web_search", "ws_1")],
+        ),
+        "the turn continues; the document tool has not run yet"
+    );
+}
+
+/// A silent round that asked for nothing at all is a different event, and one
+/// this message could not honestly explain.
+#[test]
+fn a_silent_round_that_dropped_nothing_is_left_alone() {
+    assert!(!conduit_desktop::stream_manager::round_produced_nothing(
+        false,
+        &[],
+        &[]
+    ));
+}
+
+/// "Something went wrong" is not actionable. The tool whose output was
+/// discarded is the one fact that explains the blank answer.
+#[test]
+fn the_empty_turn_message_names_the_discarded_tool() {
+    let msg = conduit_desktop::stream_manager::empty_turn_message(&[
+        call("web_search", "ws_1"),
+        call("web_search", "ws_2"),
+    ]);
+    assert!(msg.contains("web_search"), "got: {msg}");
+    assert_eq!(
+        msg.matches("web_search").count(),
+        1,
+        "two calls to one tool is one name, not a repeated list: {msg}"
+    );
+    assert!(
+        msg.contains("Settings"),
+        "the user needs a way out, not just a diagnosis: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Document-create thrash clamps (create + search turns)
+// ---------------------------------------------------------------------------
+
+fn write_html_create(id: &str) -> CompletedToolCall {
+    CompletedToolCall {
+        tool_call_id: id.to_string(),
+        tool_id: Some("write_html_document".to_string()),
+        name: "write_html_document".to_string(),
+        arguments: json!({ "html": "<p>hi</p>", "title": "News" }),
+    }
+}
+
+fn write_html_upsert(id: &str, artifact_id: &str) -> CompletedToolCall {
+    CompletedToolCall {
+        tool_call_id: id.to_string(),
+        tool_id: Some("write_html_document".to_string()),
+        name: "write_html_document".to_string(),
+        arguments: json!({
+            "html": "<p>hi</p>",
+            "artifact_id": artifact_id,
+        }),
+    }
+}
+
+#[test]
+fn parallel_new_document_creates_keep_only_the_first() {
+    use conduit_desktop::stream_manager::{
+        classify_document_create_clamps, CreateClampAction,
+    };
+    let actions = classify_document_create_clamps(
+        &[
+            write_html_create("c1"),
+            write_html_create("c2"),
+            write_html_create("c3"),
+            call("current_time", "t1"),
+        ],
+        0,
+    );
+    assert_eq!(
+        actions,
+        vec![
+            CreateClampAction::Run,
+            CreateClampAction::RejectParallel,
+            CreateClampAction::RejectParallel,
+            CreateClampAction::Run,
+        ]
+    );
+}
+
+#[test]
+fn write_with_artifact_id_is_not_a_parallel_create() {
+    use conduit_desktop::stream_manager::{
+        classify_document_create_clamps, is_new_document_create, CreateClampAction,
+    };
+    assert!(!is_new_document_create(&write_html_upsert("u1", "art-1")));
+    let actions = classify_document_create_clamps(
+        &[write_html_create("c1"), write_html_upsert("u1", "art-1")],
+        0,
+    );
+    assert_eq!(
+        actions,
+        vec![CreateClampAction::Run, CreateClampAction::Run]
+    );
+}
+
+#[test]
+fn turn_create_cap_rejects_further_creates() {
+    use conduit_desktop::stream_manager::{
+        classify_document_create_clamps, CreateClampAction, MAX_DOCUMENT_CREATES_PER_TURN,
+    };
+    assert_eq!(MAX_DOCUMENT_CREATES_PER_TURN, 2);
+    let actions = classify_document_create_clamps(&[write_html_create("c1")], 2);
+    assert_eq!(actions, vec![CreateClampAction::RejectTurnCap]);
+
+    // One create already done: allow one more this round, then parallel siblings reject.
+    let actions = classify_document_create_clamps(
+        &[write_html_create("c1"), write_html_create("c2")],
+        1,
+    );
+    assert_eq!(
+        actions,
+        vec![
+            CreateClampAction::Run,
+            CreateClampAction::RejectParallel,
+        ]
+    );
+}
+
+#[test]
+fn after_create_write_tools_are_stripped_from_continuations() {
+    use conduit_desktop::stream_manager::narrow_tools_after_document_create;
+    let narrowed = narrow_tools_after_document_create(&[
+        tool_def("write_html_document"),
+        tool_def("edit_html_document"),
+        tool_def("current_time"),
+        tool_def("export_document"),
+        tool_def("write_markdown_document"),
+    ]);
+    let names: Vec<&str> = narrowed.iter().map(|t| t.name.as_str()).collect();
+    assert!(!names.contains(&"write_html_document"));
+    assert!(!names.contains(&"write_markdown_document"));
+    assert!(names.contains(&"edit_html_document"));
+    assert!(names.contains(&"current_time"));
+    assert!(names.contains(&"export_document"));
+}
+
+#[test]
+fn tool_output_created_flag_detects_new_artifacts() {
+    use conduit_desktop::stream_manager::tool_output_created_document;
+    assert!(tool_output_created_document(&json!({ "ok": true, "created": true })));
+    assert!(!tool_output_created_document(&json!({ "ok": true, "created": false })));
+    assert!(!tool_output_created_document(&json!({ "ok": true })));
 }

@@ -24,7 +24,10 @@ import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
-import { webSearchDeveloperPromptFor } from './webSearchDeveloperPrompt';
+import {
+  webSearchCreateDeveloperPromptFor,
+  webSearchDeveloperPromptFor,
+} from './webSearchDeveloperPrompt';
 import {
   buildArtifactEditDeveloperPrompt,
   resolveFollowUpArtifactContext,
@@ -35,8 +38,11 @@ import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
+  markInterrupted,
+  toolCallAwaitsRuntimeFinish,
   type AssistantStreamState,
 } from './streamState';
+import { isWebSearchToolCall } from './SearchCallBlock';
 import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
 import { mergeProviderUsage } from '../lib/contextWindows';
 import { dayRuleLabel, sameCalendarDay } from '../lib/dayGroup';
@@ -101,6 +107,9 @@ interface ChatViewProps {
   /// M2: the conversation's artifacts, for in-chat reference chips + promote
   /// affordances at the end of each assistant turn.
   artifacts: Artifact[];
+  /// Document currently open in the panel — preferred when resolving edit
+  /// follow-up context ("add urls to the document").
+  activeArtifact?: Artifact | null;
   /// M2: per-artifact file-state, for the chip state dots.
   fileStateMap: Record<string, FileState>;
   /// M2: promote a detected fenced-block candidate to an artifact (App owns the
@@ -222,7 +231,11 @@ export function buildProviderRequest(
     !isCreationIntent && !infoDevPrompt && followUpArtifact
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
-  const webSearchDevPrompt = webSearch ? webSearchDeveloperPromptFor() : undefined;
+  const webSearchDevPrompt = webSearch
+    ? isCreationIntent
+      ? webSearchCreateDeveloperPromptFor()
+      : webSearchDeveloperPromptFor()
+    : undefined;
   const developerPrompt =
     [infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') || undefined;
   const systemPrompt =
@@ -329,6 +342,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onStatus,
     conversationId,
     artifacts,
+    activeArtifact = null,
     fileStateMap,
     onPromoteArtifact,
     onOpenArtifact,
@@ -528,6 +542,18 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const next = applyConnectorRuntimeEvent(base, event);
     streamStateRef.current = next;
     setActiveStream(next);
+
+    // A document write that failed at runtime ends the panel's generating state
+    // now rather than at end of turn — otherwise the skeleton keeps shimmering
+    // over a write that already died.
+    if (event.kind === 'toolCallFinished' && event.status === 'failed') {
+      const toolName =
+        providerToolByCallIdRef.current[event.tool_call_id] ??
+        next.toolCalls.find((tc) => tc.toolCallId === event.tool_call_id)?.name;
+      if (toolName && isDocumentContentTool(toolName)) {
+        onDocumentToolActivity?.({ phase: 'error', toolName, error: event.error ?? undefined });
+      }
+    }
   }
 
   function recordRuntimeFailure(
@@ -599,7 +625,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       const hasUnresolvedComplete = (() => {
         const state = streamStateRef.current;
         if (!state) return false;
-        return state.toolCalls.some((tc) => tc.complete && !tc.status);
+        // Hosted web_search completes on the provider with no runtime finish —
+        // `toolCallAwaitsRuntimeFinish` excludes it so we do not burn the 30s
+        // deadline after the model already said "Done".
+        return state.toolCalls.some(toolCallAwaitsRuntimeFinish);
       })();
       if (!hasPending && !hasUnresolvedComplete) break;
       await new Promise((resolve) => window.setTimeout(resolve, 50));
@@ -627,6 +656,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       trimmed,
       artifacts,
       getArtifact,
+      activeArtifact,
     );
     const request = buildProviderRequest(
       settings,
@@ -700,9 +730,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           // Phase A: tool execution is now owned by the Rust `AgentLoop` inside
           // `start_chat_stream`. The UI no longer hands off tool calls via IPC.
           // The `toolCallComplete` event is still rendered for the tool card.
-          // Track this so `waitForPendingRuntimeCalls` blocks until the matching
-          // `toolCallFinished` (with `status`) arrives from the runtime.
-          pendingRuntimeCallsRef.current.add(event.toolCallId);
+          // Track client tools so `waitForPendingRuntimeCalls` blocks until the
+          // matching `toolCallFinished` arrives. Hosted web_search never gets
+          // one — the provider already ran it — so skip those ids.
+          const completedCall = next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
+          if (!completedCall || !isWebSearchToolCall(completedCall)) {
+            pendingRuntimeCallsRef.current.add(event.toolCallId);
+          }
           const toolName =
             providerToolByCallIdRef.current[event.toolCallId] ??
             next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId)?.name;
@@ -737,8 +771,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
 
     try {
       await streamDone;
-      onStatus(makeStatus('Waiting for tool results…', 'active', 'chat'));
-      await waitForPendingRuntimeCalls(request.requestId);
+      // Only wait on the runtime when the turn ended cleanly. After a terminal
+      // error the agent loop has already exited, so the `toolCallFinished`
+      // events this polls for will never arrive and it would burn its full 30s
+      // deadline with the UI still reading as busy.
+      if (!terminalError) {
+        onStatus(makeStatus('Waiting for tool results…', 'active', 'chat'));
+        await waitForPendingRuntimeCalls(request.requestId);
+      }
       onStatus(makeStatus(terminalError ?? 'Stream complete', terminalError ? 'error' : 'success', 'chat'));
     } catch (error) {
       console.error('[startChatStream] rejected:', error);
@@ -780,9 +820,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             recordSessionTurnProvider(turnId, settings.activeProvider, settings.activeModel);
 
           })();
-          if (!errorText && onChatTurnComplete) {
-            onChatTurnComplete({ ...finalState, streaming: false, error: errorText });
-          }
+          // Notify on every ended turn, errors included. This is the only path
+          // that resolves the workspace's pending-artifact state; gating it on
+          // success left the document panel shimmering "Generating…" forever
+          // after a failure. The handler branches on the state it is given.
+          onChatTurnComplete?.({ ...finalState, streaming: false, error: errorText });
           // Warn when the user asked for an artifact but none was produced.
           const docToolsSucceeded = hadSuccessfulDocumentToolCalls(finalState);
           if (looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded) {
@@ -840,6 +882,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // render live here — clear and reload. The in-flight `handleSend` await
     // (`streamDone`) is left pending; its finally is a no-op once the request
     // id no longer matches, and a new send overwrites `streamStateRef`.
+    // Notify first, though: that finally being a no-op is exactly why nothing
+    // used to clear the workspace's pending-artifact state on a cancel.
+    const cancelledState = streamStateRef.current;
+    if (cancelledState) onChatTurnComplete?.(markInterrupted(cancelledState));
     activeRequestRef.current = null;
     streamStateRef.current = null;
     setActiveStream(null);

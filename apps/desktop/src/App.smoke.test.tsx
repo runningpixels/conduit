@@ -119,6 +119,7 @@ describe('App shell', () => {
     );
 
     expect(document.querySelector('.app'), 'the app frame').not.toBeNull();
+    expect(document.querySelector('.titlebar'), 'the caption row').not.toBeNull();
     expect(document.querySelector('.sidebar'), 'the sidebar column').not.toBeNull();
     expect(document.querySelector('.main-head'), 'the title strip').not.toBeNull();
   });

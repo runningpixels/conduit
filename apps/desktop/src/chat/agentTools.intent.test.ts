@@ -18,12 +18,15 @@ describe('selectBuiltinDocumentTools', () => {
     expect(generalNames).not.toContain('write_html_document');
   });
 
-  it('exposes write + utility tools for create intent', () => {
+  it('exposes write + edit + utility tools for create intent', () => {
     const tools = selectBuiltinDocumentTools('create');
     const names = tools.map((tool) => tool.name);
     expect(names).toContain('write_html_document');
     expect(names).toContain('write_markdown_document');
     expect(names).toContain('write_text_document');
+    expect(names).toContain('edit_html_document');
+    expect(names).toContain('edit_markdown_document');
+    expect(names).toContain('edit_text_document');
     expect(names).toContain('export_document');
     expect(names).toContain('current_time');
     expect(names).toContain('calculator');

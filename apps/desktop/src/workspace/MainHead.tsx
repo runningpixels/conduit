@@ -17,27 +17,18 @@ interface MainHeadProps {
 }
 
 /**
- * V9 title strip (spec §2.1, §4). The V7/V8 top bar is gone: it carried a mark
- * that already lives in the sidebar head and an omnibox that was a second door
- * to the same ⌘K palette. What replaces it is 46px inside the centre column —
- * so the sidebar and the artifact panel now run the full height of the window —
- * holding the chat's name, the theme and panel toggles, and otherwise empty
- * drag region.
+ * Title strip (spec §2.1, §4). 46px inside the centre column — so the sidebar
+ * and the artifact panel run the full height beneath the caption row — holding
+ * the chat's name and the theme and panel toggles.
  *
- * Dragging is `data-tauri-drag-region`, never `-webkit-app-region`: the latter
- * is an Electron property that WebView2 ignores. The V9 proposal's CSS uses it
- * throughout and it would silently do nothing here.
- *
- * The attribute has to repeat on `.main-title`, not just the <header>. Tauri
- * hit-tests the element under the cursor and does not walk up to an ancestor
- * carrying it, so a plain child swallows the drag. The title is the widest
- * thing in the strip — a long chat name fills nearly all of it — so without
- * this the title bar is mostly dead to the pointer. Found by dragging the real
- * shell; every static gate passed while it was broken, because the attribute
- * was present on the header exactly as specified.
- *
- * Buttons are the deliberate exception: an interactive descendant takes its own
- * clicks, so the toggles need no opt-out.
+ * It is deliberately *not* a drag region. It was one while the app had no
+ * caption row, and that arrangement was fragile: Tauri hit-tests the element
+ * directly under the cursor and does not walk up to an ancestor carrying
+ * `data-tauri-drag-region`, so every non-interactive child needed the attribute
+ * too. `.main-title` did not have it, and since a long chat name stretches the
+ * span across nearly the whole strip, most of the title bar was dead to the
+ * pointer — while every static gate passed, because the header itself was
+ * tagged exactly as specified. `TitleBar` owns dragging outright now.
  */
 export function MainHead({
   title,
@@ -53,14 +44,12 @@ export function MainHead({
     : 'Toggle context panel';
 
   return (
-    <header className="main-head" data-tauri-drag-region>
-      <span className="main-title" title={title} data-tauri-drag-region>
+    <header className="main-head">
+      <span className="main-title" title={title}>
         {title ?? 'New chat'}
       </span>
 
-      {/* Tagged for the same reason as .main-title: the gaps between the
-          toggles are part of the strip and should drag with it. */}
-      <div className="head-actions" data-tauri-drag-region>
+      <div className="head-actions">
         <button
           className="iconbtn"
           type="button"

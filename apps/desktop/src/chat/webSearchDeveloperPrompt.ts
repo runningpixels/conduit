@@ -7,3 +7,17 @@ export function webSearchDeveloperPromptFor(): string {
     'Do not use fenced code blocks unless the user explicitly asked for code or a document artifact.',
   ].join(' ');
 }
+
+/**
+ * Extra restraint when the turn is both a document-creation request and a
+ * web-search turn. Without this, models binge-search and spawn many write_*
+ * calls until max_steps kills the turn.
+ */
+export function webSearchCreateDeveloperPromptFor(): string {
+  return [
+    'The user asked for a document artifact with live information.',
+    'Search sparingly to gather the brief, then call write_*_document once with the full content embedded.',
+    'If you need to fix the document, use edit_*_document with the returned artifact_id — do not create another document.',
+    'When the document is done, stop: a short confirmation and no further tool calls.',
+  ].join(' ');
+}

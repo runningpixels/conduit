@@ -102,6 +102,7 @@ fn main() {
             reveal_path,
             reveal_artifacts_dir,
             reveal_artifact,
+            open_external_url,
             search_messages,
             // Competitive Feature: usage analytics
             get_usage_summary,

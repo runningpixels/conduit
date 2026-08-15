@@ -1,10 +1,11 @@
 /**
  * Shell contract guards — the frameless window's survival kit.
  *
- * V9 deletes the top bar. That bar carried two things the OS is not providing,
- * because `tauri.conf.json` sets `decorations: false` on Windows and Linux:
- * the drag region, and the minimise/maximise/close cluster. Lose either and the
- * window cannot be moved or closed at all.
+ * `tauri.conf.json` sets `decorations: false` on Windows and Linux, so the app
+ * supplies two things the OS is not providing: the drag region, and the
+ * minimise/maximise/close cluster. Lose either and the window cannot be moved
+ * or closed at all. Both now live in one place — `.titlebar`, the caption row
+ * that is the first row of the `.app` grid — which is what these guards pin.
  *
  * Nothing else in the toolchain can see that failure:
  *   - `tsc -b` type-checks an attribute it knows nothing about.
@@ -58,33 +59,35 @@ function openingTagFor(cls: string): { file: string; tag: string } | null {
 }
 
 /**
- * Both surfaces that reach the top of the window carry the drag region: the
- * title strip owns the centre column's top edge, `.sb-head` the sidebar's.
- * Tauri stops the drag at interactive descendants, so buttons inside them keep
- * their clicks without opting out.
+ * The caption row is the window's only drag surface. Tauri stops the drag at
+ * interactive descendants, so the control buttons inside it keep their clicks
+ * without opting out.
  */
 describe('window drag region', () => {
-  it.each(['main-head', 'sb-head'])('.%s carries data-tauri-drag-region', (cls) => {
+  it.each(['titlebar'])('.%s carries data-tauri-drag-region', (cls) => {
     const found = openingTagFor(cls);
     expect(found, `no element renders className "${cls}"`).not.toBeNull();
     expect(found!.tag, `${cls} in ${found!.file}`).toContain('data-tauri-drag-region');
   });
 
   /**
-   * ...and so does every non-interactive child inside them.
+   * ...and so must every non-interactive child added inside it.
    *
    * Tauri hit-tests the element directly under the cursor; it does not walk up
    * to an ancestor carrying the attribute. So a plain <span> label inside the
    * drag region swallows the drag over its own box. `.main-title` shipped that
-   * way and made most of the title bar dead, because a long chat name stretches
-   * the span across nearly the whole strip — while every static gate passed,
-   * since the header itself was tagged exactly as the spec asks. Only dragging
-   * the packaged shell surfaced it.
+   * way back when the title strip was the drag region, and made most of it
+   * dead, because a long chat name stretches the span across nearly the whole
+   * strip — while every static gate passed, since the header itself was tagged
+   * exactly as the spec asks. Only dragging the packaged shell surfaced it.
+   *
+   * The bar holds nothing but `<WindowControls />` today, so this passes
+   * trivially; it is here to stay true when something is added to it.
    *
    * Buttons are excluded: an interactive descendant is *supposed* to take its
    * own clicks instead of dragging.
    */
-  it.each(['main-head', 'sb-head'])('every non-interactive child of .%s carries it too', (cls) => {
+  it.each(['titlebar'])('every non-interactive child of .%s carries it too', (cls) => {
     const found = openingTagFor(cls);
     const src = readFileSync(join(repoRoot, found!.file), 'utf8');
     const start = src.indexOf(found!.tag);
@@ -124,11 +127,15 @@ describe('window drag region', () => {
 });
 
 describe('window controls', () => {
-  // Rendered once, at the app root: the cluster is position:fixed, so a second
-  // instance would stack invisibly on the first rather than fail loudly.
+  // Rendered from exactly one place — `TitleBar` — so the caption row is the
+  // single owner of the cluster. `<TitleBar />` itself is used more than once
+  // (the workspace plus the two pre-workspace routes), which is why the count
+  // is asserted here and not on the bar.
   it('are mounted exactly once in the tree', () => {
     const uses = tsxFiles.flatMap((f) => {
-      const src = readFileSync(f, 'utf8');
+      // Comments stripped first: this counts renders, and TitleBar's own doc
+      // block names the tag while explaining why the bar is its only home.
+      const src = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
       return Array.from(src.matchAll(/<WindowControls\s*\/?>/g)).map(
         () => relative(repoRoot, f).replace(/\\/g, '/'),
       );
@@ -136,14 +143,15 @@ describe('window controls', () => {
     expect(uses).toHaveLength(1);
   });
 
-  // With no bar to sit in, the cluster is only reachable if it is pinned to the
-  // window's corner itself.
-  it('are pinned to the window corner', () => {
-    const rule = allCss
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .match(/(^|\})\s*\.wincontrols\s*\{([^}]*)\}/);
-    expect(rule, 'no `.wincontrols { … }` rule found').not.toBeNull();
-    expect(rule?.[2] ?? '').toMatch(/position\s*:\s*fixed/);
+  // ...and that one place is inside the caption row. Rendering them anywhere
+  // else puts the window's only close affordance over app content again.
+  it('are rendered inside the caption row', () => {
+    const found = openingTagFor('titlebar');
+    expect(found, 'nothing renders .titlebar').not.toBeNull();
+    const src = readFileSync(join(repoRoot, found!.file), 'utf8');
+    const start = src.indexOf(found!.tag);
+    const block = src.slice(start, src.indexOf('</div>', start));
+    expect(block, `.titlebar in ${found!.file}`).toMatch(/<WindowControls\s*\/?>/);
   });
 
   // All three window operations must stay reachable; a cluster that lost
@@ -167,5 +175,35 @@ describe('collapsed sidebar', () => {
     expect(allCss.replace(/\/\*[\s\S]*?\*\//g, '')).toMatch(
       /html\[data-sidebar="closed"\]\s+\.sb-reveal\s*\{[^}]*display\s*:\s*grid/,
     );
+  });
+});
+
+/**
+ * The caption row has to be a real, non-zero row of the `.app` grid.
+ *
+ * This is what replaced the previous arrangement, where the cluster floated
+ * `position: fixed` over the corner and three separate rules made the title
+ * strip and the artifact panel dodge it. If the row collapses — a dropped
+ * `grid-template-rows`, a `--titlebar-h` that resolves to nothing — the buttons
+ * are drawn on top of app content again, which nothing else in the toolchain
+ * can see.
+ */
+describe('caption row', () => {
+  const css = allCss.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('is the first row of the app grid', () => {
+    expect(css).toMatch(/\.app\s*\{[^}]*grid-template-rows:\s*var\(--titlebar-h\)/);
+  });
+
+  it('is sized by --titlebar-h', () => {
+    const rule = css.match(/(^|\})\s*\.titlebar\s*\{([^}]*)\}/);
+    expect(rule, 'no `.titlebar { … }` rule found').not.toBeNull();
+    expect(rule?.[2] ?? '').toMatch(/height:\s*var\(--titlebar-h\)/);
+  });
+
+  it('reserves a non-zero height', () => {
+    const declared = css.match(/--titlebar-h:\s*([^;]+);/);
+    expect(declared, '--titlebar-h is not declared in the token layer').not.toBeNull();
+    expect(declared![1].trim()).toMatch(/^[1-9]\d*px$/);
   });
 });

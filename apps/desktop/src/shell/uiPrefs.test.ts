@@ -12,11 +12,14 @@ import {
   applyUiPrefs,
   readExpandedStatus,
   writeExpandedStatus,
+  readPalette,
+  writePalette,
 } from './uiPrefs';
 
 describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
   beforeEach(() => {
     localStorage.clear();
+    document.documentElement.removeAttribute('data-palette');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
@@ -55,20 +58,39 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     localStorage.setItem('conduit:v7-reduce-motion', '1');
     localStorage.setItem('conduit:v7-show-reasoning', 'true');
     localStorage.setItem('conduit:v7-send-with', 'shift');
+    localStorage.setItem('conduit:v9-palette', 'anthropic');
+    expect(readPalette()).toBe('terra');
     expect(readProviderColour()).toBe('on');
     expect(readReduceMotion()).toBe('off');
     expect(readShowReasoning()).toBe('off');
     expect(readSendWith()).toBe('enter');
   });
 
+  it('palette defaults to terra and applies the html attribute', () => {
+    expect(readPalette()).toBe('terra');
+    writePalette('claude');
+    expect(readPalette()).toBe('claude');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('claude');
+    writePalette('terra');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
+  });
+
+  it('migrates stored conduit palette to terra', () => {
+    localStorage.setItem('conduit:v9-palette', 'conduit');
+    expect(readPalette()).toBe('terra');
+  });
+
   it('applyUiPrefs sets every document attribute idempotently', () => {
+    writePalette('claude');
     writeProviderColour('off');
     writeReduceMotion('on');
     writeExpandedStatus('on');
+    document.documentElement.removeAttribute('data-palette');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
     applyUiPrefs();
+    expect(document.documentElement.getAttribute('data-palette')).toBe('claude');
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
     expect(document.documentElement.getAttribute('data-expanded-status')).toBe('on');
@@ -102,5 +124,37 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(normalized).toContain(
       'html[data-provider-colour="off"] [data-provider] {\n  --hue: var(--ink-2);',
     );
+  });
+
+  /**
+   * Three rules now compete for --hue at near-equal specificity, and two of the
+   * three pairings are settled by source order alone. Order is therefore a
+   * contract, not a formatting detail.
+   */
+  it('orders the claude pin after the provider hues and before the off switch', () => {
+    const css = readFileSync(`${process.cwd()}/../../packages/ui/src/tokens.css`, 'utf8');
+    const hue = css.indexOf('[data-provider="anthropic"]');
+    const pin = css.indexOf('html[data-palette="claude"] [data-provider]');
+    const off = css.indexOf('html[data-provider-colour="off"] [data-provider]');
+    expect(pin).toBeGreaterThan(-1);
+    // (0,2,1) beats the provider rules' (0,1,0)/(0,2,0) outright, but the rule
+    // still has to exist after them to read as intentional.
+    expect(pin).toBeGreaterThan(hue);
+    // Equal specificity with the off switch, so this ordering is the only thing
+    // making "provider colour: off" beat the palette's accent.
+    expect(off).toBeGreaterThan(pin);
+  });
+
+  /**
+   * <html> carries data-theme, data-provider and data-provider-colour at once.
+   * With only the single-member selector, [data-theme="light"][data-provider=x]
+   * at (0,2,0) outranked the off switch at (0,1,1), so in light mode everything
+   * reading --hue from <html> — composer focus ring, .btn.primary, the focus
+   * outline via --ring-color — stayed tinted with the toggle off.
+   */
+  it('neutralizes the html-level hue at a specificity light mode cannot beat', () => {
+    const css = readFileSync(`${process.cwd()}/../../packages/ui/src/tokens.css`, 'utf8')
+      .replace(/\r\n/g, '\n');
+    expect(css).toContain('html[data-provider-colour="off"][data-provider]');
   });
 });

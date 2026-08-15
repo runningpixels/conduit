@@ -94,6 +94,7 @@ function renderSheet(overrides: { initialSection?: SettingsSection } = {}) {
 describe('SettingsSheet', () => {
   beforeEach(() => {
     localStorage.clear();
+    document.documentElement.removeAttribute('data-palette');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
   });

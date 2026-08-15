@@ -14,6 +14,16 @@ function looksLikeDocumentCapabilityQuestion(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (!trimmed.endsWith('?')) return false;
   if (!/^(can you|could you|do you|what|which|how)\b/i.test(trimmed)) return false;
+  // Concrete revision asks ("can you add urls to the document?") are edit
+  // follow-ups. Capability questions talk about formats/abilities without an
+  // action verb that mutates content — e.g. "can you edit markdown?".
+  if (
+    /\b(add|remove|update|change|modify|revise|rewrite|adjust|improve|fix|tweak|make\s+it|turn\s+it|convert)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
   if (/\b(header|title|section|footer|color|style|page|body|dark\s*mode|light\s*mode)\b/i.test(trimmed)) {
     return false;
   }

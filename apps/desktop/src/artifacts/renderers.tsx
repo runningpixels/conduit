@@ -22,11 +22,17 @@ export function PlainTextRenderer({ text, styledPreview = true }: PlainTextRende
 export interface MarkdownRendererProps {
   source: string;
   styledPreview?: boolean;
+  /** When set, http(s) clicks are handed to the parent (confirm + system browser). */
+  onExternalLink?: (url: string) => void;
 }
 
 /// Markdown → safe-subset React nodes (see `markdown/safeMarkdown.ts`).
-export function MarkdownRenderer({ source, styledPreview = true }: MarkdownRendererProps) {
-  return <div className={`artifact-markdown scroll${styledPreview ? ' styled' : ''}`}>{renderMarkdown(source)}</div>;
+export function MarkdownRenderer({ source, styledPreview = true, onExternalLink }: MarkdownRendererProps) {
+  return (
+    <div className={`artifact-markdown scroll${styledPreview ? ' styled' : ''}`}>
+      {renderMarkdown(source, onExternalLink ? { onExternalLink } : undefined)}
+    </div>
+  );
 }
 
 export interface CodeRendererProps {

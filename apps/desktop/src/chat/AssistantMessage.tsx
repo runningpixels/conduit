@@ -127,6 +127,14 @@ export function AssistantMessage({
   const elapsed = useLiveElapsed(state.streaming);
   const tokenCount = Math.round(text.length / 4);
 
+  // The caret belongs to whatever is last in the turn. It rides the end of the
+  // prose in the common no-tool case, and moves down to the live tail as soon
+  // as tool cards render below the text — otherwise the cursor would sit above
+  // content that is still arriving. Only the *last* block ever gets it; passing
+  // `streaming` to every block drew one caret per block.
+  const producingText = state.blocks.some((b) => b.content.length > 0);
+  const proseCaretVisible = state.streaming && producingText && grouped.length === 0;
+
   // Artifacts already shown as a card inside the message body. Without this the
   // same artifact appears twice in one turn — once where it was produced and
   // again in the end-of-turn strip.
@@ -188,33 +196,13 @@ export function AssistantMessage({
           cost={state.searchCost}
         />
       )}
-      {/* Show the thinking indicator across the whole streaming lifecycle whenever
-          the assistant isn't actively emitting text — including the tool-execution
-          gap and the post-tool "reviewing results" pause before the next text delta.
-          Once real text starts streaming, the .streaming caret takes over. */}
-      {(() => {
-        const producingText = state.blocks.some((b) => b.content.length > 0);
-        const thinkingVisible = state.streaming && !producingText;
-        return (
-          <ThinkingIndicator
-            modelId={modelId}
-            phase={state.agentPhase}
-            visible={thinkingVisible}
-          />
-        );
-      })()}
-      {/* Trailing caret shown while streaming with no text yet, paired with the
-          thinking dots above so the turn reads as alive before the first delta. */}
-      {state.streaming && state.blocks.every((b) => b.content.length === 0) && (
-        <span className="streaming thinking-trailing" aria-hidden="true" />
-      )}
       {state.blocks.length > 0 ? (
-        state.blocks.map((block) => (
+        state.blocks.map((block, i) => (
           <ChatProse
             key={block.blockId}
             content={block.content}
             citations={block.citations}
-            streaming={state.streaming}
+            streaming={proseCaretVisible && i === state.blocks.length - 1}
             messageId={messageId}
             artifacts={artifacts}
             fileStateMap={fileStateMap}
@@ -226,7 +214,7 @@ export function AssistantMessage({
       ) : (
         <ChatProse
           content={text}
-          streaming={state.streaming}
+          streaming={proseCaretVisible}
           messageId={messageId}
           artifacts={artifacts}
           fileStateMap={fileStateMap}
@@ -245,6 +233,24 @@ export function AssistantMessage({
         ) : (
           <ToolCallBlock key={entry.toolCallId} toolCall={entry} />
         ),
+      )}
+      {/* Live tail — the single "still working" affordance, always the last node
+          of the turn. It used to sit above the prose and the tool cards, so new
+          cards kept appearing *below* the cursor while the turn ran and the
+          frontier of generation read as somewhere in the middle. The dots +
+          phase label ("Continuing…") show whenever the assistant isn't emitting
+          text; the caret shows for the whole streaming lifecycle unless the
+          prose is carrying it (see `proseCaretVisible`). `state.error` implies
+          `streaming: false`, so the two never render together. */}
+      {state.streaming && (
+        <div className="turn-live-tail">
+          <ThinkingIndicator
+            modelId={modelId}
+            phase={state.agentPhase}
+            visible={!producingText}
+          />
+          {!proseCaretVisible && <span className="streaming thinking-trailing" aria-hidden="true" />}
+        </div>
       )}
       {state.error && <p className="error-text">{state.error}</p>}
       <UsageSummary usage={state.usage} searchCost={state.searchCost} />

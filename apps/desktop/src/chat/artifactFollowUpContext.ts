@@ -109,16 +109,29 @@ export function resolveInlineDocumentFromHistory(
   return undefined;
 }
 
-/** Walk assistant turns (newest first) and resolve the latest document artifact id. */
+/** Walk assistant turns (newest first) and resolve the latest document artifact id.
+ *  When the document panel has an open document, prefer that over history. */
 export function resolveRecentDocumentArtifactId(
   history: ChatTurnForContext[],
   listed: Artifact[],
+  preferredArtifactId?: string | null,
 ): string | undefined {
+  if (preferredArtifactId) {
+    const preferred = listed.find((a) => a.id === preferredArtifactId && isDocumentArtifact(a));
+    if (preferred) return preferred.id;
+  }
+
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const turn = history[i];
     if (turn.role !== 'assistant' || !turn.streamState) continue;
     const id = resolveDocumentArtifactId(turn.streamState, listed);
     if (id) return id;
+  }
+
+  if (preferredArtifactId) {
+    // Panel selection can be ahead of the listed strip; still prefer it so
+    // getArtifact can load the open document.
+    return preferredArtifactId;
   }
 
   const doc = listed.find((a) => isDocumentArtifact(a));
@@ -194,23 +207,37 @@ export type GetArtifactFn = (artifactId: string) => Promise<Artifact | null>;
 /**
  * Resolve follow-up artifact context for the next provider request.
  * Returns undefined when no artifact should be injected.
+ *
+ * `preferredArtifact` is the document currently open in the panel — when the
+ * user asks to revise "the document", that is the one in scope.
  */
 export async function resolveFollowUpArtifactContext(
   history: ChatTurnForContext[],
   prompt: string,
   listed: Artifact[],
   getArtifact: GetArtifactFn,
+  preferredArtifact?: Artifact | null,
 ): Promise<FollowUpArtifactContext | undefined> {
-  const artifactId = resolveRecentDocumentArtifactId(history, listed);
+  const preferredId =
+    preferredArtifact && isDocumentArtifact(preferredArtifact)
+      ? preferredArtifact.id
+      : undefined;
+  const artifactId = resolveRecentDocumentArtifactId(history, listed, preferredId);
   if (!shouldIncludeArtifactFollowUpContext(prompt, history, artifactId)) {
     return undefined;
   }
 
   const listedRow = artifactId ? listed.find((a) => a.id === artifactId) : undefined;
-  const kind = listedRow && isDocumentArtifact(listedRow) ? listedRow.kind : undefined;
+  const preferredRow =
+    preferredArtifact && preferredArtifact.id === artifactId && isDocumentArtifact(preferredArtifact)
+      ? preferredArtifact
+      : undefined;
+  const kind =
+    (preferredRow && isDocumentArtifact(preferredRow) ? preferredRow.kind : undefined) ??
+    (listedRow && isDocumentArtifact(listedRow) ? listedRow.kind : undefined);
 
   let resolvedKind: 'html' | 'markdown' | 'text' | undefined = kind;
-  let title = listedRow?.title;
+  let title = preferredRow?.title ?? listedRow?.title;
   let content: string | undefined;
 
   if (artifactId) {
@@ -222,6 +249,11 @@ export async function resolveFollowUpArtifactContext(
         content = full.contentText;
       }
     }
+  }
+
+  if (!content && preferredRow && typeof preferredRow.contentText === 'string' && preferredRow.contentText.length > 0) {
+    content = preferredRow.contentText;
+    if (!resolvedKind) resolvedKind = preferredRow.kind;
   }
 
   if (!content) {

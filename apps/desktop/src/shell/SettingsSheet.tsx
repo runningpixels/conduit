@@ -3,7 +3,7 @@
  * a navigation destination: 186px nav + scrolling main, six sections.
  *
  * V9 dissolves Advanced. Settings-backed sections auto-save (useAutoSave);
- * renderer-only prefs (provider colour, reduce motion, show reasoning,
+ * renderer-only prefs (palette, provider colour, reduce motion, show reasoning,
  * send-with, export metadata, expanded status) persist to localStorage via
  * uiPrefs.
  */
@@ -318,7 +318,10 @@ export function SettingsSheet({
           {section === 'appearance' && (
             <>
               <h2 className="sheet-h">Appearance</h2>
-              <p className="sheet-sub">Chrome stays neutral so provider colour reads as information.</p>
+              <p className="sheet-sub">
+                Chrome stays neutral so colour reads as information. The Conduit palette spends
+                that colour on provider identity; the Claude palette spends it on one accent.
+              </p>
               <AppearanceSection settings={settings} onUpdate={save} />
               <div className="grp" style={{ marginTop: 20 }}>
                 <div className="srow">

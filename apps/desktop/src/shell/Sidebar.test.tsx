@@ -199,10 +199,11 @@ describe('Sidebar', () => {
     expect(props.onCollapse).toHaveBeenCalled();
   });
 
-  // The sidebar is one of the two drag surfaces on a frameless window; the
-  // other is the title strip. shellContract.test.ts pins this statically too.
-  it('carries the Tauri drag region on its head', () => {
+  // The caption row is the window's drag surface; the sidebar head is app
+  // content. It was a drag region while the app had no top bar, which obliged
+  // every non-interactive child to repeat the attribute.
+  it('does not carry the Tauri drag region on its head', () => {
     const { container } = render(<Sidebar {...props} />);
-    expect(container.querySelector('.sb-head')).toHaveAttribute('data-tauri-drag-region');
+    expect(container.querySelector('.sb-head')).not.toHaveAttribute('data-tauri-drag-region');
   });
 });

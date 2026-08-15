@@ -189,12 +189,15 @@
 }
 
 /* ── Onboarding (full-screen route) ────────────────────────────────────── */
+/* Fills the second `.app` row rather than the viewport: the caption row takes
+   the first, so a 100vh minimum would overflow the shell by exactly its
+   height. */
 .onboarding-shell {
   display: grid;
   place-items: center;
   padding: 24px;
   overflow: auto;
-  min-height: 100vh;
+  min-height: 100%;
 }
 .onboarding-card {
   max-width: 680px;

@@ -22,7 +22,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_html_document',
     name: 'write_html_document',
     description:
-      'Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs.',
+      'Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document.',
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'html', type: 'string', required: true },
@@ -48,7 +48,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_markdown_document',
     name: 'write_markdown_document',
     description:
-      'Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs.',
+      'Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document.',
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'markdown', type: 'string', required: true },
@@ -74,7 +74,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_text_document',
     name: 'write_text_document',
     description:
-      'Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs.',
+      'Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document.',
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'text', type: 'string', required: true },
@@ -225,6 +225,8 @@ export interface DocumentToolActivity {
   titleHint?: string;
   /** Present for edit_* tools once arguments are known. */
   artifactId?: string;
+  /** Failure reason on `phase: 'error'`, shown in the document panel. */
+  error?: string;
 }
 
 export function isDocumentContentTool(name: string): boolean {
@@ -252,10 +254,15 @@ export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefi
   const utilityTools = BUILTIN_TOOL_DEFINITIONS.filter((t) => UTILITY_TOOL_NAMES.has(t.name));
   switch (intent) {
     case 'create':
+      // Include edit_* so mid-turn revisions use the returned artifact_id
+      // instead of spawning duplicate documents via another write_*.
       return [
         ...utilityTools,
         ...BUILTIN_TOOL_DEFINITIONS.filter(
-          (tool) => tool.name.startsWith('write_') || tool.name === 'export_document',
+          (tool) =>
+            tool.name.startsWith('write_') ||
+            tool.name.startsWith('edit_') ||
+            tool.name === 'export_document',
         ),
       ];
     case 'edit':

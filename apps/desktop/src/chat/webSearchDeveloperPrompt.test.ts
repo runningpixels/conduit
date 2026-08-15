@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { webSearchDeveloperPromptFor } from './webSearchDeveloperPrompt';
+import {
+  webSearchCreateDeveloperPromptFor,
+  webSearchDeveloperPromptFor,
+} from './webSearchDeveloperPrompt';
 import { buildProviderRequest } from './ChatView';
 
 describe('webSearchDeveloperPromptFor', () => {
@@ -8,6 +11,15 @@ describe('webSearchDeveloperPromptFor', () => {
     expect(prompt).toContain('1–2 sentences');
     expect(prompt).toContain('Do not add a separate Sources section');
     expect(prompt).toContain('web_search tool');
+  });
+});
+
+describe('webSearchCreateDeveloperPromptFor', () => {
+  it('instructs one write then edit-or-stop', () => {
+    const prompt = webSearchCreateDeveloperPromptFor();
+    expect(prompt).toContain('write_*_document once');
+    expect(prompt).toContain('edit_*_document');
+    expect(prompt).toContain('no further tool calls');
   });
 });
 
@@ -68,6 +80,7 @@ describe('buildProviderRequest web search prompts', () => {
       true,
     );
     expect(req.systemPrompt).toContain('render inline in chat first');
-    expect(req.developerPrompt).toContain('fenced code block');
+    expect(req.developerPrompt).toContain('write_*_document once');
+    expect(req.developerPrompt).not.toContain('1–2 sentences');
   });
 });

@@ -95,6 +95,7 @@ describe('SettingsSheet behaviour (restored from SettingsScreen tests)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    document.documentElement.removeAttribute('data-palette');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
   });

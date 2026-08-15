@@ -11,7 +11,7 @@ interface WebSearchConsentDialogProps {
 
 /** One-time consent dialog for web search.
  *
- *  Per `docs/specs/agent-web-search.md` §12.2: the first time a user enables
+ *  Web-search consent: the first time a user enables
  *  web search (either globally in Settings or per turn in the chat bar), show
  *  this dialog. It explains what happens, links to provider pricing, and asks
  *  the user to explicitly allow.

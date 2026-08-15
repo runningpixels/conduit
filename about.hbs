@@ -1,0 +1,33 @@
+# Third-party notices
+
+Conduit is licensed under AGPL-3.0-only. It builds on the open-source work
+listed below, grouped by license.
+
+This file is generated. Do not edit it by hand — regenerate with:
+
+```bash
+cargo about generate about.hbs -o THIRD-PARTY-NOTICES.md
+```
+
+Fonts, bundled SQLite, and the LGPL system libraries that Linux bundles link
+against are not Cargo dependencies; they are documented in [`NOTICE`](./NOTICE).
+
+{{#each licenses}}
+## {{name}}
+
+Used by:
+
+{{#each used_by}}
+- [{{crate.name}} {{crate.version}}]({{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}})
+{{/each}}
+
+<details>
+<summary>License text</summary>
+
+```text
+{{text}}
+```
+
+</details>
+
+{{/each}}

@@ -42,7 +42,7 @@ fn main() {
     ProviderError::export().expect("export ProviderError");
     ProviderEvent::export().expect("export ProviderEvent");
 
-    // Phase 7 — agent web search (M-WebSearch). See docs/specs/agent-web-search.md.
+    // Agent web search (M-WebSearch).
     SearchContextSize::export().expect("export SearchContextSize");
     ReturnTokenBudget::export().expect("export ReturnTokenBudget");
     WebSearchFilters::export().expect("export WebSearchFilters");

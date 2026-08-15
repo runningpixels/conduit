@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Emilio Olivares
+
 /*
  * @conduit/ui — design-token + primitives home (ADR-005).
  *

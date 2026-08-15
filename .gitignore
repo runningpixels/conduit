@@ -4,13 +4,38 @@ target/
 .tauri/
 *.tsbuildinfo
 
+# Secrets. Never commit a real environment file; commit .env.example instead.
+.env
+.env.*
+!.env.example
+
 # Phase 6: Tauri updater signing keypair (generated locally / per CI secret).
 # The public key is committed inside tauri.conf.json; the private key NEVER.
 apps/desktop/src-tauri/.tauri-updater-private.key
 apps/desktop/src-tauri/.tauri-updater-private.key.pub
 
-# Machine-specific agent/MCP config (local paths, model overrides)
+# ts-rs writes relative to the invoking crate dir. Running the export from
+# inside crates/<name>/ produces a stray duplicate of packages/config-schema;
+# the canonical output is packages/config-schema/src/generated only.
+crates/*/packages/
+
+# AI assistant / agent tooling — machine-specific, never part of the project.
 .mcp.json
+.claude/
+.cursor/
 .pi/
 .pi-subagents/
 .pi-scan/
+
+# Local-only working notes, excluded from the public tree.
+docs/private/
+
+# Intermediates for scripts/gen-third-party-notices.py. The generated
+# THIRD-PARTY-NOTICES.md IS committed; these inputs are not.
+about.json
+js-licenses.json
+
+# SQLite write-ahead-log sidecars. The .sqlite test fixtures are committed;
+# their -wal/-shm companions are transient and regenerate on every open.
+*.sqlite-wal
+*.sqlite-shm

@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  # Rust. Grouped so a routine bump is one PR, not thirty. Tauri is separated
+  # because its updates tend to need a manual look at tauri.conf.json.
+  - package-ecosystem: cargo
+    directory: '/'
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      tauri:
+        patterns: ['tauri', 'tauri-*']
+      rust-minor-patch:
+        patterns: ['*']
+        exclude-patterns: ['tauri', 'tauri-*']
+        update-types: ['minor', 'patch']
+
+  # JavaScript. One manifest at the root covers the pnpm workspace.
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      react:
+        patterns: ['react', 'react-dom', '@types/react', '@types/react-dom']
+      vite-vitest:
+        patterns: ['vite', 'vitest', '@vitejs/*', 'jsdom', '@testing-library/*']
+      js-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  # Pin drift in CI actions is a supply-chain risk worth tracking.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      actions:
+        patterns: ['*']

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Emilio Olivares
+
 /**
  * @conduit/config-schema — TypeScript bindings for Conduit's internal schema.
  *
@@ -28,7 +31,7 @@ export type { ProviderUsage } from './generated/provider_usage';
 export type { ProviderError } from './generated/provider_error';
 export type { ProviderEvent } from './generated/provider_event';
 
-// Phase 7 — agent web search (M-WebSearch). See docs/specs/agent-web-search.md.
+// Agent web search (M-WebSearch).
 export type { SearchContextSize } from './generated/search_context_size';
 export type { ReturnTokenBudget } from './generated/return_token_budget';
 export type { WebSearchFilters } from './generated/web_search_filters';

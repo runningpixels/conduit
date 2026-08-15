@@ -3,7 +3,7 @@
  * and the shared primitive component classes. Implements ADR-005.
  *
  * Source of truth for the visual tokens:
- *   docs/design/conduit-chat-v5.html (:root dark + [data-theme="light"] blocks).
+ *   the v5 design mockup (:root dark + [data-theme="light"] blocks).
  *
  * Scale tokens (spacing / radius / typography) are introduced here so the
  * primitive classes below reference a named scale instead of re-literalizing

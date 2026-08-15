@@ -19,7 +19,7 @@ pub struct ProviderDescriptor {
     pub credential_mode: CredentialMode,
     pub is_local: bool,
     pub show_base_url_field: bool,
-    /// Adoption-priority tier from `docs/guides/provider-target-list.md`:
+    /// Adoption-priority tier:
     /// 0 = ship first (Anthropic, OpenAI, Ollama, OpenRouter, Zen, compat),
     /// 1 = add next (Gemini, Groq, LM Studio), 2/3 reserved for M3+.
     pub tier: u8,

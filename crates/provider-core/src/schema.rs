@@ -193,7 +193,7 @@ pub struct ResponseFormatHint {
 // =============================================================================
 // Agent Web Search — hosted-tool request types (Phase 7 / M-WebSearch)
 //
-// See `docs/specs/agent-web-search.md`. Conduit does not crawl, index, or proxy
+// Conduit does not crawl, index, or proxy
 // the web; web search is a provider-hosted tool. The renderer carries the
 // per-turn config in `ProviderRequest.web_search`; the adapter decides how to
 // serialize it (e.g. OpenAI's Responses API uses `{"type":"web_search", ...}`

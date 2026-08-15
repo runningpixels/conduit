@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Emilio Olivares
+
 //! mcp-runtime — transport-agnostic MCP connector runtime core.
 //!
 //! This crate owns the JSON-RPC protocol framing, the `McpTransport`

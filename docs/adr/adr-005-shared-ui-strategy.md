@@ -17,4 +17,4 @@ The roadmap wants a desktop shell now and an admin console later. Those surfaces
 ## Consequences
 - The desktop shell can start with a neutral design system.
 - Later admin work can reuse the same tokens without sharing trust-boundary code.
-- White-label styling stays a runtime concern, not a forked product architecture.
+- Per-deployment styling stays a runtime concern, not a forked product architecture.

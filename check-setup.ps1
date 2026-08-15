@@ -7,7 +7,7 @@ $checks = @(
     @{ Name = "pnpm"; Command = "pnpm --version"; Pattern = "^\d+\." },
     @{ Name = "Rust (rustc)"; Command = "rustc --version"; Pattern = "rustc \d+\.\d+" },
     @{ Name = "Cargo"; Command = "cargo --version"; Pattern = "cargo \d+\.\d+" },
-    @{ Name = "Tauri CLI (local)"; Command = "npx --prefix d:\aidev\pixel\apps\desktop tauri --version"; Pattern = "tauri-cli" }
+    @{ Name = "Tauri CLI (local)"; Command = "pnpm -C `"$PSScriptRoot\apps\desktop`" exec tauri --version"; Pattern = "tauri-cli" }
 )
 
 $allPass = $true
@@ -58,7 +58,7 @@ if ($allPass) {
     Write-Host "🚀 All prerequisites installed!" -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  1. cd d:\aidev\pixel" -ForegroundColor White
+    Write-Host "  1. cd $PSScriptRoot" -ForegroundColor White
     Write-Host "  2. pnpm install" -ForegroundColor White
     Write-Host "  3. pnpm dev" -ForegroundColor White
 } else {

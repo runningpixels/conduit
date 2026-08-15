@@ -1,0 +1,82 @@
+Conduit
+Copyright (C) 2026 Emilio Olivares
+
+This product is licensed under the GNU Affero General Public License v3.0 only.
+See LICENSE for the full text and LICENSING.md for scope, the section 7 OpenSSL
+permission, and commercial-licensing terms.
+
+This file summarises third-party components with notice obligations. The full
+machine-generated dependency inventory is in THIRD-PARTY-NOTICES.md.
+
+================================================================================
+Bundled fonts (SIL Open Font License 1.1)
+================================================================================
+
+Geist and Geist Mono
+  Copyright 2024 The Geist Project Authors
+  https://github.com/vercel/geist-font
+  License text: packages/ui/src/fonts/OFL-Geist.txt
+
+Source Serif 4
+  Copyright 2014-2023 Adobe (http://www.adobe.com/)
+  https://github.com/adobe-fonts/source-serif
+  License text: packages/ui/src/fonts/OFL-SourceSerif4.txt
+
+Both are Reserved Font Name families: a modified version may not be distributed
+under the original name.
+
+================================================================================
+SQLite (public domain)
+================================================================================
+
+Conduit statically links SQLite via the `libsqlite3-sys` crate's `bundled`
+feature. SQLite is in the public domain and imposes no notice obligations.
+https://www.sqlite.org/copyright.html
+
+================================================================================
+Rust and JavaScript dependencies (permissive)
+================================================================================
+
+All direct and transitive dependencies are MIT, Apache-2.0, BSD-2/3-Clause, ISC,
+Zlib, or Unicode-DFS licensed, each of which is one-way compatible with
+AGPL-3.0. Copies of these licenses and their attributions are reproduced in
+THIRD-PARTY-NOTICES.md.
+
+`ring` carries BoringSSL-derived portions that some scanners report as the
+OpenSSL license. The additional permission in LICENSING.md section 7 disposes of
+any resulting incompatibility question.
+
+================================================================================
+Linux system libraries (LGPL) — written offer
+================================================================================
+
+On Linux, Conduit links against GTK 3, GLib, libsoup, and WebKitGTK, which are
+licensed under the GNU Lesser General Public License (LGPL-2.1-or-later or
+LGPL-2.0-or-later, depending on component).
+
+The .deb package links these dynamically against distribution-provided copies;
+they are System Libraries under GPL-3.0 section 1 and are not redistributed by
+this project.
+
+The AppImage bundle DOES include copies of these libraries. Because that
+constitutes conveying LGPL-licensed works, the following applies to AppImage
+distributions:
+
+  - The LGPL libraries are dynamically linked within the bundle, so recipients
+    may replace them with modified versions and relink, as required by
+    LGPL-2.1 section 6(a) / LGPL-3.0 section 4(d)(1).
+
+  - Source code for these libraries is available from their upstream projects:
+      GTK 3      https://gitlab.gnome.org/GNOME/gtk
+      GLib       https://gitlab.gnome.org/GNOME/glib
+      libsoup    https://gitlab.gnome.org/GNOME/libsoup
+      WebKitGTK  https://webkitgtk.org/
+
+    On request, the copyright holder will provide the complete corresponding
+    source for the specific versions included in any AppImage released by this
+    project. Open an issue at the repository to request it.
+
+On macOS, Conduit uses the system WKWebView framework. On Windows, it uses the
+Microsoft Edge WebView2 runtime, installed separately via the download
+bootstrapper and not redistributed with the application. Both are System
+Libraries under GPL-3.0 section 1.

@@ -1,7 +1,12 @@
 [package]
 name = "conduit-desktop"
-version = "0.1.0"
-edition = "2021"
+description = "Conduit — a local-first, multi-provider desktop AI assistant."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
 build = "build.rs"
 # Tauri runs `cargo run`; with multiple [[bin]] targets we must name the app.
 default-run = "conduit-desktop"

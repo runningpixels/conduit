@@ -1,0 +1,63 @@
+# cargo-deny — supply-chain and license gate. Run locally with:
+#   cargo install cargo-deny --locked && cargo deny check
+
+[graph]
+targets = [
+  "x86_64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+]
+all-features = false
+
+[advisories]
+# Fail on any crate with a known security advisory.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Conduit is AGPL-3.0-only. Every license here is one-way compatible with it.
+# A new dependency carrying anything else fails CI and needs a deliberate
+# decision — see LICENSING.md.
+confidence-threshold = 0.9
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "MIT-0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Unlicense",
+  "BSL-1.0",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+  "OpenSSL",
+  "AGPL-3.0-only",
+]
+
+# ring's license is ISC-style with BoringSSL/OpenSSL-derived portions. The
+# additional permission in LICENSING.md section 7 resolves the GPL-family
+# incompatibility question that scanners raise here.
+[[licenses.clarify]]
+crate = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = []
+
+[bans]
+# Duplicate transitive versions are normal in a Tauri tree; warn, don't block.
+multiple-versions = "warn"
+# A "*" version requirement on a registry crate is a supply-chain hazard...
+wildcards = "deny"
+# ...but intra-workspace `{ path = "..." }` deps are legitimately unversioned.
+allow-wildcard-paths = true
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

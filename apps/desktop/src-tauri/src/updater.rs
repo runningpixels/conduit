@@ -38,10 +38,24 @@ use url::Url;
 use crate::{db::migrations, paths::AppPaths, state::AppState};
 use provider_core::schema::RolloutChannel;
 
-/// Static host for the per-channel update manifests. M6.2/M6.3 publish
-/// `<base>/<channel>/manifest.json` here (GitHub Releases storage + a static
-/// host). Moveable: change this const + regenerate the config endpoints.
-const UPDATE_BASE: &str = "https://conduit-app.github.io/conduit-updates";
+/// Default host for the per-channel update manifests. The release pipeline
+/// publishes `<base>/<channel>/manifest.json` to GitHub Pages on this repo.
+///
+/// This MUST stay a host the project actually controls: an endpoint on an
+/// unclaimed domain lets whoever registers it serve stale-but-validly-signed
+/// manifests (a downgrade vector) and log every client's IP. Payloads are still
+/// signature-verified against the pubkey in `tauri.conf.json`, so a squatter
+/// cannot execute code — but they can pin users to an old version.
+const DEFAULT_UPDATE_BASE: &str = "https://tobiaz.github.io/conduit";
+
+/// Resolved update host. Forks MUST point this at their own infrastructure
+/// rather than inherit upstream's — set `CONDUIT_UPDATE_BASE` at build time.
+/// Under the AGPL every fork ships this source, so a hardcoded endpoint would
+/// otherwise make every downstream build phone home to upstream.
+const UPDATE_BASE: &str = match option_env!("CONDUIT_UPDATE_BASE") {
+    Some(base) => base,
+    None => DEFAULT_UPDATE_BASE,
+};
 
 /// Metadata for an available update, returned by [`check_for_update`] without
 /// downloading the payload.

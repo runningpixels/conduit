@@ -1024,9 +1024,7 @@ fn write_html_upsert(id: &str, artifact_id: &str) -> CompletedToolCall {
 
 #[test]
 fn parallel_new_document_creates_keep_only_the_first() {
-    use conduit_desktop::stream_manager::{
-        classify_document_create_clamps, CreateClampAction,
-    };
+    use conduit_desktop::stream_manager::{classify_document_create_clamps, CreateClampAction};
     let actions = classify_document_create_clamps(
         &[
             write_html_create("c1"),
@@ -1073,16 +1071,11 @@ fn turn_create_cap_rejects_further_creates() {
     assert_eq!(actions, vec![CreateClampAction::RejectTurnCap]);
 
     // One create already done: allow one more this round, then parallel siblings reject.
-    let actions = classify_document_create_clamps(
-        &[write_html_create("c1"), write_html_create("c2")],
-        1,
-    );
+    let actions =
+        classify_document_create_clamps(&[write_html_create("c1"), write_html_create("c2")], 1);
     assert_eq!(
         actions,
-        vec![
-            CreateClampAction::Run,
-            CreateClampAction::RejectParallel,
-        ]
+        vec![CreateClampAction::Run, CreateClampAction::RejectParallel,]
     );
 }
 
@@ -1107,7 +1100,11 @@ fn after_create_write_tools_are_stripped_from_continuations() {
 #[test]
 fn tool_output_created_flag_detects_new_artifacts() {
     use conduit_desktop::stream_manager::tool_output_created_document;
-    assert!(tool_output_created_document(&json!({ "ok": true, "created": true })));
-    assert!(!tool_output_created_document(&json!({ "ok": true, "created": false })));
+    assert!(tool_output_created_document(
+        &json!({ "ok": true, "created": true })
+    ));
+    assert!(!tool_output_created_document(
+        &json!({ "ok": true, "created": false })
+    ));
     assert!(!tool_output_created_document(&json!({ "ok": true })));
 }

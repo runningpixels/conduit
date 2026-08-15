@@ -201,16 +201,16 @@ pub fn is_new_document_create(call: &CompletedToolCall) -> bool {
     match call.arguments.get("artifact_id") {
         None => true,
         Some(value) if value.is_null() => true,
-        Some(value) => value
-            .as_str()
-            .map(|s| s.trim().is_empty())
-            .unwrap_or(true),
+        Some(value) => value.as_str().map(|s| s.trim().is_empty()).unwrap_or(true),
     }
 }
 
 /// Whether a completed tool output reports a newly created document artifact.
 pub fn tool_output_created_document(output: &serde_json::Value) -> bool {
-    output.get("created").and_then(|v| v.as_bool()).unwrap_or(false)
+    output
+        .get("created")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 /// Decision for one tool call under document-create clamps.

@@ -2,7 +2,7 @@
 //!
 //! Mechanics are delegated to sqlx's `Migrator` (its `_sqlx_migrations` table
 //! tracks applied versions and checksums). A public `schema_migrations` table —
-//! required by `docs/plans/archive/03-local-data.md` and the table Phase 7 sync reads —
+//! required by the local-data design and the table cloud sync would read —
 //! is created by the first migration and mirrored from `_sqlx_migrations` after
 //! every run so the two never drift.
 //!
@@ -127,7 +127,7 @@ pub async fn reconcile_on_startup(pool: &SqlitePool) -> Result<(), DbError> {
 /// Open the database, run migrations, and run the startup integrity check.
 ///
 /// If migrations fail, applies the user-safe failure mode required by
-/// `docs/plans/archive/03-local-data.md`: the corrupt DB is backed up to
+/// Recovery contract: the corrupt DB is backed up to
 /// `conduit.sqlite.corrupt-<unix>.bak`, a `.migration-failed` marker is written,
 /// and a fresh store is created and migrated from scratch. The returned
 /// [`MigrationRecovery`] (if any) lets the UI inform the user. The `streams/`

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/tobiaz/conduit/discussions
+    about: Ask a question, share a setup, or float an idea before opening an issue.
+  - name: Report a security vulnerability
+    url: https://github.com/tobiaz/conduit/security/advisories/new
+    about: Please report vulnerabilities privately — never in a public issue.
+  - name: Build or setup trouble
+    url: https://github.com/tobiaz/conduit/blob/main/README.md#building-from-source
+    about: Check the prerequisites and platform toolchain notes first.

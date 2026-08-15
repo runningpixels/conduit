@@ -1147,7 +1147,7 @@ html[data-palette="claude"] .prose { font-size: 16.5px; line-height: 1.7; }
 /* ── msg-time is gone (timestamps live in .turn-model) ──────────────────── */
 
 /* ═══════════════════════════════════════════════════════════════════════
-   V6 revamp additions (docs/plans/frontend-revamp-plan.md)
+   V6 revamp additions
    P0.1 · P2 motion · P3 chat parity · P4 welcome · P5 a11y
    ═══════════════════════════════════════════════════════════════════════ */
 

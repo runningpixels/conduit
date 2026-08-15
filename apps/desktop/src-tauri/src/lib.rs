@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Emilio Olivares
+
 //! Conduit desktop library crate.
 //!
 //! The app is split into a library (this crate, `conduit_desktop`) and a thin

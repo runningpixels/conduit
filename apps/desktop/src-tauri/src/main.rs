@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Emilio Olivares
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // All modules live in the `conduit_desktop` library crate so Phase 3

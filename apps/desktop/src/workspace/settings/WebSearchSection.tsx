@@ -16,7 +16,7 @@ interface WebSearchSectionProps {
  *  section hides the entire toggle so the user isn't offered a capability
  *  that would immediately fail at the adapter boundary.
  *
- *  Per `docs/specs/agent-web-search.md` §11. */
+ *  Web-search settings surface. */
 export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSectionProps) {
   const ws = settings.webSearch;
   const disabled = settings.localOnly;

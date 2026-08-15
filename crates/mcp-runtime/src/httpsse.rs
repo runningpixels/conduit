@@ -3,7 +3,7 @@
 //! The trait is implemented so the supervisor is transport-agnostic from day
 //! one and the `McpTransport` abstraction is exercised by two impls. The live
 //! connection management (SSE session, request/response correlation over the
-//! event stream) lands in `docs/plans/04b-mcp-runtime-deferred.md`.
+//! event stream) is deferred; see the crate-level docs.
 
 use async_trait::async_trait;
 use serde_json::Value;

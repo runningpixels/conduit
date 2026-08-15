@@ -233,9 +233,7 @@ pub fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), Strin
     use tauri_plugin_shell::ShellExt;
     let validated = crate::validation::validate_external_open_url(&url)
         .ok_or_else(|| "Invalid or unsupported external URL".to_string())?;
-    app.shell()
-        .open(validated, None)
-        .map_err(|e| e.to_string())
+    app.shell().open(validated, None).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------

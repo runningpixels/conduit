@@ -122,6 +122,22 @@ jobs:
       - name: Add build target
         run: rustup target add "$(echo "${{ matrix.args }}" | awk '{print $2}')"
 
+      # Tauri needs the WebKitGTK/GTK development headers to link on Linux.
+      # This mirrors the list in ci.yml's tauri-build-smoke job; without it the
+      # Linux leg of the matrix fails at link time.
+      - name: Install Tauri system dependencies (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            libssl-dev
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -218,9 +234,34 @@ jobs:
           tag_name: ${{ needs.meta.outputs.tag }}
           files: manifest-out/${{ needs.meta.outputs.channel }}/manifest.json
 
-  # NOTE on hosting: the static host for the per-channel manifest (GitHub Pages
-  # at https://conduit-app.github.io/conduit-updates/<channel>/manifest.json, as
-  # referenced by tauri.conf.json endpoints) is published by copying the
-  # `manifest-*` artifact into the Pages repo/dir. That deploy is a manual
-  # checklist step for Phase 6 (M6.6) and automated in Phase 10; it is not part
-  # of this workflow to keep OS-agnostic hosting swappable.
+  # Publish the per-channel manifest to GitHub Pages, which is the host
+  # `tauri.conf.json` endpoints and `updater.rs::UPDATE_BASE` point at:
+  #   https://tobiaz.github.io/conduit/<channel>/manifest.json
+  #
+  # This used to be a manual checklist step. It is automated because a manual
+  # step here means the shipped app checks an endpoint that may never have been
+  # updated — a silently broken updater is worse than no updater.
+  #
+  # `keep_files: true` is REQUIRED: the branch holds both stable/ and beta/, and
+  # a stable release must not delete the beta manifest (or vice versa).
+  pages:
+    needs: [meta, manifest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the generated manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: manifest-${{ needs.meta.outputs.channel }}
+          path: manifest-out
+
+      - name: Publish to the gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: manifest-out
+          keep_files: true
+          commit_message: |
+            release: ${{ needs.meta.outputs.channel }} manifest for ${{ needs.meta.outputs.tag }}

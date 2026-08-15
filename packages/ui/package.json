@@ -1,13 +1,14 @@
 {
   "name": "@conduit/ui",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "react": "*"
+    "react": "^19.2.7"
   },
   "devDependencies": {
-    "@types/react": "*"
+    "@types/react": "^19.2.17"
   }
 }

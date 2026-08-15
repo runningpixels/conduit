@@ -5,3 +5,15 @@ members = [
   "crates/mcp-runtime",
 ]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["Emilio Olivares"]
+repository = "https://github.com/tobiaz/conduit"
+# None of these crates are published to crates.io; they are consumed only
+# within this workspace via path dependencies. Setting this prevents an
+# accidental `cargo publish` and lets cargo-deny treat the intra-workspace
+# path deps as private rather than as wildcard version requirements.
+publish = false

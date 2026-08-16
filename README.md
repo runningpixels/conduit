@@ -2,7 +2,7 @@
 
 **A local-first desktop AI assistant. Your conversations stay on your machine.**
 
-[![CI](https://github.com/tobiaz/conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/tobiaz/conduit/actions/workflows/ci.yml)
+[![CI](https://github.com/runningpixels/conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/runningpixels/conduit/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
@@ -77,7 +77,7 @@ release. Expect rough edges.
 ### Build and run
 
 ```bash
-git clone https://github.com/tobiaz/conduit
+git clone https://github.com/runningpixels/conduit
 cd conduit
 pnpm install
 pnpm dev          # Vite on :5173, then the Tauri shell

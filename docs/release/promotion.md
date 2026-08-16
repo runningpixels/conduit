@@ -6,7 +6,7 @@ own manifest at `<base>/<channel>/manifest.json`:
 - `<base>/stable/manifest.json`
 - `<base>/beta/manifest.json`
 
-`<base>` is `https://tobiaz.github.io/conduit` (the static GitHub
+`<base>` is `https://runningpixels.github.io/conduit` (the static GitHub
 Pages host; set in `apps/desktop/src-tauri/src/updater.rs::UPDATE_BASE` and
 mirrored as the default endpoint in `tauri.conf.json::plugins.updater.endpoints`).
 

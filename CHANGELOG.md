@@ -15,4 +15,4 @@ when `v0.1.0` ships; until then, `main` is the only supported version.
 - Initial public release preparation: AGPL-3.0 licensing, contributor
   documentation, and third-party attribution.
 
-[Unreleased]: https://github.com/tobiaz/conduit/commits/main
+[Unreleased]: https://github.com/runningpixels/conduit/commits/main

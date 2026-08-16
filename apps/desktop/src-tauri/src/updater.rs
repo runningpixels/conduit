@@ -46,7 +46,7 @@ use provider_core::schema::RolloutChannel;
 /// manifests (a downgrade vector) and log every client's IP. Payloads are still
 /// signature-verified against the pubkey in `tauri.conf.json`, so a squatter
 /// cannot execute code — but they can pin users to an old version.
-const DEFAULT_UPDATE_BASE: &str = "https://tobiaz.github.io/conduit";
+const DEFAULT_UPDATE_BASE: &str = "https://runningpixels.github.io/conduit";
 
 /// Resolved update host. Forks MUST point this at their own infrastructure
 /// rather than inherit upstream's — set `CONDUIT_UPDATE_BASE` at build time.

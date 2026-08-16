@@ -53,7 +53,7 @@ quality gate; expanded there with automated survival/migration checks.
 
 - [ ] Copy `manifest-<channel>/manifest.json` to the static host at
       `<base>/<channel>/manifest.json` (GitHub Pages:
-      `https://tobiaz.github.io/conduit/<channel>/manifest.json` —
+      `https://runningpixels.github.io/conduit/<channel>/manifest.json` —
       matches the `tauri.conf.json` `plugins.updater.endpoints` + `updater.rs`
       `UPDATE_BASE`). Manual for Phase 6; automated in Phase 10.
 - [ ] Verify the manifest URL is reachable over HTTPS from a clean machine.

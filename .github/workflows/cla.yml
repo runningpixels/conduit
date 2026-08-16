@@ -33,18 +33,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: 'signatures/cla.json'
-          path-to-document: 'https://github.com/tobiaz/conduit/blob/main/CLA.md'
+          path-to-document: 'https://github.com/runningpixels/conduit/blob/main/CLA.md'
           branch: 'cla-signatures'
           allowlist: 'dependabot[bot],github-actions[bot]'
           custom-notsigned-prcomment: |
             Thanks for the pull request!
 
             Before this can be merged, please sign the
-            [Contributor License Agreement](https://github.com/tobiaz/conduit/blob/main/CLA.md).
+            [Contributor License Agreement](https://github.com/runningpixels/conduit/blob/main/CLA.md).
             It takes one comment — you keep the copyright in your contribution,
             and it lets Conduit continue to be offered under both the AGPL and a
             commercial license. See
-            [CONTRIBUTING.md](https://github.com/tobiaz/conduit/blob/main/CONTRIBUTING.md#contributor-license-agreement)
+            [CONTRIBUTING.md](https://github.com/runningpixels/conduit/blob/main/CONTRIBUTING.md#contributor-license-agreement)
             for the reasoning.
 
             To sign, reply with exactly:

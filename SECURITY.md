@@ -6,7 +6,7 @@
 or discussions.**
 
 Report privately through GitHub's
-[private vulnerability reporting](https://github.com/tobiaz/conduit/security/advisories/new)
+[private vulnerability reporting](https://github.com/runningpixels/conduit/security/advisories/new)
 on this repository. That channel is visible only to the maintainer and lets us
 coordinate a fix and an advisory.
 

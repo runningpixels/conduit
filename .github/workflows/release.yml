@@ -236,7 +236,7 @@ jobs:
 
   # Publish the per-channel manifest to GitHub Pages, which is the host
   # `tauri.conf.json` endpoints and `updater.rs::UPDATE_BASE` point at:
-  #   https://tobiaz.github.io/conduit/<channel>/manifest.json
+  #   https://runningpixels.github.io/conduit/<channel>/manifest.json
   #
   # This used to be a manual checklist step. It is automated because a manual
   # step here means the shipped app checks an endpoint that may never have been

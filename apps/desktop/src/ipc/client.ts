@@ -33,7 +33,10 @@ import type {
   StreamHandle,
   UpdateInfo,
   OnboardingState,
+  PendingWipeResult,
   ProviderDescriptor,
+  RemovalReport,
+  WipeScope,
   Prompt,
   SearchMessagesRequest,
   SearchResult,
@@ -199,6 +202,38 @@ export async function downloadAndInstallUpdate(): Promise<void> {
  *  + `hasProviderCredential`). */
 export async function getOnboardingState(): Promise<OnboardingState> {
   return invoke<OnboardingState>('get_onboarding_state');
+}
+
+/** Dismiss the migration-recovery notice and continue with the fresh store.
+ *  The backup file is left on disk — acknowledging the failure is not consent
+ *  to delete the only copy of the user's data. */
+export async function acknowledgeMigrationRecovery(): Promise<void> {
+  await invoke('acknowledge_migration_recovery');
+}
+
+/** Delete the recovery backups and dismiss the notice. Runs in-session: the
+ *  backups are inert copies, and the live store is untouched. */
+export async function discardMigrationBackup(): Promise<RemovalReport> {
+  return invoke<RemovalReport>('discard_migration_backup');
+}
+
+/** Schedule a local-data wipe for the next launch. Nothing is deleted until
+ *  the app restarts — the live database is held open for the whole session, so
+ *  the delete has to happen at startup. Follow this with `restartApp()`. */
+export async function requestLocalDataWipe(scope: WipeScope): Promise<PendingWipeResult> {
+  return invoke<PendingWipeResult>('request_local_data_wipe', { scope });
+}
+
+/** Abandon a scheduled wipe (the user backed out of the restart). */
+export async function cancelLocalDataWipe(): Promise<void> {
+  await invoke('cancel_local_data_wipe');
+}
+
+/** Restart the app process. `window.location.reload()` is not a substitute:
+ *  it reloads the webview but leaves the Rust process and its startup state
+ *  untouched, so migrations never re-run and a pending wipe never applies. */
+export async function restartApp(): Promise<void> {
+  await invoke('restart_app');
 }
 
 export async function startMockStream(

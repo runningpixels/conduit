@@ -136,13 +136,42 @@ pub async fn open_with_migrations(
     db_path: &Path,
 ) -> Result<(SqlitePool, Option<MigrationRecovery>), DbError> {
     let pool = init_pool(db_path).await?;
-    match run_migrations(&pool).await {
+    let first_attempt = run_migrations(&pool).await;
+
+    // A checksum mismatch is not corruption on its own — see
+    // `repair_checksum_drift`. Try to prove the schema is sound and re-stamp
+    // before treating the store as unrecoverable.
+    let outcome = match first_attempt {
+        Err(DbError::Migrate(ref message)) if is_checksum_drift(message) => {
+            match repair_checksum_drift(&pool).await {
+                Ok(true) => {
+                    eprintln!(
+                        "conduit: migration checksums drifted but the schema matched; \
+                         re-stamped and kept the existing store"
+                    );
+                    run_migrations(&pool).await
+                }
+                Ok(false) => first_attempt,
+                Err(repair_error) => {
+                    eprintln!("conduit: checksum-drift repair failed: {repair_error}");
+                    first_attempt
+                }
+            }
+        }
+        other => other,
+    };
+
+    match outcome {
         Ok(()) => {
             reconcile_on_startup(&pool).await?;
             Ok((pool, None))
         }
         Err(error) => {
-            // Release the corrupt file before we move it.
+            // Release the corrupt file before we move it. `close()` waits for
+            // every connection to actually shut down; a bare `drop` only marks
+            // the pool closed and returns, leaving a live handle that makes the
+            // `remove_file` below fail on Windows.
+            pool.close().await;
             drop(pool);
             let recovery = handle_migration_failure(db_path, &error)?;
             let fresh = init_pool(db_path).await?;
@@ -152,6 +181,142 @@ pub async fn open_with_migrations(
             Ok((fresh, Some(recovery)))
         }
     }
+}
+
+/// Does this migration error mean "the file changed", as opposed to real
+/// corruption? sqlx has no error code for it, so the message is the only
+/// signal; the wording comes from `sqlx::migrate::MigrateError::VersionMismatch`.
+fn is_checksum_drift(message: &str) -> bool {
+    message.contains("previously applied but has been modified")
+}
+
+/// Re-stamp drifted migration checksums when the schema they produced is
+/// provably still correct. Returns `true` if anything was repaired.
+///
+/// sqlx hashes each migration *file* and refuses to run when the hash no longer
+/// matches what the database recorded. That check cannot tell a rewritten
+/// `ALTER TABLE` from a fixed typo in a comment, and the consequence of the
+/// false positive is severe: `open_with_migrations` treats the store as corrupt
+/// and starts the user over on an empty database.
+///
+/// It is not hypothetical. This repository has shipped three different
+/// checksums for `0001_initial_schema.sql`, and every one of the differences
+/// was in a comment. Databases on disk carry all three.
+///
+/// So rather than trust the hash, check the thing the hash is a proxy for: does
+/// this database's schema match what today's migrations actually produce? A
+/// reference database is built in a tempdir, migrated to the same version the
+/// live one reached, and the two `sqlite_master` snapshots are compared. Equal
+/// means the drift was cosmetic and the recorded checksums are safe to update.
+/// Unequal means the SQL genuinely changed underneath an applied migration, and
+/// the caller falls through to the back-up-and-start-fresh path.
+///
+/// Deliberately conservative — it declines to repair when:
+///   * the database has a migration version this build does not know about
+///     (a downgrade: the schema is ahead of the code),
+///   * any applied migration is recorded as failed, or
+///   * the schemas differ in any way.
+async fn repair_checksum_drift(pool: &SqlitePool) -> Result<bool, DbError> {
+    let applied: Vec<(i64, Vec<u8>, bool)> =
+        sqlx::query_as("SELECT version, checksum, success FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(pool)
+            .await?;
+    if applied.is_empty() {
+        return Ok(false);
+    }
+    if applied.iter().any(|(_, _, success)| !success) {
+        return Ok(false);
+    }
+
+    let known: std::collections::HashMap<i64, &Migration> =
+        MIGRATOR.iter().map(|m| (m.version, m)).collect();
+
+    let mut drifted = Vec::new();
+    for (version, checksum, _) in &applied {
+        let Some(current) = known.get(version) else {
+            // The store is ahead of this build. Re-stamping would claim we
+            // produced a schema we know nothing about.
+            return Ok(false);
+        };
+        if current.checksum.as_ref() != checksum.as_slice() {
+            drifted.push((*version, current.checksum.to_vec()));
+        }
+    }
+    if drifted.is_empty() {
+        return Ok(false);
+    }
+
+    let highest_applied = applied.iter().map(|(v, _, _)| *v).max().unwrap_or(0);
+    let live = schema_snapshot(pool).await?;
+    let reference = reference_schema(highest_applied).await?;
+    if live != reference {
+        return Ok(false);
+    }
+
+    for (version, checksum) in drifted {
+        sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = ?")
+            .bind(checksum)
+            .bind(version)
+            .execute(pool)
+            .await?;
+    }
+    Ok(true)
+}
+
+/// Every schema object in the database, normalized for comparison.
+///
+/// `sqlite_%` rows are SQLite's own bookkeeping and `_sqlx_migrations` is the
+/// table being repaired, so both are excluded. Whitespace is collapsed because
+/// SQLite stores `sql` verbatim from the statement that created the object, and
+/// reindentation is exactly the kind of cosmetic change this is meant to allow.
+async fn schema_snapshot(pool: &SqlitePool) -> Result<Vec<(String, String, String)>, DbError> {
+    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT type, name, sql FROM sqlite_master \
+         WHERE name NOT LIKE 'sqlite_%' AND name <> '_sqlx_migrations' \
+         ORDER BY type, name",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(kind, name, sql)| {
+            let normalized = sql
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            (kind, name, normalized)
+        })
+        .collect())
+}
+
+/// Build a throwaway database migrated to `through_version` and snapshot it.
+/// This is what the live schema is compared against.
+async fn reference_schema(through_version: i64) -> Result<Vec<(String, String, String)>, DbError> {
+    let dir = tempfile::tempdir()
+        .map_err(|e| DbError::RecoveryIo(format!("reference schema tempdir: {e}")))?;
+    let reference_db = dir.path().join("reference.sqlite");
+    let pool = init_pool(&reference_db).await?;
+
+    let subset = Migrator {
+        migrations: Cow::Owned(
+            MIGRATOR
+                .iter()
+                .filter(|m| m.version <= through_version)
+                .cloned()
+                .collect(),
+        ),
+        ..Migrator::DEFAULT
+    };
+    subset
+        .run(&pool)
+        .await
+        .map_err(|e| DbError::Migrate(e.to_string()))?;
+
+    let snapshot = schema_snapshot(&pool).await?;
+    pool.close().await;
+    Ok(snapshot)
 }
 
 #[derive(Debug, Error)]
@@ -165,14 +330,37 @@ enum RecoveryError {
 fn handle_migration_failure(db_path: &Path, error: &DbError) -> Result<MigrationRecovery, DbError> {
     let unix = now_unix();
     let backup_path = PathBuf::from(format!("{}.corrupt-{unix}.bak", db_path.display()));
-    let marker_path = PathBuf::from(format!("{}.migration-failed", db_path.display()));
+    let marker_path = crate::local_data::failure_marker_path(db_path);
 
     let map_io = |e: std::io::Error| RecoveryError::Io(e.to_string());
 
     // Copy then remove (rename can fail if a stale handle lingers on Windows).
     if db_path.exists() {
         fs::copy(db_path, &backup_path).map_err(|e| DbError::RecoveryIo(map_io(e).to_string()))?;
-        let _ = fs::remove_file(db_path);
+
+        // Copy the WAL sidecars alongside the backup. A checkpoint on close
+        // normally empties the WAL, but if it did not, the last committed
+        // transactions live there and a `.bak` without them is a backup that
+        // silently loses the user's most recent conversations.
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = PathBuf::from(format!("{}{suffix}", db_path.display()));
+            if sidecar.exists() {
+                let _ = fs::copy(&sidecar, format!("{}{suffix}", backup_path.display()));
+            }
+        }
+
+        // The live file must go, or `init_pool` below reopens the same corrupt
+        // database, the retry migration fails too, and startup aborts with the
+        // original error instead of recovering. Report it rather than swallow
+        // it — the message names the file the user has to delete by hand.
+        fs::remove_file(db_path).map_err(|e| {
+            DbError::RecoveryIo(format!(
+                "backed up the failed database to {} but could not remove the live file {}: {}.                  Close any other running copy of Conduit, or delete that file manually, and                  start Conduit again.",
+                backup_path.display(),
+                db_path.display(),
+                map_io(e)
+            ))
+        })?;
         // WAL sidecars: harmless if absent, removed so the fresh DB starts clean.
         let _ = fs::remove_file(format!("{}-wal", db_path.display()));
         let _ = fs::remove_file(format!("{}-shm", db_path.display()));

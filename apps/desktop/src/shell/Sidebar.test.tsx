@@ -54,6 +54,7 @@ describe('Sidebar', () => {
     onRevealWorkspace: vi.fn(),
     onOpenSettings: vi.fn(),
     onExportDiagnostics: vi.fn(),
+    onDeleteConversation: vi.fn(),
     onDeleteAllHistory: vi.fn(),
   };
 
@@ -77,6 +78,7 @@ describe('Sidebar', () => {
     props.onRevealWorkspace.mockClear();
     props.onOpenSettings.mockClear();
     props.onExportDiagnostics.mockClear();
+    props.onDeleteConversation.mockClear();
     props.onDeleteAllHistory.mockClear();
   });
 
@@ -205,5 +207,45 @@ describe('Sidebar', () => {
   it('does not carry the Tauri drag region on its head', () => {
     const { container } = render(<Sidebar {...props} />);
     expect(container.querySelector('.sb-head')).not.toHaveAttribute('data-tauri-drag-region');
+  });
+
+  describe('per-row delete', () => {
+    it('gives every row its own delete control, labelled with the chat name', () => {
+      render(<Sidebar {...props} />);
+      // A bare "Delete" label on four identical glyphs tells a screen-reader
+      // user nothing about which chat they are about to destroy.
+      expect(screen.getByRole('button', { name: 'Delete Triage notes' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Delete Old notes' })).toBeTruthy();
+    });
+
+    it('deletes the row that was clicked, not the active chat', () => {
+      render(<Sidebar {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete API overview' }));
+      expect(props.onDeleteConversation).toHaveBeenCalledWith('c2');
+      expect(props.onDeleteConversation).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not select the conversation on its way to the dialog', () => {
+      render(<Sidebar {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete Old notes' }));
+      // Deleting a chat should not first navigate to it — the click would
+      // otherwise bubble to the row button underneath.
+      expect(props.onSelectConversation).not.toHaveBeenCalled();
+    });
+
+    it('keeps selection working when the delete control is present', () => {
+      render(<Sidebar {...props} />);
+      fireEvent.click(screen.getByText('API overview').closest('button')!);
+      expect(props.onSelectConversation).toHaveBeenCalledWith('c2');
+      expect(props.onDeleteConversation).not.toHaveBeenCalled();
+    });
+
+    it('omits the control entirely when no handler is supplied', () => {
+      const { onDeleteConversation: _omitted, ...withoutDelete } = props;
+      render(<Sidebar {...withoutDelete} />);
+      expect(screen.queryByRole('button', { name: /^Delete Triage notes$/ })).toBeNull();
+      // The list itself is unaffected.
+      expect(screen.getByText('Triage notes')).toBeTruthy();
+    });
   });
 });

@@ -123,6 +123,13 @@ fn main() {
             list_prompt_folders,
             // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
             reset_local_database,
+            // Migration-recovery escape hatches: dismiss the notice, delete the
+            // backup, wipe local data, and actually restart the process.
+            acknowledge_migration_recovery,
+            discard_migration_backup,
+            request_local_data_wipe,
+            cancel_local_data_wipe,
+            restart_app,
         ])
         .setup(|app| {
             let _ = app.handle();

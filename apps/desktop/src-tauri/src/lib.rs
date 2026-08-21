@@ -16,6 +16,7 @@ pub mod credentials;
 pub mod db;
 pub mod diagnostics;
 pub mod encryption;
+pub mod local_data;
 pub mod message_preview;
 pub mod paths;
 pub mod state;

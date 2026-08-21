@@ -95,7 +95,7 @@ const defaultSettings: AppSettings = {
   activeModel: 'claude-sonnet-4',
   localOnly: true,
   diagnosticsEnabled: true,
-  theme: 'system',
+  theme: 'dark',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
@@ -951,6 +951,11 @@ export default function App() {
       .filter((a): a is Artifact => a != null);
   }, [artifacts, openArtifactIds]);
 
+  const confirmDeleteTitle = useMemo(
+    () => conversations.find((c) => c.id === confirmDeleteId)?.displayTitle ?? null,
+    [conversations, confirmDeleteId],
+  );
+
   // Both pre-workspace routes keep the caption row. They bypass the shell
   // otherwise, and on a `decorations: false` window that left the user with no
   // way to move or close it until onboarding was finished.
@@ -958,7 +963,11 @@ export default function App() {
     return (
       <div className="app" id="app">
         <TitleBar />
-        <MigrationRecoveryNotice recovery={onboarding.migrationRecovery} onStatus={setStatusMessage} />
+        <MigrationRecoveryNotice
+          recovery={onboarding.migrationRecovery}
+          onStatus={setStatusMessage}
+          onDismissed={() => void refreshOnboarding()}
+        />
       </div>
     );
   }
@@ -1012,6 +1021,7 @@ export default function App() {
           onRevealWorkspace={handleRevealWorkspace}
           onOpenSettings={(section) => openSettings(section as SettingsSection)}
           onExportDiagnostics={() => void handleExportDiagnostics()}
+          onDeleteConversation={handleDeleteConversation}
           onDeleteAllHistory={handleDeleteAllHistory}
         />
 
@@ -1182,8 +1192,15 @@ export default function App() {
 
       <ConfirmDialog
         open={confirmDeleteId != null}
-        title="Delete conversation?"
-        description="Messages and associated local artifacts will be removed."
+        // Now that any row can be deleted from the sidebar — not just the open
+        // one — the dialog has to say which chat it means.
+        title={
+          confirmDeleteTitle ? `Delete “${confirmDeleteTitle}”?` : 'Delete conversation?'
+        }
+        // `delete_with_files` removes artifact files and attachment blobs from
+        // disk alongside the rows, so the dialog names both. Attachments shared
+        // with another chat are kept — hence "its".
+        description="Its messages, and the artifacts and attachments stored on disk with them, will be deleted."
         confirmLabel="Delete"
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={() => {
@@ -1195,7 +1212,11 @@ export default function App() {
       <ConfirmDialog
         open={confirmDeleteAll}
         title="Delete all conversation history?"
-        description="All conversations, messages, and associated local artifacts will be removed. App settings are preserved."
+        // Usage history is in the list because `usage_summary` cascades from
+        // `conversations` — deleting your chats silently takes your token and
+        // cost record with them, which the old "App settings are preserved"
+        // line implied was safe. Prompts have no such foreign key and survive.
+        description="Every conversation and message will be deleted, along with the artifacts and attachments stored on disk and your usage history. Settings, API keys, and saved prompts are kept."
         confirmLabel="Delete all"
         confirmPhrase="delete all"
         onCancel={() => setConfirmDeleteAll(false)}

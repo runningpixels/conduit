@@ -240,13 +240,13 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
 .sb-item.newchat { color: var(--hue-text); font-weight: 500; }
 .sb-item.newchat svg { color: var(--hue); }
 .sb-item.newchat:hover { background: color-mix(in srgb, var(--hue) 9%, transparent); color: var(--hue-text); }
-/* Under the Claude palette the accent no longer reports anything — it is one
+/* Under Orange Charcoal the accent no longer reports anything — it is one
    identity everywhere — so spending it on a nav row makes "New chat" read as
    the loudest thing in the sidebar. In the reference it is plain text, and the
    terracotta is kept for the send button and the mark. */
-html[data-palette="claude"] .sb-item.newchat { color: var(--ink-2); font-weight: 400; }
-html[data-palette="claude"] .sb-item.newchat svg { color: currentColor; }
-html[data-palette="claude"] .sb-item.newchat:hover { background: var(--card-hi); color: var(--ink); }
+html[data-palette="orange-charcoal"] .sb-item.newchat { color: var(--ink-2); font-weight: 400; }
+html[data-palette="orange-charcoal"] .sb-item.newchat svg { color: currentColor; }
+html[data-palette="orange-charcoal"] .sb-item.newchat:hover { background: var(--card-hi); color: var(--ink); }
 
 /* ── Sidebar reveal — the way back from a collapsed sidebar ────────────── */
 /* Without it a collapsed sidebar is reachable only by hotkey, so the collapse
@@ -310,16 +310,47 @@ html[data-sidebar="closed"] .sb-reveal { display: grid; }
   flex: 0 0 auto;
   opacity: .85;
 }
-/* The dot is a provenance mark, and under the Claude palette every provider
+/* The dot is a provenance mark, and under Orange Charcoal every provider
    wears the same hue — so it reports nothing and renders as a bullet on every
    row. Hidden rather than restyled: a mark that carries no information should
    not take space arguing for some. The base rule above stays, so the class is
-   still styled and the Conduit palette is untouched. */
-html[data-palette="claude"] .convo-dot { display: none; }
+   still styled and the Terra palette is untouched. */
+html[data-palette="orange-charcoal"] .convo-dot { display: none; }
 /* With the dot gone the row loses its left anchor, so it takes a little more
    size and roundness to hold the line — which is also how the reference reads. */
-html[data-palette="claude"] .convo { border-radius: var(--r); padding: 8px 10px; font-size: 13.5px; }
+html[data-palette="orange-charcoal"] .convo { border-radius: var(--r); padding: 8px 10px; font-size: 13.5px; }
 .convo-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The row wraps the select button and the delete button so the two can sit
+   side by side without nesting one inside the other. */
+.convo-row { position: relative; display: flex; align-items: center; }
+.convo-row .convo { flex: 1 1 auto; min-width: 0; }
+/* Delete is destructive and every row has one, so it stays out of sight until
+   the row is hovered or something inside it takes focus — `:focus-within`
+   is what keeps it reachable by keyboard, where hover never fires. */
+.convo-del {
+  position: absolute;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--tap), background var(--tap), color var(--tap);
+}
+.convo-del svg { width: 14px; height: 14px; }
+.convo-row:hover .convo-del,
+.convo-row:focus-within .convo-del { opacity: 1; pointer-events: auto; }
+.convo-del:hover { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+.convo-del:focus-visible { opacity: 1; pointer-events: auto; }
+/* Give the trash room so it never lands on top of the title, and hide the
+   relative timestamp while hovering — they occupy the same corner. */
+.convo-row:hover .convo-name,
+.convo-row:focus-within .convo-name { padding-right: 22px; }
+.convo-row:hover .convo-meta,
+.convo-row:focus-within .convo-meta { opacity: 0; }
 .convo-meta {
   font-family: var(--font-mono);
   font-size: 10.5px;

@@ -45,19 +45,19 @@ describe('palette select', () => {
     document.documentElement.removeAttribute('data-palette');
   });
 
-  it('defaults to the Terra palette and offers both', () => {
+  it('defaults to the Orange Charcoal palette and offers both', () => {
     renderSection();
     const select = screen.getByLabelText('Palette') as HTMLSelectElement;
-    expect(select.value).toBe('terra');
+    expect(select.value).toBe('orange-charcoal');
+    expect(screen.getByRole('option', { name: /Orange Charcoal/ })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Terra/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Claude/ })).toBeInTheDocument();
   });
 
   it('persists the choice and applies it to the document', () => {
     renderSection();
-    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'claude' } });
-    expect(localStorage.getItem('conduit:v9-palette')).toBe('claude');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('claude');
+    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'terra' } });
+    expect(localStorage.getItem('conduit:v9-palette')).toBe('terra');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
   });
 
   /**
@@ -67,15 +67,15 @@ describe('palette select', () => {
    */
   it('does not write the palette into AppSettings', () => {
     const { onUpdate } = renderSection();
-    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'claude' } });
+    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'terra' } });
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
   it('leaves the theme select independent of the palette', () => {
     const { onUpdate } = renderSection();
-    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'claude' } });
+    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'terra' } });
     fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'light' } });
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
-    expect(document.documentElement.getAttribute('data-palette')).toBe('claude');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
   });
 });

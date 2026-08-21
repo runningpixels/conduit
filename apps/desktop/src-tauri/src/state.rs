@@ -33,8 +33,14 @@ pub struct AppState {
     pub encryption: Arc<Encryption>,
     /// Set when a migration failed at startup and the live DB was rolled back to
     /// a fresh store (with a `.corrupt-<unix>.bak` backup). The renderer reads
-    /// this once to show the user-safe failure dialog. `None` on the happy path.
-    pub migration_recovery: Option<MigrationRecovery>,
+    /// this to show the user-safe failure dialog. `None` on the happy path.
+    ///
+    /// Interior-mutable so the renderer can *dismiss* it. Reloading the webview
+    /// does not rebuild `AppState`, so a plain `Option` fixed at startup left
+    /// the user in a loop: the dialog's only button reloaded the page, the
+    /// reload re-read the same `Some(..)`, and the dialog came straight back
+    /// with no way through to the app.
+    migration_recovery: Arc<Mutex<Option<MigrationRecovery>>>,
 }
 
 impl AppState {
@@ -42,6 +48,22 @@ impl AppState {
     /// handle without a partial move of the struct field.
     pub fn db(&self) -> DbPool {
         self.db.clone()
+    }
+
+    /// The pending migration-recovery notice, if the user has not dismissed it.
+    pub fn migration_recovery(&self) -> Option<MigrationRecovery> {
+        self.migration_recovery
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+    }
+
+    /// Dismiss the migration-recovery notice for the rest of this session. The
+    /// backup on disk is untouched — only the dialog goes away.
+    pub fn clear_migration_recovery(&self) {
+        if let Ok(mut guard) = self.migration_recovery.lock() {
+            *guard = None;
+        }
     }
 
     /// Initialize paths, settings, HTTP client, and the SQLite pool (running
@@ -58,6 +80,17 @@ impl AppState {
     /// simulated hermetically. `#[doc(hidden)]` because it exists for tests.
     #[doc(hidden)]
     pub async fn load_with_paths(paths: AppPaths, app_name: &str) -> Result<Self, String> {
+        // Deferred deletes run here, before anything opens the database or
+        // reads settings: this is the only point in the process where the files
+        // are guaranteed closed. No-op unless the user asked for a wipe and the
+        // app restarted.
+        if let Some(report) = crate::local_data::apply_pending_wipe(&paths) {
+            eprintln!(
+                "conduit: local data reset removed {} item(s)",
+                report.removed_paths.len()
+            );
+        }
+
         let settings = read_settings(&paths).unwrap_or_default();
 
         let (db, migration_recovery) = db::migrations::open_with_migrations(&paths.database)
@@ -118,7 +151,7 @@ impl AppState {
             http: HttpClient::new(),
             db,
             encryption: Arc::new(encryption),
-            migration_recovery,
+            migration_recovery: Arc::new(Mutex::new(migration_recovery)),
         })
     }
 
@@ -133,7 +166,7 @@ impl AppState {
             http: HttpClient::new(),
             db,
             encryption: Arc::new(Encryption::off()),
-            migration_recovery: None,
+            migration_recovery: Arc::new(Mutex::new(None)),
         }
     }
 

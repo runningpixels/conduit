@@ -25,14 +25,25 @@ async fn every_fixture_migrates_and_is_internally_consistent() {
         dir.display()
     );
 
+    // Work on copies. Migrating the committed fixtures in place upgrades them
+    // to the current schema and leaves `-wal`/`-shm` sidecars behind, so the
+    // *next* run has nothing left to migrate and the suite quietly stops
+    // testing anything. That is how a fixture recorded at schema `0001` ended
+    // up committed with migrations 1 through 9 already applied.
+    let scratch = tempfile::tempdir().expect("scratch dir");
+
     let mut count = 0;
     for entry in fs::read_dir(&dir).expect("read fixtures dir") {
         let entry = entry.expect("dir entry");
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("sqlite") {
+        let source = entry.path();
+        if source.extension().and_then(|e| e.to_str()) != Some("sqlite") {
             continue;
         }
         count += 1;
+
+        let path = scratch.path().join(source.file_name().expect("file name"));
+        fs::copy(&source, &path)
+            .unwrap_or_else(|e| panic!("copy fixture {}: {e}", source.display()));
 
         let url = format!(
             "sqlite://{}?mode=rwc",

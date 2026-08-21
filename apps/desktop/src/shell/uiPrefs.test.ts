@@ -59,20 +59,20 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     localStorage.setItem('conduit:v7-show-reasoning', 'true');
     localStorage.setItem('conduit:v7-send-with', 'shift');
     localStorage.setItem('conduit:v9-palette', 'anthropic');
-    expect(readPalette()).toBe('terra');
+    expect(readPalette()).toBe('orange-charcoal');
     expect(readProviderColour()).toBe('on');
     expect(readReduceMotion()).toBe('off');
     expect(readShowReasoning()).toBe('off');
     expect(readSendWith()).toBe('enter');
   });
 
-  it('palette defaults to terra and applies the html attribute', () => {
-    expect(readPalette()).toBe('terra');
-    writePalette('claude');
-    expect(readPalette()).toBe('claude');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('claude');
+  it('palette defaults to orange-charcoal and applies the html attribute', () => {
+    expect(readPalette()).toBe('orange-charcoal');
     writePalette('terra');
+    expect(readPalette()).toBe('terra');
     expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
+    writePalette('orange-charcoal');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
   });
 
   it('migrates stored conduit palette to terra', () => {
@@ -80,8 +80,16 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(readPalette()).toBe('terra');
   });
 
+  /* The rename's one real hazard: `claude` no longer validates, so without the
+   * migration it would fall through to the default — which is this same look,
+   * making the lost preference invisible until the user chose terra. */
+  it('migrates the stored claude palette to orange-charcoal', () => {
+    localStorage.setItem('conduit:v9-palette', 'claude');
+    expect(readPalette()).toBe('orange-charcoal');
+  });
+
   it('applyUiPrefs sets every document attribute idempotently', () => {
-    writePalette('claude');
+    writePalette('orange-charcoal');
     writeProviderColour('off');
     writeReduceMotion('on');
     writeExpandedStatus('on');
@@ -90,7 +98,7 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
     applyUiPrefs();
-    expect(document.documentElement.getAttribute('data-palette')).toBe('claude');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
     expect(document.documentElement.getAttribute('data-expanded-status')).toBe('on');
@@ -131,10 +139,10 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
    * three pairings are settled by source order alone. Order is therefore a
    * contract, not a formatting detail.
    */
-  it('orders the claude pin after the provider hues and before the off switch', () => {
+  it('orders the orange-charcoal pin after the provider hues and before the off switch', () => {
     const css = readFileSync(`${process.cwd()}/../../packages/ui/src/tokens.css`, 'utf8');
     const hue = css.indexOf('[data-provider="anthropic"]');
-    const pin = css.indexOf('html[data-palette="claude"] [data-provider]');
+    const pin = css.indexOf('html[data-palette="orange-charcoal"] [data-provider]');
     const off = css.indexOf('html[data-provider-colour="off"] [data-provider]');
     expect(pin).toBeGreaterThan(-1);
     // (0,2,1) beats the provider rules' (0,1,0)/(0,2,0) outright, but the rule

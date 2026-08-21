@@ -46,6 +46,9 @@ interface SidebarProps {
   onOpenSettings: (section: string) => void;
   /** Export a redacted diagnostics bundle (workspace menu). */
   onExportDiagnostics: () => void;
+  /** Delete one conversation (routes through the confirm dialog). Omit to
+   *  render the list without per-row delete affordances. */
+  onDeleteConversation?: (id: string) => void;
   /** Delete all conversation history (routes through the confirm dialog). */
   onDeleteAllHistory: () => void;
 }
@@ -124,6 +127,7 @@ export function Sidebar({
   onRevealWorkspace,
   onOpenSettings,
   onExportDiagnostics,
+  onDeleteConversation,
   onDeleteAllHistory,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -273,20 +277,43 @@ export function Sidebar({
               <div className="sb-group">{group}</div>
               {rows.map((row) => {
                 const providerId = convoProviders[row.id] ?? 'custom';
+                // The row is a wrapper, not a button, because delete has to be
+                // its own control — a button inside a button is invalid markup
+                // and screen readers only announce the outer one.
                 return (
-                  <button
-                    key={row.id}
-                    className="convo"
-                    type="button"
-                    data-provider={providerHueId(providerId)}
-                    aria-current={row.id === activeConversationId ? 'true' : undefined}
-                    title={row.displayTitle}
-                    onClick={() => onSelectConversation(row.id)}
-                  >
-                    <i className="convo-dot" aria-hidden="true" />
-                    <span className="convo-name">{row.displayTitle}</span>
-                    <span className="convo-meta">{relativeFromIso(row.updatedAt)}</span>
-                  </button>
+                  <div key={row.id} className="convo-row">
+                    <button
+                      className="convo"
+                      type="button"
+                      data-provider={providerHueId(providerId)}
+                      aria-current={row.id === activeConversationId ? 'true' : undefined}
+                      title={row.displayTitle}
+                      onClick={() => onSelectConversation(row.id)}
+                    >
+                      <i className="convo-dot" aria-hidden="true" />
+                      <span className="convo-name">{row.displayTitle}</span>
+                      <span className="convo-meta">{relativeFromIso(row.updatedAt)}</span>
+                    </button>
+                    {onDeleteConversation && (
+                      <button
+                        className="convo-del"
+                        type="button"
+                        // Named, not just "Delete": the button is one of many
+                        // identical glyphs in a list, so the label has to say
+                        // which row it belongs to.
+                        aria-label={`Delete ${row.displayTitle}`}
+                        title="Delete chat"
+                        onClick={(event) => {
+                          // Without this the click reaches the row underneath
+                          // and selects the chat on its way to the dialog.
+                          event.stopPropagation();
+                          onDeleteConversation(row.id);
+                        }}
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>

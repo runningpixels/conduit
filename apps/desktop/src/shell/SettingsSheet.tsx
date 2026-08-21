@@ -319,8 +319,8 @@ export function SettingsSheet({
             <>
               <h2 className="sheet-h">Appearance</h2>
               <p className="sheet-sub">
-                Chrome stays neutral so colour reads as information. The Conduit palette spends
-                that colour on provider identity; the Claude palette spends it on one accent.
+                Chrome stays neutral so colour reads as information. Orange Charcoal spends
+                that colour on one accent; the Terra palette spends it on provider identity.
               </p>
               <AppearanceSection settings={settings} onUpdate={save} />
               <div className="grp" style={{ marginTop: 20 }}>

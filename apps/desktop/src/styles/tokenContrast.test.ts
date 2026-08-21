@@ -66,7 +66,7 @@ function readTokenIn(block: string, name: string): string | null {
  * "the first place this text appears anywhere in the file", which made two
  * things true that should not have been: a shorter selector silently matched
  * inside a longer one (`[data-theme="light"] {\n` is a substring of
- * `html[data-palette="claude"][data-theme="light"] {\n`, so the light theme's
+ * `html[data-palette="orange-charcoal"][data-theme="light"] {\n`, so the light theme's
  * contrast was checked correctly only by source order), and a typo'd or deleted
  * selector matched something else instead of failing. Exact selector-member
  * matching plus a uniqueness check makes both of those errors loud.
@@ -153,23 +153,23 @@ const INKS = ['ink', 'ink-2', 'ink-3'] as const;
 
 /**
  * The four looks the app can render: two palettes × two themes. Each is a
- * *stack* of token layers in cascade order, because the Claude palette declares
- * only what it changes.
+ * *stack* of token layers in cascade order, because the Orange Charcoal palette
+ * declares only what it changes.
  *
- * The Claude light stack lists the palette's base block after
- * `[data-theme="light"]` deliberately: `html[data-palette="claude"]` is (0,1,1)
+ * The Orange Charcoal light stack lists the palette's base block after
+ * `[data-theme="light"]` deliberately: `html[data-palette="orange-charcoal"]` is (0,1,1)
  * and `[data-theme="light"]` is (0,1,0), so in the browser the palette's dark
  * values *do* outrank the light theme. That is why the light palette block has
  * to redeclare every colour the dark one does, and why the coverage test below
  * exists.
  */
-const CLAUDE = 'html[data-palette="claude"]';
-const CLAUDE_LIGHT = 'html[data-palette="claude"][data-theme="light"]';
+const OC = 'html[data-palette="orange-charcoal"]';
+const OC_LIGHT = 'html[data-palette="orange-charcoal"][data-theme="light"]';
 const THEMES = {
   'terra dark': [':root'],
   'terra light': [':root', '[data-theme="light"]'],
-  'claude dark': [':root', CLAUDE],
-  'claude light': [':root', '[data-theme="light"]', CLAUDE, CLAUDE_LIGHT],
+  'orange-charcoal dark': [':root', OC],
+  'orange-charcoal light': [':root', '[data-theme="light"]', OC, OC_LIGHT],
 } as const;
 
 describe.each(Object.entries(THEMES))('%s', (_look, layers) => {
@@ -277,8 +277,8 @@ describe('provider hue: solid fill role', () => {
 });
 
 /**
- * The Claude palette pins one identity across every provider, and it does so
- * through private `--claude-*` literals rather than by declaring `--hue`
+ * The Orange Charcoal palette pins one identity across every provider, and it
+ * does so through private `--oc-*` literals rather than by declaring `--hue`
  * directly — so that the rule doing the assigning can stay theme-agnostic and
  * lose to `provider-colour: off` on source order.
  *
@@ -287,49 +287,49 @@ describe('provider hue: solid fill role', () => {
  * the subject back — the literals are measured, and the mapping from literal to
  * role is asserted, so the two cannot drift apart.
  */
-describe('claude palette hue', () => {
+describe('orange-charcoal palette hue', () => {
   const LOOKS = [
-    ['claude dark', CLAUDE, THEMES['claude dark']],
-    ['claude light', CLAUDE_LIGHT, THEMES['claude light']],
+    ['orange-charcoal dark', OC, THEMES['orange-charcoal dark']],
+    ['orange-charcoal light', OC_LIGHT, THEMES['orange-charcoal light']],
   ] as const;
 
-  it.each(LOOKS)('%s --claude-hue-text clears AA on every surface', (_look, sel, layers) => {
-    const hueText = readTokenIn(blockFor(sel), 'claude-hue-text')!;
+  it.each(LOOKS)('%s --oc-hue-text clears AA on every surface', (_look, sel, layers) => {
+    const hueText = readTokenIn(blockFor(sel), 'oc-hue-text')!;
     for (const surface of SURFACES) {
       expect(
         contrast(hueText, resolve(layers, surface)),
-        `--claude-hue-text on --${surface}`,
+        `--oc-hue-text on --${surface}`,
       ).toBeGreaterThanOrEqual(AA);
     }
   });
 
-  it.each(LOOKS)('%s --claude-hue clears 3:1 on every surface', (_look, sel, layers) => {
-    const hue = readTokenIn(blockFor(sel), 'claude-hue')!;
+  it.each(LOOKS)('%s --oc-hue clears 3:1 on every surface', (_look, sel, layers) => {
+    const hue = readTokenIn(blockFor(sel), 'oc-hue')!;
     for (const surface of SURFACES) {
       expect(
         contrast(hue, resolve(layers, surface)),
-        `--claude-hue on --${surface}`,
+        `--oc-hue on --${surface}`,
       ).toBeGreaterThanOrEqual(AA_NON_TEXT);
     }
   });
 
-  it.each(LOOKS)('%s --on-hue clears AA on --claude-hue-solid', (_look, sel, layers) => {
-    const solid = readTokenIn(blockFor(sel), 'claude-hue-solid')!;
+  it.each(LOOKS)('%s --on-hue clears AA on --oc-hue-solid', (_look, sel, layers) => {
+    const solid = readTokenIn(blockFor(sel), 'oc-hue-solid')!;
     expect(contrast(resolve(layers, 'on-hue'), solid)).toBeGreaterThanOrEqual(AA);
   });
 
   // Without this, the literals above could be measured while the app renders
   // something else entirely.
   it('maps every hue role onto a measured literal', () => {
-    const pin = blockFor('html[data-palette="claude"] [data-provider]');
-    expect(pin).toContain('--hue: var(--claude-hue)');
-    expect(pin).toContain('--hue-text: var(--claude-hue-text)');
-    expect(pin).toContain('--hue-solid: var(--claude-hue-solid)');
+    const pin = blockFor('html[data-palette="orange-charcoal"] [data-provider]');
+    expect(pin).toContain('--hue: var(--oc-hue)');
+    expect(pin).toContain('--hue-text: var(--oc-hue-text)');
+    expect(pin).toContain('--hue-solid: var(--oc-hue-solid)');
   });
 });
 
 /**
- * `html[data-palette="claude"]` is (0,1,1) and `[data-theme="light"]` is
+ * `html[data-palette="orange-charcoal"]` is (0,1,1) and `[data-theme="light"]` is
  * (0,1,0), so the palette's dark values outrank the light theme. Any colour the
  * dark block declares and the light block forgets leaks into light mode — and
  * for `--ink` that is near-white text on near-white paper, with every contrast
@@ -337,10 +337,10 @@ describe('claude palette hue', () => {
  *
  * So the coverage itself is the assertion.
  */
-describe('claude palette: light covers dark', () => {
+describe('orange-charcoal palette: light covers dark', () => {
   it('redeclares every colour the dark block declares', () => {
-    const dark = blockFor(CLAUDE);
-    const light = blockFor(CLAUDE_LIGHT);
+    const dark = blockFor(OC);
+    const light = blockFor(OC_LIGHT);
     const declared = [...dark.matchAll(/--([a-z0-9-]+)\s*:\s*(?:#|rgba?\()/g)].map((m) => m[1]);
     expect(declared.length, 'the dark palette block declares no colours').toBeGreaterThan(0);
     const missing = declared.filter((name) => !new RegExp(`--${name}\\s*:`).test(light));

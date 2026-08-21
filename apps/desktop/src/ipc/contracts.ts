@@ -71,6 +71,32 @@ export interface MigrationRecoveryInfo {
   backupPath: string;
   /** The migration error that caused the recovery. */
   error: string;
+  /** False once the backup has been discarded, so the dialog can stop offering
+   *  a delete that would do nothing. */
+  backupExists: boolean;
+  /** Total bytes held by every recovery backup next to the database. */
+  backupBytes: number;
+}
+
+/** What a discard or wipe actually removed. Reported back so the confirmation
+ *  can name real paths instead of claiming success generically. */
+export interface RemovalReport {
+  removedPaths: string[];
+  freedBytes: number;
+}
+
+/** How much to delete when the user asks to start over.
+ *  - `conversations`: chats, attachments, artifacts, stream journals, backups.
+ *    Settings and keychain credentials survive.
+ *  - `everything`: the above plus settings, logs, diagnostics, exports, and
+ *    connector working dirs — a first-run state. Keychain secrets are never
+ *    touched by either scope. */
+export type WipeScope = 'conversations' | 'everything';
+
+export interface PendingWipeResult {
+  /** Always true: the wipe is applied on next launch, never in place. */
+  requiresRestart: boolean;
+  estimatedBytes: number;
 }
 
 export interface ProviderDescriptor {

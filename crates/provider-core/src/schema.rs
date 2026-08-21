@@ -1101,6 +1101,10 @@ pub struct LicenseClaims {
 // generated from the same source as the desktop's Rust (C1). Behavior (defaults,
 // validation, keychain access) stays in the desktop crate.
 
+/// `Dark` is the default (see `AppSettings::default`): the app ships a dark
+/// look, and `System` would hand a first-run light-mode machine a light window
+/// before the user has expressed any preference. `System` stays available and
+/// still tracks the OS from the moment it is chosen.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../packages/config-schema/src/generated/theme.ts")]
@@ -1226,7 +1230,7 @@ impl Default for AppSettings {
             active_model: "claude-sonnet-4".to_string(),
             local_only: true,
             diagnostics_enabled: true,
-            theme: Theme::System,
+            theme: Theme::Dark,
             provider_endpoints: HashMap::new(),
             artifact_remote_allowlist: Vec::new(),
             artifact_styled_preview: true,

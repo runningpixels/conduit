@@ -3,6 +3,7 @@
 use crate::{
     credentials::CredentialSummary,
     diagnostics::{self, DiagnosticsExport},
+    local_data::{self, WipeScope},
     state::{AppSettings, AppState, SettingsPatch},
 };
 use provider_core::schema::CredentialRequest;
@@ -70,6 +71,12 @@ pub fn update_settings(
 pub struct MigrationRecoveryInfo {
     pub backup_path: String,
     pub error: String,
+    /// Whether the backup is still on disk. False once the user discards it —
+    /// the dialog then stops offering a delete that would do nothing.
+    pub backup_exists: bool,
+    /// Total size of every recovery backup next to the database, so the UI can
+    /// tell the user what discarding actually frees.
+    pub backup_bytes: u64,
 }
 
 /// Phase 6 M6.4: first-run onboarding state.
@@ -87,14 +94,115 @@ pub fn get_onboarding_state(state: State<'_, AppState>) -> Result<OnboardingStat
     Ok(OnboardingState {
         onboarding_completed: settings.onboarding_completed,
         has_provider_credential: state.has_any_provider_credential(),
-        migration_recovery: state
-            .migration_recovery
-            .as_ref()
-            .map(|r| MigrationRecoveryInfo {
-                backup_path: r.backup_path.display().to_string(),
-                error: r.error.clone(),
-            }),
+        migration_recovery: state.migration_recovery().map(|r| MigrationRecoveryInfo {
+            backup_path: r.backup_path.display().to_string(),
+            error: r.error.clone(),
+            backup_exists: r.backup_path.exists(),
+            backup_bytes: local_data::backup_bytes(&state.paths.database),
+        }),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Migration recovery
+// ---------------------------------------------------------------------------
+
+/// Dismiss the migration-recovery dialog and continue with the fresh store.
+///
+/// The backup file is deliberately left alone: acknowledging that a migration
+/// failed is not consent to delete the only copy of the user's data. Use
+/// [`discard_migration_backup`] for that.
+#[tauri::command]
+pub fn acknowledge_migration_recovery(state: State<'_, AppState>) -> Result<(), String> {
+    state.clear_migration_recovery();
+    local_data::clear_failure_marker(&state.paths.database);
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovalReportPayload {
+    pub removed_paths: Vec<String>,
+    pub freed_bytes: u64,
+}
+
+impl From<local_data::RemovalReport> for RemovalReportPayload {
+    fn from(report: local_data::RemovalReport) -> Self {
+        Self {
+            removed_paths: report.removed_paths,
+            freed_bytes: report.freed_bytes,
+        }
+    }
+}
+
+/// Delete the recovery backups and dismiss the dialog.
+///
+/// Safe to run in-session — the backups are inert copies nothing holds open.
+/// The live (fresh) store is untouched, so the user stays in the app.
+#[tauri::command]
+pub fn discard_migration_backup(
+    state: State<'_, AppState>,
+) -> Result<RemovalReportPayload, String> {
+    let report = local_data::discard_backups(&state.paths.database);
+    state.clear_migration_recovery();
+    Ok(report.into())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingWipeResult {
+    /// Always true — the wipe is applied on next launch, never in place. The
+    /// field exists so the renderer reads intent rather than assuming it.
+    pub requires_restart: bool,
+    /// Size the wipe is expected to free, measured now.
+    pub estimated_bytes: u64,
+}
+
+/// Schedule a local-data wipe for the next launch.
+///
+/// `scope` is `"conversations"` (chats, attachments, artifacts, stream
+/// journals, and every backup — settings and keychain keys survive) or
+/// `"everything"` (also settings, logs, diagnostics, exports, connector
+/// working dirs — a first-run state). Keychain secrets are never removed.
+///
+/// Nothing is deleted here. The SQLite pool holds the live database open for
+/// the whole session and Windows will not unlink an open file, so the delete is
+/// deferred to startup where the handles are closed. Call `restart_app` next.
+#[tauri::command]
+pub fn request_local_data_wipe(
+    state: State<'_, AppState>,
+    scope: String,
+) -> Result<PendingWipeResult, String> {
+    let scope = WipeScope::parse(&scope)?;
+    let estimated_bytes = local_data::backup_bytes(&state.paths.database)
+        + std::fs::metadata(&state.paths.database)
+            .map(|m| m.len())
+            .unwrap_or(0);
+    local_data::request_wipe(&state.paths, scope)?;
+    Ok(PendingWipeResult {
+        requires_restart: true,
+        estimated_bytes,
+    })
+}
+
+/// Abandon a scheduled wipe (the user backed out of the restart).
+#[tauri::command]
+pub fn cancel_local_data_wipe(state: State<'_, AppState>) -> Result<(), String> {
+    local_data::cancel_pending_wipe(&state.paths);
+    Ok(())
+}
+
+/// Restart the app process.
+///
+/// The recovery dialog used to call `window.location.reload()`, which reloads
+/// the webview but leaves the Rust process — and its startup state — exactly as
+/// it was. Only a real process restart re-runs migrations and applies a pending
+/// wipe. `request_restart` routes through `RunEvent::ExitRequested` so the
+/// connector-shutdown backstop in `main.rs` still runs.
+#[tauri::command]
+pub fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
+    app.request_restart();
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

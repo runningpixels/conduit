@@ -281,6 +281,60 @@
   word-break: break-word;
 }
 
+/* Migration-recovery "Delete data" panel. Destructive actions live behind a
+ * disclosure and inside their own bordered region so they never sit flush with
+ * the safe ones above — the error tint is the only place --err carries a
+ * container in this shell. */
+.recovery-danger {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--err) 34%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--err) 6%, var(--card));
+  display: grid;
+  gap: 16px;
+}
+.recovery-danger-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+.recovery-danger-row + .recovery-danger-row {
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.recovery-danger-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.recovery-danger-row .btn { flex: 0 0 auto; }
+.recovery-danger-row--stack .btn { align-self: flex-start; }
+.recovery-scope {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.recovery-scope .onboarding-check {
+  align-items: flex-start;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.recovery-scope .onboarding-check input { margin-top: 2px; flex: 0 0 auto; }
+/* Outline rather than fill: a delete button should read as consequential
+ * without competing with the primary action for attention. */
+.btn.danger {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 42%, transparent);
+}
+.btn.danger:hover:not(:disabled) {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  border-color: var(--err);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ── Command palette (V7 §8.8 — prefix modes: > commands · @ artifacts · / models) ── */
 /* Restyle only (V9 §7): the prefixes (`>` `@` `/`), the modes and the corpus
    are unchanged — the palette was already the summoned layer V9 wants, so only

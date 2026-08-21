@@ -18,7 +18,7 @@ const SEND_WITH_KEY = 'conduit:v7-send-with';
 const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
 const EXPANDED_STATUS_KEY = 'conduit:v9-expanded-status';
 
-export type PalettePref = 'terra' | 'claude';
+export type PalettePref = 'terra' | 'orange-charcoal';
 export type ProviderColourPref = 'on' | 'off';
 export type ReduceMotionPref = 'on' | 'off';
 export type ShowReasoningPref = 'on' | 'off';
@@ -44,18 +44,23 @@ function writePref(key: string, value: string): void {
   }
 }
 
-/* ── Palette ──────────────────────────────────────────────────────────────
- * A second look, orthogonal to `data-theme`: `terra` is the V9 warm-charcoal
- * register (provider colour as the only hue); `claude` is the darker near-
- * neutral charcoal from Claude desktop, with terracotta pinned and serif
- * prose. Four combinations, since either palette runs in either theme.
+/* ── Palette ─────────────────────────────────────────────────────────────────────
+ * A second look, orthogonal to `data-theme`: `orange-charcoal` is the darker
+ * near-neutral charcoal with terracotta pinned and serif prose; `terra` is the
+ * V9 warm-charcoal register that keeps provider colour as the only hue. Four
+ * combinations, since either palette runs in either theme.
  *
- * It is a *palette*, not the default, because `claude` suspends the one thing
- * V9 §3 calls the product's signature — provider identity as the only hue.
- * That is a choice worth offering and not worth imposing, so `terra` stays
- * the default.
+ * `orange-charcoal` is the default look. It suspends what V9 §3 called the
+ * product's signature — provider identity as the only hue — in favour of one
+ * calmer identity out of the box; `terra` stays one selection away for anyone
+ * who wants provider colour back.
  *
- * Stored value `conduit` migrates to `terra` (the rename of the default look).
+ * Stored values migrate: `conduit` → `terra` (the rename of the old default
+ * look), `claude` → `orange-charcoal` (the rename of this one). Both preserve an
+ * explicit choice across the rename rather than silently resetting it — and the
+ * `claude` migration matters more than it looks: without it, everyone who had
+ * chosen this palette would land back on the fallback, which is now the same
+ * look, so the bug would be invisible until they picked `terra`.
  *
  * Renderer-only for the same reason the prefs below are: AppSettings.theme is a
  * Rust enum crossing the IPC boundary, and a look preset does not need to be.
@@ -65,10 +70,11 @@ export function readPalette(): PalettePref {
   try {
     const v = localStorage.getItem(PALETTE_KEY);
     if (v === 'conduit') return 'terra';
+    if (v === 'claude') return 'orange-charcoal';
   } catch {
     /* storage unavailable */
   }
-  return readPref(PALETTE_KEY, ['terra', 'claude'], 'terra');
+  return readPref(PALETTE_KEY, ['terra', 'orange-charcoal'], 'orange-charcoal');
 }
 
 export function writePalette(value: PalettePref): void {
@@ -76,7 +82,7 @@ export function writePalette(value: PalettePref): void {
   applyPalette(value);
 }
 
-/** `html[data-palette="claude"]` swaps surfaces, hue, and the prose face. */
+/** `html[data-palette="orange-charcoal"]` swaps surfaces, hue, and the prose face. */
 export function applyPalette(value: PalettePref): void {
   document.documentElement.setAttribute('data-palette', value);
 }

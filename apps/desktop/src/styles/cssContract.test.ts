@@ -332,8 +332,8 @@ describe('bundled fonts', () => {
   });
 
   /**
-   * The prose face is the one register the Claude palette changes, and the
-   * Conduit palette must be provably untouched by it — a serif default here
+   * The prose face is the one register the Orange Charcoal palette changes, and
+   * the Terra palette must be provably untouched by it — a serif default here
    * would restyle every existing user's transcript on upgrade.
    */
   it('--font-prose defaults to the UI face', () => {
@@ -345,8 +345,8 @@ describe('bundled fonts', () => {
   /**
    * There is one serif in the product, and it is one *token*, not two stacks
    * that happen to agree. `--font-serif` dresses artifact document titles and
-   * the Claude palette's prose, and those two render 18px apart in the same
-   * view — when this was a system stack and the palette named Source Serif
+   * the Orange Charcoal palette's prose, and those two render 18px apart in the
+   * same view — when this was a system stack and the palette named Source Serif
    * directly, a title fell back to Georgia on Windows and Charter on macOS
    * beside prose that did neither. Restating the stack here would let them
    * drift apart again silently, so the override has to be the reference.

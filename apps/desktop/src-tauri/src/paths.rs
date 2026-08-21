@@ -1,6 +1,9 @@
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,7 +29,14 @@ pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
     let project = ProjectDirs::from("com", "Conduit", app_name)
         .ok_or_else(|| "unable to resolve application data directory".to_string())?;
 
-    let root = project.data_local_dir().to_path_buf();
+    resolve_in(project.data_local_dir())
+}
+
+/// Same layout as [`resolve`], rooted at an explicit directory instead of the
+/// OS data dir. Tests point this at a tempdir so they exercise the real path
+/// names rather than a hand-written `AppPaths` that can drift from production.
+pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
+    let root = root.to_path_buf();
     let settings_file = root.join("settings.json");
     let database = root.join("conduit.sqlite");
     let attachments = root.join("attachments");

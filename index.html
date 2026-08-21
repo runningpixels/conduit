@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Conduit updates</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{background:#262624;color:#e6e3dd;font:16px/1.6 system-ui,sans-serif;margin:0;padding:12vh 6vw;max-width:44rem}
+  a{color:#d97757}
+  code{background:#333330;padding:.15em .4em;border-radius:4px;font-size:.9em}
+</style>
+<h1>Conduit update channels</h1>
+<p>This branch is the static host for Conduit's Tauri updater manifests. It is
+   not the project site.</p>
+<ul>
+  <li><code>/stable/manifest.json</code> &mdash; stable channel</li>
+  <li><code>/beta/manifest.json</code> &mdash; beta channel (prerelease and nightly tags)</li>
+</ul>
+<p>A release workflow generates the manifest for the channel its tag routes to;
+   promoting beta to stable republishes the same payload under the stable path.
+   See <code>docs/release/promotion.md</code> in the
+   <a href="https://github.com/runningpixels/conduit">repository</a>.</p>
+<p>No manifest is published yet &mdash; Conduit has not cut a release.</p>

@@ -1,0 +1,83 @@
+# cargo-deny — supply-chain and license gate. Run locally with:
+#   cargo install cargo-deny --locked && cargo deny check
+
+[graph]
+targets = [
+  "x86_64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+]
+all-features = false
+
+[advisories]
+# Fail on any crate with a known security advisory.
+yanked = "deny"
+
+# Report an unmaintained crate only when the workspace depends on it directly.
+# Every unmaintained crate in this tree is transitive and unactionable: Tauri
+# v2 on Linux is built on the GTK3 bindings, which the gtk-rs project retired
+# in favour of GTK4 (10 advisories on their own), and proc-macro-error and the
+# unic-* family arrive underneath build macros. Failing the gate on those means
+# a permanently red check that everyone learns to ignore, which is worse than
+# no check at all. A crate we choose ourselves still fails.
+unmaintained = "workspace"
+
+ignore = [
+    # quick-xml, reached only via plist <- tauri-utils. Both advisories are
+    # denial-of-service on untrusted XML input; the only XML in that path is
+    # the Info.plist this project generates at bundle time, so no
+    # attacker-controlled document ever reaches the parser. There is no
+    # semver-compatible fix to take -- `cargo update -p quick-xml` locks 0
+    # packages because plist pins the range. Drop these when tauri-utils
+    # ships a plist that has moved off it.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]
+
+[licenses]
+# Conduit is AGPL-3.0-only. Every license here is one-way compatible with it.
+# A new dependency carrying anything else fails CI and needs a deliberate
+# decision — see LICENSING.md.
+confidence-threshold = 0.9
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "MIT-0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Unlicense",
+  "BSL-1.0",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+  "OpenSSL",
+  "AGPL-3.0-only",
+]
+
+# ring's license is ISC-style with BoringSSL/OpenSSL-derived portions. The
+# additional permission in LICENSING.md section 7 resolves the GPL-family
+# incompatibility question that scanners raise here.
+[[licenses.clarify]]
+crate = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = []
+
+[bans]
+# Duplicate transitive versions are normal in a Tauri tree; warn, don't block.
+multiple-versions = "warn"
+# A "*" version requirement on a registry crate is a supply-chain hazard...
+wildcards = "deny"
+# ...but intra-workspace `{ path = "..." }` deps are legitimately unversioned.
+allow-wildcard-paths = true
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

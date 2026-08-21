@@ -1,0 +1,5 @@
+# Pin contributors to the same toolchain CI uses. `stable` (not a fixed
+# version) matches .github/workflows/ci.yml, which installs stable on every run.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

@@ -1,0 +1,610 @@
+/* ── Document panel (V9 §4) ─────────────────────────────────────────────────
+ * An inset rounded card rather than a flush column. The gap and the radius are
+ * what stop it reading as a second application docked beside the thread: it is
+ * a surface the thread put there, so it floats on --bg like the composer does.
+ *
+ * Class prefixes stay `doc-*` (plan D11). The mockup calls this `.panel`, which
+ * would collide with the existing `.panel-toggle` and `.panel-foot`, and the
+ * import order in styles.css turns a collision into a regression somewhere
+ * unrelated rather than an error here. */
+.doc-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  margin: 10px 10px 10px 0;
+  background: var(--bg-side);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+/* The card's 10px top inset is measured from the caption row's bottom edge, so
+   there is nothing to dodge. It previously started 42px down (10px inset + a
+   32px control cluster) because the window buttons floated over this corner. */
+/* Collapsed, the grid track is 0 wide — the margins and the border would still
+   claim 21px of it and leave a sliver of card hanging in the gutter. */
+html[data-panel="closed"] .doc-panel {
+  margin: 0;
+  border-width: 0;
+}
+.doc-panel-empty .doc-body {
+  display: grid;
+  place-items: center;
+  padding: 24px 18px;
+}
+.doc-placeholder {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-align: center;
+}
+.doc-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  height: 44px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.doc-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.doc-toolbar-title .ficon { flex: none; }
+.doc-toolbar-title .ficon svg { width: 15px; height: 15px; color: var(--hue); }
+.doc-toolbar-spacer { flex: 1; min-width: 8px; }
+.doc-title { min-width: 0; line-height: 1.25; }
+.doc-title b {
+  display: block;
+  font: 600 12.5px/1.2 var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-title small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.tab-state.inline {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.tab-state.inline.warn { background: var(--warn); }
+.tab-state.inline.bad { background: var(--err); }
+.doc-actions { display: flex; gap: 2px; flex: none; }
+/* The V9 `.seg` segmented control, kept under its existing name (D11): this
+   already was a segmented control, and a second name for it would be churn. */
+.doc-view-toggle {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: var(--r-sm);
+  border: 0;
+  background: var(--card-hi);
+  flex: none;
+}
+.doc-view-btn {
+  padding: 3px 10px;
+  font: 500 11.5px/1 var(--font-ui);
+  color: var(--ink-3);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  transition: var(--tap);
+}
+.doc-view-btn:hover { color: var(--ink); }
+.doc-view-btn.active {
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
+}
+html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filter: brightness(1.25); }
+.doc-overflow { position: relative; }
+.doc-more-menu { top: 40px; right: 8px; }
+.doc-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  cursor: default;
+}
+.doc-meta-row .tail { margin-left: auto; color: var(--ink-2); }
+
+/* V7 §8.7 — persistent mono foot strip: path left · size · version · saved right */
+.panel-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.panel-foot .foot-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.panel-foot .spacer { flex: 1; }
+.panel-foot .foot-meta { flex: none; white-space: nowrap; }
+.artifact-tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  overflow-x: auto;
+}
+[data-multi-open="true"] .artifact-tabs {
+  padding-bottom: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+.doc-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.doc-title-row .tab-rename {
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  flex: none;
+}
+.doc-title-row .tab-close {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  flex: none;
+  opacity: 0;
+  cursor: pointer;
+}
+.doc-title-row:hover .tab-rename,
+.doc-title-row:focus-within .tab-rename,
+.doc-title-row:hover .tab-close,
+.doc-title-row:focus-within .tab-close,
+.artifact-file-tab:hover .tab-rename,
+.artifact-file-tab:focus-within .tab-rename {
+  opacity: 1;
+}
+.doc-title-row .tab-close:hover {
+  color: var(--ink);
+  background: var(--card-hi);
+}
+.artifact-file-tab {
+  min-width: 0;
+  max-width: 240px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 5px 3px 3px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink-2);
+  font: 500 11.5px/1 var(--font-mono);
+  transition: var(--tap);
+}
+.artifact-file-tab:hover { color: var(--ink); background: var(--card); border-color: var(--line); }
+.artifact-file-tab.active {
+  color: var(--ink);
+  background: var(--card);
+  border-color: var(--hue);
+  border-bottom-color: var(--hue);
+  box-shadow: 0 -1px 0 0 var(--hue) inset;
+  font-weight: 600;
+}
+.artifact-file-tab .tab-select {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.artifact-file-tab svg { width: 14px; height: 14px; color: var(--hue); flex: none; }
+.artifact-file-tab .tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-file-tab .tab-state { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--ok); }
+.artifact-file-tab .tab-state.warn { background: var(--warn); }
+.artifact-file-tab .tab-state.bad { background: var(--err); }
+.artifact-file-tab .tab-rename,
+.artifact-file-tab .tab-close {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+.artifact-file-tab .tab-rename { opacity: 0; }
+.artifact-file-tab .tab-rename svg { width: 12px; height: 12px; color: inherit; }
+.artifact-file-tab .tab-rename:hover,
+.artifact-file-tab .tab-close:hover { color: var(--ink); background: var(--card-hi); }
+.doc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 28px 30px; }
+.doc-content { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+
+/* Preview tab: let renderers (esp. HTML iframe) span the full panel width. */
+[data-doc-tab="preview"] .doc-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+[data-doc-tab="preview"] .doc-body .doc-banner { margin: 14px 18px 0; flex: none; }
+[data-doc-tab="preview"] .doc-content { flex: 1; min-height: 0; gap: 0; }
+[data-doc-tab="preview"] .doc-pane[data-doc-pane="preview"] {
+  flex: 1;
+  min-height: 0;
+}
+[data-doc-tab="preview"] .doc-pane[data-doc-pane="preview"] .doc-placeholder { padding: 16px 18px; text-align: left; }
+
+.doc-banner {
+  display: block;
+  margin: 0 0 14px;
+  padding: 10px 11px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.doc-banner.warn {
+  background: color-mix(in srgb, var(--warn) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line));
+}
+.doc-banner.bad {
+  background: color-mix(in srgb, var(--err) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--err) 30%, var(--line));
+}
+.doc-banner.hold {
+  background: color-mix(in srgb, var(--hue) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--hue) 30%, var(--line));
+}
+.doc-pane { display: none; }
+[data-doc-tab="preview"] .doc-pane[data-doc-pane="preview"],
+[data-doc-tab="source"] .doc-pane[data-doc-pane="source"] { display: block; }
+
+/* M6: Preview pane sizing so renderers (esp. iframe) fill available width */
+.doc-pane[data-doc-pane="preview"] {
+  height: 100%;
+  min-height: 320px;
+}
+.artifact-html-frame {
+  width: 100%;
+  min-height: 420px;
+  height: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-side);
+  display: block;
+}
+[data-doc-tab="preview"] .artifact-html-frame {
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+[data-doc-tab="preview"] .artifact-plain,
+[data-doc-tab="preview"] .artifact-markdown,
+[data-doc-tab="preview"] .artifact-code,
+[data-doc-tab="preview"] .artifact-json {
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+
+/* Consistent baseline for other artifact preview renderers */
+.artifact-plain,
+.artifact-markdown,
+.artifact-code,
+.artifact-json {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  padding: 16px 18px;
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.6;
+  overflow: auto;
+}
+
+/* M3: Source-tab editor + banner action rows */
+.source-edit { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 240px; }
+.source-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.source-edit-hint { font: 500 11px/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.source-textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: 500 12.5px/1.55 var(--font-mono);
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+.source-textarea:focus { outline: none; border-color: var(--line-hi); }
+.doc-banner .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.doc { font-size: 14px; line-height: 1.68; color: var(--ink); max-width: 860px; }
+/* The only serif in the product (V9 §6). An artifact is a *document*, and the
+   reading-document register is the one place a second face earns its keep;
+   §10.2 flags it as the first thing to cut if it reads as drift. */
+.doc h1 { font: 600 21px/1.3 var(--font-serif); letter-spacing: -.01em; margin: 0 0 6px; }
+.doc .sub { color: var(--ink-3); font-size: 12px; margin: 0 0 18px; font-family: var(--font-mono); }
+.doc h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); margin: 20px 0 8px; }
+.doc p { margin: 0 0 11px; color: var(--ink-2); }
+.doc ul { margin: 0 0 11px; padding-left: 0; list-style: none; }
+.doc li { position: relative; padding: 7px 0 7px 22px; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
+.doc li:last-child { border-bottom: 0; }
+.doc li::before { content: ""; position: absolute; left: 4px; top: 13px; width: 5px; height: 5px; border-radius: 50%; background: var(--hue); }
+.doc li b { font-weight: 600; }
+.doc li .tag {
+  font: 500 10px/1 var(--font-mono);
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: var(--r-pill);
+  padding: 2px 6px;
+  margin-left: 6px;
+}
+
+/* ── Artifact empty state (inside document panel) ──────────────────────── */
+.artifact-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 24px 12px;
+}
+.artifact-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+  color: var(--hue);
+  background: var(--hue-weak);
+  border: 1px solid var(--line);
+}
+.artifact-empty-icon svg { width: 30px; height: 30px; }
+.artifact-empty-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+.artifact-empty-copy {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ── Artifact skeleton / shimmer ───────────────────────────────────────── */
+.artifact-skeleton {
+  width: 100%;
+  min-height: 120px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(
+    90deg,
+    var(--card) 25%,
+    var(--card-hi, var(--card)) 50%,
+    var(--card) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+.artifact-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  max-width: 560px;
+}
+.artifact-pending .artifact-skeleton {
+  min-height: 180px;
+}
+.artifact-pending-copy {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+/* Failed generation: no skeleton, no shimmer — the panel stops implying work
+   is still happening and states the reason instead. */
+.artifact-pending.failed {
+  align-items: flex-start;
+}
+.artifact-pending.failed .artifact-pending-copy {
+  color: var(--err);
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Artifact renderer internals (V7 F3).
+ *
+ * CodeRenderer, JsonRenderer and safeMarkdown emit these class names but no
+ * rule ever matched them, so the code gutter, the JSON tree and markdown
+ * tables rendered as unstyled UA defaults. Styled from the V7 token set to sit
+ * inside the shared `.artifact-code / .artifact-json / .artifact-markdown`
+ * baseline above.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Code preview: language chip + line-number gutter ──────────────────── */
+.artifact-code-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.lang-chip {
+  font: 600 10px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ink-2);
+  background: var(--bg-side);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  padding: 4px 8px;
+}
+.lang-chip.muted { color: var(--ink-3); }
+
+/* The gutter is a fixed 3ch column; `.line-text` carries the highlighted run.
+ * Both are inline inside a single <pre>, so the newline between rows does the
+ * line breaking — no block layout that would double the leading. */
+.artifact-code-body .line-no {
+  display: inline-block;
+  width: 3ch;
+  margin-right: 14px;
+  color: var(--ink-3);
+  text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.artifact-code-body .line-text { color: var(--ink); }
+
+/* ── JSON tree ─────────────────────────────────────────────────────────── */
+.artifact-json {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.json-line { white-space: pre-wrap; word-break: break-word; }
+.json-node { margin: 0; }
+.json-summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 11px;
+  list-style: none;
+  user-select: none;
+  -webkit-user-select: none;
+  border-radius: var(--r-xs);
+  padding: 1px 3px;
+  transition: color var(--tap);
+}
+.json-summary::-webkit-details-marker { display: none; }
+.json-summary::before {
+  content: '▾';
+  display: inline-block;
+  width: 12px;
+  color: var(--ink-3);
+  transition: transform var(--tap);
+}
+.json-node:not([open]) > .json-summary::before { transform: rotate(-90deg); }
+.json-summary:hover { color: var(--ink-2); }
+/* One indent step per nesting level, with a hairline to trace the depth. */
+.json-children {
+  margin-left: 5px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line-soft);
+}
+.json-entry { display: flex; gap: 6px; align-items: baseline; }
+.json-index,
+.json-key { color: var(--syn-property); flex: none; }
+.json-index { color: var(--ink-3); }
+.json-colon { color: var(--syn-punct); flex: none; }
+.json-str { color: var(--syn-string); }
+.json-num { color: var(--syn-number); }
+.json-bool { color: var(--syn-const); }
+.json-null { color: var(--syn-comment); font-style: italic; }
+.json-entry > .json-line,
+.json-entry > .json-node { min-width: 0; flex: 1 1 auto; }
+
+/* ── Markdown block elements (safeMarkdown) ────────────────────────────── */
+.md-quote {
+  margin: 0 0 11px;
+  padding: 2px 0 2px 13px;
+  border-left: 2px solid var(--line);
+  color: var(--ink-2);
+}
+.md-quote > :last-child { margin-bottom: 0; }
+.md-rule {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+}
+.md-table {
+  width: 100%;
+  margin: 0 0 13px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  /* Wide tables scroll their own container rather than the page (spec §4.2). */
+  display: block;
+  overflow-x: auto;
+}
+.md-table th,
+.md-table td {
+  border: 1px solid var(--line-soft);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.md-table th {
+  background: var(--bg-side);
+  color: var(--ink);
+  font-weight: 600;
+}
+.md-table td { color: var(--ink-2); }
+
+/* ── Document panel error boundary ─────────────────────────────────────── */
+.doc-error-boundary {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 28px;
+}
+.doc-error-boundary-body {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  max-width: 380px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.doc-error-boundary-detail {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.doc-error-boundary-message {
+  display: block;
+  margin-top: 6px;
+  font: 500 11.5px/1.5 var(--font-mono);
+  color: var(--err);
+  word-break: break-word;
+}

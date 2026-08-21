@@ -1,0 +1,28 @@
+{
+  "name": "conduit",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.34.4",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10.34.4"
+  },
+  "scripts": {
+    "dev": "pnpm --dir apps/desktop dev",
+    "build": "pnpm --dir apps/desktop build",
+    "check": "pnpm --dir apps/desktop check",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.rs": [
+      "bash -c 'cargo fmt --all --check'"
+    ],
+    "*.{ts,tsx}": [
+      "bash -c 'pnpm -C apps/desktop check'"
+    ]
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0"
+  }
+}

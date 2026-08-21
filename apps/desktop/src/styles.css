@@ -1,0 +1,29 @@
+/*
+ * Conduit desktop — v5 workspace structural CSS.
+ *
+ * This file is the hub that imports all focused CSS modules. Each module
+ * covers a specific area of the UI. The import order matches the original
+ * cascade order to preserve specificity.
+ *
+ * Tokens, scale tokens, fonts, and the shared primitives (.btn, .icon-btn,
+ * .pill, .status-pill, .search-box, .info-card, .section-label, .av-role)
+ * live in @conduit/ui tokens.css.
+ */
+
+/* Layout: app grid, titlebar, body grid, rail, panel head, keyframes, responsive */
+@import './styles/workspace.css';
+
+/* Chat: thread, messages, composer, tool cards, citations, toasts, animations */
+@import './styles/chat.css';
+
+/* Document panel: tabs, preview, source editor, banners, file metadata */
+@import './styles/document-panel.css';
+
+/* Settings: sidebar, sections, onboarding, command palette */
+@import './styles/settings.css';
+
+/* Artifacts: directory list, file rows, shared list rows, history rows, health dots */
+@import './styles/artifacts.css';
+
+/* Syntax highlighting: Prism token colors for chat inline + artifact code preview */
+@import './styles/syntax.css';

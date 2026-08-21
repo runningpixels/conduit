@@ -1,0 +1,19 @@
+data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws_abc","status":"in_progress","action":{"query":"today news"}}}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_abc","status":"completed","action":{"query":"today news"}}}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_123","call_id":"call_write_1","name":"write_html","arguments":""}}
+
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_123","output_index":1,"delta":"{\"title\":"}
+
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_123","output_index":1,"delta":"\"Today\"}"}
+
+data: {"type":"response.function_call_arguments.done","item_id":"fc_123","output_index":1,"arguments":"{\"title\":\"Today\"}"}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","id":"fc_123","call_id":"call_write_1","name":"write_html","arguments":"{\"title\":\"Today\"}"}}
+
+data: {"type":"response.completed","response":{"id":"resp_1","status":"completed"}}
+
+data: [DONE]

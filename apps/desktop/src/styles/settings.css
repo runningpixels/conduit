@@ -1,0 +1,499 @@
+/* ── Settings sheet (V7 overlay; spec §8.9) ────────────────────────────── */
+/* A summoned modal, not a navigation destination: 186px nav + scroll main.
+   Auto-save on change; no Save button, no dirty state. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--shade);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
+}
+.scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
+/* The command palette is the top-most summoned surface (above toasts/sheet). */
+.palette-scrim { z-index: 1500; }
+
+.sheet {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(.985);
+  width: min(760px, 94vw);
+  height: min(560px, 86vh);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 186px minmax(0, 1fr);
+  transition: transform .17s cubic-bezier(.22, .61, .24, 1);
+}
+.scrim[data-open="true"] .sheet { transform: translate(-50%, -50%); }
+.sheet-nav {
+  background: var(--bg-side);
+  border-right: 1px solid var(--line-soft);
+  padding: var(--sp-3) var(--sp-2);
+  min-height: 0;
+  overflow-y: auto;
+}
+.sheet-nav-title { padding: 4px 10px var(--sp-3); font-size: 14px; font-weight: 600; }
+.sheet-nav button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.sheet-nav button:hover { background: var(--card); color: var(--ink); }
+.sheet-nav button[aria-current="true"] { background: var(--card); color: var(--ink); font-weight: 500; }
+.sheet-nav svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.sheet-main { padding: var(--sp-5); overflow: auto; min-height: 0; }
+.sheet-h { font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+.sheet-sub { font-size: 12.5px; color: var(--ink-3); margin: 0 0 var(--sp-5); line-height: 1.5; }
+.grp { margin-bottom: var(--sp-5); }
+.grp-label {
+  font-size: 10.5px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--sp-2);
+}
+.pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  color: var(--ink-3);
+  border: 1px solid var(--line-soft);
+}
+.pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap), border-color var(--tap);
+}
+.btn:hover { background: var(--card-hi); color: var(--ink); border-color: var(--ink-3); }
+/* The one place a hue fill carries real label text ("Add a provider",
+ * "Connect a service"). --hue-solid is the display tier phase A tuned so
+ * --on-hue clears AA on it; plain --hue with --bg text measured 3.5-4.3:1 and
+ * flipped to white in light mode to paper over it. One pair, both themes. */
+.btn.primary { background: var(--hue-solid); border-color: var(--hue-solid); color: var(--on-hue); }
+.btn.primary:hover { filter: brightness(1.08); background: var(--hue-solid); color: var(--on-hue); }
+
+.srow { display: flex; align-items: center; gap: var(--sp-4); padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.srow:last-child { border-bottom: 0; }
+.srow-text { flex: 1 1 auto; min-width: 0; }
+.srow-text b { display: block; font-size: 13px; font-weight: 500; }
+.srow-text small { display: block; font-size: 11.5px; color: var(--ink-3); }
+.toggle {
+  width: 34px;
+  height: 20px;
+  border-radius: 99px;
+  background: var(--line);
+  position: relative;
+  flex: 0 0 auto;
+  transition: background var(--tap);
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition: transform var(--tap), background var(--tap);
+}
+/* The knob is white, so the track is a fill carrying a light element on it —
+   --hue-solid is the tier tuned for exactly that (plan D1). */
+.toggle[aria-pressed="true"] { background: var(--hue-solid); }
+.toggle[aria-pressed="true"]::after { transform: translateX(14px); background: #fff; }
+.sel {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.sheet-footnote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.sheet-footnote svg { width: 13px; height: 13px; }
+
+.settings-section {
+  max-width: 720px;
+}
+.settings-section-header {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+  letter-spacing: -.01em;
+}
+.settings-section-header + p,
+.settings-section > p:first-of-type {
+  margin-top: 0;
+}
+.settings-section + .settings-section {
+  margin-top: 24px;
+}
+
+/* ── Appearance form (inside settings) ─────────────────────────────────── */
+.appearance-form { display: grid; gap: 12px; }
+.appearance-form .field { display: grid; gap: 6px; }
+.appearance-form .field-label {
+  color: var(--ink-3);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.appearance-form select {
+  width: 100%;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 10px 12px;
+}
+.appearance-form .check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* ── Onboarding (full-screen route) ────────────────────────────────────── */
+/* Fills the second `.app` row rather than the viewport: the caption row takes
+   the first, so a 100vh minimum would overflow the shell by exactly its
+   height. */
+.onboarding-shell {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: auto;
+  min-height: 100%;
+}
+.onboarding-card {
+  max-width: 680px;
+  width: 100%;
+}
+.onboarding-lede {
+  color: var(--ink-2);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+.onboarding-steps {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  flex-wrap: wrap;
+}
+.onboarding-step-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-3);
+  font: 600 11px/1 var(--font-mono);
+  cursor: pointer;
+}
+.onboarding-step-dot.active {
+  color: var(--hue-text);
+  background: var(--hue-weak);
+  border-color: var(--hue);
+}
+.onboarding-step-dot.done { color: var(--ok); }
+.onboarding-step-title {
+  font-size: 14px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.onboarding-hint {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+.onboarding-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.onboarding-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
+.onboarding-status {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.5;
+  display: grid;
+  gap: 4px;
+}
+.onboarding-meta-label {
+  color: var(--ink-3);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 8px;
+}
+.onboarding-meta-label:first-child { margin-top: 0; }
+.onboarding-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+/* Migration-recovery "Delete data" panel. Destructive actions live behind a
+ * disclosure and inside their own bordered region so they never sit flush with
+ * the safe ones above — the error tint is the only place --err carries a
+ * container in this shell. */
+.recovery-danger {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--err) 34%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--err) 6%, var(--card));
+  display: grid;
+  gap: 16px;
+}
+.recovery-danger-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+.recovery-danger-row + .recovery-danger-row {
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.recovery-danger-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.recovery-danger-row .btn { flex: 0 0 auto; }
+.recovery-danger-row--stack .btn { align-self: flex-start; }
+.recovery-scope {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.recovery-scope .onboarding-check {
+  align-items: flex-start;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.recovery-scope .onboarding-check input { margin-top: 2px; flex: 0 0 auto; }
+/* Outline rather than fill: a delete button should read as consequential
+ * without competing with the primary action for attention. */
+.btn.danger {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 42%, transparent);
+}
+.btn.danger:hover:not(:disabled) {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  border-color: var(--err);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Command palette (V7 §8.8 — prefix modes: > commands · @ artifacts · / models) ── */
+/* Restyle only (V9 §7): the prefixes (`>` `@` `/`), the modes and the corpus
+   are unchanged — the palette was already the summoned layer V9 wants, so only
+   its proportions move. */
+.palette {
+  position: absolute;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px) scale(.985);
+  width: min(600px, 92vw);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift);
+  overflow: hidden;
+  transition: transform .17s cubic-bezier(.22, .61, .24, 1);
+}
+.scrim[data-open="true"] .palette { transform: translateX(-50%); }
+.pal-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px var(--sp-4);
+  border-bottom: 1px solid var(--line-soft);
+}
+.pal-input svg { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
+.pal-input input {
+  flex: 1 1 auto;
+  border: 0;
+  background: none;
+  outline: none;
+  font: 400 15px/1.3 var(--font-ui);
+  color: var(--ink);
+  min-width: 0;
+}
+.pal-input input::placeholder { color: var(--ink-3); }
+/* The mode badge is hue-coloured *text*, so it takes the AA tier (plan D1).
+   --hue itself is the graphic tier and sits at the 3:1 non-text floor, which a
+   10px mono label on a tinted wash cannot spend. */
+.pal-mode {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: var(--hue-weak);
+  color: var(--hue-text);
+  flex: none;
+}
+.pal-list { max-height: min(48vh, 400px); overflow: auto; padding: 5px; }
+.pal-group {
+  padding: 9px 11px 4px;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.pal-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.pal-item[data-sel="true"] { background: var(--card-hi); color: var(--ink); }
+.pal-item svg { width: 14px; height: 14px; color: var(--ink-3); flex: 0 0 auto; }
+.pal-item[data-sel="true"] svg { color: var(--hue); }
+.pal-item b { font-weight: 400; font-size: 13.5px; }
+.pal-item .tail {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  flex: none;
+}
+.pal-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal-snippet mark { background: var(--hue-weak); color: var(--ink); border-radius: 2px; }
+.pal-empty {
+  padding: 26px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.pal-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px var(--sp-4);
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.pal-foot span { display: inline-flex; align-items: center; gap: 5px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Settings section internals (V7 F3).
+ *
+ * The V7 sheet reuses the V6 section components, which mark up their layout
+ * with `.form-grid` / `.field` / `.status-item` / `.actions` — none of which
+ * had a rule. Most instances papered over it with an inline `style={{…}}`
+ * repeating the same values, and the instances that did not render unstyled.
+ * These rules are the canonical version; the duplicate inline styles are
+ * removed at the call sites so tokens stay the single source of truth (§4.1).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.form-grid { display: grid; gap: 12px; }
+
+.field { display: grid; gap: 6px; }
+.field-label {
+  color: var(--ink-3);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+/* A read-only block of resolved state (paths, versions, connector health). */
+.status-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+}
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Onboarding step wrapper — the steps' own children carry the styling. */
+.onboarding-step-body { display: grid; gap: 12px; }
+
+/* ── Prompts library ───────────────────────────────────────────────────── */
+/* `{{variable}}` spans inside a prompt body. */
+.variable-token {
+  color: var(--hue-text);
+  background: var(--hue-weak);
+  border-radius: var(--r-xs);
+  padding: 1px 3px;
+  font-family: var(--font-mono);
+  font-size: .95em;
+}
+
+.folder-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.folder-btn:hover { background: var(--card-hi); color: var(--ink); }
+/* The selected folder previously set background AND color to var(--hue),
+ * which rendered the label invisible against its own fill. */
+.folder-btn.active {
+  background: var(--hue-weak);
+  color: var(--hue-text);
+  font-weight: 500;
+}

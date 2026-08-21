@@ -1,0 +1,1450 @@
+/* ── Chat thread ───────────────────────────────────────────────────────── */
+/* `overflow-x: hidden` is load-bearing, not tidiness: a computed `visible` next
+ * to a non-`visible` value becomes `auto`, so leaving it off made the thread a
+ * horizontal scroll container. One long URL or Windows path then dragged the
+ * entire transcript sideways. */
+.thread { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--sp-5) var(--sp-5) var(--sp-4); }
+.thread-inner { max-width: var(--measure); margin: 0 auto; }
+/* V9 turn (§7): two shapes, no avatars, no role names. User = right-aligned soft
+ * card; assistant = plain prose behind a 2px provider rule. */
+.turn { position: relative; margin-bottom: var(--sp-6); }
+.turn:last-child { margin-bottom: var(--sp-4); }
+
+/* Day separator (V9 §4). Only between turns that fall on different days, so it
+ * reports a boundary rather than decorating every turn. The label comes from
+ * Sidebar's conversationGroup, so the thread and the conversation list say
+ * "Today"/"Yesterday"/a month name in the same words. */
+.day-rule {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 var(--sp-6);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.day-rule span { padding: 2px 12px; }
+
+/* Column, not row: `.bubble`, the interrupted banner and `.turn-actions` are all
+   children of `.turn.user`. As a row, the `opacity: 0` action bar still claimed
+   ~170px of track to the right of the bubble, so `justify-content: flex-end`
+   right-aligned the *pair* and every bubble stopped short of the column edge —
+   reading as centred, and shrinking long bubbles below their max-width. */
+.turn.user { display: flex; flex-direction: column; align-items: flex-end; }
+.bubble {
+  /* 72%, not 82%: at 82% a long message spans nearly the full column and the
+     left/right rhythm that carries the speaker distinction disappears. */
+  max-width: 72%;
+  /* --card-hi rather than --card: it moves away from --bg in both themes
+     (lighter in dark, darker in light), so the bubble reads as raised in each.
+     --card is only ~12/255 off --bg in dark, which was invisible. */
+  background: var(--card-hi);
+  border: 1px solid var(--line);
+  /* Evenly rounded at --r-lg (V9 §7). V7's asymmetric corner was a speech-bubble
+     tail; the right alignment already says who is speaking, so the tail was a
+     second telling of the same fact. */
+  border-radius: var(--r-lg);
+  padding: 11px 16px;
+  /* Sans in both palettes, explicitly and not by inheritance, because the
+     alternative was tried: the bubble is your own text echoed back, so it
+     belongs to the input register with the composer rather than to the reading
+     surface. It is also the second speaker cue — Orange Charcoal drops the
+     border below, and with both turns in serif only alignment and a faint fill
+     would be left to separate them. */
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.6;
+}
+/* Under Orange Charcoal the user message is a fill without an outline. The
+   border is what makes
+   the bubble read as a card; dropping it leaves the same shape sitting
+   in the prose column rather than on top of it. No size bump: the 16.5px on
+   `.prose` is optical compensation for the serif's smaller x-height, and the
+   bubble is not serif. */
+html[data-palette="orange-charcoal"] .bubble {
+  border-color: transparent;
+  border-radius: 18px;
+  padding: 12px 18px;
+}
+.bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Assistant: plain prose behind a 2px provider rule (V9 §3, the signature).
+ *
+ * This reinstates what V7's Pass K3 deleted, and K3's argument is worth stating
+ * because it was sound at the time: a colour that repeats on every turn is
+ * chrome, not data. What changed underneath it is the turn's shape. In V7 the
+ * assistant turn still had card-like weight of its own, so the rule was a
+ * second marker of a role the shape already carried. In V9 the assistant turn
+ * is flush prose with no fill, no border and no indent of its own — the rule is
+ * now the only per-turn mark of *which provider produced this*, and a thread
+ * that switched providers mid-conversation is legible from the left edge alone.
+ * It is 55% hue rather than solid so it reads as a margin, not a highlight.
+ *
+ * Pinned by cssContract.test.ts so a third pass cannot flip it silently. */
+.turn.assistant {
+  border-left: 2px solid color-mix(in srgb, var(--hue) 55%, transparent);
+  padding-left: 18px;
+  transition: border-color .3s;
+}
+/* No color-mix: fall back to the flat hue rather than to no rule at all. */
+@supports not (color: color-mix(in srgb, red 10%, transparent)) {
+  .turn.assistant { border-left-color: var(--hue); }
+}
+
+/* the model line appears only when provider/model differs from the previous turn */
+.turn-model {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.turn-model .pdot { width: 6px; height: 6px; background: var(--hue); }
+.turn-model b { font-weight: 500; color: var(--ink-2); }
+.turn-model .switched { color: var(--hue-text); }
+.turn-model-time { color: var(--ink-3); }
+
+/* transient live meta + agent phase (streaming / agent loop only) */
+.turn-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 9px;
+}
+
+.turn-actions {
+  display: flex;
+  gap: 1px;
+  margin-top: var(--sp-3);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity var(--tap), transform var(--tap);
+}
+.turn:hover .turn-actions,
+.turn:focus-within .turn-actions { opacity: 1; transform: none; }
+.turn.user .turn-actions { justify-content: flex-end; }
+.act {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--ink-3);
+  transition: background var(--tap), color var(--tap);
+}
+.act:hover { background: var(--card); color: var(--ink); }
+.act svg { width: 13px; height: 13px; }
+
+/* `overflow-wrap: anywhere` because prose routinely carries tokens with no break
+ * opportunity — URLs, Windows paths, hashes, base64. Without it they overflow
+ * `--measure` and, before `.thread` gained `overflow-x: hidden`, scrolled the
+ * whole transcript. Same reasoning as `.toast-brief` further down. */
+/* `--font-prose` is `var(--font-ui)` under the Conduit palette, so this is a
+ * no-op there; Orange Charcoal swaps it for the bundled serif. */
+.prose {
+  font-family: var(--font-prose);
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+/* Source Serif 4's x-height runs smaller than Geist's, so the same px reads a
+ * step down. The bump is optical compensation, not a size preference — the
+ * measure and leading are tuned together. */
+html[data-palette="orange-charcoal"] .prose { font-size: 16.5px; line-height: 1.7; }
+
+/* Links had no rule anywhere in the product, so every one rendered in
+ * Chromium's UA colour. The first fix — ink with a `--line-hi` underline —
+ * overcorrected: that underline is 1.81:1 against `--bg`, so a link read
+ * exactly like the prose around it and nothing said it was clickable. Colour is
+ * the affordance; see `--link` in tokens.css. */
+/* `.source` chips and `.cite` markers are excluded: both are already marked as
+ * navigation by shape (a pill, a superscript), and `.chat-prose a` outranks
+ * `.source` on specificity — 0,1,1 against 0,1,0 — so without this the footnote
+ * row turns into a line of blue underlined links. */
+.chat-prose a:not(.source),
+.bubble a {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
+  text-underline-offset: 2px;
+}
+.chat-prose a:not(.source):hover,
+.bubble a:hover { text-decoration-color: var(--link); }
+.prose p { margin: 0 0 var(--sp-3); }
+.prose p:last-child { margin-bottom: 0; }
+/* Inline code. `.md-code` is what safeMarkdown emits; the bare `code` catches
+ * non-markdown spans (user bubbles). These were two byte-identical rules, so a
+ * change to one silently skipped the other — one selector list now.
+ *
+ * The colour is the point: this rule previously declared none, so inline code
+ * inherited `--ink` and read as prose in a box. Code is a machine fact, and §7
+ * already gives that category its own face; this gives it its own colour too. */
+.prose code,
+.chat-prose .md-code {
+  font: 600 12.5px/1 var(--font-mono);
+  color: var(--code);
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-xs);
+  padding: 2px 5px;
+}
+
+/* Chat prose: markdown + citations */
+.chat-prose h1, .chat-prose h2, .chat-prose h3, .chat-prose h4 {
+  font-weight: 600;
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+.chat-prose h2 { font-size: 19px; letter-spacing: -.01em; }
+.chat-prose h3 { font-size: 16px; }
+.chat-prose ul, .chat-prose ol { margin: 0 0 11px; padding-left: 1.35em; }
+.chat-prose li { margin-bottom: 4px; }
+.chat-prose-segment { margin-bottom: 4px; }
+.cite {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 0;
+  vertical-align: super;
+  margin-left: 1px;
+}
+/* Scoped with `.chat-prose` so it outranks the prose link rule above rather
+ * than relying on source order. */
+.chat-prose .cite a,
+.cite a {
+  color: var(--ink-3);
+  text-decoration: none;
+  padding: 0 1px;
+}
+.chat-prose .cite a:hover,
+.cite a:hover { color: var(--ink); }
+
+/* sources: pill chips beneath the message (§8.4) */
+.sources {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 6px;
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  transition: border-color var(--tap), color var(--tap);
+}
+.source:hover { border-color: var(--line); color: var(--ink); }
+.source i {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 9.5px;
+  color: var(--ink-3);
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  border-radius: 4px;
+}
+.source-host { color: var(--ink-3); }
+
+.search-unavailable {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+/* ── Tool use: one quiet line (V9 §2.5) ─────────────────────────────────────
+ * V8 gave "I searched" three nested surfaces: a header row, a body wrapped in
+ * kv chrome, and a timing chip. V9 keeps the disclosure and drops the staging —
+ * the collapsed line answers "did it do the right thing?" in the same register
+ * as the prose it interrupts, and one click still reaches the raw queries.
+ *
+ * No fill: the card tint was what made it read as a staged object rather than
+ * an aside. A border and the line's own restraint carry it. */
+.tool {
+  margin: 0 0 var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.tool-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  transition: background var(--tap);
+}
+.tool-head:hover { background: var(--card-hi); }
+.tool-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+.tool-icon svg { width: 15px; height: 15px; }
+.tool-name { font-weight: 500; color: var(--ink-2); }
+/* Status and duration fold into this one string ("2 queries · 5 sources · 1.4s")
+ * rather than keeping chips of their own — the facts survive, the chrome does
+ * not. `flex: 1` so the chevron stays pinned right without a second auto margin. */
+.tool-sum {
+  flex: 1 1 auto;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-sum.err { color: var(--err); }
+.tool-chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
+.tool[data-open="true"] .tool-chev { transform: rotate(90deg); }
+.tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .2s cubic-bezier(.22,.61,.24,1); }
+.tool[data-open="true"] .tool-body { grid-template-rows: 1fr; }
+.tool-body > div { overflow: hidden; min-height: 0; }
+.tool-inner {
+  padding: 4px 13px 12px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+/* search queries: one flat list, no second-level disclosure */
+.q { display: flex; align-items: baseline; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
+.q:last-child { border-bottom: 0; padding-bottom: 0; }
+.q-str { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); flex: 1 1 auto; }
+.q-n { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); flex: 0 0 auto; }
+.q-sources { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 2px 0 8px; font-size: 11.5px; }
+.q-source { color: var(--ink-3); }
+.q-source .src-title { color: var(--ink-2); }
+.q-source .src-url { color: var(--ink-3); }
+
+/* non-search tools: args as a mono kv list + a result block */
+.kv { display: flex; gap: 10px; padding: 5px 0; font-family: var(--font-mono); font-size: 12.5px; }
+.kv dt { color: var(--ink-3); min-width: 76px; }
+.kv dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.tool-out {
+  margin-top: 9px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  /* `.tool` is `overflow: hidden`, so an unbreakable argument value was clipped
+     dead — no ellipsis, no scroll. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.tool-out b { color: var(--ink); font-weight: 500; }
+/* A failure explanation is a sentence, not machine output. The mono column
+   below it (.tool-raw) is where the original backend string still lives. */
+.tool-out-prose { font-family: var(--font-ui); font-size: 12.5px; line-height: 1.5; }
+.tool-raw {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+/* running tool card: hue left edge + slow sweep (same signal as the V6 pill) */
+/* A running tool says so in its summary ("running…") and expands itself; it no
+ * longer also carries a hue rail with a sweeping gradient. Pass H3's rule
+ * decided this once already: the highest-contrast element in a streaming turn
+ * must be the answer, not the machine chrome. The rail was also the last place
+ * inside a turn using --hue for something other than provenance — with the
+ * assistant rule back, two hue edges would have sat 18px apart saying different
+ * things. */
+
+/* Reasoning (V9 §2.5): the identical register to a tool line, so "it thought"
+ * and "it searched" report at the same volume instead of one of them shouting.
+ * The dashed rail is gone with the tool card's fill — same reasoning. */
+.think {
+  margin: 0 0 var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+}
+.think summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  transition: color var(--tap), background var(--tap);
+}
+.think summary::-webkit-details-marker { display: none; }
+.think summary:hover { background: var(--card-hi); color: var(--ink-2); }
+.think[open] summary { border-radius: var(--r) var(--r) 0 0; }
+.think summary svg { width: 14px; height: 14px; transition: transform var(--tap); }
+.think[open] summary svg { transform: rotate(90deg); }
+.think pre {
+  margin: 0;
+  padding: 4px 13px 12px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  white-space: pre-wrap;
+}
+
+/* Inline code blocks in chat (inline-first rendering).
+ *
+ * Symmetric margin. `.chat-prose` is a plain block container — no flex/grid
+ * `gap` — so every gap here comes from adjacent-sibling margin collapsing, and
+ * neither `.chat-prose-segment` nor `.prose p` sets a `margin-top`. A
+ * bottom-margin of 0 therefore left the following paragraph flush against the
+ * block's border while the 10px top margin made the gap above look correct.
+ * --sp-3 matches `.prose p`'s bottom margin, so blocks sit on the paragraph
+ * rhythm; collapsing keeps the gap at 12px rather than summing with the
+ * neighbour's 4px. */
+.inline-code-block {
+  margin: var(--sp-3) 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  overflow: hidden;
+}
+.inline-code-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--card) 70%, var(--bg));
+}
+.inline-code-block-lang {
+  font: 600 11px/1 var(--font-mono);
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+/* When the body could not be tokenised it takes `--code`, so the chip follows —
+ * the block then reads as one unit rather than a dim label over coloured text.
+ * On a highlighted block the chip stays `--ink-3`: the body already carries the
+ * `--syn-*` palette and a coloured chip would compete with it. */
+.inline-code-block[data-plain="true"] .inline-code-block-lang { color: var(--code); }
+.inline-code-block-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.inline-code-block-btn {
+  width: 26px;
+  height: 26px;
+}
+.inline-code-block-promote {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font: 500 11.5px/1 var(--font-ui);
+  border-radius: var(--r-pill);
+}
+.inline-code-block-promote svg { width: 13px; height: 13px; flex: none; }
+.inline-code-block-body {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--ink-2);
+  font: 500 11.5px/1.55 var(--font-mono);
+}
+/* Only when Prism produced no tokens — a ```text formula, or a language with no
+ * grammar. Those rendered flat --ink-2, i.e. *dimmer* than the prose around
+ * them, which is backwards for the one thing in the paragraph that is machine
+ * output. Colouring the body unconditionally would repaint the plain runs and
+ * punctuation of a highlighted block and fight the --syn-* palette, so the
+ * component sets data-plain only when `highlighted` came back null. */
+.inline-code-block-body[data-plain="true"],
+.inline-artifact-source[data-plain="true"] { color: var(--code); }
+.inline-code-block-body code {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+/* Markdown fallback block (fences that fail `resolveKind`). Same symmetric
+ * margin as `.inline-code-block` above, for the same reason. */
+.chat-prose .md-pre {
+  margin: var(--sp-3) 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  overflow: auto;
+  max-height: 420px;
+  white-space: pre-wrap;
+  font: 500 11.5px/1.55 var(--font-mono);
+  /* Never tokenised — safeMarkdown emits no token spans and this class is not
+   * in syntax.css's scope list — so it takes the code colour unconditionally. */
+  color: var(--code);
+}
+.chat-prose .md-pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.inline-title-input {
+  font: inherit;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--hue);
+  border-radius: 3px;
+  padding: 1px 4px;
+  min-width: 80px;
+  max-width: 220px;
+}
+.consent {
+  border-top: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--warn) 6%, var(--card));
+  padding: 11px 12px;
+}
+.consent p { margin: 0 0 9px; font-size: 12.5px; color: var(--ink); }
+.consent .row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Inline artifact card (§8.5) ────────────────────────────────────────────
+ * A document fence renders here instead of as a source dump. Same vertical
+ * rhythm as `.inline-code-block`, which it replaces in the prose flow. */
+.inline-artifact { margin: var(--sp-3) 0; }
+/* Quiet by design: the card above it carries the turn's result, and this only
+   exists for the reader who wants to check the source without leaving the
+   transcript. */
+.inline-artifact-toggle {
+  margin-top: 6px;
+  padding: 3px 0;
+  font: 500 11.5px/1 var(--font-ui);
+  color: var(--ink-3);
+  transition: var(--tap);
+}
+.inline-artifact-toggle:hover { color: var(--ink-2); }
+.inline-artifact-source {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 500 11.5px/1.55 var(--font-mono);
+  color: var(--ink-2);
+}
+.inline-artifact-source code {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+/* ── In-chat artifact affordances (result cards) ────────────────────────── */
+/* Column, not a wrapped pill row: each artifact is a full-width result, so two
+   of them stack rather than competing for one line. */
+.artifact-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 10px;
+}
+.artifact-strip:empty { display: none; }
+/* Result card. The pill this replaces opened the context panel on click, but
+   nothing on screen said so; the card states the kind, the size and the action. */
+.artifact-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  transition: background var(--tap), border-color var(--tap);
+}
+.artifact-card:hover { background: var(--card-hi); }
+/* Neutral glyph tile (V9 §7). It was a --hue-weak tile with a --hue glyph,
+ * which made an artifact's *file type* speak in the colour reserved for
+ * provider identity — the contradiction §6.2 names and Pass N drove to zero
+ * everywhere else inside a turn. It also meant the chip re-tinted when you
+ * switched model, as though the document had changed. With the assistant rule
+ * back in hue two phases on, a second hue object 18px away would have been the
+ * louder mistake. */
+.artifact-card-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--card-hi);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.artifact-card-icon svg { width: 16px; height: 16px; }
+.artifact-card-body { flex: 1; min-width: 0; }
+.artifact-card-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.artifact-card-name {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-card-meta { margin-top: 2px; color: var(--ink-3); font-size: 11.5px; }
+.artifact-card .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--ink-3); }
+.artifact-card .dot.ok { background: var(--ok); }
+.artifact-card .dot.warn { background: var(--warn); }
+.artifact-card .dot.bad { background: var(--err); }
+.artifact-card .dot.hold { background: var(--ink-3); }
+.artifact-card-open { flex: none; }
+.artifact-card-overflow { position: relative; flex: none; }
+/* Own offsets rather than .doc-more-menu's, which are tuned to the 44px panel head. */
+.artifact-card-menu { top: 36px; right: 0; }
+
+/* ── Suggested prompts ──────────────────────────────────────────────────── */
+/* Inline follow-ups share the composer's column: same --measure, same centring
+   and the same --bg, so the two read as one block. The previous version was a
+   full-bleed --card band sitting above a centred composer, which put a hard
+   edge across the pane at a width nothing else in the layout used. */
+.suggested-prompts-inline {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  /* `.composer-wrap` puts --sp-5 on a full-width box and caps the composer
+     *inside* it at --measure. This element is both boxes at once, and the
+     global `box-sizing: border-box` counts padding against max-width — so the
+     cap has to include the padding for the chips to share the composer's
+     left edge at every width. */
+  max-width: calc(var(--measure) + 2 * var(--sp-5));
+  margin: 0 auto;
+  padding: 0 var(--sp-5) var(--sp-2);
+  background: var(--bg);
+}
+/* One line per chip, so --r-pill is the right radius and the caption reads in
+   full. `.suggested-prompt-chip-*` are gone with the two-line layout. */
+.suggested-prompt-chip {
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background var(--tap), border-color var(--tap), color var(--tap);
+}
+.suggested-prompt-chip:hover {
+  background: var(--card-hi);
+  border-color: var(--line-hi);
+  color: var(--ink);
+}
+
+/* ── Composer ───────────────────────────────────────────────────────────── */
+.composer-wrap { flex: none; padding: 0 var(--sp-5) var(--sp-3); background: var(--bg); }
+.composer-wrap > .composer { max-width: var(--measure); margin: 0 auto; }
+/* One rounded card with a resting lift (V9 §7). --r-xl is the composer's alone;
+ * nothing else in the product is this round, which is what makes it read as the
+ * place you act rather than another panel. */
+.composer {
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--card);
+  box-shadow: var(--soft-lift);
+  transition: border-color var(--tap), box-shadow var(--tap);
+  position: relative;
+  --composer-max-height: 180px;
+  /* Deliberately not `overflow: hidden`: the model menu opens upward out of the
+   * card, and clipping it to the composer's box would cut the list off. The
+   * textarea has no fill of its own, so nothing needs the corners clipped. */
+}
+/* Hue focus ring (V9 §7). This reverses Pass I, which made the focused composer
+ * achromatic — and Pass I was right about what it was looking at: four stacked
+ * accents at once (a --hue border, a 3px --hue-weak ring, a 2px --hue rail on
+ * ::before, and the textarea's own --glow) read as an alert state rather than a
+ * caret position. V9 specifies exactly one of those four. At that volume the
+ * hue earns its place: it reports which provider is about to receive what you
+ * type, which is the same fact the send button and the status dot carry, and
+ * the composer is where that fact matters most. */
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--hue) 45%, var(--line));
+  box-shadow: var(--soft-lift), 0 0 0 3px color-mix(in srgb, var(--hue) 10%, transparent);
+}
+/* `:focus-visible` always matches for text inputs, including mouse focus, so
+ * the global textarea glow fired on every click. The container's border is the
+ * composer's focus signal; the glow would be a second one in --hue. */
+.composer textarea:focus-visible { box-shadow: none; }
+.composer textarea {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.55;
+  padding: 15px 16px 6px;
+  max-height: var(--composer-max-height);
+  overflow-y: hidden;
+}
+/* Scrollbar comes from the shared `.scroll` class on the textarea. This rule
+ * used to carry its own copy — the treatment `.scroll` has now adopted — which
+ * meant two scrollbar idioms in the codebase and only one of them applied
+ * anywhere else. */
+.composer textarea[data-capped="true"] { overflow-y: auto; }
+.composer textarea::placeholder { color: var(--ink-3); }
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+.composer-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  box-shadow: var(--lift);
+  transition: var(--tap);
+}
+.composer-attachment-chip svg { width: 14px; height: 14px; flex: none; }
+.composer-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+  color: var(--ink);
+}
+.composer-attachment-meta { color: var(--ink-3); font: 500 10.5px/1 var(--font-mono); white-space: nowrap; }
+.composer-attachment-chip[data-status="failed"] { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); }
+.composer-attachment-chip[data-status="uploading"] {
+  opacity: .85;
+  border-color: var(--hue);
+}
+.composer-attachment-chip[data-status="uploading"] .composer-attachment-meta {
+  color: var(--hue-text);
+}
+.composer-attachment-action,
+.composer-attachment-remove {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 11px;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.composer-attachment-action:hover,
+.composer-attachment-remove:hover { color: var(--ink); }
+.composer-attachment-remove { font-size: 15px; line-height: 1; }
+.composer-bar { display: flex; align-items: center; gap: 4px; padding: 8px 10px 10px; }
+/* Splits the bar in two (V9 §7): what acts on the message sits left of it, who
+ * answers and the send sit right. Replaces the `margin-left: auto` the send
+ * button used to carry — with three things on the right, the push has to happen
+ * once, in one place. */
+.spacer { flex: 1 1 auto; }
+.composer-model-picker { position: relative; min-width: 0; }
+
+/* Composer bar buttons. Renamed from `.tool-btn`, which collided conceptually
+ * with the `.tool-*` namespace of the tool-call card — these are composer
+ * controls and never appeared in a tool card. */
+.cbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 13px;
+  transition: var(--tap);
+}
+.cbtn:hover { background: var(--card-hi); color: var(--ink); }
+.cbtn:disabled { opacity: .5; }
+.cbtn svg { width: 16px; height: 16px; }
+/* Armed web search is per-turn state, so it keeps an accent — --hue-text, not
+ * --hue, because this is a coloured glyph beside coloured text and the text
+ * tier is the one held to AA (plan D1). */
+.cbtn.armed { color: var(--hue-text); }
+.cbtn.armed:hover { background: color-mix(in srgb, var(--hue) 9%, transparent); color: var(--hue-text); }
+
+/* The model trigger: provider dot, model name, chevron (V9 §2.3). */
+.cbtn.model { max-width: min(220px, 42vw); color: var(--ink-2); font-weight: 500; gap: 5px; }
+.cbtn.model .pdot { width: 6px; height: 6px; background: var(--hue); }
+.cbtn.model .model-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbtn.model svg { width: 13px; height: 13px; color: var(--ink-3); }
+
+/* The menu opens upward from the bar, right-aligned under the trigger. The
+ * open state repeats the position for the same reason .status-menu does:
+ * `.menu[data-open="true"]` resets `transform`, and at 0,2,0 it outranks this
+ * rule — anything positional expressed as a transform would be dropped on
+ * open. Kept to `right`/`bottom` here so there is no transform to lose. */
+.model-menu {
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 260px;
+  max-height: min(420px, 52vh);
+  overflow-y: auto;
+}
+.model-menu .menu-item .pdot { width: 7px; height: 7px; background: var(--hue); }
+.model-menu .menu-item[aria-current="true"] { background: var(--card-hi); color: var(--ink); }
+.menu-empty { padding: 14px 11px; font-size: 12.5px; color: var(--ink-3); text-align: center; }
+
+/* The free-text row a provider gets when it lists no models. V7's popover
+ * degraded to a `Model id` input in exactly this case, and a self-hosted
+ * endpoint with no model-listing route depends on it — without the row that
+ * provider is not merely awkward to reach, it is unreachable from the composer.
+ * Styled as a menu row rather than a form field so it reads as one of the
+ * options, not as a settings panel that wandered in. */
+.menu-item-input { cursor: default; }
+.menu-item-input:hover { background: none; }
+.model-id-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font: 400 13.5px/1 var(--font-mono);
+  color: var(--ink);
+}
+.model-id-input::placeholder { color: var(--ink-3); }
+.menu-item-input .tail {
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
+  color: var(--ink-2);
+  transition: border-color var(--tap), color var(--tap);
+}
+.menu-item-input .tail:hover:not(:disabled) { border-color: var(--line-hi); color: var(--ink); }
+.menu-item-input .tail:disabled { opacity: .45; cursor: default; }
+
+/* The accent arrives with the ability to act. `disabled` tracks
+ * `!prompt.trim()` in Composer.tsx, so the armed state needs no extra state.
+ * --hue-solid rather than --hue: this fill carries a glyph in --on-hue, and
+ * only the solid tier is tuned to keep that legible (plan D1). */
+.send {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--card-hi);
+  color: var(--ink-3);
+  border: 0;
+  display: grid;
+  place-items: center;
+  transition: var(--tap);
+}
+.send:not(:disabled) { background: var(--hue-solid); color: var(--on-hue); }
+.send:hover { filter: none; }
+.send:not(:disabled):hover { opacity: .88; }
+.send svg { width: 16px; height: 16px; }
+.send.stop { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+.send.stop:hover { border-color: var(--err); color: var(--err); filter: none; }
+
+/* Status sentence — the provenance strip at one volume (V9 §2.2). The five
+ * always-on chips become one muted mono line, centred under the composer and
+ * non-interactive-looking at rest; the fuller breakdown lives in a popover one
+ * click away. Every fact the strip reported is still here or one click down. */
+.status-wrap {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 8px 4px 0;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font: 400 11.5px/1 var(--font-mono);
+  color: var(--ink-3);
+  transition: color var(--tap), background var(--tap);
+}
+.status:hover { color: var(--ink-2); background: var(--card); }
+.status .pdot { width: 5px; height: 5px; background: var(--hue); }
+/* The separators are punctuation, not data: dimmer than the facts they part. */
+.status .sep { opacity: .45; }
+.status .local { color: var(--ok); }
+/* A missing key is the one actionable fact on this line, so it keeps its
+ * colour instead of sitting in the muted register with the rest. */
+.status .warn { color: var(--warn); }
+/* Expanded (V9 §10.1): the same line carrying the key location and the raw
+ * context count as well. It is roughly twice as long, so it wraps rather than
+ * running under the composer's edge — the promise was "no layout change", and a
+ * clipped line would be one. */
+.status[data-expanded="true"] {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: var(--measure);
+}
+
+/* Anchored above the line, centred on it, and clamped like every other .menu
+ * (Pass K5: an unbounded shrink-to-fit menu grows off-screen on a long path). */
+/* The centring has to be repeated on the open state: `.menu[data-open="true"]`
+ * resets `transform` to none to land its entry animation, and at 0,2,0 it
+ * outranks this rule's 0,1,0 — so a bare `translateX(-50%)` here would be
+ * dropped the moment the popover opened. */
+.status-menu {
+  bottom: calc(100% + 6px);
+  left: 50%;
+  min-width: 260px;
+  transform: translateX(-50%) translateY(4px) scale(.985);
+}
+.status-menu[data-open="true"] { transform: translateX(-50%); }
+.status-menu .menu-item.warn { color: var(--warn); }
+.status-menu .menu-item.local { color: var(--ok); }
+/* Read-only rows: present as text, not as something that will do anything. */
+.status-menu span.menu-item { cursor: default; }
+.status-menu span.menu-item:hover { background: none; color: var(--ink-2); }
+
+/* ── Jump-to-bottom + skeleton + toasts ────────────────────────────────── */
+.tab-pane[data-pane="chat"] { position: relative; }
+.jump-to-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 118px;
+  transform: translateX(-50%);
+  z-index: 5;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: var(--r-pill);
+  padding: 7px 12px;
+  font: 600 12px/1 var(--font-ui);
+  box-shadow: var(--lift);
+  cursor: pointer;
+}
+.thread-skeleton { display: grid; gap: 10px; padding: 8px 0 18px; }
+.composer.drop-active {
+  border-color: var(--hue);
+  box-shadow: var(--glow);
+}
+.toast-stack {
+  position: fixed;
+  top: 48px;
+  right: 16px;
+  z-index: 1100;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+.toast.kind-warning {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+}
+.toast.kind-success {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+}
+.toast.kind-error {
+  border-color: color-mix(in srgb, var(--err) 40%, var(--line));
+}
+.toast-body { display: grid; gap: 4px; min-width: 0; flex: 1; }
+/* `min-width: 0` on the body caps the flex item, but the grid track inside is
+ * still floored at its children's min-content. A toast reports export paths and
+ * raw IPC errors, and a Windows path is one unbreakable token — without these
+ * the track blew out through the card's right edge. */
+.toast-brief {
+  font: 600 12.5px/1.3 var(--font-ui);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast-detail {
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast-dismiss {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+/* ── Interrupted (§9.3): inline 26px row; turn keeps its content ──────── */
+.Interrupted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  margin: 2px 0 8px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line));
+}
+.Interrupted-label { font-weight: 600; }
+.Interrupted-note { color: var(--ink-2); font-size: 11.5px; }
+.Interrupted-action {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--r-sm);
+}
+.Interrupted-action:hover { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.error-text { color: var(--err); font-size: 12.5px; margin: 6px 0 0; }
+/* Per-turn usage is audit detail — hidden until the turn is hovered or
+ * focused. The status line beneath the composer is the canonical report
+ * (§6.3). */
+/* `display: none` rather than `opacity: 0`: the hidden state used to keep its
+ * box, so ~19px of dead vertical space sat under every streamed turn between the
+ * prose and the action bar. It also kept the token counts in the accessibility
+ * tree and in Ctrl+A, which is not what "hidden audit detail" means. */
+.usage-summary {
+  display: none;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--ink-3);
+  font: 500 10.5px/1 var(--font-mono);
+}
+.turn:hover .usage-summary,
+.turn:focus-within .usage-summary { display: flex; }
+
+/* ── Agent feedback: thinking indicator ────────────────────────────────── */
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1;
+}
+.thinking-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.thinking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hue);
+  animation: thinking-pulse 1.4s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) { animation-delay: .2s; }
+.thinking-dot:nth-child(3) { animation-delay: .4s; }
+
+@keyframes thinking-pulse {
+  0%, 80%, 100% { opacity: .3; transform: scale(.85); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* ── Streaming caret (§9.3): inline `--hue` block at the current text tail ── */
+.streaming {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  vertical-align: -2px;
+  margin-left: 2px;
+  background: var(--hue);
+  border-radius: 1px;
+  animation: streaming-blink 1.1s steps(2, start) infinite;
+}
+@keyframes streaming-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: .15; }
+}
+
+/* ── Thinking: trailing caret while streaming with no text yet ─────────── */
+.streaming.thinking-trailing {
+  display: inline-block;
+  margin-left: 0;
+  margin-top: 2px;
+}
+
+/* ── Live tail: dots + caret, always the last row of a streaming turn ───── */
+.turn-live-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+/* The wrapper owns the vertical rhythm so the row keeps the same height
+   whether or not the indicator is showing (it unmounts between phases). It
+   stays mounted for the whole stream — that is what preserves the indicator's
+   min-display hold — so collapse it when both children have gone. */
+.turn-live-tail .thinking-indicator { padding: 0; }
+.turn-live-tail:empty { display: none; }
+
+/* ── Reduced motion ────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dot,
+  .streaming,
+  .streaming.thinking-trailing,
+  .tool.running::before {
+    animation: none !important;
+  }
+  .streaming, .streaming.thinking-trailing { opacity: 1; }
+  .tool.running::before { display: none; }
+}
+
+/* ── msg-time is gone (timestamps live in .turn-model) ──────────────────── */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   V6 revamp additions
+   P0.1 · P2 motion · P3 chat parity · P4 welcome · P5 a11y
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* P0.1 — message-highlight: FTS5 search jump flashes the target message */
+@keyframes message-highlight-flash {
+  0% { background: transparent; }
+  30% { background: var(--hue-a12); }
+  100% { background: transparent; }
+}
+.message-highlight {
+  animation: message-highlight-flash 1.6s var(--ease-standard) both;
+  border-radius: var(--r);
+}
+
+/* P2.2 — streaming text reveal: blocks fade in as they arrive */
+.chat-prose-segment { animation: stream-in var(--duration-normal) var(--ease-standard) both; }
+@keyframes stream-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* P2.6 — toast enter/exit */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translateX(16px); }
+}
+.toast { animation: toast-in var(--duration-normal) var(--ease-emphasized) both; }
+.toast.leaving { animation: toast-out var(--duration-fast) var(--ease-in) both; }
+
+/* P2.7 — send/stop morph (buttons swap; crossfade on mount) */
+@keyframes btn-morph { from { opacity: .4; transform: scale(.92); } to { opacity: 1; transform: none; } }
+.send, .send.stop { animation: btn-morph var(--duration-fast) var(--ease-emphasized) both; }
+
+/* P3.5 — grouped sub-rows: one per call, path + duration */
+.tool-sub { border-top: 1px solid var(--line-soft); background: color-mix(in srgb, var(--card) 35%, transparent); }
+.tool-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font: 500 var(--fs-lg)/1.4 var(--font-mono);
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.tool-sub-row:last-child { border-bottom: none; }
+.tool-sub-row .t-sub-ok { color: var(--ok); flex: none; }
+.tool-sub-row .t-sub-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-sub-row .t-sub-dur { margin-left: auto; color: var(--ink-3); font: 500 var(--fs-sm)/1 var(--font-mono); flex: none; }
+
+/* P3.6 — GFM: tables, blockquotes, task lists, hr inside chat prose */
+.chat-prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0 11px;
+  font-size: var(--fs-2xl);
+  display: block;
+  overflow-x: auto;
+}
+.chat-prose th, .chat-prose td {
+  border: 1px solid var(--line-soft);
+  padding: 5px 8px;
+  text-align: left;
+}
+.chat-prose th {
+  background: var(--card);
+  font-weight: 600;
+  font-size: var(--fs-xl);
+  color: var(--ink-2);
+}
+.chat-prose tbody tr:nth-child(even) { background: color-mix(in srgb, var(--card) 35%, transparent); }
+.chat-prose td.num, .chat-prose th.num { text-align: right; font-family: var(--font-mono); }
+.chat-prose blockquote {
+  margin: 8px 0 11px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--line-hi);
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--ink-2);
+}
+.chat-prose blockquote p { margin: 0; }
+.chat-prose ul.task-list { list-style: none; padding-left: 0; }
+.chat-prose ul.task-list li { display: flex; gap: 6px; align-items: baseline; }
+.chat-prose ul.task-list input { accent-color: var(--ink-3); margin: 0; translate: 0 1px; }
+.chat-prose ul.task-list li.done span { text-decoration: line-through; text-decoration-color: var(--ink-3); color: var(--ink-3); }
+.chat-prose hr { border: none; border-top: 1px solid var(--line-soft); margin: 12px 0; }
+
+/* P3.9 — live generation meta (elapsed · tokens) in the message header */
+.msg-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 var(--fs-sm)/1 var(--font-mono);
+  color: var(--ink-3);
+}
+.msg-meta .live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--hue);
+  animation: dot-pulse 1.1s var(--ease-standard) infinite;
+}
+@keyframes dot-pulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+
+/* P3.8 — bubble-shaped skeleton (avatar + varied lines) */
+.skel-msg {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 11px;
+  padding: 13px 0;
+}
+.skel-av {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  animation: shimmer 1.4s var(--ease-standard) infinite;
+}
+.skel-lines { display: grid; gap: 8px; padding-top: 4px; }
+.skel-line {
+  height: 11px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  animation: shimmer 1.4s var(--ease-standard) infinite;
+}
+.skel-line.w-90 { width: 90%; }
+.skel-line.w-75 { width: 75%; }
+.skel-line.w-40 { width: 40%; }
+.skel-line:nth-child(2) { animation-delay: .12s; }
+.skel-line:nth-child(3) { animation-delay: .24s; }
+@keyframes shimmer { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* Welcome / empty-conversation screen (spec §10).
+ *
+ * One line. The V7 build put eight things here — brand mark, "New chat", a
+ * model line, four labelled prompt cards, four shortcut chips — above a
+ * five-segment provenance strip. The model line duplicated the strip and the
+ * composer chip (principle 3), and the card captions were mono uppercase in
+ * --hue, which is interface language dressed as machine output (principles 4
+ * and 5). The greeting is affordable precisely because nothing competes. */
+.welcome {
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px var(--sp-5);
+  animation: pane-in var(--duration-normal) var(--ease-emphasized) both;
+}
+.welcome h1 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-size: var(--fs-hero);
+  font-weight: 400;
+  letter-spacing: -.02em;
+}
+/* The one accent on this screen, and the only decorative-looking hue in the
+ * product — sanctioned in §6.2 on the grounds that it is exactly one mark in
+ * exactly one place. */
+.welcome .brand-mark { width: 34px; height: 34px; color: var(--hue); flex: none; }
+
+/* Empty thread: greeting and composer centre as a single group rather than
+ * pinning the composer to the floor of an empty room. `.tab-pane` is already
+ * the flex column holding `.thread` and `.composer-wrap`, so this is layout
+ * only — the Composer never unmounts and keeps its attachment/credential
+ * state and its focusPrompt ref. */
+.tab-pane[data-pane="chat"][data-empty="true"] { justify-content: center; }
+.tab-pane[data-pane="chat"][data-empty="true"] .thread { flex: 0 1 auto; }
+
+/* P2.4 — pane cross-fade */
+@keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* P5.3 — skip links: off-screen until keyboard focus. The resting state is
+   truly invisible (opacity 0 + pointer-events none) and only `:focus-visible`
+   reveals it — mouse users never see it, and it stays inside the thread pane
+   at top: 8px, clear of the composer below. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  transform: translateY(-250%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1300;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  border: 1px solid var(--hue);
+  color: var(--ink);
+  font-size: var(--fs-xl);
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* P5.2 — visually-hidden live region for streaming announcements */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* P0.4 — reduced-motion coverage for every V6 animation (global kill switch
+   already exists in tokens.css; the block below re-asserts for these too). */
+@media (prefers-reduced-motion: reduce) {
+  .chat-prose-segment, .toast, .toast.leaving, .send, .send.stop,
+  .msg-meta .live-dot, .skel-av, .skel-line, .message-highlight,
+  .welcome, .tool-head, .tool.running::before {
+    animation: none !important;
+    transition-duration: .001ms !important;
+  }
+  .tool-body { grid-template-rows: 1fr !important; }
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Unstyled-class sweep (V7 F3).
+ *
+ * These class names were emitted by the components but had no matching rule,
+ * so they fell back to UA defaults. Styled from the V7 token set to match the
+ * surfaces they sit inside.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Thinking indicator label — sits beside .thinking-dots (both above). */
+.thinking-label {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+/* Streaming caret inside an inline code block. Same signal as `.streaming`
+ * (§9.3) but sized to the mono line-height of `.inline-code-block-body`. */
+.inline-code-block-body .cursor {
+  display: inline-block;
+  width: 6px;
+  height: 13px;
+  vertical-align: -2px;
+  margin-left: 1px;
+  background: var(--hue);
+  border-radius: 1px;
+  animation: streaming-blink 1.1s steps(2, start) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .inline-code-block-body .cursor { animation: none !important; opacity: 1; }
+}
+
+/* Consent gate detail lines inside a tool card — secondary to `.consent p`. */
+.consent .data-summary,
+.consent .consent-copy {
+  margin: 0 0 9px;
+}
+.consent .data-summary small,
+.consent .consent-copy small {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.consent .data-summary small { font-family: var(--font-mono); word-break: break-word; }
+
+/* ── Chat error boundary ───────────────────────────────────────────────── */
+.chat-error-boundary {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 32px;
+}
+.chat-error-boundary-body {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  max-width: 420px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+.chat-error-boundary-detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.chat-error-boundary-message {
+  display: block;
+  margin-top: 6px;
+  font: 500 11.5px/1.5 var(--font-mono);
+  color: var(--err);
+  word-break: break-word;
+}

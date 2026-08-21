@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Emilio Olivares
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+// All modules live in the `conduit_desktop` library crate so Phase 3
+// integration tests (`tests/`) can reach the migration runner and repositories.
+use conduit_desktop::{
+    commands::*, connector_runtime::ConnectorRuntimeManager, state::AppState,
+    stream_manager::StreamManager, updater::*,
+};
+use tauri::{Manager, RunEvent};
+
+fn main() {
+    let app_name = "Conduit";
+
+    // Phase 4: route redacted connector stderr + connector-runtime lifecycle
+    // events to the process log. `RUST_LOG` overrides; default to `info` so
+    // connector events surface without env config. Per-connector file appender
+    // routing (into AppPaths::connectors) is a 04b refinement.
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .init();
+
+    // Pool init + migrations are async; run them on the Tauri async runtime
+    // before building the app so `AppState` (with `db: DbPool`) is ready to
+    // `.manage()`. A migration failure returns a user-safe `MigrationRecovery`
+    // rather than panicking — the renderer surfaces it.
+    let state = tauri::async_runtime::block_on(AppState::load(app_name))
+        .expect("failed to initialize desktop state");
+
+    let app = tauri::Builder::default()
+        // Phase 6 plugins (registered before `.manage(state)`):
+        // - updater: signature-verified auto-update; commands in `updater.rs`.
+        // - dialog: first-run onboarding + the one-time diagnostics disclosure.
+        // - shell: "Reveal in Finder/Explorer" for diagnostics + artifact exports
+        //   (renderer calls `reveal_path` IPC command; no `shell:allow-open`).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .manage(state)
+        .manage(StreamManager::new())
+        .manage(ConnectorRuntimeManager::new())
+        .invoke_handler(tauri::generate_handler![
+            get_app_paths,
+            get_settings,
+            update_settings,
+            get_onboarding_state,
+            save_provider_credential,
+            load_provider_credential_reference,
+            list_provider_descriptors,
+            validate_provider_credentials,
+            list_provider_models,
+            start_chat_stream,
+            cancel_chat_stream,
+            get_conversation_messages,
+            get_request_provider_events,
+            create_conversation,
+            list_conversations,
+            get_conversation,
+            delete_conversation,
+            set_conversation_title,
+            delete_all_conversations,
+            save_attachment,
+            list_attachments,
+            delete_attachment,
+            get_attachment_bytes,
+            create_artifact,
+            list_artifacts,
+            get_message_id_by_request,
+            get_artifact,
+            set_artifact_content,
+            set_artifact_title,
+            get_artifact_content_bytes,
+            read_artifact_file_bytes,
+            check_artifact_file_state,
+            export_artifact,
+            list_connector_definitions,
+            list_connector_versions,
+            list_connector_grants,
+            list_connector_capabilities,
+            get_connector_runtime_states,
+            start_connector,
+            stop_connector,
+            discover_connector,
+            invoke_connector_tool,
+            approve_connector_tool_call,
+            deny_connector_tool_call,
+            revoke_connector_grant,
+            add_local_connector,
+            get_tenant_config,
+            get_license_state,
+            export_diagnostics,
+            start_mock_stream,
+            cancel_mock_stream,
+            // Phase 6: updater trust-promise gate.
+            check_for_update,
+            download_and_install_update,
+            // Phase 6 M6.5: diagnostics export disclosure + reveal-in-folder.
+            get_diagnostics_disclosure_acknowledged,
+            acknowledge_diagnostics_disclosure,
+            reveal_path,
+            reveal_artifacts_dir,
+            reveal_artifact,
+            open_external_url,
+            search_messages,
+            // Competitive Feature: usage analytics
+            get_usage_summary,
+            // Competitive Feature: built-in agent tools
+            // (tool definitions built into agent_tools.rs, no new commands needed)
+            // Competitive Feature: retry & fork
+            remove_last_turn,
+            fork_conversation,
+            // Competitive Feature: prompts library
+            create_prompt,
+            list_prompts,
+            get_prompt,
+            update_prompt,
+            delete_prompt,
+            list_prompt_folders,
+            // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
+            reset_local_database,
+            // Migration-recovery escape hatches: dismiss the notice, delete the
+            // backup, wipe local data, and actually restart the process.
+            acknowledge_migration_recovery,
+            discard_migration_backup,
+            request_local_data_wipe,
+            cancel_local_data_wipe,
+            restart_app,
+        ])
+        .setup(|app| {
+            let _ = app.handle();
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("failed to build Conduit desktop shell");
+
+    // Phase 4: on quit, tear down every active connector so no child process
+    // outlives the app (disable / sign-out / revocation paths call
+    // `stop_connector` directly; this is the app-exit backstop).
+    app.run(|handle, event| {
+        if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
+            if let Some(mgr) = handle.try_state::<ConnectorRuntimeManager>() {
+                tauri::async_runtime::block_on(mgr.shutdown_all());
+            }
+        }
+    });
+}

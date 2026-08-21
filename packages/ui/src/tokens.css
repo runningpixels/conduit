@@ -1,0 +1,842 @@
+/*
+ * @conduit/ui — v5 design tokens, scale tokens, locally bundled fonts,
+ * and the shared primitive component classes. Implements ADR-005.
+ *
+ * Source of truth for the visual tokens:
+ *   the v5 design mockup (:root dark + [data-theme="light"] blocks).
+ *
+ * Scale tokens (spacing / radius / typography) are introduced here so the
+ * primitive classes below reference a named scale instead of re-literalizing
+ * the per-rule values the v5 mockup hard-codes.
+ */
+
+/* ───────────────────────── Fonts (bundled locally; CSP stays 'self') ───────────────────────── */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Geist-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/Geist-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/Geist-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Geist-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/GeistMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/GeistMono-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/GeistMono-SemiBold.woff2") format("woff2");
+}
+
+/* Source Serif 4 (SIL OFL 1.1 — see ./fonts/OFL-SourceSerif4.txt, which must
+ * ship alongside the binaries). The reading face for the Orange Charcoal
+ * palette only; the Terra palette never requests it, so the browser never fetches it.
+ *
+ * Both italics are bundled rather than left to synthesis: a slanted serif is
+ * the one place faux-oblique is obvious, and markdown emphasis puts it in
+ * ordinary prose. The Semibold face claims 600–700 so `<strong>` — which the
+ * UA renders at 700, and nothing here resets — resolves to a real face instead
+ * of a synthesised bold. */
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-Italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: italic;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-SemiBoldItalic.woff2") format("woff2");
+}
+
+/* ───────────────────────── v9 token set (dark, default) — conduit-v9-design-spec §5 ───────────────────────── */
+:root {
+  /* Geist stays first (v9 plan D3): CSP stays 'self', the app launches offline,
+   * and metrics stay identical across Windows/macOS/Linux. V9 §5's system stack
+   * follows as the fallback. The calm V9 is after comes from temperature and
+   * type size (§2.4), not from the face. */
+  --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  /* The product's one serif: artifact document titles (§6), and assistant prose
+   * under the Orange Charcoal palette.
+   *
+   * It was a pure system stack, on the §12.3 reasoning that a bundled webfont
+   * was too much to spend on a choice §10.2 flags as the first thing to kill.
+   * The Orange Charcoal palette spent it anyway, and once Source Serif 4 ships in
+   * the app that argument is not just void but inverted: leaving this as a system
+   * stack meant *two* serifs, and they render 18px apart — an artifact title in
+   * Georgia (Windows) or Charter (macOS) beside prose in Source Serif, at
+   * different colour and texture, differing per platform. One face, bundled,
+   * with the old stack demoted to fallback. */
+  --font-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
+  /* The reading surface: assistant prose. Defaults to the UI face, so the
+   * terra palette renders exactly as it did; Orange Charcoal points it at
+   * --font-serif rather than restating the stack, which is what keeps "one
+   * serif" a structural fact instead of two strings that happen to match.
+   *
+   * Not the user bubble. That is your own text echoed back — it belongs to the
+   * input register with the composer, and it is also the second speaker cue:
+   * Orange Charcoal drops the bubble's border, so with both turns in serif
+   * only alignment and a faint fill separate them. */
+  --font-prose: var(--font-ui);
+  --r-xs: 5px;
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+  --tap: .15s cubic-bezier(.22,.61,.24,1);
+  --rail-w: 52px;
+  --chat-w: 43vw;
+
+  /* Structural (spec §5) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --sidebar-w: 280px;
+  --panel-w: 420px;
+  --measure: 46rem;
+  /* The window's caption row (.titlebar). Windows 11 metrics: 32px tall, with
+   * 46px-wide control hit targets inside it. Also the strip macOS draws its
+   * native traffic lights into under titleBarStyle Overlay. */
+  --titlebar-h: 32px;
+
+  /* Surfaces (spec §5): warm charcoal, not blue-black. --bg-side is the sidebar
+   * / panel / sheet-nav surface; it replaced --raised, which was the same role
+   * under a name V9 does not use. One token per surface — two hex literals
+   * behind one surface is the drift tokenContrast.test.ts reads this file to
+   * prevent. */
+  --bg: #262624;
+  --bg-side: #1f1e1d;
+  --card: #30302e;
+  --card-hi: #3a3a37;
+  --line: #3d3d3a;
+  --line-soft: #343431;
+  /* Raised border weight: the step up from --line that carries a hovered or
+   * active edge on its own. */
+  --line-hi: #4d4d49;
+  /* Three-step ink ramp. Every step clears WCAG AA (4.5:1) against every
+   * surface, including --card-hi; tokenContrast.test.ts asserts it.
+   * --ink-3 carries real copy (composer placeholder, sidebar group headers,
+   * tool summaries, the status sentence). V9 §5 specifies #8e8b83 and claims
+   * every ink step clears AA — measured, that value is 3.35:1 on --card-hi,
+   * because V9's surfaces are ~2 steps lighter than V8's. Lightened to the
+   * smallest value that clears 4.5 on the worst surface (v9 plan D1).
+   *
+   * Lifting --ink-3 squeezed it against --ink-2 (V9's #b8b5ac), leaving 1.23:1
+   * between them — legible but visually one step, which is what the ramp's
+   * separation assertion exists to catch. --ink-2 moves up with it. The warm
+   * palette simply has less usable range than V8's blue-black did: AA against
+   * --card-hi is a higher floor than AA against #26262a was. */
+  --ink: #eceae2;
+  --ink-2: #c4c2ba;
+  --ink-3: #a6a39d;
+  --shade: rgba(0,0,0,.55);
+  --lift: 0 1px 2px rgba(0,0,0,.35), 0 14px 40px -12px rgba(0,0,0,.6);
+  /* The composer's resting elevation (§7). Softer than --lift, which is for
+   * summoned overlays. */
+  --soft-lift: 0 1px 2px rgba(0,0,0,.25), 0 4px 16px -6px rgba(0,0,0,.35);
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  /* #f87171 measured 4.13:1 on --card-hi, and the failed tool summary sits on exactly
+   * that surface once the tool line is hovered. Lifted to clear AA there. */
+  --err: #f97e7e;
+  /* Code that Prism cannot tokenise — inline spans, ```text, unknown languages.
+   * Deliberately not var(--hue): hue is provider identity, so code would change
+   * colour when you switch model and go grey under provider-colour: off. Code
+   * is a machine fact (§7's register rule), not provenance. Clears AA on all
+   * four surfaces; tokenContrast.test.ts checks it. */
+  --code: #e0a080;
+  /* Links. A link's colour is its affordance — it reports that the text is
+   * actionable, which is information rather than decoration (§6.2). Ink plus a
+   * faint underline was tried first and failed: the underline measured 1.81:1
+   * against --bg, so a link was indistinguishable from the prose around it.
+   * Deliberately not --hue (provider identity) and not --code (machine output);
+   * a link is neither. */
+  --link: #9db8e8;
+
+  /* Hue is provider identity (spec §3); neutral fallback until data-provider lands.
+   *
+   * V9 splits hue by role, because its warmer/lighter surfaces put the brand
+   * hexes below AA as text (v9 plan D1):
+   *   --hue        the identity colour. Graphics only — the assistant left rule,
+   *                provider dots, the streaming caret, focus rings. WCAG's
+   *                non-text floor is 3:1 and all four clear it (3.57–3.83).
+   *   --hue-text   the same identity, lightened to clear AA (4.5:1) wherever
+   *                hue is literal text: `.switched`, the armed web button, the
+   *                palette mode badge, sidebar "New chat".
+   *   --hue-solid  a display fill that keeps --on-hue legible on top of it.
+   *                V9 §5 names this token for exactly that job but leaves it
+   *                aliased to --hue, where white text measures 2.98–3.20:1.
+   *                Tuned by lowering HSL lightness only, so hue and saturation
+   *                — the identity — survive.
+   * White-labelling still swaps one identity per provider; the two derivatives
+   * are computed from it, not chosen independently. */
+  --hue: var(--ink-2);
+  --hue-text: var(--ink-2);
+  --hue-solid: var(--ink-2);
+  --on-hue: #ffffff;
+  --hue-weak: transparent;
+  --shadow-color: rgba(0,0,0,.55);
+  --shadow: var(--lift);
+  --glow: 0 0 0 1px var(--hue-weak), 0 0 22px -8px var(--hue);
+
+  /* Hue alpha derivatives (kept for existing consumers) */
+  --hue-a08: color-mix(in srgb, var(--hue) 8%, transparent);
+  --hue-a12: color-mix(in srgb, var(--hue) 12%, transparent);
+  --hue-a20: color-mix(in srgb, var(--hue) 20%, transparent);
+  --hue-a40: color-mix(in srgb, var(--hue) 40%, transparent);
+
+  /* Syntax highlighting palette (kept; restyled in later phases) */
+  --syn-keyword: #7dd3fc;
+  --syn-string: #86efac;
+  --syn-number: #fbbf24;
+  --syn-function: var(--hue);
+  --syn-tag: #f0abfc;
+  --syn-property: #93c5fd;
+  --syn-const: #fca5a5;
+  --syn-comment: var(--ink-3);
+  --syn-punct: var(--ink-2);
+  color-scheme: dark;
+
+  /* Readability multiplier applied by Appearance settings */
+  --fs-scale: 1;
+
+  /* ── Scale tokens: spacing (named once, referenced by primitives) ── */
+  --space-0: 0;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 5px;
+  --space-4: 6px;
+  --space-5: 7px;
+  --space-6: 8px;
+  --space-7: 9px;
+  --space-8: 10px;
+  --space-9: 11px;
+  --space-10: 12px;
+  --space-11: 13px;
+  --space-12: 14px;
+  --space-14: 16px;
+  --space-16: 18px;
+  --space-20: 22px;
+  --space-24: 28px;
+  --space-32: 38px;
+
+  /* ── Scale tokens: typography ── */
+  --fs-xs: 10px;
+  --fs-sm: 10.5px;
+  --fs-md: 11px;
+  --fs-lg: 11.5px;
+  --fs-xl: 12px;
+  --fs-2xl: 12.5px;
+  --fs-3xl: 13px;
+  --fs-4xl: 13.5px;
+  --fs-5xl: 14px;
+  --fs-6xl: 14.5px;
+  --fs-8xl: 16px;
+  --fs-9xl: 18px;
+  --fs-10xl: 20px;
+  --fs-7xl: 25px;
+  --fs-display: 25px;
+  /* One step above --fs-display, for the empty-thread greeting only (spec §7).
+   * Set at 400, not 600: at this size weight would read as shouting. */
+  --fs-hero: 32px;
+
+  /* ── Scale tokens: line-height ── */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-prose: 1.58;
+
+  /* ── P1.1 motion tokens (durations + easings) ── */
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-normal: 200ms;
+  --duration-slow: 320ms;
+  --ease-standard: cubic-bezier(.2, .6, .2, 1);
+  --ease-emphasized: cubic-bezier(.2, .7, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, .6, 1);
+  --tap: .15s cubic-bezier(.22,.61,.24,1);
+
+  /* ── Elevation: only overlays carry shadows in v7 (--lift) ── */
+  --elevation-1: var(--lift);
+  --elevation-2: var(--lift);
+  --elevation-3: var(--lift);
+
+  /* ── P1.3 focus ring tokens ── */
+  --ring-width: 2px;
+  --ring-color: var(--hue);
+  --ring-offset: 2px;
+
+  /* ── D3 glass surfaces (palette / toasts) ── */
+  --glass-bg: color-mix(in srgb, var(--card) 82%, transparent);
+  --glass-border: color-mix(in srgb, var(--ink) 10%, transparent);
+  --glass-blur: 16px;
+
+  /* ── Primitive sizing (derived from the scales above) ── */
+  --cu-icon-sm: 17px;
+  --cu-icon-md: 18px;
+  --cu-tap: var(--tap);
+}
+
+/* Light maps to bone/paper (spec §5). In light mode the worst-contrast surface
+ * is the *darkest* one — --bg-side — which is what the status/ink values below
+ * are solved against. */
+[data-theme="light"] {
+  --bg: #faf9f5;
+  --bg-side: #f0eee6;
+  --card: #ffffff;
+  --card-hi: #f5f4ee;
+  --line: #e4e1d7;
+  --line-soft: #edeae1;
+  --line-hi: #cfcbbf;
+  --ink: #29271f;
+  /* Moved down with --ink-3 to keep the ramp's three steps perceptible; see
+   * the dark block. */
+  --ink-2: #59564c;
+  /* V9 §5 specifies #7c786c, which measures 3.80:1 on --bg-side. Darkened to
+   * the smallest value clearing AA there (v9 plan D1). */
+  --ink-3: #706c61;
+  --shade: rgba(41,37,30,.3);
+  --lift: 0 1px 2px rgba(41,37,30,.06), 0 16px 40px -12px rgba(41,37,30,.16);
+  --soft-lift: 0 1px 2px rgba(41,37,30,.05), 0 4px 14px -6px rgba(41,37,30,.1);
+  /* Both sat at 4.32:1 on the new --bg-side; nudged to clear AA on every
+   * surface now that --bg-side is one of them. */
+  --ok: #147c3b;
+  --warn: #af5109;
+  --err: #b91c1c;
+  --code: #a2532b;
+  --link: #1f5fa8;
+  --on-hue: #ffffff;
+  --shadow-color: rgba(20,30,40,.25);
+  --shadow: var(--lift);
+  --glow: 0 0 0 1px var(--hue-weak), 0 0 18px -8px var(--hue);
+  --syn-keyword: #0369a1;
+  --syn-string: #15803d;
+  --syn-number: #b45309;
+  --syn-function: var(--hue);
+  --syn-tag: #a21caf;
+  --syn-property: #1d4ed8;
+  --syn-const: #b91c1c;
+  --syn-comment: var(--ink-3);
+  --syn-punct: var(--ink-2);
+  color-scheme: light;
+  --elevation-1: var(--lift);
+  --elevation-2: var(--lift);
+  --elevation-3: var(--lift);
+}
+
+/* ── Provider identity — the only hue in the product (spec §3) ──────────────
+   Each provider declares three values: the identity itself (--hue, graphics),
+   the AA-legible text variant (--hue-text), and the display fill that keeps
+   --on-hue legible (--hue-solid). See the --hue comment in :root for why.
+   --hue-weak is the 14–16% wash behind chips, derived from the identity. */
+[data-provider="anthropic"] { --hue: #d97757; --hue-text: #e08f75; --hue-solid: #c5522d; --hue-weak: color-mix(in srgb, #d97757 14%, transparent); --hue-weak-solid: rgba(217, 119, 87, .14); }
+[data-provider="openai"]    { --hue: #10a37f; --hue-text: #40b599; --hue-solid: #0d8669; --hue-weak: color-mix(in srgb, #10a37f 14%, transparent); --hue-weak-solid: rgba(16, 163, 127, .14); }
+[data-provider="ollama"]    { --hue: #90909b; --hue-text: #a2a2ab; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #90909b 16%, transparent); --hue-weak-solid: rgba(144, 144, 155, .16); }
+[data-provider="custom"]    { --hue: #7f8bff; --hue-text: #919bff; --hue-solid: #5464ff; --hue-weak: color-mix(in srgb, #7f8bff 14%, transparent); --hue-weak-solid: rgba(127, 139, 255, .14); }
+
+/* The four hues above are tuned for the dark surfaces and land at 3.1–3.5:1 on
+   a light one, so every hue-coloured label (`.switched`, the armed web button,
+   the palette mode badge) would fail AA in light mode. Darkened variants keep
+   the same identity and clear 4.5:1 on every light surface including
+   --bg-side, so light mode needs no separate --hue-text: the identity value is
+   already legible as text there, and --hue-text aliases it. */
+[data-theme="light"] [data-provider="anthropic"],
+[data-theme="light"][data-provider="anthropic"] { --hue: #b04f2b; --hue-text: #b04f2b; --hue-solid: #bd5836; --hue-weak: color-mix(in srgb, #b04f2b 14%, transparent); --hue-weak-solid: rgba(176, 79, 43, .14); }
+[data-theme="light"] [data-provider="openai"],
+[data-theme="light"][data-provider="openai"]    { --hue: #0a7a5e; --hue-text: #0a7a5e; --hue-solid: #0d8667; --hue-weak: color-mix(in srgb, #0a7a5e 14%, transparent); --hue-weak-solid: rgba(10, 122, 94, .14); }
+[data-theme="light"] [data-provider="ollama"],
+[data-theme="light"][data-provider="ollama"]    { --hue: #6b6b78; --hue-text: #6b6b78; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #6b6b78 16%, transparent); --hue-weak-solid: rgba(107, 107, 120, .16); }
+[data-theme="light"] [data-provider="custom"],
+[data-theme="light"][data-provider="custom"]    { --hue: #4d59da; --hue-text: #4d59da; --hue-solid: #5a6ae7; --hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --hue-weak-solid: rgba(77, 89, 218, .14); }
+
+/* ── Palette preset: Orange Charcoal (renderer-only; html[data-palette]) ────
+   The default look, and a second register orthogonal to data-theme — four
+   combinations, since either palette runs in either theme. It suspends what
+   spec §3 called the product's signature, provider identity as the only hue:
+   under it every provider wears one terracotta. Terra keeps that signature and
+   stays one selection away in Settings → Appearance.
+
+   The blocks are a delta over :root / [data-theme="light"], not a replacement —
+   two hex literals behind one surface is the drift tokenContrast.test.ts reads
+   this file to prevent. Status colours fall through; surfaces do not — this
+   palette sits ~two steps darker and less brown than Terra's warm charcoal
+   (#262624 / #1f1e1d), so --bg / --bg-side / card / line are declared here.
+
+   One trap worth naming, because it is silent and severe: this selector is
+   (0,1,1) and [data-theme="light"] is (0,1,0), so these dark values outrank the
+   light theme. The light block below therefore has to redeclare every colour
+   declared here, or light mode renders near-white ink on near-white paper.
+   tokenContrast.test.ts asserts that coverage rather than trusting it. */
+html[data-palette="orange-charcoal"] {
+  /* Darker, near-neutral charcoal; a whisper of warmth so the stack does not
+   * go blue-black. Status colours stay on Terra. */
+  --bg: #171716;
+  --bg-side: #0f0f0e;
+  --card: #222221;
+  --card-hi: #2c2c2b;
+  --line: #2e2e2c;
+  --line-soft: #232322;
+  --line-hi: #3d3d3b;
+  --ink: #efece3;
+  --ink-2: #cbc4b8;
+  --ink-3: #a9a396;
+  /* The identity, as private inputs rather than as --hue directly. The rule
+     that assigns --hue is theme-agnostic (see below), so the per-theme values
+     have to live somewhere the theme can override — here. */
+  --oc-hue: #d97757;
+  --oc-hue-text: #e08f75;
+  --oc-hue-solid: #c5522d;
+  --oc-hue-weak-solid: rgba(217, 119, 87, .14);
+  /* Theme-agnostic, so it is declared here and not repeated in the light block
+   * (the coverage guard only tracks colours). Prose is the one register that
+   * changes face: machine facts stay mono, UI chrome and the user bubble stay
+   * sans. Referencing --font-serif rather than restating its stack is what
+   * makes the artifact title and the prose beside it provably the same face. */
+  --font-prose: var(--font-serif);
+}
+html[data-palette="orange-charcoal"][data-theme="light"] {
+  /* Must redeclare --bg / --bg-side: the dark block outranks [data-theme=light]. */
+  --bg: #faf9f5;
+  --bg-side: #f0eee6;
+  --card: #ffffff;
+  --card-hi: #f4f2ea;
+  --line: #e6e2d6;
+  --line-soft: #efece2;
+  --line-hi: #d2cdbf;
+  --ink: #2a2720;
+  --ink-2: #575043;
+  --ink-3: #6d6759;
+  --oc-hue: #b04f2b;
+  --oc-hue-text: #b04f2b;
+  --oc-hue-solid: #bd5836;
+  --oc-hue-weak-solid: rgba(176, 79, 43, .14);
+}
+/* One identity for every provider — the preset's most opinionated line.
+   Both selector members are needed: <html> carries data-provider (App.tsx sets
+   it from the active provider) and so do .turn.assistant and .convo rows.
+   Neither member mentions data-theme, which is the point. A pin scoped to
+   [data-theme="light"] would sit at (0,3,1) and silently outrank the
+   provider-colour-off switch below; keeping it theme-agnostic holds it at
+   (0,2,1), exactly equal to that switch, so source order decides — and off is
+   later, so an explicit "no accent" still wins. */
+html[data-palette="orange-charcoal"][data-provider],
+html[data-palette="orange-charcoal"] [data-provider] {
+  --hue: var(--oc-hue);
+  --hue-text: var(--oc-hue-text);
+  --hue-solid: var(--oc-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--oc-hue) 14%, transparent);
+  --hue-weak-solid: var(--oc-hue-weak-solid);
+}
+
+/* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
+@supports not (color: color-mix(in srgb, red 10%, transparent)) {
+  [data-provider="anthropic"] { --hue-weak: rgba(217, 119, 87, .14); }
+  [data-provider="openai"]    { --hue-weak: rgba(16, 163, 127, .14); }
+  [data-provider="ollama"]    { --hue-weak: rgba(144, 144, 155, .16); }
+  [data-provider="custom"]    { --hue-weak: rgba(127, 139, 255, .14); }
+  [data-theme="light"] [data-provider="anthropic"],
+  [data-theme="light"][data-provider="anthropic"] { --hue-weak: rgba(176, 79, 43, .14); }
+  [data-theme="light"] [data-provider="openai"],
+  [data-theme="light"][data-provider="openai"]    { --hue-weak: rgba(10, 122, 94, .14); }
+  [data-theme="light"] [data-provider="ollama"],
+  [data-theme="light"][data-provider="ollama"]    { --hue-weak: rgba(107, 107, 120, .16); }
+  [data-theme="light"] [data-provider="custom"],
+  [data-theme="light"][data-provider="custom"]    { --hue-weak: rgba(77, 89, 218, .14); }
+  html[data-palette="orange-charcoal"][data-provider],
+  html[data-palette="orange-charcoal"] [data-provider] { --hue-weak: var(--oc-hue-weak-solid); }
+  /* Theme-neutral gray for the off state when color-mix() is unavailable. */
+  html[data-provider-colour="off"] [data-provider] { --hue-weak: rgba(128, 128, 128, .16); }
+}
+
+[data-rail="expanded"] { --rail-w: 184px; }
+
+/* ── V7 UI prefs (renderer-only; spec §8.9) ────────────────────────────── */
+/* Provider colour off: pin the hue to the neutral ink scale, layout unchanged.
+ * All three hue roles have to be neutralized together, or the send button and
+ * the hue-coloured labels would keep reporting a provider the rest of the
+ * chrome has stopped showing. --hue-solid cannot fall back to --ink-2: it
+ * carries --on-hue (white) on top of it, and white on --ink-2 is ~1.6:1. The
+ * literal below is a warm neutral that clears AA against white in both themes
+ * (5.36:1), which is the one job --hue-solid has.
+ *
+ * The second selector member is not redundant. <html> carries data-theme,
+ * data-provider and data-provider-colour at the same time, so this rule
+ * competes on that one element with [data-theme="light"][data-provider="x"]
+ * at (0,2,0) — which outranks the single-member form's (0,1,1). The effect was
+ * that in light mode, with provider colour off, everything reading --hue from
+ * <html> rather than from its own [data-provider] — the composer focus ring,
+ * .btn.primary, the --ring-color focus outline — stayed tinted. The compound
+ * member lifts this to (0,2,1), which also keeps it level with the Orange
+ * Charcoal palette's pin above (later source order still decides in this rule's
+ * favour). */
+html[data-provider-colour="off"],
+html[data-provider-colour="off"][data-provider] {
+  --hue: var(--ink-2);
+  --hue-text: var(--ink-2);
+  --hue-solid: #6b6b66;
+  --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
+  --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
+}
+/* The [data-provider] attribute selectors above match ANY element carrying
+   data-provider (assistant .turn, sidebar .convo rows), which would override
+   the <html> neutralization. Neutralize per-element hue too. */
+html[data-provider-colour="off"] [data-provider] {
+  --hue: var(--ink-2);
+  --hue-text: var(--ink-2);
+  --hue-solid: #6b6b66;
+  --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
+  --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
+}
+/* Reduce motion: collapse all durations; the streaming caret renders solid. */
+html[data-reduce-motion="on"] *,
+html[data-reduce-motion="on"] *::before,
+html[data-reduce-motion="on"] *::after {
+  animation-duration: .001ms !important;
+  transition-duration: .001ms !important;
+}
+html[data-reduce-motion="on"] .streaming { animation: none !important; }
+
+/* ───────────────────────── Base reset ───────────────────────── */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: calc(var(--fs-4xl) * var(--fs-scale, 1));
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+[data-density="compact"] .msg { padding-top: 8px; padding-bottom: 8px; }
+[data-density="compact"] .composer-wrap { padding-bottom: 10px; }
+button, textarea { font-family: inherit; color: inherit; }
+/* Zero the UA button chrome. Every V7 component class (.convo, .prov, .act,
+ * .tool-head, .iconbtn, .menu-item, .pal-item, .wschip …) is ported from
+ * conduit-v7-proposal.html, which establishes this reset before styling them,
+ * so none of them declare a background or border of their own. Without it they
+ * inherit Chromium's ButtonFace (#6b6b6b under color-scheme: dark) +
+ * ButtonBorder and the whole product reads as grey boxes. Each of those classes
+ * sets its own padding; see the CSS reset guard in tokens.reset.test.ts. */
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+:focus { outline: none; }
+:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); border-radius: var(--r-xs); }
+/* Achromatic, matching the composer (§8.6). Focus is not provenance, so it does
+ * not take the provider hue — and a glow that changes colour with the model,
+ * then greys out entirely under `provider-colour: off`, was reporting nothing. */
+textarea:focus-visible { outline: none; border-color: var(--line-hi); }
+::selection { background: var(--hue-weak); }
+/* The one scrollbar treatment in the product. Apply `.scroll` to anything that
+ * scrolls; it sets no `overflow`, so it is purely additive.
+ *
+ * The thumb was `--line`, which is 1.36:1 against `--bg` in dark and 1.26:1 in
+ * light — subtle to the point of being unfindable. Alpha ink reads in both
+ * themes while still disappearing into the surface. The track stays fully
+ * transparent: that, more than width, is what stops a scrollbar looking like a
+ * grey gutter. */
+.scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink-3) 45%, transparent) transparent;
+}
+/* Fallback for engines without standard scrollbar properties. Chromium >= 121
+ * takes the standard path above and ignores these entirely, so they are inert
+ * on a current WebView2 — kept only for a pinned/older runtime, alongside the
+ * `color-mix()` fallback further up this file.
+ *
+ * Geometry is the mockup's: a 10px bar with a 3px transparent border clipped to
+ * the content box leaves a 4px thumb. The previous values substituted scale
+ * tokens for the literals, but that scale is indexed by position rather than
+ * value (`--space-3` is 5px, not 3px), which asked for 10px of border inside an
+ * 8px box. Nobody noticed because the block never ran. */
+.scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+.scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-3) 45%, transparent);
+  border-radius: var(--r-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink-2) 55%, transparent);
+  background-clip: content-box;
+}
+
+/* ───────────────────────── Primitives (token + scale driven) ────────────
+ * These are v5's shared component classes, extracted here so React primitives
+ * (<Button/>, <IconButton/>, <StatusPill/>, <Chip/>, <SearchBox/>, <InfoCard/>,
+ * <SectionLabel/>, <Avatar/>) and the workspace share one source of truth.
+ * No hard-coded radii or spacing — radii come from --r-*, spacing from
+ * --space-*, type from --fs-*. Ported from v5 and routed through the scale. */
+
+/* Button — .btn (default / .primary / .ghost) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-5);
+  border: var(--space-1) solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: var(--r-sm);
+  padding: var(--space-5) var(--space-11);
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  transition: var(--tap);
+}
+.btn:hover { border-color: var(--line); }
+.btn.primary { background: var(--hue); color: var(--bg); border-color: transparent; }
+.btn.primary:hover { background: var(--hue); filter: brightness(1.08); }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn.danger {
+  background: color-mix(in srgb, var(--err) 16%, var(--card));
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, var(--line));
+}
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--err) 24%, var(--card));
+  border-color: var(--err);
+}
+
+/* IconButton — .icon-btn */
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  border: var(--space-1) solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  transition: var(--tap);
+}
+.icon-btn:hover { background: var(--card); color: var(--ink); }
+.icon-btn.on { color: var(--hue); background: var(--hue-weak); }
+.icon-btn svg { width: 17px; height: 17px; }
+
+/* Pill (tool status) — .pill.ran/.hold/.local */
+.pill {
+  margin-left: auto;
+  font: 600 var(--fs-xs)/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: var(--space-4) var(--space-7);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+.pill.ran { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.pill.hold { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pill.local { color: var(--hue); background: var(--hue-weak); }
+
+/* StatusPill — .status-pill.ok/.warn/.bad */
+.status-pill {
+  font: 600 var(--fs-xs)/1 var(--font-mono);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--r-pill);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  flex: none;
+}
+.status-pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.status-pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.status-pill.bad { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+
+/* Chip — generic label chip (.cu-chip; titlebar chips keep their own classes) */
+.cu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-5);
+  border-radius: var(--r-pill);
+  border: var(--space-1) solid var(--line);
+  background: var(--card);
+  color: var(--ink-2);
+  font: 500 var(--fs-lg)/1 var(--font-ui);
+  padding: var(--space-6) var(--space-8);
+  white-space: nowrap;
+}
+
+/* SearchBox — .search-box */
+.search-box { position: relative; margin-bottom: var(--space-10); }
+.search-box svg {
+  position: absolute;
+  left: var(--space-9);
+  top: 50%;
+  width: var(--cu-icon-sm);
+  height: var(--cu-icon-sm);
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.search-box input {
+  width: 100%;
+  border: var(--space-1) solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+  padding: var(--space-9) var(--space-9) var(--space-9) 34px;
+  font: 500 var(--fs-2xl)/1 var(--font-ui);
+}
+.search-box input::placeholder { color: var(--ink-3); }
+.search-box input:focus { border-color: var(--line-hi); }
+
+/* InfoCard — .info-card */
+.info-card {
+  border: var(--space-1) solid var(--line);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  border-radius: var(--r-lg);
+  padding: var(--space-10);
+  margin: 0 0 var(--space-10);
+  box-shadow: var(--shadow);
+}
+.info-card h3 { margin: 0 0 var(--space-6); font-size: var(--fs-3xl); font-weight: 600; }
+.info-card p { margin: 0; color: var(--ink-2); line-height: 1.5; }
+
+/* SectionLabel — .section-label */
+.section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 var(--fs-sm)/1 var(--font-mono);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: var(--space-8) 0;
+}
+.section-label:first-child { margin-top: 0; }
+
+/* Avatar / Role — .av-role.you/.bot */
+.av-role {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: var(--fs-xs);
+  flex: none;
+}
+.av-role.you { background: var(--card); border: var(--space-1) solid var(--line); color: var(--ink-2); }
+.av-role.bot { background: var(--hue-weak); color: var(--hue); }
+.av-role.bot svg { width: 16px; height: 16px; }
+
+/* ConfirmDialog */
+.cu-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: var(--space-14);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.cu-dialog {
+  width: min(420px, 100%);
+  border: var(--space-1) solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  padding: var(--space-14);
+}
+.cu-dialog-title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--fs-5xl);
+  font-weight: 600;
+}
+.cu-dialog-body {
+  color: var(--ink-2);
+  font-size: var(--fs-4xl);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.cu-dialog-phrase {
+  display: grid;
+  gap: var(--space-6);
+  margin-top: var(--space-12);
+  font-size: var(--fs-xl);
+  color: var(--ink-2);
+}
+.cu-dialog-phrase kbd {
+  font: 600 var(--fs-md)/1 var(--font-mono);
+  color: var(--ink);
+  background: var(--card);
+  border: var(--space-1) solid var(--line);
+  border-radius: var(--r-xs);
+  padding: var(--space-2) var(--space-4);
+}
+.cu-dialog-phrase input {
+  width: 100%;
+  border: var(--space-1) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  padding: var(--space-8) var(--space-10);
+  font: 500 var(--fs-4xl)/1.2 var(--font-ui);
+}
+.cu-dialog-phrase input:focus {
+  border-color: var(--line-hi);
+}
+.cu-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-6);
+  margin-top: var(--space-14);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

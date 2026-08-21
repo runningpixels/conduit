@@ -1,0 +1,37 @@
+{
+  "name": "@conduit/desktop",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev:web": "vite",
+    "build:web": "tsc -b && vite build",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@conduit/config-schema": "workspace:*",
+    "@conduit/ui": "workspace:*",
+    "@tauri-apps/api": "^2.11.1",
+    "prism-react-renderer": "^2.4.1",
+    "prismjs": "^1.30.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/prismjs": "^1.26.5",
+    "@tauri-apps/cli": "^2.11.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "jsdom": "^29.1.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
+  }
+}

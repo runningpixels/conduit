@@ -1,0 +1,18 @@
+/* ── Syntax highlighting tokens (chat inline + artifact code preview) ───
+ *
+ * Three scopes share one palette: the inline code block, the source revealed by
+ * an inline artifact card's "Show code", and the panel's code preview. `:is()`
+ * keeps that list to one prefix per rule — the previous form spelled every
+ * selector out per scope, so adding a third scope would have tripled the file.
+ * Plain `:is()` rather than CSS nesting: tokens.css still carries a fallback
+ * for engines without `color-mix()`, and nesting lands later than that. */
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) .token { unicode-bidi: isolate; }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) :is(.token.comment, .token.prolog, .token.doctype) { color: var(--syn-comment); font-style: italic; }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) .token.keyword { color: var(--syn-keyword); }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) :is(.token.string, .token.char, .token.attr-value) { color: var(--syn-string); }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) :is(.token.number, .token.boolean) { color: var(--syn-number); }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) .token.function { color: var(--syn-function); }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) :is(.token.tag, .token.class-name) { color: var(--syn-tag); }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) :is(.token.attr-name, .token.property) { color: var(--syn-property); }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) :is(.token.builtin, .token.constant) { color: var(--syn-const); }
+:is(.inline-code-block-body, .inline-artifact-source, .artifact-code-body) :is(.token.punctuation, .token.operator) { color: var(--syn-punct); }

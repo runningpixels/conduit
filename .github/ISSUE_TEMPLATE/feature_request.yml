@@ -1,0 +1,68 @@
+name: Feature request
+description: Suggest a capability or improvement
+title: '[feature] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Conduit is deliberately scoped: it is a
+        local-first, bring-your-own-key desktop client with no telemetry and no
+        backend. Requests that require a Conduit-operated service or phone home
+        are unlikely to be accepted — please see the invariants in
+        [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation you hit, not the solution you have in mind.
+      placeholder: "When I ... I have to ... because ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      validations:
+        required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including workarounds you're using today.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chat / conversation UX
+        - Providers and models
+        - MCP connectors and tools
+        - Artifacts
+        - Settings and onboarding
+        - Privacy, security, or encryption
+        - Packaging, updates, or platform support
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require a hosted Conduit service or any telemetry.
+          required: true
+        - label: I searched existing issues and discussions for a duplicate.
+          required: true
+
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you like to work on this?
+      options:
+        - label: I'd be willing to open a pull request (a CLA signature is required).

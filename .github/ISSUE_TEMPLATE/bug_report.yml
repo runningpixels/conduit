@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a defect in Conduit. Attach a diagnostics bundle (see the in-app disclosure).
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Conduit is local-first —
+        please attach a **diagnostics bundle** from Settings → Diagnostics →
+        Export diagnostics. The export disclosure you acknowledged lists exactly
+        what is and is not included.
+
+        **Do NOT paste secrets, API keys, provider base URLs, artifact
+        allowlists, or conversation content.** The diagnostics bundle never
+        contains these; neither should this issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the defect. What did you expect? What did you see?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, concrete steps. Include the provider, model, and (if relevant) the connector name+version and artifact kind.
+      placeholder: |
+        1. Open Conduit with provider=… model=…
+        2. …
+        3. Observed: …
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS + version
+      placeholder: "e.g. Windows 11, macOS 14.2, Ubuntu 22.04"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Conduit version
+      description: Settings → About, or the version printed in the diagnostics bundle.
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Active provider + model
+      placeholder: "e.g. anthropic / claude-sonnet-4"
+    validations:
+      required: true
+  - type: input
+    id: update-channel
+    attributes:
+      label: Update channel
+      placeholder: "stable / beta"
+    validations:
+      required: false
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics bundle
+      description: |
+        Attach the JSON from Settings → Diagnostics → Export diagnostics
+        (drag the file into this field). By attaching it you confirm the
+        in-app disclosure was shown and acknowledged. The bundle contains
+        active provider/model, flags, theme, and redacted app paths — and
+        never secrets, base URLs, allowlists, or conversation content.
+  - type: checkboxes
+    id: disclosure
+    attributes:
+      label: Disclosure acknowledged
+      options:
+        - label: I acknowledge that no secrets, base URLs, allowlists, or conversation content are included in or attached to this report.
+          required: true

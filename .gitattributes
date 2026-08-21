@@ -1,0 +1,36 @@
+# Deliberately NO global `text=auto` rule.
+#
+# This repository's blobs currently store CRLF. Turning on global normalization
+# would rewrite every text file's bytes on the next `git add`, which silently
+# changes the checksum sqlx records for each file in migrations/ and breaks
+# `tests/fixture_migration.rs` with "migration N was previously applied but has
+# been modified". Line-ending normalization is therefore a deliberate, separate
+# change that must be paired with regenerating the SQLite fixtures.
+
+# Migrations are content-addressed by sqlx: the checksum of each file is stored
+# in `_sqlx_migrations` in every existing database. Their bytes must never be
+# rewritten by a line-ending conversion, or every user's DB fails to open.
+# If you ever DO change a migration's bytes, regenerate the fixtures:
+#   cargo run -p conduit-desktop --bin generate-migration-fixture
+apps/desktop/src-tauri/migrations/** -text
+
+# Windows-only scripts need CRLF.
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+
+# Binary — never diff, never convert.
+*.png        binary
+*.ico        binary
+*.icns       binary
+*.woff2      binary
+*.sqlite     binary
+*.sqlite-wal binary
+*.sqlite-shm binary
+
+# Generated: collapse in review, exclude from language statistics.
+packages/config-schema/src/generated/** linguist-generated=true
+pnpm-lock.yaml linguist-generated=true -diff
+Cargo.lock     linguist-generated=true -diff
+
+# Documentation shouldn't dominate GitHub's language bar.
+docs/** linguist-documentation=true

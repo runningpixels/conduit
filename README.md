@@ -6,7 +6,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-<!-- TODO(screenshot): add docs/assets/screenshot-dark.png and -light.png -->
+![Conduit](./docs/assets/screenshot-dark.png)
 
 Conduit is a desktop chat client for large language models, built on Tauri 2
 with a Rust core and a React renderer. You bring your own API key, talk to any
@@ -38,6 +38,23 @@ no backend, and no telemetry.
   renderers with no `dangerouslySetInnerHTML` anywhere in the safe path.
 - **No telemetry.** Update checks are opt-in and send only
   `Conduit-Updater/<version>`.
+
+
+### Artifacts
+
+Model-generated code, HTML, JSON and Markdown open in a side panel with preview
+and source views. HTML renders in a null-origin sandboxed iframe with
+`connect-src 'none'` — it cannot reach the network or the Tauri bridge.
+
+![Artifact side panel showing TypeScript source alongside the conversation](./docs/assets/screenshot-artifacts.png)
+
+### MCP connectors
+
+Local stdio MCP servers run under a supervisor. Tool calls are disclosed inline,
+results are redacted and size-capped, and side-effecting tools prompt for
+consent before they run.
+
+![Two MCP tool calls, uuid and calculator, with their results shown inline](./docs/assets/screenshot-connectors.png)
 
 ## Status
 

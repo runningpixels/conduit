@@ -64,7 +64,7 @@ sha2 = { version = "0.10", default-features = false }
 # `enc:v1:` column prefix; `zeroize` clears the key on drop.
 aes-gcm = "0.10"
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
-base64 = "0.22"
+base64 = "0.23"
 zeroize = { version = "1.8", features = ["zeroize_derive"] }
 
 # HTTP client for built-in web_fetch and web_search tools

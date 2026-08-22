@@ -83,9 +83,9 @@ describe('generate-update-manifest buildManifest', () => {
 
 describe('generate-update-manifest classifyBundle', () => {
   it('maps each Tauri bundle filename to its updater platform + .sig sibling', () => {
-    expect(classifyBundle('Conduit_1.2.3_x64-setup.nsis.zip')).toEqual({
+    expect(classifyBundle('Conduit_1.2.3_x64-setup.exe')).toEqual({
       platform: 'windows-x86_64',
-      sigFile: 'Conduit_1.2.3_x64-setup.nsis.zip.sig',
+      sigFile: 'Conduit_1.2.3_x64-setup.exe.sig',
     });
     expect(classifyBundle('Conduit_1.2.3_aarch64.app.tar.gz')).toEqual({
       platform: 'darwin-aarch64',
@@ -95,14 +95,16 @@ describe('generate-update-manifest classifyBundle', () => {
       platform: 'darwin-x86_64',
       sigFile: 'Conduit_1.2.3_x64.app.tar.gz.sig',
     });
-    expect(classifyBundle('Conduit_1.2.3_amd64.AppImage.tar.gz')).toEqual({
+    expect(classifyBundle('Conduit_1.2.3_amd64.AppImage')).toEqual({
       platform: 'linux-x86_64',
-      sigFile: 'Conduit_1.2.3_amd64.AppImage.tar.gz.sig',
+      sigFile: 'Conduit_1.2.3_amd64.AppImage.sig',
     });
   });
 
   it('ignores non-updater files (the raw .exe, .deb, unrelated files)', () => {
-    expect(classifyBundle('Conduit_1.2.3_x64-setup.exe')).toBeNull();
+    // Tauri 2.11's own latest.json lists -setup.exe as windows-x86_64; the
+    // pre-2.11 .nsis.zip name is what no longer appears.
+    expect(classifyBundle('Conduit_1.2.3_x64-setup.nsis.zip')).toBeNull();
     expect(classifyBundle('Conduit_1.2.3_amd64.deb')).toBeNull();
     expect(classifyBundle('README.md')).toBeNull();
   });

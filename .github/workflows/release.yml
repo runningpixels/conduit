@@ -202,9 +202,9 @@ jobs:
         with:
           name: bundle-${{ matrix.platform }}
           path: |
-            target/**/release/**/*-setup.nsis.zip*
+            target/**/release/**/*-setup.exe*
             target/**/release/**/*.app.tar.gz*
-            target/**/release/**/*.AppImage.tar.gz*
+            target/**/release/**/*.AppImage*
           if-no-files-found: ignore
 
   # Generate the Tauri 2 updater manifest from the signed bundles + their .sig
@@ -234,7 +234,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p flat
-          find artifacts -type f \( -name '*.nsis.zip*' -o -name '*.app.tar.gz*' -o -name '*.AppImage.tar.gz*' \) -exec cp {} flat/ \;
+          find artifacts -type f \( -name '*-setup.exe*' -o -name '*.app.tar.gz*' -o -name '*.AppImage*' \) -exec cp {} flat/ \;
           ls -la flat
 
       - name: Generate manifest (${{ needs.meta.outputs.channel }})

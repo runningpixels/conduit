@@ -99,18 +99,28 @@ export function buildManifest({ version, notes, pubDate, platforms }) {
 
 /**
  * Map a Tauri bundle filename to its updater platform key + the expected `.sig`
- * sibling filename. Tauri 2 emits:
- *   windows  → <name>_<version>_x64-setup.nsis.zip      (+ .sig)
+ * sibling filename. Tauri 2.11 emits:
+ *   windows  → <name>_<version>_x64-setup.exe           (+ .sig)
  *   macos    → <name>_<version>_aarch64.app.tar.gz      (+ .sig)
  *              <name>_<version>_x64.app.tar.gz          (+ .sig)
- *   linux    → <name>_<version>_amd64.AppImage.tar.gz   (+ .sig)
+ *   linux    → <name>_<version>_amd64.AppImage          (+ .sig)
+ *
+ * Verified against the `latest.json` tauri-action published for v0.1.0-rc.1,
+ * which is the authority on what Tauri treats as an updater artifact. The
+ * earlier patterns here (`x64-setup.nsis.zip`, `amd64.AppImage.tar.gz`) match
+ * nothing it produces, so Windows and Linux silently dropped out of the
+ * manifest while macOS carried on matching.
+ *
+ * `.deb` is signed too and appears in latest.json as `linux-x86_64-deb`, but
+ * the AppImage is what `linux-x86_64` resolves to and what the updater pulls,
+ * so it stays unclassified here.
  *
  * @param {string} filename
  * @returns {{ platform: string, sigFile: string } | null}
  */
 export function classifyBundle(filename) {
   const sigFile = `${filename}.sig`;
-  if (/x64-setup\.nsis\.zip$/.test(filename)) {
+  if (/x64-setup\.exe$/.test(filename)) {
     return { platform: 'windows-x86_64', sigFile };
   }
   if (/aarch64\.app\.tar\.gz$/.test(filename)) {
@@ -119,7 +129,7 @@ export function classifyBundle(filename) {
   if (/x64\.app\.tar\.gz$/.test(filename)) {
     return { platform: 'darwin-x86_64', sigFile };
   }
-  if (/amd64\.AppImage\.tar\.gz$/.test(filename)) {
+  if (/amd64\.AppImage$/.test(filename)) {
     return { platform: 'linux-x86_64', sigFile };
   }
   return null;

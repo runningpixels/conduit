@@ -240,7 +240,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p flat
-          find artifacts -type f \( -name '*-setup.exe*' -o -name '*.app.tar.gz*' -o -name '*.AppImage*' \) -exec cp {} flat/ \;
+          # Tauri names the macOS bundle Conduit.app.tar.gz on every arch -- the
+          # architecture is in the path, not the filename. Copying both macOS
+          # legs into one directory therefore collides and one silently
+          # overwrites the other, which is how the manifest came out with linux
+          # and windows only. Re-attach the arch from the target triple, using
+          # the names tauri-action gives the release assets so the URLs resolve.
+          find artifacts -type f \( -name '*-setup.exe*' -o -name '*.app.tar.gz*' -o -name '*.AppImage*' \) |
+          while read -r f; do
+            b=$(basename "$f")
+            case "$f" in
+              *aarch64-apple-darwin*) b=${b/.app.tar.gz/_aarch64.app.tar.gz} ;;
+              *x86_64-apple-darwin*)  b=${b/.app.tar.gz/_x64.app.tar.gz} ;;
+            esac
+            cp "$f" "flat/$b"
+          done
           ls -la flat
 
       - name: Generate manifest (${{ needs.meta.outputs.channel }})
@@ -256,6 +270,22 @@ jobs:
             --out-dir manifest-out \
             --notes "Conduit ${{ needs.meta.outputs.tag }} (${{ needs.meta.outputs.channel }} channel)."
 
+      # Three defects in this workflow produced a green run and a manifest
+      # missing platforms: no updater artifacts, an upload glob matching
+      # nothing, and two macOS bundles overwriting each other. All silent -- a
+      # bundle that is absent looks identical to one never expected. Assert the
+      # shape of the release instead of noticing it later.
+      - name: Assert the manifest covers every platform
+        run: |
+          set -euo pipefail
+          MANIFEST=manifest-out/${{ needs.meta.outputs.channel }}/manifest.json
+          PLATFORMS=$(node -e 'console.log(Object.keys(require(require("path").resolve(process.argv[1])).platforms).sort().join(" "))' "$MANIFEST")
+          COUNT=$(echo $PLATFORMS | wc -w)
+          echo "manifest lists $COUNT platform(s): $PLATFORMS"
+          if [ "$COUNT" -ne 4 ]; then
+            echo "::error::expected 4 platforms, got $COUNT"
+            exit 1
+          fi
       - name: Upload manifest artifact
         uses: actions/upload-artifact@v4
         with:

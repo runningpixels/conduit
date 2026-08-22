@@ -192,14 +192,19 @@ jobs:
 
       # Upload the updater-signed bundle + .sig as a workflow artifact so the
       # manifest job can read them without querying the GitHub API.
+      # The bundles land in the workspace target dir at the repo root, not
+      # under src-tauri -- Cargo shares one target/ across the workspace.
+      # The old path matched nothing and upload-artifact said so without
+      # failing (if-no-files-found: ignore), so the manifest job was being
+      # handed an empty directory.
       - name: Upload signed artifacts
         uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.platform }}
           path: |
-            apps/desktop/src-tauri/target/**/release/**/*-setup.nsis.zip*
-            apps/desktop/src-tauri/target/**/release/**/*.app.tar.gz*
-            apps/desktop/src-tauri/target/**/release/**/*.AppImage.tar.gz*
+            target/**/release/**/*-setup.nsis.zip*
+            target/**/release/**/*.app.tar.gz*
+            target/**/release/**/*.AppImage.tar.gz*
           if-no-files-found: ignore
 
   # Generate the Tauri 2 updater manifest from the signed bundles + their .sig

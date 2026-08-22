@@ -177,6 +177,12 @@ jobs:
           # found. ci.yml's tauri-build-smoke passes only because it sets
           # working-directory: apps/desktop before calling tauri directly.
           projectPath: apps/desktop
+          # tauri-action picks its package manager by looking for a lockfile
+          # inside projectPath. pnpm-lock.yaml is at the workspace root, so it
+          # finds none there, falls back to npm, and dies with
+          # `npm error Missing script: "tauri"`. Name the runner explicitly.
+          # Same invocation ci.yml's tauri-build-smoke uses.
+          tauriScript: pnpm exec tauri
           tagName: ${{ needs.meta.outputs.tag }}
           releaseName: 'Conduit ${{ needs.meta.outputs.tag }}'
           releaseBody: 'See release notes. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'

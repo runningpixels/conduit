@@ -170,6 +170,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          # build:web and dev:web are defined in apps/desktop/package.json,
+          # not the root one, so tauri-action has to run from there. Without
+          # this it runs at the repo root and tauri's beforeBuildCommand dies
+          # with ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL: Command "build:web" not
+          # found. ci.yml's tauri-build-smoke passes only because it sets
+          # working-directory: apps/desktop before calling tauri directly.
+          projectPath: apps/desktop
           tagName: ${{ needs.meta.outputs.tag }}
           releaseName: 'Conduit ${{ needs.meta.outputs.tag }}'
           releaseBody: 'See release notes. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'

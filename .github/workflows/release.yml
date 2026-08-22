@@ -152,6 +152,16 @@ jobs:
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
 
+      # tauri.conf.json carries a fixed version, so without this the tag and
+      # the build disagree -- v9.9.9 would still produce 0.1.0 bundles while
+      # the manifest job, handed the tag's version, advertised one no artifact
+      # carries. Tags only; the nightly branch's 0.0.0-dev is not a real
+      # version and its bundles are not meant to be addressable.
+      - name: Set the bundle version from the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: node scripts/set-version.mjs '${{ needs.meta.outputs.version }}'
+
       # Updater payload signing — the private key never touches the repo.
       - name: Build + sign + release (tauri-action)
         uses: tauri-apps/tauri-action@v0

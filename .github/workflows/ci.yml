@@ -150,4 +150,12 @@ jobs:
         # No TAURI_SIGNING_PRIVATE_KEY → the bundle is unsigned, which is the
         # point of the smoke. A failure here means a tauri.conf.json / bundle
         # regression, not a signing problem.
-        run: pnpm exec tauri build --debug
+        #
+        # createUpdaterArtifacts is overridden off for this build only. With it
+        # on, Tauri refuses to build at all without a private key --
+        #   "A public key has been found, but no private key"
+        # -- and handing the signing key to a job that also runs on pull
+        # requests would put it in reach of anything a fork can propose. The
+        # release workflow is where signing belongs; this job only needs to
+        # prove the bundle config still builds.
+        run: pnpm exec tauri build --debug --config '{"bundle":{"createUpdaterArtifacts":false}}'

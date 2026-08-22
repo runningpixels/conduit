@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0-rc.1",
+  "notes": "Conduit v0.1.0-rc.1 (beta channel).",
+  "pub_date": "2026-08-22T04:56:45.057Z",
+  "platforms": {
+    "linux-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQnFndVgrajRCUFdQekZMM2xDZEZrUmtieEtza3dWWktCYXVmR2x3eEduUlRhanlaU3NHV1R6dHVNRTdaVzltMHN1UkY3UUMrNVZJeEtGaE5wR3hEMkEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MzczNTA0CWZpbGU6Q29uZHVpdF8wLjEuMC1yYy4xX2FtZDY0LkFwcEltYWdlCjZCV3hRTnlrbUFyU2hSZTlWZ0M3RDdMYnBVSWVWMHVrMlo0UDE5U0Y3OTQ0VzJWZzdJVFJ3MWZIN3RkRXUvTVJ4RW5QY1NFNWoyN1B1bWI3YXpXTkRBPT0K",
+      "url": "https://github.com/runningpixels/conduit/releases/download/v0.1.0-rc.1/Conduit_0.1.0-rc.1_amd64.AppImage"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQnRhL2NSTFczemUxWnNxaEtvQlpBRzdYYzRoa1pvRnlKRXhyVWRmSkJTOVl1eTJEMU4zOGlBQWJvOXBHYmVIRkNscVFiY2xyWGdLRnZRUzYrcUFOWkFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MzczOTM2CWZpbGU6Q29uZHVpdF8wLjEuMC1yYy4xX3g2NC1zZXR1cC5leGUKTlFGd1NHTWxhaW15a28xZkdNSjlsYU1vTE9SdVplaDJ4Q1NKN3UyUVR3R0lsMFFLRE9aQUt6TUJ4SDVFb1MvTUlZckJTKzhwbFh2QnFla2oyYzJMQVE9PQo=",
+      "url": "https://github.com/runningpixels/conduit/releases/download/v0.1.0-rc.1/Conduit_0.1.0-rc.1_x64-setup.exe"
+    }
+  }
+}

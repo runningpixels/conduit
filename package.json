@@ -24,5 +24,12 @@
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "nanoid": "^3.3.18",
+      "postcss": "^8.5.23",
+      "undici": "^7.29.0"
+    }
   }
 }

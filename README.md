@@ -60,10 +60,13 @@ consent before they run.
 
 ## Status
 
-**v0.1.0 — pre-release. There are no tagged builds yet; build from source.**
+**v0.1.0-rc.1 — pre-release.** Installers for Windows, macOS (Apple silicon and
+Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
+They are not OS-code-signed, so the first launch shows a Gatekeeper or
+SmartScreen warning. Building from source works too.
 
-This is a working application, not a prototype, but it has never shipped a
-release. Expect rough edges.
+This is a working application, not a prototype, but it is a release candidate
+rather than a 1.0. Expect rough edges.
 
 | Area | State |
 |---|---|
@@ -72,7 +75,7 @@ release. Expect rough edges.
 | MCP connector runtime (stdio transport, consent, supervision) | Working |
 | Artifacts — create, render, edit, export | Working |
 | Multi-round agent loop with tool results | Working |
-| Update/packaging pipeline | Built, never exercised end to end |
+| Update/packaging pipeline | Working — rc.1 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | MCP HTTP/SSE transport | Not implemented (stdio only) |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |

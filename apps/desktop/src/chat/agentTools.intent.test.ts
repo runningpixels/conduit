@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_TOOL_DEFINITIONS, selectBuiltinDocumentTools } from './agentTools';
+import { builtinToolDefinitions, selectBuiltinDocumentTools } from './agentTools';
 
 describe('selectBuiltinDocumentTools', () => {
   it('exposes utility tools for info or general turns', () => {
@@ -43,6 +43,7 @@ describe('selectBuiltinDocumentTools', () => {
   });
 
   it('keeps the full catalog available for reference', () => {
-    expect(BUILTIN_TOOL_DEFINITIONS).toHaveLength(15);
+    // 15 pre-Phase-4 tools + write_brand_theme (white-label plan §4, Phase 4).
+    expect(builtinToolDefinitions()).toHaveLength(16);
   });
 });

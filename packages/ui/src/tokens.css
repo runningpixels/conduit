@@ -477,6 +477,65 @@ html[data-palette="orange-charcoal"] [data-provider] {
   --hue-weak-solid: var(--oc-hue-weak-solid);
 }
 
+/* ── Brand override neutralizes provider hue on descendants ─────────────────
+   White-label plan §5-6: a brand replaces provider identity everywhere, not
+   just at the root. `[data-provider="..."]` above matches ANY element
+   carrying that attribute, not only <html> -- App.tsx:834 sets it on
+   <html>, but AssistantMessage.tsx:162, ChatView.tsx:1242,
+   ComposerModelPicker.tsx:243 and Sidebar.tsx:293 all set their own
+   `data-provider` independently, on message bubbles, model-picker rows and
+   sidebar chips. A custom property re-declared on a descendant element wins
+   over whatever an ancestor says for that SAME property on that element --
+   this is ordinary inheritance, not cascade specificity, so no root-level
+   override (Mode A's inline `setProperty` on <html>, or Mode B's
+   `:root:root` in brand.generated.css) can reach those descendants no
+   matter how it is written. Specificity only decides which rule wins among
+   rules that target the SAME element; it says nothing about an entirely
+   different element down the tree with its own matching rule.
+
+   The fix: force the four hue-identity properties to `inherit` on every
+   `[data-provider]` DESCENDANT while a brand is active, so they chain up
+   through the DOM to whatever the nearest ancestor with its own --hue
+   actually declares -- the inline value in Mode A, the emitted :root:root
+   value in Mode B.
+
+   Descendant-only, deliberately NOT the dual form (compound <html> selector
+   + descendant selector) the Orange Charcoal rule immediately above uses.
+   That pairing is safe for Orange Charcoal because its value
+   (var(--oc-hue)) is a concrete colour, fine to apply to <html> itself too.
+   `inherit` is not: <html> is the actual root, so `inherit` there has no
+   parent to climb to and would blank --hue out at the root entirely --
+   worse than the bug this rule exists to fix, and exactly what an earlier
+   draft of this rule did before a resolver self-test caught it (see
+   apps/desktop/src/brand/miniCascade.test.ts). The descendant-only selector
+   below requires SOME ancestor to satisfy `html[data-palette="brand"]`,
+   which <html> itself, having no ancestors, never can -- <html>'s own
+   --hue is untouched by this rule and keeps resolving from :root / the
+   brand's inline override exactly as before.
+
+   Scoped to `data-palette="brand"` instead of `"orange-charcoal"` so it
+   only engages while Mode A's brand mode is active -- outside it, per-
+   element provider colour must keep working exactly as it does today.
+   Mode A already sets this attribute (applyBrandTheme in applyBrand.ts);
+   Mode B has no such runtime toggle and instead emits the equivalent
+   unconditional (also descendant-only) rule directly into
+   brand.generated.css (see NEUTRALIZE_PROVIDER_HUE_ON_DESCENDANTS in
+   brand_emit.rs).
+
+   `inherit` needs no `@supports not (color-mix(...))` counterpart below:
+   it is a plain CSS-wide keyword with no color-mix() dependency, so it
+   behaves identically in every browser. Specificity alone (0,2,1) already
+   beats every rule the fallback block below can produce for a plain
+   `[data-provider="x"]` (0,1,0) or light-scoped compound (0,2,0) target,
+   in old browsers exactly as in new ones -- there is nothing there for a
+   fallback to fix. */
+html[data-palette="brand"] [data-provider] {
+  --hue: inherit;
+  --hue-text: inherit;
+  --hue-solid: inherit;
+  --hue-weak: inherit;
+}
+
 /* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
 @supports not (color: color-mix(in srgb, red 10%, transparent)) {
   [data-provider="anthropic"] { --hue-weak: rgba(217, 119, 87, .14); }

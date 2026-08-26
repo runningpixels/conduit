@@ -14,7 +14,7 @@
  *      unstyled UA default. 49 elements were in that state when this landed.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -304,8 +304,21 @@ describe('no dead rules', () => {
 describe('bundled fonts', () => {
   const tokens = readFileSync(join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'), 'utf8');
 
+  // `brand.generated.css` (white-label plan §5, Mode B's build-time emitter)
+  // is gitignored and only exists once someone has actually run `cargo run
+  // --example apply_brand -p provider-core` — a stock checkout has no such
+  // file. When it does exist, its `@font-face` rules are held to the exact
+  // same two invariants tokens.css is: every url resolves to a file on disk,
+  // and nothing loads over the network. That is the whole reason Mode B's
+  // fonts are copied into packages/ui/src/fonts/ instead of referenced by
+  // path back into the brand directory — it is what lets this guard (and the
+  // font-src 'self' CSP) stay satisfied with no policy exception.
+  const brandCssPath = join(repoRoot, 'packages', 'ui', 'src', 'brand.generated.css');
+  const brandCss = existsSync(brandCssPath) ? readFileSync(brandCssPath, 'utf8') : '';
+  const allCss = tokens + brandCss;
+
   it('every font url resolves to a file on disk', () => {
-    const urls = Array.from(tokens.matchAll(/url\(["']?([^"')]+)["']?\)/g)).map((m) => m[1]);
+    const urls = Array.from(allCss.matchAll(/url\(["']?([^"')]+)["']?\)/g)).map((m) => m[1]);
     expect(urls.length, 'no @font-face urls found at all').toBeGreaterThan(0);
     const shipped = new Set(
       readdirSync(join(repoRoot, 'packages', 'ui', 'src', 'fonts'), { withFileTypes: true }).map(
@@ -317,7 +330,7 @@ describe('bundled fonts', () => {
   });
 
   it('loads no font over the network', () => {
-    const remote = Array.from(tokens.matchAll(/url\(["']?([^"')]+)["']?\)/g))
+    const remote = Array.from(allCss.matchAll(/url\(["']?([^"')]+)["']?\)/g))
       .map((m) => m[1])
       .filter((u) => /^(https?:)?\/\//.test(u));
     expect(remote, 'a remote font breaks CSP self and offline launch').toEqual([]);

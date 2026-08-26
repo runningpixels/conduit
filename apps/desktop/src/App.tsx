@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppPaths, AppSettings, Artifact, ArtifactContent, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
+import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
 import { ToastStack } from './workspace/ToastStack';
@@ -13,6 +13,7 @@ import {
   exportArtifact,
   getAppPaths,
   getArtifact,
+  getBrandConfig,
   getMessageIdByRequest,
   getOnboardingState,
   getSettings,
@@ -40,6 +41,8 @@ import {
   type PendingArtifact,
 } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
+import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
+import { fetchBrandLogo } from './brand/logo';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -117,6 +120,7 @@ const defaultSettings: AppSettings = {
     wallClockBudgetSecs: 300,
   },
   keychainMode: 'os',
+  brandingEnabled: false,
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';
@@ -141,6 +145,12 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
+  const [brandConfig, setBrandConfig] = useState<BrandConfig | null>(null);
+  // Deliberately not part of the localStorage pre-paint cache — see
+  // brand/logo.ts and applyBrand.ts's "why the logo is never cached"
+  // comments. Arrives a frame later than the palette/identity; that's the
+  // accepted trade-off.
+  const [brandLogo, setBrandLogo] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
   const [openArtifactIds, setOpenArtifactIds] = useState<string[]>([]);
@@ -328,15 +338,37 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const [loadedPaths, loadedSettings, onboardingState] = await Promise.all([
+        // fetchBrandLogo() never rejects (see brand/logo.ts) — a missing or
+        // not-yet-registered `get_brand_logo` command degrades to `null`
+        // rather than failing this whole Promise.all, same as every other
+        // brand-optional load here.
+        const [loadedPaths, loadedSettings, onboardingState, loadedBrand, loadedLogo] = await Promise.all([
           getAppPaths(),
           getSettings(),
           getOnboardingState(),
+          getBrandConfig(),
+          fetchBrandLogo(),
         ]);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
         setOnboarding(onboardingState);
         applyUiPrefs();
+        // Reconcile the pre-paint cache (main.tsx) against the authoritative
+        // Rust read: apply whatever Rust says is current, or clear the DOM +
+        // cache entirely if branding was turned off since the last launch —
+        // otherwise a cleared brand would keep replaying from a stale cache
+        // forever.
+        if (loadedBrand) {
+          applyBrand(loadedBrand, resolveTheme(loadedSettings.theme));
+          setBrandLogo(loadedLogo);
+        } else {
+          clearBrand();
+          // No active brand means no brand logo either, regardless of what
+          // fetchBrandLogo() returned (it fetches independently of
+          // getBrandConfig) — mirrors clearBrand()'s own reconciliation.
+          setBrandLogo(null);
+        }
+        setBrandConfig(loadedBrand);
         void listProviderDescriptors()
           .then(setProviders)
           .catch(() => setProviders([]));
@@ -787,6 +819,16 @@ export default function App() {
     return watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
   }, [settings.theme]);
 
+  // A brand palette is inline CSS on <html>, which beats every stylesheet
+  // rule including [data-theme="light"] — so it has to be re-applied for the
+  // *resolved* theme on every change, not just when AppSettings.theme is
+  // edited. Keyed on effectiveTheme rather than settings.theme so this also
+  // fires when watchSystemTheme flips the OS preference while mode ===
+  // 'system', which changes effectiveTheme without changing settings.theme.
+  useEffect(() => {
+    if (brandConfig) applyBrandTheme(brandConfig, effectiveTheme);
+  }, [brandConfig, effectiveTheme]);
+
   // V7 — the active provider's identity tints the app (spec §5.4).
   useEffect(() => {
     document.documentElement.setAttribute('data-provider', providerHueId(settings.activeProvider));
@@ -1023,6 +1065,7 @@ export default function App() {
           onExportDiagnostics={() => void handleExportDiagnostics()}
           onDeleteConversation={handleDeleteConversation}
           onDeleteAllHistory={handleDeleteAllHistory}
+          logoSrc={brandLogo ?? undefined}
         />
 
         {/* The full-height "Artifacts" rail that used to live here was a second
@@ -1089,6 +1132,10 @@ export default function App() {
           onExport={(artifactId, includeMetadata) => handleExport(artifactId, includeMetadata)}
           onRenameArtifact={handleRenameArtifact}
           onStatus={setStatusMessage}
+          logoSrc={brandLogo ?? undefined}
+          activeBrandConfig={brandConfig}
+          onBrandApplied={setBrandConfig}
+          brandingEnabled={settings.brandingEnabled}
         />
       </div>
 
@@ -1104,6 +1151,10 @@ export default function App() {
         boundaryOk={boundaryOk}
         hasCredential={hasCredential}
         onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
+        onBrandChange={(config, logo) => {
+          setBrandConfig(config);
+          setBrandLogo(logo);
+        }}
       />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

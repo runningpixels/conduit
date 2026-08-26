@@ -1,6 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use provider_core::schema::{PermissionLevel, ToolCallRecord, ToolCallStatus, ToolDefinition};
+use provider_core::{
+    brand::{render_brand_md, validate as validate_brand, Severity as BrandSeverity},
+    schema::{
+        BrandConfig, BrandIdentity, BrandPalette, BrandThemes, PermissionLevel, ToolCallRecord,
+        ToolCallStatus, ToolDefinition, BRAND_SCHEMA_VERSION,
+    },
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -20,6 +26,10 @@ pub const EDIT_MARKDOWN_TOOL: &str = "edit_markdown_document";
 pub const WRITE_TEXT_TOOL: &str = "write_text_document";
 pub const EDIT_TEXT_TOOL: &str = "edit_text_document";
 pub const EXPORT_DOCUMENT_TOOL: &str = "export_document";
+
+// Branding tools (SideEffectful — proposes a theme artifact, never writes
+// brand.md directly; see `write_brand_theme`'s doc comment).
+pub const WRITE_BRAND_THEME_TOOL: &str = "write_brand_theme";
 
 // Utility tools (ReadOnly, always available)
 pub const CURRENT_TIME_TOOL: &str = "current_time";
@@ -52,11 +62,14 @@ pub struct AgentToolExecution {
 }
 
 pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
+    let app_name = crate::brand::app_name();
     vec![
         ToolDefinition {
             tool_id: WRITE_HTML_TOOL.to_string(),
             name: WRITE_HTML_TOOL.to_string(),
-            description: "Create a new HTML document artifact. Omit artifact_id for new documents — Conduit assigns IDs.".to_string(),
+            description: format!(
+                "Create a new HTML document artifact. Omit artifact_id for new documents — {app_name} assigns IDs."
+            ),
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("html", "string", true),
@@ -87,7 +100,9 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WRITE_MARKDOWN_TOOL.to_string(),
             name: WRITE_MARKDOWN_TOOL.to_string(),
-            description: "Create a new Markdown document artifact. Omit artifact_id for new documents — Conduit assigns IDs.".to_string(),
+            description: format!(
+                "Create a new Markdown document artifact. Omit artifact_id for new documents — {app_name} assigns IDs."
+            ),
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("markdown", "string", true),
@@ -118,7 +133,9 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WRITE_TEXT_TOOL.to_string(),
             name: WRITE_TEXT_TOOL.to_string(),
-            description: "Create a new plain-text document artifact. Omit artifact_id for new documents — Conduit assigns IDs.".to_string(),
+            description: format!(
+                "Create a new plain-text document artifact. Omit artifact_id for new documents — {app_name} assigns IDs."
+            ),
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("text", "string", true),
@@ -158,6 +175,51 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             ]),
             permission_level: Some(PermissionLevel::Sensitive),
             display_group: Some("Documents".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        // ---------------------------------------------------------------------
+        // Branding tools
+        // ---------------------------------------------------------------------
+        ToolDefinition {
+            tool_id: WRITE_BRAND_THEME_TOOL.to_string(),
+            name: WRITE_BRAND_THEME_TOOL.to_string(),
+            description: format!(
+                "Propose a brand theme for {app_name} -- product naming plus a complete \
+                 dark-mode and light-mode colour palette -- and save it as a Markdown artifact \
+                 the user can preview and apply from Settings. This tool never changes the \
+                 app's active appearance by itself: it only writes a proposal document, exactly \
+                 like write_markdown_document. Use it when the user asks for a theme, rebrand, \
+                 or colour scheme in chat (e.g. \"give this a warm editorial look with a \
+                 burnt-orange accent\").\n\n\
+                 Every colour value must be a hex string in #rrggbb form (#rgb and #rrggbbaa \
+                 are also accepted, but prefer #rrggbb). No url(...), var(...), rgb(...), or \
+                 named CSS colours -- the validator rejects anything that is not literal hex.\n\n\
+                 Both `dark` and `light` are required, and each needs all 18 keys filled in. A \
+                 theme that only specifies one mode, or leaves some keys out, is not a smaller \
+                 version of a valid theme -- it is invalid, because whichever surfaces are left \
+                 unset keep the previous theme's colours while everything else changes, which \
+                 produces unreadable text rather than an obvious failure. Fill in every key for \
+                 both modes even if a theme is conceptually \"mostly dark\": light must still be \
+                 a complete, readable palette.\n\n\
+                 `hue` is the one accent colour for the whole theme. The app derives several \
+                 translucent tints from it automatically in CSS -- do not try to specify tints, \
+                 shades, or variants of the accent yourselves beyond the hueText/hueSolid/onHue \
+                 fields already in the schema, which serve distinct, specific roles (see their \
+                 individual descriptions).\n\n\
+                 `notes` should be a few sentences of prose explaining the design intent: the \
+                 mood you were going for, why this accent, what to preserve if the theme is \
+                 revised later. This is not cosmetic -- it is saved into the artifact and handed \
+                 back to you verbatim if the user asks you to revise this theme, so a vague or \
+                 missing `notes` makes a later revision request a guessing game instead of an \
+                 edit.\n\n\
+                 If the result names invalid fields, fix exactly those fields and call this tool \
+                 again -- do not guess at a full rewrite."
+            ),
+            input_schema: write_brand_theme_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Branding".to_string()),
             tenant_scope: None,
             kind: None,
             host_config: None,
@@ -285,6 +347,7 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | WRITE_TEXT_TOOL
             | EDIT_TEXT_TOOL
             | EXPORT_DOCUMENT_TOOL
+            | WRITE_BRAND_THEME_TOOL
             | CURRENT_TIME_TOOL
             | UUID_TOOL
             | RANDOM_TOOL
@@ -396,6 +459,13 @@ pub async fn execute_builtin_tool(
         EXPORT_DOCUMENT_TOOL => {
             let input: ExportInput = parse_args(tool_name, arguments)?;
             export_document(ctx, &input.artifact_id, input.include_metadata_sidecar).await
+        }
+        // ---------------------------------------------------------------------
+        // Branding tools
+        // ---------------------------------------------------------------------
+        WRITE_BRAND_THEME_TOOL => {
+            let input: WriteBrandThemeInput = parse_args(tool_name, arguments)?;
+            write_brand_theme(ctx, input).await
         }
         // ---------------------------------------------------------------------
         // Utility tools
@@ -564,6 +634,91 @@ fn json_schema(fields: &[(&str, &str, bool)]) -> Value {
     schema
 }
 
+/// The `write_brand_theme` input schema. Built with `serde_json::json!`
+/// directly rather than the flat [`json_schema`] helper above: `json_schema`
+/// can only express a single level of `{name: type}` properties, and this
+/// tool's `dark`/`light` fields are themselves nested 18-key objects — there
+/// is no way to express that nesting through a `&[(&str, &str, bool)]` list
+/// without either flattening the palette into 36 top-level keys (losing the
+/// dark/light grouping a model needs to keep straight) or growing
+/// `json_schema` into something that can express arbitrary nesting, which
+/// none of the other builtin tools need.
+fn write_brand_theme_schema() -> Value {
+    let palette = brand_palette_schema();
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "appName": {
+                "type": "string",
+                "description": "Short product name used inline in prose, e.g. \"Message \
+                    Northwind\". Keep it brief — this is not a heading."
+            },
+            "displayName": {
+                "type": "string",
+                "description": "Full product name used in headings and the sidebar wordmark, \
+                    e.g. \"Northwind AI\". Often identical to appName."
+            },
+            "tagline": {
+                "type": "string",
+                "description": "Optional composer placeholder text, e.g. \"Message \
+                    Northwind...\". Omit to keep the app's default placeholder."
+            },
+            "notes": {
+                "type": "string",
+                "description": "A few sentences of prose explaining the design intent: the \
+                    mood you were going for, why this accent colour, what matters if the theme \
+                    is revised later. Saved verbatim into the artifact and handed back to you \
+                    if the user asks for a revision, so write it as a briefing for your future \
+                    self, not a caption."
+            },
+            "dark": palette.clone(),
+            "light": palette,
+        },
+        "required": ["appName", "displayName", "dark", "light"],
+    })
+}
+
+/// One theme's worth of the 18-key palette schema (shared by `dark` and
+/// `light` in [`write_brand_theme_schema`]) so every field's description is
+/// written once instead of twice, with no risk of the two copies drifting
+/// apart. Key names and roles mirror [`provider_core::schema::BrandPalette`]
+/// exactly, in the same camelCase spelling — see [`WriteBrandThemeInput`]'s
+/// doc comment for why that spelling was chosen for this tool specifically.
+fn brand_palette_schema() -> Value {
+    let hex_hint = "Hex color only (#rrggbb preferred; #rgb and #rrggbbaa also accepted). No \
+        url(...), var(...), rgb(...), or named CSS colours.";
+    serde_json::json!({
+        "type": "object",
+        "description": "A complete 18-key colour palette for one theme (dark or light). All \
+            18 keys are required — see the tool description for why a partial palette is \
+            rejected rather than partially applied.",
+        "properties": {
+            "bg": { "type": "string", "description": format!("{hex_hint} The app's base background — the ground every other surface sits on.") },
+            "bgSide": { "type": "string", "description": format!("{hex_hint} Sidebar/rail background.") },
+            "card": { "type": "string", "description": format!("{hex_hint} Raised surface background — message bubbles, panels.") },
+            "cardHi": { "type": "string", "description": format!("{hex_hint} Hovered/active state of card.") },
+            "line": { "type": "string", "description": format!("{hex_hint} Default border/divider colour.") },
+            "lineSoft": { "type": "string", "description": format!("{hex_hint} A subdued divider, lower contrast than line.") },
+            "lineHi": { "type": "string", "description": format!("{hex_hint} An emphasised border, higher contrast than line.") },
+            "ink": { "type": "string", "description": format!("{hex_hint} Primary text colour. Should read at WCAG AA (4.5:1) against bg, bgSide, card, and cardHi.") },
+            "ink2": { "type": "string", "description": format!("{hex_hint} Secondary text colour, also checked against every surface.") },
+            "ink3": { "type": "string", "description": format!("{hex_hint} Tertiary text colour (captions, hints), also checked against every surface.") },
+            "hue": { "type": "string", "description": format!("{hex_hint} The single accent colour for this theme. The app derives translucent tints from it automatically in CSS — do not specify tints or variants of it yourself.") },
+            "hueText": { "type": "string", "description": format!("{hex_hint} The accent tuned for use as text on the background — usually adjusted from hue for readability, not identical to it.") },
+            "hueSolid": { "type": "string", "description": format!("{hex_hint} The accent as a solid fill, e.g. a primary button's background.") },
+            "onHue": { "type": "string", "description": format!("{hex_hint} Text/icon colour drawn on top of hueSolid. Should read at WCAG AA (4.5:1) against hueSolid.") },
+            "ok": { "type": "string", "description": format!("{hex_hint} Success state colour.") },
+            "warn": { "type": "string", "description": format!("{hex_hint} Warning state colour.") },
+            "err": { "type": "string", "description": format!("{hex_hint} Error state colour.") },
+            "link": { "type": "string", "description": format!("{hex_hint} Hyperlink colour.") },
+        },
+        "required": [
+            "bg", "bgSide", "card", "cardHi", "line", "lineSoft", "lineHi", "ink", "ink2",
+            "ink3", "hue", "hueText", "hueSolid", "onHue", "ok", "warn", "err", "link"
+        ],
+    })
+}
+
 fn resolve_title(title: Option<String>, filename: Option<String>) -> Option<String> {
     let trimmed = title.and_then(|t| {
         let t = t.trim().to_string();
@@ -714,6 +869,114 @@ async fn export_document(
     }))
 }
 
+/// Turn a validated [`WriteBrandThemeInput`] into a `brand.md`-shaped
+/// [`BrandConfig`], validate it, and — only on success — render it and save
+/// it as a Markdown artifact via the exact same [`write_document`] path
+/// [`WRITE_MARKDOWN_TOOL`] uses.
+///
+/// ## Why this never touches `<branding>/brand.md`
+///
+/// This tool is [`PermissionLevel::SideEffectful`] and is invoked by the
+/// model, not the user. Silently rewriting the file that controls the whole
+/// app's appearance with no confirmation step is the wrong default for that
+/// combination — and it would make the Settings "Preview / Apply" step
+/// pointless, since there would be nothing left to preview. Routing through
+/// an artifact instead means the model *proposes* a theme and the user
+/// *applies* it, which is exactly the Mode A boundary the rest of white-label
+/// branding is built around (see `docs/private/white-label-plan.md` §4). The
+/// artifact path also gets safe rendering and persistence for free — no new
+/// storage code needed here.
+///
+/// ## Why validation errors come back as a tool error, not a partial artifact
+///
+/// A forced-tool-call model has no other structured feedback channel: if an
+/// invalid theme were saved anyway, the model would have no way to know
+/// which fields were wrong short of the user reporting a broken UI later.
+/// Returning `Err` here — with every offending field named — is what lets
+/// the model correct itself and call this tool again, which is the entire
+/// reason this is a dedicated tool instead of asking the model to
+/// free-form-generate a `brand.md` as prose.
+async fn write_brand_theme(
+    ctx: &AgentToolContext<'_>,
+    input: WriteBrandThemeInput,
+) -> Result<Value, String> {
+    let display_name = input.display_name.clone();
+    let config = BrandConfig {
+        schema_version: BRAND_SCHEMA_VERSION,
+        identity: BrandIdentity {
+            app_name: input.app_name,
+            display_name: input.display_name,
+            tagline: input.tagline,
+        },
+        // A theme proposal never carries a logo — brand_theme is a colour
+        // + naming tool only; the logo path (Phase 2) is a separate,
+        // file-upload-shaped flow this tool has no bytes to feed anyway.
+        logo: None,
+        palette: Some(BrandThemes {
+            dark: input.dark,
+            light: input.light,
+        }),
+        notes: input.notes,
+        // Build profile (Mode B): deliberately never model-authored. A packaged
+        // rebrand changes the installer name, the bundle identifier and the
+        // update endpoint its releases are verified against — decisions a
+        // reseller makes once, in a file they own, not ones an LLM proposes
+        // inside a chat turn.
+        fonts: None,
+        bundle: None,
+        updater: None,
+        runtime: None,
+    };
+
+    let (errors, warnings): (Vec<_>, Vec<_>) = validate_brand(&config)
+        .into_iter()
+        .partition(|issue| issue.severity == BrandSeverity::Error);
+
+    if !errors.is_empty() {
+        let detail = errors
+            .iter()
+            .map(|issue| format!("{} ({})", issue.field, issue.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!(
+            "brand theme failed validation on {} field(s) — fix these and call \
+             write_brand_theme again: {detail}",
+            errors.len()
+        ));
+    }
+
+    let markdown = render_brand_md(&config);
+    let title = resolve_title(
+        Some(format!("{display_name} — Brand Theme")),
+        Some("brand.md".to_string()),
+    );
+
+    let mut output = write_document(
+        ctx,
+        &None,
+        "markdown",
+        "text/markdown",
+        title.as_deref(),
+        &markdown,
+    )
+    .await?;
+
+    if let Some(obj) = output.as_object_mut() {
+        obj.insert(
+            "warnings".to_string(),
+            serde_json::json!(warnings
+                .into_iter()
+                .map(|issue| serde_json::json!({
+                    "field": issue.field,
+                    "message": issue.message,
+                }))
+                .collect::<Vec<_>>()),
+        );
+    }
+
+    Ok(output)
+}
+
 fn ensure_kind(artifact: &Artifact, expected: &str) -> Result<(), String> {
     if artifact.kind == expected {
         Ok(())
@@ -823,6 +1086,28 @@ struct EditTextInput {
 struct ExportInput {
     artifact_id: String,
     include_metadata_sidecar: Option<bool>,
+}
+
+/// `write_brand_theme`'s input. Deliberately camelCase-keyed
+/// (`#[serde(rename_all = "camelCase")]`) rather than the snake_case
+/// `artifact_id`-style convention every other input struct in this file
+/// uses, because this one has to match the wire shape
+/// [`BrandConfig`]/[`BrandPalette`] already use in `schema.rs`
+/// (`#[serde(rename_all = "camelCase")]` there too, since those types are
+/// also ts-rs-exported to the renderer). Matching it means `dark`/`light`
+/// deserialize straight into [`BrandPalette`] with no hand-written
+/// field-by-field mapping layer between this struct and the type the model's
+/// arguments actually populate — one less place for the two to drift apart
+/// as palette keys are added or renamed.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WriteBrandThemeInput {
+    app_name: String,
+    display_name: String,
+    tagline: Option<String>,
+    notes: Option<String>,
+    dark: BrandPalette,
+    light: BrandPalette,
 }
 
 // -------------------------------------------------------------------------
@@ -1243,7 +1528,54 @@ mod tests {
         assert!(is_builtin_tool_name(WEB_SEARCH_TOOL));
         assert!(is_builtin_tool_name(CLIPBOARD_READ_TOOL));
         assert!(is_builtin_tool_name(WRITE_HTML_TOOL)); // existing still works
+        assert!(is_builtin_tool_name(WRITE_BRAND_THEME_TOOL));
         assert!(!is_builtin_tool_name("nonexistent_tool"));
+    }
+
+    #[test]
+    fn test_write_brand_theme_definition_shape() {
+        let defs = builtin_tool_definitions();
+        let def = defs
+            .iter()
+            .find(|t| t.name == WRITE_BRAND_THEME_TOOL)
+            .expect("write_brand_theme is registered");
+
+        assert_eq!(
+            def.permission_level,
+            Some(PermissionLevel::SideEffectful),
+            "a model-invoked tool that writes an artifact needs confirmation, not ReadOnly"
+        );
+        assert_eq!(def.display_group.as_deref(), Some("Branding"));
+
+        // The schema must require appName/displayName/dark/light at the top
+        // level, and each of dark/light must require all 18 palette keys —
+        // this is the model's only spec for the format, so a slipped
+        // required-key list here is a silent contract break.
+        let schema = &def.input_schema;
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(required, vec!["appName", "displayName", "dark", "light"]);
+
+        for theme in ["dark", "light"] {
+            let palette_required: Vec<&str> = schema["properties"][theme]["required"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{theme} palette schema must declare `required`"))
+                .iter()
+                .map(|v| v.as_str().unwrap())
+                .collect();
+            assert_eq!(
+                palette_required,
+                vec![
+                    "bg", "bgSide", "card", "cardHi", "line", "lineSoft", "lineHi", "ink", "ink2",
+                    "ink3", "hue", "hueText", "hueSolid", "onHue", "ok", "warn", "err", "link"
+                ],
+                "{theme} palette must require exactly the 18 curated keys"
+            );
+        }
     }
 
     #[test]
@@ -1281,7 +1613,8 @@ mod tests {
     #[test]
     fn test_tool_count() {
         let defs = builtin_tool_definitions();
-        // 7 original document tools + 8 new tools = 15
-        assert_eq!(defs.len(), 15);
+        // 7 original document tools + 8 utility/web/clipboard tools
+        // + 1 write_brand_theme (Phase 4) = 16
+        assert_eq!(defs.len(), 16);
     }
 }

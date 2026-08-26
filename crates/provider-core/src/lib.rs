@@ -3,6 +3,8 @@
 
 pub mod adapter;
 pub mod adapters;
+pub mod brand;
+pub mod brand_emit;
 pub mod catalog;
 pub mod error;
 pub mod fixtures;

@@ -3,7 +3,7 @@ import {
   looksLikeArtifactCreationRequest,
   CONDUIT_ARTIFACT_SYSTEM_APPENDIX,
 } from './artifactPrompt';
-import { BASE_SYSTEM_PROMPT, buildProviderRequest } from './ChatView';
+import { baseSystemPrompt, buildProviderRequest } from './ChatView';
 
 describe('looksLikeArtifactCreationRequest', () => {
   it('detects create/make/new/generate artifact intent', () => {
@@ -67,13 +67,14 @@ describe('buildProviderRequest artifact prompts', () => {
       wallClockBudgetSecs: 300,
     },
     keychainMode: 'os' as const,
+    brandingEnabled: false,
   };
 
   it('includes the artifact appendix in systemPrompt', () => {
     const req = buildProviderRequest(baseSettings, 'hi', [], 'c1', []);
-    expect(req.systemPrompt).toContain(CONDUIT_ARTIFACT_SYSTEM_APPENDIX);
+    expect(req.systemPrompt).toContain(CONDUIT_ARTIFACT_SYSTEM_APPENDIX());
     expect(req.systemPrompt).toContain('Answer capability and explanatory questions in prose');
-    expect(req.systemPrompt).toContain(BASE_SYSTEM_PROMPT);
+    expect(req.systemPrompt).toContain(baseSystemPrompt());
   });
 
   it('does not inject a positive creation developer prompt (system appendix carries the contract)', () => {

@@ -41,6 +41,7 @@ const settings: AppSettings = {
   webSearchConsentAcknowledged: false,
   agent: { maxSteps: 25, wallClockBudgetSecs: 300 },
   keychainMode: 'os',
+  brandingEnabled: false,
 };
 
 /**
@@ -97,6 +98,15 @@ const IPC_EXPORTS = [
   'getArtifactContentBytes', 'readArtifactFileBytes', 'checkArtifactFileState',
   'exportArtifact', 'saveAttachment', 'listAttachments', 'deleteAttachment',
   'getAttachmentBytes', 'resetLocalDatabase',
+  // White-label Phase 3 (Settings → Branding): App.tsx's boot effect already
+  // calls getBrandConfig/getBrandLogo unconditionally, same as every other
+  // Promise.all entry there — missing from this enumeration, either of them
+  // is `undefined`, and calling it throws before `setPaths`/`setSettings`
+  // ever run, which hangs the whole boot effect in its catch-less gap and
+  // times out this smoke test with no other symptom.
+  'getBrandConfig', 'getBrandLogo', 'saveBrandLogo', 'clearBrandLogo',
+  'getBrandWarnings', 'clearBrandConfig', 'importBrandFile', 'applyBrandEdits',
+  'exportBrandConfig',
 ] as const;
 
 vi.mock('./ipc/client', () => {

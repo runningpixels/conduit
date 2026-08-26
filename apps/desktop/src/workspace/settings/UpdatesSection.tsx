@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AppSettings, RolloutChannel, UpdateInfo } from '../../ipc/contracts';
 import { checkForUpdate, downloadAndInstallUpdate } from '../../ipc/client';
+import { appName } from '../../brand';
 
 interface UpdatesSectionProps {
   settings: AppSettings;
@@ -70,8 +71,8 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
           Allow update checks
         </label>
         <span style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-          Conduit checks for updates only when you choose — there is no background
-          telemetry. Sent: your Conduit version, release notes, and the download
+          {appName()} checks for updates only when you choose — there is no background
+          telemetry. Sent: your {appName()} version, release notes, and the download
           URL. Updates are signature-verified and applied only after a migration
           dry-run confirms your local data is safe; installing asks you to confirm
           (passive install mode).
@@ -98,7 +99,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
         </div>
         {update && (
           <div style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-            <b>Conduit {update.version}</b> is available.
+            <b>{appName()} {update.version}</b> is available.
             {update.notes && (
               <pre className="code-block" style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
                 {update.notes}

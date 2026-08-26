@@ -97,6 +97,49 @@ impl AppState {
             .await
             .map_err(|e| format!("failed to initialize local database: {e}"))?;
 
+        // White-label Mode A: apply the on-disk brand (if any) before anything
+        // else in this function that formats a user-visible product name —
+        // most notably the encryption keychain-unavailable message just below.
+        // Deliberately placed *after* migrations rather than before:
+        // `db::migrations` formats its own failure text via
+        // `crate::brand::app_name()` (see that module's doc comment), so a
+        // branding lookup that were slow, blocked, or panicked must not be
+        // able to delay or break that path. Running only once migrations have
+        // already returned means a stuck or broken brand.md can only ever
+        // affect branding, never startup itself.
+        if settings.branding_enabled {
+            match crate::branding::load(&paths.branding) {
+                Ok(Some(loaded)) => {
+                    for warning in &loaded.warnings {
+                        eprintln!(
+                            "conduit: brand.md warning ({}): {}",
+                            warning.field, warning.message
+                        );
+                    }
+                    // `set` is a single-shot `OnceLock`: the first call wins
+                    // and later calls report `Err` with the rejected value
+                    // rather than replacing an already-rendered brand. In
+                    // production this is always the first and only call, but
+                    // it is not fatal either way, so the error is dropped.
+                    let _ = crate::brand::set(crate::brand::Brand {
+                        app_name: loaded.config.identity.app_name,
+                        display_name: loaded.config.identity.display_name,
+                    });
+                }
+                Ok(None) => {} // unbranded is the normal state
+                Err(err) => {
+                    // The user wrote this file; swallowing the failure would
+                    // leave them wondering why their brand never took. It is
+                    // not fatal to startup — `crate::brand::active()` already
+                    // falls back to the built-in identity when `set` never
+                    // runs, so the app continues unbranded.
+                    eprintln!(
+                        "conduit: brand.md is present but invalid, continuing unbranded: {err}"
+                    );
+                }
+            }
+        }
+
         // M3 startup sweep: import legacy file journals, verify the persistence
         // invariant across every turn, and recover any interrupted streams. All
         // three are idempotent and best-effort — a failure degrades gracefully
@@ -127,8 +170,9 @@ impl AppState {
                         enc
                     })
                     .map_err(|e| {
+                        let brand_name = crate::brand::app_name();
                         format!(
-                        "Conduit cannot unlock your local data: the OS keychain is unavailable \
+                        "{brand_name} cannot unlock your local data: the OS keychain is unavailable \
                          ({e:?}). Re-enroll your key or restore from backup."
                     )
                     })?
@@ -316,6 +360,13 @@ impl AppState {
             settings.agent = guardrails;
         }
 
+        // White-label Mode A: no validation needed here — the brand.md file
+        // itself is validated on write/import (`commands::branding`), so this
+        // toggle only ever gates whether an already-valid config is applied.
+        if let Some(value) = patch.branding_enabled {
+            settings.branding_enabled = value;
+        }
+
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())
     }
@@ -433,6 +484,7 @@ mod tests {
             streams: root.join("streams"),
             connectors: root.join("connectors"),
             exports: root.join("exports"),
+            branding: root.join("branding"),
         }
     }
 

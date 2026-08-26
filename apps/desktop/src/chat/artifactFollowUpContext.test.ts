@@ -9,7 +9,7 @@ import {
   resolveRecentDocumentArtifactId,
   shouldIncludeArtifactFollowUpContext,
 } from './artifactFollowUpContext';
-import { BASE_SYSTEM_PROMPT, buildProviderRequest } from './ChatView';
+import { baseSystemPrompt, buildProviderRequest } from './ChatView';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX } from './artifactPrompt';
 
 function makeToolCall(name: string, args: Record<string, unknown>): ToolCallState {
@@ -63,6 +63,7 @@ const baseSettings = {
     wallClockBudgetSecs: 300,
   },
   keychainMode: 'os' as const,
+  brandingEnabled: false,
 };
 
 const listedArtifacts: Artifact[] = [
@@ -408,7 +409,7 @@ describe('buildProviderRequest follow-up artifact context', () => {
       },
     );
     expect(req.developerPrompt ?? '').not.toContain('edit_html_document');
-    expect(req.systemPrompt).toContain(CONDUIT_ARTIFACT_SYSTEM_APPENDIX);
+    expect(req.systemPrompt).toContain(CONDUIT_ARTIFACT_SYSTEM_APPENDIX());
   });
 
   it('includes informational developer prompt for capability questions', () => {
@@ -426,6 +427,6 @@ describe('buildProviderRequest follow-up artifact context', () => {
   it('includes edit-tool guidance in system prompt', () => {
     const req = buildProviderRequest(baseSettings, 'hello', [], 'c1', []);
     expect(req.systemPrompt).toContain('Only call write_*_document or edit_*_document');
-    expect(req.systemPrompt).toContain(BASE_SYSTEM_PROMPT);
+    expect(req.systemPrompt).toContain(baseSystemPrompt());
   });
 });

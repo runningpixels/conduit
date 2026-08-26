@@ -59,6 +59,19 @@ export type { Attachment } from './generated/attachment';
 export type { TenantIdentity } from './generated/tenant_identity';
 export type { ModelPolicy } from './generated/model_policy';
 export type { TenantConfig } from './generated/tenant_config';
+
+// White-label branding. The local counterpart of TenantConfig: same shape of
+// problem (identity + palette), authored on this machine rather than fetched.
+export type { BrandPalette } from './generated/brand_palette';
+export type { BrandThemes } from './generated/brand_themes';
+export type { BrandLogo } from './generated/brand_logo';
+export type { BrandIdentity } from './generated/brand_identity';
+// Build profile (Mode B): parsed at runtime, applied only by a packaged build.
+export type { BrandFonts } from './generated/brand_fonts';
+export type { BrandBundle } from './generated/brand_bundle';
+export type { BrandUpdater } from './generated/brand_updater';
+export type { BrandRuntime } from './generated/brand_runtime';
+export type { BrandConfig } from './generated/brand_config';
 export type { Transport } from './generated/transport';
 export type { ConnectorDefinition } from './generated/connector_definition';
 export type { RolloutChannel } from './generated/rollout_channel';

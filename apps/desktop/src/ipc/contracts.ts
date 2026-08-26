@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  BrandConfig,
   ConsentDecision,
   ConsentPrompt,
   ConnectorGrant,
@@ -140,6 +141,7 @@ export type StreamEvent =
 
 export type {
   AppSettings,
+  BrandConfig,
   Conversation,
   ConversationSummary,
   CredentialRequest,

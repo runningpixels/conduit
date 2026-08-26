@@ -39,6 +39,7 @@ const settings: AppSettings = {
     wallClockBudgetSecs: 300,
   },
   keychainMode: 'os',
+  brandingEnabled: false,
 };
 
 const baseProps = {

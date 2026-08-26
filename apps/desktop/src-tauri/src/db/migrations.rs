@@ -354,8 +354,9 @@ fn handle_migration_failure(db_path: &Path, error: &DbError) -> Result<Migration
         // original error instead of recovering. Report it rather than swallow
         // it — the message names the file the user has to delete by hand.
         fs::remove_file(db_path).map_err(|e| {
+            let app_name = crate::brand::app_name();
             DbError::RecoveryIo(format!(
-                "backed up the failed database to {} but could not remove the live file {}: {}.                  Close any other running copy of Conduit, or delete that file manually, and                  start Conduit again.",
+                "backed up the failed database to {} but could not remove the live file {}: {}.                  Close any other running copy of {app_name}, or delete that file manually, and                  start {app_name} again.",
                 backup_path.display(),
                 db_path.display(),
                 map_io(e)
@@ -366,8 +367,9 @@ fn handle_migration_failure(db_path: &Path, error: &DbError) -> Result<Migration
         let _ = fs::remove_file(format!("{}-shm", db_path.display()));
     }
 
+    let app_name = crate::brand::app_name();
     let marker_body = format!(
-        "Conduit migration failed at {unix}.\nError: {error}\n\
+        "{app_name} migration failed at {unix}.\nError: {error}\n\
          A backup of the previous local store was saved to {}.\n\
          Starting with a fresh local store; streams/ was left untouched.",
         backup_path.display()

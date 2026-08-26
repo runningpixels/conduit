@@ -11,13 +11,23 @@ import { BrandMark } from '../icons';
  * button (and ⌘J); an in-panel control earns its place only once there is
  * something in the panel to sit beside.
  */
-export function ArtifactEmptyState() {
+export interface ArtifactEmptyStateProps {
+  /** Validated `data:image/...` brand logo URI, or omitted/undefined for the
+   *  built-in glyph. See `brand/logo.ts`. */
+  logoSrc?: string;
+}
+
+export function ArtifactEmptyState({ logoSrc }: ArtifactEmptyStateProps = {}) {
   return (
     <section className="doc-panel doc-panel-empty" aria-label="Document panel">
       <div className="doc-body scroll">
         <div className="artifact-empty">
+          {/* aria-hidden on this wrapper already makes the mark decorative —
+              the heading right below carries the accessible content — so
+              BrandMark's own alt="" (for the logo branch) needs no name here
+              either. */}
           <div className="artifact-empty-icon" aria-hidden="true">
-            <BrandMark />
+            <BrandMark src={logoSrc} />
           </div>
           <h2 className="artifact-empty-title">Artifacts live here</h2>
           <p className="artifact-empty-copy">

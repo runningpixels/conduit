@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import type { BrandConfig } from '@conduit/config-schema';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { DocumentPanel } from './DocumentPanel';
 
@@ -7,9 +8,11 @@ vi.mock('../ipc/client', () => ({
   getArtifactContentBytes: vi.fn().mockResolvedValue([]),
   readArtifactFileBytes: vi.fn().mockResolvedValue([]),
   revealPath: vi.fn().mockResolvedValue(undefined),
+  parseBrandSource: vi.fn().mockRejectedValue(new Error('not a brand')),
+  setBrandConfig: vi.fn(),
 }));
 
-import { getArtifactContentBytes, readArtifactFileBytes } from '../ipc/client';
+import { getArtifactContentBytes, readArtifactFileBytes, parseBrandSource, setBrandConfig } from '../ipc/client';
 
 const baseArtifact: Artifact = {
   id: 'a1',
@@ -23,6 +26,68 @@ const baseArtifact: Artifact = {
   contentText: '# Hello\n\nworld',
   contentHash: 'h',
   sizeBytes: 14,
+};
+
+const BRAND_PALETTE_DARK = {
+  bg: '#0F1115',
+  bgSide: '#0B0D11',
+  card: '#161A21',
+  cardHi: '#1D222B',
+  line: '#252B36',
+  lineSoft: '#20242C',
+  lineHi: '#2C3340',
+  ink: '#E8EAED',
+  ink2: '#A8AEB8',
+  ink3: '#6F7681',
+  hue: '#E4572E',
+  hueText: '#FF8A61',
+  hueSolid: '#E4572E',
+  onHue: '#FFFFFF',
+  ok: '#3FB950',
+  warn: '#D29922',
+  err: '#F85149',
+  link: '#58A6FF',
+};
+
+const BRAND_PALETTE_LIGHT = {
+  bg: '#FFFFFF',
+  bgSide: '#F5F5F5',
+  card: '#FFFFFF',
+  cardHi: '#F0F0F0',
+  line: '#E0E0E0',
+  lineSoft: '#EAEAEA',
+  lineHi: '#CCCCCC',
+  ink: '#111111',
+  ink2: '#333333',
+  ink3: '#555555',
+  hue: '#E4572E',
+  hueText: '#B8451F',
+  hueSolid: '#E4572E',
+  onHue: '#FFFFFF',
+  ok: '#2E7D32',
+  warn: '#B26A00',
+  err: '#C62828',
+  link: '#1A56DB',
+};
+
+const VALID_BRAND_CONFIG: BrandConfig = {
+  schemaVersion: 1,
+  identity: { appName: 'Northwind', displayName: 'Northwind AI' },
+  palette: { dark: BRAND_PALETTE_DARK, light: BRAND_PALETTE_LIGHT },
+};
+
+const BRAND_MARKDOWN_ARTIFACT: Artifact = {
+  id: 'brand-1',
+  conversationId: 'c1',
+  kind: 'markdown',
+  title: 'Northwind theme',
+  sourceMessageId: 'm1',
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+  mimeType: 'text/markdown',
+  contentText: '+++\nschemaVersion = 1\n\n[identity]\nappName = "Northwind"\n+++\n\n# Design notes\n',
+  contentHash: 'h',
+  sizeBytes: 60,
 };
 
 function renderPanel(overrides: Partial<Parameters<typeof DocumentPanel>[0]> = {}) {
@@ -320,5 +385,132 @@ describe('DocumentPanel chrome', () => {
     expect(closeBtn.closest('button.tab-select')).toBeNull();
     expect(closeBtn.closest('.artifact-file-tab')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Rename Note' })).toBeInTheDocument();
+  });
+});
+
+describe('DocumentPanel brand-theme Preview/Apply (white-label plan §4, Phase 4)', () => {
+  afterEach(() => {
+    vi.mocked(parseBrandSource).mockReset();
+    vi.mocked(parseBrandSource).mockRejectedValue(new Error('not a brand'));
+    vi.mocked(setBrandConfig).mockReset();
+    vi.restoreAllMocks();
+    document.documentElement.removeAttribute('style');
+    document.documentElement.removeAttribute('data-palette');
+  });
+
+  it('shows no branding actions for an ordinary markdown artifact', async () => {
+    renderPanel({ artifact: baseArtifact, openArtifacts: [baseArtifact], docTab: 'preview' });
+    // Give any (non-existent, for this artifact) parse effect a tick to settle.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(parseBrandSource).not.toHaveBeenCalled();
+    expect(screen.queryByText(/defines a brand theme/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
+  });
+
+  it('shows nothing when content starts with +++ but parseBrandSource rejects it', async () => {
+    vi.mocked(parseBrandSource).mockRejectedValue(new Error('missing required key: identity.appName'));
+    renderPanel({
+      artifact: BRAND_MARKDOWN_ARTIFACT,
+      openArtifacts: [BRAND_MARKDOWN_ARTIFACT],
+      fileStateMap: { 'brand-1': 'ok' as FileState },
+      activeFileState: 'ok',
+      docTab: 'preview',
+      brandingEnabled: true,
+    });
+    await waitFor(() => expect(parseBrandSource).toHaveBeenCalled());
+    expect(screen.queryByText(/defines a brand theme/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
+  });
+
+  it('shows Preview/Apply actions for a valid brand-theme artifact', async () => {
+    vi.mocked(parseBrandSource).mockResolvedValue(VALID_BRAND_CONFIG);
+    renderPanel({
+      artifact: BRAND_MARKDOWN_ARTIFACT,
+      openArtifacts: [BRAND_MARKDOWN_ARTIFACT],
+      fileStateMap: { 'brand-1': 'ok' as FileState },
+      activeFileState: 'ok',
+      docTab: 'preview',
+      brandingEnabled: true,
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument());
+    expect(parseBrandSource).toHaveBeenCalledWith(BRAND_MARKDOWN_ARTIFACT.contentText);
+    expect(screen.getByRole('status', { name: 'Brand theme actions' }).textContent).toMatch(
+      /This document defines a brand theme/i,
+    );
+    expect(screen.getByRole('button', { name: 'Apply…' })).toBeInTheDocument();
+  });
+
+  it('shows no branding actions when branding_enabled is off, even for otherwise-valid content', async () => {
+    // Content sniffing alone must never be enough -- eligibility also
+    // consults `AppSettings.branding_enabled` (threaded in as the
+    // `brandingEnabled` prop). Left at the default (`false`) here on
+    // purpose: `renderPanel` does not override it.
+    vi.mocked(parseBrandSource).mockResolvedValue(VALID_BRAND_CONFIG);
+    renderPanel({
+      artifact: BRAND_MARKDOWN_ARTIFACT,
+      openArtifacts: [BRAND_MARKDOWN_ARTIFACT],
+      fileStateMap: { 'brand-1': 'ok' as FileState },
+      activeFileState: 'ok',
+      docTab: 'preview',
+    });
+    // Give the (skipped) parse effect a tick to settle.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(parseBrandSource).not.toHaveBeenCalled();
+    expect(screen.queryByText(/defines a brand theme/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
+  });
+
+  it('Preview applies the palette locally without writing the pre-paint localStorage cache', async () => {
+    vi.mocked(parseBrandSource).mockResolvedValue(VALID_BRAND_CONFIG);
+    renderPanel({
+      artifact: BRAND_MARKDOWN_ARTIFACT,
+      openArtifacts: [BRAND_MARKDOWN_ARTIFACT],
+      fileStateMap: { 'brand-1': 'ok' as FileState },
+      activeFileState: 'ok',
+      docTab: 'preview',
+      effectiveTheme: 'dark',
+      brandingEnabled: true,
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument());
+
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+
+    // The palette is applied to the live DOM…
+    await waitFor(() =>
+      expect(document.documentElement.style.getPropertyValue('--bg')).toBe(BRAND_PALETTE_DARK.bg),
+    );
+    expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
+    // …but nothing is written to localStorage — an abandoned preview must
+    // never resurrect on next launch (applyBrand.ts's pre-paint cache doc
+    // comment; BrandingSection.tsx's own live preview makes the same call).
+    expect(setItemSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Stop previewing' })).toBeInTheDocument();
+
+    // And the way back out actually clears the applied colour.
+    fireEvent.click(screen.getByRole('button', { name: 'Stop previewing' }));
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--bg')).toBe(''));
+  });
+
+  it('Apply requires confirmation before persisting, and applies the re-parsed result', async () => {
+    vi.mocked(parseBrandSource).mockResolvedValue(VALID_BRAND_CONFIG);
+    vi.mocked(setBrandConfig).mockResolvedValue(VALID_BRAND_CONFIG);
+    renderPanel({
+      artifact: BRAND_MARKDOWN_ARTIFACT,
+      openArtifacts: [BRAND_MARKDOWN_ARTIFACT],
+      fileStateMap: { 'brand-1': 'ok' as FileState },
+      activeFileState: 'ok',
+      docTab: 'preview',
+      brandingEnabled: true,
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply…' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply…' }));
+    // Confirmation dialog shown; nothing persisted yet.
+    expect(await screen.findByText('Apply this brand?')).toBeInTheDocument();
+    expect(setBrandConfig).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply brand' }));
+    await waitFor(() => expect(setBrandConfig).toHaveBeenCalledWith(BRAND_MARKDOWN_ARTIFACT.contentText));
   });
 });

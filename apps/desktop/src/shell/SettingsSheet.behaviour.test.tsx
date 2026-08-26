@@ -72,6 +72,7 @@ const baseSettings: AppSettings = {
   webSearchConsentAcknowledged: false,
   agent: { maxSteps: 25, wallClockBudgetSecs: 300 },
   keychainMode: 'os',
+  brandingEnabled: false,
 };
 
 function renderSheet(overrides: Partial<AppSettings> = {}) {

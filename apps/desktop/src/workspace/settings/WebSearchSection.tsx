@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
 import type { WebSearchDefaults } from '@conduit/config-schema';
 import { WebSearchConsentDialog } from './WebSearchConsentDialog';
+import { appName } from '../../brand';
 
 interface WebSearchSectionProps {
   settings: AppSettings;
@@ -52,7 +53,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
       </div>
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
         When enabled, the model can search the live web during a conversation.
-        Search queries are sent to the model provider, not to Conduit. Per-turn
+        Search queries are sent to the model provider, not to {appName()}. Per-turn
         opt-in is required — the toggle in the chat bar defaults to off.
       </p>
 
@@ -250,7 +251,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
               />
             </div>
             <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-              ISO 3166-1 alpha-2 country code. Used to localize search results. Approximate — not stored server-side by Conduit.
+              ISO 3166-1 alpha-2 country code. Used to localize search results. Approximate — not stored server-side by {appName()}.
             </p>
           </div>
 

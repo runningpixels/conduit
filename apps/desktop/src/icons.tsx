@@ -23,19 +23,42 @@ function Svg({ children, ...rest }: IconProps & { children: React.ReactNode }) {
   );
 }
 
-export const BrandMark = (p: IconProps) => (
-  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
-    <circle cx="12" cy="12" r="3.1" fill="currentColor" />
-    <g stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
-      <path d="M12 9V3.6" />
-      <path d="M14.6 13.5l3.8 3.8" />
-      <path d="M9.4 13.5l-3.8 3.8" />
-    </g>
-    <circle cx="12" cy="3.2" r="1.7" fill="currentColor" />
-    <circle cx="18.8" cy="17.7" r="1.7" fill="currentColor" opacity={0.6} />
-    <circle cx="5.2" cy="17.7" r="1.7" fill="currentColor" opacity={0.6} />
-  </svg>
-);
+export interface BrandMarkProps extends IconProps {
+  /** Custom-logo image path/URL. When supplied, renders an `<img>` instead of
+   *  the built-in currentColor glyph — the white-label seam for a packaged
+   *  rebrand's own mark. Omit (the default) to keep today's inline SVG.
+   *
+   *  Callers should only ever pass an already-validated `data:image/...`
+   *  URI (see `brand/logo.ts`'s `isValidLogoDataUri`) — this component does
+   *  not re-validate, it just renders whatever `src` it is given. */
+  src?: string;
+}
+
+export const BrandMark = ({ src, ...p }: BrandMarkProps) =>
+  src ? (
+    // A user-supplied brand logo may be an SVG. It MUST reach the DOM only
+    // as `<img src="data:image/svg+xml;base64,...">`, never inlined as
+    // markup: an <img> treats SVG as a bitmap-equivalent, script-inert by
+    // spec, whereas dangerouslySetInnerHTML/parsing-and-reinjecting it would
+    // execute any <script>, event handler, or <foreignObject> payload the
+    // file carries. Do not "helpfully" inline this for crisper scaling —
+    // that turns a themeable image into an XSS vector. alt="" because the
+    // mark is always shown beside a text wordmark or heading that already
+    // says what it is (decorative, not informational).
+    <img src={src} alt="" className={p.className} />
+  ) : (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+      <circle cx="12" cy="12" r="3.1" fill="currentColor" />
+      <g stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
+        <path d="M12 9V3.6" />
+        <path d="M14.6 13.5l3.8 3.8" />
+        <path d="M9.4 13.5l-3.8 3.8" />
+      </g>
+      <circle cx="12" cy="3.2" r="1.7" fill="currentColor" />
+      <circle cx="18.8" cy="17.7" r="1.7" fill="currentColor" opacity={0.6} />
+      <circle cx="5.2" cy="17.7" r="1.7" fill="currentColor" opacity={0.6} />
+    </svg>
+  );
 
 export const BotGlyph = (p: IconProps) => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>

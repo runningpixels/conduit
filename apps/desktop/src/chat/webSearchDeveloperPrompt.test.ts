@@ -51,6 +51,7 @@ describe('buildProviderRequest web search prompts', () => {
       wallClockBudgetSecs: 300,
     },
     keychainMode: 'os' as const,
+    brandingEnabled: false,
   };
 
   it('uses search developer prompt and slims system prompt for search turns', () => {

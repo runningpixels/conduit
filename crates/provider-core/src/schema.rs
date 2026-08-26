@@ -858,6 +858,315 @@ pub struct TenantConfig {
     pub cloud_policy: Option<serde_json::Value>,
 }
 
+// =============================================================================
+// Brand / White-Label Types
+// =============================================================================
+//
+// `docs/architecture/foundation-contracts.md` states the constraint these
+// types exist to satisfy: "Runtime branding is a config problem, not a code
+// fork." Branding is therefore *data*, validated against this schema, and
+// never a stylesheet or a code path.
+//
+// These deliberately superset `TenantIdentity` above rather than replacing it.
+// `TenantConfig` is fetched from the cloud and cached in `tenant_config_cache`;
+// a `BrandConfig` is authored locally by the user. Both describe the same
+// thing, so both converge on one apply path — see `From<TenantIdentity>`.
+//
+// Two consumers read a `BrandConfig`: the renderer applies it at runtime via
+// `setProperty` over an allowlist, and (later) a build-time emitter bakes it
+// into a packaged rebrand. The curated key set below is what keeps those two
+// honest with each other.
+
+/// Colours a brand may set, one theme's worth.
+///
+/// Eighteen keys, not the ~124 in `tokens.css`. The rest are either structural
+/// (spacing, radii, type scale — not brand) or derived: `--hue-a08/12/20/40`
+/// are already `color-mix()` over `--hue` in tokens.css, so setting the accent
+/// carries its own tints for free, and `--hue-weak` derives the same way.
+///
+/// A format with 124 authorable keys is one nobody — human or LLM — fills in
+/// correctly, and every key left unset is a contrast bug.
+///
+/// Values are hex only (`#rgb`, `#rrggbb`, `#rrggbbaa`), enforced by the
+/// validator rather than the type. That grammar is deliberately narrower than
+/// CSS: it means a brand file cannot express `url(...)` and so cannot reach the
+/// network, whatever the CSP happens to allow.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_palette.ts"
+)]
+pub struct BrandPalette {
+    /// `--bg` — the app ground.
+    pub bg: String,
+    /// `--bg-side` — sidebar/rail ground.
+    pub bg_side: String,
+    /// `--card` — raised surface (messages, panels).
+    pub card: String,
+    /// `--card-hi` — hovered/active card.
+    pub card_hi: String,
+    /// `--line` — default border.
+    pub line: String,
+    /// `--line-soft` — subdued divider.
+    pub line_soft: String,
+    /// `--line-hi` — emphasised border.
+    pub line_hi: String,
+    /// `--ink` — primary text. Contrast-checked against every surface.
+    pub ink: String,
+    /// `--ink-2` — secondary text.
+    pub ink2: String,
+    /// `--ink-3` — tertiary text.
+    pub ink3: String,
+    /// `--hue` — the accent. `--hue-a08/12/20/40` and `--hue-weak` derive from
+    /// this in CSS; do not add them here.
+    pub hue: String,
+    /// `--hue-text` — accent tuned for text-on-background contrast.
+    pub hue_text: String,
+    /// `--hue-solid` — accent as a solid fill.
+    pub hue_solid: String,
+    /// `--on-hue` — text drawn on top of `hue_solid`.
+    pub on_hue: String,
+    /// `--ok` — success.
+    pub ok: String,
+    /// `--warn` — warning.
+    pub warn: String,
+    /// `--err` — error.
+    pub err: String,
+    /// `--link` — hyperlink.
+    pub link: String,
+}
+
+/// Both themes. Neither is optional.
+///
+/// `tokens.css:413-418` documents the specificity trap that makes this
+/// mandatory: a palette that overrides colours for dark but not light leaves
+/// the light-mode rules winning on some tokens and losing on others, which
+/// silently produces unreadable text rather than an obvious failure. The
+/// validator rejects a half-specified palette for that reason.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_themes.ts"
+)]
+pub struct BrandThemes {
+    pub dark: BrandPalette,
+    pub light: BrandPalette,
+}
+
+/// A user-supplied logo, resolved relative to the brand directory.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_logo.ts"
+)]
+pub struct BrandLogo {
+    /// Filename only, never a path or a URL. The loader joins it to the brand
+    /// directory itself so a config cannot reach outside that directory.
+    pub file: String,
+}
+
+/// Product naming. The local counterpart of [`TenantIdentity`].
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_identity.ts"
+)]
+pub struct BrandIdentity {
+    /// Short name used inline in prose: "Restart Northwind".
+    pub app_name: String,
+    /// Full name for headings. Often identical to `app_name`.
+    pub display_name: String,
+    /// Composer placeholder. Defaults to `Message <app_name>…` when absent.
+    #[ts(optional)]
+    pub tagline: Option<String>,
+}
+
+impl From<TenantIdentity> for BrandIdentity {
+    /// Cloud-issued identity into local brand identity.
+    ///
+    /// This is the convergence point promised above: when the tenant-config
+    /// fetch lands it produces a `TenantIdentity`, and it must drive the same
+    /// apply path a local `brand.md` does rather than a second one.
+    ///
+    /// `accent_color` is deliberately dropped here — it is a single colour,
+    /// while a [`BrandPalette`] needs eighteen across two themes. Deriving a
+    /// whole readable palette from one hex is a real design problem, not a
+    /// conversion; until it is solved, a tenant accent is applied on top of the
+    /// default palette by the caller.
+    fn from(t: TenantIdentity) -> Self {
+        Self {
+            app_name: t.app_name,
+            display_name: t.display_name,
+            tagline: None,
+        }
+    }
+}
+
+/// A complete brand, parsed from the frontmatter of a `brand.md`.
+///
+/// The Markdown body is *not* normative — it carries design rationale for
+/// humans and for the model that may be asked to revise the theme. It is
+/// preserved in `notes` so a regeneration prompt can be handed the author's
+/// stated intent instead of guessing it from hex values.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_config.ts"
+)]
+pub struct BrandConfig {
+    /// Format version. Unknown future versions are rejected rather than
+    /// partially applied — a half-understood brand is worse than none.
+    pub schema_version: u32,
+    pub identity: BrandIdentity,
+    #[ts(optional)]
+    pub logo: Option<BrandLogo>,
+    /// Absent means "keep the built-in palette" — a brand may rename the
+    /// product without restyling it.
+    #[ts(optional)]
+    pub palette: Option<BrandThemes>,
+    /// The Markdown body verbatim, minus the frontmatter delimiters.
+    #[ts(optional)]
+    pub notes: Option<String>,
+
+    // ---- Build profile (Mode B) ----
+    //
+    // Everything below takes effect only when a brand is baked into a packaged
+    // build. The runtime loader parses these, ignores them, and surfaces a
+    // `Severity::Warning` saying so — never an error. A brand file is one
+    // artifact describing one brand; which half of it applies depends on who
+    // is reading it, not on maintaining two divergent files.
+    //
+    // These exist as a separate tier because the runtime's restrictions are
+    // artifacts of CSP and Tauri's bundling model, not of branding. At build
+    // time each dissolves: fonts get bundled so `font-src 'self'` is satisfied,
+    // icons are regenerated, and CSS is emitted as a static file CI can lint.
+    // Designing the format around Mode A's limits would cap Mode B permanently.
+    /// Custom typefaces, bundled into the package. Impossible at runtime:
+    /// `font-src 'self'` plus Guard G8 (`cssContract.test.ts`) forbid loading a
+    /// face that is not already on disk.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fonts: Option<BrandFonts>,
+    /// Installer and OS-level identity. Not reachable at runtime at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bundle: Option<BrandBundle>,
+    /// Where this build checks for updates, and the key that signs them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub updater: Option<BrandUpdater>,
+    /// Build-level switches over the runtime feature.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub runtime: Option<BrandRuntime>,
+}
+
+/// Typefaces to bundle. Each value is a filename resolved against the brand
+/// directory, never a URL — a remote face would break both the CSP and offline
+/// launch, which is exactly what Guard G8 exists to prevent.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_fonts.ts"
+)]
+pub struct BrandFonts {
+    /// Replaces `--font-ui`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ui: Option<String>,
+    /// Replaces `--font-mono`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mono: Option<String>,
+    /// Replaces `--font-serif`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub serif: Option<String>,
+}
+
+/// Installer/OS identity, patched into `tauri.conf.json` at build time.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_bundle.ts"
+)]
+pub struct BrandBundle {
+    /// `productName` — the `.exe`/`.app` name and Start-menu entry.
+    pub product_name: String,
+    /// Reverse-DNS bundle id (macOS bundle ID, Windows registry, keychain
+    /// namespacing). Changing it makes a genuinely separate application.
+    pub identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub publisher: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub copyright: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub short_description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub long_description: Option<String>,
+}
+
+/// Update infrastructure for a packaged rebrand.
+///
+/// Both fields are mandatory, and a build that omits the whole `[updater]`
+/// section must fail rather than warn. `updater.rs:44-56` already states the
+/// rule: "Forks MUST point this at their own infrastructure rather than inherit
+/// upstream's." Inheriting it produces a build that polls someone else's
+/// manifest and cannot verify its own signatures — a silent, shipped defect.
+///
+/// Note the endpoint lives in two places: `CONDUIT_UPDATE_BASE` (a build-time
+/// env var, which has indirection) and `plugins.updater.endpoints` in
+/// `tauri.conf.json` (which does not). A build must patch both.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_updater.ts"
+)]
+pub struct BrandUpdater {
+    /// Full URL of this build's update manifest.
+    pub endpoint: String,
+    /// The minisign public key this build verifies updates against. Must be the
+    /// reseller's own — upstream's key cannot sign their releases.
+    pub pubkey: String,
+}
+
+/// Build-level switches over the runtime branding feature.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/brand_runtime.ts"
+)]
+pub struct BrandRuntime {
+    /// Whether end users of this packaged build may rebrand it themselves.
+    ///
+    /// Defaults to `true` so an ordinary build keeps Settings → Branding. A
+    /// reseller shipping their own product generally wants `false`: having
+    /// already baked their identity in, they rarely want end users editing it
+    /// back out.
+    #[serde(default = "default_true_bool")]
+    pub allow_user_branding: bool,
+}
+
+fn default_true_bool() -> bool {
+    true
+}
+
+/// The only `schema_version` this build understands.
+pub const BRAND_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -1217,6 +1526,14 @@ pub struct AppSettings {
     /// to deserialize.
     #[serde(default)]
     pub keychain_mode: KeychainMode,
+    /// White-label Mode A: whether the on-disk `brand.md` (if any) is loaded
+    /// and applied. Defaults `false` — an unbranded install stays unbranded
+    /// even if a stray `brand.md` exists, so branding is always an opt-in
+    /// action rather than something that can silently activate itself. There
+    /// is no settings migration runner in this codebase, so `#[serde(default)]`
+    /// is the entire back-compat story for existing settings files.
+    #[serde(default)]
+    pub branding_enabled: bool,
 }
 
 fn default_true() -> bool {
@@ -1242,6 +1559,7 @@ impl Default for AppSettings {
             web_search_consent_acknowledged: false,
             agent: AgentGuardrails::default(),
             keychain_mode: KeychainMode::default(),
+            branding_enabled: false,
         }
     }
 }
@@ -1292,6 +1610,10 @@ pub struct SettingsPatch {
     /// Replace agent loop guardrails. Values are validated on save.
     #[ts(optional)]
     pub agent: Option<AgentGuardrails>,
+    /// White-label Mode A: toggle whether the on-disk `brand.md` is loaded
+    /// and applied. See `AppSettings::branding_enabled`.
+    #[ts(optional)]
+    pub branding_enabled: Option<bool>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

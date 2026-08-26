@@ -11,16 +11,17 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, Artifact, ArtifactKind, Attachment, ConnectorDefinition,
-    ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt,
-    ContentAnnotation, Conversation, ConversationSummary, CredentialRequest, CredentialSummary,
-    GenerationControls, GrantScope, GrantStatus, KeychainMode, LicenseClaims, Message, MessagePart,
-    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig,
-    ProviderError, ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint,
-    RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch,
-    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
-    ToolDefinition, ToolKind, Transport, UserLocation, WebSearchDefaults, WebSearchFilters,
-    WebSearchRequest,
+    AgentGuardrails, AppSettings, Artifact, ArtifactKind, Attachment, BrandBundle, BrandConfig,
+    BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime, BrandThemes, BrandUpdater,
+    ConnectorDefinition, ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision,
+    ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary, CredentialRequest,
+    CredentialSummary, GenerationControls, GrantScope, GrantStatus, KeychainMode, LicenseClaims,
+    Message, MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel,
+    ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
+    ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
+    SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
+    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UserLocation,
+    WebSearchDefaults, WebSearchFilters, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -70,6 +71,17 @@ fn main() {
     TenantIdentity::export().expect("export TenantIdentity");
     ModelPolicy::export().expect("export ModelPolicy");
     TenantConfig::export().expect("export TenantConfig");
+
+    // White-label brand config (local counterpart of TenantConfig).
+    BrandPalette::export().expect("export BrandPalette");
+    BrandThemes::export().expect("export BrandThemes");
+    BrandLogo::export().expect("export BrandLogo");
+    BrandIdentity::export().expect("export BrandIdentity");
+    BrandFonts::export().expect("export BrandFonts");
+    BrandBundle::export().expect("export BrandBundle");
+    BrandUpdater::export().expect("export BrandUpdater");
+    BrandRuntime::export().expect("export BrandRuntime");
+    BrandConfig::export().expect("export BrandConfig");
     Transport::export().expect("export Transport");
     ConnectorDefinition::export().expect("export ConnectorDefinition");
     RolloutChannel::export().expect("export RolloutChannel");

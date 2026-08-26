@@ -6,13 +6,13 @@
 // All modules live in the `conduit_desktop` library crate so Phase 3
 // integration tests (`tests/`) can reach the migration runner and repositories.
 use conduit_desktop::{
-    commands::*, connector_runtime::ConnectorRuntimeManager, state::AppState,
+    brand, commands::*, connector_runtime::ConnectorRuntimeManager, state::AppState,
     stream_manager::StreamManager, updater::*,
 };
 use tauri::{Manager, RunEvent};
 
 fn main() {
-    let app_name = "Conduit";
+    let app_name = brand::app_name();
 
     // Phase 4: route redacted connector stderr + connector-runtime lifecycle
     // events to the process log. `RUST_LOG` overrides; default to `info` so
@@ -49,6 +49,20 @@ fn main() {
             get_settings,
             update_settings,
             get_onboarding_state,
+            // White-label Mode A: brand.md storage + IPC surface.
+            get_brand_config,
+            get_brand_warnings,
+            set_brand_config,
+            clear_brand_config,
+            parse_brand_source,
+            import_brand_file,
+            import_brand_file_dialog,
+            apply_brand_edits,
+            export_brand_config,
+            export_brand_config_dialog,
+            save_brand_logo,
+            get_brand_logo,
+            clear_brand_logo,
             save_provider_credential,
             load_provider_credential_reference,
             list_provider_descriptors,

@@ -178,6 +178,9 @@ async fn settings_and_db_survive_in_place_reopen() {
             wall_clock_budget_secs: 600,
         }),
         branding_enabled: None,
+        workspace_tools_enabled: None,
+        workspace_root: None,
+        workspace_tools_consent_acknowledged: None,
     };
     let updated = state.update_settings(patch).expect("update settings");
     assert_eq!(updated.active_model, "claude-opus-4");

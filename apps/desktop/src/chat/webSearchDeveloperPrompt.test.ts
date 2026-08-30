@@ -52,6 +52,9 @@ describe('buildProviderRequest web search prompts', () => {
     },
     keychainMode: 'os' as const,
     brandingEnabled: false,
+    workspaceToolsEnabled: false,
+    workspaceRoot: null,
+    workspaceToolsConsentAcknowledged: false,
   };
 
   it('uses search developer prompt and slims system prompt for search turns', () => {

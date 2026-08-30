@@ -64,6 +64,9 @@ const baseSettings = {
   },
   keychainMode: 'os' as const,
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 const listedArtifacts: Artifact[] = [

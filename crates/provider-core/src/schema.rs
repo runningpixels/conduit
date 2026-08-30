@@ -1534,6 +1534,17 @@ pub struct AppSettings {
     /// is the entire back-compat story for existing settings files.
     #[serde(default)]
     pub branding_enabled: bool,
+    /// Workspace file tools (read/write/edit/glob/grep). Off by default;
+    /// requires a chosen `workspace_root` and consent acknowledgement.
+    #[serde(default)]
+    pub workspace_tools_enabled: bool,
+    /// Absolute path to the sandbox root for workspace tools. `None` until
+    /// the user picks a folder in Settings.
+    #[serde(default)]
+    pub workspace_root: Option<String>,
+    /// First-use consent for workspace file tools (disk mutation + path policy).
+    #[serde(default)]
+    pub workspace_tools_consent_acknowledged: bool,
 }
 
 fn default_true() -> bool {
@@ -1560,6 +1571,9 @@ impl Default for AppSettings {
             agent: AgentGuardrails::default(),
             keychain_mode: KeychainMode::default(),
             branding_enabled: false,
+            workspace_tools_enabled: false,
+            workspace_root: None,
+            workspace_tools_consent_acknowledged: false,
         }
     }
 }
@@ -1614,6 +1628,12 @@ pub struct SettingsPatch {
     /// and applied. See `AppSettings::branding_enabled`.
     #[ts(optional)]
     pub branding_enabled: Option<bool>,
+    #[ts(optional)]
+    pub workspace_tools_enabled: Option<bool>,
+    #[ts(optional)]
+    pub workspace_root: Option<Option<String>>,
+    #[ts(optional)]
+    pub workspace_tools_consent_acknowledged: Option<bool>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

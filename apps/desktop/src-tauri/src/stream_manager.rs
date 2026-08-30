@@ -722,6 +722,19 @@ impl StreamManager {
         let source_message_id = messages::get_message_id_by_request(&state.db, request_id)
             .await
             .unwrap_or(None);
+        let settings = state.settings().unwrap_or_default();
+        let workspace_config =
+            if settings.workspace_tools_enabled && settings.workspace_tools_consent_acknowledged {
+                settings
+                    .workspace_root
+                    .as_ref()
+                    .filter(|p| !p.trim().is_empty())
+                    .map(|root| crate::workspace_tools::WorkspaceToolConfig {
+                        root: std::path::PathBuf::from(root),
+                    })
+            } else {
+                None
+            };
         let ctx = agent_tools::AgentToolContext {
             db: &state.db,
             artifacts_dir: &state.paths.artifacts,
@@ -729,6 +742,7 @@ impl StreamManager {
             encryption: &state.encryption,
             conversation_id,
             source_message_id,
+            workspace: workspace_config.as_ref(),
         };
         let sink = runtime_channel.map(|channel| {
             let channel = channel.clone();

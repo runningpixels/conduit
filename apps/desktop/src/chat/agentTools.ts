@@ -258,6 +258,74 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     displayGroup: 'Clipboard',
   },
   // ---------------------------------------------------------------------------
+  // Workspace file tools (settings-gated)
+  // ---------------------------------------------------------------------------
+  {
+    toolId: 'workspace_read',
+    name: 'workspace_read',
+    description:
+      'Read a text file under the workspace folder. Path must be relative to the workspace root. Optional offset/limit in bytes.',
+    inputSchema: schema([
+      { name: 'path', type: 'string', required: true },
+      { name: 'offset', type: 'integer' },
+      { name: 'limit', type: 'integer' },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Workspace',
+  },
+  {
+    toolId: 'workspace_write',
+    name: 'workspace_write',
+    description:
+      'Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories.',
+    inputSchema: schema([
+      { name: 'path', type: 'string', required: true },
+      { name: 'content', type: 'string', required: true },
+      { name: 'create_dirs', type: 'boolean' },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: 'Workspace',
+  },
+  {
+    toolId: 'workspace_edit',
+    name: 'workspace_edit',
+    description:
+      'Replace the full contents of an existing text file under the workspace folder. Path is relative to the workspace root.',
+    inputSchema: schema([
+      { name: 'path', type: 'string', required: true },
+      { name: 'content', type: 'string', required: true },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: 'Workspace',
+  },
+  {
+    toolId: 'workspace_glob',
+    name: 'workspace_glob',
+    description:
+      'List files under the workspace folder matching a glob pattern (relative to the workspace root), e.g. "**/*.rs".',
+    inputSchema: schema([
+      { name: 'pattern', type: 'string', required: true },
+      { name: 'max_results', type: 'integer' },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Workspace',
+  },
+  {
+    toolId: 'workspace_grep',
+    name: 'workspace_grep',
+    description:
+      'Search file contents under the workspace folder with a regex. Optional path (subdirectory) and glob filter (e.g. "*.ts").',
+    inputSchema: schema([
+      { name: 'pattern', type: 'string', required: true },
+      { name: 'path', type: 'string' },
+      { name: 'glob', type: 'string' },
+      { name: 'max_matches', type: 'integer' },
+      { name: 'case_insensitive', type: 'boolean' },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Workspace',
+  },
+  // ---------------------------------------------------------------------------
   // Branding tool (white-label plan §4, Phase 4)
   // ---------------------------------------------------------------------------
   {
@@ -322,8 +390,29 @@ export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
 }
 
 const UTILITY_TOOL_NAMES = new Set(['current_time', 'uuid', 'random', 'calculator']);
-const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch']);
-const CLIPBOARD_TOOL_NAMES = new Set(['clipboard_read', 'clipboard_write']);
+const WORKSPACE_TOOL_GROUP = 'Workspace';
+
+export const WORKSPACE_TOOL_NAMES = new Set(
+  builtinToolDefinitions()
+    .filter((tool) => tool.displayGroup === WORKSPACE_TOOL_GROUP)
+    .map((tool) => tool.name),
+);
+
+/** Workspace file tools — only when enabled + root + consent in settings. */
+export function selectBuiltinWorkspaceTools(settings: {
+  workspaceToolsEnabled?: boolean;
+  workspaceRoot?: string | null;
+  workspaceToolsConsentAcknowledged?: boolean;
+}): ToolDefinition[] {
+  if (
+    !settings.workspaceToolsEnabled ||
+    !settings.workspaceToolsConsentAcknowledged ||
+    !settings.workspaceRoot?.trim()
+  ) {
+    return [];
+  }
+  return builtinToolDefinitions().filter((t) => WORKSPACE_TOOL_NAMES.has(t.name));
+}
 
 /** Built-in document tools exposed to the model for a given turn intent. */
 export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefinition[] {

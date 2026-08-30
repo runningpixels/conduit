@@ -23,6 +23,7 @@ async fn write_html_document_creates_artifact() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -70,6 +71,7 @@ async fn write_html_document_creates_when_artifact_id_unknown() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -127,6 +129,7 @@ async fn edit_text_document_updates_existing() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
     let result = agent_tools::execute_builtin_tool(
         &ctx,
@@ -176,6 +179,7 @@ async fn export_document_writes_file() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
     let result = agent_tools::execute_builtin_tool(
         &ctx,
@@ -255,6 +259,7 @@ async fn write_brand_theme_creates_parseable_artifact() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -317,6 +322,7 @@ async fn write_brand_theme_rejects_bad_hex_naming_the_field() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
 
     let mut dark = valid_dark_palette();
@@ -363,6 +369,7 @@ async fn write_brand_theme_rejects_missing_light_palette() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -400,6 +407,7 @@ async fn write_brand_theme_surfaces_contrast_warnings_without_failing() {
         encryption: &enc,
         conversation_id: &conv.id,
         source_message_id: None,
+        workspace: None,
     };
 
     let result = agent_tools::execute_builtin_tool(

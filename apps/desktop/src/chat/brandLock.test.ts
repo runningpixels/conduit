@@ -53,6 +53,9 @@ describe('buildProviderRequest brand appendix on a locked build', () => {
     },
     keychainMode: 'os' as const,
     brandingEnabled: false,
+    workspaceToolsEnabled: false,
+    workspaceRoot: null,
+    workspaceToolsConsentAcknowledged: false,
   };
 
   it('omits the brand appendix even for an unambiguous rebrand request', () => {

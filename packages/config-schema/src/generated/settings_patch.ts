@@ -34,4 +34,4 @@ agent?: AgentGuardrails,
  * White-label Mode A: toggle whether the on-disk `brand.md` is loaded
  * and applied. See `AppSettings::branding_enabled`.
  */
-brandingEnabled?: boolean, };
+brandingEnabled?: boolean, workspaceToolsEnabled?: boolean, workspaceRoot?: string | null, workspaceToolsConsentAcknowledged?: boolean, };

@@ -48,6 +48,7 @@ fn main() {
             get_app_paths,
             get_settings,
             update_settings,
+            pick_workspace_folder,
             get_onboarding_state,
             // White-label Mode A: brand.md storage + IPC surface.
             get_brand_config,

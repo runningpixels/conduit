@@ -40,6 +40,9 @@ const settings: AppSettings = {
   },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 const baseProps = {

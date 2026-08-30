@@ -150,7 +150,21 @@ describe('document tool classification', () => {
     expect(DOCUMENT_TOOL_NAMES.has('write_html_document')).toBe(true);
     expect(DOCUMENT_TOOL_NAMES.has('edit_markdown_document')).toBe(true);
     expect(DOCUMENT_TOOL_NAMES.has('export_document')).toBe(true);
-    for (const name of ['uuid', 'calculator', 'current_time', 'random', 'web_search', 'web_fetch', 'clipboard_read', 'clipboard_write']) {
+    for (const name of [
+      'uuid',
+      'calculator',
+      'current_time',
+      'random',
+      'web_search',
+      'web_fetch',
+      'clipboard_read',
+      'clipboard_write',
+      'workspace_read',
+      'workspace_write',
+      'workspace_edit',
+      'workspace_glob',
+      'workspace_grep',
+    ]) {
       expect(DOCUMENT_TOOL_NAMES.has(name), `${name} must not be a document tool`).toBe(false);
     }
   });

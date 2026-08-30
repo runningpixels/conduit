@@ -22,6 +22,7 @@ import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
 import { DiagnosticsSection } from '../workspace/settings/DiagnosticsSection';
 import { AboutSection } from '../workspace/settings/AboutSection';
 import { WebSearchSection } from '../workspace/settings/WebSearchSection';
+import { WorkspaceToolsSection } from '../workspace/settings/WorkspaceToolsSection';
 import { PromptsSection } from '../workspace/settings/PromptsSection';
 import { UsageSection } from '../workspace/settings/UsageSection';
 import {
@@ -342,6 +343,7 @@ export function SettingsSheet({
                 </div>
               </div>
               <WebSearchSection settings={settings} onUpdate={save} onStatus={onStatus} />
+              <WorkspaceToolsSection settings={settings} onUpdate={save} onStatus={onStatus} />
             </>
           )}
 

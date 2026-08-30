@@ -31,6 +31,9 @@ const baseSettings = {
   },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 } as AppSettings;
 
 function userTurn(id: string, content: string): ChatTurn {

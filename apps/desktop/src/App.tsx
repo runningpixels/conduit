@@ -121,6 +121,9 @@ const defaultSettings: AppSettings = {
   },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';

@@ -32,6 +32,9 @@ const baseSettings: AppSettings = {
   },
   keychainMode: 'os' as const,
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 vi.mock('../ipc/client', () => ({

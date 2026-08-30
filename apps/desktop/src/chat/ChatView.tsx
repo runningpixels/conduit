@@ -69,6 +69,7 @@ import {
   isDocumentContentTool,
   selectBuiltinBrandTools,
   selectBuiltinDocumentTools,
+  selectBuiltinWorkspaceTools,
   type DocumentToolActivity,
 } from './agentTools';
 import {
@@ -536,7 +537,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const connectorTools = await loadConnectorToolDefinitions();
     const builtinTools = selectBuiltinDocumentTools(intent);
     const brandTools = selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt));
-    return [...builtinTools, ...brandTools, ...connectorTools];
+    const workspaceTools = selectBuiltinWorkspaceTools(settings);
+    return [...builtinTools, ...brandTools, ...workspaceTools, ...connectorTools];
   }
 
   function applyRuntimeEventToActiveStream(

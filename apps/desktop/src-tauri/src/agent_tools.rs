@@ -45,6 +45,13 @@ pub const WEB_FETCH_TOOL: &str = "web_fetch";
 pub const CLIPBOARD_READ_TOOL: &str = "clipboard_read";
 pub const CLIPBOARD_WRITE_TOOL: &str = "clipboard_write";
 
+// Workspace file tools (gated by settings.workspace_tools_*)
+pub const WORKSPACE_READ_TOOL: &str = "workspace_read";
+pub const WORKSPACE_WRITE_TOOL: &str = "workspace_write";
+pub const WORKSPACE_EDIT_TOOL: &str = "workspace_edit";
+pub const WORKSPACE_GLOB_TOOL: &str = "workspace_glob";
+pub const WORKSPACE_GREP_TOOL: &str = "workspace_grep";
+
 pub struct AgentToolContext<'a> {
     pub db: &'a sqlx::SqlitePool,
     pub artifacts_dir: &'a Path,
@@ -52,6 +59,8 @@ pub struct AgentToolContext<'a> {
     pub encryption: &'a Encryption,
     pub conversation_id: &'a str,
     pub source_message_id: Option<String>,
+    /// Present when workspace tools are enabled with a valid root.
+    pub workspace: Option<&'a crate::workspace_tools::WorkspaceToolConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -334,6 +343,84 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        // ---------------------------------------------------------------------
+        // Workspace file tools (settings-gated; paths relative to workspace root)
+        // ---------------------------------------------------------------------
+        ToolDefinition {
+            tool_id: WORKSPACE_READ_TOOL.to_string(),
+            name: WORKSPACE_READ_TOOL.to_string(),
+            description: "Read a text file under the workspace folder. Path must be relative to the workspace root. Optional offset/limit in bytes.".to_string(),
+            input_schema: json_schema(&[
+                ("path", "string", true),
+                ("offset", "integer", false),
+                ("limit", "integer", false),
+            ]),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Workspace".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: WORKSPACE_WRITE_TOOL.to_string(),
+            name: WORKSPACE_WRITE_TOOL.to_string(),
+            description: "Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories.".to_string(),
+            input_schema: json_schema(&[
+                ("path", "string", true),
+                ("content", "string", true),
+                ("create_dirs", "boolean", false),
+            ]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Workspace".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: WORKSPACE_EDIT_TOOL.to_string(),
+            name: WORKSPACE_EDIT_TOOL.to_string(),
+            description: "Replace the full contents of an existing text file under the workspace folder. Path is relative to the workspace root.".to_string(),
+            input_schema: json_schema(&[
+                ("path", "string", true),
+                ("content", "string", true),
+            ]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Workspace".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: WORKSPACE_GLOB_TOOL.to_string(),
+            name: WORKSPACE_GLOB_TOOL.to_string(),
+            description: "List files under the workspace folder matching a glob pattern (relative to the workspace root), e.g. \"**/*.rs\".".to_string(),
+            input_schema: json_schema(&[
+                ("pattern", "string", true),
+                ("max_results", "integer", false),
+            ]),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Workspace".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: WORKSPACE_GREP_TOOL.to_string(),
+            name: WORKSPACE_GREP_TOOL.to_string(),
+            description: "Search file contents under the workspace folder with a regex. Optional path (subdirectory) and glob filter (e.g. \"*.ts\").".to_string(),
+            input_schema: json_schema(&[
+                ("pattern", "string", true),
+                ("path", "string", false),
+                ("glob", "string", false),
+                ("max_matches", "integer", false),
+                ("case_insensitive", "boolean", false),
+            ]),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Workspace".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
     ]
 }
 
@@ -356,6 +443,11 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | WEB_FETCH_TOOL
             | CLIPBOARD_READ_TOOL
             | CLIPBOARD_WRITE_TOOL
+            | WORKSPACE_READ_TOOL
+            | WORKSPACE_WRITE_TOOL
+            | WORKSPACE_EDIT_TOOL
+            | WORKSPACE_GLOB_TOOL
+            | WORKSPACE_GREP_TOOL
     )
 }
 
@@ -561,11 +653,51 @@ pub async fn execute_builtin_tool(
                 Err(e) => Err(format!("clipboard write error: {e}")),
             }
         }
+        // ---------------------------------------------------------------------
+        // Workspace file tools
+        // ---------------------------------------------------------------------
+        WORKSPACE_READ_TOOL => {
+            let input: crate::workspace_tools::tools::ReadInput = parse_args(tool_name, arguments)?;
+            let ws = ctx
+                .workspace
+                .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
+            Ok(crate::workspace_tools::execute_workspace_read(ws, input).unwrap_or_else(|e| e))
+        }
+        WORKSPACE_WRITE_TOOL => {
+            let input: crate::workspace_tools::tools::WriteInput =
+                parse_args(tool_name, arguments)?;
+            let ws = ctx
+                .workspace
+                .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
+            Ok(crate::workspace_tools::execute_workspace_write(ws, input).unwrap_or_else(|e| e))
+        }
+        WORKSPACE_EDIT_TOOL => {
+            let input: crate::workspace_tools::tools::EditInput = parse_args(tool_name, arguments)?;
+            let ws = ctx
+                .workspace
+                .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
+            Ok(crate::workspace_tools::execute_workspace_edit(ws, input).unwrap_or_else(|e| e))
+        }
+        WORKSPACE_GLOB_TOOL => {
+            let input: crate::workspace_tools::tools::GlobInput = parse_args(tool_name, arguments)?;
+            let ws = ctx
+                .workspace
+                .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
+            Ok(crate::workspace_tools::execute_workspace_glob(ws, input).unwrap_or_else(|e| e))
+        }
+        WORKSPACE_GREP_TOOL => {
+            let input: crate::workspace_tools::tools::GrepInput = parse_args(tool_name, arguments)?;
+            let ws = ctx
+                .workspace
+                .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
+            Ok(crate::workspace_tools::execute_workspace_grep(ws, input).unwrap_or_else(|e| e))
+        }
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
 
     match result {
         Ok(output) => {
+            let is_error = output.get("ok") == Some(&Value::Bool(false));
             finalize_tool_call(
                 ctx,
                 tool_call_id,
@@ -573,7 +705,7 @@ pub async fn execute_builtin_tool(
                 tool_name,
                 arguments,
                 output,
-                false,
+                is_error,
             )
             .await
         }

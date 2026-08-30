@@ -68,6 +68,9 @@ describe('buildProviderRequest artifact prompts', () => {
     },
     keychainMode: 'os' as const,
     brandingEnabled: false,
+    workspaceToolsEnabled: false,
+    workspaceRoot: null,
+    workspaceToolsConsentAcknowledged: false,
   };
 
   it('includes the artifact appendix in systemPrompt', () => {

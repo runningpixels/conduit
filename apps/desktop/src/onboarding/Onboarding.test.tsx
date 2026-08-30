@@ -67,6 +67,9 @@ const baseSettings: AppSettings = {
   },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {

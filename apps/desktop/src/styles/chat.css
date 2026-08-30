@@ -64,7 +64,15 @@ html[data-palette="orange-charcoal"] .bubble {
   border-radius: 18px;
   padding: 12px 18px;
 }
-.bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* `font-variant-ligatures` because the bubble shows what was typed, verbatim.
+ * Geist ligates arrows, so a pasted `-->` in a diagram or a shell line was
+ * drawn as a single glyph and the transcript read back as text nobody wrote. */
+.bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-variant-ligatures: none;
+}
 
 /* Assistant: plain prose behind a 2px provider rule (V9 §3, the signature).
  *

@@ -5,7 +5,8 @@
 /// (ADR-007 addendum): KaTeX library HTML, never the TeX source.
 ///
 /// Supported subset:
-/// - Fenced code blocks (```lang ... ```), headings (#..######), unordered
+/// - Fenced code blocks (```lang ... ``` or ~~~, closed by a run of the same
+///   character at least as long as the opener), headings (#..######), unordered
 ///   lists (- * +), ordered lists (N.), blockquotes (>), horizontal rules
 ///   (--- / *** / ___), paragraphs.
 /// - ` ```mermaid ` → blob `<img>`; ` ```math|latex|tex ` / `$$` / `$…$` → KaTeX.
@@ -24,7 +25,7 @@
 import { Fragment, type MouseEvent, type ReactNode } from 'react';
 import { KatexHtml } from './KatexHtml';
 import { MermaidBlock } from './MermaidBlock';
-import { fenceLang, isMathLang, isMermaidLang } from './fenceLang';
+import { fenceLang, isFenceClose, isMathLang, isMermaidLang, matchFenceOpen } from './fenceLang';
 
 const LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 
@@ -72,7 +73,7 @@ function linkProps(
 }
 
 type Block =
-  | { type: 'code'; lang?: string; code: string }
+  | { type: 'code'; lang?: string; code: string; closed: boolean }
   | { type: 'math'; tex: string }
   | { type: 'heading'; level: number; inline: string }
   | { type: 'blockquote'; inline: string }
@@ -88,7 +89,6 @@ interface ListItem {
   checked?: boolean;
 }
 
-const FENCE = /^```(.*)$/;
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const UL_ITEM = /^[-*+]\s+(.*)$/;
 const OL_ITEM = /^(\d+)\.\s+(.*)$/;
@@ -122,7 +122,7 @@ function isTableLine(line: string): boolean {
   const trimmed = line.trim();
   return (
     trimmed.includes('|') &&
-    !FENCE.test(trimmed) &&
+    !matchFenceOpen(trimmed) &&
     !HEADING.test(line) &&
     !RULE.test(trimmed)
   );
@@ -161,18 +161,25 @@ function parseBlocks(src: string): Block[] {
       continue;
     }
 
-    // Fenced code block: ```lang ... ```.
-    const fence = FENCE.exec(line.trim());
+    // Fenced code block: ```lang ... ```. `closed` records whether the fence
+    // was actually terminated. An unterminated one is a fence still arriving
+    // over the stream, and its body is not yet anything a renderer can trust.
+    const fence = matchFenceOpen(line);
     if (fence) {
-      const lang = fence[1].trim() || undefined;
+      const lang = fence.info || undefined;
       const code: string[] = [];
+      let closed = false;
       i++;
-      while (i < lines.length && !FENCE.test(lines[i].trim())) {
+      while (i < lines.length) {
+        if (isFenceClose(lines[i], fence.fence)) {
+          closed = true;
+          i++; // consume the closing fence
+          break;
+        }
         code.push(lines[i]);
         i++;
       }
-      i++; // consume closing fence (if present)
-      blocks.push({ type: 'code', lang, code: code.join('\n') });
+      blocks.push({ type: 'code', lang, code: code.join('\n'), closed });
       continue;
     }
 
@@ -248,7 +255,7 @@ function parseBlocks(src: string): Block[] {
     while (
       i < lines.length &&
       lines[i].trim() !== '' &&
-      !FENCE.test(lines[i].trim()) &&
+      !matchFenceOpen(lines[i]) &&
       !HEADING.test(lines[i]) &&
       !RULE.test(lines[i].trim()) &&
       !lines[i].trimStart().startsWith('>') &&
@@ -460,16 +467,28 @@ export function renderMarkdown(src: string, options?: MarkdownOptions): ReactNod
         switch (block.type) {
           case 'code': {
             const lang = fenceLang(block.lang ?? '');
-            if (isMermaidLang(lang)) {
+            // Only a terminated fence is handed to a renderer. While a message
+            // streams, the tail of it is an open fence whose body grows a token
+            // at a time; rendering that meant asking mermaid to parse a
+            // fragment — or the empty string, at the instant the fence opened.
+            // Every one of those throws, and mermaid draws its "syntax error"
+            // diagram into `document.body` on the way out.
+            if (block.closed && isMermaidLang(lang)) {
               return <MermaidBlock key={key} source={block.code} />;
             }
-            if (isMathLang(lang)) {
+            if (block.closed && isMathLang(lang)) {
               return (
                 <div key={key} className="md-katex-block">
                   <KatexHtml tex={block.code} displayMode fallback={block.code} />
                 </div>
               );
             }
+            // An unterminated fence with nothing in it is the opening delimiter
+            // and no body — either a fence that has only just started arriving,
+            // or the orphan left when a nested fence closed its parent early.
+            // Either way there is nothing to show, and an empty `<pre>` is a
+            // bar of chrome standing in for no content.
+            if (!block.closed && !block.code) return null;
             return (
               <pre key={key} className="md-pre">
                 <code>{block.code}</code>

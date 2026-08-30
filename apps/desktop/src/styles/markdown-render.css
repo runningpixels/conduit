@@ -27,7 +27,7 @@
   border-radius: var(--r-sm);
   background: var(--card);
   color: var(--ink-2);
-  font: 500 12px/1.4 var(--font-sans);
+  font: 500 12px/1.4 var(--font-ui);
 }
 
 .md-mermaid {
@@ -57,4 +57,16 @@
   border: 1px solid var(--line-soft);
   border-radius: var(--r-sm);
   padding: 10px 12px;
+}
+
+/* Source is shown to be read character by character: `-->` is two characters
+ * and an angle bracket, not an arrow glyph. Geist Mono ligates them, which
+ * makes a copied line and a displayed line disagree. */
+.chat-prose .md-pre,
+.md-code,
+.inline-code-block-body,
+.inline-artifact-source,
+.artifact-code-body,
+.artifact-plain {
+  font-variant-ligatures: none;
 }

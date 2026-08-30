@@ -103,7 +103,12 @@ stays `'none'`) and without loading either library from a CDN.
 1. **Mermaid.** `mermaid.render` (dynamic import, `securityLevel: 'strict'`)
    produces an SVG string. That string is wrapped in a `blob:` URL and shown
    as `<img>`. Model-controlled HTML never enters the React tree. Main-window
-   `img-src` already allows `blob:`.
+   `img-src` already allows `blob:`. `htmlLabels: false` keeps model text in
+   SVG `<text>` rather than `<foreignObject>` HTML, so no HTML reaches the blob
+   either; `suppressErrorRendering: true` stops mermaid drawing its error
+   diagram into a temporary node it appends to `document.body` and then
+   abandons. Only a *terminated* fence is rendered — a fence still arriving
+   over the stream stays source, so mermaid is never handed a fragment.
 2. **KaTeX.** There is no first-party React emitter. `KatexHtml` may use
    `dangerouslySetInnerHTML` **only** on the return value of
    `katex.renderToString(tex, { throwOnError: true, output: 'html', trust: false })`.

@@ -68,6 +68,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "139ee988e9c6fa36a3521a90ddcd97cfcb9ba66c388730893cfb953b28d71df84dcad7da94d334587bb87e1fb1934986",
         "retry fork",
     ),
+    (
+        10,
+        "f5134f6de540297df0738b86187f825370286c2f26ed1861e0913d692d28d64d9afa7b75324d89c086a60840bc1ab5aa",
+        "workspace root",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

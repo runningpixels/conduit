@@ -485,7 +485,7 @@ describe('streamState terminal settling', () => {
   });
 
   it('marks hosted web_search completed on toolCallComplete (no runtime finish)', () => {
-    let state = createAssistantStreamState('req-1');
+    let state = createAssistantStreamState('req-1', 'hosted');
     state = startCall(state, 'ws-1', 'web_search');
     state = applyProviderEvent(state, {
       kind: 'toolCallComplete',
@@ -505,8 +505,8 @@ describe('streamState terminal settling', () => {
     expect(state.toolCalls[0].error).toBeUndefined();
   });
 
-  it('toolCallAwaitsRuntimeFinish ignores hosted web_search', () => {
-    let state = createAssistantStreamState('req-1');
+  it('does not auto-complete local web_search on toolCallComplete', () => {
+    let state = createAssistantStreamState('req-1', 'local');
     state = startCall(state, 'ws-1', 'web_search');
     state = applyProviderEvent(state, {
       kind: 'toolCallComplete',
@@ -515,7 +515,22 @@ describe('streamState terminal settling', () => {
       index: 1,
       arguments: { query: 'q1' },
     });
-    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0])).toBe(false);
+    expect(state.toolCalls[0].complete).toBe(true);
+    expect(state.toolCalls[0].status).toBeUndefined();
+    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0], 'local')).toBe(true);
+  });
+
+  it('toolCallAwaitsRuntimeFinish ignores hosted web_search', () => {
+    let state = createAssistantStreamState('req-1', 'hosted');
+    state = startCall(state, 'ws-1', 'web_search');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallComplete',
+      requestId: 'req-1',
+      toolCallId: 'ws-1',
+      index: 1,
+      arguments: { query: 'q1' },
+    });
+    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0], state.searchBackend)).toBe(false);
 
     state = createAssistantStreamState('req-2');
     state = startCall(state, 'call-1', 'write_html_document');
@@ -526,7 +541,20 @@ describe('streamState terminal settling', () => {
       index: 0,
       arguments: { html: '<p>x</p>' },
     });
-    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0])).toBe(true);
+    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0], state.searchBackend)).toBe(true);
+  });
+
+  it('toolCallAwaitsRuntimeFinish waits for local web_search', () => {
+    let state = createAssistantStreamState('req-local', 'local');
+    state = startCall(state, 'ws-1', 'web_search');
+    state = applyProviderEvent(state, {
+      kind: 'toolCallComplete',
+      requestId: 'req-local',
+      toolCallId: 'ws-1',
+      index: 0,
+      arguments: { query: 'duckduckgo' },
+    });
+    expect(toolCallAwaitsRuntimeFinish(state.toolCalls[0], 'local')).toBe(true);
   });
 
   it('cancels unfinished calls when the turn is interrupted', () => {

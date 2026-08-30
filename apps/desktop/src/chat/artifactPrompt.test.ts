@@ -54,6 +54,7 @@ describe('buildProviderRequest artifact prompts', () => {
     onboardingCompleted: true,
     webSearchEnabled: false,
     webSearch: {
+      mode: 'auto' as const,
       searchContextSize: 'medium' as const,
       allowedDomains: [],
       blockedDomains: [],
@@ -68,6 +69,9 @@ describe('buildProviderRequest artifact prompts', () => {
     },
     keychainMode: 'os' as const,
     brandingEnabled: false,
+    workspaceToolsEnabled: false,
+    workspaceRoot: null,
+    workspaceToolsConsentAcknowledged: false,
   };
 
   it('includes the artifact appendix in systemPrompt', () => {

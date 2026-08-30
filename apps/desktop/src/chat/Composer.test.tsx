@@ -20,6 +20,7 @@ const baseSettings: AppSettings = {
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],
@@ -34,6 +35,9 @@ const baseSettings: AppSettings = {
   },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 vi.mock('../ipc/client', () => ({

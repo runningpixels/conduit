@@ -53,6 +53,7 @@ const baseSettings: AppSettings = {
   onboardingCompleted: false,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],
@@ -67,6 +68,9 @@ const baseSettings: AppSettings = {
   },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {

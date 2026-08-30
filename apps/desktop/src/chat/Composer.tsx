@@ -6,7 +6,7 @@ import {
   loadProviderCredentialReference,
   saveAttachment,
 } from '../ipc/client';
-import { AttachIcon, FilePlainIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
+import { AttachIcon, FilePlainIcon, FolderIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
 import { brand } from '../brand';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
@@ -16,6 +16,8 @@ import {
 } from './composerTypes';
 import { useComposerAutosize } from './useComposerAutosize';
 import { readSendWith } from '../shell/uiPrefs';
+import { workspaceFolderLabel } from './agentTools';
+import { resolveSearchBackend } from './webSearchIntent';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -35,6 +37,12 @@ export interface ComposerProps {
   streaming: boolean;
   webSearchOn: boolean;
   onWebSearchToggle: () => void;
+  /** Absolute workspace folder for this conversation, if bound. */
+  workspaceRoot?: string | null;
+  /** Pick / change folder (parent handles consent). */
+  onWorkspacePick?: () => void;
+  /** Clear per-conversation workspace binding. */
+  onWorkspaceClear?: () => void;
   /// Open a settings section ('providers' | 'privacy' …) from the strip.
   onOpenSettings?: (tab?: string) => void;
   /// Accumulated usage for the whole conversation (turns + live stream).
@@ -62,16 +70,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   streaming,
   webSearchOn,
   onWebSearchToggle,
+  workspaceRoot = null,
+  onWorkspacePick,
+  onWorkspaceClear,
   onOpenSettings,
   usage,
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<ComposerModelPickerHandle>(null);
+  const workspaceBtnRef = useRef<HTMLButtonElement>(null);
   const [credentialRef, setCredentialRef] = useState<string | null>(null);
   const [credentialMode, setCredentialMode] = useState<CredentialMode>('loading');
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [dropActive, setDropActive] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
 
   useComposerAutosize(textareaRef, prompt);
 
@@ -106,7 +119,36 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   useEffect(() => {
     setPendingAttachments([]);
+    setWorkspaceMenuOpen(false);
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!workspaceMenuOpen) return;
+    function onDocMouseDown(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (workspaceBtnRef.current?.contains(target)) return;
+      const menu = document.getElementById('composer-workspace-menu');
+      if (menu?.contains(target)) return;
+      setWorkspaceMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [workspaceMenuOpen]);
+
+  const workspaceBound = Boolean(workspaceRoot?.trim());
+  const workspaceLabel = workspaceBound ? workspaceFolderLabel(workspaceRoot!) : null;
+  const searchBackend = resolveSearchBackend(
+    settings.webSearch.mode,
+    settings.activeProvider,
+    settings.providerEndpoints,
+  );
+  const searchOnTitle =
+    searchBackend === 'local' ? 'Web search on (DuckDuckGo)' : 'Web search on (provider)';
+  const searchOffTitle = 'Web search off';
+  const searchAria = webSearchOn
+    ? `${searchOnTitle} — click to disable`
+    : 'Web search off — click to enable';
 
   async function uploadAttachment(file: File) {
     if (!conversationId) return;
@@ -318,15 +360,126 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <button
               className={`cbtn${webSearchOn ? ' armed' : ''}`}
               type="button"
-              aria-label={
-                webSearchOn ? 'Web search on — click to disable' : 'Web search off — click to enable'
-              }
-              title={webSearchOn ? 'Web search on' : 'Web search off'}
+              aria-label={searchAria}
+              title={webSearchOn ? searchOnTitle : searchOffTitle}
               aria-pressed={webSearchOn}
               onClick={onWebSearchToggle}
             >
               <SearchIcon />
             </button>
+          )}
+          {onWorkspacePick && !streaming && (
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                ref={workspaceBtnRef}
+                className={`cbtn${workspaceBound ? ' armed' : ''}`}
+                type="button"
+                aria-label={
+                  workspaceBound
+                    ? `Workspace folder ${workspaceLabel} — click for options`
+                    : 'Work in a folder'
+                }
+                title={workspaceBound ? workspaceRoot! : 'Work in a folder'}
+                aria-pressed={workspaceBound}
+                aria-haspopup={workspaceBound ? 'menu' : undefined}
+                aria-expanded={workspaceBound ? workspaceMenuOpen : undefined}
+                disabled={!conversationId}
+                onClick={() => {
+                  if (!workspaceBound) {
+                    onWorkspacePick();
+                    return;
+                  }
+                  setWorkspaceMenuOpen((open) => !open);
+                }}
+              >
+                <FolderIcon />
+                {workspaceLabel ? (
+                  <span
+                    style={{
+                      maxWidth: 88,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontSize: 11,
+                      marginLeft: 4,
+                    }}
+                  >
+                    {workspaceLabel}
+                  </span>
+                ) : null}
+              </button>
+              {workspaceMenuOpen && workspaceBound ? (
+                <div
+                  id="composer-workspace-menu"
+                  role="menu"
+                  style={{
+                    position: 'absolute',
+                    bottom: 'calc(100% + 6px)',
+                    left: 0,
+                    zIndex: 40,
+                    minWidth: 220,
+                    maxWidth: 320,
+                    padding: 8,
+                    borderRadius: 'var(--r-md, 8px)',
+                    background: 'var(--card)',
+                    border: '1px solid var(--line)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                    display: 'grid',
+                    gap: 6,
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 11,
+                      color: 'var(--ink-3)',
+                      fontFamily: 'var(--font-mono)',
+                      wordBreak: 'break-all',
+                    }}
+                    title={workspaceRoot!}
+                  >
+                    {workspaceRoot}
+                  </p>
+                  <button
+                    className="btn"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setWorkspaceMenuOpen(false);
+                      onWorkspacePick();
+                    }}
+                  >
+                    Change folder…
+                  </button>
+                  {onWorkspaceClear ? (
+                    <button
+                      className="btn ghost"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setWorkspaceMenuOpen(false);
+                        onWorkspaceClear();
+                      }}
+                    >
+                      Clear for this chat
+                    </button>
+                  ) : null}
+                  {onOpenSettings ? (
+                    <button
+                      className="btn ghost"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setWorkspaceMenuOpen(false);
+                        onOpenSettings('chat');
+                      }}
+                    >
+                      Defaults in Settings
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </span>
           )}
           {/* Everything before the spacer acts on the message; everything after
               it says who will answer and sends. */}

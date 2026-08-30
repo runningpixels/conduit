@@ -48,6 +48,7 @@ fn main() {
             get_app_paths,
             get_settings,
             update_settings,
+            pick_workspace_folder,
             get_onboarding_state,
             // White-label Mode A: brand.md storage + IPC surface.
             get_brand_config,
@@ -77,6 +78,7 @@ fn main() {
             get_conversation,
             delete_conversation,
             set_conversation_title,
+            set_conversation_workspace,
             delete_all_conversations,
             save_attachment,
             list_attachments,

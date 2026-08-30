@@ -366,6 +366,28 @@ impl AppState {
         if let Some(value) = patch.branding_enabled {
             settings.branding_enabled = value;
         }
+        if let Some(value) = patch.workspace_tools_enabled {
+            settings.workspace_tools_enabled = value;
+        }
+        if let Some(value) = patch.workspace_root {
+            settings.workspace_root = match value {
+                Some(path) if !path.trim().is_empty() => {
+                    let trimmed = path.trim().to_string();
+                    let p = std::path::Path::new(&trimmed);
+                    if !p.is_absolute() {
+                        return Err("workspace_root must be an absolute path".into());
+                    }
+                    if !p.is_dir() {
+                        return Err("workspace_root must be an existing directory".into());
+                    }
+                    Some(trimmed)
+                }
+                _ => None,
+            };
+        }
+        if let Some(value) = patch.workspace_tools_consent_acknowledged {
+            settings.workspace_tools_consent_acknowledged = value;
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())

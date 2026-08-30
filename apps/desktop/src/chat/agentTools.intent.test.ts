@@ -43,7 +43,7 @@ describe('selectBuiltinDocumentTools', () => {
   });
 
   it('keeps the full catalog available for reference', () => {
-    // 15 pre-Phase-4 tools + write_brand_theme (white-label plan §4, Phase 4).
-    expect(builtinToolDefinitions()).toHaveLength(16);
+    // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools.
+    expect(builtinToolDefinitions()).toHaveLength(21);
   });
 });

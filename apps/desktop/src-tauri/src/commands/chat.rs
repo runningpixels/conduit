@@ -160,9 +160,28 @@ pub async fn create_conversation(
     state: State<'_, AppState>,
     title: Option<String>,
 ) -> Result<Conversation, String> {
-    conversations::create(&state.db, title.as_deref())
+    let created = conversations::create(&state.db, title.as_deref())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // Inherit Settings default workspace when enabled for new chats.
+    let settings = state.settings().unwrap_or_default();
+    if settings.workspace_tools_enabled && settings.workspace_tools_consent_acknowledged {
+        if let Some(root) = settings
+            .workspace_root
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            conversations::set_workspace_root(&state.db, &created.id, Some(root))
+                .await
+                .map_err(|e| e.to_string())?;
+            return conversations::get(&state.db, &created.id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "conversation not found after create".to_string());
+        }
+    }
+    Ok(created)
 }
 
 #[tauri::command]
@@ -208,6 +227,40 @@ pub async fn set_conversation_title(
     conversations::set_title(&state.db, &conversation_id, &title)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Bind or clear the workspace folder for a conversation. `workspace_root`
+/// must be an absolute existing directory, or `null` to clear.
+#[tauri::command]
+pub async fn set_conversation_workspace(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    workspace_root: Option<String>,
+) -> Result<Conversation, String> {
+    if let Some(ref path) = workspace_root {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return Err("workspace_root must not be empty".into());
+        }
+        let p = std::path::Path::new(trimmed);
+        if !p.is_absolute() {
+            return Err("workspace_root must be an absolute path".into());
+        }
+        if !p.is_dir() {
+            return Err("workspace_root must be an existing directory".into());
+        }
+        conversations::set_workspace_root(&state.db, &conversation_id, Some(trimmed))
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        conversations::set_workspace_root(&state.db, &conversation_id, None)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    conversations::get(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "conversation not found".to_string())
 }
 
 #[tauri::command]

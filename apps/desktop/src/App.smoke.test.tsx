@@ -31,6 +31,7 @@ const settings: AppSettings = {
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],
@@ -42,6 +43,9 @@ const settings: AppSettings = {
   agent: { maxSteps: 25, wallClockBudgetSecs: 300 },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 /**

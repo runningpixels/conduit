@@ -21,7 +21,7 @@ use provider_core::schema::{
     ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
     SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
     ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UserLocation,
-    WebSearchDefaults, WebSearchFilters, WebSearchRequest,
+    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -44,6 +44,7 @@ fn main() {
     ProviderEvent::export().expect("export ProviderEvent");
 
     // Agent web search (M-WebSearch).
+    WebSearchMode::export().expect("export WebSearchMode");
     SearchContextSize::export().expect("export SearchContextSize");
     ReturnTokenBudget::export().expect("export ReturnTokenBudget");
     WebSearchFilters::export().expect("export WebSearchFilters");

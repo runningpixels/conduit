@@ -18,6 +18,7 @@ const baseSettings: AppSettings = {
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],
@@ -32,10 +33,20 @@ const baseSettings: AppSettings = {
   },
   keychainMode: 'os' as const,
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 vi.mock('../ipc/client', () => ({
   getConversationMessages: vi.fn().mockResolvedValue([]),
+  getConversation: vi.fn().mockResolvedValue({
+    id: 'conv-1',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  }),
+  pickWorkspaceFolder: vi.fn(),
+  setConversationWorkspace: vi.fn(),
   getConnectorRuntimeStates: vi.fn().mockResolvedValue([]),
   listConnectorCapabilities: vi.fn().mockResolvedValue([]),
   loadProviderCredentialReference: vi.fn().mockResolvedValue({

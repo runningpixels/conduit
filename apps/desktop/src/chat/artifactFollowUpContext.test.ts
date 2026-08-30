@@ -50,6 +50,7 @@ const baseSettings = {
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium' as const,
     allowedDomains: [],
     blockedDomains: [],
@@ -64,6 +65,9 @@ const baseSettings = {
   },
   keychainMode: 'os' as const,
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 const listedArtifacts: Artifact[] = [

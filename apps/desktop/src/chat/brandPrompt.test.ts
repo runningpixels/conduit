@@ -56,6 +56,7 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     onboardingCompleted: true,
     webSearchEnabled: false,
     webSearch: {
+      mode: 'auto' as const,
       searchContextSize: 'medium' as const,
       allowedDomains: [],
       blockedDomains: [],
@@ -70,6 +71,9 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     },
     keychainMode: 'os' as const,
     brandingEnabled: false,
+    workspaceToolsEnabled: false,
+    workspaceRoot: null,
+    workspaceToolsConsentAcknowledged: false,
   };
 
   it('omits the brand appendix on an ordinary turn', () => {

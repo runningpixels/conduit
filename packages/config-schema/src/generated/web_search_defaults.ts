@@ -2,9 +2,15 @@
 import type { ReturnTokenBudget } from "./return_token_budget";
 import type { SearchContextSize } from "./search_context_size";
 import type { UserLocation } from "./user_location";
+import type { WebSearchMode } from "./web_search_mode";
 
 /**
  * Persistent web search defaults, stored on `AppSettings`. Per-turn overrides
  * on `ProviderRequest.web_search` win.
  */
-export type WebSearchDefaults = { searchContextSize: SearchContextSize, allowedDomains: Array<string>, blockedDomains: Array<string>, externalWebAccess: boolean, returnTokenBudget: ReturnTokenBudget, userLocation?: UserLocation, includeSources: boolean, };
+export type WebSearchDefaults = { 
+/**
+ * Auto / provider-hosted / Conduit local (DuckDuckGo). Defaults to Auto
+ * so existing settings files keep working without a migration.
+ */
+mode: WebSearchMode, searchContextSize: SearchContextSize, allowedDomains: Array<string>, blockedDomains: Array<string>, externalWebAccess: boolean, returnTokenBudget: ReturnTokenBudget, userLocation?: UserLocation, includeSources: boolean, };

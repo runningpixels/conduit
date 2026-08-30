@@ -61,6 +61,35 @@ pub fn update_settings(
     state.update_settings(patch)
 }
 
+/// ADR-008: folder picker for workspace tools runs entirely on the Rust side
+/// (renderer never gets `dialog:default`). Returns the absolute path, or
+/// `null` when the user cancels.
+#[tauri::command]
+pub async fn pick_workspace_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose workspace folder")
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
+
+    let picked = rx
+        .await
+        .map_err(|_| "the folder dialog closed without a response".to_string())?;
+
+    picked
+        .map(|file_path| {
+            file_path
+                .into_path()
+                .map(|p| p.to_string_lossy().to_string())
+                .map_err(|err| format!("failed to resolve the picked folder path: {err}"))
+        })
+        .transpose()
+}
+
 // ---------------------------------------------------------------------------
 // Onboarding state
 // ---------------------------------------------------------------------------

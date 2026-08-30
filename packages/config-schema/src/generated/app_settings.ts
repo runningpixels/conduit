@@ -78,4 +78,18 @@ keychainMode: KeychainMode,
  * is no settings migration runner in this codebase, so `#[serde(default)]`
  * is the entire back-compat story for existing settings files.
  */
-brandingEnabled: boolean, };
+brandingEnabled: boolean, 
+/**
+ * Workspace file tools (read/write/edit/glob/grep). Off by default;
+ * requires a chosen `workspace_root` and consent acknowledgement.
+ */
+workspaceToolsEnabled: boolean, 
+/**
+ * Absolute path to the sandbox root for workspace tools. `None` until
+ * the user picks a folder in Settings.
+ */
+workspaceRoot: string | null, 
+/**
+ * First-use consent for workspace file tools (disk mutation + path policy).
+ */
+workspaceToolsConsentAcknowledged: boolean, };

@@ -61,6 +61,7 @@ const baseSettings: AppSettings = {
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],
@@ -72,6 +73,9 @@ const baseSettings: AppSettings = {
   agent: { maxSteps: 25, wallClockBudgetSecs: 300 },
   keychainMode: 'os',
   brandingEnabled: true,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 };
 
 const SAVED_CONFIG: BrandConfig = {

@@ -57,6 +57,11 @@ export async function updateSettings(patch: SettingsPatch): Promise<AppSettings>
   return invoke<AppSettings>('update_settings', { patch });
 }
 
+/** ADR-008: OS folder picker for workspace tools (Rust-side only). `null` = cancel. */
+export async function pickWorkspaceFolder(): Promise<string | null> {
+  return invoke<string | null>('pick_workspace_folder');
+}
+
 /**
  * The active white-label brand, or `null` if none is configured. Rust-side
  * validated (hex grammar, dark/light symmetry) — the renderer's `applyBrand`
@@ -300,6 +305,17 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 
 export async function setConversationTitle(conversationId: string, title: string): Promise<void> {
   await invoke('set_conversation_title', { conversationId, title });
+}
+
+/** Bind or clear the workspace folder for a conversation. `null` clears. */
+export async function setConversationWorkspace(
+  conversationId: string,
+  workspaceRoot: string | null,
+): Promise<Conversation> {
+  return invoke<Conversation>('set_conversation_workspace', {
+    conversationId,
+    workspaceRoot,
+  });
 }
 
 export async function deleteAllConversations(): Promise<Conversation> {

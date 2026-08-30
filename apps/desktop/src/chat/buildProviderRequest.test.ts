@@ -17,6 +17,7 @@ const baseSettings = {
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium' as const,
     allowedDomains: [],
     blockedDomains: [],
@@ -31,6 +32,9 @@ const baseSettings = {
   },
   keychainMode: 'os',
   brandingEnabled: false,
+  workspaceToolsEnabled: false,
+  workspaceRoot: null,
+  workspaceToolsConsentAcknowledged: false,
 } as AppSettings;
 
 function userTurn(id: string, content: string): ChatTurn {

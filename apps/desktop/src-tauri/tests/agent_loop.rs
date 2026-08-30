@@ -834,9 +834,9 @@ fn runs_only_tool_calls_the_request_declared() {
 }
 
 /// The live bug. OpenAI's provider-hosted search reports a completed
-/// `web_search` call; the renderer never offers `web_search` as a client tool.
-/// Executing it re-ran a search the provider had already done and produced a
-/// continuation the Responses API had to reject.
+/// `web_search` call; the renderer never offers `web_search` as a client tool
+/// on hosted turns. Executing it re-ran a search the provider had already done
+/// and produced a continuation the Responses API had to reject.
 #[test]
 fn a_provider_hosted_search_is_not_executed_locally() {
     let (runnable, undeclared) = conduit_desktop::stream_manager::partition_declared_tool_calls(
@@ -849,6 +849,23 @@ fn a_provider_hosted_search_is_not_executed_locally() {
         "a hosted search must not dispatch to the local builtin of the same name"
     );
     assert_eq!(undeclared.len(), 1);
+}
+
+/// Local DuckDuckGo turns *do* declare `web_search`, so partition must run it.
+#[test]
+fn a_declared_local_web_search_is_runnable() {
+    let (runnable, undeclared) = conduit_desktop::stream_manager::partition_declared_tool_calls(
+        vec![call("web_search", "ws_local_1"), call("calculator", "c1")],
+        &[
+            tool_def("web_search"),
+            tool_def("web_fetch"),
+            tool_def("current_time"),
+        ],
+    );
+    assert_eq!(runnable.len(), 1);
+    assert_eq!(runnable[0].name, "web_search");
+    assert_eq!(undeclared.len(), 1);
+    assert_eq!(undeclared[0].name, "calculator");
 }
 
 #[test]
@@ -1096,6 +1113,56 @@ fn after_create_write_tools_are_stripped_from_continuations() {
     assert!(names.contains(&"edit_html_document"));
     assert!(names.contains(&"current_time"));
     assert!(names.contains(&"export_document"));
+}
+
+#[test]
+fn web_search_turn_cap_rejects_fourth_call() {
+    use conduit_desktop::stream_manager::{classify_web_tool_clamps, MAX_WEB_SEARCH_PER_TURN};
+    assert_eq!(MAX_WEB_SEARCH_PER_TURN, 3);
+    let calls = vec![
+        call("web_search", "ws1"),
+        call("web_search", "ws2"),
+        call("web_search", "ws3"),
+        call("web_search", "ws4"),
+        call("calculator", "c1"),
+    ];
+    let rejects = classify_web_tool_clamps(&calls, 0, 0);
+    assert!(rejects[0].is_none());
+    assert!(rejects[1].is_none());
+    assert!(rejects[2].is_none());
+    assert!(
+        rejects[3].is_some_and(|m| m.contains("maximum number of web_search")),
+        "fourth search must refuse: {:?}",
+        rejects[3]
+    );
+    assert!(rejects[4].is_none(), "non-web tools still run");
+}
+
+#[test]
+fn web_search_cap_counts_prior_rounds() {
+    use conduit_desktop::stream_manager::classify_web_tool_clamps;
+    let rejects = classify_web_tool_clamps(&[call("web_search", "ws1")], 3, 0);
+    assert!(rejects[0].is_some());
+}
+
+#[test]
+fn after_web_cap_tools_are_stripped_from_continuations() {
+    use conduit_desktop::stream_manager::narrow_tools_after_web_cap;
+    let narrowed = narrow_tools_after_web_cap(
+        &[
+            tool_def("web_search"),
+            tool_def("web_fetch"),
+            tool_def("current_time"),
+            tool_def("calculator"),
+        ],
+        true,
+        true,
+    );
+    let names: Vec<&str> = narrowed.iter().map(|t| t.name.as_str()).collect();
+    assert!(!names.contains(&"web_search"));
+    assert!(!names.contains(&"web_fetch"));
+    assert!(names.contains(&"current_time"));
+    assert!(names.contains(&"calculator"));
 }
 
 #[test]

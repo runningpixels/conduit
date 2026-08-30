@@ -77,6 +77,9 @@ zeroize = { version = "1.8", features = ["zeroize_derive"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # Cross-platform clipboard for built-in clipboard_read / clipboard_write tools
 arboard = "3"
+# Workspace file tools: glob matching + secret redaction
+glob = "0.3"
+regex = "1"
 
 # Workspace crates
 futures = "0.3"

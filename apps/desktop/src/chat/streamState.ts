@@ -77,6 +77,9 @@ export interface AssistantStreamState {
   /// Phase 7 / M-WebSearch: sources surfaced by the provider when the user
   /// opted in via `include_sources`. One list per `SearchSources` event.
   searchSources: SearchSource[];
+  /// Hosted XOR local for this turn. Local `web_search` needs a runtime finish;
+  /// hosted does not. Absent means legacy / unknown (treat web_search as hosted).
+  searchBackend?: 'hosted' | 'local' | null;
   /// Phase 7 / M-WebSearch: per-call web-search usage, surfaced alongside
   /// the regular usage summary.
   searchCost?: number;
@@ -103,13 +106,17 @@ export interface AssistantStreamState {
   };
 }
 
-export function createAssistantStreamState(requestId: string): AssistantStreamState {
+export function createAssistantStreamState(
+  requestId: string,
+  searchBackend?: 'hosted' | 'local' | null,
+): AssistantStreamState {
   return {
     requestId,
     blocks: [],
     reasoning: [],
     toolCalls: [],
     searchSources: [],
+    searchBackend: searchBackend ?? null,
     interrupted: false,
     streaming: true,
   };
@@ -125,10 +132,14 @@ function isWebSearchToolCall(tc: ToolCallState): boolean {
  *
  * Provider-hosted `web_search` is finished by the provider itself — no local
  * runtime event ever arrives — so it must not hold `waitForPendingRuntimeCalls`.
+ * Local DuckDuckGo `web_search` is a normal function tool and must wait.
  */
-export function toolCallAwaitsRuntimeFinish(tc: ToolCallState): boolean {
+export function toolCallAwaitsRuntimeFinish(
+  tc: ToolCallState,
+  searchBackend?: 'hosted' | 'local' | null,
+): boolean {
   if (!tc.complete || tc.status) return false;
-  if (isWebSearchToolCall(tc)) return false;
+  if (isWebSearchToolCall(tc) && searchBackend !== 'local') return false;
   return true;
 }
 
@@ -265,7 +276,11 @@ export function applyProviderEvent(
       // Hosted web_search is already done on the provider side. Mark it
       // completed here so the chat view does not wait 30s for a runtime finish
       // that never comes (and so settle-on-error leaves it alone).
-      const hostedSearchDone = completed ? isWebSearchToolCall(completed) : false;
+      // Local DuckDuckGo web_search awaits the normal runtime finish.
+      const hostedSearchDone =
+        !!completed &&
+        isWebSearchToolCall(completed) &&
+        state.searchBackend !== 'local';
       return {
         ...state,
         toolCalls: state.toolCalls.map((toolCall) =>

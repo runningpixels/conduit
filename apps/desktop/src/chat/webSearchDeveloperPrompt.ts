@@ -1,3 +1,5 @@
+import { appName } from '../brand';
+
 /** Developer prompt for hosted (provider) web-search turns. */
 export function webSearchDeveloperPromptFor(): string {
   return [
@@ -22,10 +24,10 @@ export function webSearchCreateDeveloperPromptFor(): string {
   ].join(' ');
 }
 
-/** Developer prompt when Conduit's DuckDuckGo builtin (not provider-hosted) is active. */
+/** Developer prompt when the local DuckDuckGo builtin (not provider-hosted) is active. */
 export function localWebSearchDeveloperPromptFor(): string {
   return [
-    'Web search is enabled via Conduit\'s local web_search tool (DuckDuckGo Instant Answer — encyclopedic snippets, not a live news crawl).',
+    `Web search is enabled via ${appName()}'s local web_search tool (DuckDuckGo Instant Answer — encyclopedic snippets, not a live news crawl).`,
     'Call web_search at most once or twice with a clear query. Use web_fetch only when you need the full text of a specific URL from those results.',
     'If results are empty or the payload includes a note about Instant Answer, stop searching: answer from what you know or tell the user local search cannot find live headlines. Do not retry similar query variants — that burns the agent step budget.',
     'Results come back as JSON (titles, snippets, URLs) — cite them in your answer; there are no provider inline citations.',

@@ -40,6 +40,13 @@ const baseSettings: AppSettings = {
 
 vi.mock('../ipc/client', () => ({
   getConversationMessages: vi.fn().mockResolvedValue([]),
+  getConversation: vi.fn().mockResolvedValue({
+    id: 'conv-1',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  }),
+  pickWorkspaceFolder: vi.fn(),
+  setConversationWorkspace: vi.fn(),
   getConnectorRuntimeStates: vi.fn().mockResolvedValue([]),
   listConnectorCapabilities: vi.fn().mockResolvedValue([]),
   loadProviderCredentialReference: vi.fn().mockResolvedValue({

@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { renderMarkdown } from './safeMarkdown';
+
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async () => ({
+      svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+    })),
+  },
+}));
 
 /// Security + structure tests for the hand-rolled safe-subset Markdown renderer.
 /// jsdom does not parse/execute scripts, so these assert structure: no `<script>`
@@ -150,6 +159,38 @@ describe('safeMarkdown structure', () => {
   it('handles empty input', () => {
     const { container } = render(<>{renderMarkdown('')}</>);
     expect(container.textContent).toBe('');
+  });
+
+  it('renders inline and display KaTeX', () => {
+    const { container } = render(<>{renderMarkdown('The identity is $E=mc^2$.')}</>);
+    expect(container.querySelector('.katex')).not.toBeNull();
+    expect(container.textContent).toContain('The identity is');
+  });
+
+  it('does not treat currency as math', () => {
+    const { container } = render(<>{renderMarkdown('It costs $5.00 today.')}</>);
+    expect(container.querySelector('.katex')).toBeNull();
+    expect(container.textContent).toContain('$5.00');
+  });
+
+  it('renders a $$ display math block', () => {
+    const { container } = render(<>{renderMarkdown('$$\\int_0^1 x dx$$')}</>);
+    expect(container.querySelector('.md-katex-display, .md-katex-block .katex')).not.toBeNull();
+  });
+
+  it('renders a math fence as display KaTeX', () => {
+    const { container } = render(<>{renderMarkdown('```math\n\\sum x\n```')}</>);
+    expect(container.querySelector('.md-katex-block')).not.toBeNull();
+    expect(container.querySelector('.katex')).not.toBeNull();
+  });
+
+  it('renders a mermaid fence as a blob image', async () => {
+    const { container } = render(
+      <>{renderMarkdown('```mermaid\nflowchart TD\nA-->B\n```')}</>,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('img.md-mermaid-img')).not.toBeNull();
+    });
   });
 
   it('is bounded on a large input (10k paragraphs)', { timeout: 20_000 }, () => {

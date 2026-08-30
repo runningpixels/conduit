@@ -7,6 +7,7 @@
 
 import type { Artifact, ArtifactKind } from '../ipc/contracts';
 import type { ArtifactCandidate } from './messageSegments';
+import { fenceLang, isMathLang, isMermaidLang } from '../artifacts/markdown/fenceLang';
 
 /// A `code` fence longer than this is a deliverable rather than something you
 /// read in the flow of the answer, so it collapses to a card.
@@ -73,6 +74,8 @@ export function findPromotedArtifact(
  */
 export function shouldRenderAsCard(candidate: ArtifactCandidate, streaming?: boolean): boolean {
   if (streaming) return false;
+  const lang = fenceLang(candidate.info);
+  if (isMermaidLang(lang) || isMathLang(lang)) return false;
   if (DOCUMENT_KINDS.includes(candidate.kind)) return true;
   return candidate.kind === 'code' && countLines(candidate.body) > INLINE_CODE_MAX_LINES;
 }

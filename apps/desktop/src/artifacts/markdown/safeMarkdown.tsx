@@ -1,12 +1,14 @@
 /// Hand-rolled safe-subset Markdown renderer (M6). Returns React nodes — never
-/// HTML strings, never `dangerouslySetInnerHTML`. Every text node is emitted as
-/// a React text child (React escapes by construction), so raw HTML in the
-/// source renders as escaped visible text, not parsed markup.
+/// HTML strings. Every text node is emitted as a React text child (React
+/// escapes by construction), so raw HTML in the source renders as escaped
+/// visible text, not parsed markup. The only innerHTML exception is `KatexHtml`
+/// (ADR-007 addendum): KaTeX library HTML, never the TeX source.
 ///
 /// Supported subset:
 /// - Fenced code blocks (```lang ... ```), headings (#..######), unordered
 ///   lists (- * +), ordered lists (N.), blockquotes (>), horizontal rules
 ///   (--- / *** / ___), paragraphs.
+/// - ` ```mermaid ` → blob `<img>`; ` ```math|latex|tex ` / `$$` / `$…$` → KaTeX.
 /// - Inline: **bold**, *italic*, `code` chips, [text](url) links, bare
 ///   https?:// autolinks.
 ///
@@ -20,6 +22,9 @@
 /// live alongside this in `renderers.tsx` / `HtmlArtifactRenderer.tsx`.
 
 import { Fragment, type MouseEvent, type ReactNode } from 'react';
+import { KatexHtml } from './KatexHtml';
+import { MermaidBlock } from './MermaidBlock';
+import { fenceLang, isMathLang, isMermaidLang } from './fenceLang';
 
 const LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 
@@ -68,6 +73,7 @@ function linkProps(
 
 type Block =
   | { type: 'code'; lang?: string; code: string }
+  | { type: 'math'; tex: string }
   | { type: 'heading'; level: number; inline: string }
   | { type: 'blockquote'; inline: string }
   | { type: 'ul'; items: ListItem[] }
@@ -132,6 +138,25 @@ function parseBlocks(src: string): Block[] {
 
     // Blank line — skip (paragraph separator).
     if (line.trim() === '') {
+      i++;
+      continue;
+    }
+
+    // Display math: $$ ... $$ (single line or fenced pair).
+    const trimmed = line.trim();
+    if (trimmed === '$$') {
+      const texLines: string[] = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== '$$') {
+        texLines.push(lines[i]);
+        i++;
+      }
+      i++; // closing $$ if present
+      blocks.push({ type: 'math', tex: texLines.join('\n') });
+      continue;
+    }
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+      blocks.push({ type: 'math', tex: trimmed.slice(2, -2).trim() });
       i++;
       continue;
     }
@@ -228,7 +253,8 @@ function parseBlocks(src: string): Block[] {
       !RULE.test(lines[i].trim()) &&
       !lines[i].trimStart().startsWith('>') &&
       !UL_ITEM.test(lines[i]) &&
-      !OL_ITEM.test(lines[i])
+      !OL_ITEM.test(lines[i]) &&
+      !lines[i].trim().startsWith('$$')
     ) {
       buf.push(lines[i].trim());
       i++;
@@ -254,6 +280,32 @@ export interface MarkdownOptions {
   /// When set, http(s) link clicks call this instead of navigating / opening a
   /// blank tab. `mailto:` and other safe schemes keep default anchor behavior.
   onExternalLink?: (url: string) => void;
+}
+
+/// Inline `$tex$` — non-space after opener and before closer, no newlines.
+/// `$$` is handled separately as display math.
+function matchInlineMath(rest: string): { tex: string; length: number } | null {
+  if (rest.length < 3 || rest[0] !== '$' || rest[1] === '$') return null;
+  if (rest[1] === ' ' || rest[1] === '\t') return null;
+  for (let j = 1; j < rest.length; j++) {
+    const c = rest[j];
+    if (c === '\n') return null;
+    if (c === '$' && rest[j - 1] !== '\\') {
+      if (rest[j - 1] === ' ' || rest[j - 1] === '\t') return null;
+      if (j === 1) return null;
+      return { tex: rest.slice(1, j), length: j + 1 };
+    }
+  }
+  return null;
+}
+
+function matchDisplayMath(rest: string): { tex: string; length: number } | null {
+  if (!rest.startsWith('$$')) return null;
+  const end = rest.indexOf('$$', 2);
+  if (end === -1) return null;
+  const tex = rest.slice(2, end);
+  if (tex.includes('\n')) return null;
+  return { tex: tex.trim(), length: end + 2 };
 }
 
 /// Inline parser. Walks the string with a cursor, emitting React nodes. Raw
@@ -298,6 +350,42 @@ function renderInline(
       flush();
       push(<code key={`${keyPrefix}-c${k}`} className="md-code">{codeMatch[1]}</code>);
       i += codeMatch[0].length;
+      continue;
+    }
+
+    // Display math $$...$$ inside a paragraph (same-line only).
+    const display = matchDisplayMath(rest);
+    if (display) {
+      flush();
+      push(
+        <KatexHtml
+          key={`${keyPrefix}-dd${k}`}
+          tex={display.tex}
+          displayMode
+          fallback={`$$${display.tex}$$`}
+        />,
+      );
+      i += display.length;
+      continue;
+    }
+
+    // Inline math $...$. A leading `\$` is a literal dollar.
+    if (buf.endsWith('\\') && rest.startsWith('$')) {
+      buf = `${buf.slice(0, -1)}$`;
+      i += 1;
+      continue;
+    }
+    const inlineMath = matchInlineMath(rest);
+    if (inlineMath) {
+      flush();
+      push(
+        <KatexHtml
+          key={`${keyPrefix}-m${k}`}
+          tex={inlineMath.tex}
+          fallback={`$${inlineMath.tex}$`}
+        />,
+      );
+      i += inlineMath.length;
       continue;
     }
 
@@ -370,11 +458,29 @@ export function renderMarkdown(src: string, options?: MarkdownOptions): ReactNod
       {blocks.map((block, idx) => {
         const key = `md-${idx}`;
         switch (block.type) {
-          case 'code':
+          case 'code': {
+            const lang = fenceLang(block.lang ?? '');
+            if (isMermaidLang(lang)) {
+              return <MermaidBlock key={key} source={block.code} />;
+            }
+            if (isMathLang(lang)) {
+              return (
+                <div key={key} className="md-katex-block">
+                  <KatexHtml tex={block.code} displayMode fallback={block.code} />
+                </div>
+              );
+            }
             return (
               <pre key={key} className="md-pre">
                 <code>{block.code}</code>
               </pre>
+            );
+          }
+          case 'math':
+            return (
+              <div key={key} className="md-katex-block">
+                <KatexHtml tex={block.tex} displayMode fallback={block.tex} />
+              </div>
             );
           case 'heading': {
             const Tag = (`h${Math.min(Math.max(block.level, 1), 6)}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6');

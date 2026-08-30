@@ -27,3 +27,6 @@
 
 /* Syntax highlighting: Prism token colors for chat inline + artifact code preview */
 @import './styles/syntax.css';
+
+/* Mermaid diagrams + KaTeX math in chat prose and markdown artifacts */
+@import './styles/markdown-render.css';

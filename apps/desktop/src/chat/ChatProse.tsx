@@ -1,8 +1,7 @@
-import {
-  PLACEHOLDER_CLOSE,
-  PLACEHOLDER_OPEN,
-  renderMarkdown,
-} from '../artifacts/markdown/safeMarkdown';
+import { PLACEHOLDER_CLOSE, PLACEHOLDER_OPEN, renderMarkdown } from '../artifacts/markdown/safeMarkdown';
+import { fenceLang, isMathLang, isMermaidLang } from '../artifacts/markdown/fenceLang';
+import { KatexHtml } from '../artifacts/markdown/KatexHtml';
+import { MermaidBlock } from '../artifacts/markdown/MermaidBlock';
 import { parseMessageSegments } from './messageSegments';
 import type { ArtifactCandidate } from './messageSegments';
 import { CitationMarker } from './CitationMarker';
@@ -131,11 +130,33 @@ export function ChatProse({
         // streaming the source always wins — it is the only place generation
         // is visible until the turn completes (§8.5).
         const fenceStreaming = streaming && isLast;
-        // A citation range should never intersect a fence, but if one did the
-        // placeholder would ride into the fence body — and from there into a
-        // promoted artifact's stored content. Strip it at the boundary rather
-        // than trusting the provider's offsets.
         const candidate = cleanCandidate(seg.candidate);
+        const lang = fenceLang(candidate.info);
+        if (!fenceStreaming && isMermaidLang(lang)) {
+          return (
+            <MermaidBlock
+              key={`f${idx}`}
+              source={candidate.body}
+              fallback={
+                <InlineCodeBlock
+                  candidate={candidate}
+                  streaming={false}
+                  messageId={messageId}
+                  artifacts={artifacts}
+                  onPromote={onPromoteArtifact}
+                  onOpenArtifact={onOpenArtifact}
+                />
+              }
+            />
+          );
+        }
+        if (!fenceStreaming && isMathLang(lang)) {
+          return (
+            <div key={`f${idx}`} className="md-katex-block">
+              <KatexHtml tex={candidate.body} displayMode fallback={candidate.body} />
+            </div>
+          );
+        }
         if (shouldRenderAsCard(candidate, fenceStreaming)) {
           const promoted = messageId
             ? findPromotedArtifact(artifacts ?? [], messageId, candidate)

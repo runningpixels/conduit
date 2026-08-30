@@ -1,0 +1,60 @@
+/* Mermaid diagrams + KaTeX (t0-2). Token-only colours; no CDN fonts. */
+
+.md-katex {
+  color: var(--ink);
+}
+.md-katex-inline {
+  display: inline;
+}
+.md-katex-display {
+  display: block;
+  text-align: center;
+  margin: var(--sp-3) 0;
+}
+.md-katex-block {
+  margin: var(--sp-3) 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.md-render-error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--sp-2) 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink-2);
+  font: 500 12px/1.4 var(--font-sans);
+}
+
+.md-mermaid {
+  margin: var(--sp-3) 0;
+}
+.md-mermaid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.md-mermaid-label {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--ink-3);
+  text-transform: lowercase;
+  letter-spacing: .04em;
+}
+.md-mermaid-copy {
+  flex: none;
+}
+.md-mermaid-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}

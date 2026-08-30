@@ -89,6 +89,12 @@ describe('shouldRenderAsCard', () => {
   it('never collapses while streaming', () => {
     expect(shouldRenderAsCard(candidateFor('html', '<p>hi</p>'), true)).toBe(false);
   });
+
+  it('keeps mermaid and math fences in the reading flow even when long', () => {
+    const body = 'flowchart TD\n' + 'A-->B\n'.repeat(40);
+    expect(shouldRenderAsCard(candidateFor('mermaid', body))).toBe(false);
+    expect(shouldRenderAsCard(candidateFor('math', '\\int x\n'.repeat(40)))).toBe(false);
+  });
 });
 
 describe('inlineArtifactIds', () => {

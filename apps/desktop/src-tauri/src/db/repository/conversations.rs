@@ -31,12 +31,13 @@ type ConversationSummaryRow = (
     Option<String>,
 );
 
-/// Row shape for [`get`] (id, title, created_at, updated_at, cloud_id, metadata).
+/// Row shape for [`get`] (id, title, created_at, updated_at, cloud_id, metadata, workspace_root).
 type ConversationRow = (
     String,
     Option<String>,
     String,
     String,
+    Option<String>,
     Option<String>,
     Option<String>,
 );
@@ -67,6 +68,7 @@ pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversati
         updated_at: now,
         cloud_id: None,
         metadata: None,
+        workspace_root: None,
     })
 }
 
@@ -126,7 +128,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
 /// Fetch one conversation, or `None` if it does not exist.
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Conversation>, DbError> {
     let row: Option<ConversationRow> = sqlx::query_as(
-        "SELECT id, title, created_at, updated_at, cloud_id, metadata \
+        "SELECT id, title, created_at, updated_at, cloud_id, metadata, workspace_root \
              FROM conversations WHERE id = ?",
     )
     .bind(id)
@@ -134,13 +136,14 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Conversation>, Db
     .await?;
 
     Ok(row.map(
-        |(id, title, created_at, updated_at, cloud_id, metadata)| Conversation {
+        |(id, title, created_at, updated_at, cloud_id, metadata, workspace_root)| Conversation {
             id,
             title,
             created_at,
             updated_at,
             cloud_id,
             metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
+            workspace_root,
         },
     ))
 }
@@ -189,6 +192,25 @@ pub async fn delete_all_with_files(
     artifacts::remove_artifact_files(artifacts_dir, &artifact_refs);
     attachments::remove_blobs_if_unreferenced(pool, attachments_dir, &attachment_refs).await?;
 
+    Ok(())
+}
+
+/// Set or clear the workspace folder bound to this conversation.
+pub async fn set_workspace_root(
+    pool: &SqlitePool,
+    id: &str,
+    workspace_root: Option<&str>,
+) -> Result<(), DbError> {
+    let root = workspace_root
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    sqlx::query("UPDATE conversations SET workspace_root = ?, updated_at = ? WHERE id = ?")
+        .bind(root)
+        .bind(now_iso8601())
+        .bind(id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -358,6 +380,10 @@ pub async fn fork_at(
         .filter(|m| m.created_at <= cutoff)
         .collect();
 
+    let source = get(pool, source_conversation_id)
+        .await?
+        .ok_or_else(|| DbError::Query("source conversation not found".into()))?;
+
     let mut tx = pool.begin().await?;
 
     let fork_id = Uuid::new_v4().to_string();
@@ -367,13 +393,14 @@ pub async fn fork_at(
     sqlx::query(
         "INSERT INTO conversations \
          (id, title, forked_from_conversation_id, fork_point_message_id, \
-          created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+          workspace_root, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&fork_id)
     .bind(label)
     .bind(source_conversation_id)
     .bind(fork_point_message_id)
+    .bind(&source.workspace_root)
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
@@ -390,6 +417,7 @@ pub async fn fork_at(
         updated_at: now,
         cloud_id: None,
         metadata: None,
+        workspace_root: source.workspace_root,
     })
 }
 

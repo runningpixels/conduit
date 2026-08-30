@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveWebSearchForTurn, userWantsWebSearch } from './webSearchIntent';
+import {
+  endpointSupportsHostedSearch,
+  providerHostsSearch,
+  resolveSearchBackend,
+  resolveWebSearchForTurn,
+  userWantsWebSearch,
+} from './webSearchIntent';
 
 describe('userWantsWebSearch', () => {
   it('matches explicit internet search phrasing', () => {
@@ -41,5 +47,64 @@ describe('resolveWebSearchForTurn', () => {
         'search the internet',
       ),
     ).toBe(false);
+  });
+});
+
+describe('endpointSupportsHostedSearch', () => {
+  it('accepts api.openai.com', () => {
+    expect(endpointSupportsHostedSearch('https://api.openai.com/v1')).toBe(true);
+    expect(endpointSupportsHostedSearch('https://api.openai.com')).toBe(true);
+  });
+
+  it('rejects other hosts and garbage', () => {
+    expect(endpointSupportsHostedSearch('http://localhost:8080/v1')).toBe(false);
+    expect(endpointSupportsHostedSearch('https://openrouter.ai/api/v1')).toBe(false);
+    expect(endpointSupportsHostedSearch(undefined)).toBe(false);
+    expect(endpointSupportsHostedSearch('not a url')).toBe(false);
+  });
+});
+
+describe('providerHostsSearch', () => {
+  it('treats gemini as hosted', () => {
+    expect(providerHostsSearch('gemini', {})).toBe(true);
+  });
+
+  it('treats openai default endpoint as hosted', () => {
+    expect(providerHostsSearch('openai', {})).toBe(true);
+  });
+
+  it('treats ollama as not hosted', () => {
+    expect(providerHostsSearch('ollama', {})).toBe(false);
+  });
+
+  it('treats openai_compat localhost as not hosted', () => {
+    expect(
+      providerHostsSearch('openai_compat', {
+        openai_compat: { baseUrl: 'http://localhost:8080/v1' },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('resolveSearchBackend', () => {
+  it('Auto + OpenAI → hosted', () => {
+    expect(resolveSearchBackend('auto', 'openai', {})).toBe('hosted');
+  });
+
+  it('Auto + Ollama → local', () => {
+    expect(resolveSearchBackend('auto', 'ollama', {})).toBe('local');
+  });
+
+  it('Local + OpenAI → local', () => {
+    expect(resolveSearchBackend('local', 'openai', {})).toBe('local');
+  });
+
+  it('Hosted + Ollama → hosted (adapter still strips)', () => {
+    expect(resolveSearchBackend('hosted', 'ollama', {})).toBe('hosted');
+  });
+
+  it('undefined mode defaults to Auto', () => {
+    expect(resolveSearchBackend(undefined, 'ollama', {})).toBe('local');
+    expect(resolveSearchBackend(undefined, 'gemini', {})).toBe('hosted');
   });
 });

@@ -271,6 +271,80 @@ pub fn narrow_tools_after_document_create(
         .collect()
 }
 
+/// Hard cap on local `web_search` / `web_fetch` calls per agent turn.
+/// Empty Instant Answer results otherwise train the model to binge-retry until
+/// `max_steps` kills the turn with no answer.
+pub const MAX_WEB_SEARCH_PER_TURN: u32 = 3;
+pub const MAX_WEB_FETCH_PER_TURN: u32 = 3;
+
+const WEB_SEARCH_CAP_REJECT: &str =
+    "This turn already used the maximum number of web_search calls. Answer with the results you have (or say Instant Answer cannot cover this query). Do not call web_search again.";
+const WEB_FETCH_CAP_REJECT: &str =
+    "This turn already used the maximum number of web_fetch calls. Answer with the content you have. Do not call web_fetch again.";
+
+/// Plan web-tool clamps for a round: at most [`MAX_WEB_SEARCH_PER_TURN`] /
+/// [`MAX_WEB_FETCH_PER_TURN`] executions this turn (including prior rounds).
+///
+/// Returns one optional reject message per call (`None` = run). Non-web tools
+/// always run (from this classifier's perspective).
+pub fn classify_web_tool_clamps(
+    calls: &[CompletedToolCall],
+    web_search_so_far: u32,
+    web_fetch_so_far: u32,
+) -> Vec<Option<&'static str>> {
+    let mut out = Vec::with_capacity(calls.len());
+    let mut search_reserved = 0u32;
+    let mut fetch_reserved = 0u32;
+    for call in calls {
+        let name = if call.name.trim().is_empty() {
+            call.tool_id.as_deref().unwrap_or("")
+        } else {
+            call.name.as_str()
+        };
+        match name {
+            agent_tools::WEB_SEARCH_TOOL => {
+                if web_search_so_far + search_reserved >= MAX_WEB_SEARCH_PER_TURN {
+                    out.push(Some(WEB_SEARCH_CAP_REJECT));
+                } else {
+                    out.push(None);
+                    search_reserved += 1;
+                }
+            }
+            agent_tools::WEB_FETCH_TOOL => {
+                if web_fetch_so_far + fetch_reserved >= MAX_WEB_FETCH_PER_TURN {
+                    out.push(Some(WEB_FETCH_CAP_REJECT));
+                } else {
+                    out.push(None);
+                    fetch_reserved += 1;
+                }
+            }
+            _ => out.push(None),
+        }
+    }
+    out
+}
+
+/// Drop local `web_search` / `web_fetch` from later rounds once a per-turn cap
+/// was hit so the model cannot keep requesting them.
+pub fn narrow_tools_after_web_cap(
+    defs: &[provider_core::schema::ToolDefinition],
+    strip_search: bool,
+    strip_fetch: bool,
+) -> Vec<provider_core::schema::ToolDefinition> {
+    defs.iter()
+        .filter(|t| {
+            if strip_search && t.name == agent_tools::WEB_SEARCH_TOOL {
+                return false;
+            }
+            if strip_fetch && t.name == agent_tools::WEB_FETCH_TOOL {
+                return false;
+            }
+            true
+        })
+        .cloned()
+        .collect()
+}
+
 /// A tool call that was requested by the provider and is ready for execution.
 #[derive(Debug, Clone)]
 pub struct CompletedToolCall {
@@ -699,7 +773,9 @@ impl StreamManager {
     ///
     /// `successful_creates_so_far` is the turn-wide count of `write_*` creates
     /// that already succeeded; it is updated in place when this round creates
-    /// more. Returns how many new documents this round created.
+    /// more. `web_search_so_far` / `web_fetch_so_far` count local web tool
+    /// executions this turn (cap binge-retries on empty Instant Answer).
+    /// Returns how many new documents this round created.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_resolved_tool_calls(
         &self,
@@ -711,6 +787,8 @@ impl StreamManager {
         runtime_channel: Option<&Channel<ConnectorRuntimeEvent>>,
         provider_channel: Option<&Channel<ProviderEvent>>,
         successful_creates_so_far: &mut u32,
+        web_search_so_far: &mut u32,
+        web_fetch_so_far: &mut u32,
     ) -> u32 {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -723,18 +801,33 @@ impl StreamManager {
             .await
             .unwrap_or(None);
         let settings = state.settings().unwrap_or_default();
-        let workspace_config =
+        let conversation = conversations::get(&state.db, conversation_id)
+            .await
+            .ok()
+            .flatten();
+        let from_conversation = conversation
+            .as_ref()
+            .and_then(|c| c.workspace_root.as_ref())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let from_settings =
             if settings.workspace_tools_enabled && settings.workspace_tools_consent_acknowledged {
                 settings
                     .workspace_root
                     .as_ref()
-                    .filter(|p| !p.trim().is_empty())
-                    .map(|root| crate::workspace_tools::WorkspaceToolConfig {
-                        root: std::path::PathBuf::from(root),
-                    })
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
             } else {
                 None
             };
+        // Conversation bind wins; settings default applies when enabled + consent.
+        let workspace_root = from_conversation.or(from_settings);
+        let workspace_config =
+            workspace_root.map(|root| crate::workspace_tools::WorkspaceToolConfig {
+                root: std::path::PathBuf::from(root),
+            });
         let ctx = agent_tools::AgentToolContext {
             db: &state.db,
             artifacts_dir: &state.paths.artifacts,
@@ -752,9 +845,10 @@ impl StreamManager {
         });
 
         let clamp_actions = classify_document_create_clamps(calls, *successful_creates_so_far);
+        let web_rejects = classify_web_tool_clamps(calls, *web_search_so_far, *web_fetch_so_far);
         let mut created_this_round = 0u32;
 
-        for (call, action) in calls.iter().zip(clamp_actions.iter()) {
+        for (idx, (call, action)) in calls.iter().zip(clamp_actions.iter()).enumerate() {
             let tool_name = if call.name.trim().is_empty() {
                 call.tool_id.clone().unwrap_or_default()
             } else {
@@ -770,7 +864,10 @@ impl StreamManager {
                 });
             }
 
-            if let Some(reject_msg) = action.reject_message() {
+            let reject_msg = action
+                .reject_message()
+                .or_else(|| web_rejects.get(idx).copied().flatten());
+            if let Some(reject_msg) = reject_msg {
                 match agent_tools::record_clamped_builtin_tool(
                     &ctx,
                     &call.tool_call_id,
@@ -824,6 +921,13 @@ impl StreamManager {
             }
 
             if agent_tools::is_builtin_tool_name(&tool_name) {
+                // Count toward per-turn web caps whether Instant Answer is empty
+                // or the call fails — each attempt burns a slot so binge-retries stop.
+                if tool_name == agent_tools::WEB_SEARCH_TOOL {
+                    *web_search_so_far = web_search_so_far.saturating_add(1);
+                } else if tool_name == agent_tools::WEB_FETCH_TOOL {
+                    *web_fetch_so_far = web_fetch_so_far.saturating_add(1);
+                }
                 let outcome = agent_tools::execute_builtin_tool(
                     &ctx,
                     &call.tool_call_id,
@@ -1280,6 +1384,8 @@ impl StreamManager {
         let mut ended_with_pending_tools = false;
         let mut cumulative_usage: Option<provider_core::schema::ProviderUsage> = None;
         let mut successful_document_creates: u32 = 0;
+        let mut web_search_calls: u32 = 0;
+        let mut web_fetch_calls: u32 = 0;
 
         // Exactly one terminal event reaches the UI per turn, emitted after the
         // loop so the cumulative usage lands first. `terminal` holds the event
@@ -1488,6 +1594,8 @@ impl StreamManager {
                     Some(&runtime_channel),
                     Some(&channel),
                     &mut successful_document_creates,
+                    &mut web_search_calls,
+                    &mut web_fetch_calls,
                 )
                 .await;
 
@@ -1496,6 +1604,18 @@ impl StreamManager {
             if created_this_round > 0 || successful_document_creates > 0 {
                 current_request.tool_definitions =
                     narrow_tools_after_document_create(&current_request.tool_definitions);
+            }
+
+            // Once a local web-tool cap is hit, strip both web tools so the
+            // model answers instead of binge-retrying empty Instant Answer hits.
+            let strip_search = web_search_calls >= MAX_WEB_SEARCH_PER_TURN;
+            let strip_fetch = web_fetch_calls >= MAX_WEB_FETCH_PER_TURN;
+            if strip_search || strip_fetch {
+                current_request.tool_definitions = narrow_tools_after_web_cap(
+                    &current_request.tool_definitions,
+                    strip_search || strip_fetch,
+                    strip_search || strip_fetch,
+                );
             }
 
             // Emit reviewing phase after tool execution, before continuation.

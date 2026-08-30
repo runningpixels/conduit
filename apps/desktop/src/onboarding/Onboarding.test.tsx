@@ -53,6 +53,7 @@ const baseSettings: AppSettings = {
   onboardingCompleted: false,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto' as const,
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],

@@ -121,8 +121,15 @@ export function AssistantMessage({
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
   const text = state.blocks.map((b) => b.content).join('');
-  const webSearchCalls = state.toolCalls.filter(isWebSearchToolCall);
-  const otherToolCalls = state.toolCalls.filter((tc) => !isWebSearchToolCall(tc));
+  // SearchCallGroup is for provider-hosted search only. Local DuckDuckGo
+  // web_search renders as an ordinary ToolCallBlock with JSON results.
+  const useHostedSearchUi = state.searchBackend !== 'local';
+  const webSearchCalls = useHostedSearchUi
+    ? state.toolCalls.filter(isWebSearchToolCall)
+    : [];
+  const otherToolCalls = useHostedSearchUi
+    ? state.toolCalls.filter((tc) => !isWebSearchToolCall(tc))
+    : state.toolCalls;
   const grouped = groupToolCalls(otherToolCalls);
   const elapsed = useLiveElapsed(state.streaming);
   const tokenCount = Math.round(text.length / 4);

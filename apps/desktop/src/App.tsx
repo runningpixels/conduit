@@ -107,6 +107,7 @@ const defaultSettings: AppSettings = {
   onboardingCompleted: false,
   webSearchEnabled: false,
   webSearch: {
+    mode: 'auto',
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],

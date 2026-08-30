@@ -307,6 +307,17 @@ export async function setConversationTitle(conversationId: string, title: string
   await invoke('set_conversation_title', { conversationId, title });
 }
 
+/** Bind or clear the workspace folder for a conversation. `null` clears. */
+export async function setConversationWorkspace(
+  conversationId: string,
+  workspaceRoot: string | null,
+): Promise<Conversation> {
+  return invoke<Conversation>('set_conversation_workspace', {
+    conversationId,
+    workspaceRoot,
+  });
+}
+
 export async function deleteAllConversations(): Promise<Conversation> {
   return invoke<Conversation>('delete_all_conversations');
 }

@@ -54,6 +54,7 @@ describe('buildProviderRequest artifact prompts', () => {
     onboardingCompleted: true,
     webSearchEnabled: false,
     webSearch: {
+      mode: 'auto' as const,
       searchContextSize: 'medium' as const,
       allowedDomains: [],
       blockedDomains: [],

@@ -5,4 +5,10 @@
  * are nullable so local-only operation never depends on cloud concepts
  * (Phase 7 fills them).
  */
-export type Conversation = { id: string, title?: string, createdAt: string, updatedAt: string, cloudId?: string, metadata?: Record<string, unknown>, };
+export type Conversation = { id: string, title?: string, createdAt: string, updatedAt: string, cloudId?: string, metadata?: Record<string, unknown>, 
+/**
+ * Absolute path to the workspace folder bound to this conversation.
+ * When set, workspace agent tools use this root (after consent) even if
+ * the global settings default is off or different.
+ */
+workspaceRoot?: string, };

@@ -292,7 +292,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WEB_SEARCH_TOOL.to_string(),
             name: WEB_SEARCH_TOOL.to_string(),
-            description: "Search the web for information. Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs.".to_string(),
+            description: "Search via DuckDuckGo Instant Answer (encyclopedic snippets, not a live news crawl). Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs. Empty results mean Instant Answer has no hit — do not retry similar queries.".to_string(),
             input_schema: json_schema(&[
                 ("query", "string", true),
             ]),
@@ -614,11 +614,7 @@ pub async fn execute_builtin_tool(
         WEB_SEARCH_TOOL => {
             let input: WebSearchInput = parse_args(tool_name, arguments)?;
             match web_search(&input.query).await {
-                Ok(results) => Ok(serde_json::json!({
-                    "ok": true,
-                    "query": input.query,
-                    "results": results,
-                })),
+                Ok(results) => Ok(web_search_tool_output(&input.query, results)),
                 Err(e) => Err(format!("web search error: {e}")),
             }
         }
@@ -1425,29 +1421,32 @@ fn parse_factor(tokens: &[Token], pos: &mut usize) -> Result<f64, String> {
 // Helper: web search via DuckDuckGo Instant Answer API
 // -------------------------------------------------------------------------
 
-async fn web_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
-    let url = format!(
-        "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
-        urlencoding(query)
-    );
-    // Same 15s bound `web_fetch` uses below. A bare `Client::new()` has no
-    // timeout at all, so an endpoint that accepts the connection and then goes
-    // quiet parks the agent turn on "Running 1 tool" indefinitely.
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("http client error: {e}"))?;
-    let resp = client
-        .get(&url)
-        .header("User-Agent", "Conduit/1.0")
-        .send()
-        .await
-        .map_err(|e| format!("search request failed: {e}"))?;
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("search response parse failed: {e}"))?;
+/// Guidance when Instant Answer returns nothing. Without this, models treat
+/// empty `results` as "try another query" and binge until max_steps.
+pub const EMPTY_INSTANT_ANSWER_NOTE: &str = "DuckDuckGo Instant Answer returned no hits. This backend is encyclopedic Instant Answer, not a live news index. Do not retry with similar queries; answer from what you know or tell the user local search cannot find live headlines.";
 
+/// Shape the tool result the model sees. Empty Instant Answer must include
+/// [`EMPTY_INSTANT_ANSWER_NOTE`] so the agent stops retrying.
+pub fn web_search_tool_output(query: &str, results: Vec<serde_json::Value>) -> serde_json::Value {
+    if results.is_empty() {
+        serde_json::json!({
+            "ok": true,
+            "query": query,
+            "results": results,
+            "note": EMPTY_INSTANT_ANSWER_NOTE,
+        })
+    } else {
+        serde_json::json!({
+            "ok": true,
+            "query": query,
+            "results": results,
+        })
+    }
+}
+
+/// Parse a DuckDuckGo Instant Answer JSON body into title/snippet/url rows.
+/// Extracted so empty vs non-empty shaping can be unit-tested without network.
+pub fn parse_duckduckgo_instant_answer(body: &serde_json::Value) -> Vec<serde_json::Value> {
     let mut results = Vec::new();
 
     // Abstract / answer
@@ -1510,7 +1509,33 @@ async fn web_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
         }
     }
 
-    Ok(results)
+    results
+}
+
+async fn web_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
+    let url = format!(
+        "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
+        urlencoding(query)
+    );
+    // Same 15s bound `web_fetch` uses below. A bare `Client::new()` has no
+    // timeout at all, so an endpoint that accepts the connection and then goes
+    // quiet parks the agent turn on "Running 1 tool" indefinitely.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("http client error: {e}"))?;
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "Conduit/1.0")
+        .send()
+        .await
+        .map_err(|e| format!("search request failed: {e}"))?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("search response parse failed: {e}"))?;
+
+    Ok(parse_duckduckgo_instant_answer(&body))
 }
 
 fn urlencoding(s: &str) -> String {
@@ -1730,6 +1755,45 @@ mod tests {
         let args = serde_json::json!({ "query": "test query" });
         let input: WebSearchInput = serde_json::from_value(args).unwrap();
         assert_eq!(input.query, "test query");
+    }
+
+    #[test]
+    fn empty_instant_answer_body_parses_to_no_results() {
+        let body = serde_json::json!({
+            "Abstract": "",
+            "AbstractText": "",
+            "RelatedTopics": [],
+            "Results": []
+        });
+        assert!(parse_duckduckgo_instant_answer(&body).is_empty());
+    }
+
+    #[test]
+    fn empty_web_search_output_includes_stop_retry_note() {
+        let out = web_search_tool_output("todays news", Vec::new());
+        assert_eq!(out.get("ok"), Some(&serde_json::json!(true)));
+        assert_eq!(out.get("results"), Some(&serde_json::json!([])));
+        assert_eq!(
+            out.get("note").and_then(|v| v.as_str()),
+            Some(EMPTY_INSTANT_ANSWER_NOTE)
+        );
+    }
+
+    #[test]
+    fn non_empty_web_search_output_omits_note() {
+        let results = vec![serde_json::json!({
+            "title": "DuckDuckGo",
+            "snippet": "A search engine.",
+            "url": "https://duckduckgo.com"
+        })];
+        let out = web_search_tool_output("DuckDuckGo", results);
+        assert!(out.get("note").is_none());
+        assert_eq!(
+            out.get("results")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len()),
+            Some(1)
+        );
     }
 
     #[test]

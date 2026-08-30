@@ -12,17 +12,10 @@ interface WebSearchConsentDialogProps {
 
 /** One-time consent dialog for web search.
  *
- *  Web-search consent: the first time a user enables
- *  web search (either globally in Settings or per turn in the chat bar), show
- *  this dialog. It explains what happens, links to provider pricing, and asks
- *  the user to explicitly allow.
- *
- *  "Allow" persists `web_search_consent_acknowledged = true` via a settings
- *  patch, so the dialog never reappears.
- *
- *  "Not now" reverts the toggle. If the user dismissed from the chat bar, the
- *  session-only flag prevents the dialog from re-triggering until the app
- *  restarts (same UX as the diagnostics disclosure, M6.5). */
+ *  Covers both provider-hosted search (queries go to the model provider) and
+ *  Conduit's local DuckDuckGo builtin (queries leave this machine to DuckDuckGo).
+ *  Settings → Search source chooses which path a turn uses.
+ */
 export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchConsentDialogProps) {
   const [acknowledging, setAcknowledging] = useState(false);
 
@@ -44,7 +37,6 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
         background: 'rgba(0,0,0,0.45)',
       }}
       onClick={(e) => {
-        // Dismiss on backdrop click (not on dialog body click).
         if (e.target === e.currentTarget) onDeny();
       }}
     >
@@ -66,16 +58,24 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
         </h2>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
           When you turn on web search, the model can look things up on the
-          internet during this conversation. Search queries are sent to the
-          model provider (e.g. OpenAI), not to {appName()}.
+          internet during this conversation. Where the query goes depends on
+          Settings → Web Search → Search source:
         </p>
-        <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
-          Each search call incurs a per-call cost on your provider account.
-          See your provider's pricing page for current rates.
-        </p>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
+          <li>
+            <strong>Provider</strong> — queries go to the model provider’s hosted
+            search (e.g. OpenAI), not to {appName()}. Each call may incur provider cost.
+          </li>
+          <li>
+            <strong>Local</strong> — {appName()} searches DuckDuckGo from this machine.
+            Queries are not sent to the model provider.
+          </li>
+          <li>
+            <strong>Auto</strong> — provider-hosted when available; otherwise local DuckDuckGo.
+          </li>
+        </ul>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-3)', lineHeight: 1.5 }}>
-          {appName()} never caches, indexes, or proxies web pages. Citations in the
-          response come directly from the provider's search results.
+          {appName()} does not cache or index the web. Local-only mode keeps web search off.
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button

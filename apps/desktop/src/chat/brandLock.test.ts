@@ -39,6 +39,7 @@ describe('buildProviderRequest brand appendix on a locked build', () => {
     onboardingCompleted: true,
     webSearchEnabled: false,
     webSearch: {
+      mode: 'auto' as const,
       searchContextSize: 'medium' as const,
       allowedDomains: [],
       blockedDomains: [],

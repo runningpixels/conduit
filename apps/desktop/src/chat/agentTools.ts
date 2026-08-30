@@ -219,7 +219,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   {
     toolId: 'web_search',
     name: 'web_search',
-    description: 'Search the web for information. Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs.',
+    description:
+      'Search via DuckDuckGo Instant Answer (encyclopedic snippets, not a live news crawl). Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs. Empty results mean Instant Answer has no hit — do not retry similar queries.',
     inputSchema: schema([
       { name: 'query', type: 'string', required: true },
     ]),
@@ -390,6 +391,7 @@ export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
 }
 
 const UTILITY_TOOL_NAMES = new Set(['current_time', 'uuid', 'random', 'calculator']);
+const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch']);
 const WORKSPACE_TOOL_GROUP = 'Workspace';
 
 export const WORKSPACE_TOOL_NAMES = new Set(
@@ -398,20 +400,53 @@ export const WORKSPACE_TOOL_NAMES = new Set(
     .map((tool) => tool.name),
 );
 
-/** Workspace file tools — only when enabled + root + consent in settings. */
-export function selectBuiltinWorkspaceTools(settings: {
-  workspaceToolsEnabled?: boolean;
-  workspaceRoot?: string | null;
-  workspaceToolsConsentAcknowledged?: boolean;
-}): ToolDefinition[] {
+/** Local DuckDuckGo `web_search` + `web_fetch`. Only offer when the turn
+ *  resolved to the local search backend — never alongside hosted search. */
+export function selectBuiltinWebTools(): ToolDefinition[] {
+  return builtinToolDefinitions().filter((t) => WEB_TOOL_NAMES.has(t.name));
+}
+
+/** Resolve the active workspace root for a turn (conversation bind wins). */
+export function resolveActiveWorkspaceRoot(
+  conversationRoot: string | null | undefined,
+  settings: {
+    workspaceToolsEnabled?: boolean;
+    workspaceRoot?: string | null;
+    workspaceToolsConsentAcknowledged?: boolean;
+  },
+): string | null {
+  const fromConversation = conversationRoot?.trim() || null;
+  if (fromConversation) return fromConversation;
   if (
-    !settings.workspaceToolsEnabled ||
-    !settings.workspaceToolsConsentAcknowledged ||
-    !settings.workspaceRoot?.trim()
+    settings.workspaceToolsEnabled &&
+    settings.workspaceToolsConsentAcknowledged &&
+    settings.workspaceRoot?.trim()
   ) {
+    return settings.workspaceRoot.trim();
+  }
+  return null;
+}
+
+/** Workspace file tools — when a conversation or settings default root is active. */
+export function selectBuiltinWorkspaceTools(
+  settings: {
+    workspaceToolsEnabled?: boolean;
+    workspaceRoot?: string | null;
+    workspaceToolsConsentAcknowledged?: boolean;
+  },
+  conversationRoot?: string | null,
+): ToolDefinition[] {
+  if (!resolveActiveWorkspaceRoot(conversationRoot, settings)) {
     return [];
   }
   return builtinToolDefinitions().filter((t) => WORKSPACE_TOOL_NAMES.has(t.name));
+}
+
+/** Basename for chip display (Windows + POSIX). */
+export function workspaceFolderLabel(root: string): string {
+  const normalized = root.replace(/[\\/]+$/, '');
+  const parts = normalized.split(/[/\\]/);
+  return parts[parts.length - 1] || root;
 }
 
 /** Built-in document tools exposed to the model for a given turn intent. */

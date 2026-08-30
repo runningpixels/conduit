@@ -32,6 +32,7 @@ export type { ProviderError } from './generated/provider_error';
 export type { ProviderEvent } from './generated/provider_event';
 
 // Agent web search (M-WebSearch).
+export type { WebSearchMode } from './generated/web_search_mode';
 export type { SearchContextSize } from './generated/search_context_size';
 export type { ReturnTokenBudget } from './generated/return_token_budget';
 export type { WebSearchFilters } from './generated/web_search_filters';

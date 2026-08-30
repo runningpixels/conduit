@@ -6,10 +6,13 @@ import {
   discoverConnector,
   getArtifact,
   getConnectorRuntimeStates,
+  getConversation,
   getConversationMessages,
   invokeConnectorTool,
   listConnectorCapabilities,
+  pickWorkspaceFolder,
   removeLastTurn,
+  setConversationWorkspace,
   startConnector,
   startChatStream,
   updateSettings,
@@ -27,6 +30,7 @@ import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } fr
 import {
   webSearchCreateDeveloperPromptFor,
   webSearchDeveloperPromptFor,
+  localWebSearchDeveloperPromptFor,
 } from './webSearchDeveloperPrompt';
 import {
   buildArtifactEditDeveloperPrompt,
@@ -51,10 +55,11 @@ import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { Composer, type ComposerHandle } from './Composer';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
+import { WorkspaceToolsConsentDialog } from '../workspace/settings/WorkspaceToolsConsentDialog';
 import { SuggestedPrompts } from './SuggestedPrompts';
 import { deriveSuggestedPrompts } from './suggestedPromptLogic';
 import { getMessageIdByRequest } from '../ipc/client';
-import { resolveWebSearchForTurn } from './webSearchIntent';
+import { resolveSearchBackend, resolveWebSearchForTurn, type SearchBackend } from './webSearchIntent';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
 import {
@@ -69,6 +74,7 @@ import {
   isDocumentContentTool,
   selectBuiltinBrandTools,
   selectBuiltinDocumentTools,
+  selectBuiltinWebTools,
   selectBuiltinWorkspaceTools,
   type DocumentToolActivity,
 } from './agentTools';
@@ -91,8 +97,9 @@ export interface ChatViewHandle {
   scrollToMessage: (messageId: string) => void;
   /// Insert text at the composer cursor position (used by prompts library).
   insertPrompt: (text: string) => void;
-  /// V7 — toggle the per-turn web-search flag (⌘⇧W / command palette).
+  /// V7 — toggle conversation web-search (⌘⇧W / command palette).
   /// No-op when the composer's web toggle would not be visible.
+  /// Stays on until the user turns it off.
   toggleWebSearch: () => void;
   /// V7 — fork the conversation at the current (last) turn (⌘⇧F / palette).
   /// Resolves true when a turn existed and the fork was requested.
@@ -169,8 +176,8 @@ export function buildProviderRequest(
   conversationId: string,
   toolDefinitions: ToolDefinition[],
   followUpArtifact?: FollowUpArtifactContext,
-  /// Phase 7 / M-WebSearch: per-turn search toggle. Defaults false.
-  webSearchOn?: boolean,
+  /// Hosted XOR local. Absent / null = no search on this turn.
+  searchBackend?: SearchBackend | null,
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
@@ -218,45 +225,51 @@ export function buildProviderRequest(
   // tool itself, selected below from this same flag) would be spent
   // teaching the model about a capability the app cannot let the user use.
   const isBrandIntent = looksLikeBrandThemeRequest(prompt) && allowUserBranding;
-  const webSearch = webSearchOn
-    ? {
-        enabled: true,
-        searchContextSize: settings.webSearch.searchContextSize,
-        ...(settings.webSearch.allowedDomains.length > 0 ||
-        settings.webSearch.blockedDomains.length > 0
-          ? {
-              filters: {
-                ...(settings.webSearch.allowedDomains.length > 0
-                  ? { allowedDomains: settings.webSearch.allowedDomains }
-                  : {}),
-                ...(settings.webSearch.blockedDomains.length > 0
-                  ? { blockedDomains: settings.webSearch.blockedDomains }
-                  : {}),
-              },
-            }
-          : {}),
-        externalWebAccess: settings.webSearch.externalWebAccess,
-        returnTokenBudget: settings.webSearch.returnTokenBudget,
-        userLocation: settings.webSearch.userLocation,
-        includeSources: settings.webSearch.includeSources,
-      }
-    : undefined;
+  const searchActive = searchBackend === 'hosted' || searchBackend === 'local';
+  // Hosted only: inject ProviderRequest.web_search. Local turns declare
+  // web_search/web_fetch as function tools instead — never both.
+  const webSearch =
+    searchBackend === 'hosted'
+      ? {
+          enabled: true,
+          searchContextSize: settings.webSearch.searchContextSize,
+          ...(settings.webSearch.allowedDomains.length > 0 ||
+          settings.webSearch.blockedDomains.length > 0
+            ? {
+                filters: {
+                  ...(settings.webSearch.allowedDomains.length > 0
+                    ? { allowedDomains: settings.webSearch.allowedDomains }
+                    : {}),
+                  ...(settings.webSearch.blockedDomains.length > 0
+                    ? { blockedDomains: settings.webSearch.blockedDomains }
+                    : {}),
+                },
+              }
+            : {}),
+          externalWebAccess: settings.webSearch.externalWebAccess,
+          returnTokenBudget: settings.webSearch.returnTokenBudget,
+          userLocation: settings.webSearch.userLocation,
+          includeSources: settings.webSearch.includeSources,
+        }
+      : undefined;
   const infoDevPrompt =
-    !isCreationIntent && !webSearch ? informationalDeveloperPromptFor(prompt) : undefined;
+    !isCreationIntent && !searchActive ? informationalDeveloperPromptFor(prompt) : undefined;
   const editDevPrompt =
     !isCreationIntent && !infoDevPrompt && followUpArtifact
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
-  const webSearchDevPrompt = webSearch
-    ? isCreationIntent
+  const webSearchDevPrompt = !searchActive
+    ? undefined
+    : isCreationIntent
       ? webSearchCreateDeveloperPromptFor()
-      : webSearchDeveloperPromptFor()
-    : undefined;
+      : searchBackend === 'local'
+        ? localWebSearchDeveloperPromptFor()
+        : webSearchDeveloperPromptFor();
   const developerPrompt =
     [infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') || undefined;
   const systemPrompt = [
     baseSystemPrompt(),
-    ...(webSearch && !isCreationIntent ? [] : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX()]),
+    ...(searchActive && !isCreationIntent ? [] : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX()]),
     ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
   ].join(' ');
 
@@ -379,16 +392,18 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [threadLoading, setThreadLoading] = useState(false);
   const [stuckToBottom, setStuckToBottom] = useState(true);
   const [showJumpPill, setShowJumpPill] = useState(false);
-  // Phase 7 / M-WebSearch: per-turn search toggle. Visible only when
-  // `settings.webSearchEnabled` is on; defaults to off each time the
-  // component mounts. Reset after each send so the user must explicitly
-  // opt in per turn.
+  // Phase 7 / M-WebSearch: conversation-scoped search toggle. Visible only when
+  // `settings.webSearchEnabled` is on; defaults to off on mount. Stays on until
+  // the user clicks it off (no longer reset after each send).
   const [webSearchOn, setWebSearchOn] = useState(false);
   // Phase 7 / M-WebSearch: consent dialog for first-time chat-bar toggle.
   // If the user has already acknowledged via Settings, this never shows.
   // Session-only dismissal (same UX as diagnostics disclosure M6.5).
   const [showChatConsent, setShowChatConsent] = useState(false);
   const [chatConsentDismissed, setChatConsentDismissed] = useState(false);
+  const [conversationWorkspaceRoot, setConversationWorkspaceRoot] = useState<string | null>(null);
+  const [showWorkspaceConsent, setShowWorkspaceConsent] = useState(false);
+  const [workspacePicking, setWorkspacePicking] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const stuckRef = useRef(true);
@@ -423,6 +438,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   useEffect(() => {
     if (!conversationId) {
       setTurns([]);
+      setConversationWorkspaceRoot(null);
       setThreadLoading(false);
       return;
     }
@@ -435,12 +451,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setThreadLoading(true);
     void (async () => {
       try {
-        const messages = await getConversationMessages(conversationId);
+        const [messages, conversation] = await Promise.all([
+          getConversationMessages(conversationId),
+          getConversation(conversationId),
+        ]);
         if (!cancelled) {
           const turns = (
             await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
           ).filter((t): t is ChatTurn => t !== null);
           setTurns(turns);
+          setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
         }
       } catch (error) {
         if (!cancelled) onStatus(error instanceof Error ? error.message : 'Failed to load conversation');
@@ -532,13 +552,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
-  async function loadToolDefinitions(prompt: string): Promise<ToolDefinition[]> {
+  async function loadToolDefinitions(
+    prompt: string,
+    searchBackend: SearchBackend | null,
+  ): Promise<ToolDefinition[]> {
     const intent = classifyDocumentTurnIntent(prompt);
     const connectorTools = await loadConnectorToolDefinitions();
     const builtinTools = selectBuiltinDocumentTools(intent);
     const brandTools = selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt));
-    const workspaceTools = selectBuiltinWorkspaceTools(settings);
-    return [...builtinTools, ...brandTools, ...workspaceTools, ...connectorTools];
+    const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot);
+    // Local DuckDuckGo only when this turn resolved to local — never alongside
+    // ProviderRequest.web_search (same name collision with hosted web_search).
+    const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
+    return [...builtinTools, ...brandTools, ...workspaceTools, ...webTools, ...connectorTools];
   }
 
   function applyRuntimeEventToActiveStream(
@@ -646,8 +672,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         if (!state) return false;
         // Hosted web_search completes on the provider with no runtime finish —
         // `toolCallAwaitsRuntimeFinish` excludes it so we do not burn the 30s
-        // deadline after the model already said "Done".
-        return state.toolCalls.some(toolCallAwaitsRuntimeFinish);
+        // deadline after the model already said "Done". Local DuckDuckGo waits.
+        return state.toolCalls.some((tc) =>
+          toolCallAwaitsRuntimeFinish(tc, state.searchBackend),
+        );
       })();
       if (!hasPending && !hasUnresolvedComplete) break;
       await new Promise((resolve) => window.setTimeout(resolve, 50));
@@ -668,7 +696,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setPrompt('');
     onStatus(makeStatus('Loading connector tools', 'active', 'chat'));
 
-    const toolDefinitions = await loadToolDefinitions(trimmed);
+    const searchOn = resolveWebSearchForTurn(settings, webSearchOn, trimmed);
+    const searchBackend = searchOn
+      ? resolveSearchBackend(
+          settings.webSearch.mode,
+          settings.activeProvider,
+          settings.providerEndpoints,
+        )
+      : null;
+    const toolDefinitions = await loadToolDefinitions(trimmed, searchBackend);
     const priorHistory = history.slice(0, -1);
     const followUpArtifact = await resolveFollowUpArtifactContext(
       priorHistory,
@@ -684,12 +720,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       conversationId,
       toolDefinitions,
       followUpArtifact,
-      resolveWebSearchForTurn(settings, webSearchOn, trimmed),
+      searchBackend,
     );
-    // Reset the per-turn search toggle after building the request so the
-    // next turn defaults back to off, per spec §5.2.
-    setWebSearchOn(false);
-    const initialStream = createAssistantStreamState(request.requestId);
+    // Keep the chat-bar search toggle armed until the user turns it off.
+    const initialStream = createAssistantStreamState(request.requestId, searchBackend);
     providerToolByCallIdRef.current = {};
     pendingRuntimeCallsRef.current = new Set();
     activeRequestRef.current = {
@@ -735,7 +769,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         // mirrors it for render. Computing from the ref (not the state) avoids
         // the render-lag where the finally block would read a state missing the
         // last delta — the useEffect-synced ref only caught up after paint.
-        const base = streamStateRef.current ?? createAssistantStreamState(request.requestId);
+        const base =
+          streamStateRef.current ??
+          createAssistantStreamState(request.requestId, searchBackend);
         const next = applyProviderEvent(base, event);
         streamStateRef.current = next;
         setActiveStream(next);
@@ -751,9 +787,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           // The `toolCallComplete` event is still rendered for the tool card.
           // Track client tools so `waitForPendingRuntimeCalls` blocks until the
           // matching `toolCallFinished` arrives. Hosted web_search never gets
-          // one — the provider already ran it — so skip those ids.
+          // one — the provider already ran it — so skip those ids. Local
+          // DuckDuckGo web_search is a normal builtin and must wait.
           const completedCall = next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
-          if (!completedCall || !isWebSearchToolCall(completedCall)) {
+          const hostedWebSearch =
+            completedCall &&
+            isWebSearchToolCall(completedCall) &&
+            next.searchBackend !== 'local';
+          if (!hostedWebSearch) {
             pendingRuntimeCallsRef.current.add(event.toolCallId);
           }
           const toolName =
@@ -990,6 +1031,51 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setWebSearchOn((on) => !on);
   }
 
+  async function bindWorkspaceFolder(path: string) {
+    if (!conversationId) return;
+    try {
+      const updated = await setConversationWorkspace(conversationId, path);
+      setConversationWorkspaceRoot(updated.workspaceRoot?.trim() || path);
+      // Remember as Settings default for future new chats (does not force enable).
+      await updateSettings({
+        workspaceRoot: path,
+        workspaceToolsConsentAcknowledged: true,
+      });
+      onStatus(`Working in ${path}`);
+    } catch (error) {
+      onStatus(error instanceof Error ? error.message : 'Could not set workspace folder');
+    }
+  }
+
+  async function handleWorkspacePick() {
+    if (!conversationId || workspacePicking) return;
+    if (!settings.workspaceToolsConsentAcknowledged) {
+      setShowWorkspaceConsent(true);
+      return;
+    }
+    setWorkspacePicking(true);
+    try {
+      const path = await pickWorkspaceFolder();
+      if (path == null) return;
+      await bindWorkspaceFolder(path);
+    } catch (error) {
+      onStatus(error instanceof Error ? error.message : 'Could not pick folder');
+    } finally {
+      setWorkspacePicking(false);
+    }
+  }
+
+  async function handleWorkspaceClear() {
+    if (!conversationId) return;
+    try {
+      await setConversationWorkspace(conversationId, null);
+      setConversationWorkspaceRoot(null);
+      onStatus('Workspace folder cleared for this chat');
+    } catch (error) {
+      onStatus(error instanceof Error ? error.message : 'Could not clear workspace folder');
+    }
+  }
+
   function handleSuggestionSelect(text: string) {
     setPrompt(text);
     requestAnimationFrame(() => composerRef.current?.focusPrompt());
@@ -1158,6 +1244,21 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 <BotGlyph className="brand-mark" aria-hidden="true" />
                 What are we working on?
               </h1>
+              {!conversationWorkspaceRoot && conversationId ? (
+                <p style={{ marginTop: 12, fontSize: 13, color: 'var(--ink-2)', maxWidth: 360 }}>
+                  Optional:{' '}
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    style={{ padding: '2px 6px', fontSize: 13 }}
+                    disabled={workspacePicking}
+                    onClick={() => void handleWorkspacePick()}
+                  >
+                    work in a folder
+                  </button>{' '}
+                  so the assistant can read and edit files there.
+                </p>
+              ) : null}
             </div>
           )}
           {!threadLoading && turns.flatMap((turn, turnIndex) => {
@@ -1351,6 +1452,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         streaming={activeRequestId != null}
         webSearchOn={webSearchOn}
         onWebSearchToggle={handleWebSearchToggle}
+        workspaceRoot={conversationWorkspaceRoot}
+        onWorkspacePick={() => void handleWorkspacePick()}
+        onWorkspaceClear={() => void handleWorkspaceClear()}
         onOpenSettings={onOpenSettings}
         usage={accumulatedUsage}
       />
@@ -1369,6 +1473,28 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           setShowChatConsent(false);
           // Remember the dismissal for this session only.
           setChatConsentDismissed(true);
+        }}
+      />
+      <WorkspaceToolsConsentDialog
+        visible={showWorkspaceConsent}
+        onAllow={() => {
+          setShowWorkspaceConsent(false);
+          void (async () => {
+            try {
+              await updateSettings({ workspaceToolsConsentAcknowledged: true });
+              setWorkspacePicking(true);
+              const path = await pickWorkspaceFolder();
+              if (path == null) return;
+              await bindWorkspaceFolder(path);
+            } catch (error) {
+              onStatus(error instanceof Error ? error.message : 'Could not set workspace folder');
+            } finally {
+              setWorkspacePicking(false);
+            }
+          })();
+        }}
+        onDeny={() => {
+          setShowWorkspaceConsent(false);
         }}
       />
     </>

@@ -78,6 +78,7 @@ fn main() {
             get_conversation,
             delete_conversation,
             set_conversation_title,
+            set_conversation_workspace,
             delete_all_conversations,
             save_attachment,
             list_attachments,

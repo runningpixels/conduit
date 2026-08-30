@@ -112,6 +112,12 @@ pub struct Conversation {
     pub cloud_id: Option<String>,
     #[ts(optional, type = "Record<string, unknown>")]
     pub metadata: Option<serde_json::Value>,
+    /// Absolute path to the workspace folder bound to this conversation.
+    /// When set, workspace agent tools use this root (after consent) even if
+    /// the global settings default is off or different.
+    #[serde(default)]
+    #[ts(optional)]
+    pub workspace_root: Option<String>,
 }
 
 /// A history-rail entry: a conversation plus enough derived state (message
@@ -199,6 +205,28 @@ pub struct ResponseFormatHint {
 // serialize it (e.g. OpenAI's Responses API uses `{"type":"web_search", ...}`
 // rather than a function tool).
 // =============================================================================
+
+/// Where web search runs when the user opts in for a turn.
+///
+/// `Auto` picks provider-hosted search when the active provider/endpoint
+/// supports it, otherwise Conduit's DuckDuckGo builtin. A turn must never
+/// inject both hosted search and the local `web_search` function tool.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/web_search_mode.ts"
+)]
+pub enum WebSearchMode {
+    #[default]
+    Auto,
+    /// Always use the provider's hosted search tool (OpenAI `web_search`,
+    /// Gemini `google_search`). Unsupported endpoints emit `SearchUnavailable`.
+    Hosted,
+    /// Always use Conduit's DuckDuckGo Instant Answer builtin + `web_fetch`.
+    /// Never injects hosted search, even on OpenAI/Gemini.
+    Local,
+}
 
 /// How much search-result context the model sees before generating a response.
 /// Provider-specific; the adapter maps it onto the hosted tool's wire field
@@ -339,6 +367,10 @@ impl Default for AgentGuardrails {
     export_to = "../packages/config-schema/src/generated/web_search_defaults.ts"
 )]
 pub struct WebSearchDefaults {
+    /// Auto / provider-hosted / Conduit local (DuckDuckGo). Defaults to Auto
+    /// so existing settings files keep working without a migration.
+    #[serde(default)]
+    pub mode: WebSearchMode,
     #[serde(default = "default_search_context_size")]
     pub search_context_size: SearchContextSize,
     #[serde(default)]
@@ -363,6 +395,7 @@ fn default_search_context_size() -> SearchContextSize {
 impl Default for WebSearchDefaults {
     fn default() -> Self {
         Self {
+            mode: WebSearchMode::Auto,
             search_context_size: SearchContextSize::Medium,
             allowed_domains: Vec::new(),
             blocked_domains: Vec::new(),

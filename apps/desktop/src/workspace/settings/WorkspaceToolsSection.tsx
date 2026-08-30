@@ -10,7 +10,7 @@ interface WorkspaceToolsSectionProps {
   onStatus: (message: string) => void;
 }
 
-/** Settings for sandbox-scoped workspace file tools (no MCP). */
+/** Defaults for workspace file tools. Day-to-day binding is on the composer chip. */
 export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: WorkspaceToolsSectionProps) {
   const [showConsent, setShowConsent] = useState(false);
   const [pendingConsentState, setPendingConsentState] = useState<AppSettings | null>(null);
@@ -25,7 +25,7 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
       const path = await pickWorkspaceFolder();
       if (path == null) return;
       onUpdate({ ...settings, workspaceRoot: path });
-      onStatus(`Workspace folder set to ${path}`);
+      onStatus(`Default workspace folder set to ${path}`);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       onStatus(`Could not pick folder: ${message}`);
@@ -48,24 +48,24 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
         <span>Workspace tools</span>
       </div>
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
-        Let the model read and edit files in one folder you choose — no MCP server
-        required. Paths stay inside that folder; sensitive filenames are blocked.
-        {appName()} does not expose a shell.
+        Bind a folder from the chat bar (“Work in a folder”) for a single conversation.
+        Use this section for a <strong>default folder on new chats</strong>. Sensitive
+        filenames stay blocked; {appName()} does not expose a shell.
       </p>
 
       <div className="form-grid">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn" type="button" disabled={picking} onClick={() => void chooseFolder()}>
-            {root ? 'Change folder…' : 'Choose folder…'}
+            {root ? 'Change default folder…' : 'Choose default folder…'}
           </button>
           {root ? (
             <button className="btn ghost" type="button" onClick={clearFolder}>
-              Clear
+              Clear default
             </button>
           ) : null}
         </div>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
-          {root || 'No folder selected'}
+          {root || 'No default folder'}
         </p>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
@@ -83,11 +83,11 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
               }
             }}
           />
-          Enable workspace file tools
+          Apply default folder to new chats
         </label>
         {!root && (
           <p style={{ margin: 0, fontSize: '11px', color: 'var(--ink-3)' }}>
-            Choose a folder before enabling.
+            Choose a default folder before enabling.
           </p>
         )}
 

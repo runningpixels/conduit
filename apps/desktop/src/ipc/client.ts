@@ -8,6 +8,7 @@ import type {
   ArtifactContent,
   ArtifactExportResult,
   Attachment,
+  BrandConfig,
   CancelChatStreamRequest,
   ConnectorCapability,
   ConnectorDefinition,
@@ -54,6 +55,184 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function updateSettings(patch: SettingsPatch): Promise<AppSettings> {
   return invoke<AppSettings>('update_settings', { patch });
+}
+
+/**
+ * The active white-label brand, or `null` if none is configured. Rust-side
+ * validated (hex grammar, dark/light symmetry) — the renderer's `applyBrand`
+ * re-validates anyway, since this value also gets cached in localStorage for
+ * the pre-paint boot path, and a cache is not a source of truth.
+ */
+export async function getBrandConfig(): Promise<BrandConfig | null> {
+  return invoke<BrandConfig | null>('get_brand_config');
+}
+
+/**
+ * The active brand logo as a complete, ready-to-render `data:` URI, or `null`
+ * if none is configured. Rust assembles the whole URI — including the MIME
+ * type, chosen from the file's magic bytes rather than a caller-supplied
+ * claim — specifically so a hostile MIME string can never be used to break
+ * out of the URI here. The renderer must never build this string from parts
+ * (bytes + a MIME it picked); see `brand/logo.ts`'s `isValidLogoDataUri` for
+ * the defence-in-depth re-check applied before this value ever reaches an
+ * `<img src>`.
+ */
+export async function getBrandLogo(): Promise<string | null> {
+  return invoke<string | null>('get_brand_logo');
+}
+
+/**
+ * Save a picked logo file. `bytes` is the raw file content; `fileName` is
+ * used for its extension only (Rust re-derives the actual type from magic
+ * bytes, it does not trust either the extension or a MIME string). Resolves
+ * to the stored filename.
+ */
+export async function saveBrandLogo(bytes: number[], fileName: string): Promise<string> {
+  return invoke<string>('save_brand_logo', { bytes, fileName });
+}
+
+export async function clearBrandLogo(): Promise<void> {
+  return invoke<void>('clear_brand_logo');
+}
+
+/**
+ * Non-blocking brand warnings (e.g. a palette clearing validation but falling
+ * short of WCAG AA). Empty when unbranded, `branding_enabled` is off, or
+ * nothing is wrong. A `field`/`message` pair rather than a raw string — the
+ * settings UI shows `message` and can point at `field` — mirroring
+ * `commands::branding::BrandWarningPayload` on the Rust side, which is
+ * hand-written (not ts-rs-derived) since that crate stays IO-agnostic. No
+ * generated type exists for it, so the shape is declared here instead.
+ */
+export interface BrandWarning {
+  field: string;
+  message: string;
+}
+
+export async function getBrandWarnings(): Promise<BrandWarning[]> {
+  return invoke<BrandWarning[]>('get_brand_warnings');
+}
+
+/**
+ * Remove the active brand config (and its logo). Idempotent. Does not touch
+ * the renderer's applied state — callers pair this with `clearBrand()`
+ * (`brand/applyBrand.ts`) to restore the stock look.
+ */
+export async function clearBrandConfig(): Promise<void> {
+  return invoke<void>('clear_brand_config');
+}
+
+/**
+ * Import a `brand.md` from a caller-supplied path. Validated exactly like an
+ * in-app edit; an invalid source file is rejected and nothing is written.
+ *
+ * The Branding section does NOT use this directly — see
+ * `importBrandFileDialog` below for why (ADR-008: the renderer never invokes
+ * a Tauri plugin's own JS command, including the dialog plugin, so a picked
+ * path can never originate in the renderer). This wrapper is kept for any
+ * caller that already has a trusted path in hand.
+ */
+export async function importBrandFile(path: string): Promise<BrandConfig> {
+  return invoke<BrandConfig>('import_brand_file', { path });
+}
+
+/**
+ * Import a `brand.md` chosen through an OS file picker, entirely on the Rust
+ * side (ADR 008: `docs/adr/adr-008-tauri-capability-surface.md`). The
+ * default capability grants `core:*` only — no `dialog:default` — precisely
+ * so the renderer cannot call `invoke('plugin:dialog|open')` directly and
+ * bypass Conduit's own command layer. This command shows the picker and does
+ * the import in one Rust-side round trip; the renderer never sees, and
+ * cannot supply, a filesystem path.
+ *
+ * Resolves to `null` when the user cancels the picker — that is not an
+ * error and callers must not treat it as one (no error text, no status
+ * toast, no state change). Resolves to the imported `BrandConfig` on
+ * success.
+ */
+export async function importBrandFileDialog(): Promise<BrandConfig | null> {
+  return invoke<BrandConfig | null>('import_brand_file_dialog');
+}
+
+/**
+ * Apply renderer-authored edits (identity + palette) to the on-disk
+ * `brand.md`. The renderer never authors TOML itself — this sends a typed
+ * `BrandConfig` draft and Rust merges it surgically into any existing file,
+ * preserving hand-written comments and the prose body. The response is the
+ * re-parsed, authoritative config: treat it as truth, not the draft that was
+ * sent, since Rust may normalize values the draft only approximated.
+ *
+ * Added alongside Phase 3 (Settings → Branding); a Rust agent registers the
+ * command in parallel, so it may not exist yet in every build this runs
+ * against. Callers must not assume it always resolves.
+ */
+export async function applyBrandEdits(config: BrandConfig): Promise<BrandConfig> {
+  return invoke<BrandConfig>('apply_brand_edits', { config });
+}
+
+/**
+ * Parse and validate `source` (raw `brand.md`-shaped text, frontmatter and
+ * all) as a `BrandConfig` — pure parse+validate, no persistence, no side
+ * effects. This is what the document panel uses to decide whether a
+ * `+++`-prefixed Markdown artifact is actually a brand proposal before it
+ * shows any Preview/Apply affordance for it: a rejection here means "not a
+ * valid brand," not "the command failed," and callers should treat it the
+ * same way in both cases — show nothing, rather than surface an error for
+ * what might just be an ordinary Markdown document that happens to start
+ * with `+++`.
+ *
+ * Added alongside Phase 4 (chat-authored themes); a Rust agent registers the
+ * `parse_brand_source` command in parallel, so it may not exist yet in every
+ * build this runs against. Callers must not assume it always resolves.
+ */
+export async function parseBrandSource(source: string): Promise<BrandConfig> {
+  return invoke<BrandConfig>('parse_brand_source', { source });
+}
+
+/**
+ * Parse, validate, and persist `source` as the active `brand.md` — the
+ * "Apply" path for a chat-authored theme (white-label plan §4, Phase 4).
+ * `source` is raw text (a whole `brand.md`, frontmatter and body), not a
+ * `BrandConfig` draft — unlike `applyBrandEdits` above, which the Settings
+ * editor uses for structured field-by-field edits and which is merged into
+ * whatever `brand.md` already exists. This one replaces it outright, which
+ * is why every caller must confirm with the user first: it is happy to
+ * overwrite an existing brand with no merge.
+ *
+ * Returns the re-parsed, authoritative config, exactly like
+ * `applyBrandEdits` — treat it as truth, not `source` itself.
+ *
+ * Unlike `parseBrandSource`/`write_brand_theme`, `set_brand_config` is
+ * already registered on the Rust side (`commands/branding.rs`) — it
+ * predates this phase, wired for the Settings → Branding import path.
+ */
+export async function setBrandConfig(source: string): Promise<BrandConfig> {
+  return invoke<BrandConfig>('set_brand_config', { source });
+}
+
+/**
+ * Export the active brand (config + logo, if any) to `destPath` for sharing
+ * or use as a Mode B build input. Same registration caveat as
+ * `applyBrandEdits` above, and same ADR-008 note as `importBrandFile`: kept
+ * for a caller with an already-trusted destination path, not used by the
+ * Branding section — see `exportBrandConfigDialog` below.
+ */
+export async function exportBrandConfig(destPath: string): Promise<void> {
+  return invoke<void>('export_brand_config', { destPath });
+}
+
+/**
+ * Export the active brand through an OS save-location picker, entirely on
+ * the Rust side — the export counterpart of `importBrandFileDialog` above;
+ * see that comment and ADR 008 for why this exists instead of a JS-side
+ * `invoke('plugin:dialog|save')`.
+ *
+ * Resolves to `null` when the user cancels the picker (not an error — no
+ * error text, no status toast, no state change). A non-null resolution means
+ * the export completed.
+ */
+export async function exportBrandConfigDialog(): Promise<void | null> {
+  return invoke<void | null>('export_brand_config_dialog');
 }
 
 export async function saveProviderCredential(request: CredentialRequest): Promise<CredentialSummary> {

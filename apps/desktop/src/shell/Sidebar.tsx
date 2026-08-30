@@ -14,6 +14,7 @@ import type { ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
 import { conversationGroup } from '../lib/dayGroup';
 import { modShortcutHint } from '../lib/shortcuts';
+import { appName } from '../brand';
 import {
   BrandMark,
   ConnectorsIcon,
@@ -51,6 +52,9 @@ interface SidebarProps {
   onDeleteConversation?: (id: string) => void;
   /** Delete all conversation history (routes through the confirm dialog). */
   onDeleteAllHistory: () => void;
+  /** Validated `data:image/...` brand logo URI, or omitted/undefined for the
+   *  built-in wordmark glyph. See `brand/logo.ts`. */
+  logoSrc?: string;
 }
 
 /** "2m" relative label, hover-only per §8.2. */
@@ -129,6 +133,7 @@ export function Sidebar({
   onExportDiagnostics,
   onDeleteConversation,
   onDeleteAllHistory,
+  logoSrc,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -239,8 +244,8 @@ export function Sidebar({
           element under the cursor rather than walking up to an ancestor. */}
       <div className="sb-head sidebar-inner">
         <span className="mark">
-          <BrandMark className="mark-glyph" />
-          <b>Conduit</b>
+          <BrandMark className="mark-glyph" src={logoSrc} />
+          <b>{appName()}</b>
         </span>
         <button
           className="sb-collapse"

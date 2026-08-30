@@ -29,4 +29,9 @@ webSearchConsentAcknowledged?: boolean,
 /**
  * Replace agent loop guardrails. Values are validated on save.
  */
-agent?: AgentGuardrails, };
+agent?: AgentGuardrails, 
+/**
+ * White-label Mode A: toggle whether the on-disk `brand.md` is loaded
+ * and applied. See `AppSettings::branding_enabled`.
+ */
+brandingEnabled?: boolean, };

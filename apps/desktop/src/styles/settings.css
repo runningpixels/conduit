@@ -497,3 +497,137 @@
   color: var(--hue-text);
   font-weight: 500;
 }
+
+/* ── Branding (white-label plan §4, Phase 3) ───────────────────────────── */
+.branding-note {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* A native fieldset, not a div: disabling it disables every descendant
+ * button/input/select in one attribute, which is what makes "off" genuinely
+ * inert rather than merely dimmed. */
+.branding-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.branding-fieldset:disabled { opacity: .5; }
+.branding-fieldset legend { padding: 0; margin-bottom: 4px; }
+
+.brand-text-input {
+  width: 100%;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.brand-text-input:disabled { color: var(--ink-3); }
+.brand-text-input.invalid { border-color: var(--err); }
+
+.brand-dropzone {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  transition: border-color var(--tap), box-shadow var(--tap);
+}
+.brand-dropzone.drop-active { border-color: var(--hue); box-shadow: var(--glow); }
+.brand-dropzone-preview {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+.brand-logo-img { width: 32px; height: 32px; object-fit: contain; color: var(--ink-2); }
+.brand-dropzone-body { flex: 1 1 auto; display: grid; gap: 8px; }
+.brand-logo-actions { display: flex; gap: 8px; }
+
+.brand-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--err);
+  line-height: 1.5;
+}
+
+.brand-theme-switch { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.brand-theme-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-2);
+}
+.brand-theme-btn[aria-pressed="true"] {
+  background: var(--hue-weak);
+  color: var(--hue-text);
+  border-color: var(--hue);
+}
+
+.brand-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+.brand-swatch { display: grid; gap: 6px; }
+.brand-swatch-controls { display: flex; align-items: center; gap: 8px; }
+.brand-swatch-controls input[type="color"] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: none;
+  flex: 0 0 auto;
+}
+.brand-hex-input { font-family: var(--font-mono); font-size: 12px; }
+.brand-field-error { font-size: 11px; color: var(--err); line-height: 1.4; }
+
+.brand-dirty-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin: 16px 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--hue-weak);
+  border: 1px solid var(--hue);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.brand-warnings {
+  margin-bottom: 20px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--warn) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--warn) 34%, transparent);
+}
+.brand-warning-item {
+  margin: 0;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.brand-warning-item + .brand-warning-item { border-top: 1px solid var(--line-soft); }

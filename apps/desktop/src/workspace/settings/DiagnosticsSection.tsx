@@ -7,6 +7,7 @@ import {
   revealPath,
 } from '../../ipc/client';
 import { ConfirmDialog } from '@conduit/ui';
+import { appName } from '../../brand';
 
 interface DiagnosticsSectionProps {
   settings: AppSettings;
@@ -18,17 +19,20 @@ function prettyJson(value: unknown): string {
 }
 
 /** Phase 6 M6.5: the one-time diagnostics-export disclosure copy. */
-const DIAGNOSTICS_DISCLOSURE_TEXT =
-  'Conduit diagnostics export includes:\n' +
-  '  • active provider + model\n' +
-  '  • local-only flag, diagnostics-enabled flag, theme\n' +
-  '  • redacted app paths (your home folder prefix is stripped)\n\n' +
-  'It NEVER includes:\n' +
-  '  • secrets or API keys\n' +
-  '  • provider base URLs\n' +
-  '  • artifact remote allowlists\n' +
-  '  • conversation or message content\n\n' +
-  'The bundle is written to your local exports folder.';
+function diagnosticsDisclosureText(): string {
+  return (
+    `${appName()} diagnostics export includes:\n` +
+    '  • active provider + model\n' +
+    '  • local-only flag, diagnostics-enabled flag, theme\n' +
+    '  • redacted app paths (your home folder prefix is stripped)\n\n' +
+    'It NEVER includes:\n' +
+    '  • secrets or API keys\n' +
+    '  • provider base URLs\n' +
+    '  • artifact remote allowlists\n' +
+    '  • conversation or message content\n\n' +
+    'The bundle is written to your local exports folder.'
+  );
+}
 
 /** Diagnostics section: disclosure, export, reveal. */
 export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionProps) {
@@ -122,7 +126,7 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
       <ConfirmDialog
         open={showDisclosure}
         title="Diagnostics export disclosure"
-        description={DIAGNOSTICS_DISCLOSURE_TEXT}
+        description={diagnosticsDisclosureText()}
         confirmLabel="Export"
         cancelLabel="Cancel"
         destructive={false}

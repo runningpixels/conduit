@@ -67,6 +67,7 @@ import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
   isDocumentContentTool,
+  selectBuiltinBrandTools,
   selectBuiltinDocumentTools,
   type DocumentToolActivity,
 } from './agentTools';
@@ -74,6 +75,9 @@ import {
   classifyDocumentTurnIntent,
   informationalDeveloperPromptFor,
 } from './documentTurnIntent';
+import { CONDUIT_BRAND_SYSTEM_APPENDIX, looksLikeBrandThemeRequest } from './brandPrompt';
+import { allowUserBranding } from '../brand/buildFlags';
+import { appName } from '../brand';
 
 export type { ChatTurn } from './conversationHydration';
 export type { DocumentToolActivity } from './agentTools';
@@ -153,7 +157,9 @@ export function describeInvokeError(error: unknown): string {
   return 'Stream failed';
 }
 
-export const BASE_SYSTEM_PROMPT = 'You are a helpful assistant in the Conduit desktop shell.';
+export function baseSystemPrompt(): string {
+  return `You are a helpful assistant in the ${appName()} desktop shell.`;
+}
 
 export function buildProviderRequest(
   settings: AppSettings,
@@ -202,6 +208,15 @@ export function buildProviderRequest(
   // question turn (the original cause of the spurious "no artifact content"
   // warning).
   const isCreationIntent = looksLikeArtifactCreationRequest(prompt);
+  // Gated separately from the artifact appendix (see brandPrompt.ts's module
+  // comment for why): this appendix is only worth its tokens on a turn that
+  // plausibly wants `write_brand_theme`, not on every turn. Also gated on
+  // `allowUserBranding` (`brand/buildFlags.ts`) -- same reasoning as
+  // `agentTools.ts`'s `selectBuiltinBrandTools`: a locked build can never
+  // apply a `write_brand_theme` result, so this appendix's tokens (and the
+  // tool itself, selected below from this same flag) would be spent
+  // teaching the model about a capability the app cannot let the user use.
+  const isBrandIntent = looksLikeBrandThemeRequest(prompt) && allowUserBranding;
   const webSearch = webSearchOn
     ? {
         enabled: true,
@@ -238,10 +253,11 @@ export function buildProviderRequest(
     : undefined;
   const developerPrompt =
     [infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') || undefined;
-  const systemPrompt =
-    webSearch && !isCreationIntent
-      ? BASE_SYSTEM_PROMPT
-      : `${BASE_SYSTEM_PROMPT} ${CONDUIT_ARTIFACT_SYSTEM_APPENDIX}`;
+  const systemPrompt = [
+    baseSystemPrompt(),
+    ...(webSearch && !isCreationIntent ? [] : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX()]),
+    ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
+  ].join(' ');
 
   return {
     requestId: crypto.randomUUID(),
@@ -519,7 +535,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const intent = classifyDocumentTurnIntent(prompt);
     const connectorTools = await loadConnectorToolDefinitions();
     const builtinTools = selectBuiltinDocumentTools(intent);
-    return [...builtinTools, ...connectorTools];
+    const brandTools = selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt));
+    return [...builtinTools, ...brandTools, ...connectorTools];
   }
 
   function applyRuntimeEventToActiveStream(

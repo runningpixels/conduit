@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { BrandConfig } from '@conduit/config-schema';
 import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
-import { getArtifactContentBytes, openExternalUrl, readArtifactFileBytes, revealPath } from '../ipc/client';
+import {
+  getArtifactContentBytes,
+  openExternalUrl,
+  parseBrandSource,
+  readArtifactFileBytes,
+  revealPath,
+  setBrandConfig,
+} from '../ipc/client';
 import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
@@ -13,6 +21,9 @@ import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
 import { readExportMetadata } from '../shell/uiPrefs';
 import { modShortcutHint } from '../lib/shortcuts';
 import type { PendingArtifact } from '../artifacts/pendingArtifact';
+import { applyBrand, applyBrandTheme, clearBrand } from '../brand/applyBrand';
+import { allowUserBranding } from '../brand/buildFlags';
+import { ConfirmDialog } from '@conduit/ui';
 
 type DocTab = 'preview' | 'source';
 
@@ -70,6 +81,40 @@ interface DocumentPanelProps {
   onDismissPending?: () => void;
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
   onStatus?: (message: string) => void;
+  /** Validated `data:image/...` brand logo URI, threaded to the empty-state
+   *  BrandMark. See `brand/logo.ts`. */
+  logoSrc?: string;
+  /**
+   * The currently-active persisted brand (or `null` if unbranded), threaded
+   * down purely so a preview started from this panel has something correct
+   * to revert *to* — the stock look if nothing is active, or whatever is
+   * already applied if something is. See `handleStopBrandPreview` below.
+   */
+  activeBrandConfig?: BrandConfig | null;
+  /** Fired after "Apply" persists and applies a brand-theme artifact, so the
+   *  app shell (sidebar wordmark, `App.tsx`'s own brand state) picks up the
+   *  change without waiting for a reload — the same coherence hook
+   *  `BrandingSection`'s `onBrandChange` serves for Settings. */
+  onBrandApplied?: (config: BrandConfig) => void;
+  /**
+   * `AppSettings.brandingEnabled` — the user's own "Enable branding" toggle,
+   * threaded down so the brand-eligibility check below can consult it
+   * directly instead of only sniffing artifact content. Defaults `false`
+   * (matching `AppSettings.branding_enabled`'s own opt-in-only default) so a
+   * caller that forgets to pass it fails closed rather than silently
+   * offering Preview/Apply.
+   *
+   * This matters beyond mere UX polish: unlike Apply (which round-trips
+   * through `setBrandConfig`, itself now gated server-side — see
+   * `commands::branding::guard_write`), Preview
+   * (`handleBrandPreview`/`applyBrandTheme`) re-skins the running app's CSS
+   * custom properties entirely client-side, with no IPC call at all. If
+   * eligibility here did not also consult this flag, a user could hit
+   * Preview while Settings reported branding disabled and watch the app
+   * re-skin anyway — the exact "UI and running state disagree" failure this
+   * whole gate exists to prevent.
+   */
+  brandingEnabled?: boolean;
 }
 
 function ArtifactPendingState({
@@ -160,7 +205,7 @@ export function DocumentPanel({
   activeFileState,
   allowlist,
   styledPreview = true,
-  effectiveTheme: _effectiveTheme = 'light',
+  effectiveTheme = 'light',
   docTab,
   onSelectTab,
   onOpenArtifact,
@@ -171,6 +216,10 @@ export function DocumentPanel({
   onDismissPending,
   onRenameArtifact,
   onStatus,
+  logoSrc,
+  activeBrandConfig = null,
+  onBrandApplied,
+  brandingEnabled = false,
 }: DocumentPanelProps) {
   const [copied, setCopied] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -226,6 +275,164 @@ export function DocumentPanel({
   // V7 §8.7 — the metadata sidecar is a persistent preference (Settings →
   // Advanced), not a per-export checkbox inside an action menu.
   const includeMetadata = readExportMetadata() === 'on';
+
+  // ── Brand-theme Preview/Apply (white-label plan §4, Phase 4) ───────────
+  //
+  // Eligibility is "branding is actually permitted, AND the content is
+  // Markdown starting with `+++`, AND `parseBrandSource` accepts it" — never
+  // just content sniffing on its own. A `+++` prefix only means "might be
+  // TOML frontmatter"; plenty of ordinary Markdown could start that way by
+  // coincidence or by a user deliberately writing about the format. Showing
+  // branding actions on a document that fails validation (or that
+  // `parseBrandSource` can't even reach, e.g. because the command isn't
+  // registered yet) would be misleading, so an invalid/unreachable source
+  // shows nothing at all — never an error banner — exactly mirroring how an
+  // ordinary artifact with no `+++` prefix is treated.
+  //
+  // `brandingPermitted` folds in both authorization flags, mirroring
+  // `commands::branding::guard_write` on the Rust side (which every
+  // persisting write now runs through):
+  //   - `allowUserBranding` (`brand/buildFlags.ts`): the Mode B build-time
+  //     lock. A locked build's `set_brand_config`/`apply_brand_edits` always
+  //     refuse server-side regardless of this check, so offering
+  //     Preview/Apply here would be a pure dead end — the button would do
+  //     nothing a user can act on short of a different build.
+  //   - `brandingEnabled` (this panel's own prop, from
+  //     `AppSettings.branding_enabled`): unlike the build lock, this is
+  //     genuinely gating something reachable here that IPC alone cannot
+  //     catch. `handleBrandPreview` calls `applyBrandTheme` directly against
+  //     `document.documentElement` with no IPC round trip at all — if
+  //     eligibility here ignored this flag, clicking Preview while Settings
+  //     reports branding disabled would re-skin the running app anyway, the
+  //     UI and the persisted setting visibly disagreeing. Folding it in here
+  //     means that action is never offered in the first place, not merely
+  //     rejected after the fact the way a server round trip could.
+  const brandingPermitted = allowUserBranding && brandingEnabled;
+
+  const [brandCandidate, setBrandCandidate] = useState<{ artifactId: string; config: BrandConfig } | null>(null);
+  const [brandPreviewing, setBrandPreviewing] = useState(false);
+  const [confirmApplyBrand, setConfirmApplyBrand] = useState(false);
+  const [applyingBrand, setApplyingBrand] = useState(false);
+  const [brandApplyError, setBrandApplyError] = useState<string | null>(null);
+
+  const looksLikeBrandSource =
+    brandingPermitted && artifact?.kind === 'markdown' && sourceText.trimStart().startsWith('+++');
+
+  useEffect(() => {
+    setBrandCandidate(null);
+    setBrandApplyError(null);
+    if (!artifact || !looksLikeBrandSource) return;
+    let cancelled = false;
+    const artifactId = artifact.id;
+    void (async () => {
+      try {
+        const config = await parseBrandSource(sourceText);
+        if (!cancelled) setBrandCandidate({ artifactId, config });
+      } catch {
+        // Not a valid brand, or `parse_brand_source` isn't registered yet —
+        // either way, degrade to "show nothing" rather than an error banner.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifact?.id, looksLikeBrandSource, sourceText]);
+
+  // `brandingPermitted` is re-checked here too, not just folded into
+  // `looksLikeBrandSource` above: the effect that populates `brandCandidate`
+  // only re-runs (and clears it) after `brandingPermitted` flips and a
+  // render has committed, so re-checking it directly here closes that
+  // one-render gap instead of trusting the effect alone.
+  const brandEligible =
+    brandingPermitted && brandCandidate != null && brandCandidate.artifactId === artifact?.id;
+
+  // Refs so the "leaving this artifact" cleanup below always reverts using
+  // the *latest* preview/active-brand/theme values rather than whatever was
+  // current when the effect was set up — same technique, for the same
+  // reason, as `BrandingSection.tsx`'s own unmount cleanup.
+  const brandPreviewingRef = useRef(brandPreviewing);
+  const activeBrandConfigRef = useRef(activeBrandConfig);
+  const effectiveThemeRef = useRef(effectiveTheme);
+  useEffect(() => {
+    brandPreviewingRef.current = brandPreviewing;
+  }, [brandPreviewing]);
+  useEffect(() => {
+    activeBrandConfigRef.current = activeBrandConfig;
+  }, [activeBrandConfig]);
+  useEffect(() => {
+    effectiveThemeRef.current = effectiveTheme;
+  }, [effectiveTheme]);
+
+  // Switching to a different artifact (or unmounting) while previewing must
+  // not leave the whole app stuck on a never-saved candidate theme with no
+  // banner left to back out of it: revert to whatever was actually active
+  // (or the stock look), and reset the local "previewing" flag for the newly
+  // shown artifact.
+  useEffect(() => {
+    setBrandPreviewing(false);
+    setConfirmApplyBrand(false);
+    return () => {
+      if (!brandPreviewingRef.current) return;
+      if (activeBrandConfigRef.current) {
+        applyBrandTheme(activeBrandConfigRef.current, effectiveThemeRef.current);
+      } else {
+        clearBrand();
+      }
+    };
+  }, [artifact?.id]);
+
+  /**
+   * Preview: colours only, applied straight through `applyBrandTheme` — never
+   * `applyBrand()`, which also writes the pre-paint `localStorage` cache. An
+   * unpreviewed/abandoned theme must never resurrect on next launch, so a
+   * preview must leave that cache untouched exactly like `BrandingSection`'s
+   * own live-preview effect does.
+   */
+  function handleBrandPreview() {
+    if (!brandCandidate) return;
+    applyBrandTheme(brandCandidate.config, effectiveTheme);
+    setBrandPreviewing(true);
+    onStatus?.('Previewing this theme — not saved.');
+  }
+
+  /** The way back out of a preview: restore whatever was actually active
+   *  (or the stock look if nothing was), same logic as the unmount cleanup
+   *  above but user-triggered instead of implicit. */
+  function handleStopBrandPreview() {
+    if (activeBrandConfig) {
+      applyBrandTheme(activeBrandConfig, effectiveTheme);
+    } else {
+      clearBrand();
+    }
+    setBrandPreviewing(false);
+    onStatus?.('Stopped previewing.');
+  }
+
+  /** Apply: persist through the same `set_brand_config` path Settings' brand
+   *  import uses, then fully apply the re-parsed result (identity + palette
+   *  + the pre-paint cache) — unlike Preview, Apply is meant to survive a
+   *  relaunch. Confirmed first (`confirmApplyBrand`) because this replaces
+   *  the user's existing brand outright with no merge. */
+  async function handleApplyBrandConfirmed() {
+    if (!brandCandidate) return;
+    setApplyingBrand(true);
+    setBrandApplyError(null);
+    try {
+      const result = await setBrandConfig(sourceText);
+      applyBrand(result, effectiveTheme);
+      onBrandApplied?.(result);
+      setBrandPreviewing(false);
+      setConfirmApplyBrand(false);
+      onStatus?.('Brand applied.');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
+      setBrandApplyError(message);
+      onStatus?.(`Apply failed: ${message}`);
+    } finally {
+      setApplyingBrand(false);
+    }
+  }
 
   const externalLinkGrantKey = useMemo(() => {
     if (!effectiveArtifact) return null;
@@ -328,7 +535,7 @@ export function DocumentPanel({
   }
 
   if (!artifact) {
-    return <ArtifactEmptyState />;
+    return <ArtifactEmptyState logoSrc={logoSrc} />;
   }
 
   const name = artifact.title ?? 'Untitled artifact';
@@ -679,6 +886,45 @@ export function DocumentPanel({
             <strong>File missing.</strong> The payload is no longer at its indexed path.
           </div>
         )}
+        {brandEligible && (
+          <div className="doc-banner hold" role="status" aria-label="Brand theme actions">
+            {brandPreviewing ? (
+              <>
+                <strong>Previewing this theme.</strong> Colours are applied locally and not saved —
+                leaving preview restores your current look.
+              </>
+            ) : (
+              <>
+                <strong>This document defines a brand theme.</strong> Preview it locally, or apply it
+                to replace your saved brand.
+              </>
+            )}
+            {brandApplyError && (
+              <p className="brand-error" role="alert">
+                {brandApplyError}
+              </p>
+            )}
+            <div className="row">
+              {brandPreviewing ? (
+                <button className="btn ghost" type="button" onClick={handleStopBrandPreview}>
+                  Stop previewing
+                </button>
+              ) : (
+                <button className="btn ghost" type="button" onClick={handleBrandPreview}>
+                  Preview
+                </button>
+              )}
+              <button
+                className="btn primary"
+                type="button"
+                disabled={applyingBrand}
+                onClick={() => setConfirmApplyBrand(true)}
+              >
+                {applyingBrand ? 'Applying…' : 'Apply…'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="doc-content">
           <div className="doc-pane" data-doc-pane="preview">
@@ -757,6 +1003,15 @@ export function DocumentPanel({
         url={pendingExternalUrl}
         onConfirm={handleConfirmExternalLink}
         onCancel={handleCancelExternalLink}
+      />
+
+      <ConfirmDialog
+        open={confirmApplyBrand}
+        title="Apply this brand?"
+        description="Replaces your saved brand.md with this theme and applies it immediately. Your previous brand can be restored by applying an earlier theme again, but this action itself cannot be undone from here."
+        confirmLabel="Apply brand"
+        onCancel={() => setConfirmApplyBrand(false)}
+        onConfirm={() => void handleApplyBrandConfirmed()}
       />
     </section>
   );

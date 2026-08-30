@@ -30,6 +30,7 @@ const baseSettings = {
     wallClockBudgetSecs: 300,
   },
   keychainMode: 'os',
+  brandingEnabled: false,
 } as AppSettings;
 
 function userTurn(id: string, content: string): ChatTurn {

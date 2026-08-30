@@ -11,6 +11,7 @@ import {
 } from '../ipc/client';
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
+import { appName } from '../brand';
 
 type OnboardingStep = 'provider' | 'connectors' | 'finish';
 
@@ -59,7 +60,7 @@ export function Onboarding({
       }
       const next = await updateSettings({ ...settings, onboardingCompleted: true });
       onSettingsChange(next);
-      onStatus('Welcome to Conduit');
+      onStatus(`Welcome to ${appName()}`);
       onComplete();
     } catch (e) {
       onStatus(`Could not finish onboarding: ${String(e)}`);
@@ -79,9 +80,9 @@ export function Onboarding({
   return (
     <div className="app onboarding-shell" id="app">
       <div className="info-card onboarding-card">
-        <h2>Welcome to Conduit</h2>
+        <h2>Welcome to {appName()}</h2>
         <p className="onboarding-lede">
-          Conduit is local-first: your conversations, attachments, and artifacts stay on
+          {appName()} is local-first: your conversations, attachments, and artifacts stay on
           this machine. Provider credentials live in the OS keychain — never in plain
           settings. There is no background telemetry; update checks are opt-in and you
           will always be asked before an update is applied.
@@ -241,9 +242,9 @@ export function MigrationRecoveryNotice({
   return (
     <div className="app onboarding-shell" id="app">
       <div className="info-card onboarding-card">
-        <h2>Conduit could not upgrade your local data</h2>
+        <h2>{appName()} could not upgrade your local data</h2>
         <p className="onboarding-lede">
-          A database migration failed at startup. To keep the app usable, Conduit started
+          A database migration failed at startup. To keep the app usable, {appName()} started
           with a fresh local store. Your previous data was backed up before the reset —
           it is untouched and you can recover from it manually.
         </p>
@@ -274,7 +275,7 @@ export function MigrationRecoveryNotice({
             disabled={busy !== null}
             onClick={() => void handleRestart()}
           >
-            {busy === 'restart' ? 'Restarting…' : 'Restart Conduit'}
+            {busy === 'restart' ? 'Restarting…' : `Restart ${appName()}`}
           </button>
           <button
             className="btn"
@@ -320,8 +321,8 @@ export function MigrationRecoveryNotice({
               <div className="srow-text">
                 <b>Delete local data and start over</b>
                 <small>
-                  Applied on the next launch — the database is held open while Conduit is
-                  running, so the delete happens at startup. Conduit restarts immediately.
+                  Applied on the next launch — the database is held open while {appName()} is
+                  running, so the delete happens at startup. {appName()} restarts immediately.
                 </small>
               </div>
               <fieldset className="recovery-scope">

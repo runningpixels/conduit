@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
+import { appName } from '../brand';
 
 export interface OpenExternalLinkDialogProps {
   /** When null, the dialog is hidden. */
@@ -77,7 +78,7 @@ export function OpenExternalLinkDialog({ url, onConfirm, onCancel }: OpenExterna
           id="open-external-link-desc"
           style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}
         >
-          You&apos;re leaving Conduit to visit an external link:
+          You&apos;re leaving {appName()} to visit an external link:
         </p>
         <input
           type="text"

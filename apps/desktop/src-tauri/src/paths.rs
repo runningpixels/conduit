@@ -23,6 +23,11 @@ pub struct AppPaths {
     /// diagnostics exports. Promoted from the ad-hoc `root.join("exports")` so
     /// both flows write to one real, redacted, revealable path.
     pub exports: PathBuf,
+    /// White-label Mode A: `brand.md` + its logo live here. Not conversation-
+    /// or artifact-scoped, so it deliberately does not reuse the attachment
+    /// pipeline (`attachments`/`artifacts` above both require a real
+    /// `conversation_id` FK) — see `docs/private/white-label-plan.md` §4.
+    pub branding: PathBuf,
 }
 
 pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
@@ -47,6 +52,7 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
     let streams = root.join("streams");
     let connectors = root.join("connectors");
     let exports = root.join("exports");
+    let branding = root.join("branding");
 
     for path in [
         &root,
@@ -58,6 +64,7 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
         &streams,
         &connectors,
         &exports,
+        &branding,
     ] {
         fs::create_dir_all(path).map_err(|error| error.to_string())?;
     }
@@ -74,5 +81,6 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
         streams,
         connectors,
         exports,
+        branding,
     })
 }

@@ -39,3 +39,22 @@ js-licenses.json
 # their -wal/-shm companions are transient and regenerate on every open.
 *.sqlite-wal
 *.sqlite-shm
+
+# Mode B (white-label) build-time emitter output -- see
+# docs/private/white-label-plan.md §5, `cargo run --example apply_brand -p
+# provider-core`. Purely additive: nothing statically imports these, so a
+# stock checkout is unaffected by their absence. (The third emitted file,
+# apps/desktop/src/brand/generated.ts, is NOT gitignored -- index.ts imports
+# it unconditionally; see that file's own module comment for why it instead
+# follows the packages/config-schema/src/generated precedent of shipping
+# committed with a stock default.)
+packages/ui/src/brand.generated.css
+packages/ui/src/fonts/brand-ui.woff2
+packages/ui/src/fonts/brand-mono.woff2
+packages/ui/src/fonts/brand-serif.woff2
+
+# Phase 6 white-label build outputs (scripts/apply-brand-identity.mjs). Never
+# committed: they only exist inside a reseller's own build pipeline, and
+# tauri.conf.json.brand-backup is deleted again by --reset.
+apps/desktop/branding.build.json
+apps/desktop/src-tauri/tauri.conf.json.brand-backup

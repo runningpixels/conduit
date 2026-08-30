@@ -25,7 +25,32 @@ import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const srcRoot = join(here, '..');
-const sheet = readFileSync(join(here, 'SettingsSheet.tsx'), 'utf8');
+const sheetRaw = readFileSync(join(here, 'SettingsSheet.tsx'), 'utf8');
+
+/**
+ * Comments stripped, block then line, before any pattern below is matched --
+ * consistent with G8/G9 (cssContract.test.ts / brandLiterals.test.ts), and
+ * for the same reason: unstripped source lets a match live in a comment
+ * instead of real code. G8's own doc comment names the incident this
+ * protects against (`.tool-status` surviving its own deletion because a
+ * *comment* elsewhere still mentioned the class); the equivalent failure
+ * here is deleting a real `section === 'branding' && <BrandingSection …/>`
+ * render and leaving behind a comment (or a dead `if (section === 'branding')`
+ * with no JSX) that still contains the literal text `section === 'branding'`
+ * -- G6 would keep passing over an unreachable pane.
+ */
+function stripComments(src: string): string {
+  const noBlock = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ''));
+  return noBlock
+    .split('\n')
+    .map((line) => {
+      const m = line.match(/(?<!:)\/\//);
+      return m ? line.slice(0, m.index) : line;
+    })
+    .join('\n');
+}
+
+const sheet = stripComments(sheetRaw);
 
 /** The `SettingsSection` union members. */
 function unionIds(): string[] {
@@ -41,17 +66,32 @@ function navIds(): string[] {
   return Array.from(block![0].matchAll(/id: '([a-z-]+)'/g)).map((m) => m[1]);
 }
 
-/** Ids that actually render something: `section === '…' &&`. */
+/**
+ * Ids that actually render something: `section === '…' &&` immediately
+ * followed (allowing an intervening `&& someFlag`, as the branding guard
+ * does) by a JSX open tag `<Xyz` or fragment `<>` on the same match, rather
+ * than a bare `if (section === '…')` with no JSX attached, or the literal
+ * surviving only in a comment (comments are already stripped above).
+ *
+ * This is a heuristic, not a JSX parser -- it does not verify the tag it
+ * finds is actually returned/rendered rather than, say, assigned to an
+ * unused variable, and it does not walk into helper components. That trade
+ * is fine for a guard that runs against code written by people trying to
+ * keep it green, not against code trying to defeat it (the same stance
+ * G9's own comment-stripping takes about itself).
+ */
 function bodyIds(): string[] {
-  return Array.from(sheet.matchAll(/section === '([a-z-]+)'/g)).map((m) => m[1]);
+  return Array.from(
+    sheet.matchAll(/section === '([a-z-]+)'(?:\s*&&\s*[\w.]+)?\s*&&[\s\S]{0,80}?<[A-Za-z]/g),
+  ).map((m) => m[1]);
 }
 
 describe('settings sections', () => {
   const union = unionIds();
 
-  it('declares the six V9 sections', () => {
+  it('declares the seven sections (V9\'s six plus Phase 3 Branding)', () => {
     expect([...union].sort()).toEqual(
-      ['appearance', 'chat', 'connectors', 'privacy', 'prompts', 'providers'].sort(),
+      ['appearance', 'branding', 'chat', 'connectors', 'privacy', 'prompts', 'providers'].sort(),
     );
   });
 

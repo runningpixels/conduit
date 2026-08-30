@@ -118,26 +118,29 @@ async fn migration_precheck(paths: &AppPaths) -> Result<(), String> {
     // would NOT survive an upgrade (it would be wiped to fresh) — so we refuse
     // rather than let an update apply over a store that cannot migrate forward.
     let (pool, recovery) = migrations::open_with_migrations(&dst).await.map_err(|_e| {
-        "Conduit will not auto-update: a migration dry-run on a copy of your \
+        let app_name = crate::brand::app_name();
+        format!(
+            "{app_name} will not auto-update: a migration dry-run on a copy of your \
              local data failed. Your data is untouched; export a diagnostics bundle \
              and update manually."
-            .to_string()
+        )
     })?;
     if recovery.is_some() {
-        return Err(
-            "Conduit will not auto-update: a dry-run on a copy of your local data \
+        let app_name = crate::brand::app_name();
+        return Err(format!(
+            "{app_name} will not auto-update: a dry-run on a copy of your local data \
              showed it would not migrate cleanly and would be reset to an empty \
              store. Your data is untouched; export a diagnostics bundle, then \
              update manually or contact support."
-                .to_string(),
-        );
+        ));
     }
     // Belt-and-suspenders: `open_with_migrations` already runs the integrity
     // check on the happy path, but re-affirming it keeps the precheck honest if
     // that internal call is ever refactored away.
     migrations::reconcile_on_startup(&pool).await.map_err(|e| {
+        let app_name = crate::brand::app_name();
         format!(
-            "Conduit will not auto-update: your local data did not pass the \
+            "{app_name} will not auto-update: your local data did not pass the \
                  integrity check ({e}). Your data is untouched; export a diagnostics \
                  bundle and update manually."
         )
@@ -235,6 +238,7 @@ mod tests {
             streams: root.join("streams"),
             connectors: root.join("connectors"),
             exports: root.join("exports"),
+            branding: root.join("branding"),
         }
     }
 

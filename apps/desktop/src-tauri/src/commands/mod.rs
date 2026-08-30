@@ -5,12 +5,14 @@
 //! and `tauri::generate_handler![...]` continue to resolve.
 
 pub mod artifacts;
+pub mod branding;
 pub mod chat;
 pub mod connectors;
 pub mod prompts;
 pub mod settings;
 
 pub use artifacts::*;
+pub use branding::*;
 pub use chat::*;
 pub use connectors::*;
 pub use prompts::*;

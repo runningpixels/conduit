@@ -33,6 +33,7 @@ const baseSettings: AppSettings = {
     wallClockBudgetSecs: 300,
   },
   keychainMode: 'os',
+  brandingEnabled: false,
 };
 
 vi.mock('../ipc/client', () => ({

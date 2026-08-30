@@ -7,6 +7,7 @@ import {
   saveAttachment,
 } from '../ipc/client';
 import { AttachIcon, FilePlainIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
+import { brand } from '../brand';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
 import {
@@ -290,7 +291,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={(event) => void handlePaste(event)}
-          placeholder="Message Conduit…"
+          placeholder={brand().tagline}
           rows={1}
           aria-label="Message the active provider"
         />

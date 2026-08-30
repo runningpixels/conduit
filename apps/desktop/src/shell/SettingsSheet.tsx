@@ -8,12 +8,13 @@
  * uiPrefs.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { AppPaths, AppSettings, ModelInfo } from '../ipc/contracts';
+import type { AppPaths, AppSettings, BrandConfig, ModelInfo } from '../ipc/contracts';
 import { listProviderModels } from '../ipc/client';
 import type { ConnectionState } from '../lib/connectionState';
 import { useAutoSave } from '../workspace/settings/useAutoSave';
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { AppearanceSection } from '../workspace/settings/AppearanceSection';
+import { BrandingSection } from '../workspace/settings/BrandingSection';
 import { PrivacyDataSection } from '../workspace/settings/PrivacyDataSection';
 import { ArtifactSecuritySection } from '../workspace/settings/ArtifactSecuritySection';
 import { UpdatesSection } from '../workspace/settings/UpdatesSection';
@@ -38,6 +39,8 @@ import {
   writeExpandedStatus,
 } from './uiPrefs';
 import { useFocusTrap } from './useFocusTrap';
+import { appName } from '../brand';
+import { allowUserBranding } from '../brand/buildFlags';
 import { modKey } from '../lib/shortcuts';
 import { ChatIcon, ConnectorsIcon, LockIcon, SettingsIcon } from '../icons';
 
@@ -50,12 +53,17 @@ import { ChatIcon, ConnectorsIcon, LockIcon, SettingsIcon } from '../icons';
  * Not five, as §2.6 asserts. The spec counted Advanced as holding "two live
  * rows" and never mentions Prompts at all; Prompts is a real capability with no
  * other home, so it stays as its own section and the count lands on six.
+ *
+ * Seven, not six, as of white-label Phase 3: `branding` is what makes Phases
+ * 0-2 (the config format, the apply path, the logo pipeline) reachable by a
+ * user at all — see `docs/private/white-label-plan.md` §4 item 14.
  */
 export type SettingsSection =
   | 'providers'
   | 'connectors'
   | 'chat'
   | 'appearance'
+  | 'branding'
   | 'privacy'
   | 'prompts';
 
@@ -71,6 +79,13 @@ interface SettingsSheetProps {
   boundaryOk?: boolean;
   hasCredential?: boolean;
   onInsertPrompt?: (body: string) => void;
+  /** Optional coherence hook into App.tsx's own brand state: called after
+   *  every successful save/import/reset/logo change so the sidebar
+   *  wordmark/logo and the theme-change re-apply effect (App.tsx) update
+   *  immediately instead of waiting for a reload. BrandingSection fetches
+   *  and applies its own state regardless, matching AppearanceSection's
+   *  self-contained idiom — this is purely additive. */
+  onBrandChange?: (config: BrandConfig | null, logo: string | null) => void;
 }
 
 const NAV_ITEMS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
@@ -78,6 +93,7 @@ const NAV_ITEMS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
   { id: 'connectors', label: 'Connectors', icon: <ConnectorsIcon /> },
   { id: 'chat', label: 'Chat defaults', icon: <ChatIcon /> },
   { id: 'appearance', label: 'Appearance', icon: <SunNavIcon /> },
+  { id: 'branding', label: 'Branding', icon: <BrandingNavIcon /> },
   { id: 'privacy', label: 'Privacy & data', icon: <LockIcon /> },
   { id: 'prompts', label: 'Prompts', icon: <ListNavIcon /> },
 ];
@@ -108,6 +124,15 @@ function ListNavIcon() {
   );
 }
 
+function BrandingNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3 3 8.5V21h18V8.5L12 3Z" />
+      <circle cx="12" cy="12" r="2.6" />
+    </svg>
+  );
+}
+
 function Toggle({ pressed, onChange, label }: { pressed: boolean; onChange: () => void; label: string }) {
   return (
     <button
@@ -133,6 +158,7 @@ export function SettingsSheet({
   boundaryOk,
   hasCredential,
   onInsertPrompt,
+  onBrandChange,
 }: SettingsSheetProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection ?? 'providers');
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -152,7 +178,11 @@ export function SettingsSheet({
   // Reset to the requested section each time the sheet opens; focus + restore.
   useEffect(() => {
     if (!open) return;
-    setSection(initialSection ?? 'providers');
+    const requested = initialSection ?? 'providers';
+    // A stale deep link into 'branding' (a saved shortcut, a prior session)
+    // must not land on the empty pane a disabled Mode B build renders for
+    // it -- fall back the same way the retired 'advanced' id would.
+    setSection(requested === 'branding' && !allowUserBranding ? 'providers' : requested);
     lastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     navRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     return () => {
@@ -200,7 +230,7 @@ export function SettingsSheet({
       <div ref={sheetRef} className="sheet" role="dialog" aria-label="Settings" aria-modal="true">
         <nav ref={navRef} className="sheet-nav scroll" aria-label="Settings sections">
           <div className="sheet-nav-title">Settings</div>
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => item.id !== 'branding' || allowUserBranding).map((item) => (
             <button
               key={item.id}
               type="button"
@@ -218,7 +248,7 @@ export function SettingsSheet({
             <div ref={pickerRef}>
               <h2 className="sheet-h">Providers &amp; keys</h2>
               <p className="sheet-sub">
-                Keys are stored in the OS keychain and never written to disk. Conduit talks to each provider directly.
+                Keys are stored in the OS keychain and never written to disk. {appName()} talks to each provider directly.
               </p>
               <ProviderPicker settings={settings} onSettingsChange={save} onStatus={onStatus} />
               <div style={{ marginTop: 16 }}>
@@ -373,6 +403,19 @@ export function SettingsSheet({
                 </div>
               </div>
             </>
+          )}
+
+          {/* Phase 6 white-label (Mode B): a packaged build with brand.md's
+              [runtime] allowUserBranding = false compiles `allowUserBranding`
+              to `false` (src/brand/buildFlags.ts) and this body renders
+              nothing, matching the nav filter above. The `section ===
+              'branding'` literal stays either way -- Guard G6
+              (settingsCompleteness.test.ts) asserts every SettingsSection id
+              has a rendered body by grepping for exactly that text, and it
+              reads source, not runtime output, so a conditional body does
+              not trip it. */}
+          {section === 'branding' && allowUserBranding && (
+            <BrandingSection settings={settings} onUpdate={save} onStatus={onStatus} onBrandChange={onBrandChange} />
           )}
 
           {/* Privacy & data absorbed all of Advanced (plan §6). Every block

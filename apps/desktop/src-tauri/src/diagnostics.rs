@@ -139,6 +139,7 @@ mod tests {
             streams: root.join("streams"),
             connectors: root.join("connectors"),
             exports: root.join("exports"),
+            branding: root.join("branding"),
         };
         let settings = AppSettings::default();
 
@@ -182,6 +183,7 @@ mod tests {
             streams: root.join("streams"),
             connectors: root.join("connectors"),
             exports: root.join("exports"),
+            branding: root.join("branding"),
         }
     }
 

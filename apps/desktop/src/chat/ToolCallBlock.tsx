@@ -9,6 +9,7 @@ import {
   summarizeDocumentToolCall,
 } from './agentTools';
 import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
+import { appName } from '../brand';
 
 interface ToolCallBlockProps {
   toolCall: ToolCallState;
@@ -273,7 +274,7 @@ export function ToolCallBlock({
                   </p>
                 )}
                 <p>
-                  Conduit never runs a side-effecting tool without your approval. Tool output is
+                  {appName()} never runs a side-effecting tool without your approval. Tool output is
                   sandboxed and never re-injected into the prompt.
                 </p>
                 <div className="row">

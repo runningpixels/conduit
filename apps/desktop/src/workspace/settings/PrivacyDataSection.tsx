@@ -3,6 +3,7 @@ import type { AppSettings } from '../../ipc/contracts';
 import { resetLocalDatabase } from '../../ipc/client';
 import { ConfirmDialog } from '@conduit/ui';
 import type { ConnectionState } from '../../lib/connectionState';
+import { appName } from '../../brand';
 
 interface PrivacyDataSectionProps {
   settings: AppSettings;
@@ -19,28 +20,30 @@ const RESET_LOCAL_DATA_DESCRIPTION =
   'A backup of the current database file will be saved before reset.\n\n' +
   'This cannot be undone from the app.';
 
-const TRUST_COPY: Record<ConnectionState, { label: string; detail: string; health: 'live' | 'warn' | 'off' }> = {
-  connected: {
-    label: 'Trust boundary online',
-    detail: 'Rust shell is reachable. Provider calls use your key; nothing else leaves this device unless you enable web search.',
-    health: 'live',
-  },
-  'local-only': {
-    label: 'Local-only mode',
-    detail: 'Web search and other egress features stay off. BYOK provider calls still go straight to your provider with your key.',
-    health: 'live',
-  },
-  'no-key': {
-    label: 'No API key stored',
-    detail: 'Add a provider credential under Provider & Model to start chatting. Keys stay in the OS keychain.',
-    health: 'warn',
-  },
-  disconnected: {
-    label: 'Trust boundary unreachable',
-    detail: 'The desktop shell could not reach the local Rust backend. Restart Conduit if this persists.',
-    health: 'off',
-  },
-};
+function trustCopy(): Record<ConnectionState, { label: string; detail: string; health: 'live' | 'warn' | 'off' }> {
+  return {
+    connected: {
+      label: 'Trust boundary online',
+      detail: 'Rust shell is reachable. Provider calls use your key; nothing else leaves this device unless you enable web search.',
+      health: 'live',
+    },
+    'local-only': {
+      label: 'Local-only mode',
+      detail: 'Web search and other egress features stay off. BYOK provider calls still go straight to your provider with your key.',
+      health: 'live',
+    },
+    'no-key': {
+      label: 'No API key stored',
+      detail: 'Add a provider credential under Provider & Model to start chatting. Keys stay in the OS keychain.',
+      health: 'warn',
+    },
+    disconnected: {
+      label: 'Trust boundary unreachable',
+      detail: `The desktop shell could not reach the local Rust backend. Restart ${appName()} if this persists.`,
+      health: 'off',
+    },
+  };
+}
 
 /** Privacy & Data settings: trust health, local-only mode, diagnostics, reset. */
 export function PrivacyDataSection({
@@ -55,7 +58,7 @@ export function PrivacyDataSection({
   const [lastBackupPath, setLastBackupPath] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  const trust = TRUST_COPY[connectionState];
+  const trust = trustCopy()[connectionState];
 
   async function handleReset() {
     setConfirmReset(false);
@@ -147,7 +150,7 @@ export function PrivacyDataSection({
               Keys are stored in an encrypted file under your data folder. The encryption key comes
               from the <code>CONDUIT_CREDENTIAL_KEY</code> environment variable — a base64-encoded
               32-byte value — and is never written to disk beside the file it protects. Without that
-              variable set, Conduit cannot read or save keys in this mode and will say so rather
+              variable set, {appName()} cannot read or save keys in this mode and will say so rather
               than falling back to the keychain. This is weaker than the OS keychain and is intended
               for machines that have none, such as headless CI.
             </>

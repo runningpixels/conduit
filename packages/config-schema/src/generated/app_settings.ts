@@ -69,4 +69,13 @@ agent: AgentGuardrails,
  * settings files predate the field, so it must default rather than fail
  * to deserialize.
  */
-keychainMode: KeychainMode, };
+keychainMode: KeychainMode, 
+/**
+ * White-label Mode A: whether the on-disk `brand.md` (if any) is loaded
+ * and applied. Defaults `false` — an unbranded install stays unbranded
+ * even if a stray `brand.md` exists, so branding is always an opt-in
+ * action rather than something that can silently activate itself. There
+ * is no settings migration runner in this codebase, so `#[serde(default)]`
+ * is the entire back-compat story for existing settings files.
+ */
+brandingEnabled: boolean, };

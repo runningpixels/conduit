@@ -24,6 +24,11 @@ thiserror = "2.0"
 ts-rs = { version = "10", features = ["serde-json-impl", "no-serde-warnings"] }
 tokio = { version = "1.40", features = ["sync", "macros", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+# brand.md frontmatter (Phase 1 white-label). `+++` TOML, not `---` YAML:
+# `serde_yaml` is archived/unmaintained and fails the cargo-deny advisory
+# gate; `toml` is already in Cargo.lock transitively via Tauri, so this is a
+# direct dependency in name only. See `brand.rs` module doc comment.
+toml = "1"
 url = "2.5"
 uuid = { version = "1.11", features = ["v4"] }
 

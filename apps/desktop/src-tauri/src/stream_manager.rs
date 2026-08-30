@@ -141,9 +141,10 @@ pub fn empty_turn_message(undeclared: &[CompletedToolCall]) -> String {
     let mut names: Vec<&str> = undeclared.iter().map(|c| c.name.as_str()).collect();
     names.sort_unstable();
     names.dedup();
+    let app_name = crate::brand::app_name();
     format!(
         "The model ran {} and then ended the turn without writing an answer. \
-         Conduit did not run {} — the provider reports it as one of its own hosted tools, \
+         {app_name} did not run {} — the provider reports it as one of its own hosted tools, \
          so its results stayed on the provider's side and never reached the model's next step. \
          Try turning off web search in Settings, or use a model whose hosted search returns an answer in the same turn.",
         names.join(", "),

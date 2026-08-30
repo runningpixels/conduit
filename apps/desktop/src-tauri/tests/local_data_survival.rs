@@ -33,6 +33,7 @@ fn test_paths(root: &Path) -> AppPaths {
         streams: root.join("streams"),
         connectors: root.join("connectors"),
         exports: root.join("exports"),
+        branding: root.join("branding"),
     }
 }
 
@@ -176,6 +177,7 @@ async fn settings_and_db_survive_in_place_reopen() {
             max_steps: 40,
             wall_clock_budget_secs: 600,
         }),
+        branding_enabled: None,
     };
     let updated = state.update_settings(patch).expect("update settings");
     assert_eq!(updated.active_model, "claude-opus-4");

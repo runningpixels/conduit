@@ -66,6 +66,7 @@ const baseSettings: AppSettings = {
     wallClockBudgetSecs: 300,
   },
   keychainMode: 'os',
+  brandingEnabled: false,
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {

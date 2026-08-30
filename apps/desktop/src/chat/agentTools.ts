@@ -2,8 +2,11 @@ import type { ToolDefinition } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import type { DocumentTurnIntent } from './documentTurnIntent';
+import { appName } from '../brand';
+import { allowUserBranding } from '../brand/buildFlags';
 
 const DOCUMENT_TOOL_GROUP = 'Documents';
+const BRAND_TOOL_GROUP = 'Branding';
 
 function schema(fields: Array<{ name: string; type: string; required?: boolean }>): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
@@ -17,12 +20,72 @@ function schema(fields: Array<{ name: string; type: string; required?: boolean }
     : { type: 'object', properties };
 }
 
-export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
+/**
+ * The 18-key curated brand palette surface (white-label plan §2). Kept as one
+ * array so the dark/light schema halves and the actual palette object in a
+ * tool call are checked against the exact same key list — a key added to one
+ * and not the other is precisely the drift this mirrors against the Rust
+ * side.
+ */
+const BRAND_PALETTE_KEYS = [
+  'bg',
+  'bgSide',
+  'card',
+  'cardHi',
+  'line',
+  'lineSoft',
+  'lineHi',
+  'ink',
+  'ink2',
+  'ink3',
+  'hue',
+  'hueText',
+  'hueSolid',
+  'onHue',
+  'ok',
+  'warn',
+  'err',
+  'link',
+] as const;
+
+/** One theme's worth of the brand palette: all 18 keys, all required, all strings (hex — the tool description states the grammar; JSON Schema has no regex-pattern support worth relying on here, so this is enforced by the Rust validator, not this shape). */
+function brandPaletteSchema(): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  for (const key of BRAND_PALETTE_KEYS) {
+    properties[key] = { type: 'string' };
+  }
+  return { type: 'object', properties, required: [...BRAND_PALETTE_KEYS] };
+}
+
+/**
+ * `write_brand_theme`'s input schema. Deliberately camelCase, unlike the
+ * older `artifact_id`-shaped document tools: this tool's arguments
+ * deserialize straight into `BrandConfig` (ts-rs-generated, camelCase) on
+ * the Rust side rather than into a bespoke tool-args struct, so there is no
+ * snake_case boundary to cross.
+ */
+function brandThemeInputSchema(): Record<string, unknown> {
+  return {
+    type: 'object',
+    properties: {
+      appName: { type: 'string' },
+      displayName: { type: 'string' },
+      tagline: { type: 'string' },
+      notes: { type: 'string' },
+      dark: brandPaletteSchema(),
+      light: brandPaletteSchema(),
+    },
+    required: ['appName', 'displayName', 'dark', 'light'],
+  };
+}
+
+export function builtinToolDefinitions(): ToolDefinition[] {
+  return [
   {
     toolId: 'write_html_document',
     name: 'write_html_document',
     description:
-      'Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document.',
+      `Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'html', type: 'string', required: true },
@@ -48,7 +111,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_markdown_document',
     name: 'write_markdown_document',
     description:
-      'Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document.',
+      `Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'markdown', type: 'string', required: true },
@@ -74,7 +137,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     toolId: 'write_text_document',
     name: 'write_text_document',
     description:
-      'Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — Conduit assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document.',
+      `Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'text', type: 'string', required: true },
@@ -194,7 +257,20 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
     permissionLevel: 'sideEffectful',
     displayGroup: 'Clipboard',
   },
-];
+  // ---------------------------------------------------------------------------
+  // Branding tool (white-label plan §4, Phase 4)
+  // ---------------------------------------------------------------------------
+  {
+    toolId: 'write_brand_theme',
+    name: 'write_brand_theme',
+    description:
+      `Propose a white-label theme for ${appName()}: a name and a full dark+light colour palette (18 keys each, hex only). This creates a reviewable Markdown artifact (brand.md) — it does not change anything in the running app by itself; the user previews or applies it explicitly from the document panel. Use only when the user explicitly asked to design, generate, or change the app's brand, theme, or colour scheme.`,
+    inputSchema: brandThemeInputSchema(),
+    permissionLevel: 'sideEffectful',
+    displayGroup: BRAND_TOOL_GROUP,
+  },
+  ];
+}
 
 /**
  * The Documents group only.
@@ -207,7 +283,7 @@ export const BUILTIN_TOOL_DEFINITIONS: ToolDefinition[] = [
  * updated." for a tool that touched no document at all.
  */
 export const DOCUMENT_TOOL_NAMES = new Set(
-  BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.displayGroup === DOCUMENT_TOOL_GROUP).map(
+  builtinToolDefinitions().filter((tool) => tool.displayGroup === DOCUMENT_TOOL_GROUP).map(
     (tool) => tool.name,
   ),
 );
@@ -251,14 +327,14 @@ const CLIPBOARD_TOOL_NAMES = new Set(['clipboard_read', 'clipboard_write']);
 
 /** Built-in document tools exposed to the model for a given turn intent. */
 export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefinition[] {
-  const utilityTools = BUILTIN_TOOL_DEFINITIONS.filter((t) => UTILITY_TOOL_NAMES.has(t.name));
+  const utilityTools = builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name));
   switch (intent) {
     case 'create':
       // Include edit_* so mid-turn revisions use the returned artifact_id
       // instead of spawning duplicate documents via another write_*.
       return [
         ...utilityTools,
-        ...BUILTIN_TOOL_DEFINITIONS.filter(
+        ...builtinToolDefinitions().filter(
           (tool) =>
             tool.name.startsWith('write_') ||
             tool.name.startsWith('edit_') ||
@@ -268,7 +344,7 @@ export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefi
     case 'edit':
       return [
         ...utilityTools,
-        ...BUILTIN_TOOL_DEFINITIONS.filter(
+        ...builtinToolDefinitions().filter(
           (tool) => tool.name.startsWith('edit_') || tool.name === 'export_document',
         ),
       ];
@@ -277,6 +353,31 @@ export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefi
     default:
       return utilityTools;
   }
+}
+
+/**
+ * `write_brand_theme`, gated on brand-theme intent rather than always
+ * present. Its schema is much larger than any document tool's (two nested
+ * 18-key objects), and unlike document creation there is no existing
+ * artifact-in-scope signal to widen the gate for — so this stays a plain
+ * boolean the caller computes from the prompt (`looksLikeBrandThemeRequest`,
+ * `chat/brandPrompt.ts`), mirroring how `selectBuiltinDocumentTools` takes an
+ * already-classified `DocumentTurnIntent` rather than classifying itself.
+ *
+ * Also gated on `allowUserBranding` (`brand/buildFlags.ts`), read directly
+ * here rather than threaded in as a parameter, so this holds regardless of
+ * what any caller passes as `brandIntent`: a Mode B build with
+ * `allowUserBranding = false` can never apply a `write_brand_theme` result
+ * (every persisting write refuses server-side — see
+ * `commands::branding::guard_write`/`ALLOW_USER_BRANDING`), so offering the
+ * tool at all would be a dead end regardless of how strong the user's intent
+ * looked — the model would spend a tool call, and tokens on its ~20-key
+ * schema, producing a document `DocumentPanel` cannot let the user apply
+ * anyway (see its own `brandingPermitted` check).
+ */
+export function selectBuiltinBrandTools(brandIntent: boolean): ToolDefinition[] {
+  if (!brandIntent || !allowUserBranding) return [];
+  return builtinToolDefinitions().filter((tool) => tool.displayGroup === BRAND_TOOL_GROUP);
 }
 
 export function completedDocumentToolCalls(state: AssistantStreamState): ToolCallState[] {

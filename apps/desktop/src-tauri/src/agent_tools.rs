@@ -1810,7 +1810,8 @@ mod tests {
     fn test_tool_count() {
         let defs = builtin_tool_definitions();
         // 7 original document tools + 8 utility/web/clipboard tools
-        // + 1 write_brand_theme (Phase 4) = 16
-        assert_eq!(defs.len(), 16);
+        // + 1 write_brand_theme (Phase 4)
+        // + 5 workspace file tools = 21
+        assert_eq!(defs.len(), 21);
     }
 }

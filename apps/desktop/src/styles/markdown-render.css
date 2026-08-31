@@ -33,6 +33,10 @@
 .md-mermaid {
   margin: var(--sp-3) 0;
 }
+/* Artifact-path loading: source held without figure chrome until the blob is ready. */
+.md-mermaid-pending {
+  margin: var(--sp-3) 0;
+}
 .md-mermaid-toolbar {
   display: flex;
   align-items: center;

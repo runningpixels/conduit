@@ -36,6 +36,18 @@ describe('ChatProse mermaid and math fences', () => {
     expect(container.querySelector('.inline-code-block')).toBeNull();
   });
 
+  it('renders mermaid wrapped in a markdown fence, not as an artifact card', async () => {
+    // Models told to "reply with only this markdown" wrap ```mermaid in
+    // ```markdown. The card was then titled "flowchart TD" and shown as
+    // Markdown instead of as a diagram.
+    const src = ['```markdown', '```mermaid', 'flowchart TD', 'A-->B', '```', '```'].join(NL);
+    const { container } = render(<ChatProse content={src} />);
+    await waitFor(() => {
+      expect(container.querySelector('img.md-mermaid-img')).not.toBeNull();
+    });
+    expect(container.querySelector('.inline-artifact')).toBeNull();
+  });
+
   it('keeps a streaming mermaid fence as source', () => {
     const src = '```mermaid\nflowchart TD\nA-->B\n```';
     const { container } = render(<ChatProse content={src} streaming />);

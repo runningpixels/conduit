@@ -1,5 +1,5 @@
 import { PLACEHOLDER_CLOSE, PLACEHOLDER_OPEN, renderMarkdown } from '../artifacts/markdown/safeMarkdown';
-import { fenceLang, isMathLang, isMermaidLang } from '../artifacts/markdown/fenceLang';
+import { fenceLang, isMathLang, mermaidSourceFromFence } from '../artifacts/markdown/fenceLang';
 import { KatexHtml } from '../artifacts/markdown/KatexHtml';
 import { MermaidBlock } from '../artifacts/markdown/MermaidBlock';
 import { parseMessageSegments } from './messageSegments';
@@ -132,11 +132,12 @@ export function ChatProse({
         const fenceStreaming = streaming && isLast;
         const candidate = cleanCandidate(seg.candidate);
         const lang = fenceLang(candidate.info);
-        if (!fenceStreaming && isMermaidLang(lang)) {
+        const mermaidSource = mermaidSourceFromFence(candidate.info, candidate.body);
+        if (!fenceStreaming && mermaidSource != null) {
           return (
             <MermaidBlock
               key={`f${idx}`}
-              source={candidate.body}
+              source={mermaidSource}
               fallback={
                 <InlineCodeBlock
                   candidate={candidate}

@@ -25,7 +25,7 @@
 import { Fragment, type MouseEvent, type ReactNode } from 'react';
 import { KatexHtml } from './KatexHtml';
 import { MermaidBlock } from './MermaidBlock';
-import { fenceLang, isFenceClose, isMathLang, isMermaidLang, matchFenceOpen } from './fenceLang';
+import { fenceLang, isFenceClose, isMathLang, matchFenceOpen, mermaidSourceFromFence } from './fenceLang';
 
 const LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 
@@ -473,8 +473,11 @@ export function renderMarkdown(src: string, options?: MarkdownOptions): ReactNod
             // fragment — or the empty string, at the instant the fence opened.
             // Every one of those throws, and mermaid draws its "syntax error"
             // diagram into `document.body` on the way out.
-            if (block.closed && isMermaidLang(lang)) {
-              return <MermaidBlock key={key} source={block.code} />;
+            const mermaidSource = block.closed
+              ? mermaidSourceFromFence(block.lang ?? '', block.code)
+              : null;
+            if (mermaidSource != null) {
+              return <MermaidBlock key={key} source={mermaidSource} />;
             }
             if (block.closed && isMathLang(lang)) {
               return (

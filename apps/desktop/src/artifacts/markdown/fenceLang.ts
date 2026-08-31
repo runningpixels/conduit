@@ -13,6 +13,83 @@ export function isMathLang(lang: string): boolean {
   return lang === 'math' || lang === 'latex' || lang === 'tex';
 }
 
+export function isMarkdownLang(lang: string): boolean {
+  return lang === 'markdown' || lang === 'md';
+}
+
+/// First-line keywords mermaid uses to pick a diagram type. Used to recognise
+/// a diagram that arrived without a `mermaid` info string — models asked to
+/// "reply with only this markdown" wrap the fence in ```markdown, or drop the
+/// language tag entirely, and the first body line is then `flowchart TD`.
+const MERMAID_DIAGRAM_START =
+  /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|sankey-beta|xychart-beta|block-beta|packet-beta|kanban|architecture-beta|C4(?:Context|Container|Component|Dynamic|Deployment))\b/;
+
+export function looksLikeMermaidSource(source: string): boolean {
+  const first = source
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return first != null && MERMAID_DIAGRAM_START.test(first);
+}
+
+/**
+ * If `source` is exactly one fenced block (optional surrounding whitespace),
+ * return that fence's info string and body. Extra prose after the close means
+ * this is a document, not a wrapped diagram.
+ * Also accepts an *unclosed* inner fence. CommonMark lets a nested ``` close
+ * a ```markdown wrapper, so the stored body is often ` ```mermaid\nflowchart TD`
+ * with no closer — the closer was consumed by the parent.
+ */
+export function unwrapSoleFence(source: string): { info: string; body: string } | null {
+  const src = source.replace(/\r\n?/g, '\n').trim();
+  if (!src) return null;
+  const lines = src.split('\n');
+  const open = matchFenceOpen(lines[0]);
+  if (!open) return null;
+  let closeAt = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (isFenceClose(lines[i], open.fence)) {
+      closeAt = i;
+      break;
+    }
+  }
+  if (closeAt === -1) {
+    return { info: open.info, body: lines.slice(1).join('\n') };
+  }
+  const rest = lines.slice(closeAt + 1).join('\n').trim();
+  if (rest) return null;
+  return { info: open.info, body: lines.slice(1, closeAt).join('\n') };
+}
+
+/**
+ * The mermaid source to draw for this fence, or null if it is not a diagram.
+ *
+ * Handles the labeled fence, a markdown/text wrapper whose sole payload is a
+ * ```mermaid fence (including when CommonMark stole the inner closer), and a
+ * wrapper whose body *is* the diagram source (`flowchart TD` as the first line).
+ *
+ * Unlabeled fences are left alone unless the body itself is diagram source —
+ * a ```` quote of a mermaid example must stay source, not a rendered diagram.
+ */
+export function mermaidSourceFromFence(info: string, body: string): string | null {
+  const lang = fenceLang(info);
+  if (isMermaidLang(lang)) return body;
+
+  if (isMarkdownLang(lang) || lang === 'text') {
+    const inner = unwrapSoleFence(body);
+    if (inner) {
+      const innerLang = fenceLang(inner.info);
+      if (isMermaidLang(innerLang) || looksLikeMermaidSource(inner.body)) return inner.body;
+      return null;
+    }
+    if (looksLikeMermaidSource(body)) return body;
+    return null;
+  }
+
+  if (lang === '' && looksLikeMermaidSource(body)) return body;
+  return null;
+}
+
 /// The delimiter run that opens a fence, plus its info string.
 export interface FenceOpen {
   /// The run itself — `` ``` ``, `` ```` ``, `~~~`. Its length is what a

@@ -195,6 +195,14 @@ describe('safeMarkdown structure', () => {
     });
   });
 
+  it('renders a mermaid diagram nested in a markdown fence', async () => {
+    const src = ['```markdown', '```mermaid', 'flowchart TD', 'A-->B', '```', '```'].join(NL);
+    const { container } = render(<>{renderMarkdown(src)}</>);
+    await waitFor(() => {
+      expect(container.querySelector('img.md-mermaid-img')).not.toBeNull();
+    });
+  });
+
   it('keeps an unterminated mermaid fence as source, never as a diagram', async () => {
     // Mid-stream the fence has no closing run yet and its body is a fragment.
     // Handing that to mermaid throws, and a throw used to cost a stray error

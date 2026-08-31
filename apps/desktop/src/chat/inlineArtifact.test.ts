@@ -95,6 +95,11 @@ describe('shouldRenderAsCard', () => {
     expect(shouldRenderAsCard(candidateFor('mermaid', body))).toBe(false);
     expect(shouldRenderAsCard(candidateFor('math', '\\int x\n'.repeat(40)))).toBe(false);
   });
+
+  it('does not collapse a markdown wrapper whose only payload is mermaid', () => {
+    const wrapped = ['```mermaid', 'flowchart TD', 'A-->B', '```'].join('\n');
+    expect(shouldRenderAsCard(candidateFor('markdown', wrapped))).toBe(false);
+  });
 });
 
 describe('inlineArtifactIds', () => {

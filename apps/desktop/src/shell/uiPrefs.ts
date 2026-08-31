@@ -17,6 +17,7 @@ const SHOW_REASONING_KEY = 'conduit:v7-show-reasoning';
 const SEND_WITH_KEY = 'conduit:v7-send-with';
 const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
 const EXPANDED_STATUS_KEY = 'conduit:v9-expanded-status';
+const MERMAID_SCALE_KEY = 'conduit:v9-mermaid-scale';
 
 export type PalettePref = 'terra' | 'orange-charcoal';
 export type ProviderColourPref = 'on' | 'off';
@@ -25,6 +26,14 @@ export type ShowReasoningPref = 'on' | 'off';
 export type SendWithPref = 'enter' | 'cmd-enter';
 export type ExportMetadataPref = 'on' | 'off';
 export type ExpandedStatusPref = 'on' | 'off';
+/** Display scale for Mermaid blob images (viewBox width/height multiplier). */
+export type MermaidScalePref = 'compact' | 'default' | 'full';
+
+export const MERMAID_DISPLAY_SCALES: Record<MermaidScalePref, number> = {
+  compact: 0.75,
+  default: 0.85,
+  full: 1,
+};
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -174,10 +183,34 @@ export function applyExpandedStatus(value: ExpandedStatusPref): void {
   document.documentElement.setAttribute('data-expanded-status', value);
 }
 
+/* ── Mermaid diagram scale ───────────────────────────────────────────────
+ * Mermaid's natural viewBox size reads large next to chat prose. We stamp a
+ * display multiplier onto the SVG width/height (not a CSS transform) so the
+ * layout box matches what you see. Renderer-only — same rationale as palette. */
+
+export function readMermaidScale(): MermaidScalePref {
+  return readPref(MERMAID_SCALE_KEY, ['compact', 'default', 'full'], 'default');
+}
+
+export function mermaidScaleFactor(pref: MermaidScalePref = readMermaidScale()): number {
+  return MERMAID_DISPLAY_SCALES[pref];
+}
+
+export function writeMermaidScale(value: MermaidScalePref): void {
+  writePref(MERMAID_SCALE_KEY, value);
+  applyMermaidScale(value);
+}
+
+/** `html[data-mermaid-scale]` — MermaidBlock observes this to re-blob on change. */
+export function applyMermaidScale(value: MermaidScalePref): void {
+  document.documentElement.setAttribute('data-mermaid-scale', value);
+}
+
 /** Apply every document-level pref on boot (idempotent). */
 export function applyUiPrefs(): void {
   applyPalette(readPalette());
   applyProviderColour(readProviderColour());
   applyReduceMotion(readReduceMotion());
   applyExpandedStatus(readExpandedStatus());
+  applyMermaidScale(readMermaidScale());
 }

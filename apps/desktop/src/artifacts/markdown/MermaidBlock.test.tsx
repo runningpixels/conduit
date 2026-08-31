@@ -21,7 +21,7 @@ describe('sizeSvgFromViewBox', () => {
     `<svg id="x" ${extra} viewBox="0 0 135 269" class="flowchart"></svg>`;
 
   it('replaces mermaid’s percentage width with the viewBox size', () => {
-    const out = sizeSvgFromViewBox(root('width="100%" style="max-width: 135px;"'));
+    const out = sizeSvgFromViewBox(root('width="100%" style="max-width: 135px;"'), 1);
     expect(out).toContain('width="135"');
     expect(out).toContain('height="269"');
     expect(out).not.toContain('100%');
@@ -29,18 +29,27 @@ describe('sizeSvgFromViewBox', () => {
     expect(out).not.toContain('max-width');
   });
 
+  it('applies the display scale to viewBox dimensions', () => {
+    const out = sizeSvgFromViewBox(root('width="100%"'), 0.85);
+    expect(out).toContain('width="114.75"');
+    expect(out).toContain('height="228.65"');
+  });
+
   it('leaves an SVG with no viewBox alone', () => {
     const svg = '<svg width="100%"></svg>';
-    expect(sizeSvgFromViewBox(svg)).toBe(svg);
+    expect(sizeSvgFromViewBox(svg, 1)).toBe(svg);
   });
 
   it('leaves a degenerate viewBox alone rather than emitting width="0"', () => {
     const svg = '<svg width="100%" viewBox="0 0 0 0"></svg>';
-    expect(sizeSvgFromViewBox(svg)).toBe(svg);
+    expect(sizeSvgFromViewBox(svg, 1)).toBe(svg);
   });
 
   it('keeps fractional mermaid dimensions', () => {
-    const out = sizeSvgFromViewBox('<svg width="100%" viewBox="0.5 -1.25 134.94 269.42"></svg>');
+    const out = sizeSvgFromViewBox(
+      '<svg width="100%" viewBox="0.5 -1.25 134.94 269.42"></svg>',
+      1,
+    );
     expect(out).toContain('width="134.94"');
     expect(out).toContain('height="269.42"');
   });
@@ -88,6 +97,44 @@ describe('MermaidBlock', () => {
     const { container } = render(<MermaidBlock source={'   ' + NEWLINE + ' '} />);
     expect(renderFn).not.toHaveBeenCalled();
     expect(container.innerHTML).toBe('');
+  });
+
+  it('holds plain source while rendering — no figure chrome until the blob is ready', async () => {
+    let resolveRender!: (value: { svg: string }) => void;
+    const pending = new Promise<{ svg: string }>((resolve) => {
+      resolveRender = resolve;
+    });
+    renderFn.mockImplementationOnce(() => pending);
+    const { container } = render(
+      <MermaidBlock source={'flowchart TD' + NEWLINE + 'A-->B'} fallback={<pre>held</pre>} />,
+    );
+    expect(container.querySelector('.md-mermaid-pending')).not.toBeNull();
+    expect(container.querySelector('.md-mermaid-toolbar')).toBeNull();
+    expect(container.querySelector('img.md-mermaid-img')).toBeNull();
+    resolveRender({ svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>' });
+    await waitFor(() => {
+      expect(container.querySelector('img.md-mermaid-img')).not.toBeNull();
+    });
+    expect(container.querySelector('.md-mermaid-pending')).toBeNull();
+  });
+
+  it('calls onReady when the blob is ready, and stays empty while pending', async () => {
+    const onReady = vi.fn();
+    let resolveRender!: (value: { svg: string }) => void;
+    const pending = new Promise<{ svg: string }>((resolve) => {
+      resolveRender = resolve;
+    });
+    renderFn.mockImplementationOnce(() => pending);
+    const { container } = render(
+      <MermaidBlock source={'flowchart TD' + NEWLINE + 'A-->B'} onReady={onReady} />,
+    );
+    expect(container.innerHTML).toBe('');
+    expect(onReady).not.toHaveBeenCalled();
+    resolveRender({ svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>' });
+    await waitFor(() => {
+      expect(onReady).toHaveBeenCalled();
+      expect(container.querySelector('img.md-mermaid-img')).not.toBeNull();
+    });
   });
 
   it('initializes with error rendering suppressed and labels as SVG text', async () => {

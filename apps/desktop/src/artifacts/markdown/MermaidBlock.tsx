@@ -4,10 +4,13 @@
 
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { CopyIcon, CheckIcon } from '../../icons';
+import { mermaidScaleFactor, readMermaidScale, type MermaidScalePref } from '../../shell/uiPrefs';
 
 export interface MermaidBlockProps {
   source: string;
   fallback?: ReactNode;
+  /** Fires once the blob image is ready, or when render fails into the fallback. */
+  onReady?: () => void;
 }
 
 function mermaidTheme(): 'dark' | 'default' {
@@ -16,7 +19,8 @@ function mermaidTheme(): 'dark' | 'default' {
 }
 
 /**
- * Give the SVG a concrete pixel size taken from its `viewBox`.
+ * Give the SVG a concrete pixel size taken from its `viewBox`, optionally
+ * scaled down for the chat column.
  *
  * Mermaid's `useMaxWidth` output is `width="100%"` plus an inline
  * `max-width: {n}px` on the root. Inside a document that pair means "fill the
@@ -28,16 +32,21 @@ function mermaidTheme(): 'dark' | 'default' {
  *
  * With real `width`/`height` attributes the `<img>` has an intrinsic size, and
  * the stylesheet's `max-width: 100%; height: auto` does what it reads as: the
- * diagram at its natural size, scaled down only when it would overflow.
+ * diagram at its (scaled) natural size, scaled down further only when it would
+ * overflow. `scale` defaults to the Appearance "Diagram size" pref (~0.85).
  */
-export function sizeSvgFromViewBox(svg: string): string {
+export function sizeSvgFromViewBox(svg: string, scale = mermaidScaleFactor()): string {
   const openTag = /<svg[^>]*>/.exec(svg);
   if (!openTag) return svg;
   const viewBox = /viewBox="\s*([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)\s*"/.exec(openTag[0]);
   if (!viewBox) return svg;
-  const width = Number(viewBox[3]);
-  const height = Number(viewBox[4]);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return svg;
+  const rawW = Number(viewBox[3]);
+  const rawH = Number(viewBox[4]);
+  if (!Number.isFinite(rawW) || !Number.isFinite(rawH) || rawW <= 0 || rawH <= 0) return svg;
+  const factor = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  // Round to hundredths so blob URLs stay stable across tiny float noise.
+  const width = Math.round(rawW * factor * 100) / 100;
+  const height = Math.round(rawH * factor * 100) / 100;
 
   const sized = openTag[0]
     .replace(/\swidth="[^"]*"/, '')
@@ -54,21 +63,30 @@ function svgToBlobUrl(svg: string): string {
   return URL.createObjectURL(blob);
 }
 
-export function MermaidBlock({ source, fallback }: MermaidBlockProps) {
+export function MermaidBlock({ source, fallback, onReady }: MermaidBlockProps) {
   const reactId = useId().replace(/:/g, '');
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState(mermaidTheme);
+  const [scalePref, setScalePref] = useState<MermaidScalePref>(readMermaidScale);
 
   useEffect(() => {
     if (typeof document === 'undefined' || !document.documentElement) return;
     const el = document.documentElement;
-    const sync = () => setTheme(mermaidTheme());
+    const sync = () => {
+      setTheme(mermaidTheme());
+      setScalePref(readMermaidScale());
+    };
     const observer = new MutationObserver(sync);
-    observer.observe(el, { attributes: true, attributeFilter: ['data-theme'] });
+    observer.observe(el, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'data-mermaid-scale'],
+    });
     return () => observer.disconnect();
   }, []);
+
+  const displayScale = mermaidScaleFactor(scalePref);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +130,7 @@ export function MermaidBlock({ source, fallback }: MermaidBlockProps) {
         });
         const { svg } = await mermaid.render(id, source);
         if (!svg || cancelled) return;
-        created = svgToBlobUrl(sizeSvgFromViewBox(svg));
+        created = svgToBlobUrl(sizeSvgFromViewBox(svg, displayScale));
         if (cancelled) {
           URL.revokeObjectURL(created);
           return;
@@ -133,7 +151,11 @@ export function MermaidBlock({ source, fallback }: MermaidBlockProps) {
       cancelled = true;
       if (created) URL.revokeObjectURL(created);
     };
-  }, [source, theme, reactId]);
+  }, [source, theme, displayScale, reactId]);
+
+  useEffect(() => {
+    if (url || failed) onReady?.();
+  }, [url, failed, onReady]);
 
   async function handleCopy() {
     if (!source) return;
@@ -164,9 +186,14 @@ export function MermaidBlock({ source, fallback }: MermaidBlockProps) {
     );
   }
 
+  // Chat's FencePromote holds Prism until onReady and mounts us hidden — return
+  // null so we do not flash a second source surface. Without onReady (artifact
+  // markdown), keep the source visible until the blob is ready, without the
+  // final figure chrome (no toolbar morph).
   if (!url) {
+    if (onReady) return null;
     return (
-      <div className="md-mermaid" aria-busy="true">
+      <div className="md-mermaid-pending" aria-busy="true">
         {sourceFallback}
       </div>
     );

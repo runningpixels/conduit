@@ -1,3 +1,4 @@
+import { useCallback, useState, type ReactNode } from 'react';
 import { PLACEHOLDER_CLOSE, PLACEHOLDER_OPEN, renderMarkdown } from '../artifacts/markdown/safeMarkdown';
 import { fenceLang, isMathLang, mermaidSourceFromFence } from '../artifacts/markdown/fenceLang';
 import { KatexHtml } from '../artifacts/markdown/KatexHtml';
@@ -11,6 +12,7 @@ import type { Artifact, FileState } from '../ipc/contracts';
 import { InlineCodeBlock } from './InlineCodeBlock';
 import { InlineArtifactCard } from './InlineArtifactCard';
 import { findPromotedArtifact, shouldRenderAsCard } from './inlineArtifact';
+import { FencePromote, useSyncPromoteReady } from './FencePromote';
 
 interface ChatProseProps {
   content: string;
@@ -77,6 +79,89 @@ function cleanCandidate(candidate: ArtifactCandidate): ArtifactCandidate {
   };
 }
 
+interface FenceSourceProps {
+  candidate: ArtifactCandidate;
+  streaming?: boolean;
+  messageId?: string;
+  artifacts?: Artifact[];
+  onPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
+  onOpenArtifact?: (artifactId: string) => void;
+}
+
+function FenceSource({
+  candidate,
+  streaming = false,
+  messageId,
+  artifacts,
+  onPromoteArtifact,
+  onOpenArtifact,
+}: FenceSourceProps) {
+  return (
+    <InlineCodeBlock
+      candidate={candidate}
+      streaming={streaming}
+      messageId={messageId}
+      artifacts={artifacts}
+      onPromote={onPromoteArtifact}
+      onOpenArtifact={onOpenArtifact}
+    />
+  );
+}
+
+/** Mermaid: hold Prism until the blob image (or failure UI) is ready. */
+function MermaidFence({
+  source,
+  candidate,
+  messageId,
+  artifacts,
+  onPromoteArtifact,
+  onOpenArtifact,
+}: {
+  source: string;
+  candidate: ArtifactCandidate;
+  messageId?: string;
+  artifacts?: Artifact[];
+  onPromoteArtifact?: (messageId: string, candidate: ArtifactCandidate) => void;
+  onOpenArtifact?: (artifactId: string) => void;
+}) {
+  const [ready, setReady] = useState(false);
+  const onReady = useCallback(() => setReady(true), []);
+  const outgoing = (
+    <FenceSource
+      candidate={candidate}
+      messageId={messageId}
+      artifacts={artifacts}
+      onPromoteArtifact={onPromoteArtifact}
+      onOpenArtifact={onOpenArtifact}
+    />
+  );
+  return (
+    <FencePromote
+      outgoing={outgoing}
+      ready={ready}
+      incoming={
+        <MermaidBlock
+          source={source}
+          onReady={onReady}
+          fallback={outgoing}
+        />
+      }
+    />
+  );
+}
+
+/** KaTeX / artifact card: sync paint after one frame. */
+function SyncFence({
+  outgoing,
+  incoming,
+}: {
+  outgoing: ReactNode;
+  incoming: ReactNode;
+}) {
+  const ready = useSyncPromoteReady();
+  return <FencePromote outgoing={outgoing} incoming={incoming} ready={ready} />;
+}
+
 /** Unified assistant prose: safe markdown, inline fenced blocks, and citations. */
 export function ChatProse({
   content,
@@ -128,34 +213,40 @@ export function ChatProse({
         }
         // Documents render as a card; snippets stay readable as source. While
         // streaming the source always wins — it is the only place generation
-        // is visible until the turn completes (§8.5).
+        // is visible until the turn completes (§8.5). After the gate clears,
+        // FencePromote holds that source until the rich destination is ready.
         const fenceStreaming = streaming && isLast;
         const candidate = cleanCandidate(seg.candidate);
         const lang = fenceLang(candidate.info);
         const mermaidSource = mermaidSourceFromFence(candidate.info, candidate.body);
+        const sourceProps: FenceSourceProps = {
+          candidate,
+          messageId,
+          artifacts,
+          onPromoteArtifact,
+          onOpenArtifact,
+        };
+
         if (!fenceStreaming && mermaidSource != null) {
           return (
-            <MermaidBlock
+            <MermaidFence
               key={`f${idx}`}
               source={mermaidSource}
-              fallback={
-                <InlineCodeBlock
-                  candidate={candidate}
-                  streaming={false}
-                  messageId={messageId}
-                  artifacts={artifacts}
-                  onPromote={onPromoteArtifact}
-                  onOpenArtifact={onOpenArtifact}
-                />
-              }
+              {...sourceProps}
             />
           );
         }
         if (!fenceStreaming && isMathLang(lang)) {
           return (
-            <div key={`f${idx}`} className="md-katex-block">
-              <KatexHtml tex={candidate.body} displayMode fallback={candidate.body} />
-            </div>
+            <SyncFence
+              key={`f${idx}`}
+              outgoing={<FenceSource {...sourceProps} />}
+              incoming={
+                <div className="md-katex-block">
+                  <KatexHtml tex={candidate.body} displayMode fallback={candidate.body} />
+                </div>
+              }
+            />
           );
         }
         if (shouldRenderAsCard(candidate, fenceStreaming)) {
@@ -163,15 +254,20 @@ export function ChatProse({
             ? findPromotedArtifact(artifacts ?? [], messageId, candidate)
             : undefined;
           return (
-            <InlineArtifactCard
+            <SyncFence
               key={`f${idx}`}
-              candidate={candidate}
-              promoted={promoted}
-              messageId={messageId}
-              fileState={promoted ? fileStateMap?.[promoted.id] : undefined}
-              onPromote={onPromoteArtifact}
-              onOpenArtifact={onOpenArtifact}
-              onStatus={onStatus}
+              outgoing={<FenceSource {...sourceProps} />}
+              incoming={
+                <InlineArtifactCard
+                  candidate={candidate}
+                  promoted={promoted}
+                  messageId={messageId}
+                  fileState={promoted ? fileStateMap?.[promoted.id] : undefined}
+                  onPromote={onPromoteArtifact}
+                  onOpenArtifact={onOpenArtifact}
+                  onStatus={onStatus}
+                />
+              }
             />
           );
         }

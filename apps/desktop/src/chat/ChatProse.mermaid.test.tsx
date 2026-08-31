@@ -33,7 +33,9 @@ describe('ChatProse mermaid and math fences', () => {
     await waitFor(() => {
       expect(container.querySelector('img.md-mermaid-img')).not.toBeNull();
     });
-    expect(container.querySelector('.inline-code-block')).toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('.fence-promote-outgoing')).toBeNull();
+    });
   });
 
   it('renders mermaid wrapped in a markdown fence, not as an artifact card', async () => {
@@ -78,10 +80,44 @@ describe('ChatProse mermaid and math fences', () => {
     expect(document.body.textContent).not.toContain('Syntax error in text');
   });
 
-  it('renders a math fence as KaTeX', () => {
+  it('renders a math fence as KaTeX', async () => {
     const { container } = render(<ChatProse content={'```math\nE=mc^2\n```'} />);
-    expect(container.querySelector('.md-katex-block')).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('.md-katex-block')).not.toBeNull();
+    });
     expect(container.querySelector('.katex')).not.toBeNull();
+  });
+
+  it('holds Prism for an HTML fence until the card promote settles', async () => {
+    const body = '<html><body>' + 'x'.repeat(220) + '</body></html>';
+    const src = '```html\n' + body + '\n```';
+    const { container } = render(<ChatProse content={src} streaming />);
+    expect(container.querySelector('.inline-code-block')).not.toBeNull();
+    expect(container.querySelector('.inline-artifact')).toBeNull();
+
+    const settled = render(<ChatProse content={src} />);
+    await waitFor(() => {
+      expect(settled.container.querySelector('.inline-artifact')).not.toBeNull();
+    });
+  });
+
+  it('holds mermaid source until the diagram blob is ready', async () => {
+    let resolveRender!: (value: { svg: string }) => void;
+    const pending = new Promise<{ svg: string }>((resolve) => {
+      resolveRender = resolve;
+    });
+    mermaidRender.mockImplementationOnce(() => pending);
+    const src = '```mermaid\nflowchart TD\nA-->B\n```';
+    const { container } = render(<ChatProse content={src} />);
+    expect(container.querySelector('.inline-code-block')).not.toBeNull();
+    expect(container.querySelector('img.md-mermaid-img')).toBeNull();
+    resolveRender({ svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>' });
+    await waitFor(() => {
+      expect(container.querySelector('img.md-mermaid-img')).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(container.querySelector('.fence-promote-outgoing')).toBeNull();
+    });
   });
 
   it('renders inline math in prose', () => {

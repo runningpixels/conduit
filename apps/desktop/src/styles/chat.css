@@ -120,16 +120,24 @@ html[data-palette="orange-charcoal"] .bubble {
   margin: -4px 0 9px;
 }
 
+/* Reserved height always — opacity fade only, so hover never grows the turn
+ * vertically (Claude-style). Usage lives in this same row; a second stacked
+ * `display: none` → flex line was what caused the jitter. */
 .turn-actions {
   display: flex;
+  align-items: center;
   gap: 1px;
+  min-height: 26px;
   margin-top: var(--sp-3);
   opacity: 0;
-  transform: translateY(-2px);
-  transition: opacity var(--tap), transform var(--tap);
+  pointer-events: none;
+  transition: opacity var(--tap);
 }
 .turn:hover .turn-actions,
-.turn:focus-within .turn-actions { opacity: 1; transform: none; }
+.turn:focus-within .turn-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
 .turn.user .turn-actions { justify-content: flex-end; }
 .act {
   display: flex;
@@ -1057,22 +1065,36 @@ html[data-palette="orange-charcoal"] .prose { font-size: 16.5px; line-height: 1.
 }
 .Interrupted-action:hover { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .error-text { color: var(--err); font-size: 12.5px; margin: 6px 0 0; }
-/* Per-turn usage is audit detail — hidden until the turn is hovered or
- * focused. The status line beneath the composer is the canonical report
- * (§6.3). */
-/* `display: none` rather than `opacity: 0`: the hidden state used to keep its
- * box, so ~19px of dead vertical space sat under every streamed turn between the
- * prose and the action bar. It also kept the token counts in the accessibility
- * tree and in Ctrl+A, which is not what "hidden audit detail" means. */
+/* Per-turn usage: info icon in the reserved footer row. Counts live in an
+ * absolutely positioned tip so hover never grows the turn. Status line beneath
+ * the composer is the canonical report (§6.3). */
 .usage-summary {
-  display: none;
-  gap: 12px;
-  margin-top: 8px;
+  position: relative;
+  margin-left: 4px;
+}
+.usage-summary-tip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card-hi);
   color: var(--ink-3);
   font: 500 10.5px/1 var(--font-mono);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--tap);
 }
-.turn:hover .usage-summary,
-.turn:focus-within .usage-summary { display: flex; }
+.usage-summary:hover .usage-summary-tip,
+.usage-summary:focus-visible .usage-summary-tip {
+  opacity: 1;
+}
 
 /* ── Agent feedback: thinking indicator ────────────────────────────────── */
 .thinking-indicator {

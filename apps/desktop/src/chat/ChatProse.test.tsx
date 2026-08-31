@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChatProse } from './ChatProse';
 
 describe('ChatProse inline rendering', () => {
@@ -131,11 +131,13 @@ describe('ChatProse document fences', () => {
   ].join('\n');
   const htmlSrc = `Here it is:\n\`\`\`html\n${html}\n\`\`\`\nHope that helps.`;
 
-  it('renders an html fence as a card, not as source', () => {
+  it('renders an html fence as a card, not as source', async () => {
     const { container } = render(<ChatProse content={htmlSrc} messageId="msg-1" />);
 
-    expect(document.querySelector('.inline-artifact')).not.toBeNull();
-    expect(document.querySelector('.inline-code-block')).toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector('.inline-artifact')).not.toBeNull();
+      expect(document.querySelector('.fence-promote-outgoing')).toBeNull();
+    });
     expect(container.textContent).not.toContain('<!DOCTYPE html>');
     // The title comes from the <title> tag via deriveTitle.
     expect(screen.getByText('CAPM Demo')).toBeInTheDocument();
@@ -143,9 +145,13 @@ describe('ChatProse document fences', () => {
     expect(container.textContent).toContain('Hope that helps.');
   });
 
-  it('reveals the source behind Show code', () => {
+  it('reveals the source behind Show code', async () => {
     const { container } = render(<ChatProse content={htmlSrc} messageId="msg-1" />);
 
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Show code/i })).toBeInTheDocument();
+      expect(document.querySelector('.fence-promote-outgoing')).toBeNull();
+    });
     expect(container.textContent).not.toContain('<!DOCTYPE html>');
     fireEvent.click(screen.getByRole('button', { name: /Show code/i }));
     expect(container.textContent).toContain('<!DOCTYPE html>');
@@ -165,16 +171,19 @@ describe('ChatProse document fences', () => {
     expect(container.textContent).toContain('<!DOCTYPE html>');
   });
 
-  it('collapses a completed fence even while later prose is still streaming', () => {
+  it('collapses a completed fence even while later prose is still streaming', async () => {
     // Trailing prose proves the fence closed, so it is no longer the live
     // segment and should already read as a card.
     const { container } = render(<ChatProse content={htmlSrc} streaming messageId="msg-1" />);
 
-    expect(document.querySelector('.inline-artifact')).not.toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector('.inline-artifact')).not.toBeNull();
+      expect(document.querySelector('.fence-promote-outgoing')).toBeNull();
+    });
     expect(container.textContent).not.toContain('<!DOCTYPE html>');
   });
 
-  it('collapses a long code fence but leaves a short one inline', () => {
+  it('collapses a long code fence but leaves a short one inline', async () => {
     const short = `\`\`\`python\n${'x = 1\n'.repeat(5)}\`\`\``;
     const { unmount } = render(<ChatProse content={short} messageId="msg-1" />);
     expect(document.querySelector('.inline-code-block')).not.toBeNull();
@@ -183,21 +192,26 @@ describe('ChatProse document fences', () => {
 
     const long = `\`\`\`python\n${'x = 1\n'.repeat(40)}\`\`\``;
     render(<ChatProse content={long} messageId="msg-1" />);
-    expect(document.querySelector('.inline-artifact')).not.toBeNull();
-    expect(document.querySelector('.inline-code-block')).toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector('.inline-artifact')).not.toBeNull();
+      expect(document.querySelector('.fence-promote-outgoing')).toBeNull();
+    });
   });
 
-  it('promotes and opens from the card when no artifact exists yet', () => {
+  it('promotes and opens from the card when no artifact exists yet', async () => {
     const onPromote = vi.fn();
     render(<ChatProse content={htmlSrc} messageId="msg-1" onPromoteArtifact={onPromote} />);
 
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(onPromote).toHaveBeenCalledTimes(1);
     expect(onPromote.mock.calls[0][0]).toBe('msg-1');
     expect(onPromote.mock.calls[0][1].kind).toBe('html');
   });
 
-  it('opens the existing artifact when the fence already produced one', () => {
+  it('opens the existing artifact when the fence already produced one', async () => {
     const onOpen = vi.fn();
     const onPromote = vi.fn();
     // Title deliberately differs from the fence-derived "CAPM Demo": a
@@ -222,7 +236,10 @@ describe('ChatProse document fences', () => {
       />,
     );
 
-    expect(screen.getByText('Interactive CAPM explainer')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Interactive CAPM explainer')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(onOpen).toHaveBeenCalledWith('art-1');
     expect(onPromote).not.toHaveBeenCalled();

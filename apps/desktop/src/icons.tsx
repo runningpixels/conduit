@@ -205,6 +205,12 @@ export const CheckIcon = (p: IconProps) => (
 export const AlertIcon = (p: IconProps) => (
   <Svg {...p}><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></Svg>
 );
+export const InfoIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 16v-4M12 8h.01" />
+  </Svg>
+);
 export const ShareIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="18" cy="5" r="3" />

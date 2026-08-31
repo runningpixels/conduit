@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { UsageSummary } from './UsageSummary';
 
 describe('UsageSummary', () => {
-  it('renders token usage without duplicate web search counts', () => {
+  it('renders an info control with token usage in the tip, without web search counts', () => {
     render(
       <UsageSummary
         usage={{ inputTokens: 100n, outputTokens: 50n }}
@@ -11,6 +11,7 @@ describe('UsageSummary', () => {
       />,
     );
 
+    expect(screen.getByRole('button', { name: /Token usage: in: 100 · out: 50/ })).toBeInTheDocument();
     expect(screen.getByText(/in: 100/)).toBeInTheDocument();
     expect(screen.getByText(/out: 50/)).toBeInTheDocument();
     expect(screen.queryByText(/web searches/i)).toBeNull();
@@ -43,6 +44,7 @@ describe('UsageSummary', () => {
         usage={{ inputTokens: 100n, outputTokens: null as unknown as bigint, cacheTokens: null as unknown as bigint }}
       />,
     );
+    expect(screen.getByRole('button', { name: /Token usage: in: 100/ })).toBeInTheDocument();
     expect(screen.getByText(/in: 100/)).toBeInTheDocument();
     expect(screen.queryByText(/out:/)).toBeNull();
     expect(screen.queryByText(/cache:/)).toBeNull();

@@ -260,7 +260,6 @@ export function AssistantMessage({
         </div>
       )}
       {state.error && <p className="error-text">{state.error}</p>}
-      <UsageSummary usage={state.usage} searchCost={state.searchCost} />
       {messageId && onOpenArtifact && (
         <AssistantArtifactStrip
           messageId={messageId}
@@ -272,7 +271,7 @@ export function AssistantMessage({
         />
       )}
 
-      {(onCopy || showActions || onFork) && (
+      {(onCopy || showActions || onFork || state.usage) && (
       <div className="turn-actions">
         {onCopy ? (
           <button
@@ -334,6 +333,7 @@ export function AssistantMessage({
             Delete
           </button>
         )}
+        <UsageSummary usage={state.usage} searchCost={state.searchCost} />
       </div>
       )}
     </article>

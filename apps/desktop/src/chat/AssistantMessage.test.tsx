@@ -78,6 +78,29 @@ describe('AssistantMessage turn chrome', () => {
     expect(document.querySelector('.turn-model')).not.toBeNull();
     expect(screen.getByText(/switched from OpenAI/i)).toBeInTheDocument();
   });
+
+  it('nests the usage info control inside the reserved action row', () => {
+    render(
+      <AssistantMessage
+        state={{
+          ...createAssistantStreamState('req-1'),
+          streaming: false,
+          usage: { inputTokens: 120n, outputTokens: 40n },
+          blocks: [{ blockId: 'b1', blockKind: 'text', content: 'Done.', citations: [] }],
+        }}
+        provider="openai"
+        messageId="msg-1"
+        isLast
+        onCopy={() => {}}
+      />,
+    );
+
+    const usage = document.querySelector('.usage-summary');
+    expect(usage).not.toBeNull();
+    expect(usage!.closest('.turn-actions')).not.toBeNull();
+    expect(usage!.querySelector('.usage-summary-tip')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Token usage: in: 120 · out: 40/ })).toBeInTheDocument();
+  });
 });
 
 /**

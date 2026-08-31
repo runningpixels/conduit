@@ -14,6 +14,9 @@ import {
   writeExpandedStatus,
   readPalette,
   writePalette,
+  readMermaidScale,
+  writeMermaidScale,
+  mermaidScaleFactor,
 } from './uiPrefs';
 
 describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
@@ -23,6 +26,7 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
+    document.documentElement.removeAttribute('data-mermaid-scale');
   });
 
   it('provider colour defaults on and applies the html attribute', () => {
@@ -59,11 +63,13 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     localStorage.setItem('conduit:v7-show-reasoning', 'true');
     localStorage.setItem('conduit:v7-send-with', 'shift');
     localStorage.setItem('conduit:v9-palette', 'anthropic');
+    localStorage.setItem('conduit:v9-mermaid-scale', 'huge');
     expect(readPalette()).toBe('orange-charcoal');
     expect(readProviderColour()).toBe('on');
     expect(readReduceMotion()).toBe('off');
     expect(readShowReasoning()).toBe('off');
     expect(readSendWith()).toBe('enter');
+    expect(readMermaidScale()).toBe('default');
   });
 
   it('palette defaults to orange-charcoal and applies the html attribute', () => {
@@ -93,15 +99,28 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     writeProviderColour('off');
     writeReduceMotion('on');
     writeExpandedStatus('on');
+    writeMermaidScale('compact');
     document.documentElement.removeAttribute('data-palette');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
+    document.documentElement.removeAttribute('data-mermaid-scale');
     applyUiPrefs();
     expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
     expect(document.documentElement.getAttribute('data-expanded-status')).toBe('on');
+    expect(document.documentElement.getAttribute('data-mermaid-scale')).toBe('compact');
+  });
+
+  it('mermaid scale defaults to 85% and maps prefs to factors', () => {
+    expect(readMermaidScale()).toBe('default');
+    expect(mermaidScaleFactor('default')).toBe(0.85);
+    expect(mermaidScaleFactor('compact')).toBe(0.75);
+    expect(mermaidScaleFactor('full')).toBe(1);
+    writeMermaidScale('full');
+    expect(readMermaidScale()).toBe('full');
+    expect(document.documentElement.getAttribute('data-mermaid-scale')).toBe('full');
   });
 
   it('expanded status defaults to off and round-trips', () => {

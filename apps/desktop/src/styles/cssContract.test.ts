@@ -196,6 +196,46 @@ describe('user turn alignment', () => {
 });
 
 /**
+ * Guard — reserved turn footer (no hover jitter).
+ *
+ * Usage used to `display: none` until hover, then flex — inserting a second
+ * stacked line above `.turn-actions` and pushing the thread down. Both pieces
+ * of chrome now share one reserved row that fades via opacity only.
+ */
+describe('turn footer reserves height (no hover layout shift)', () => {
+  const chat = readFileSync(join(srcRoot, 'styles', 'chat.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+
+  it('hides .turn-actions with opacity, not display', () => {
+    const rule = chat.match(/(^|\})\s*\.turn-actions\s*\{([^}]*)\}/);
+    expect(rule, 'no `.turn-actions { … }` rule found in chat.css').not.toBeNull();
+    const decls = rule?.[2] ?? '';
+    expect(decls).toMatch(/opacity\s*:\s*0/);
+    expect(decls).not.toMatch(/display\s*:\s*none/);
+    expect(decls).toMatch(/pointer-events\s*:\s*none/);
+    // Slide on reveal would still be motion-only, but opacity-only matches the
+    // Claude pattern and avoids any transform side-effects on layout paint.
+    expect(decls).not.toMatch(/translateY/);
+  });
+
+  it('keeps usage counts in an absolute tip, not a display-toggled row', () => {
+    const rule = chat.match(/(^|\})\s*\.usage-summary\s*\{([^}]*)\}/);
+    expect(rule, 'no `.usage-summary { … }` rule found in chat.css').not.toBeNull();
+    expect(rule?.[2] ?? '').not.toMatch(/display\s*:\s*none/);
+    // Hover reveal must not reintroduce a display toggle (the old jitter).
+    expect(chat).not.toMatch(/\.turn:hover\s+\.usage-summary[^{]*\{[^}]*display\s*:\s*flex/);
+
+    const tip = chat.match(/(^|\})\s*\.usage-summary-tip\s*\{([^}]*)\}/);
+    expect(tip, 'no `.usage-summary-tip { … }` rule found in chat.css').not.toBeNull();
+    const tipDecls = tip?.[2] ?? '';
+    expect(tipDecls).toMatch(/position\s*:\s*absolute/);
+    expect(tipDecls).toMatch(/opacity\s*:\s*0/);
+  });
+});
+
+/**
  * Guard G4 — the assistant turn's provider rule.
  *
  * This one selector has now been argued twice in opposite directions. V7's

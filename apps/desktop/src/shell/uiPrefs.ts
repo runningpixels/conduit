@@ -19,7 +19,7 @@ const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
 const EXPANDED_STATUS_KEY = 'conduit:v9-expanded-status';
 const MERMAID_SCALE_KEY = 'conduit:v9-mermaid-scale';
 
-export type PalettePref = 'terra' | 'orange-charcoal';
+export type PalettePref = 'terra' | 'orange-charcoal' | 'orange-dark';
 export type ProviderColourPref = 'on' | 'off';
 export type ReduceMotionPref = 'on' | 'off';
 export type ShowReasoningPref = 'on' | 'off';
@@ -54,22 +54,26 @@ function writePref(key: string, value: string): void {
 }
 
 /* ── Palette ─────────────────────────────────────────────────────────────────────
- * A second look, orthogonal to `data-theme`: `orange-charcoal` is the darker
- * near-neutral charcoal with terracotta pinned and serif prose; `terra` is the
- * V9 warm-charcoal register that keeps provider colour as the only hue. Four
- * combinations, since either palette runs in either theme.
+ * A look, orthogonal to `data-theme`: `orange-charcoal` is the darker
+ * near-neutral charcoal with terracotta pinned and serif prose; `orange-dark`
+ * is Claude's live canvas (warmer, two steps lighter) with the same terracotta
+ * and serif; `terra` is the V9 warm-charcoal register that keeps provider
+ * colour as the only hue. Six combinations, since every palette runs in either
+ * theme.
  *
  * `orange-charcoal` is the default look. It suspends what V9 §3 called the
  * product's signature — provider identity as the only hue — in favour of one
  * calmer identity out of the box; `terra` stays one selection away for anyone
- * who wants provider colour back.
+ * who wants provider colour back, and `orange-dark` for anyone who wants the
+ * Claude match.
  *
  * Stored values migrate: `conduit` → `terra` (the rename of the old default
  * look), `claude` → `orange-charcoal` (the rename of this one). Both preserve an
  * explicit choice across the rename rather than silently resetting it — and the
  * `claude` migration matters more than it looks: without it, everyone who had
  * chosen this palette would land back on the fallback, which is now the same
- * look, so the bug would be invisible until they picked `terra`.
+ * look, so the bug would be invisible until they picked `terra`. `orange-dark`
+ * is a new look, not a rename of `claude`.
  *
  * Renderer-only for the same reason the prefs below are: AppSettings.theme is a
  * Rust enum crossing the IPC boundary, and a look preset does not need to be.
@@ -83,7 +87,7 @@ export function readPalette(): PalettePref {
   } catch {
     /* storage unavailable */
   }
-  return readPref(PALETTE_KEY, ['terra', 'orange-charcoal'], 'orange-charcoal');
+  return readPref(PALETTE_KEY, ['terra', 'orange-charcoal', 'orange-dark'], 'orange-charcoal');
 }
 
 export function writePalette(value: PalettePref): void {
@@ -91,7 +95,7 @@ export function writePalette(value: PalettePref): void {
   applyPalette(value);
 }
 
-/** `html[data-palette="orange-charcoal"]` swaps surfaces, hue, and the prose face. */
+/** `html[data-palette]` swaps surfaces, hue, and (for the terracotta looks) the prose face. */
 export function applyPalette(value: PalettePref): void {
   document.documentElement.setAttribute('data-palette', value);
 }

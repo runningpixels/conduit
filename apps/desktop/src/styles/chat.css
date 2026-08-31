@@ -59,7 +59,8 @@
    in the prose column rather than on top of it. No size bump: the 16.5px on
    `.prose` is optical compensation for the serif's smaller x-height, and the
    bubble is not serif. */
-html[data-palette="orange-charcoal"] .bubble {
+html[data-palette="orange-charcoal"] .bubble,
+html[data-palette="orange-dark"] .bubble {
   border-color: transparent;
   border-radius: 18px;
   padding: 12px 18px;
@@ -169,7 +170,8 @@ html[data-palette="orange-charcoal"] .bubble {
 /* Source Serif 4's x-height runs smaller than Geist's, so the same px reads a
  * step down. The bump is optical compensation, not a size preference — the
  * measure and leading are tuned together. */
-html[data-palette="orange-charcoal"] .prose { font-size: 16.5px; line-height: 1.7; }
+html[data-palette="orange-charcoal"] .prose,
+html[data-palette="orange-dark"] .prose { font-size: 16.5px; line-height: 1.7; }
 
 /* Links had no rule anywhere in the product, so every one rendered in
  * Chromium's UA colour. The first fix — ink with a `--line-hi` underline —

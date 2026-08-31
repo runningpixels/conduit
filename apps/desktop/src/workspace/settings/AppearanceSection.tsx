@@ -44,6 +44,7 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
             }}
           >
             <option value="orange-charcoal">Orange Charcoal — dark charcoal, terracotta</option>
+            <option value="orange-dark">Orange-Dark — Claude charcoal, terracotta</option>
             <option value="terra">Terra — warm charcoal, provider colour</option>
           </select>
         </label>

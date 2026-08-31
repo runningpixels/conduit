@@ -477,6 +477,62 @@ html[data-palette="orange-charcoal"] [data-provider] {
   --hue-weak-solid: var(--oc-hue-weak-solid);
 }
 
+/* ── Palette preset: Orange-Dark (renderer-only; html[data-palette]) ────────
+   A third look, Claude's live canvas rather than Orange Charcoal's darker
+   near-black. Surfaces come from claude.ai's bg-100/200/300 (#262624 /
+   #1f1e1d / #141413) mapped onto Conduit's four-surface stack; terracotta
+   is the same identity Orange Charcoal pins. Same specificity trap as that
+   palette: this selector is (0,1,1) and outranks [data-theme="light"], so
+   the light block must redeclare every colour declared here.
+   tokenContrast.test.ts asserts the coverage.
+
+   Two AA nudges, documented because they are the only deltas from the
+   published Claude literals: --ink-2 lifts two points off #c2c0b6 so the
+   ink ramp stays a perceptible step from --ink-3, and --ink-3 uses Terra's
+   #a6a39d rather than Claude's #b0aea5 / #8a8a86 — those fail either the
+   1.4 ramp or 4.5:1 on --card-hi. */
+html[data-palette="orange-dark"] {
+  --bg: #262624;
+  --bg-side: #1f1e1d;
+  --card: #30302e;
+  --card-hi: #3a3a37;
+  --line: #3d3d3a;
+  --line-soft: #343431;
+  --line-hi: #4d4d49;
+  --ink: #faf9f5;
+  --ink-2: #c4c2b8;
+  --ink-3: #a6a39d;
+  --od-hue: #d97757;
+  --od-hue-text: #e08f75;
+  --od-hue-solid: #c5522d;
+  --od-hue-weak-solid: rgba(217, 119, 87, .14);
+  --font-prose: var(--font-serif);
+}
+html[data-palette="orange-dark"][data-theme="light"] {
+  --bg: #faf9f5;
+  --bg-side: #f0eee6;
+  --card: #ffffff;
+  --card-hi: #f5f4ed;
+  --line: #e6e2d6;
+  --line-soft: #efece2;
+  --line-hi: #d2cdbf;
+  --ink: #141413;
+  --ink-2: #575043;
+  --ink-3: #6d6759;
+  --od-hue: #c6613f;
+  --od-hue-text: #b04f2b;
+  --od-hue-solid: #bd5836;
+  --od-hue-weak-solid: rgba(198, 97, 63, .14);
+}
+html[data-palette="orange-dark"][data-provider],
+html[data-palette="orange-dark"] [data-provider] {
+  --hue: var(--od-hue);
+  --hue-text: var(--od-hue-text);
+  --hue-solid: var(--od-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--od-hue) 14%, transparent);
+  --hue-weak-solid: var(--od-hue-weak-solid);
+}
+
 /* ── Brand override neutralizes provider hue on descendants ─────────────────
    White-label plan §5-6: a brand replaces provider identity everywhere, not
    just at the root. `[data-provider="..."]` above matches ANY element
@@ -552,6 +608,8 @@ html[data-palette="brand"] [data-provider] {
   [data-theme="light"][data-provider="custom"]    { --hue-weak: rgba(77, 89, 218, .14); }
   html[data-palette="orange-charcoal"][data-provider],
   html[data-palette="orange-charcoal"] [data-provider] { --hue-weak: var(--oc-hue-weak-solid); }
+  html[data-palette="orange-dark"][data-provider],
+  html[data-palette="orange-dark"] [data-provider] { --hue-weak: var(--od-hue-weak-solid); }
   /* Theme-neutral gray for the off state when color-mix() is unavailable. */
   html[data-provider-colour="off"] [data-provider] { --hue-weak: rgba(128, 128, 128, .16); }
 }

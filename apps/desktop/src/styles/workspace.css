@@ -244,9 +244,12 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
    identity everywhere — so spending it on a nav row makes "New chat" read as
    the loudest thing in the sidebar. In the reference it is plain text, and the
    terracotta is kept for the send button and the mark. */
-html[data-palette="orange-charcoal"] .sb-item.newchat { color: var(--ink-2); font-weight: 400; }
-html[data-palette="orange-charcoal"] .sb-item.newchat svg { color: currentColor; }
-html[data-palette="orange-charcoal"] .sb-item.newchat:hover { background: var(--card-hi); color: var(--ink); }
+html[data-palette="orange-charcoal"] .sb-item.newchat,
+html[data-palette="orange-dark"] .sb-item.newchat { color: var(--ink-2); font-weight: 400; }
+html[data-palette="orange-charcoal"] .sb-item.newchat svg,
+html[data-palette="orange-dark"] .sb-item.newchat svg { color: currentColor; }
+html[data-palette="orange-charcoal"] .sb-item.newchat:hover,
+html[data-palette="orange-dark"] .sb-item.newchat:hover { background: var(--card-hi); color: var(--ink); }
 
 /* ── Sidebar reveal — the way back from a collapsed sidebar ────────────── */
 /* Without it a collapsed sidebar is reachable only by hotkey, so the collapse
@@ -315,10 +318,12 @@ html[data-sidebar="closed"] .sb-reveal { display: grid; }
    row. Hidden rather than restyled: a mark that carries no information should
    not take space arguing for some. The base rule above stays, so the class is
    still styled and the Terra palette is untouched. */
-html[data-palette="orange-charcoal"] .convo-dot { display: none; }
+html[data-palette="orange-charcoal"] .convo-dot,
+html[data-palette="orange-dark"] .convo-dot { display: none; }
 /* With the dot gone the row loses its left anchor, so it takes a little more
    size and roundness to hold the line — which is also how the reference reads. */
-html[data-palette="orange-charcoal"] .convo { border-radius: var(--r); padding: 8px 10px; font-size: 13.5px; }
+html[data-palette="orange-charcoal"] .convo,
+html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 10px; font-size: 13.5px; }
 .convo-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The row wraps the select button and the delete button so the two can sit
    side by side without nesting one inside the other. */

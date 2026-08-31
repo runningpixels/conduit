@@ -79,6 +79,9 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
     writePalette('orange-charcoal');
     expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
+    writePalette('orange-dark');
+    expect(readPalette()).toBe('orange-dark');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
   });
 
   it('migrates stored conduit palette to terra', () => {
@@ -162,14 +165,18 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     const css = readFileSync(`${process.cwd()}/../../packages/ui/src/tokens.css`, 'utf8');
     const hue = css.indexOf('[data-provider="anthropic"]');
     const pin = css.indexOf('html[data-palette="orange-charcoal"] [data-provider]');
+    const odPin = css.indexOf('html[data-palette="orange-dark"] [data-provider]');
     const off = css.indexOf('html[data-provider-colour="off"] [data-provider]');
     expect(pin).toBeGreaterThan(-1);
+    expect(odPin).toBeGreaterThan(-1);
     // (0,2,1) beats the provider rules' (0,1,0)/(0,2,0) outright, but the rule
     // still has to exist after them to read as intentional.
     expect(pin).toBeGreaterThan(hue);
+    expect(odPin).toBeGreaterThan(hue);
     // Equal specificity with the off switch, so this ordering is the only thing
     // making "provider colour: off" beat the palette's accent.
     expect(off).toBeGreaterThan(pin);
+    expect(off).toBeGreaterThan(odPin);
   });
 
   /**

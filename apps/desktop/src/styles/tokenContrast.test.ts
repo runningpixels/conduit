@@ -152,12 +152,12 @@ const SURFACES = ['bg', 'bg-side', 'card', 'card-hi'] as const;
 const INKS = ['ink', 'ink-2', 'ink-3'] as const;
 
 /**
- * The four looks the app can render: two palettes × two themes. Each is a
- * *stack* of token layers in cascade order, because the Orange Charcoal palette
- * declares only what it changes.
+ * The six looks the app can render: three palettes × two themes. Each is a
+ * *stack* of token layers in cascade order, because a palette is a delta over
+ * a theme — it declares only what it changes.
  *
- * The Orange Charcoal light stack lists the palette's base block after
- * `[data-theme="light"]` deliberately: `html[data-palette="orange-charcoal"]` is (0,1,1)
+ * The terracotta light stacks list the palette's base block after
+ * `[data-theme="light"]` deliberately: `html[data-palette="…"]` is (0,1,1)
  * and `[data-theme="light"]` is (0,1,0), so in the browser the palette's dark
  * values *do* outrank the light theme. That is why the light palette block has
  * to redeclare every colour the dark one does, and why the coverage test below
@@ -165,11 +165,15 @@ const INKS = ['ink', 'ink-2', 'ink-3'] as const;
  */
 const OC = 'html[data-palette="orange-charcoal"]';
 const OC_LIGHT = 'html[data-palette="orange-charcoal"][data-theme="light"]';
+const OD = 'html[data-palette="orange-dark"]';
+const OD_LIGHT = 'html[data-palette="orange-dark"][data-theme="light"]';
 const THEMES = {
   'terra dark': [':root'],
   'terra light': [':root', '[data-theme="light"]'],
   'orange-charcoal dark': [':root', OC],
   'orange-charcoal light': [':root', '[data-theme="light"]', OC, OC_LIGHT],
+  'orange-dark dark': [':root', OD],
+  'orange-dark light': [':root', '[data-theme="light"]', OD, OD_LIGHT],
 } as const;
 
 describe.each(Object.entries(THEMES))('%s', (_look, layers) => {
@@ -328,6 +332,45 @@ describe('orange-charcoal palette hue', () => {
   });
 });
 
+describe('orange-dark palette hue', () => {
+  const LOOKS = [
+    ['orange-dark dark', OD, THEMES['orange-dark dark']],
+    ['orange-dark light', OD_LIGHT, THEMES['orange-dark light']],
+  ] as const;
+
+  it.each(LOOKS)('%s --od-hue-text clears AA on every surface', (_look, sel, layers) => {
+    const hueText = readTokenIn(blockFor(sel), 'od-hue-text')!;
+    for (const surface of SURFACES) {
+      expect(
+        contrast(hueText, resolve(layers, surface)),
+        `--od-hue-text on --${surface}`,
+      ).toBeGreaterThanOrEqual(AA);
+    }
+  });
+
+  it.each(LOOKS)('%s --od-hue clears 3:1 on every surface', (_look, sel, layers) => {
+    const hue = readTokenIn(blockFor(sel), 'od-hue')!;
+    for (const surface of SURFACES) {
+      expect(
+        contrast(hue, resolve(layers, surface)),
+        `--od-hue on --${surface}`,
+      ).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+  });
+
+  it.each(LOOKS)('%s --on-hue clears AA on --od-hue-solid', (_look, sel, layers) => {
+    const solid = readTokenIn(blockFor(sel), 'od-hue-solid')!;
+    expect(contrast(resolve(layers, 'on-hue'), solid)).toBeGreaterThanOrEqual(AA);
+  });
+
+  it('maps every hue role onto a measured literal', () => {
+    const pin = blockFor('html[data-palette="orange-dark"] [data-provider]');
+    expect(pin).toContain('--hue: var(--od-hue)');
+    expect(pin).toContain('--hue-text: var(--od-hue-text)');
+    expect(pin).toContain('--hue-solid: var(--od-hue-solid)');
+  });
+});
+
 /**
  * `html[data-palette="orange-charcoal"]` is (0,1,1) and `[data-theme="light"]` is
  * (0,1,0), so the palette's dark values outrank the light theme. Any colour the
@@ -341,6 +384,17 @@ describe('orange-charcoal palette: light covers dark', () => {
   it('redeclares every colour the dark block declares', () => {
     const dark = blockFor(OC);
     const light = blockFor(OC_LIGHT);
+    const declared = [...dark.matchAll(/--([a-z0-9-]+)\s*:\s*(?:#|rgba?\()/g)].map((m) => m[1]);
+    expect(declared.length, 'the dark palette block declares no colours').toBeGreaterThan(0);
+    const missing = declared.filter((name) => !new RegExp(`--${name}\\s*:`).test(light));
+    expect(missing, 'these leak dark values into light mode').toEqual([]);
+  });
+});
+
+describe('orange-dark palette: light covers dark', () => {
+  it('redeclares every colour the dark block declares', () => {
+    const dark = blockFor(OD);
+    const light = blockFor(OD_LIGHT);
     const declared = [...dark.matchAll(/--([a-z0-9-]+)\s*:\s*(?:#|rgba?\()/g)].map((m) => m[1]);
     expect(declared.length, 'the dark palette block declares no colours').toBeGreaterThan(0);
     const missing = declared.filter((name) => !new RegExp(`--${name}\\s*:`).test(light));

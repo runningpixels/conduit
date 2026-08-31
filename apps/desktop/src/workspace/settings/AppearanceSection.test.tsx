@@ -45,11 +45,12 @@ describe('palette select', () => {
     document.documentElement.removeAttribute('data-palette');
   });
 
-  it('defaults to the Orange Charcoal palette and offers both', () => {
+  it('defaults to the Orange Charcoal palette and offers all three', () => {
     renderSection();
     const select = screen.getByLabelText('Palette') as HTMLSelectElement;
     expect(select.value).toBe('orange-charcoal');
     expect(screen.getByRole('option', { name: /Orange Charcoal/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Orange-Dark/ })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Terra/ })).toBeInTheDocument();
   });
 
@@ -58,6 +59,9 @@ describe('palette select', () => {
     fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'terra' } });
     expect(localStorage.getItem('conduit:v9-palette')).toBe('terra');
     expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
+    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'orange-dark' } });
+    expect(localStorage.getItem('conduit:v9-palette')).toBe('orange-dark');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
   });
 
   /**

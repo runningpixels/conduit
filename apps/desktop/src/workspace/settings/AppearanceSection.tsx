@@ -7,18 +7,19 @@ import {
   type UiDensity,
   type UiFontSize,
 } from '../readability';
-import { readPalette, writePalette, type PalettePref } from '../../shell/uiPrefs';
+import { readPalette, writePalette, type PalettePref, readMermaidScale, writeMermaidScale, type MermaidScalePref } from '../../shell/uiPrefs';
 
 interface AppearanceSectionProps {
   settings: AppSettings;
   onUpdate: (next: AppSettings) => void;
 }
 
-/** Appearance settings: palette, theme, readability, and artifact styled preview. */
+/** Appearance settings: palette, theme, readability, diagram size, and artifact styled preview. */
 export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps) {
   const [fontSize, setFontSize] = useState<UiFontSize>(() => readUiFontSize());
   const [density, setDensity] = useState<UiDensity>(() => readUiDensity());
   const [palette, setPalette] = useState<PalettePref>(() => readPalette());
+  const [mermaidScale, setMermaidScale] = useState<MermaidScalePref>(() => readMermaidScale());
 
   useEffect(() => {
     applyUiReadability(fontSize, density);
@@ -76,6 +77,21 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
           >
             <option value="default">Default</option>
             <option value="compact">Compact</option>
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Diagram size</span>
+          <select
+            value={mermaidScale}
+            onChange={(e) => {
+              const next = e.target.value as MermaidScalePref;
+              setMermaidScale(next);
+              writeMermaidScale(next);
+            }}
+          >
+            <option value="compact">Compact (75%)</option>
+            <option value="default">Default (85%)</option>
+            <option value="full">Full (100%)</option>
           </select>
         </label>
         <label className="check-row">

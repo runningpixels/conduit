@@ -6,7 +6,49 @@ import {
 } from './messageSegments';
 import { detectArtifactCandidates } from './artifactCandidates';
 
+const NL = String.fromCharCode(10);
+
 describe('parseMessageSegments', () => {
+  it('does not let a nested fence close a longer one', () => {
+    // CommonMark: a closing run must be at least as long as the opener. Only
+    // comparing the character meant the inner ``` closed the ```` wrapper, so
+    // the quoted example was torn in half and its tail reparsed as a new fence.
+    const src = ['````markdown', 'Quoting a fence:', '', '```mermaid', 'flowchart TD', 'A-->B', '```', '````'].join(NL);
+    const segs = parseMessageSegments(src);
+    expect(segs).toHaveLength(1);
+    expect(segs[0].type).toBe('fence');
+    if (segs[0].type === 'fence') {
+      expect(segs[0].candidate.body).toContain('```mermaid');
+      expect(segs[0].candidate.body).toContain('A-->B');
+      // The wrapper's own closing run is not part of what it wraps.
+      expect(segs[0].candidate.body.endsWith('```')).toBe(true);
+    }
+  });
+
+  it('keeps an unlabeled ```` wrapper whole instead of splitting it in two', () => {
+    // Too short to resolve a kind, so it stays prose — but as *one* run of
+    // prose. The length bug closed it early and left the trailing ```` as a
+    // second, empty fence.
+    const src = ['````', 'Quoting:', '```mermaid', 'flowchart TD', '```', '````'].join(NL);
+    const segs = parseMessageSegments(src);
+    expect(segs).toHaveLength(1);
+    expect(segs[0].type).toBe('prose');
+    if (segs[0].type === 'prose') expect(segs[0].text).toBe(src);
+  });
+
+  it('titles a card from content, not from a fence delimiter nested in it', () => {
+    // A model asked to "reply with only this markdown" wraps the whole answer
+    // in ```markdown, whose first body line is then ```mermaid — punctuation,
+    // and useless as the name on a card.
+    const src = ['```markdown', '```mermaid', 'flowchart TD', 'A-->B', '```', '```'].join(NL);
+    const segs = parseMessageSegments(src);
+    const fence = segs.find((seg) => seg.type === 'fence');
+    expect(fence?.type).toBe('fence');
+    if (fence?.type === 'fence') {
+      expect(fence.candidate.title).toBe('flowchart TD');
+    }
+  });
+
   it('splits prose + html fence into 2 segments with correct kind', () => {
     const src = 'Intro text.\n```html\n<div>hi</div>\n```\nMore.';
     const segs = parseMessageSegments(src);

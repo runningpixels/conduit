@@ -1,4 +1,5 @@
 import type { ArtifactKind } from '../ipc/contracts';
+import { isFenceClose, isFenceLine, matchFenceOpen } from '../artifacts/markdown/fenceLang';
 
 export interface ArtifactCandidate {
   key: string;
@@ -112,18 +113,6 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   html: 'HTML',
 };
 
-function matchOpenFence(line: string): { fence: string; info: string } | null {
-  const m = /^(\s*)(`{3,}|~{3,})([^\n]*)$/.exec(line);
-  if (!m) return null;
-  return { fence: m[2], info: m[3].trim() };
-}
-
-function isCloseFence(line: string, openChar: string): boolean {
-  const m = /^(\s*)(`{3,}|~{3,})\s*$/.exec(line);
-  if (!m) return false;
-  return m[2][0] === openChar;
-}
-
 function firstInfoToken(info: string): string {
   return info.split(/\s+/)[0] ?? '';
 }
@@ -199,8 +188,14 @@ function deriveTitle(kind: ArtifactKind, info: string, body: string): string {
     const t = extractMarkdownHeading(body);
     if (t) return t;
   }
-  // Generic first non-empty line (existing behavior)
-  const firstLine = body.split('\n').map((l) => l.trim()).find((l) => l.length > 0);
+  // Generic first non-empty line (existing behavior), skipping any fence
+  // delimiter nested inside the body. A model that wraps its whole reply in a
+  // ```markdown fence leaves ```mermaid as the first line, which titled the
+  // card with punctuation instead of with anything a reader could act on.
+  const firstLine = body
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0 && !isFenceLine(l));
   if (firstLine) {
     return firstLine.length > TITLE_MAX ? `${firstLine.slice(0, TITLE_MAX)}…` : firstLine;
   }
@@ -220,18 +215,17 @@ export function parseMessageSegments(content: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
   let proseLines: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const open = matchOpenFence(lines[i]);
+    const open = matchFenceOpen(lines[i]);
     if (!open) {
       proseLines.push(lines[i]);
       continue;
     }
-    const openChar = open.fence[0];
     const bodyLines: string[] = [];
     const rawLines: string[] = [lines[i]];
     let j = i + 1;
     while (j < lines.length) {
       rawLines.push(lines[j]);
-      if (isCloseFence(lines[j], openChar)) break;
+      if (isFenceClose(lines[j], open.fence)) break;
       bodyLines.push(lines[j]);
       j++;
     }

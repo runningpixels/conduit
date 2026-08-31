@@ -79,3 +79,32 @@ describe('palette select', () => {
     expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
   });
 });
+
+describe('diagram size select', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-mermaid-scale');
+  });
+
+  it('defaults to 85% and offers compact / default / full', () => {
+    renderSection();
+    const select = screen.getByLabelText('Diagram size') as HTMLSelectElement;
+    expect(select.value).toBe('default');
+    expect(screen.getByRole('option', { name: /Compact \(75%\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Default \(85%\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Full \(100%\)/ })).toBeInTheDocument();
+  });
+
+  it('persists the choice and applies it to the document', () => {
+    renderSection();
+    fireEvent.change(screen.getByLabelText('Diagram size'), { target: { value: 'compact' } });
+    expect(localStorage.getItem('conduit:v9-mermaid-scale')).toBe('compact');
+    expect(document.documentElement.getAttribute('data-mermaid-scale')).toBe('compact');
+  });
+
+  it('does not write diagram size into AppSettings', () => {
+    const { onUpdate } = renderSection();
+    fireEvent.change(screen.getByLabelText('Diagram size'), { target: { value: 'full' } });
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+});

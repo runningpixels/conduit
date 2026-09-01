@@ -59,6 +59,8 @@ function renderPalette(overrides: Partial<Parameters<typeof CommandPalette>[0]> 
     onRenameChat: vi.fn(),
     onExportDiagnostics: vi.fn(),
     onCopyConversationAsMarkdown: vi.fn(),
+    onExportConversationMarkdown: vi.fn(),
+    onExportConversationJson: vi.fn(),
     onDeleteChat: vi.fn(),
     onDeleteAllHistory: vi.fn(),
     onSelectModel: vi.fn(),
@@ -140,6 +142,16 @@ describe('CommandPalette prefix modes', () => {
     type('>delete');
     fireEvent.click(screen.getByRole('option', { name: /Delete this chat/ }));
     expect(props.onDeleteChat).toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('>export surfaces export commands and Markdown runs onExportConversationMarkdown', () => {
+    const props = renderPalette();
+    type('>export');
+    expect(screen.getByRole('option', { name: /Export conversation as Markdown/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Export conversation as JSON/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Export conversation as Markdown/ }));
+    expect(props.onExportConversationMarkdown).toHaveBeenCalledTimes(1);
     expect(props.onClose).toHaveBeenCalled();
   });
 

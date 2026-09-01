@@ -80,6 +80,8 @@ fn main() {
             set_conversation_title,
             set_conversation_workspace,
             delete_all_conversations,
+            preview_conversation_export,
+            export_conversation_dialog,
             save_attachment,
             list_attachments,
             delete_attachment,

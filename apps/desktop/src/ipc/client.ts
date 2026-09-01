@@ -18,6 +18,8 @@ import type {
   ConnectorServerInfo,
   ConnectorVersion,
   Conversation,
+  ConversationExportFormat,
+  ConversationExportResult,
   ConversationSummary,
   CredentialRequest,
   CredentialSummary,
@@ -324,6 +326,25 @@ export async function deleteAllConversations(): Promise<Conversation> {
 
 export async function exportDiagnostics(): Promise<DiagnosticsExport> {
   return invoke<DiagnosticsExport>('export_diagnostics');
+}
+
+export async function previewConversationExport(
+  conversationId: string,
+  format: ConversationExportFormat,
+): Promise<string> {
+  return invoke<string>('preview_conversation_export', { conversationId, format });
+}
+
+export async function exportConversationDialog(
+  conversationId: string,
+  format: ConversationExportFormat,
+  includeAttachments = false,
+): Promise<ConversationExportResult | null> {
+  return invoke<ConversationExportResult | null>('export_conversation_dialog', {
+    conversationId,
+    format,
+    includeAttachments,
+  });
 }
 
 // =============================================================================

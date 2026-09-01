@@ -14,6 +14,7 @@ pub mod brand;
 pub mod branding;
 pub mod commands;
 pub mod connector_runtime;
+pub mod conversation_export;
 pub mod credentials;
 pub mod db;
 pub mod diagnostics;

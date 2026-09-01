@@ -19,6 +19,8 @@ import {
   getArtifactContentBytes,
   checkArtifactFileState,
   exportArtifact,
+  previewConversationExport,
+  exportConversationDialog,
   openExternalUrl,
   saveAttachment,
   listAttachments,
@@ -92,6 +94,38 @@ describe('artifact + attachment IPC wrappers', () => {
     const res = await exportArtifact('a1', true);
     expect(invoke).toHaveBeenCalledWith('export_artifact', { artifactId: 'a1', includeMetadata: true });
     expect(res).toEqual({ exportedTo: '/o.md', bytesWritten: 10 });
+  });
+
+  it('previewConversationExport calls preview_conversation_export with camelCase args', async () => {
+    invoke.mockResolvedValue('# Chat\n');
+    const md = await previewConversationExport('c1', 'markdown');
+    expect(invoke).toHaveBeenCalledWith('preview_conversation_export', {
+      conversationId: 'c1',
+      format: 'markdown',
+    });
+    expect(md).toBe('# Chat\n');
+  });
+
+  it('exportConversationDialog calls export_conversation_dialog with camelCase args', async () => {
+    invoke.mockResolvedValue({ exportedTo: '/o.json', bytesWritten: 42 });
+    const res = await exportConversationDialog('c1', 'json', true);
+    expect(invoke).toHaveBeenCalledWith('export_conversation_dialog', {
+      conversationId: 'c1',
+      format: 'json',
+      includeAttachments: true,
+    });
+    expect(res).toEqual({ exportedTo: '/o.json', bytesWritten: 42 });
+  });
+
+  it('exportConversationDialog defaults includeAttachments to false', async () => {
+    invoke.mockResolvedValue(null);
+    const res = await exportConversationDialog('c1', 'markdown');
+    expect(invoke).toHaveBeenCalledWith('export_conversation_dialog', {
+      conversationId: 'c1',
+      format: 'markdown',
+      includeAttachments: false,
+    });
+    expect(res).toBeNull();
   });
 
   it('openExternalUrl calls open_external_url with the url', async () => {

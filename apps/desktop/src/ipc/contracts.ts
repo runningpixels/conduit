@@ -42,6 +42,12 @@ export interface DiagnosticsExport {
   redactedFields: string[];
 }
 
+export type ConversationExportFormat = 'markdown' | 'json';
+export interface ConversationExportResult {
+  exportedTo: string;
+  bytesWritten: number;
+}
+
 // =============================================================================
 // Phase 6 — Consumer release: updater (trust-promise gate)
 //

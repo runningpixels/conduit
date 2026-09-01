@@ -1,11 +1,16 @@
 /**
  * SettingsSheet — the settings surface (V9 §2.6). A summoned overlay (⌘,), not
- * a navigation destination: 186px nav + scrolling main, six sections.
+ * a navigation destination: 186px nav + scrolling main.
  *
  * V9 dissolves Advanced. Settings-backed sections auto-save (useAutoSave);
  * renderer-only prefs (palette, provider colour, reduce motion, show reasoning,
  * send-with, export metadata, expanded status) persist to localStorage via
  * uiPrefs.
+ *
+ * Nav order groups by intent: configure (providers → chat → web search →
+ * workspace → connectors → prompts), look (appearance → branding), trust
+ * (privacy → about). Web search and workspace tools used to live under Chat
+ * defaults; usage/updates/about used to live under Privacy & data.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AppPaths, AppSettings, BrandConfig, ModelInfo } from '../ipc/contracts';
@@ -23,6 +28,7 @@ import { DiagnosticsSection } from '../workspace/settings/DiagnosticsSection';
 import { AboutSection } from '../workspace/settings/AboutSection';
 import { WebSearchSection } from '../workspace/settings/WebSearchSection';
 import { WorkspaceToolsSection } from '../workspace/settings/WorkspaceToolsSection';
+import { AgentSection } from '../workspace/settings/AgentSection';
 import { PromptsSection } from '../workspace/settings/PromptsSection';
 import { UsageSection } from '../workspace/settings/UsageSection';
 import {
@@ -43,30 +49,33 @@ import { useFocusTrap } from './useFocusTrap';
 import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
 import { modKey } from '../lib/shortcuts';
-import { ChatIcon, ConnectorsIcon, LockIcon, SettingsIcon } from '../icons';
+import {
+  ChatIcon,
+  ConnectorsIcon,
+  FolderIcon,
+  InfoIcon,
+  LockIcon,
+  SearchIcon,
+  SettingsIcon,
+} from '../icons';
 
 /**
- * Six sections (V9 §2.6, plan D4). `advanced` is gone: a tab whose own subtitle
- * read "most people never open this" is a tab that should not exist. Its five
- * blocks — export metadata, usage, updates, diagnostics, about — are all
- * privacy-and-data facts, so they moved rather than being dropped.
- *
- * Not five, as §2.6 asserts. The spec counted Advanced as holding "two live
- * rows" and never mentions Prompts at all; Prompts is a real capability with no
- * other home, so it stays as its own section and the count lands on six.
- *
- * Seven, not six, as of white-label Phase 3: `branding` is what makes Phases
- * 0-2 (the config format, the apply path, the logo pipeline) reachable by a
- * user at all — see `docs/private/white-label-plan.md` §4 item 14.
+ * Settings nav ids. `advanced` is gone (its blocks moved into Privacy & data,
+ * then Usage / Updates / About split out to `about`). Branding stays gated by
+ * `allowUserBranding`. Web search and workspace are first-class sections so
+ * they are findable without scrolling Chat defaults.
  */
 export type SettingsSection =
   | 'providers'
-  | 'connectors'
   | 'chat'
+  | 'web-search'
+  | 'workspace'
+  | 'connectors'
+  | 'prompts'
   | 'appearance'
   | 'branding'
   | 'privacy'
-  | 'prompts';
+  | 'about';
 
 interface SettingsSheetProps {
   open: boolean;
@@ -91,12 +100,15 @@ interface SettingsSheetProps {
 
 const NAV_ITEMS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
   { id: 'providers', label: 'Providers & keys', icon: <KeyNavIcon /> },
-  { id: 'connectors', label: 'Connectors', icon: <ConnectorsIcon /> },
   { id: 'chat', label: 'Chat defaults', icon: <ChatIcon /> },
+  { id: 'web-search', label: 'Web search', icon: <SearchIcon /> },
+  { id: 'workspace', label: 'Workspace', icon: <FolderIcon /> },
+  { id: 'connectors', label: 'Connectors', icon: <ConnectorsIcon /> },
+  { id: 'prompts', label: 'Prompts', icon: <ListNavIcon /> },
   { id: 'appearance', label: 'Appearance', icon: <SunNavIcon /> },
   { id: 'branding', label: 'Branding', icon: <BrandingNavIcon /> },
   { id: 'privacy', label: 'Privacy & data', icon: <LockIcon /> },
-  { id: 'prompts', label: 'Prompts', icon: <ListNavIcon /> },
+  { id: 'about', label: 'About', icon: <InfoIcon /> },
 ];
 
 function KeyNavIcon() {
@@ -266,19 +278,6 @@ export function SettingsSheet({
             </div>
           )}
 
-          {section === 'connectors' && (
-            <>
-              <h2 className="sheet-h">Connectors</h2>
-              <p className="sheet-sub">Grants live with the workspace. Every run asks for consent before a connector acts.</p>
-              <ConnectorsSection onStatus={onStatus} />
-              <div style={{ marginTop: 16 }}>
-                <button className="btn primary" type="button" onClick={() => onStatus('Connector setup opens in this section')}>
-                  Connect a service
-                </button>
-              </div>
-            </>
-          )}
-
           {section === 'chat' && (
             <>
               <h2 className="sheet-h">Chat defaults</h2>
@@ -342,8 +341,49 @@ export function SettingsSheet({
                   </select>
                 </div>
               </div>
+              <AgentSection settings={settings} onUpdate={save} onStatus={onStatus} />
+            </>
+          )}
+
+          {section === 'web-search' && (
+            <>
+              <h2 className="sheet-h">Web search</h2>
+              <p className="sheet-sub">
+                When enabled, the model can look things up on the internet during a conversation.
+                Local-only mode under Privacy &amp; data turns this off.
+              </p>
               <WebSearchSection settings={settings} onUpdate={save} onStatus={onStatus} />
+            </>
+          )}
+
+          {section === 'workspace' && (
+            <>
+              <h2 className="sheet-h">Workspace</h2>
+              <p className="sheet-sub">
+                Default folder for new chats. Bind a different folder from the chat bar for a single conversation.
+              </p>
               <WorkspaceToolsSection settings={settings} onUpdate={save} onStatus={onStatus} />
+            </>
+          )}
+
+          {section === 'connectors' && (
+            <>
+              <h2 className="sheet-h">Connectors</h2>
+              <p className="sheet-sub">Grants live with the workspace. Every run asks for consent before a connector acts.</p>
+              <ConnectorsSection onStatus={onStatus} />
+              <div style={{ marginTop: 16 }}>
+                <button className="btn primary" type="button" onClick={() => onStatus('Connector setup opens in this section')}>
+                  Connect a service
+                </button>
+              </div>
+            </>
+          )}
+
+          {section === 'prompts' && (
+            <>
+              <h2 className="sheet-h">Prompts</h2>
+              <p className="sheet-sub">Saved prompts you can insert into the composer.</p>
+              <PromptsSection onStatus={onStatus} onInsertPrompt={onInsertPrompt ?? (() => {})} />
             </>
           )}
 
@@ -420,11 +460,6 @@ export function SettingsSheet({
             <BrandingSection settings={settings} onUpdate={save} onStatus={onStatus} onBrandChange={onBrandChange} />
           )}
 
-          {/* Privacy & data absorbed all of Advanced (plan §6). Every block
-              below was a privacy-or-data fact already: what leaves the machine
-              (updates), what is written beside an export (metadata sidecar),
-              what a diagnostics bundle contains, what the app spent, and where
-              its files live. */}
           {section === 'privacy' && (
             <>
               <h2 className="sheet-h">Privacy &amp; data</h2>
@@ -458,24 +493,23 @@ export function SettingsSheet({
                   />
                 </div>
               </div>
+              <div style={{ marginBottom: 24, marginTop: 24 }}>
+                <DiagnosticsSection settings={settings} onStatus={onStatus} />
+              </div>
+            </>
+          )}
+
+          {section === 'about' && (
+            <>
+              <h2 className="sheet-h">About</h2>
+              <p className="sheet-sub">Usage, updates, and where {appName()} keeps its files on this machine.</p>
               <div style={{ marginBottom: 24 }}>
                 <UsageSection />
               </div>
               <div style={{ marginBottom: 24 }}>
                 <UpdatesSection settings={settings} onUpdate={save} onStatus={onStatus} />
               </div>
-              <div style={{ marginBottom: 24 }}>
-                <DiagnosticsSection settings={settings} onStatus={onStatus} />
-              </div>
               <AboutSection paths={paths} />
-            </>
-          )}
-
-          {section === 'prompts' && (
-            <>
-              <h2 className="sheet-h">Prompts</h2>
-              <p className="sheet-sub">Saved prompts you can insert into the composer.</p>
-              <PromptsSection onStatus={onStatus} onInsertPrompt={onInsertPrompt ?? (() => {})} />
             </>
           )}
 

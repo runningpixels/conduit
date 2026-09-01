@@ -70,11 +70,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
 
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>Web Search</span>
-      </div>
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
-        When enabled, the model can look things up on the internet during a conversation.
         Use <strong>Search source</strong> to choose provider-hosted search or {appName()}’s
         DuckDuckGo builtin. The chat-bar search icon turns search on for the conversation
         until you turn it off.

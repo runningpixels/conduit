@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::{
+    brand,
     db::repository::{attachments, conversations, messages},
     encryption::Encryption,
     time::now_iso8601,
@@ -160,7 +161,10 @@ fn render_markdown(conversation: &Conversation, messages: &[&Message]) -> String
     let exported_at = now_iso8601();
     let mut out = String::new();
     out.push_str(&format!("# {}\n\n", title));
-    out.push_str(&format!("_Exported from Conduit on {exported_at}_\n\n"));
+    out.push_str(&format!(
+        "_Exported from {} on {exported_at}_\n\n",
+        brand::app_name()
+    ));
     out.push_str(&format!("- Created: {}\n", conversation.created_at));
     out.push_str(&format!("- Updated: {}\n\n", conversation.updated_at));
 

@@ -116,7 +116,7 @@ export function PrivacyDataSection({
           Diagnostics export enabled
         </label>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-          When diagnostics is enabled, you can export a support bundle from the Diagnostics tab.
+          When diagnostics is enabled, you can export a support bundle from the Diagnostics block below.
           It contains only redacted paths and your active provider/model/toggles/theme — never secrets,
           base URLs, allowlists, or conversation content.
         </p>

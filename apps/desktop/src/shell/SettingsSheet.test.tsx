@@ -38,6 +38,12 @@ vi.mock('../workspace/settings/AboutSection', () => ({
 vi.mock('../workspace/settings/WebSearchSection', () => ({
   WebSearchSection: () => <div data-testid="web-search-section" />,
 }));
+vi.mock('../workspace/settings/WorkspaceToolsSection', () => ({
+  WorkspaceToolsSection: () => <div data-testid="workspace-section" />,
+}));
+vi.mock('../workspace/settings/AgentSection', () => ({
+  AgentSection: () => <div data-testid="agent-section" />,
+}));
 vi.mock('../workspace/settings/PromptsSection', () => ({
   PromptsSection: () => <div data-testid="prompts-section" />,
 }));
@@ -104,16 +110,19 @@ describe('SettingsSheet', () => {
     document.documentElement.removeAttribute('data-reduce-motion');
   });
 
-  it('renders the seven nav sections and defaults to providers', () => {
+  it('renders the nav sections and defaults to providers', () => {
     renderSheet();
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy();
     expect(screen.getAllByText('Providers & keys').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Connectors')).toBeTruthy();
     expect(screen.getByText('Chat defaults')).toBeTruthy();
+    expect(screen.getByText('Web search')).toBeTruthy();
+    expect(screen.getByText('Workspace')).toBeTruthy();
+    expect(screen.getByText('Connectors')).toBeTruthy();
+    expect(screen.getByText('Prompts')).toBeTruthy();
     expect(screen.getByText('Appearance')).toBeTruthy();
     expect(screen.getByText('Privacy & data')).toBeTruthy();
-    expect(screen.getByText('Prompts')).toBeTruthy();
-    // Six, not seven: Advanced is dissolved (plan D4).
+    expect(screen.getByText('About')).toBeTruthy();
+    // Advanced is dissolved (plan D4).
     expect(screen.queryByText('Advanced')).toBeNull();
     expect(screen.getByTestId('provider-picker')).toBeTruthy();
   });
@@ -126,6 +135,10 @@ describe('SettingsSheet', () => {
     expect(screen.getByTestId('connectors-section')).toBeTruthy();
     fireEvent.click(screen.getByText('Prompts'));
     expect(screen.getByTestId('prompts-section')).toBeTruthy();
+    fireEvent.click(screen.getByText('Web search'));
+    expect(screen.getByTestId('web-search-section')).toBeTruthy();
+    fireEvent.click(screen.getByText('Workspace'));
+    expect(screen.getByTestId('workspace-section')).toBeTruthy();
   });
 
   it('honours initialSection', () => {
@@ -133,20 +146,39 @@ describe('SettingsSheet', () => {
     expect(screen.getByTestId('prompts-section')).toBeTruthy();
   });
 
-  /**
-   * Everything that lived in Advanced still exists, now under Privacy & data.
-   * This is the assertion that makes the fold a relocation rather than a
-   * deletion — the old test only ever proved Usage rendered somewhere.
-   */
-  it('keeps every Advanced block reachable under Privacy & data', () => {
-    renderSheet({ initialSection: 'privacy' });
-    expect(screen.getByTestId('usage-section')).toBeTruthy();
-    expect(screen.getByTestId('updates-section')).toBeTruthy();
-    expect(screen.getByTestId('diagnostics-section')).toBeTruthy();
-    expect(screen.getByTestId('about-section')).toBeTruthy();
-    expect(screen.getByRole('switch', { name: 'Include metadata on export' })).toBeTruthy();
+  it('honours initialSection for web search', () => {
+    renderSheet({ initialSection: 'web-search' });
+    expect(screen.getByTestId('web-search-section')).toBeTruthy();
   });
 
+  /**
+   * Privacy keeps trust/data controls and diagnostics; usage, updates, and
+   * about paths live under the dedicated About section.
+   */
+  it('keeps privacy controls under Privacy & data', () => {
+    renderSheet({ initialSection: 'privacy' });
+    expect(screen.getByTestId('privacy-section')).toBeTruthy();
+    expect(screen.getByTestId('artifact-security-section')).toBeTruthy();
+    expect(screen.getByTestId('diagnostics-section')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Include metadata on export' })).toBeTruthy();
+    expect(screen.queryByTestId('usage-section')).toBeNull();
+    expect(screen.queryByTestId('updates-section')).toBeNull();
+    expect(screen.queryByTestId('about-section')).toBeNull();
+  });
+
+  it('keeps usage, updates, and paths under About', () => {
+    renderSheet({ initialSection: 'about' });
+    expect(screen.getByTestId('usage-section')).toBeTruthy();
+    expect(screen.getByTestId('updates-section')).toBeTruthy();
+    expect(screen.getByTestId('about-section')).toBeTruthy();
+  });
+
+  it('mounts agent guardrails under Chat defaults', () => {
+    renderSheet({ initialSection: 'chat' });
+    expect(screen.getByTestId('agent-section')).toBeTruthy();
+    expect(screen.queryByTestId('web-search-section')).toBeNull();
+    expect(screen.queryByTestId('workspace-section')).toBeNull();
+  });
   it('provider colour toggle persists to localStorage and applies the html attribute', () => {
     renderSheet();
     fireEvent.click(screen.getByText('Appearance'));

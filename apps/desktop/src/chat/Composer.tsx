@@ -471,7 +471,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       role="menuitem"
                       onClick={() => {
                         setWorkspaceMenuOpen(false);
-                        onOpenSettings('chat');
+                        onOpenSettings('workspace');
                       }}
                     >
                       Defaults in Settings

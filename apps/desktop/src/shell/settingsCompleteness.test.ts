@@ -89,9 +89,20 @@ function bodyIds(): string[] {
 describe('settings sections', () => {
   const union = unionIds();
 
-  it('declares the seven sections (V9\'s six plus Phase 3 Branding)', () => {
+  it('declares the ten settings sections', () => {
     expect([...union].sort()).toEqual(
-      ['appearance', 'branding', 'chat', 'connectors', 'privacy', 'prompts', 'providers'].sort(),
+      [
+        'about',
+        'appearance',
+        'branding',
+        'chat',
+        'connectors',
+        'privacy',
+        'prompts',
+        'providers',
+        'web-search',
+        'workspace',
+      ].sort(),
     );
   });
 

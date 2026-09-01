@@ -43,10 +43,7 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
   }
 
   return (
-    <div className="settings-section" style={{ marginTop: 24 }}>
-      <div className="settings-section-header">
-        <span>Workspace tools</span>
-      </div>
+    <div className="settings-section">
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
         Bind a folder from the chat bar (“Work in a folder”) for a single conversation.
         Use this section for a <strong>default folder on new chats</strong>. Sensitive

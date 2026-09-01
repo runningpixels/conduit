@@ -32,6 +32,8 @@ interface CommandPaletteProps {
   onRenameChat: () => void;
   onExportDiagnostics: () => void;
   onCopyConversationAsMarkdown: () => void;
+  onExportConversationMarkdown: () => void;
+  onExportConversationJson: () => void;
   onDeleteChat: () => void;
   /** V7 — delete all conversation history (routes through the confirm dialog). */
   onDeleteAllHistory: () => void;
@@ -113,6 +115,8 @@ export function CommandPalette({
   onRenameChat,
   onExportDiagnostics,
   onCopyConversationAsMarkdown,
+  onExportConversationMarkdown,
+  onExportConversationJson,
   onDeleteChat,
   onDeleteAllHistory,
   onSelectModel,
@@ -178,6 +182,8 @@ export function CommandPalette({
       { id: 'cmd-rename', group: 'Commands', kind: 'cmd', label: 'Rename this chat', run: () => { onRenameChat(); close(); } },
       { id: 'cmd-export-diag', group: 'Commands', kind: 'cmd', label: 'Export diagnostics bundle', run: () => { onExportDiagnostics(); close(); } },
       { id: 'cmd-copy-md', group: 'Commands', kind: 'cmd', label: 'Copy conversation as Markdown', run: () => { onCopyConversationAsMarkdown(); close(); } },
+      { id: 'cmd-export-md', group: 'Commands', kind: 'cmd', label: 'Export conversation as Markdown…', run: () => { onExportConversationMarkdown(); close(); } },
+      { id: 'cmd-export-json', group: 'Commands', kind: 'cmd', label: 'Export conversation as JSON…', run: () => { onExportConversationJson(); close(); } },
       { id: 'cmd-delete', group: 'Commands', kind: 'cmd', label: 'Delete this chat', run: () => { onDeleteChat(); close(); } },
       { id: 'cmd-delete-all', group: 'Commands', kind: 'cmd', label: 'Delete all chats…', tail: '⌫', run: () => { onDeleteAllHistory(); close(); } },
       { id: 'cmd-theme', group: 'Commands', kind: 'cmd', label: 'Toggle theme', run: () => { onToggleTheme(); close(); } },
@@ -185,7 +191,8 @@ export function CommandPalette({
   }, [
     onClose, onNewChat, onForkConversationHere, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onExportDiagnostics,
-    onCopyConversationAsMarkdown, onDeleteChat, onDeleteAllHistory, onToggleTheme,
+    onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
+    onDeleteChat, onDeleteAllHistory, onToggleTheme,
   ]);
 
   const modelItems = useMemo((): PaletteItem[] => {

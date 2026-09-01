@@ -3,6 +3,7 @@
 
 use crate::{
     connector_runtime::ConnectorRuntimeManager,
+    conversation_export::{self, ConversationExportResult, ExportFormat},
     db::repository::{conversations, messages},
     state::AppState,
     stream_manager::{StreamHandle, StreamManager},
@@ -275,6 +276,100 @@ pub async fn delete_all_conversations(state: State<'_, AppState>) -> Result<Conv
     conversations::create(&state.db, None)
         .await
         .map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Conversation export (t0-4)
+// ---------------------------------------------------------------------------
+
+/// Render the conversation as Markdown or JSON without writing a file. Used by
+/// the clipboard "Copy as Markdown" path so it shares the canonical renderer
+/// (and redaction) with the save-dialog export.
+#[tauri::command]
+pub async fn preview_conversation_export(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    format: ExportFormat,
+) -> Result<String, String> {
+    conversation_export::preview(&state.db, &conversation_id, format).await
+}
+
+/// Show a native save dialog and write the conversation there. `Ok(None)` means
+/// the user cancelled — that is success, not an error. The renderer never
+/// supplies a path (ADR-008).
+#[tauri::command]
+pub async fn export_conversation_dialog(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    conversation_id: String,
+    format: ExportFormat,
+    include_attachments: Option<bool>,
+) -> Result<Option<ConversationExportResult>, String> {
+    let include = include_attachments.unwrap_or(false);
+    // Fail before the picker when there is nothing to export.
+    let prepared = conversation_export::prepare(&state.db, &conversation_id, format).await?;
+    let picked = pick_conversation_save_path(&app, format, &prepared.suggested_filename).await?;
+    export_conversation_dialog_impl(state.inner(), &conversation_id, format, include, picked).await
+}
+
+/// Post-picker half of [`export_conversation_dialog`]. Split out so cancel vs
+/// write can be tested without driving the OS dialog (same shape as
+/// `export_brand_config_dialog_impl`).
+#[doc(hidden)]
+pub async fn export_conversation_dialog_impl(
+    state: &AppState,
+    conversation_id: &str,
+    format: ExportFormat,
+    include_attachments: bool,
+    picked: Option<std::path::PathBuf>,
+) -> Result<Option<ConversationExportResult>, String> {
+    let Some(path) = picked else {
+        return Ok(None);
+    };
+    let result = conversation_export::export_to_path(
+        &state.db,
+        &state.paths.attachments,
+        state.encryption.as_ref(),
+        conversation_id,
+        format,
+        include_attachments,
+        &path,
+    )
+    .await?;
+    Ok(Some(result))
+}
+
+async fn pick_conversation_save_path(
+    app: &tauri::AppHandle,
+    format: ExportFormat,
+    suggested_filename: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let title = match format {
+        ExportFormat::Markdown => "Export conversation as Markdown",
+        ExportFormat::Json => "Export conversation as JSON",
+    };
+    app.dialog()
+        .file()
+        .add_filter(format.dialog_filter_name(), &[format.extension()])
+        .set_file_name(suggested_filename)
+        .set_title(title)
+        .save_file(move |file_path| {
+            let _ = tx.send(file_path);
+        });
+
+    let picked = rx
+        .await
+        .map_err(|_| "the file dialog closed without a response".to_string())?;
+    picked
+        .map(|file_path| {
+            file_path
+                .into_path()
+                .map_err(|err| format!("failed to resolve the picked file path: {err}"))
+        })
+        .transpose()
 }
 
 // ---------------------------------------------------------------------------

@@ -59,7 +59,13 @@ import { refreshArtifactList } from './workspace/useArtifacts';
 import { modShortcutHint } from './lib/shortcuts';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { ConfirmDialog } from '@conduit/ui';
-import { forkConversation, exportDiagnostics, getConversationMessages, setConversationTitle } from './ipc/client';
+import {
+  exportConversationDialog,
+  exportDiagnostics,
+  forkConversation,
+  previewConversationExport,
+  setConversationTitle,
+} from './ipc/client';
 
 const DOC_PANEL_HINT_KEY = 'conduit:v5-doc-panel-hint-seen';
 const CONVO_PROVIDERS_KEY = 'conduit:v7-convo-providers';
@@ -755,18 +761,7 @@ export default function App() {
       return;
     }
     try {
-      const messages = await getConversationMessages(activeConversationId);
-      const md = messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => {
-          const body = (m.parts ?? [])
-            .map((p) => p.content ?? '')
-            .join('')
-            .trim();
-          return `## ${m.role === 'user' ? 'You' : 'Assistant'}\n\n${body}`;
-        })
-        .filter((block) => block.trim().length > 0)
-        .join('\n\n');
+      const md = await previewConversationExport(activeConversationId, 'markdown');
       if (!md.trim()) {
         setStatus(makeStatus('Nothing to copy', 'warning'));
         return;
@@ -779,6 +774,25 @@ export default function App() {
       );
     }
   }, [activeConversationId]);
+
+  const handleExportConversation = useCallback(
+    async (format: 'markdown' | 'json') => {
+      if (!activeConversationId) {
+        setStatus(makeStatus('Nothing to export', 'warning'));
+        return;
+      }
+      try {
+        const result = await exportConversationDialog(activeConversationId, format);
+        if (result === null) return;
+        setStatus(makeStatus(`Exported to ${result.exportedTo}`, 'success'));
+      } catch (error) {
+        setStatus(
+          makeStatus(error instanceof Error ? error.message : 'Failed to export conversation', 'error'),
+        );
+      }
+    },
+    [activeConversationId],
+  );
 
   /**
    * The one place a model switch is written (⌘K's `/models` corpus and the
@@ -1180,6 +1194,8 @@ export default function App() {
         onRenameChat={handleRenameChat}
         onExportDiagnostics={() => void handleExportDiagnostics()}
         onCopyConversationAsMarkdown={() => void handleCopyConversationAsMarkdown()}
+        onExportConversationMarkdown={() => void handleExportConversation('markdown')}
+        onExportConversationJson={() => void handleExportConversation('json')}
         onDeleteChat={handleDeleteChatRequest}
         onDeleteAllHistory={handleDeleteAllHistory}
         onSelectModel={handleSelectModel}

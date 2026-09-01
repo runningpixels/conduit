@@ -102,6 +102,7 @@ const IPC_EXPORTS = [
   'getArtifactContentBytes', 'readArtifactFileBytes', 'checkArtifactFileState',
   'exportArtifact', 'saveAttachment', 'listAttachments', 'deleteAttachment',
   'getAttachmentBytes', 'resetLocalDatabase',
+  'previewConversationExport', 'exportConversationDialog',
   // White-label Phase 3 (Settings → Branding): App.tsx's boot effect already
   // calls getBrandConfig/getBrandLogo unconditionally, same as every other
   // Promise.all entry there — missing from this enumeration, either of them

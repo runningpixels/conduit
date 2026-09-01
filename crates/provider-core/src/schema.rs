@@ -118,6 +118,17 @@ pub struct Conversation {
     #[serde(default)]
     #[ts(optional)]
     pub workspace_root: Option<String>,
+    /// Per-conversation generation-parameter override. `None` inherits
+    /// `AppSettings.generation_controls`. Set keys win over the app default.
+    #[serde(default)]
+    #[ts(optional)]
+    pub generation_controls: Option<GenerationControls>,
+    /// Per-conversation user instructions. `None` inherits
+    /// `AppSettings.user_instructions`. Stored encrypted when encryption-at-rest
+    /// is On (IPC always returns plaintext).
+    #[serde(default)]
+    #[ts(optional)]
+    pub user_instructions: Option<String>,
 }
 
 /// A history-rail entry: a conversation plus enough derived state (message
@@ -1578,6 +1589,16 @@ pub struct AppSettings {
     /// First-use consent for workspace file tools (disk mutation + path policy).
     #[serde(default)]
     pub workspace_tools_consent_acknowledged: bool,
+    /// Default generation parameters for new chats. Per-conversation overrides
+    /// live on `Conversation.generation_controls`. `None` = provider defaults.
+    #[serde(default)]
+    pub generation_controls: Option<GenerationControls>,
+    /// Default user instructions appended as a reserved system-prompt block.
+    /// Per-conversation overrides live on `Conversation.user_instructions`.
+    /// App-level value lives in settings.json (plaintext); conversation-level
+    /// value is encrypted at rest like prompt bodies.
+    #[serde(default)]
+    pub user_instructions: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -1607,6 +1628,8 @@ impl Default for AppSettings {
             workspace_tools_enabled: false,
             workspace_root: None,
             workspace_tools_consent_acknowledged: false,
+            generation_controls: None,
+            user_instructions: None,
         }
     }
 }
@@ -1667,6 +1690,12 @@ pub struct SettingsPatch {
     pub workspace_root: Option<Option<String>>,
     #[ts(optional)]
     pub workspace_tools_consent_acknowledged: Option<bool>,
+    /// Replace or clear app-default generation controls. `Some(None)` clears.
+    #[ts(optional)]
+    pub generation_controls: Option<Option<GenerationControls>>,
+    /// Replace or clear app-default user instructions. `Some(None)` clears.
+    #[ts(optional)]
+    pub user_instructions: Option<Option<String>>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

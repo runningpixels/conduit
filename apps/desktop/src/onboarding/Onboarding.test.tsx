@@ -71,6 +71,8 @@ const baseSettings: AppSettings = {
   workspaceToolsEnabled: false,
   workspaceRoot: null,
   workspaceToolsConsentAcknowledged: false,
+  generationControls: null,
+  userInstructions: null,
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {

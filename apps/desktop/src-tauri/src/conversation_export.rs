@@ -486,6 +486,8 @@ mod tests {
             cloud_id: None,
             metadata: None,
             workspace_root: Some("C:\\secret\\project".into()),
+            generation_controls: None,
+            user_instructions: None,
         }
     }
 

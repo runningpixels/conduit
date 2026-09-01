@@ -3,6 +3,73 @@
 //! Extracted from `state.rs` to keep the state module focused on structure and
 //! persistence.
 
+/// Upper bound for user-authored instructions (settings or per-conversation).
+pub const USER_INSTRUCTIONS_MAX_CHARS: usize = 32 * 1024;
+const STOP_SEQUENCE_MAX_COUNT: usize = 8;
+const STOP_SEQUENCE_MAX_CHARS: usize = 64;
+
+/// Validate generation controls on save. Ranges match `provider_core::normalize`.
+pub fn validate_generation_controls(
+    controls: &provider_core::schema::GenerationControls,
+) -> Result<(), String> {
+    if let Some(temp) = controls.temperature {
+        if !(0.0..=2.0).contains(&temp) || temp.is_nan() {
+            return Err("temperature must be between 0 and 2".into());
+        }
+    }
+    if let Some(top_p) = controls.top_p {
+        if !(0.0..=1.0).contains(&top_p) || top_p.is_nan() {
+            return Err("top_p must be between 0 and 1".into());
+        }
+    }
+    if let Some(max_tokens) = controls.max_tokens {
+        if max_tokens == 0 {
+            return Err("max_tokens must be greater than 0".into());
+        }
+    }
+    if let Some(stops) = &controls.stop_sequences {
+        if stops.len() > STOP_SEQUENCE_MAX_COUNT {
+            return Err(format!(
+                "stop_sequences cannot have more than {STOP_SEQUENCE_MAX_COUNT} entries"
+            ));
+        }
+        for stop in stops {
+            if stop.is_empty() {
+                return Err("stop_sequences entries cannot be empty".into());
+            }
+            if stop.chars().count() > STOP_SEQUENCE_MAX_CHARS {
+                return Err(format!(
+                    "stop_sequences entries cannot exceed {STOP_SEQUENCE_MAX_CHARS} characters"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validate user instructions length. Empty/whitespace is treated as unset by callers.
+pub fn validate_user_instructions(text: &str) -> Result<(), String> {
+    if text.chars().count() > USER_INSTRUCTIONS_MAX_CHARS {
+        return Err(format!(
+            "user instructions cannot exceed {USER_INSTRUCTIONS_MAX_CHARS} characters"
+        ));
+    }
+    Ok(())
+}
+
+/// True when every GenerationControls field is unset — treat as inherit/default.
+pub fn generation_controls_is_empty(controls: &provider_core::schema::GenerationControls) -> bool {
+    controls.temperature.is_none()
+        && controls.top_p.is_none()
+        && controls.max_tokens.is_none()
+        && controls
+            .stop_sequences
+            .as_ref()
+            .map(|s| s.is_empty())
+            .unwrap_or(true)
+        && controls.tool_choice.is_none()
+}
+
 /// Validate agent loop guardrails on save. Bounds match the Settings UI and
 /// `run_agent_turn` enforcement in `stream_manager.rs`.
 pub fn validate_agent_guardrails(
@@ -370,5 +437,60 @@ mod tests {
             err.contains("wall_clock_budget_secs"),
             "rejection must mention wall_clock_budget_secs: {err}"
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Generation controls + user instructions (t0-6)
+    // -----------------------------------------------------------------
+
+    fn sample_controls() -> provider_core::schema::GenerationControls {
+        provider_core::schema::GenerationControls {
+            temperature: Some(0.7),
+            top_p: Some(0.9),
+            max_tokens: Some(1024),
+            stop_sequences: None,
+            tool_choice: None,
+        }
+    }
+
+    #[test]
+    fn generation_controls_accept_valid_ranges() {
+        validate_generation_controls(&sample_controls()).expect("valid controls must pass");
+    }
+
+    #[test]
+    fn generation_controls_reject_temperature_out_of_range() {
+        let mut c = sample_controls();
+        c.temperature = Some(2.5);
+        let err = validate_generation_controls(&c).unwrap_err();
+        assert!(err.contains("temperature"), "{err}");
+    }
+
+    #[test]
+    fn generation_controls_reject_empty_stop_sequence() {
+        let mut c = sample_controls();
+        c.stop_sequences = Some(vec!["".into()]);
+        let err = validate_generation_controls(&c).unwrap_err();
+        assert!(err.contains("stop_sequences"), "{err}");
+    }
+
+    #[test]
+    fn user_instructions_reject_overlong() {
+        let too_long = "x".repeat(USER_INSTRUCTIONS_MAX_CHARS + 1);
+        let err = validate_user_instructions(&too_long).unwrap_err();
+        assert!(err.contains("user instructions"), "{err}");
+    }
+
+    #[test]
+    fn generation_controls_is_empty_when_all_unset() {
+        let empty = provider_core::schema::GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            tool_choice: None,
+        };
+        assert!(generation_controls_is_empty(&empty));
+        assert!(!generation_controls_is_empty(&sample_controls()));
     }
 }

@@ -68,6 +68,8 @@ const baseSettings = {
   workspaceToolsEnabled: false,
   workspaceRoot: null,
   workspaceToolsConsentAcknowledged: false,
+  generationControls: null,
+  userInstructions: null,
 };
 
 const listedArtifacts: Artifact[] = [

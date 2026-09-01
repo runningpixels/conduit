@@ -36,6 +36,8 @@ const baseSettings: AppSettings = {
   workspaceToolsEnabled: false,
   workspaceRoot: null,
   workspaceToolsConsentAcknowledged: false,
+  generationControls: null,
+  userInstructions: null,
 };
 
 vi.mock('../ipc/client', () => ({

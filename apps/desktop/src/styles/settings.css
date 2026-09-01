@@ -446,6 +446,33 @@
 
 .form-grid { display: grid; gap: 12px; }
 
+.gen-fields {
+  display: grid;
+  gap: 12px;
+}
+.gen-fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.gen-fields input,
+.gen-fields textarea {
+  width: 100%;
+  max-width: 28rem;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 6px);
+  background: var(--bg);
+  color: var(--ink);
+}
+.gen-fields textarea { resize: vertical; min-height: 3.5em; }
+.gen-hint {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
 .field { display: grid; gap: 6px; }
 .field-label {
   color: var(--ink-3);

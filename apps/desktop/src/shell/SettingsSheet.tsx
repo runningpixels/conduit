@@ -29,6 +29,7 @@ import { AboutSection } from '../workspace/settings/AboutSection';
 import { WebSearchSection } from '../workspace/settings/WebSearchSection';
 import { WorkspaceToolsSection } from '../workspace/settings/WorkspaceToolsSection';
 import { AgentSection } from '../workspace/settings/AgentSection';
+import { GenerationControlsSection } from '../workspace/settings/GenerationControlsSection';
 import { PromptsSection } from '../workspace/settings/PromptsSection';
 import { UsageSection } from '../workspace/settings/UsageSection';
 import {
@@ -341,6 +342,7 @@ export function SettingsSheet({
                   </select>
                 </div>
               </div>
+              <GenerationControlsSection settings={settings} onUpdate={save} onStatus={onStatus} />
               <AgentSection settings={settings} onUpdate={save} onStatus={onStatus} />
             </>
           )}

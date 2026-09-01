@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use provider_core::schema::{Conversation, ConversationSummary};
+use provider_core::schema::{Conversation, ConversationSummary, GenerationControls};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -16,8 +16,10 @@ use crate::{
         repository::{artifacts, attachments},
         DbError,
     },
+    encryption::Encryption,
     message_preview::summarize_message_content_for_preview,
     time::now_iso8601,
+    validation,
 };
 
 /// Row shape for [`list`] (id, title, updated_at, message_count, last preview, first user prompt, fork columns).
@@ -31,12 +33,15 @@ type ConversationSummaryRow = (
     Option<String>,
 );
 
-/// Row shape for [`get`] (id, title, created_at, updated_at, cloud_id, metadata, workspace_root).
+/// Row shape for [`get`] (id, title, created_at, updated_at, cloud_id, metadata,
+/// workspace_root, generation_controls JSON, user_instructions).
 type ConversationRow = (
     String,
     Option<String>,
     String,
     String,
+    Option<String>,
+    Option<String>,
     Option<String>,
     Option<String>,
     Option<String>,
@@ -69,6 +74,8 @@ pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversati
         cloud_id: None,
         metadata: None,
         workspace_root: None,
+        generation_controls: None,
+        user_instructions: None,
     })
 }
 
@@ -125,27 +132,79 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
         .collect())
 }
 
+fn parse_generation_controls(raw: Option<String>) -> Option<GenerationControls> {
+    raw.filter(|s| !s.trim().is_empty())
+        .and_then(|s| serde_json::from_str(&s).ok())
+}
+
+fn serialize_generation_controls(controls: Option<&GenerationControls>) -> Option<String> {
+    controls.and_then(|c| {
+        if validation::generation_controls_is_empty(c) {
+            None
+        } else {
+            serde_json::to_string(c).ok()
+        }
+    })
+}
+
+fn map_conversation_row(
+    (
+        id,
+        title,
+        created_at,
+        updated_at,
+        cloud_id,
+        metadata,
+        workspace_root,
+        generation_controls,
+        user_instructions,
+    ): ConversationRow,
+) -> Conversation {
+    Conversation {
+        id,
+        title,
+        created_at,
+        updated_at,
+        cloud_id,
+        metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        workspace_root,
+        generation_controls: parse_generation_controls(generation_controls),
+        user_instructions,
+    }
+}
+
 /// Fetch one conversation, or `None` if it does not exist.
+///
+/// `user_instructions` is returned in stored form (ciphertext when encryption
+/// is On). IPC callers must run [`reveal_user_instructions`] before sending
+/// the row to the renderer.
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<Conversation>, DbError> {
     let row: Option<ConversationRow> = sqlx::query_as(
-        "SELECT id, title, created_at, updated_at, cloud_id, metadata, workspace_root \
+        "SELECT id, title, created_at, updated_at, cloud_id, metadata, workspace_root, \
+             generation_controls, user_instructions \
              FROM conversations WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(
-        |(id, title, created_at, updated_at, cloud_id, metadata, workspace_root)| Conversation {
-            id,
-            title,
-            created_at,
-            updated_at,
-            cloud_id,
-            metadata: metadata.and_then(|s| serde_json::from_str(&s).ok()),
-            workspace_root,
-        },
-    ))
+    Ok(row.map(map_conversation_row))
+}
+
+/// Decrypt `user_instructions` for IPC. Identity when encryption is Off.
+pub fn reveal_user_instructions(
+    enc: &Encryption,
+    mut conv: Conversation,
+) -> Result<Conversation, DbError> {
+    if let Some(raw) = conv.user_instructions.take() {
+        let plain = enc.decrypt(&raw)?;
+        conv.user_instructions = if plain.trim().is_empty() {
+            None
+        } else {
+            Some(plain)
+        };
+    }
+    Ok(conv)
 }
 
 /// Delete a conversation; `messages`, `message_parts`, and `provider_event_log`
@@ -211,6 +270,41 @@ pub async fn set_workspace_root(
         .bind(id)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+/// Set or clear per-conversation generation controls and user instructions.
+/// `None` on either argument clears that override (inherit app defaults).
+/// User instructions are encrypted when `enc` is On.
+pub async fn set_chat_settings(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    id: &str,
+    generation_controls: Option<&GenerationControls>,
+    user_instructions: Option<&str>,
+) -> Result<(), DbError> {
+    let controls_json = serialize_generation_controls(generation_controls);
+    let instructions = match user_instructions {
+        Some(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(enc.encrypt(trimmed)?)
+            }
+        }
+        None => None,
+    };
+    sqlx::query(
+        "UPDATE conversations SET generation_controls = ?, user_instructions = ?, updated_at = ? \
+         WHERE id = ?",
+    )
+    .bind(controls_json)
+    .bind(instructions)
+    .bind(now_iso8601())
+    .bind(id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -393,14 +487,18 @@ pub async fn fork_at(
     sqlx::query(
         "INSERT INTO conversations \
          (id, title, forked_from_conversation_id, fork_point_message_id, \
-          workspace_root, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+          workspace_root, generation_controls, user_instructions, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&fork_id)
     .bind(label)
     .bind(source_conversation_id)
     .bind(fork_point_message_id)
     .bind(&source.workspace_root)
+    .bind(serialize_generation_controls(
+        source.generation_controls.as_ref(),
+    ))
+    .bind(&source.user_instructions)
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
@@ -418,6 +516,8 @@ pub async fn fork_at(
         cloud_id: None,
         metadata: None,
         workspace_root: source.workspace_root,
+        generation_controls: source.generation_controls,
+        user_instructions: source.user_instructions,
     })
 }
 
@@ -501,14 +601,18 @@ pub async fn fork_before(
     sqlx::query(
         "INSERT INTO conversations \
          (id, title, forked_from_conversation_id, fork_point_message_id, \
-          workspace_root, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+          workspace_root, generation_controls, user_instructions, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&fork_id)
     .bind(label)
     .bind(source_conversation_id)
     .bind(before_message_id)
     .bind(&source.workspace_root)
+    .bind(serialize_generation_controls(
+        source.generation_controls.as_ref(),
+    ))
+    .bind(&source.user_instructions)
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
@@ -526,6 +630,8 @@ pub async fn fork_before(
         cloud_id: None,
         metadata: None,
         workspace_root: source.workspace_root,
+        generation_controls: source.generation_controls,
+        user_instructions: source.user_instructions,
     })
 }
 

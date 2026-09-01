@@ -35,6 +35,8 @@ const baseSettings = {
   workspaceToolsEnabled: false,
   workspaceRoot: null,
   workspaceToolsConsentAcknowledged: false,
+  generationControls: null,
+  userInstructions: null,
 } as AppSettings;
 
 function userTurn(id: string, content: string): ChatTurn {
@@ -125,5 +127,47 @@ describe('buildProviderRequest message id uniqueness (regression: saved user tur
     const ids = req.messages.map((m) => m.id);
     expect(ids).not.toContain('uuid-empty');
     expect(ids).toContain('uuid-real');
+  });
+
+  it('puts settings temperature on generationControls', () => {
+    const req = buildProviderRequest(
+      { ...baseSettings, generationControls: { temperature: 0.2 } },
+      'hi',
+      [userTurn('u1', 'hi')],
+      'c1',
+      [],
+    );
+    expect(req.generationControls?.temperature).toBe(0.2);
+  });
+
+  it('appends conversation user instructions after the auto-composed prompt', () => {
+    const req = buildProviderRequest(
+      { ...baseSettings, userInstructions: 'Default voice.' },
+      'hi',
+      [userTurn('u1', 'hi')],
+      'c1',
+      [],
+      undefined,
+      undefined,
+      { userInstructions: 'Always end with BANANA.' },
+    );
+    expect(req.systemPrompt).toContain('You are a helpful assistant');
+    expect(req.systemPrompt).toContain('## User instructions');
+    expect(req.systemPrompt).toContain('Always end with BANANA.');
+    expect(req.systemPrompt).not.toContain('Default voice.');
+    expect(req.systemPrompt!.indexOf('You are a helpful assistant')).toBeLessThan(
+      req.systemPrompt!.indexOf('## User instructions'),
+    );
+  });
+
+  it('inherits settings instructions when the conversation override is cleared', () => {
+    const req = buildProviderRequest(
+      { ...baseSettings, userInstructions: 'Default voice.' },
+      'hi',
+      [userTurn('u1', 'hi')],
+      'c1',
+      [],
+    );
+    expect(req.systemPrompt).toContain('Default voice.');
   });
 });

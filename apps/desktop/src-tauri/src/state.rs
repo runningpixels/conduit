@@ -388,6 +388,34 @@ impl AppState {
         if let Some(value) = patch.workspace_tools_consent_acknowledged {
             settings.workspace_tools_consent_acknowledged = value;
         }
+        if let Some(value) = patch.generation_controls {
+            match value {
+                Some(controls) => {
+                    crate::validation::validate_generation_controls(&controls)?;
+                    settings.generation_controls =
+                        if crate::validation::generation_controls_is_empty(&controls) {
+                            None
+                        } else {
+                            Some(controls)
+                        };
+                }
+                None => settings.generation_controls = None,
+            }
+        }
+        if let Some(value) = patch.user_instructions {
+            match value {
+                Some(text) => {
+                    let trimmed = text.trim().to_string();
+                    if trimmed.is_empty() {
+                        settings.user_instructions = None;
+                    } else {
+                        crate::validation::validate_user_instructions(&trimmed)?;
+                        settings.user_instructions = Some(trimmed);
+                    }
+                }
+                None => settings.user_instructions = None,
+            }
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())

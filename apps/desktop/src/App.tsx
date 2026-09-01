@@ -131,6 +131,8 @@ const defaultSettings: AppSettings = {
   workspaceToolsEnabled: false,
   workspaceRoot: null,
   workspaceToolsConsentAcknowledged: false,
+  generationControls: null,
+  userInstructions: null,
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';
@@ -1208,6 +1210,10 @@ export default function App() {
         onEditLastUserMessage={() => {
           const ok = chatViewRef.current?.editLastUserMessage() ?? false;
           if (!ok) setStatus(makeStatus('No user message to edit', 'warning'));
+        }}
+        onOpenChatSettings={() => {
+          const ok = chatViewRef.current?.openChatSettings() ?? false;
+          if (!ok) setStatus(makeStatus('Chat settings unavailable while streaming', 'warning'));
         }}
         onRenameChat={handleRenameChat}
         onExportDiagnostics={() => void handleExportDiagnostics()}

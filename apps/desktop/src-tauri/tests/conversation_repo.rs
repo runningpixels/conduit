@@ -560,3 +560,86 @@ async fn prepare_message_edit_mid_thread_forks() {
         .unwrap();
     assert_eq!(fork_msgs.len(), 2);
 }
+
+#[tokio::test]
+async fn set_chat_settings_round_trips_and_clears() {
+    use conduit_desktop::encryption::Encryption;
+    use provider_core::schema::GenerationControls;
+
+    let pool = common::setup_pool().await;
+    let enc = Encryption::off();
+    let conv = conversations::create(&pool, Some("Params")).await.unwrap();
+
+    let controls = GenerationControls {
+        temperature: Some(0.2),
+        top_p: Some(0.8),
+        max_tokens: Some(512),
+        stop_sequences: Some(vec!["END".into()]),
+        tool_choice: None,
+    };
+    conversations::set_chat_settings(
+        &pool,
+        &enc,
+        &conv.id,
+        Some(&controls),
+        Some("Always say BANANA."),
+    )
+    .await
+    .unwrap();
+
+    let loaded = conversations::get(&pool, &conv.id).await.unwrap().unwrap();
+    let loaded = conversations::reveal_user_instructions(&enc, loaded).unwrap();
+    assert_eq!(
+        loaded.generation_controls.as_ref().unwrap().temperature,
+        Some(0.2)
+    );
+    assert_eq!(
+        loaded.generation_controls.as_ref().unwrap().max_tokens,
+        Some(512)
+    );
+    assert_eq!(
+        loaded.user_instructions.as_deref(),
+        Some("Always say BANANA.")
+    );
+
+    conversations::set_chat_settings(&pool, &enc, &conv.id, None, None)
+        .await
+        .unwrap();
+    let cleared = conversations::get(&pool, &conv.id).await.unwrap().unwrap();
+    assert!(cleared.generation_controls.is_none());
+    assert!(cleared.user_instructions.is_none());
+}
+
+#[tokio::test]
+async fn fork_at_copies_chat_settings() {
+    use conduit_desktop::encryption::Encryption;
+    use provider_core::schema::GenerationControls;
+
+    let pool = common::setup_pool().await;
+    let enc = Encryption::off();
+    let conv = conversations::create(&pool, Some("Source")).await.unwrap();
+    messages::insert_message(&pool, &user_message(&conv.id, "u1", "hi"))
+        .await
+        .unwrap();
+    messages::insert_message(&pool, &assistant_message(&conv.id, "a1", "yo"))
+        .await
+        .unwrap();
+
+    let controls = GenerationControls {
+        temperature: Some(1.1),
+        top_p: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tool_choice: None,
+    };
+    conversations::set_chat_settings(&pool, &enc, &conv.id, Some(&controls), Some("Be brief."))
+        .await
+        .unwrap();
+
+    let fork = conversations::fork_at(&pool, &conv.id, "a1", Some("Fork"))
+        .await
+        .unwrap();
+    let fork = conversations::reveal_user_instructions(&enc, fork).unwrap();
+    assert_eq!(fork.generation_controls.unwrap().temperature, Some(1.1));
+    assert_eq!(fork.user_instructions.as_deref(), Some("Be brief."));
+}

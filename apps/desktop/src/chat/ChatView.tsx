@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { AppSettings, MessageRole, ProviderRequest } from '@conduit/config-schema';
+import type { AppSettings, GenerationControls, MessageRole, ProviderRequest } from '@conduit/config-schema';
 import type { ProviderUsage } from '@conduit/config-schema';
 import {
   cancelChatStream,
@@ -14,6 +14,7 @@ import {
   prepareMessageEdit,
   removeLastTurn,
   setConversationWorkspace,
+  setConversationChatSettings,
   startConnector,
   startChatStream,
   updateSettings,
@@ -30,6 +31,7 @@ import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
+import { composeSystemPrompt, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
 import {
   webSearchCreateDeveloperPromptFor,
   webSearchDeveloperPromptFor,
@@ -111,6 +113,8 @@ export interface ChatViewHandle {
   forkConversationHere: () => Promise<boolean>;
   /// t0-3 — begin editing the last user message (palette).
   editLastUserMessage: () => boolean;
+  /// t0-6 — open the per-conversation chat settings popover (palette).
+  openChatSettings: () => boolean;
 }
 
 interface ChatViewProps {
@@ -182,6 +186,11 @@ export function baseSystemPrompt(): string {
   return `You are a helpful assistant in the ${appName()} desktop shell.`;
 }
 
+export interface ChatRequestOverrides {
+  generationControls?: GenerationControls | null;
+  userInstructions?: string | null;
+}
+
 export function buildProviderRequest(
   settings: AppSettings,
   prompt: string,
@@ -191,6 +200,7 @@ export function buildProviderRequest(
   followUpArtifact?: FollowUpArtifactContext,
   /// Hosted XOR local. Absent / null = no search on this turn.
   searchBackend?: SearchBackend | null,
+  chatOverrides?: ChatRequestOverrides,
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
@@ -280,11 +290,14 @@ export function buildProviderRequest(
         : webSearchDeveloperPromptFor();
   const developerPrompt =
     [infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') || undefined;
-  const systemPrompt = [
-    baseSystemPrompt(),
-    ...(searchActive && !isCreationIntent ? [] : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX()]),
-    ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
-  ].join(' ');
+  const systemPrompt = composeSystemPrompt(
+    [
+      baseSystemPrompt(),
+      ...(searchActive && !isCreationIntent ? [] : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX()]),
+      ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
+    ],
+    resolveUserInstructions(settings, chatOverrides?.userInstructions),
+  );
 
   return {
     requestId: crypto.randomUUID(),
@@ -295,6 +308,10 @@ export function buildProviderRequest(
     developerPrompt,
     toolDefinitions,
     webSearch,
+    generationControls: mergeGenerationControls(
+      settings.generationControls,
+      chatOverrides?.generationControls,
+    ),
   };
 }
 
@@ -429,6 +446,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [showChatConsent, setShowChatConsent] = useState(false);
   const [chatConsentDismissed, setChatConsentDismissed] = useState(false);
   const [conversationWorkspaceRoot, setConversationWorkspaceRoot] = useState<string | null>(null);
+  const [conversationGenerationControls, setConversationGenerationControls] =
+    useState<GenerationControls | null>(null);
+  const [conversationUserInstructions, setConversationUserInstructions] = useState<string | null>(
+    null,
+  );
   const [showWorkspaceConsent, setShowWorkspaceConsent] = useState(false);
   const [workspacePicking, setWorkspacePicking] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -466,6 +488,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (!conversationId) {
       setTurns([]);
       setConversationWorkspaceRoot(null);
+      setConversationGenerationControls(null);
+      setConversationUserInstructions(null);
       setThreadLoading(false);
       return;
     }
@@ -490,6 +514,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           ).filter((t): t is ChatTurn => t !== null);
           setTurns(nextTurns);
           setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
+          setConversationGenerationControls(conversation?.generationControls ?? null);
+          setConversationUserInstructions(conversation?.userInstructions ?? null);
           const pending = pendingSendText?.trim();
           if (pending) {
             onPendingSendConsumed?.();
@@ -755,6 +781,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       toolDefinitions,
       followUpArtifact,
       searchBackend,
+      {
+        generationControls: conversationGenerationControls,
+        userInstructions: conversationUserInstructions,
+      },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
     const initialStream = createAssistantStreamState(request.requestId, searchBackend);
@@ -1065,6 +1095,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       }
       return false;
     },
+    openChatSettings: () => {
+      if (activeRequestId || !conversationId) return false;
+      composerRef.current?.openChatSettings();
+      return true;
+    },
   }));
 
   function handleWebSearchToggle() {
@@ -1117,6 +1152,29 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       onStatus('Workspace folder cleared for this chat');
     } catch (error) {
       onStatus(error instanceof Error ? error.message : 'Could not clear workspace folder');
+    }
+  }
+
+  async function handleSaveChatSettings(
+    generationControls: GenerationControls | null,
+    userInstructions: string | null,
+  ) {
+    if (!conversationId) return;
+    try {
+      const updated = await setConversationChatSettings(
+        conversationId,
+        generationControls,
+        userInstructions,
+      );
+      setConversationGenerationControls(updated.generationControls ?? null);
+      setConversationUserInstructions(updated.userInstructions ?? null);
+      onStatus(
+        generationControls || userInstructions
+          ? 'Chat settings saved for this conversation'
+          : 'Chat settings reset to defaults',
+      );
+    } catch (error) {
+      onStatus(error instanceof Error ? error.message : 'Could not save chat settings');
     }
   }
 
@@ -1620,6 +1678,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         workspaceRoot={conversationWorkspaceRoot}
         onWorkspacePick={() => void handleWorkspacePick()}
         onWorkspaceClear={() => void handleWorkspaceClear()}
+        generationControls={conversationGenerationControls}
+        userInstructions={conversationUserInstructions}
+        onSaveChatSettings={(controls, instructions) =>
+          void handleSaveChatSettings(controls, instructions)
+        }
         onOpenSettings={onOpenSettings}
         usage={accumulatedUsage}
       />

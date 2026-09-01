@@ -45,7 +45,7 @@ url = "2"
 # Phase 3 local data: SQLite via sqlx (async, matches the Tokio core).
 # `libsqlite3-sys/bundled` ships an embedded SQLite so the Tauri build has no
 # system-sqlite link dependency on Windows.
-sqlx = { version = "0.8", default-features = false, features = [
+sqlx = { version = "0.9", default-features = false, features = [
   "runtime-tokio",
   "sqlite",
   "chrono",

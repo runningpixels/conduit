@@ -1,5 +1,6 @@
 import type { GenerationControls } from '@conduit/config-schema';
 import { useRef } from 'react';
+import { appName } from '../brand';
 
 export interface GenerationFieldDraft {
   temperature: string;
@@ -178,7 +179,7 @@ export function GenerationFields({ draft, onChange, onCommit, idPrefix }: Genera
           onBlur={commit}
         />
         <span className="gen-hint">
-          Added under a reserved “User instructions” heading after Conduit’s auto-composed prompt.
+          Added under a reserved “User instructions” heading after {appName()}’s auto-composed prompt.
         </span>
       </label>
     </div>

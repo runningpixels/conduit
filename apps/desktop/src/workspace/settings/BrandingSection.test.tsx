@@ -76,6 +76,8 @@ const baseSettings: AppSettings = {
   workspaceToolsEnabled: false,
   workspaceRoot: null,
   workspaceToolsConsentAcknowledged: false,
+  generationControls: null,
+  userInstructions: null,
 };
 
 const SAVED_CONFIG: BrandConfig = {

@@ -72,6 +72,8 @@ describe('buildProviderRequest artifact prompts', () => {
     workspaceToolsEnabled: false,
     workspaceRoot: null,
     workspaceToolsConsentAcknowledged: false,
+    generationControls: null,
+    userInstructions: null,
   };
 
   it('includes the artifact appendix in systemPrompt', () => {

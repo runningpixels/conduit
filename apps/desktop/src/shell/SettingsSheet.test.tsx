@@ -82,6 +82,8 @@ const baseSettings: AppSettings = {
   workspaceToolsEnabled: false,
   workspaceRoot: null,
   workspaceToolsConsentAcknowledged: false,
+  generationControls: null,
+  userInstructions: null,
 };
 
 function renderSheet(overrides: { initialSection?: SettingsSection } = {}) {

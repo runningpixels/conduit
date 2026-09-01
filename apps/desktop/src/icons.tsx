@@ -258,6 +258,16 @@ export const ForkIcon = (p: IconProps) => (
     <path d="M6 8.5v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-3" />
   </Svg>
 );
+export const SlidersIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 8h10" />
+    <path d="M14 8a2 2 0 1 0 4 0 2 2 0 0 0-4 0" />
+    <path d="M18 8h2" />
+    <path d="M4 16h4" />
+    <path d="M8 16a2 2 0 1 0 4 0 2 2 0 0 0-4 0" />
+    <path d="M12 16h8" />
+  </Svg>
+);
 export const PencilIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 20h9" />

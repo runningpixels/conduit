@@ -5,11 +5,13 @@ use crate::{
     connector_runtime::ConnectorRuntimeManager,
     conversation_export::{self, ConversationExportResult, ExportFormat},
     db::repository::{conversations, messages},
+    encryption::Encryption,
     state::AppState,
     stream_manager::{StreamHandle, StreamManager},
 };
 use provider_core::schema::{
-    Conversation, ConversationSummary, Message, MessageRole, ProviderEvent, ProviderRequest,
+    Conversation, ConversationSummary, GenerationControls, Message, MessageRole, ProviderEvent,
+    ProviderRequest,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -63,6 +65,10 @@ pub enum StreamEvent {
 pub struct CancelChatStreamRequest {
     pub request_id: String,
     pub conversation_id: Option<String>,
+}
+
+fn conversation_for_ipc(enc: &Encryption, conv: Conversation) -> Result<Conversation, String> {
+    conversations::reveal_user_instructions(enc, conv).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +185,8 @@ pub async fn create_conversation(
             return conversations::get(&state.db, &created.id)
                 .await
                 .map_err(|e| e.to_string())?
-                .ok_or_else(|| "conversation not found after create".to_string());
+                .ok_or_else(|| "conversation not found after create".to_string())
+                .and_then(|c| conversation_for_ipc(&state.encryption, c));
         }
     }
     Ok(created)
@@ -199,9 +206,13 @@ pub async fn get_conversation(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<Option<Conversation>, String> {
-    conversations::get(&state.db, &conversation_id)
+    match conversations::get(&state.db, &conversation_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+    {
+        Some(conv) => Ok(Some(conversation_for_ipc(&state.encryption, conv)?)),
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]
@@ -262,6 +273,39 @@ pub async fn set_conversation_workspace(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "conversation not found".to_string())
+        .and_then(|c| conversation_for_ipc(&state.encryption, c))
+}
+
+/// Set or clear per-conversation generation controls and user instructions.
+/// `null` on either field clears that override (inherit Settings). Does not
+/// start a stream.
+#[tauri::command]
+pub async fn set_conversation_chat_settings(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    generation_controls: Option<GenerationControls>,
+    user_instructions: Option<String>,
+) -> Result<Conversation, String> {
+    if let Some(ref controls) = generation_controls {
+        crate::validation::validate_generation_controls(controls)?;
+    }
+    if let Some(ref text) = user_instructions {
+        crate::validation::validate_user_instructions(text)?;
+    }
+    conversations::set_chat_settings(
+        &state.db,
+        &state.encryption,
+        &conversation_id,
+        generation_controls.as_ref(),
+        user_instructions.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    conversations::get(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "conversation not found".to_string())
+        .and_then(|c| conversation_for_ipc(&state.encryption, c))
 }
 
 #[tauri::command]
@@ -482,6 +526,7 @@ pub async fn fork_conversation(
     conversations::fork_at(&state.db, &conversation_id, &fork_message_id, Some(&label))
         .await
         .map_err(|e| e.to_string())
+        .and_then(|c| conversation_for_ipc(&state.encryption, c))
 }
 
 /// Result of [`prepare_message_edit`]: either the same conversation (tip truncate)
@@ -513,7 +558,12 @@ pub async fn prepare_message_edit(
     conversation_id: String,
     message_id: String,
 ) -> Result<PrepareMessageEditResult, String> {
-    prepare_message_edit_impl(&state.db, &conversation_id, &message_id).await
+    prepare_message_edit_impl(&state.db, &conversation_id, &message_id)
+        .await
+        .and_then(|mut result| {
+            result.conversation = conversation_for_ipc(&state.encryption, result.conversation)?;
+            Ok(result)
+        })
 }
 
 /// Testable half of [`prepare_message_edit`] (no Tauri state).

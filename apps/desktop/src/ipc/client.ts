@@ -25,6 +25,7 @@ import type {
   CredentialSummary,
   DiagnosticsExport,
   FileState,
+  GenerationControls,
   InvokeConnectorToolRequest,
   Message,
   MockStreamRequest,
@@ -318,6 +319,19 @@ export async function setConversationWorkspace(
   return invoke<Conversation>('set_conversation_workspace', {
     conversationId,
     workspaceRoot,
+  });
+}
+
+/** Set or clear per-conversation generation controls / user instructions. `null` clears. */
+export async function setConversationChatSettings(
+  conversationId: string,
+  generationControls: GenerationControls | null,
+  userInstructions: string | null,
+): Promise<Conversation> {
+  return invoke<Conversation>('set_conversation_chat_settings', {
+    conversationId,
+    generationControls,
+    userInstructions,
   });
 }
 

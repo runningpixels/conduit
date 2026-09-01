@@ -133,6 +133,7 @@ fn main() {
             remove_last_turn,
             fork_conversation,
             prepare_message_edit,
+            set_conversation_chat_settings,
             // Competitive Feature: prompts library
             create_prompt,
             list_prompts,

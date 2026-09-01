@@ -22,6 +22,7 @@ import {
   previewConversationExport,
   exportConversationDialog,
   prepareMessageEdit,
+  setConversationChatSettings,
   openExternalUrl,
   saveAttachment,
   listAttachments,
@@ -140,6 +141,16 @@ describe('artifact + attachment IPC wrappers', () => {
       messageId: 'm1',
     });
     expect(res.mode).toBe('in_place');
+  });
+
+  it('setConversationChatSettings calls set_conversation_chat_settings', async () => {
+    invoke.mockResolvedValue({ id: 'c1', createdAt: 't', updatedAt: 't' });
+    await setConversationChatSettings('c1', { temperature: 0.2 }, 'Be brief.');
+    expect(invoke).toHaveBeenCalledWith('set_conversation_chat_settings', {
+      conversationId: 'c1',
+      generationControls: { temperature: 0.2 },
+      userInstructions: 'Be brief.',
+    });
   });
 
   it('openExternalUrl calls open_external_url with the url', async () => {

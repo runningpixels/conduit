@@ -181,6 +181,8 @@ async fn settings_and_db_survive_in_place_reopen() {
         workspace_tools_enabled: None,
         workspace_root: None,
         workspace_tools_consent_acknowledged: None,
+        generation_controls: None,
+        user_instructions: None,
     };
     let updated = state.update_settings(patch).expect("update settings");
     assert_eq!(updated.active_model, "claude-opus-4");

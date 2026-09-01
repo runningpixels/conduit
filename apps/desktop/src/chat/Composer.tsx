@@ -1,12 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
+import type { AppSettings, GenerationControls, ProviderUsage } from '@conduit/config-schema';
 import {
   deleteAttachment,
   listProviderDescriptors,
   loadProviderCredentialReference,
   saveAttachment,
 } from '../ipc/client';
-import { AttachIcon, FilePlainIcon, FolderIcon, SearchIcon, SendIcon, StopIcon } from '../icons';
+import { AttachIcon, FilePlainIcon, FolderIcon, SearchIcon, SendIcon, SlidersIcon, StopIcon } from '../icons';
 import { brand } from '../brand';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
@@ -18,9 +18,11 @@ import { useComposerAutosize } from './useComposerAutosize';
 import { readSendWith } from '../shell/uiPrefs';
 import { workspaceFolderLabel } from './agentTools';
 import { resolveSearchBackend } from './webSearchIntent';
+import { ComposerChatSettings } from './ComposerChatSettings';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
+  openChatSettings: () => void;
 }
 
 export interface ComposerProps {
@@ -43,6 +45,13 @@ export interface ComposerProps {
   onWorkspacePick?: () => void;
   /** Clear per-conversation workspace binding. */
   onWorkspaceClear?: () => void;
+  /** Per-conversation generation / instructions override. */
+  generationControls?: GenerationControls | null;
+  userInstructions?: string | null;
+  onSaveChatSettings?: (
+    generationControls: GenerationControls | null,
+    userInstructions: string | null,
+  ) => void;
   /// Open a settings section ('providers' | 'privacy' …) from the strip.
   onOpenSettings?: (tab?: string) => void;
   /// Accumulated usage for the whole conversation (turns + live stream).
@@ -73,6 +82,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   workspaceRoot = null,
   onWorkspacePick,
   onWorkspaceClear,
+  generationControls = null,
+  userInstructions = null,
+  onSaveChatSettings,
   onOpenSettings,
   usage,
 }, ref) {
@@ -85,12 +97,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [dropActive, setDropActive] = useState(false);
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
 
   useComposerAutosize(textareaRef, prompt);
 
   useImperativeHandle(ref, () => ({
     focusPrompt: () => {
       textareaRef.current?.focus();
+    },
+    openChatSettings: () => {
+      if (streaming || !conversationId) return;
+      setWorkspaceMenuOpen(false);
+      setChatSettingsOpen(true);
     },
   }));
 
@@ -120,6 +138,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   useEffect(() => {
     setPendingAttachments([]);
     setWorkspaceMenuOpen(false);
+    setChatSettingsOpen(false);
   }, [conversationId]);
 
   useEffect(() => {
@@ -479,6 +498,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   ) : null}
                 </div>
               ) : null}
+            </span>
+          )}
+          {onSaveChatSettings && !streaming && (
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                className={`cbtn${generationControls || userInstructions ? ' armed' : ''}${chatSettingsOpen ? ' armed' : ''}`}
+                type="button"
+                aria-label="Chat settings"
+                title="Chat settings — temperature, instructions"
+                aria-haspopup="dialog"
+                aria-expanded={chatSettingsOpen}
+                disabled={!conversationId}
+                onClick={() => {
+                  setWorkspaceMenuOpen(false);
+                  setChatSettingsOpen((open) => !open);
+                }}
+              >
+                <SlidersIcon />
+              </button>
+              <ComposerChatSettings
+                open={chatSettingsOpen}
+                streaming={streaming}
+                defaults={{
+                  generationControls: settings.generationControls,
+                  userInstructions: settings.userInstructions,
+                }}
+                override={{ generationControls, userInstructions }}
+                onClose={() => setChatSettingsOpen(false)}
+                onSave={onSaveChatSettings}
+                onOpenSettingsDefaults={
+                  onOpenSettings ? () => onOpenSettings('chat') : undefined
+                }
+              />
             </span>
           )}
           {/* Everything before the spacer acts on the message; everything after

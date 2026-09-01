@@ -57,6 +57,7 @@ function renderPalette(overrides: Partial<Parameters<typeof CommandPalette>[0]> 
     onToggleWebSearch: vi.fn(),
     onForkConversationHere: vi.fn(),
     onEditLastUserMessage: vi.fn(),
+    onOpenChatSettings: vi.fn(),
     onRenameChat: vi.fn(),
     onExportDiagnostics: vi.fn(),
     onCopyConversationAsMarkdown: vi.fn(),
@@ -138,11 +139,11 @@ describe('CommandPalette prefix modes', () => {
     expect(screen.queryByRole('option', { name: 'Triage notes' })).not.toBeInTheDocument();
   });
 
-  it('runs command callbacks from the > corpus', () => {
+  it('>chat settings runs onOpenChatSettings', () => {
     const props = renderPalette();
-    type('>delete');
-    fireEvent.click(screen.getByRole('option', { name: /Delete this chat/ }));
-    expect(props.onDeleteChat).toHaveBeenCalled();
+    type('>chat settings');
+    fireEvent.click(screen.getByRole('option', { name: /Chat settings for this conversation/ }));
+    expect(props.onOpenChatSettings).toHaveBeenCalledTimes(1);
     expect(props.onClose).toHaveBeenCalled();
   });
 

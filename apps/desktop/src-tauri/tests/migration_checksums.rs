@@ -73,6 +73,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "f5134f6de540297df0738b86187f825370286c2f26ed1861e0913d692d28d64d9afa7b75324d89c086a60840bc1ab5aa",
         "workspace root",
     ),
+    (
+        11,
+        "efd9d106e57d7a7121a5ab0e77645def9e304b16878467fac57b8c91c9098008534d31046b5e0fbcb17aa737c5a23660",
+        "conversation chat settings",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

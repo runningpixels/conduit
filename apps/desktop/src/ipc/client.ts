@@ -29,16 +29,17 @@ import type {
   Message,
   MockStreamRequest,
   ModelInfo,
+  OnboardingState,
+  PendingWipeResult,
+  PrepareMessageEditResult,
+  ProviderDescriptor,
   ProviderEvent,
   ProviderRequest,
+  RemovalReport,
   SettingsPatch,
   StreamEvent,
   StreamHandle,
   UpdateInfo,
-  OnboardingState,
-  PendingWipeResult,
-  ProviderDescriptor,
-  RemovalReport,
   WipeScope,
   Prompt,
   SearchMessagesRequest,
@@ -590,6 +591,17 @@ export async function forkConversation(
   forkMessageId: string,
 ): Promise<Conversation> {
   return invoke<Conversation>('fork_conversation', { conversationId, forkMessageId });
+}
+
+/** Truncate tip or fork mid-thread before edit-and-resend. Does not start a stream. */
+export async function prepareMessageEdit(
+  conversationId: string,
+  messageId: string,
+): Promise<PrepareMessageEditResult> {
+  return invoke<PrepareMessageEditResult>('prepare_message_edit', {
+    conversationId,
+    messageId,
+  });
 }
 
 // --- Prompts Library -------------------------------------------------------

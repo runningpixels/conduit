@@ -9,7 +9,7 @@ use crate::{
     stream_manager::{StreamHandle, StreamManager},
 };
 use provider_core::schema::{
-    Conversation, ConversationSummary, Message, ProviderEvent, ProviderRequest,
+    Conversation, ConversationSummary, Message, MessageRole, ProviderEvent, ProviderRequest,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -482,6 +482,88 @@ pub async fn fork_conversation(
     conversations::fork_at(&state.db, &conversation_id, &fork_message_id, Some(&label))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Result of [`prepare_message_edit`]: either the same conversation (tip truncate)
+/// or a new fork (mid-thread). The frontend then sends the edited text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareMessageEditResult {
+    pub conversation: Conversation,
+    /// `"in_place"` when the tip was truncated; `"forked"` when a branch was created.
+    pub mode: PrepareMessageEditMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrepareMessageEditMode {
+    InPlace,
+    Forked,
+}
+
+/// Prepare a user-message edit-and-resend.
+///
+/// - Mid-thread (later user turns exist): exclusive fork before the message.
+/// - Tip (no later user turns): truncate from the message in place.
+///
+/// Does not start a stream — the caller sends the new user text afterward.
+#[tauri::command]
+pub async fn prepare_message_edit(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    message_id: String,
+) -> Result<PrepareMessageEditResult, String> {
+    prepare_message_edit_impl(&state.db, &conversation_id, &message_id).await
+}
+
+/// Testable half of [`prepare_message_edit`] (no Tauri state).
+pub async fn prepare_message_edit_impl(
+    pool: &sqlx::SqlitePool,
+    conversation_id: &str,
+    message_id: &str,
+) -> Result<PrepareMessageEditResult, String> {
+    let msgs = messages::load_conversation_messages(pool, conversation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let idx = msgs
+        .iter()
+        .position(|m| m.id == message_id)
+        .ok_or_else(|| "message not found".to_string())?;
+    let target = &msgs[idx];
+    if target.role != MessageRole::User {
+        return Err("can only edit user messages".into());
+    }
+
+    let has_later_user = msgs[idx + 1..].iter().any(|m| m.role == MessageRole::User);
+
+    if has_later_user {
+        let source = conversations::get(pool, conversation_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let label = match source.and_then(|c| c.title) {
+            Some(title) => format!("Edit of {title}"),
+            None => "Edited chat".to_string(),
+        };
+        let fork = conversations::fork_before(pool, conversation_id, message_id, Some(&label))
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(PrepareMessageEditResult {
+            conversation: fork,
+            mode: PrepareMessageEditMode::Forked,
+        })
+    } else {
+        conversations::truncate_from(pool, conversation_id, message_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let conversation = conversations::get(pool, conversation_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "conversation not found".to_string())?;
+        Ok(PrepareMessageEditResult {
+            conversation,
+            mode: PrepareMessageEditMode::InPlace,
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------

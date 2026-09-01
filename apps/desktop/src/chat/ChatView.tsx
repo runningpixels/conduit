@@ -11,12 +11,15 @@ import {
   invokeConnectorTool,
   listConnectorCapabilities,
   pickWorkspaceFolder,
+  prepareMessageEdit,
   removeLastTurn,
   setConversationWorkspace,
   startConnector,
   startChatStream,
   updateSettings,
 } from '../ipc/client';
+import type { Conversation } from '../ipc/contracts';
+import { ConfirmDialog } from '@conduit/ui';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { BotGlyph, CopyIcon, ForkIcon, PencilIcon } from '../icons';
@@ -54,6 +57,8 @@ import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { Composer, type ComposerHandle } from './Composer';
+import { useComposerAutosize } from './useComposerAutosize';
+import { readSendWith } from '../shell/uiPrefs';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
 import { WorkspaceToolsConsentDialog } from '../workspace/settings/WorkspaceToolsConsentDialog';
 import { SuggestedPrompts } from './SuggestedPrompts';
@@ -104,6 +109,8 @@ export interface ChatViewHandle {
   /// V7 — fork the conversation at the current (last) turn (⌘⇧F / palette).
   /// Resolves true when a turn existed and the fork was requested.
   forkConversationHere: () => Promise<boolean>;
+  /// t0-3 — begin editing the last user message (palette).
+  editLastUserMessage: () => boolean;
 }
 
 interface ChatViewProps {
@@ -135,6 +142,12 @@ interface ChatViewProps {
   onDocumentToolActivity?: (activity: DocumentToolActivity) => void;
   /// Fired when the user requests to fork the conversation at a message.
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
+  /// t0-3 — mid-thread edit forked a new conversation; switch + pending send.
+  onEditForked?: (fork: Conversation, pendingText: string) => void;
+  /// One-shot text to send after the conversation hydrates (edit-fork path).
+  pendingSendText?: string | null;
+  /// Clear `pendingSendText` after it has been consumed (or abandoned).
+  onPendingSendConsumed?: () => void;
   /// Whether this pane is the active workspace tab (`data-active` for CSS). Defaults true for tests.
   paneActive?: boolean;
   /// Open a settings section ('providers' | 'privacy' …) from the status line.
@@ -379,6 +392,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onChatTurnComplete,
     onDocumentToolActivity,
     onForkConversation,
+    onEditForked,
+    pendingSendText = null,
+    onPendingSendConsumed,
     paneActive = true,
     onOpenSettings,
     convoProviders = {},
@@ -392,6 +408,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [threadLoading, setThreadLoading] = useState(false);
   const [stuckToBottom, setStuckToBottom] = useState(true);
   const [showJumpPill, setShowJumpPill] = useState(false);
+  const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+  const [editConfirm, setEditConfirm] = useState<{
+    messageId: string;
+    text: string;
+    kind: 'tip' | 'fork';
+  } | null>(null);
+  const [autoSend, setAutoSend] = useState<{ text: string; history: ChatTurn[] } | null>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  useComposerAutosize(editTextareaRef, editDraft);
   // Phase 7 / M-WebSearch: conversation-scoped search toggle. Visible only when
   // `settings.webSearchEnabled` is on; defaults to off on mount. Stays on until
   // the user clicks it off (no longer reset after each send).
@@ -446,6 +473,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     stuckRef.current = pref !== false;
     setStuckToBottom(stuckRef.current);
     setShowJumpPill(false);
+    setEditingTurnId(null);
+    setEditConfirm(null);
 
     let cancelled = false;
     setThreadLoading(true);
@@ -456,11 +485,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           getConversation(conversationId),
         ]);
         if (!cancelled) {
-          const turns = (
+          const nextTurns = (
             await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
           ).filter((t): t is ChatTurn => t !== null);
-          setTurns(turns);
+          setTurns(nextTurns);
           setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
+          const pending = pendingSendText?.trim();
+          if (pending) {
+            onPendingSendConsumed?.();
+            setAutoSend({ text: pending, history: nextTurns });
+          }
         }
       } catch (error) {
         if (!cancelled) onStatus(error instanceof Error ? error.message : 'Failed to load conversation');
@@ -471,7 +505,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, onStatus]);
+  }, [conversationId, onStatus, pendingSendText, onPendingSendConsumed]);
 
   const STICK_THRESHOLD_PX = 48;
 
@@ -682,8 +716,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
-  async function handleSend() {
-    const trimmed = prompt.trim();
+  async function handleSend(override?: { text: string; history: ChatTurn[] }) {
+    const trimmed = (override?.text ?? prompt).trim();
     if (!trimmed || activeRequestId || !conversationId) return;
 
     const userTurn: ChatTurn = {
@@ -691,9 +725,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       role: 'user',
       content: trimmed,
     };
-    const history = [...turns, userTurn];
+    const history = [...(override?.history ?? turns), userTurn];
     setTurns(history);
-    setPrompt('');
+    if (!override) setPrompt('');
     onStatus(makeStatus('Loading connector tools', 'active', 'chat'));
 
     const searchOn = resolveWebSearchForTurn(settings, webSearchOn, trimmed);
@@ -1021,6 +1055,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       onForkConversation?.(conversationId, last.id);
       return true;
     },
+    editLastUserMessage: () => {
+      if (activeRequestId || editBusy) return false;
+      for (let i = turns.length - 1; i >= 0; i -= 1) {
+        if (turns[i].role === 'user') {
+          handleEditUserTurn(turns[i]);
+          return true;
+        }
+      }
+      return false;
+    },
   }));
 
   function handleWebSearchToggle() {
@@ -1168,9 +1212,93 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     };
   }, [lastAssistantTurn, settings.activeProvider, settings.activeModel]);
 
-  function handleEditUserTurn(content: string) {
-    setPrompt(content);
-    requestAnimationFrame(() => composerRef.current?.focusPrompt());
+  useEffect(() => {
+    if (!autoSend) return;
+    const payload = autoSend;
+    setAutoSend(null);
+    void handleSend(payload);
+    // handleSend closes over latest settings/tools; run once per staged payload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSend]);
+
+  function handleEditUserTurn(turn: ChatTurn) {
+    if (activeRequestId || editBusy) return;
+    setEditingTurnId(turn.id);
+    setEditDraft(turn.content);
+    requestAnimationFrame(() => editTextareaRef.current?.focus());
+  }
+
+  function cancelInlineEdit() {
+    setEditingTurnId(null);
+    setEditDraft('');
+    setEditConfirm(null);
+  }
+
+  function requestSubmitInlineEdit() {
+    if (!editingTurnId || editBusy || activeRequestId) return;
+    const text = editDraft.trim();
+    if (!text) return;
+    const idx = turns.findIndex((t) => t.id === editingTurnId);
+    if (idx < 0) return;
+    const later = turns.slice(idx + 1);
+    const hasLaterUser = later.some((t) => t.role === 'user');
+    const hasLaterAssistant = later.some((t) => t.role === 'assistant');
+    if (hasLaterUser) {
+      setEditConfirm({ messageId: editingTurnId, text, kind: 'fork' });
+      return;
+    }
+    if (hasLaterAssistant) {
+      setEditConfirm({ messageId: editingTurnId, text, kind: 'tip' });
+      return;
+    }
+    void commitMessageEdit(editingTurnId, text);
+  }
+
+  async function commitMessageEdit(messageId: string, text: string) {
+    if (!conversationId || activeRequestId) return;
+    setEditBusy(true);
+    setEditConfirm(null);
+    try {
+      const result = await prepareMessageEdit(conversationId, messageId);
+      setEditingTurnId(null);
+      setEditDraft('');
+      if (result.mode === 'forked') {
+        onEditForked?.(result.conversation, text);
+        onStatus(makeStatus('Editing on a new branch', 'success', 'chat'));
+        return;
+      }
+      const messages = await getConversationMessages(conversationId);
+      const nextTurns = (
+        await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
+      ).filter((t): t is ChatTurn => t !== null);
+      setTurns(nextTurns);
+      await handleSend({ text, history: nextTurns });
+    } catch (error) {
+      onStatus(
+        makeStatus(
+          error instanceof Error ? error.message : 'Failed to prepare message edit',
+          'error',
+          'chat',
+        ),
+      );
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
+  function handleEditKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelInlineEdit();
+      return;
+    }
+    const sendWith = readSendWith();
+    const isEnter = event.key === 'Enter' && !event.shiftKey;
+    const isCmdEnter = event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+    if ((sendWith === 'enter' && isEnter) || (sendWith === 'cmd-enter' && isCmdEnter)) {
+      event.preventDefault();
+      requestSubmitInlineEdit();
+    }
   }
 
   /** P3.1/P3.2 — retry/delete the last assistant turn: remove it locally + in
@@ -1281,39 +1409,76 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             const withDay = (node: ReactNode) => (dayRule ? [dayRule, node] : node);
 
             if (turn.role === 'user') {
+              const isEditing = editingTurnId === turn.id;
               return withDay(
                 <article key={turn.id} className="turn user" data-message-id={turn.id}>
-                  <div className="bubble">
-                    <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
-                  </div>
-                  {turn.interrupted && <InterruptedBanner visible />}
-                  <div className="turn-actions">
-                    <button
-                      type="button"
-                      className="act"
-                      onClick={() => handleEditUserTurn(turn.content)}
-                    >
-                      <PencilIcon />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="act"
-                      onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
-                      title="Fork conversation at this message"
-                    >
-                      <ForkIcon />
-                      Fork
-                    </button>
-                    <button
-                      type="button"
-                      className="act"
-                      onClick={() => void handleCopyText(turn.content)}
-                    >
-                      <CopyIcon />
-                      Copy
-                    </button>
-                  </div>
+                  {isEditing ? (
+                    <div className="bubble bubble-editing">
+                      <textarea
+                        ref={editTextareaRef}
+                        className="bubble-edit"
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={handleEditKeyDown}
+                        disabled={editBusy}
+                        aria-label="Edit message"
+                        rows={2}
+                      />
+                      <div className="turn-actions" style={{ opacity: 1, pointerEvents: 'auto' }}>
+                        <button
+                          type="button"
+                          className="act"
+                          disabled={editBusy || !editDraft.trim()}
+                          onClick={() => requestSubmitInlineEdit()}
+                        >
+                          Send
+                        </button>
+                        <button
+                          type="button"
+                          className="act"
+                          disabled={editBusy}
+                          onClick={cancelInlineEdit}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="bubble">
+                        <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
+                      </div>
+                      {turn.interrupted && <InterruptedBanner visible />}
+                      <div className="turn-actions">
+                        <button
+                          type="button"
+                          className="act"
+                          disabled={!!activeRequestId || editBusy}
+                          onClick={() => handleEditUserTurn(turn)}
+                        >
+                          <PencilIcon />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="act"
+                          onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                          title="Fork conversation at this message"
+                        >
+                          <ForkIcon />
+                          Fork
+                        </button>
+                        <button
+                          type="button"
+                          className="act"
+                          onClick={() => void handleCopyText(turn.content)}
+                        >
+                          <CopyIcon />
+                          Copy
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </article>
               );
             }
@@ -1495,6 +1660,27 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }}
         onDeny={() => {
           setShowWorkspaceConsent(false);
+        }}
+      />
+      <ConfirmDialog
+        open={editConfirm != null}
+        title={
+          editConfirm?.kind === 'fork'
+            ? 'Edit on a new branch?'
+            : 'Replace later replies?'
+        }
+        description={
+          editConfirm?.kind === 'fork'
+            ? 'Later messages stay on the original chat. A new branch will start from the messages before this one, then send your edit.'
+            : 'Later replies on this chat will be removed, then your edited message will be sent again.'
+        }
+        confirmLabel={editConfirm?.kind === 'fork' ? 'Edit on new branch' : 'Replace and send'}
+        destructive={editConfirm?.kind === 'tip'}
+        onCancel={() => setEditConfirm(null)}
+        onConfirm={() => {
+          if (!editConfirm) return;
+          const { messageId, text } = editConfirm;
+          void commitMessageEdit(messageId, text);
         }}
       />
     </>

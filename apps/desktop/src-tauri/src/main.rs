@@ -132,6 +132,7 @@ fn main() {
             // Competitive Feature: retry & fork
             remove_last_turn,
             fork_conversation,
+            prepare_message_edit,
             // Competitive Feature: prompts library
             create_prompt,
             list_prompts,

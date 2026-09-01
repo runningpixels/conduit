@@ -21,6 +21,7 @@ import {
   exportArtifact,
   previewConversationExport,
   exportConversationDialog,
+  prepareMessageEdit,
   openExternalUrl,
   saveAttachment,
   listAttachments,
@@ -126,6 +127,19 @@ describe('artifact + attachment IPC wrappers', () => {
       includeAttachments: false,
     });
     expect(res).toBeNull();
+  });
+
+  it('prepareMessageEdit calls prepare_message_edit with camelCase args', async () => {
+    invoke.mockResolvedValue({
+      conversation: { id: 'c1', createdAt: 't', updatedAt: 't' },
+      mode: 'in_place',
+    });
+    const res = await prepareMessageEdit('c1', 'm1');
+    expect(invoke).toHaveBeenCalledWith('prepare_message_edit', {
+      conversationId: 'c1',
+      messageId: 'm1',
+    });
+    expect(res.mode).toBe('in_place');
   });
 
   it('openExternalUrl calls open_external_url with the url', async () => {

@@ -5,6 +5,10 @@ use conduit_desktop::db::repository::{conversations, messages};
 use provider_core::schema::{Message, MessagePart, MessagePartKind, MessageRole};
 
 fn user_message(conversation_id: &str, id: &str, content: &str) -> Message {
+    user_message_at(conversation_id, id, content, "2026-06-22T00:00:00Z")
+}
+
+fn user_message_at(conversation_id: &str, id: &str, content: &str, created_at: &str) -> Message {
     Message {
         id: id.to_string(),
         conversation_id: conversation_id.to_string(),
@@ -26,20 +30,36 @@ fn user_message(conversation_id: &str, id: &str, content: &str) -> Message {
             attachment_id: None,
             blob_ref: None,
             metadata: None,
-            created_at: "2026-06-22T00:00:00Z".to_string(),
+            created_at: created_at.to_string(),
         }],
-        created_at: "2026-06-22T00:00:00Z".to_string(),
+        created_at: created_at.to_string(),
     }
 }
 
 fn assistant_message(conversation_id: &str, id: &str, content: &str) -> Message {
+    assistant_message_at(
+        conversation_id,
+        id,
+        content,
+        "2026-06-22T00:01:00Z",
+        "req-1",
+    )
+}
+
+fn assistant_message_at(
+    conversation_id: &str,
+    id: &str,
+    content: &str,
+    created_at: &str,
+    request_id: &str,
+) -> Message {
     Message {
         id: id.to_string(),
         conversation_id: conversation_id.to_string(),
         role: MessageRole::Assistant,
         author_label: None,
         provider_message_id: None,
-        request_id: Some("req-1".to_string()),
+        request_id: Some(request_id.to_string()),
         interrupted_at: None,
         metadata: None,
         parts: vec![MessagePart {
@@ -54,9 +74,9 @@ fn assistant_message(conversation_id: &str, id: &str, content: &str) -> Message 
             attachment_id: None,
             blob_ref: None,
             metadata: None,
-            created_at: "2026-06-22T00:01:00Z".to_string(),
+            created_at: created_at.to_string(),
         }],
-        created_at: "2026-06-22T00:01:00Z".to_string(),
+        created_at: created_at.to_string(),
     }
 }
 
@@ -272,4 +292,271 @@ async fn fork_conversation_deep_copies_messages() {
     // Fork IDs should be different from original
     assert_ne!(fork_msgs[0].id, "u1");
     assert_ne!(fork_msgs[1].id, "a1");
+}
+
+#[tokio::test]
+async fn truncate_from_tip_removes_user_and_later_assistant() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, Some("Tip edit"))
+        .await
+        .unwrap();
+
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u1", "first", "2026-06-22T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a1", "reply1", "2026-06-22T00:01:00Z", "req-a1"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u2", "second", "2026-06-22T00:02:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a2", "reply2", "2026-06-22T00:03:00Z", "req-a2"),
+    )
+    .await
+    .unwrap();
+
+    // insert_message forces request_id NULL — stamp it for event-log cleanup.
+    sqlx::query("UPDATE messages SET request_id = ? WHERE id = ?")
+        .bind("req-a2")
+        .bind("a2")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO provider_event_log \
+         (conversation_id, request_id, sequence, event_kind, payload, created_at) \
+         VALUES (?, ?, 0, 'message_start', '{}', ?)",
+    )
+    .bind(&conv.id)
+    .bind("req-a2")
+    .bind("2026-06-22T00:03:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO tool_calls \
+         (id, tool_id, request_id, status, created_at) \
+         VALUES ('tc-a2', 'search', 'req-a2', 'completed', '2026-06-22T00:03:00Z')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    conversations::truncate_from(&pool, &conv.id, "u2")
+        .await
+        .unwrap();
+
+    let remaining = messages::load_conversation_messages(&pool, &conv.id)
+        .await
+        .unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert_eq!(remaining[0].id, "u1");
+    assert_eq!(remaining[1].id, "a1");
+
+    let (event_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM provider_event_log WHERE conversation_id = ? AND request_id = ?",
+    )
+    .bind(&conv.id)
+    .bind("req-a2")
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(event_count, 0);
+
+    let (tool_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM tool_calls WHERE request_id = ?")
+            .bind("req-a2")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(tool_count, 0);
+}
+
+#[tokio::test]
+async fn fork_before_excludes_edited_user_and_later_turns() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, Some("Original"))
+        .await
+        .unwrap();
+
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u1", "hello", "2026-06-22T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a1", "hi", "2026-06-22T00:01:00Z", "req-1"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u2", "edit-me", "2026-06-22T00:02:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a2", "later", "2026-06-22T00:03:00Z", "req-2"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u3", "after", "2026-06-22T00:04:00Z"),
+    )
+    .await
+    .unwrap();
+
+    let fork = conversations::fork_before(&pool, &conv.id, "u2", Some("Edit of Original"))
+        .await
+        .unwrap();
+
+    let fork_msgs = messages::load_conversation_messages(&pool, &fork.id)
+        .await
+        .unwrap();
+    assert_eq!(fork_msgs.len(), 2);
+    assert_eq!(fork_msgs[0].parts[0].content.as_deref(), Some("hello"));
+    assert_eq!(fork_msgs[1].parts[0].content.as_deref(), Some("hi"));
+
+    let original = messages::load_conversation_messages(&pool, &conv.id)
+        .await
+        .unwrap();
+    assert_eq!(original.len(), 5, "original conversation untouched");
+
+    let listed = conversations::list(&pool).await.unwrap();
+    let fork_summary = listed.iter().find(|c| c.id == fork.id).unwrap();
+    assert_eq!(
+        fork_summary.forked_from_conversation_id.as_deref(),
+        Some(conv.id.as_str())
+    );
+}
+
+#[tokio::test]
+async fn fork_before_allows_empty_prefix() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u1", "only", "2026-06-22T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a1", "reply", "2026-06-22T00:01:00Z", "req-1"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u2", "second", "2026-06-22T00:02:00Z"),
+    )
+    .await
+    .unwrap();
+
+    let fork = conversations::fork_before(&pool, &conv.id, "u1", Some("Edited chat"))
+        .await
+        .unwrap();
+    let fork_msgs = messages::load_conversation_messages(&pool, &fork.id)
+        .await
+        .unwrap();
+    assert!(fork_msgs.is_empty());
+}
+
+#[tokio::test]
+async fn prepare_message_edit_tip_is_in_place() {
+    use conduit_desktop::commands::chat::{prepare_message_edit_impl, PrepareMessageEditMode};
+
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, Some("Tip")).await.unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u1", "ask", "2026-06-22T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a1", "ans", "2026-06-22T00:01:00Z", "req-1"),
+    )
+    .await
+    .unwrap();
+
+    let result = prepare_message_edit_impl(&pool, &conv.id, "u1")
+        .await
+        .unwrap();
+    assert_eq!(result.mode, PrepareMessageEditMode::InPlace);
+    assert_eq!(result.conversation.id, conv.id);
+    let remaining = messages::load_conversation_messages(&pool, &conv.id)
+        .await
+        .unwrap();
+    assert!(remaining.is_empty());
+}
+
+#[tokio::test]
+async fn prepare_message_edit_mid_thread_forks() {
+    use conduit_desktop::commands::chat::{prepare_message_edit_impl, PrepareMessageEditMode};
+
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, Some("Branch")).await.unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u1", "one", "2026-06-22T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a1", "a", "2026-06-22T00:01:00Z", "req-1"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u2", "two", "2026-06-22T00:02:00Z"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &assistant_message_at(&conv.id, "a2", "b", "2026-06-22T00:03:00Z", "req-2"),
+    )
+    .await
+    .unwrap();
+    messages::insert_message(
+        &pool,
+        &user_message_at(&conv.id, "u3", "three", "2026-06-22T00:04:00Z"),
+    )
+    .await
+    .unwrap();
+
+    let result = prepare_message_edit_impl(&pool, &conv.id, "u2")
+        .await
+        .unwrap();
+    assert_eq!(result.mode, PrepareMessageEditMode::Forked);
+    assert_ne!(result.conversation.id, conv.id);
+
+    let original = messages::load_conversation_messages(&pool, &conv.id)
+        .await
+        .unwrap();
+    assert_eq!(original.len(), 5);
+
+    let fork_msgs = messages::load_conversation_messages(&pool, &result.conversation.id)
+        .await
+        .unwrap();
+    assert_eq!(fork_msgs.len(), 2);
 }

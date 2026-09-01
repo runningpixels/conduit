@@ -175,6 +175,7 @@ export default function App() {
   const [connectorCount, setConnectorCount] = useState<number | undefined>(undefined);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [pendingSendText, setPendingSendText] = useState<string | null>(null);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [toasts, setToasts] = useState<StatusState[]>([]);
@@ -474,6 +475,16 @@ export default function App() {
           makeStatus(error instanceof Error ? error.message : 'Failed to fork conversation', 'error'),
         );
       }
+    },
+    [clearWorkspaceArtifactSelection, refreshConversations],
+  );
+
+  const handleEditForked = useCallback(
+    (fork: { id: string }, pendingText: string) => {
+      setPendingSendText(pendingText);
+      setActiveConversationId(fork.id);
+      clearWorkspaceArtifactSelection();
+      void refreshConversations();
     },
     [clearWorkspaceArtifactSelection, refreshConversations],
   );
@@ -1112,6 +1123,9 @@ export default function App() {
             onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
             onDocumentToolActivity={handleDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
+            onEditForked={handleEditForked}
+            pendingSendText={pendingSendText}
+            onPendingSendConsumed={() => setPendingSendText(null)}
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
             convoProviders={convoProviders}
           />
@@ -1190,6 +1204,10 @@ export default function App() {
           void chatViewRef.current?.forkConversationHere().then((ok) => {
             if (ok) setStatus(makeStatus('Forked conversation', 'success'));
           });
+        }}
+        onEditLastUserMessage={() => {
+          const ok = chatViewRef.current?.editLastUserMessage() ?? false;
+          if (!ok) setStatus(makeStatus('No user message to edit', 'warning'));
         }}
         onRenameChat={handleRenameChat}
         onExportDiagnostics={() => void handleExportDiagnostics()}

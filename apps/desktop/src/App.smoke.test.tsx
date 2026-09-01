@@ -97,6 +97,7 @@ const IPC_EXPORTS = [
   'approveConnectorToolCall', 'denyConnectorToolCall', 'revokeConnectorGrant',
   'addLocalConnector', 'createArtifact', 'listArtifacts', 'getMessageIdByRequest',
   'searchMessages', 'getUsageSummary', 'removeLastTurn', 'forkConversation',
+  'prepareMessageEdit',
   'createPrompt', 'listPrompts', 'getPrompt', 'updatePrompt', 'deletePrompt',
   'listPromptFolders', 'getArtifact', 'setArtifactContent', 'setArtifactTitle',
   'getArtifactContentBytes', 'readArtifactFileBytes', 'checkArtifactFileState',

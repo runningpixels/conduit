@@ -56,6 +56,7 @@ function renderPalette(overrides: Partial<Parameters<typeof CommandPalette>[0]> 
     onToggleSidebar: vi.fn(),
     onToggleWebSearch: vi.fn(),
     onForkConversationHere: vi.fn(),
+    onEditLastUserMessage: vi.fn(),
     onRenameChat: vi.fn(),
     onExportDiagnostics: vi.fn(),
     onCopyConversationAsMarkdown: vi.fn(),

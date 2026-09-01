@@ -48,6 +48,13 @@ export interface ConversationExportResult {
   bytesWritten: number;
 }
 
+/** t0-3 message editing — result of `prepare_message_edit`. */
+export type PrepareMessageEditMode = 'in_place' | 'forked';
+export interface PrepareMessageEditResult {
+  conversation: Conversation;
+  mode: PrepareMessageEditMode;
+}
+
 // =============================================================================
 // Phase 6 — Consumer release: updater (trust-promise gate)
 //

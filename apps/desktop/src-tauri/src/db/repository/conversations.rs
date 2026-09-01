@@ -421,6 +421,114 @@ pub async fn fork_at(
     })
 }
 
+/// Delete `message_id` and every later message in the conversation (parts cascade),
+/// plus matching `tool_calls` and `provider_event_log` rows. Used by edit-and-resend
+/// when truncating the tip in place.
+pub async fn truncate_from(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    message_id: &str,
+) -> Result<(), DbError> {
+    use crate::db::repository::messages;
+
+    let msgs = messages::load_conversation_messages(pool, conversation_id).await?;
+    let idx = msgs
+        .iter()
+        .position(|m| m.id == message_id)
+        .ok_or_else(|| DbError::Query("message not found".into()))?;
+    let to_remove = &msgs[idx..];
+
+    let mut turn_keys: Vec<String> = Vec::new();
+    for msg in to_remove {
+        let key = msg.request_id.clone().unwrap_or_else(|| msg.id.clone());
+        if !turn_keys.iter().any(|k| k == &key) {
+            turn_keys.push(key);
+        }
+    }
+
+    let mut tx = pool.begin().await?;
+    for key in &turn_keys {
+        sqlx::query("DELETE FROM tool_calls WHERE request_id = ?")
+            .bind(key)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?")
+            .bind(conversation_id)
+            .bind(key)
+            .execute(&mut *tx)
+            .await?;
+    }
+    for msg in to_remove {
+        sqlx::query("DELETE FROM messages WHERE conversation_id = ? AND id = ?")
+            .bind(conversation_id)
+            .bind(&msg.id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    touch(pool, conversation_id).await?;
+    Ok(())
+}
+
+/// Fork a conversation copying only messages *before* `before_message_id`
+/// (exclusive). Empty prefix is allowed (edit of the first user turn mid-thread).
+/// `fork_point_message_id` is set to `before_message_id` on the source.
+pub async fn fork_before(
+    pool: &SqlitePool,
+    source_conversation_id: &str,
+    before_message_id: &str,
+    fork_label: Option<&str>,
+) -> Result<Conversation, DbError> {
+    use crate::db::repository::messages;
+
+    let source_msgs = messages::load_conversation_messages(pool, source_conversation_id).await?;
+    let idx = source_msgs
+        .iter()
+        .position(|m| m.id == before_message_id)
+        .ok_or_else(|| DbError::Query("fork point message not found".into()))?;
+    let to_copy: Vec<&provider_core::schema::Message> = source_msgs[..idx].iter().collect();
+
+    let source = get(pool, source_conversation_id)
+        .await?
+        .ok_or_else(|| DbError::Query("source conversation not found".into()))?;
+
+    let mut tx = pool.begin().await?;
+
+    let fork_id = Uuid::new_v4().to_string();
+    let now = now_iso8601();
+    let label = fork_label.unwrap_or("Fork");
+
+    sqlx::query(
+        "INSERT INTO conversations \
+         (id, title, forked_from_conversation_id, fork_point_message_id, \
+          workspace_root, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&fork_id)
+    .bind(label)
+    .bind(source_conversation_id)
+    .bind(before_message_id)
+    .bind(&source.workspace_root)
+    .bind(&now)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+
+    messages::insert_copied_messages_in_txn(&mut tx, &fork_id, &to_copy).await?;
+
+    tx.commit().await?;
+
+    Ok(Conversation {
+        id: fork_id,
+        title: Some(label.to_string()),
+        created_at: now.clone(),
+        updated_at: now,
+        cloud_id: None,
+        metadata: None,
+        workspace_root: source.workspace_root,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

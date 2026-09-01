@@ -29,6 +29,7 @@ interface CommandPaletteProps {
   onToggleSidebar: () => void;
   onToggleWebSearch: () => void;
   onForkConversationHere: () => void;
+  onEditLastUserMessage: () => void;
   onRenameChat: () => void;
   onExportDiagnostics: () => void;
   onCopyConversationAsMarkdown: () => void;
@@ -112,6 +113,7 @@ export function CommandPalette({
   onToggleSidebar,
   onToggleWebSearch,
   onForkConversationHere,
+  onEditLastUserMessage,
   onRenameChat,
   onExportDiagnostics,
   onCopyConversationAsMarkdown,
@@ -173,6 +175,7 @@ export function CommandPalette({
     return [
       { id: 'cmd-new-chat', group: 'Commands', kind: 'cmd', label: 'New chat', tail: modShortcutHint('N'), run: () => { onNewChat(); close(); } },
       { id: 'cmd-fork', group: 'Commands', kind: 'cmd', label: 'Fork conversation here', tail: modShiftShortcutHint('F'), run: () => { onForkConversationHere(); close(); } },
+      { id: 'cmd-edit-last-user', group: 'Commands', kind: 'cmd', label: 'Edit last user message', run: () => { onEditLastUserMessage(); close(); } },
       { id: 'cmd-toggle-panel', group: 'Commands', kind: 'cmd', label: 'Toggle context panel', tail: modShortcutHint('J'), run: () => { onToggleDocPanel(); close(); } },
       { id: 'cmd-toggle-sidebar', group: 'Commands', kind: 'cmd', label: 'Toggle sidebar', tail: modShortcutHint('\\'), run: () => { onToggleSidebar(); close(); } },
       { id: 'cmd-toggle-web', group: 'Commands', kind: 'cmd', label: 'Toggle web search for this turn', tail: modShiftShortcutHint('W'), run: () => { onToggleWebSearch(); close(); } },
@@ -189,7 +192,7 @@ export function CommandPalette({
       { id: 'cmd-theme', group: 'Commands', kind: 'cmd', label: 'Toggle theme', run: () => { onToggleTheme(); close(); } },
     ];
   }, [
-    onClose, onNewChat, onForkConversationHere, onToggleDocPanel, onToggleSidebar,
+    onClose, onNewChat, onForkConversationHere, onEditLastUserMessage, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
     onDeleteChat, onDeleteAllHistory, onToggleTheme,

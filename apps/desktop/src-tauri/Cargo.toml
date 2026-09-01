@@ -68,7 +68,7 @@ infer = "0.19"
 # Master key is a 256-bit OsRng random value wrapped in the OS keychain (no
 # passphrase derivation, so `argon2` is not needed). `base64` encodes the
 # `enc:v1:` column prefix; `zeroize` clears the key on drop.
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 base64 = "0.22"
 zeroize = { version = "1.8", features = ["zeroize_derive"] }

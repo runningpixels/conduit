@@ -1,13 +1,18 @@
 import { describe, expect, it, vi, afterAll, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { ConversationSummary } from '../ipc/contracts';
+import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { Sidebar } from './Sidebar';
 import { conversationGroup } from '../lib/dayGroup';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
 
-function row(id: string, title: string, updatedAt: string): ConversationSummary {
-  return { id, displayTitle: title, updatedAt, messageCount: 1 };
+function row(
+  id: string,
+  title: string,
+  updatedAt: string,
+  extra: Partial<ConversationSummary> = {},
+): ConversationSummary {
+  return { id, displayTitle: title, updatedAt, messageCount: 1, ...extra };
 }
 
 describe('conversationGroup', () => {
@@ -43,6 +48,7 @@ describe('Sidebar', () => {
 
   const props = {
     conversations,
+    folders: [] as ConversationFolder[],
     activeConversationId: 'c1',
     convoProviders: { c1: 'anthropic', c2: 'ollama' },
     providerCount: 2,
@@ -246,6 +252,102 @@ describe('Sidebar', () => {
       expect(screen.queryByRole('button', { name: /^Delete Triage notes$/ })).toBeNull();
       // The list itself is unaffected.
       expect(screen.getByText('Triage notes')).toBeTruthy();
+    });
+  });
+
+  describe('pin / archive / folders', () => {
+    it('lifts pinned chats above day groups', () => {
+      render(
+        <Sidebar
+          {...props}
+          conversations={[
+            row('c-old', 'Old pin', '2025-11-01T10:00:00Z', { pinnedAt: '2026-08-03T11:00:00Z' }),
+            ...conversations,
+          ]}
+        />,
+      );
+      expect(screen.getByText('Pinned')).toBeTruthy();
+      const list = screen.getByLabelText('Conversations').querySelector('.sb-list');
+      const text = list?.textContent ?? '';
+      expect(text.indexOf('Pinned')).toBeLessThan(text.indexOf('Today'));
+      expect(text.indexOf('Old pin')).toBeLessThan(text.indexOf('Triage notes'));
+    });
+
+    it('hides archived chats until the Archived section is opened', () => {
+      render(
+        <Sidebar
+          {...props}
+          conversations={[
+            row('c-arch', 'Put away', '2026-08-03T09:00:00Z', { archivedAt: '2026-08-03T11:00:00Z' }),
+            ...conversations,
+          ]}
+        />,
+      );
+      expect(screen.queryByText('Put away')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Archived/ }));
+      expect(screen.getByText('Put away')).toBeTruthy();
+    });
+
+    it('shows empty-state copy when every chat is archived', () => {
+      render(
+        <Sidebar
+          {...props}
+          conversations={[
+            row('c-arch', 'Put away', '2026-08-03T09:00:00Z', { archivedAt: '2026-08-03T11:00:00Z' }),
+          ]}
+        />,
+      );
+      expect(screen.getByText(/All chats are archived/)).toBeTruthy();
+    });
+
+    it('files chats under folders and keeps empty folders as drop targets', () => {
+      const folders: ConversationFolder[] = [
+        { id: 'f-work', name: 'Work', createdAt: '2026-08-01T00:00:00Z' },
+        { id: 'f-empty', name: 'Empty', createdAt: '2026-08-01T00:00:00Z' },
+      ];
+      render(
+        <Sidebar
+          {...props}
+          folders={folders}
+          conversations={[
+            row('c-work', 'Client notes', '2026-08-03T09:00:00Z', {
+              folderId: 'f-work',
+              folderName: 'Work',
+            }),
+            ...conversations,
+          ]}
+        />,
+      );
+      expect(screen.getByText('Folders')).toBeTruthy();
+      expect(screen.getByText('Work')).toBeTruthy();
+      expect(screen.getByText('Empty')).toBeTruthy();
+      expect(screen.getByText('Client notes')).toBeTruthy();
+    });
+
+    it('pins from the context menu', () => {
+      const onPinConversation = vi.fn();
+      render(<Sidebar {...props} onPinConversation={onPinConversation} />);
+      fireEvent.contextMenu(screen.getByText('Triage notes').closest('.convo-row')!);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }));
+      expect(onPinConversation).toHaveBeenCalledWith('c1', true);
+    });
+
+    it('drops a chat onto a folder', () => {
+      const onSetConversationFolder = vi.fn();
+      render(
+        <Sidebar
+          {...props}
+          folders={[{ id: 'f-work', name: 'Work', createdAt: '2026-08-01T00:00:00Z' }]}
+          onSetConversationFolder={onSetConversationFolder}
+        />,
+      );
+      const rowEl = screen.getByText('Triage notes').closest('.convo-row')!;
+      const folder = screen.getByText('Work').closest('.sb-folder')!;
+      fireEvent.drop(folder, {
+        dataTransfer: { getData: () => 'c1' },
+      });
+      expect(onSetConversationFolder).toHaveBeenCalledWith('c1', 'f-work');
+      void rowEl;
     });
   });
 });

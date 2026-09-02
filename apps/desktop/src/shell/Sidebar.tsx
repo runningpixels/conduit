@@ -4,22 +4,22 @@
  * Search), scrollable grouped list, footer workspace chip + menu. The footer
  * menu absorbs the V6 titlebar chips and the settings/connectors rail tabs.
  *
- * V9 deleted the top bar, which makes this the only persistent chrome in the
- * product. Two things moved in as a result: the brand mark, and Search — the
- * `.omni` pill's capability, which was always just a second door to the ⌘K
- * palette. The head carries the window drag region alongside the title strip's.
+ * t0-5 adds pin / archive / one-level folders on this list: Pinned → Folders →
+ * Recent (day groups) → Archived (collapsed). Context menu + drag onto a folder.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { ConversationSummary } from '../ipc/contracts';
+import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
-import { conversationGroup } from '../lib/dayGroup';
+import { organizeConversations } from '../lib/conversationOrganization';
 import { modShortcutHint } from '../lib/shortcuts';
 import { appName } from '../brand';
 import {
+  ArchiveIcon,
   BrandMark,
   ConnectorsIcon,
   FolderIcon,
   LockIcon,
+  PinIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -29,6 +29,7 @@ import {
 
 interface SidebarProps {
   conversations: ConversationSummary[];
+  folders: ConversationFolder[];
   activeConversationId: string | null;
   /** conversationId → providerId, for the row's last-used-provider dot. */
   convoProviders: Record<string, string>;
@@ -52,10 +53,18 @@ interface SidebarProps {
   onDeleteConversation?: (id: string) => void;
   /** Delete all conversation history (routes through the confirm dialog). */
   onDeleteAllHistory: () => void;
+  onPinConversation?: (id: string, pinned: boolean) => void;
+  onArchiveConversation?: (id: string, archived: boolean) => void;
+  onSetConversationFolder?: (id: string, folderId: string | null) => void;
+  onCreateFolder?: (name: string) => Promise<ConversationFolder | void> | ConversationFolder | void;
+  onRenameFolder?: (folderId: string, name: string) => void;
+  onDeleteFolder?: (folderId: string) => void;
   /** Validated `data:image/...` brand logo URI, or omitted/undefined for the
    *  built-in wordmark glyph. See `brand/logo.ts`. */
   logoSrc?: string;
 }
+
+const DRAG_TYPE = 'text/conduit-conversation-id';
 
 /** "2m" relative label, hover-only per §8.2. */
 function relativeFromIso(iso: string): string {
@@ -70,23 +79,6 @@ function relativeFromIso(iso: string): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
   return new Date(then).toLocaleDateString();
-}
-
-/** Ordered [group, rows] buckets, newest first. */
-function groupConversations(
-  rows: ConversationSummary[],
-): [string, ConversationSummary[]][] {
-  const sorted = [...rows].sort(
-    (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
-  );
-  const buckets = new Map<string, ConversationSummary[]>();
-  for (const row of sorted) {
-    const group = conversationGroup(row.updatedAt);
-    const list = buckets.get(group) ?? [];
-    list.push(row);
-    buckets.set(group, list);
-  }
-  return Array.from(buckets.entries());
 }
 
 function KeyIcon() {
@@ -116,8 +108,15 @@ function WorkspaceGlyph() {
   );
 }
 
+interface ContextMenuState {
+  conversationId: string;
+  x: number;
+  y: number;
+}
+
 export function Sidebar({
   conversations,
+  folders,
   activeConversationId,
   convoProviders,
   workspaceLabel,
@@ -133,13 +132,29 @@ export function Sidebar({
   onExportDiagnostics,
   onDeleteConversation,
   onDeleteAllHistory,
+  onPinConversation,
+  onArchiveConversation,
+  onSetConversationFolder,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
   logoSrc,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [folderDialog, setFolderDialog] = useState<
+    { mode: 'create'; moveId?: string } | { mode: 'rename'; folderId: string; name: string } | null
+  >(null);
+  const [folderName, setFolderName] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
+  const contextRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setMenuOpen(false);
+  const organized = organizeConversations(conversations, folders);
 
   // Outside click + Escape close the workspace menu; focus returns to the chip.
   useEffect(() => {
@@ -164,14 +179,32 @@ export function Sidebar({
     };
   }, [menuOpen]);
 
-  // Focus the first item when the menu opens.
   useEffect(() => {
     if (!menuOpen) return;
     const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
     first?.focus();
   }, [menuOpen]);
 
-  // F-12 — arrow-key navigation within the workspace menu.
+  useEffect(() => {
+    if (!contextMenu) return;
+    function onPointerDown(event: PointerEvent) {
+      if (contextRef.current?.contains(event.target as Node)) return;
+      setContextMenu(null);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setContextMenu(null);
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu]);
+
   function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     const items = Array.from(
       menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [],
@@ -198,7 +231,6 @@ export function Sidebar({
     onOpenSettings(section);
   }
 
-  const groups = groupConversations(conversations);
   const chipSub = [
     localOnly ? 'local only' : undefined,
     providerCount != null ? `${providerCount} key${providerCount === 1 ? '' : 's'}` : undefined,
@@ -236,12 +268,125 @@ export function Sidebar({
     );
   }
 
+  function readDragId(event: React.DragEvent): string | null {
+    return event.dataTransfer.getData(DRAG_TYPE) || null;
+  }
+
+  function allowDrop(event: React.DragEvent, target: string) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDropTarget(target);
+  }
+
+  function dropOnFolder(event: React.DragEvent, folderId: string) {
+    event.preventDefault();
+    setDropTarget(null);
+    const id = readDragId(event);
+    if (id) onSetConversationFolder?.(id, folderId);
+  }
+
+  function dropOnPinned(event: React.DragEvent) {
+    event.preventDefault();
+    setDropTarget(null);
+    const id = readDragId(event);
+    if (id) onPinConversation?.(id, true);
+  }
+
+  function dropOnRecent(event: React.DragEvent) {
+    event.preventDefault();
+    setDropTarget(null);
+    const id = readDragId(event);
+    if (!id) return;
+    onArchiveConversation?.(id, false);
+    onSetConversationFolder?.(id, null);
+  }
+
+  function dropOnArchived(event: React.DragEvent) {
+    event.preventDefault();
+    setDropTarget(null);
+    const id = readDragId(event);
+    if (id) onArchiveConversation?.(id, true);
+  }
+
+  function openContextMenu(event: React.MouseEvent, conversationId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ conversationId, x: event.clientX, y: event.clientY });
+  }
+
+  async function commitFolderDialog() {
+    const name = folderName.trim();
+    if (!name || !folderDialog) return;
+    if (folderDialog.mode === 'create') {
+      const created = await onCreateFolder?.(name);
+      if (folderDialog.moveId && created && 'id' in created) {
+        onSetConversationFolder?.(folderDialog.moveId, created.id);
+      }
+    } else {
+      onRenameFolder?.(folderDialog.folderId, name);
+    }
+    setFolderDialog(null);
+    setFolderName('');
+  }
+
+  function renderRow(row: ConversationSummary) {
+    const providerId = convoProviders[row.id] ?? 'custom';
+    return (
+      <div
+        key={row.id}
+        className="convo-row"
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(DRAG_TYPE, row.id);
+          event.dataTransfer.effectAllowed = 'move';
+        }}
+        onDragEnd={() => setDropTarget(null)}
+        onContextMenu={(event) => openContextMenu(event, row.id)}
+      >
+        <button
+          className="convo"
+          type="button"
+          data-provider={providerHueId(providerId)}
+          aria-current={row.id === activeConversationId ? 'true' : undefined}
+          title={row.displayTitle}
+          onClick={() => onSelectConversation(row.id)}
+        >
+          <i className="convo-dot" aria-hidden="true" />
+          {row.pinnedAt && !row.archivedAt ? (
+            <span className="convo-flag" aria-label="Pinned">
+              <PinIcon />
+            </span>
+          ) : null}
+          <span className="convo-name">{row.displayTitle}</span>
+          <span className="convo-meta">{relativeFromIso(row.updatedAt)}</span>
+        </button>
+        {onDeleteConversation && (
+          <button
+            className="convo-del"
+            type="button"
+            aria-label={`Delete ${row.displayTitle}`}
+            title="Delete chat"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDeleteConversation(row.id);
+            }}
+          >
+            <TrashIcon />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const contextRow = contextMenu
+    ? conversations.find((row) => row.id === contextMenu.conversationId)
+    : undefined;
+
+  const showFolders = folders.length > 0 || Boolean(onCreateFolder);
+  const hasList = conversations.length > 0 || folders.length > 0;
+
   return (
     <aside className="sidebar" aria-label="Conversations">
-      {/* Not a drag region: the caption row above owns moving the window. This
-          was one while the app had no top bar, which meant every non-interactive
-          child needed the attribute repeated onto it — Tauri hit-tests the
-          element under the cursor rather than walking up to an ancestor. */}
       <div className="sb-head sidebar-inner">
         <span className="mark">
           <BrandMark className="mark-glyph" src={logoSrc} />
@@ -272,57 +417,143 @@ export function Sidebar({
       </nav>
 
       <div className="sb-list scroll sidebar-inner">
-        {conversations.length === 0 ? (
+        {!hasList ? (
           <div className="sb-empty">
             No chats yet. <kbd>{modShortcutHint('N')}</kbd> starts one.
           </div>
         ) : (
-          groups.map(([group, rows]) => (
-            <div key={group}>
-              <div className="sb-group">{group}</div>
-              {rows.map((row) => {
-                const providerId = convoProviders[row.id] ?? 'custom';
-                // The row is a wrapper, not a button, because delete has to be
-                // its own control — a button inside a button is invalid markup
-                // and screen readers only announce the outer one.
-                return (
-                  <div key={row.id} className="convo-row">
+          <>
+            {organized.allArchived && (
+              <div className="sb-empty">
+                All chats are archived. Open Archived below to restore one.
+              </div>
+            )}
+
+            {(organized.pinned.length > 0 || dropTarget === 'pinned') && (
+              <div
+                className="sb-drop"
+                data-over={dropTarget === 'pinned' ? 'true' : undefined}
+                onDragOver={(event) => allowDrop(event, 'pinned')}
+                onDragLeave={() => setDropTarget((current) => (current === 'pinned' ? null : current))}
+                onDrop={dropOnPinned}
+              >
+                <div className="sb-group">Pinned</div>
+                {organized.pinned.map(renderRow)}
+              </div>
+            )}
+
+            {showFolders && (
+              <div>
+                <div className="sb-group sb-group-row">
+                  <span>Folders</span>
+                  {onCreateFolder && (
                     <button
-                      className="convo"
+                      className="sb-group-action"
                       type="button"
-                      data-provider={providerHueId(providerId)}
-                      aria-current={row.id === activeConversationId ? 'true' : undefined}
-                      title={row.displayTitle}
-                      onClick={() => onSelectConversation(row.id)}
+                      onClick={() => {
+                        setFolderName('');
+                        setFolderDialog({ mode: 'create' });
+                      }}
                     >
-                      <i className="convo-dot" aria-hidden="true" />
-                      <span className="convo-name">{row.displayTitle}</span>
-                      <span className="convo-meta">{relativeFromIso(row.updatedAt)}</span>
+                      New folder
                     </button>
-                    {onDeleteConversation && (
-                      <button
-                        className="convo-del"
-                        type="button"
-                        // Named, not just "Delete": the button is one of many
-                        // identical glyphs in a list, so the label has to say
-                        // which row it belongs to.
-                        aria-label={`Delete ${row.displayTitle}`}
-                        title="Delete chat"
-                        onClick={(event) => {
-                          // Without this the click reaches the row underneath
-                          // and selects the chat on its way to the dialog.
-                          event.stopPropagation();
-                          onDeleteConversation(row.id);
-                        }}
-                      >
-                        <TrashIcon />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+                {organized.folders.map(({ folder, rows }) => {
+                  const collapsed = collapsedFolders[folder.id] === true;
+                  const target = `folder:${folder.id}`;
+                  return (
+                    <div
+                      key={folder.id}
+                      className="sb-folder"
+                      data-over={dropTarget === target ? 'true' : undefined}
+                      onDragOver={(event) => allowDrop(event, target)}
+                      onDragLeave={() => setDropTarget((current) => (current === target ? null : current))}
+                      onDrop={(event) => dropOnFolder(event, folder.id)}
+                    >
+                      <div className="sb-folder-head">
+                        <button
+                          className="sb-folder-toggle"
+                          type="button"
+                          aria-expanded={!collapsed}
+                          onClick={() =>
+                            setCollapsedFolders((current) => ({
+                              ...current,
+                              [folder.id]: !collapsed,
+                            }))
+                          }
+                        >
+                          <FolderIcon />
+                          <span className="sb-folder-name">{folder.name}</span>
+                          <span className="sb-folder-count">{rows.length}</span>
+                        </button>
+                        {onRenameFolder && (
+                          <button
+                            className="sb-folder-edit"
+                            type="button"
+                            aria-label={`Rename ${folder.name}`}
+                            onClick={() => {
+                              setFolderName(folder.name);
+                              setFolderDialog({ mode: 'rename', folderId: folder.id, name: folder.name });
+                            }}
+                          >
+                            Rename
+                          </button>
+                        )}
+                        {onDeleteFolder && (
+                          <button
+                            className="sb-folder-edit"
+                            type="button"
+                            aria-label={`Delete ${folder.name}`}
+                            onClick={() => onDeleteFolder(folder.id)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                      {!collapsed && rows.map(renderRow)}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div
+              className="sb-drop"
+              data-over={dropTarget === 'recent' ? 'true' : undefined}
+              onDragOver={(event) => allowDrop(event, 'recent')}
+              onDragLeave={() => setDropTarget((current) => (current === 'recent' ? null : current))}
+              onDrop={dropOnRecent}
+            >
+              {organized.recentGroups.map(([group, rows]) => (
+                <div key={group}>
+                  <div className="sb-group">{group}</div>
+                  {rows.map(renderRow)}
+                </div>
+              ))}
             </div>
-          ))
+
+            {organized.archived.length > 0 && (
+              <div
+                className="sb-drop"
+                data-over={dropTarget === 'archived' ? 'true' : undefined}
+                onDragOver={(event) => allowDrop(event, 'archived')}
+                onDragLeave={() => setDropTarget((current) => (current === 'archived' ? null : current))}
+                onDrop={dropOnArchived}
+              >
+                <button
+                  className="sb-group sb-group-toggle"
+                  type="button"
+                  aria-expanded={archivedOpen}
+                  onClick={() => setArchivedOpen((open) => !open)}
+                >
+                  Archived
+                  <span className="sb-folder-count">{organized.archived.length}</span>
+                </button>
+                {archivedOpen && organized.archived.map(renderRow)}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -387,6 +618,172 @@ export function Sidebar({
           />
         </div>
       </div>
+
+      {contextRow && contextMenu && (
+        <div
+          ref={contextRef}
+          className="menu convo-menu"
+          data-open="true"
+          role="menu"
+          aria-label={`${contextRow.displayTitle} actions`}
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          {onPinConversation && (
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onPinConversation(contextRow.id, !contextRow.pinnedAt);
+                setContextMenu(null);
+              }}
+            >
+              <PinIcon />
+              {contextRow.pinnedAt ? 'Unpin' : 'Pin'}
+            </button>
+          )}
+          {onArchiveConversation && (
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onArchiveConversation(contextRow.id, !contextRow.archivedAt);
+                setContextMenu(null);
+              }}
+            >
+              <ArchiveIcon />
+              {contextRow.archivedAt ? 'Restore' : 'Archive'}
+            </button>
+          )}
+          {onSetConversationFolder && folders.length > 0 && (
+            <>
+              <div className="menu-sep" />
+              <div className="menu-label">Move to folder</div>
+              {folders.map((folder) => (
+                <button
+                  key={folder.id}
+                  className="menu-item"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onSetConversationFolder(contextRow.id, folder.id);
+                    setContextMenu(null);
+                  }}
+                >
+                  <FolderIcon />
+                  {folder.name}
+                </button>
+              ))}
+              {contextRow.folderId && (
+                <button
+                  className="menu-item"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onSetConversationFolder(contextRow.id, null);
+                    setContextMenu(null);
+                  }}
+                >
+                  Remove from folder
+                </button>
+              )}
+            </>
+          )}
+          {onCreateFolder && (
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setFolderName('');
+                setFolderDialog({ mode: 'create', moveId: contextRow.id });
+                setContextMenu(null);
+              }}
+            >
+              <PlusIcon />
+              New folder…
+            </button>
+          )}
+          {onDeleteConversation && (
+            <>
+              <div className="menu-sep" />
+              <button
+                className="menu-item danger"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onDeleteConversation(contextRow.id);
+                  setContextMenu(null);
+                }}
+              >
+                <TrashIcon />
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {folderDialog && (
+        <div
+          className="cu-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setFolderDialog(null);
+          }}
+        >
+          <div
+            className="cu-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={folderDialog.mode === 'create' ? 'New folder' : 'Rename folder'}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 className="cu-dialog-title">
+              {folderDialog.mode === 'create' ? 'New folder' : 'Rename folder'}
+            </h2>
+            <div className="cu-dialog-body">
+              {folderDialog.mode === 'create'
+                ? 'Name a folder to group chats. One level only.'
+                : 'Choose a new name for this folder.'}
+            </div>
+            <label className="cu-dialog-phrase">
+              <span>Name</span>
+              <input
+                autoFocus
+                type="text"
+                value={folderName}
+                aria-label="Folder name"
+                autoComplete="off"
+                onChange={(event) => setFolderName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void commitFolderDialog();
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setFolderDialog(null);
+                  }
+                }}
+              />
+            </label>
+            <div className="cu-dialog-actions">
+              <button className="btn ghost" type="button" onClick={() => setFolderDialog(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={!folderName.trim()}
+                onClick={() => void commitFolderDialog()}
+              >
+                {folderDialog.mode === 'create' ? 'Create' : 'Rename'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

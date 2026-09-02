@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use provider_core::schema::{Conversation, ConversationSummary, GenerationControls};
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -22,12 +23,28 @@ use crate::{
     validation,
 };
 
-/// Row shape for [`list`] (id, title, updated_at, message_count, last preview, first user prompt, fork columns).
+/// One-level folder in the history rail. Empty folders stay as drop targets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationFolder {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+const FOLDER_NAME_MAX_CHARS: usize = 80;
+
+/// Row shape for [`list`] (id, title, updated_at, message_count, last preview,
+/// first user prompt, fork, pin, archive, folder id, folder name).
 type ConversationSummaryRow = (
     String,
     Option<String>,
     String,
     i64,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
     Option<String>,
     Option<String>,
     Option<String>,
@@ -94,8 +111,13 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
                    WHERE um.conversation_id = c.id AND um.role = 'user' \
                      AND mp.kind = 'text' AND mp.content IS NOT NULL AND TRIM(mp.content) != '' \
                    ORDER BY um.created_at ASC, mp.idx ASC LIMIT 1) AS first_user_prompt, \
-                c.forked_from_conversation_id \
+                c.forked_from_conversation_id, \
+                c.pinned_at, \
+                c.archived_at, \
+                c.folder_id, \
+                f.name AS folder_name \
          FROM conversations c \
+         LEFT JOIN conversation_folders f ON f.id = c.folder_id \
          ORDER BY c.updated_at DESC",
     )
     .fetch_all(pool)
@@ -112,6 +134,10 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
                 last_message_preview,
                 first_user_prompt,
                 forked_from,
+                pinned_at,
+                archived_at,
+                folder_id,
+                folder_name,
             )| {
                 ConversationSummary {
                     id,
@@ -126,6 +152,10 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
                         .as_deref()
                         .and_then(summarize_message_content_for_preview),
                     forked_from_conversation_id: forked_from,
+                    pinned_at,
+                    archived_at,
+                    folder_id,
+                    folder_name,
                 }
             },
         )
@@ -347,6 +377,180 @@ pub async fn set_title(pool: &SqlitePool, id: &str, title: &str) -> Result<(), D
     Ok(())
 }
 
+fn normalize_folder_name(name: &str) -> Result<String, DbError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(DbError::Query("folder name must not be empty".into()));
+    }
+    if trimmed.chars().count() > FOLDER_NAME_MAX_CHARS {
+        return Err(DbError::Query(format!(
+            "folder name must be at most {FOLDER_NAME_MAX_CHARS} characters"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+/// Pin or unpin a conversation. Does not bump `updated_at`. Pinning an archived
+/// chat restores it so it can sit at the top of the rail.
+pub async fn set_pinned(pool: &SqlitePool, id: &str, pinned: bool) -> Result<(), DbError> {
+    if pinned {
+        sqlx::query(
+            "UPDATE conversations SET pinned_at = COALESCE(pinned_at, ?), archived_at = NULL \
+             WHERE id = ?",
+        )
+        .bind(now_iso8601())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query("UPDATE conversations SET pinned_at = NULL WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Archive or restore a conversation. Does not bump `updated_at` or clear pin.
+pub async fn set_archived(pool: &SqlitePool, id: &str, archived: bool) -> Result<(), DbError> {
+    if archived {
+        sqlx::query("UPDATE conversations SET archived_at = COALESCE(archived_at, ?) WHERE id = ?")
+            .bind(now_iso8601())
+            .bind(id)
+            .execute(pool)
+            .await?;
+    } else {
+        sqlx::query("UPDATE conversations SET archived_at = NULL WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Move a conversation into a folder, or clear `folder_id`. Does not bump
+/// `updated_at`. A missing folder id is an error. Filing an archived chat
+/// restores it so it can appear under the folder.
+pub async fn set_folder(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    folder_id: Option<&str>,
+) -> Result<(), DbError> {
+    if let Some(fid) = folder_id {
+        let exists: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM conversation_folders WHERE id = ?")
+                .bind(fid)
+                .fetch_optional(pool)
+                .await?;
+        if exists.is_none() {
+            return Err(DbError::Query("folder not found".into()));
+        }
+        sqlx::query("UPDATE conversations SET folder_id = ?, archived_at = NULL WHERE id = ?")
+            .bind(fid)
+            .bind(conversation_id)
+            .execute(pool)
+            .await?;
+    } else {
+        sqlx::query("UPDATE conversations SET folder_id = NULL WHERE id = ?")
+            .bind(conversation_id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Create a one-level folder. Names are unique ignoring case.
+pub async fn create_folder(pool: &SqlitePool, name: &str) -> Result<ConversationFolder, DbError> {
+    let name = normalize_folder_name(name)?;
+    let id = Uuid::new_v4().to_string();
+    let now = now_iso8601();
+    let result =
+        sqlx::query("INSERT INTO conversation_folders (id, name, created_at) VALUES (?, ?, ?)")
+            .bind(&id)
+            .bind(&name)
+            .bind(&now)
+            .execute(pool)
+            .await;
+    match result {
+        Ok(_) => Ok(ConversationFolder {
+            id,
+            name,
+            created_at: now,
+        }),
+        Err(sqlx::Error::Database(err)) if err.is_unique_violation() => Err(DbError::Query(
+            format!("a folder named \"{name}\" already exists"),
+        )),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Rename a folder. Unique-name rule still holds.
+pub async fn rename_folder(
+    pool: &SqlitePool,
+    id: &str,
+    name: &str,
+) -> Result<ConversationFolder, DbError> {
+    let name = normalize_folder_name(name)?;
+    let result = sqlx::query("UPDATE conversation_folders SET name = ? WHERE id = ?")
+        .bind(&name)
+        .bind(id)
+        .execute(pool)
+        .await;
+    match result {
+        Err(sqlx::Error::Database(err)) if err.is_unique_violation() => {
+            return Err(DbError::Query(format!(
+                "a folder named \"{name}\" already exists"
+            )));
+        }
+        Err(e) => return Err(e.into()),
+        Ok(res) => {
+            if res.rows_affected() == 0 {
+                return Err(DbError::Query("folder not found".into()));
+            }
+        }
+    }
+    let created_at: String =
+        sqlx::query_scalar("SELECT created_at FROM conversation_folders WHERE id = ?")
+            .bind(id)
+            .fetch_one(pool)
+            .await?;
+    Ok(ConversationFolder {
+        id: id.to_string(),
+        name,
+        created_at,
+    })
+}
+
+/// Delete a folder and unfile its conversations (`folder_id` → NULL).
+pub async fn delete_folder(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
+    sqlx::query("UPDATE conversations SET folder_id = NULL WHERE folder_id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM conversation_folders WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// List folders alphabetically by name.
+pub async fn list_folders(pool: &SqlitePool) -> Result<Vec<ConversationFolder>, DbError> {
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, name, created_at FROM conversation_folders ORDER BY name COLLATE NOCASE",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, name, created_at)| ConversationFolder {
+            id,
+            name,
+            created_at,
+        })
+        .collect())
+}
+
 /// Ensure a conversation row exists for `id`, creating a title-less row if it
 /// does not. Idempotent. The stream path calls this before writing events so a
 /// request referencing a not-yet-persisted conversation id (e.g. a legacy or
@@ -477,6 +681,11 @@ pub async fn fork_at(
     let source = get(pool, source_conversation_id)
         .await?
         .ok_or_else(|| DbError::Query("source conversation not found".into()))?;
+    let source_folder_id: Option<String> =
+        sqlx::query_scalar("SELECT folder_id FROM conversations WHERE id = ?")
+            .bind(source_conversation_id)
+            .fetch_one(pool)
+            .await?;
 
     let mut tx = pool.begin().await?;
 
@@ -487,8 +696,9 @@ pub async fn fork_at(
     sqlx::query(
         "INSERT INTO conversations \
          (id, title, forked_from_conversation_id, fork_point_message_id, \
-          workspace_root, generation_controls, user_instructions, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          workspace_root, generation_controls, user_instructions, folder_id, \
+          created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&fork_id)
     .bind(label)
@@ -499,6 +709,7 @@ pub async fn fork_at(
         source.generation_controls.as_ref(),
     ))
     .bind(&source.user_instructions)
+    .bind(&source_folder_id)
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
@@ -591,6 +802,11 @@ pub async fn fork_before(
     let source = get(pool, source_conversation_id)
         .await?
         .ok_or_else(|| DbError::Query("source conversation not found".into()))?;
+    let source_folder_id: Option<String> =
+        sqlx::query_scalar("SELECT folder_id FROM conversations WHERE id = ?")
+            .bind(source_conversation_id)
+            .fetch_one(pool)
+            .await?;
 
     let mut tx = pool.begin().await?;
 
@@ -601,8 +817,9 @@ pub async fn fork_before(
     sqlx::query(
         "INSERT INTO conversations \
          (id, title, forked_from_conversation_id, fork_point_message_id, \
-          workspace_root, generation_controls, user_instructions, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          workspace_root, generation_controls, user_instructions, folder_id, \
+          created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&fork_id)
     .bind(label)
@@ -613,6 +830,7 @@ pub async fn fork_before(
         source.generation_controls.as_ref(),
     ))
     .bind(&source.user_instructions)
+    .bind(&source_folder_id)
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)

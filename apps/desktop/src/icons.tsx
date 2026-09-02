@@ -110,6 +110,19 @@ export const ShieldIcon = (p: IconProps) => (
 export const FolderIcon = (p: IconProps) => (
   <Svg {...p}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></Svg>
 );
+export const PinIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 17v4" />
+    <path d="M8 4h8l-1 7h3l-6 6-6-6h3z" />
+  </Svg>
+);
+export const ArchiveIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6h18v4H3z" />
+    <path d="M5 10v9h14v-9" />
+    <path d="M10 14h4" />
+  </Svg>
+);
 export const ModelIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 8V4H8" />

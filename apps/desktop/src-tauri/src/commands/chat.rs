@@ -241,6 +241,79 @@ pub async fn set_conversation_title(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn set_conversation_pinned(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    pinned: bool,
+) -> Result<(), String> {
+    conversations::set_pinned(&state.db, &conversation_id, pinned)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_conversation_archived(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    archived: bool,
+) -> Result<(), String> {
+    conversations::set_archived(&state.db, &conversation_id, archived)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_conversation_folder(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    folder_id: Option<String>,
+) -> Result<(), String> {
+    conversations::set_folder(&state.db, &conversation_id, folder_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_conversation_folders(
+    state: State<'_, AppState>,
+) -> Result<Vec<conversations::ConversationFolder>, String> {
+    conversations::list_folders(&state.db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_conversation_folder(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<conversations::ConversationFolder, String> {
+    conversations::create_folder(&state.db, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rename_conversation_folder(
+    state: State<'_, AppState>,
+    folder_id: String,
+    name: String,
+) -> Result<conversations::ConversationFolder, String> {
+    conversations::rename_folder(&state.db, &folder_id, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_conversation_folder(
+    state: State<'_, AppState>,
+    folder_id: String,
+) -> Result<(), String> {
+    conversations::delete_folder(&state.db, &folder_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Bind or clear the workspace folder for a conversation. `workspace_root`
 /// must be an absolute existing directory, or `null` to clear.
 #[tauri::command]

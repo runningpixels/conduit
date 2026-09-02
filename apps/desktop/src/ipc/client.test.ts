@@ -35,6 +35,15 @@ beforeEach(() => {
 });
 
 describe('artifact + attachment IPC wrappers', () => {
+  it('setConversationPinned calls set_conversation_pinned', async () => {
+    invoke.mockResolvedValue(undefined);
+    const { setConversationPinned } = await import('./client');
+    await setConversationPinned('c1', true);
+    expect(invoke).toHaveBeenCalledWith('set_conversation_pinned', {
+      conversationId: 'c1',
+      pinned: true,
+    });
+  });
   it('createArtifact calls create_artifact with camelCase args', async () => {
     invoke.mockResolvedValue({ id: 'a1' });
     await createArtifact('c1', 'markdown', 'Note', 'm1');

@@ -153,6 +153,22 @@ pub struct ConversationSummary {
     /// If this conversation is a fork of another, the source conversation's id.
     #[ts(optional)]
     pub forked_from_conversation_id: Option<String>,
+    /// When set, the chat is pinned to the top of the history rail.
+    #[serde(default)]
+    #[ts(optional)]
+    pub pinned_at: Option<String>,
+    /// When set, the chat is hidden from the default rail (search still finds it).
+    #[serde(default)]
+    #[ts(optional)]
+    pub archived_at: Option<String>,
+    /// One-level folder this chat belongs to, if any.
+    #[serde(default)]
+    #[ts(optional)]
+    pub folder_id: Option<String>,
+    /// Denormalized folder name for the rail and search badges.
+    #[serde(default)]
+    #[ts(optional)]
+    pub folder_name: Option<String>,
 }
 
 // =============================================================================

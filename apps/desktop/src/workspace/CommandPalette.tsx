@@ -11,11 +11,14 @@ import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../ico
 import { providerDisplayName } from '../lib/providerIdentity';
 import { formatModelPriceLabel } from '../lib/costTable';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
+import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
 
 export interface CommandPaletteConversation {
   id: string;
   title: string;
+  pinned?: boolean;
+  archived?: boolean;
 }
 
 interface CommandPaletteProps {
@@ -32,6 +35,10 @@ interface CommandPaletteProps {
   onEditLastUserMessage: () => void;
   onOpenChatSettings: () => void;
   onRenameChat: () => void;
+  onPinChat?: () => void;
+  onArchiveChat?: () => void;
+  activePinned?: boolean;
+  activeArchived?: boolean;
   onExportDiagnostics: () => void;
   onCopyConversationAsMarkdown: () => void;
   onExportConversationMarkdown: () => void;
@@ -117,6 +124,10 @@ export function CommandPalette({
   onEditLastUserMessage,
   onOpenChatSettings,
   onRenameChat,
+  onPinChat,
+  onArchiveChat,
+  activePinned = false,
+  activeArchived = false,
   onExportDiagnostics,
   onCopyConversationAsMarkdown,
   onExportConversationMarkdown,
@@ -189,6 +200,8 @@ export function CommandPalette({
       { id: 'cmd-connectors', group: 'Commands', kind: 'cmd', label: 'Connect a service', run: () => { onOpenSettings('connectors'); close(); } },
       { id: 'cmd-about', group: 'Commands', kind: 'cmd', label: 'About', run: () => { onOpenSettings('about'); close(); } },
       { id: 'cmd-rename', group: 'Commands', kind: 'cmd', label: 'Rename this chat', run: () => { onRenameChat(); close(); } },
+      { id: 'cmd-pin', group: 'Commands', kind: 'cmd', label: activePinned ? 'Unpin this chat' : 'Pin this chat', run: () => { onPinChat?.(); close(); } },
+      { id: 'cmd-archive', group: 'Commands', kind: 'cmd', label: activeArchived ? 'Restore this chat' : 'Archive this chat', run: () => { onArchiveChat?.(); close(); } },
       { id: 'cmd-export-diag', group: 'Commands', kind: 'cmd', label: 'Export diagnostics bundle', run: () => { onExportDiagnostics(); close(); } },
       { id: 'cmd-copy-md', group: 'Commands', kind: 'cmd', label: 'Copy conversation as Markdown', run: () => { onCopyConversationAsMarkdown(); close(); } },
       { id: 'cmd-export-md', group: 'Commands', kind: 'cmd', label: 'Export conversation as Markdown…', run: () => { onExportConversationMarkdown(); close(); } },
@@ -199,7 +212,8 @@ export function CommandPalette({
     ];
   }, [
     onClose, onNewChat, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
-    onToggleWebSearch, onOpenSettings, onRenameChat, onExportDiagnostics,
+    onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
+    activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
     onDeleteChat, onDeleteAllHistory, onToggleTheme,
   ]);
@@ -261,6 +275,7 @@ export function CommandPalette({
         group: 'Chats',
         kind: 'chat' as const,
         label: c.title || 'Untitled chat',
+        tail: organizationBadge(c),
         run: () => {
           onSelectConversation(c.id);
           onClose();
@@ -272,6 +287,7 @@ export function CommandPalette({
       kind: 'search' as const,
       label: r.snippet || '(message)',
       result: r,
+      tail: organizationBadge(r),
       run: () => {
         onSelectSearchResult?.(r);
         onClose();

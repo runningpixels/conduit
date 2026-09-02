@@ -115,3 +115,78 @@ async fn reconciliation_is_idempotent() {
     let second = reconcile_all(&pool).await.unwrap();
     assert_eq!(second.rebuilds, 0);
 }
+
+#[tokio::test]
+async fn continuation_rounds_fold_into_one_assistant_row() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let req = "req-turn";
+
+    let round1 = [
+        ProviderEvent::MessageStart {
+            request_id: req.into(),
+            index: 0,
+        },
+        ProviderEvent::ContentBlockStart {
+            request_id: req.into(),
+            block_id: "block-0".into(),
+            index: 1,
+            block_kind: "text".into(),
+        },
+        ProviderEvent::ContentDelta {
+            request_id: req.into(),
+            block_id: "block-0".into(),
+            index: 2,
+            content: "Yes — let me run a quick test.".into(),
+        },
+    ];
+    let round2 = [
+        ProviderEvent::MessageStart {
+            request_id: "req-round-2".into(),
+            index: 0,
+        },
+        ProviderEvent::ContentBlockStart {
+            request_id: "req-round-2".into(),
+            block_id: "block-0".into(),
+            index: 1,
+            block_kind: "text".into(),
+        },
+        ProviderEvent::ContentDelta {
+            request_id: "req-round-2".into(),
+            block_id: "block-0".into(),
+            index: 2,
+            content: "Yes, I have web access.".into(),
+        },
+        ProviderEvent::MessageComplete {
+            request_id: "req-round-2".into(),
+            index: 3,
+            finish_reason: "stop".into(),
+        },
+    ];
+
+    for event in round1.iter().chain(round2.iter()) {
+        event_log::append_and_apply(&pool, &conv.id, req, event)
+            .await
+            .unwrap();
+    }
+
+    let loaded = messages::load_conversation_messages(&pool, &conv.id)
+        .await
+        .unwrap();
+    let assistants: Vec<_> = loaded
+        .iter()
+        .filter(|m| m.role == provider_core::schema::MessageRole::Assistant)
+        .collect();
+    assert_eq!(
+        assistants.len(),
+        1,
+        "continuation events folded under one request_id must not mint a second assistant row"
+    );
+    let text: String = assistants[0]
+        .parts
+        .iter()
+        .filter_map(|p| p.content.clone())
+        .collect();
+    assert!(text.contains("Yes — let me run a quick test."));
+    assert!(text.contains("Yes, I have web access."));
+}

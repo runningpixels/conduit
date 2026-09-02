@@ -193,8 +193,8 @@ export function AssistantMessage({
       )}
 
       <InterruptedBanner visible={state.interrupted} onRetry={showActions ? onRetry : undefined} />
-      {state.reasoning.map((block) => (
-        <ReasoningBlock key={block.blockId} block={block} />
+      {state.reasoning.map((block, i) => (
+        <ReasoningBlock key={`${block.blockId}-${i}`} block={block} />
       ))}
       {webSearchCalls.length > 0 && (
         <SearchCallGroup
@@ -206,7 +206,7 @@ export function AssistantMessage({
       {state.blocks.length > 0 ? (
         state.blocks.map((block, i) => (
           <ChatProse
-            key={block.blockId}
+            key={`${block.blockId}-${i}`}
             content={block.content}
             citations={block.citations}
             streaming={proseCaretVisible && i === state.blocks.length - 1}

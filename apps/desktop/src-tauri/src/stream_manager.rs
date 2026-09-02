@@ -39,6 +39,20 @@ pub enum CompletionDelivery {
     Deferred,
 }
 
+/// Persistence identity for one provider round.
+///
+/// Continuation HTTP requests mint a fresh `ProviderRequest.request_id`. Folding
+/// under that id would split one user send into multiple assistant bubbles, so
+/// the agent loop always passes the canonical turn id here.
+pub struct ProviderRoundBind<'a> {
+    /// Event log + assistant message row for this user turn.
+    pub persist_request_id: &'a str,
+    /// Remove this round from the active-stream map when it ends.
+    /// Single-round callers pass true. The agent loop registers once under the
+    /// canonical id and cleans up after the last round, so it passes false.
+    pub release_active: bool,
+}
+
 /// Outcome of a single provider streaming round.
 /// Used by the agent loop to decide whether to execute tools and continue.
 #[derive(Debug, Clone, Default)]
@@ -520,8 +534,10 @@ impl StreamManager {
                 channel,
                 cancel,
                 CompletionDelivery::Immediate,
-                &request_id,
-                true,
+                ProviderRoundBind {
+                    persist_request_id: &request_id,
+                    release_active: true,
+                },
             )
             .await;
 
@@ -594,15 +610,6 @@ impl StreamManager {
     /// The caller is responsible for ensuring the conversation and request
     /// messages are already persisted (those steps happen once per user turn).
     ///
-    /// `persist_request_id` is the turn's canonical id for the event log and
-    /// assistant message row. Continuation HTTP requests mint a fresh
-    /// `request.request_id`; folding under that id would split one user send
-    /// into multiple assistant bubbles.
-    ///
-    /// `release_active` removes this round's id from the active-stream map.
-    /// Single-round callers pass true. The agent loop registers once under the
-    /// canonical id and cleans up after the last round, so it passes false.
-    ///
     /// Returns a `RoundOutcome` describing tool calls requested during the round
     /// and whether the round completed normally.
     pub async fn run_provider_round(
@@ -612,8 +619,7 @@ impl StreamManager {
         channel: Channel<ProviderEvent>,
         cancel: CancellationToken,
         completion: CompletionDelivery,
-        persist_request_id: &str,
-        release_active: bool,
+        bind: ProviderRoundBind<'_>,
     ) -> RoundOutcome {
         let settings = match state.settings() {
             Ok(s) => s,
@@ -649,7 +655,8 @@ impl StreamManager {
         // Ensure request carries the canonical request_id
         let request_id = request.request_id.clone();
         let conversation_id = request.conversation_id.clone();
-        let persist_id = persist_request_id.to_string();
+        let persist_id = bind.persist_request_id.to_string();
+        let release_active = bind.release_active;
         let pool = state.db.clone();
 
         let stream = match adapter.stream_chat(request, ctx, cancel.clone()).await {
@@ -1540,8 +1547,10 @@ impl StreamManager {
                 channel.clone(),
                 cancel.clone(),
                 CompletionDelivery::Deferred,
-                &request_id,
-                false,
+                ProviderRoundBind {
+                    persist_request_id: &request_id,
+                    release_active: false,
+                },
             );
             let mut outcome = match tokio::time::timeout(remaining, round).await {
                 Ok(outcome) => outcome,

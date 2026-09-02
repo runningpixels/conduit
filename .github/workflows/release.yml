@@ -120,7 +120,7 @@ jobs:
             args: '--target x86_64-pc-windows-msvc'
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -145,12 +145,12 @@ jobs:
             libssl-dev
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.34.4
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: pnpm
@@ -170,7 +170,7 @@ jobs:
 
       # Updater payload signing — the private key never touches the repo.
       - name: Build + sign + release (tauri-action)
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -204,7 +204,7 @@ jobs:
       # failing (if-no-files-found: ignore), so the manifest job was being
       # handed an empty directory.
       - name: Upload signed artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bundle-${{ matrix.platform }}
           path: |
@@ -220,15 +220,15 @@ jobs:
     needs: [meta, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
       - name: Download all signed artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: bundle-*
@@ -287,13 +287,13 @@ jobs:
             exit 1
           fi
       - name: Upload manifest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: manifest-${{ needs.meta.outputs.channel }}
           path: manifest-out/
 
       - name: Attach manifest to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           files: manifest-out/${{ needs.meta.outputs.channel }}/manifest.json
@@ -315,7 +315,7 @@ jobs:
       contents: write
     steps:
       - name: Download the generated manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: manifest-${{ needs.meta.outputs.channel }}
           path: manifest-out

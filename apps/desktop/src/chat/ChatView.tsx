@@ -52,7 +52,12 @@ import {
   type AssistantStreamState,
 } from './streamState';
 import { isWebSearchToolCall } from './SearchCallBlock';
-import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
+import {
+  excludeLiveAssistantTurns,
+  hydrateAssistantTurn,
+  upsertAssistantTurn,
+  type ChatTurn,
+} from './conversationHydration';
 import { mergeProviderUsage } from '../lib/contextWindows';
 import { dayRuleLabel, sameCalendarDay } from '../lib/dayGroup';
 import type { StatusState } from './statusTypes';
@@ -468,6 +473,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const toolBindingsRef = useRef<Record<string, ConnectorToolBinding>>({});
   const providerToolByCallIdRef = useRef<Record<string, string>>({});
   const pendingRuntimeCallsRef = useRef<Set<string>>(new Set());
+  const onPendingSendConsumedRef = useRef(onPendingSendConsumed);
+  onPendingSendConsumedRef.current = onPendingSendConsumed;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
   const [agentPhase, setAgentPhase] = useState<AssistantStreamState['agentPhase']>(undefined);
 
   useEffect(() => {
@@ -512,18 +521,25 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           const nextTurns = (
             await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
           ).filter((t): t is ChatTurn => t !== null);
-          setTurns(nextTurns);
+          const liveRequestId =
+            activeRequestRef.current?.requestId ?? streamStateRef.current?.requestId ?? null;
+          const visible = excludeLiveAssistantTurns(nextTurns, liveRequestId);
+          setTurns(visible);
           setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
           setConversationGenerationControls(conversation?.generationControls ?? null);
           setConversationUserInstructions(conversation?.userInstructions ?? null);
           const pending = pendingSendText?.trim();
           if (pending) {
-            onPendingSendConsumed?.();
-            setAutoSend({ text: pending, history: nextTurns });
+            onPendingSendConsumedRef.current?.();
+            setAutoSend({ text: pending, history: visible });
           }
         }
       } catch (error) {
-        if (!cancelled) onStatus(error instanceof Error ? error.message : 'Failed to load conversation');
+        if (!cancelled) {
+          onStatusRef.current(
+            error instanceof Error ? error.message : 'Failed to load conversation',
+          );
+        }
       } finally {
         if (!cancelled) setThreadLoading(false);
       }
@@ -531,7 +547,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, onStatus, pendingSendText, onPendingSendConsumed]);
+  }, [conversationId, pendingSendText]);
 
   const STICK_THRESHOLD_PX = 48;
 
@@ -930,17 +946,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               /* keep client turn id */
             }
 
-            setTurns((current) => [
-              ...current,
-              {
-                id: turnId,
-                role: 'assistant',
-                content,
-                streamState: { ...finalState, streaming: false, error: errorText },
-                interrupted: finalState.interrupted,
-                modelId: settings.activeModel,
-              },
-            ]);
+            setTurns((current) =>
+              upsertAssistantTurn(
+                current,
+                {
+                  id: turnId,
+                  role: 'assistant',
+                  content,
+                  streamState: { ...finalState, streaming: false, error: errorText },
+                  interrupted: finalState.interrupted,
+                  modelId: settings.activeModel,
+                },
+                request.requestId,
+              ),
+            );
             recordSessionTurnProvider(turnId, settings.activeProvider, settings.activeModel);
 
           })();
@@ -1210,6 +1229,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Drives both the greeting and the `data-empty` hook that centres the
   // greeting and composer as one group (§10). One condition, one source.
   const threadEmpty = !threadLoading && turns.length === 0 && !activeStream;
+  const visibleTurns = excludeLiveAssistantTurns(
+    turns,
+    activeStream?.requestId ?? activeRequestId,
+  );
 
   // Per-turn provider/model for the conditional model line (§6.4).
   // Session-tracked turns win; hydrated turns fall back to the conversation's
@@ -1447,12 +1470,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               ) : null}
             </div>
           )}
-          {!threadLoading && turns.flatMap((turn, turnIndex) => {
+          {!threadLoading && visibleTurns.flatMap((turn, turnIndex) => {
             // Day separator (V9 §4): rendered only where the calendar day
             // actually changes, so it marks a boundary instead of captioning
             // every turn. Never above the first turn — there is no boundary
             // between a thread and its own beginning.
-            const prevTurn = turnIndex > 0 ? turns[turnIndex - 1] : undefined;
+            const prevTurn = turnIndex > 0 ? visibleTurns[turnIndex - 1] : undefined;
             const dayRule =
               turn.createdAt &&
               prevTurn?.createdAt &&
@@ -1559,7 +1582,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   onPromoteArtifact={onPromoteArtifact}
                   onOpenArtifact={onOpenArtifact}
                   onStatus={onStatus}
-                  isLast={turn.id === turns[turns.length - 1]?.id}
+                  isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
                   onRetry={() => void handleRemoveLastAssistantTurn()}
                   onDelete={() => void handleRemoveLastAssistantTurn()}
                   onCopy={() => void handleCopyText(turn.content)}

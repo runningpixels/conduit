@@ -8,7 +8,7 @@ use mcp_runtime::validate_reinjection;
 use provider_core::{
     schema::{
         ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent,
-        ProviderRequest, ToolCallStatus,
+        ProviderRequest, ToolCallRecord, ToolCallStatus,
     },
     AdapterContext, ModelInfo,
 };
@@ -75,6 +75,10 @@ pub struct RoundOutcome {
     /// The round's `MessageComplete`, withheld from the channel under
     /// [`CompletionDelivery::Deferred`]. Always `None` for `Immediate`.
     pub completion_event: Option<ProviderEvent>,
+    /// Concatenated assistant text emitted this round. Continuation prompts
+    /// use this instead of the full folded snapshot, which would re-inject
+    /// earlier rounds after they share one persist identity.
+    pub round_text: String,
 }
 
 /// Split completed tool calls into the ones this request declared and the ones
@@ -516,6 +520,8 @@ impl StreamManager {
                 channel,
                 cancel,
                 CompletionDelivery::Immediate,
+                &request_id,
+                true,
             )
             .await;
 
@@ -588,6 +594,15 @@ impl StreamManager {
     /// The caller is responsible for ensuring the conversation and request
     /// messages are already persisted (those steps happen once per user turn).
     ///
+    /// `persist_request_id` is the turn's canonical id for the event log and
+    /// assistant message row. Continuation HTTP requests mint a fresh
+    /// `request.request_id`; folding under that id would split one user send
+    /// into multiple assistant bubbles.
+    ///
+    /// `release_active` removes this round's id from the active-stream map.
+    /// Single-round callers pass true. The agent loop registers once under the
+    /// canonical id and cleans up after the last round, so it passes false.
+    ///
     /// Returns a `RoundOutcome` describing tool calls requested during the round
     /// and whether the round completed normally.
     pub async fn run_provider_round(
@@ -597,6 +612,8 @@ impl StreamManager {
         channel: Channel<ProviderEvent>,
         cancel: CancellationToken,
         completion: CompletionDelivery,
+        persist_request_id: &str,
+        release_active: bool,
     ) -> RoundOutcome {
         let settings = match state.settings() {
             Ok(s) => s,
@@ -632,6 +649,7 @@ impl StreamManager {
         // Ensure request carries the canonical request_id
         let request_id = request.request_id.clone();
         let conversation_id = request.conversation_id.clone();
+        let persist_id = persist_request_id.to_string();
         let pool = state.db.clone();
 
         let stream = match adapter.stream_chat(request, ctx, cancel.clone()).await {
@@ -662,6 +680,7 @@ impl StreamManager {
         // Reasoning is deliberately not text: a round that thought and then said
         // nothing still answered nothing.
         let mut produced_text = false;
+        let mut round_text = String::new();
 
         futures::pin_mut!(stream);
         while let Some(event) = stream.next().await {
@@ -683,6 +702,7 @@ impl StreamManager {
             if let ProviderEvent::ContentDelta { content, .. } = &event {
                 if !content.is_empty() {
                     produced_text = true;
+                    round_text.push_str(content);
                 }
             }
 
@@ -718,8 +738,10 @@ impl StreamManager {
 
             // Persist + forward. Persistence is unconditional: the event log is
             // the replay source for rebuilding a turn, so it records every round's
-            // completion even when the channel does not see it.
-            let _ = event_log::append_and_apply(&pool, &conversation_id, &request_id, &event).await;
+            // completion even when the channel does not see it. Continuation HTTP
+            // requests carry a fresh id; fold under the turn's canonical id so
+            // reload hydrates one assistant message.
+            let _ = event_log::append_and_apply(&pool, &conversation_id, &persist_id, &event).await;
 
             let is_completion = matches!(event, ProviderEvent::MessageComplete { .. });
             let withhold = is_completion && completion == CompletionDelivery::Deferred;
@@ -728,7 +750,7 @@ impl StreamManager {
                 completion_event = Some(event.clone());
             } else if channel.send(event.clone()).is_err() {
                 cancel.cancel();
-                let _ = messages::mark_interrupted_by_request(&pool, &request_id).await;
+                let _ = messages::mark_interrupted_by_request(&pool, &persist_id).await;
                 break;
             }
 
@@ -745,10 +767,14 @@ impl StreamManager {
         }
 
         // Cleanup active stream entry (registered by caller via register_stream)
-        let _ = self
-            .active
-            .lock()
-            .map(|mut guard| guard.remove(&request_id));
+        // only when this round owns the slot. The agent loop keeps the canonical
+        // id registered across continuation rounds.
+        if release_active {
+            let _ = self
+                .active
+                .lock()
+                .map(|mut guard| guard.remove(&request_id));
+        }
 
         RoundOutcome {
             // Reaching here means the stream opened, so the only way
@@ -764,6 +790,7 @@ impl StreamManager {
             error_message,
             usage: round_usage,
             completion_event,
+            round_text,
         }
     }
 
@@ -1037,18 +1064,70 @@ impl StreamManager {
     /// Build a continuation `ProviderRequest` for the next provider round.
     /// This is the single guarded path that may inject tool output (after
     /// `validate_reinjection`) into a follow-up prompt.
+    ///
+    /// Tests and single-round helpers call this with the previous request's
+    /// id. The agent loop uses [`Self::build_continuation_request_for_turn`] so
+    /// tool rows and the assistant snapshot resolve against the canonical turn
+    /// id while the HTTP request still mints a fresh `request_id`.
     pub async fn build_continuation_request(
         &self,
         state: &AppState,
         previous_request: &ProviderRequest,
-        _completed_calls: &[CompletedToolCall],
+        completed_calls: &[CompletedToolCall],
+    ) -> Result<ProviderRequest, String> {
+        self.build_continuation_request_for_turn(
+            state,
+            previous_request,
+            completed_calls,
+            &previous_request.request_id,
+            None,
+        )
+        .await
+    }
+
+    pub async fn build_continuation_request_for_turn(
+        &self,
+        state: &AppState,
+        previous_request: &ProviderRequest,
+        completed_calls: &[CompletedToolCall],
+        persist_request_id: &str,
+        round_text: Option<&str>,
     ) -> Result<ProviderRequest, String> {
         let pool = &state.db;
 
-        // 1. Load all tool calls for this round's request_id.
-        let records = tool_calls::list_tool_calls_by_request(pool, &previous_request.request_id)
-            .await
-            .map_err(|e| format!("failed to list tool calls: {e}"))?;
+        // Prefer this round's in-memory calls so a shared persist id does not
+        // re-inject earlier rounds' tools. Fall back to listing by persist id
+        // for tests that seed the DB and pass an empty slice.
+        let records = if !completed_calls.is_empty() {
+            let mut loaded = Vec::with_capacity(completed_calls.len());
+            for call in completed_calls {
+                match tool_calls::get_tool_call(pool, &state.encryption, &call.tool_call_id).await {
+                    Ok(Some(record)) => loaded.push(record),
+                    Ok(None) => loaded.push(ToolCallRecord {
+                        id: call.tool_call_id.clone(),
+                        tool_id: call.tool_id.clone().unwrap_or_else(|| call.name.clone()),
+                        request_id: persist_request_id.to_string(),
+                        status: ToolCallStatus::Completed,
+                        arguments: Some(call.arguments.clone()),
+                        result: None,
+                        error: None,
+                        approved_at: None,
+                        completed_at: None,
+                    }),
+                    Err(e) => {
+                        return Err(format!(
+                            "failed to load tool call {}: {e}",
+                            call.tool_call_id
+                        ));
+                    }
+                }
+            }
+            loaded
+        } else {
+            tool_calls::list_tool_calls_by_request(pool, persist_request_id)
+                .await
+                .map_err(|e| format!("failed to list tool calls: {e}"))?
+        };
 
         // 2–3. For each tool call, load redacted result, validate reinjection.
         let mut tool_result_parts: Vec<MessagePart> = Vec::new();
@@ -1136,7 +1215,7 @@ impl StreamManager {
         // 4. Persist tool-call metadata on the event-folded assistant message
         // so tool calls survive conversation reload (R1 of the Phase A plan).
         if !tool_call_tuples.is_empty() {
-            match messages::get_message_id_by_request(pool, &previous_request.request_id).await {
+            match messages::get_message_id_by_request(pool, persist_request_id).await {
                 Ok(Some(assistant_msg_id)) => {
                     if let Err(e) = messages::enrich_assistant_with_tool_calls(
                         pool,
@@ -1147,7 +1226,7 @@ impl StreamManager {
                     {
                         eprintln!("DEBUG_R1: enrich error: {}", e);
                         warn!(
-                            request_id = %previous_request.request_id,
+                            request_id = %persist_request_id,
                             error = %e,
                             "failed to enrich assistant message with tool-call metadata"
                         );
@@ -1155,13 +1234,13 @@ impl StreamManager {
                 }
                 Ok(None) => {
                     warn!(
-                        request_id = %previous_request.request_id,
+                        request_id = %persist_request_id,
                         "no message row found for request; cannot enrich with tool-call metadata"
                     );
                 }
                 Err(e) => {
                     warn!(
-                        request_id = %previous_request.request_id,
+                        request_id = %persist_request_id,
                         error = %e,
                         "failed to look up message for request"
                     );
@@ -1176,9 +1255,25 @@ impl StreamManager {
         let turn_now = crate::time::now_iso8601();
         let mut assistant_parts: Vec<MessagePart> = Vec::new();
 
-        // Load text from the event-folded assistant message
-        if let Ok(Some(snapshot)) =
-            messages::snapshot_view_for_request(pool, &previous_request.request_id).await
+        // Prefer this round's streamed text so a shared persist identity does
+        // not re-inject earlier rounds into the next provider prompt.
+        if let Some(text) = round_text.filter(|s| !s.is_empty()) {
+            assistant_parts.push(MessagePart {
+                id: format!("{persist_request_id}/round-text-{}", Uuid::new_v4()),
+                message_id: String::new(),
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some(text.to_string()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: turn_now.clone(),
+            });
+        } else if let Ok(Some(snapshot)) =
+            messages::snapshot_view_for_request(pool, persist_request_id).await
         {
             for part in &snapshot.parts {
                 if matches!(
@@ -1445,6 +1540,8 @@ impl StreamManager {
                 channel.clone(),
                 cancel.clone(),
                 CompletionDelivery::Deferred,
+                &request_id,
+                false,
             );
             let mut outcome = match tokio::time::timeout(remaining, round).await {
                 Ok(outcome) => outcome,
@@ -1636,7 +1733,13 @@ impl StreamManager {
 
             // Build a continuation request and loop for the next round.
             match self
-                .build_continuation_request(state, &current_request, &outcome.completed_tool_calls)
+                .build_continuation_request_for_turn(
+                    state,
+                    &current_request,
+                    &outcome.completed_tool_calls,
+                    &request_id,
+                    Some(outcome.round_text.as_str()).filter(|s| !s.is_empty()),
+                )
                 .await
             {
                 Ok(continuation) => {

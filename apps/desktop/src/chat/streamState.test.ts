@@ -589,3 +589,90 @@ describe('streamState terminal settling', () => {
     expect(state.toolCalls[0].status).toBe('failed');
   });
 });
+
+describe('streamState reused block ids across agent rounds', () => {
+  it('keeps round-2 text on a new block instead of duplicating deltas onto round 1', () => {
+    let state = createAssistantStreamState('req-turn');
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-turn',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-turn',
+      blockId: 'block-0',
+      index: 0,
+      content: 'Yes — let me run a quick test.',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-turn',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-turn',
+      blockId: 'block-0',
+      index: 0,
+      content: 'Yes, I have web access.',
+    });
+
+    expect(state.blocks).toHaveLength(2);
+    expect(state.blocks[0].content).toBe('Yes — let me run a quick test.');
+    expect(state.blocks[1].content).toBe('Yes, I have web access.');
+  });
+
+  it('attaches a citation to the last matching block only', () => {
+    let state = createAssistantStreamState('req-cite');
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-cite',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-cite',
+      blockId: 'block-0',
+      index: 0,
+      content: 'first',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-cite',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-cite',
+      blockId: 'block-0',
+      index: 0,
+      content: 'second',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'citation',
+      requestId: 'req-cite',
+      blockId: 'block-0',
+      index: 1,
+      annotation: {
+        kind: 'urlCitation',
+        url: 'https://example.com',
+        title: 'Example',
+        startIndex: 0,
+        endIndex: 6,
+      },
+    });
+
+    expect(state.blocks[0].citations).toHaveLength(0);
+    expect(state.blocks[1].citations).toHaveLength(1);
+    expect(state.blocks[1].citations[0].url).toBe('https://example.com');
+  });
+});

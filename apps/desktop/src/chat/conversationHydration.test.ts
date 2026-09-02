@@ -1,6 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Message, MessagePart } from '@conduit/config-schema';
-import { hydrateAssistantTurn, messageToDisplayTurn } from './conversationHydration';
+import {
+  assistantTurnMatchesRequest,
+  excludeLiveAssistantTurns,
+  hydrateAssistantTurn,
+  messageToDisplayTurn,
+  upsertAssistantTurn,
+  type ChatTurn,
+} from './conversationHydration';
 
 vi.mock('../ipc/client', () => ({
   getRequestProviderEvents: vi.fn(),
@@ -201,5 +208,62 @@ describe('hydrateAssistantTurn', () => {
       name: 'write_html_document',
       complete: true,
     });
+  });
+});
+
+describe('live vs persisted assistant overlap', () => {
+  const live: ChatTurn = {
+    id: 'msg-live',
+    role: 'assistant',
+    content: 'streaming…',
+    streamState: {
+      requestId: 'req-turn',
+      blocks: [],
+      reasoning: [],
+      toolCalls: [],
+      searchSources: [],
+      interrupted: false,
+      streaming: true,
+    },
+  };
+  const user: ChatTurn = { id: 'u1', role: 'user', content: 'hi' };
+  const other: ChatTurn = {
+    id: 'msg-other',
+    role: 'assistant',
+    content: 'previous',
+    streamState: {
+      requestId: 'req-other',
+      blocks: [],
+      reasoning: [],
+      toolCalls: [],
+      searchSources: [],
+      interrupted: false,
+      streaming: false,
+    },
+  };
+
+  it('matches assistant turns by stream requestId or client turn id', () => {
+    expect(assistantTurnMatchesRequest(live, 'req-turn')).toBe(true);
+    expect(assistantTurnMatchesRequest({ id: 'assistant-req-turn', role: 'assistant', content: '' }, 'req-turn')).toBe(
+      true,
+    );
+    expect(assistantTurnMatchesRequest(other, 'req-turn')).toBe(false);
+    expect(assistantTurnMatchesRequest(user, 'req-turn')).toBe(false);
+  });
+
+  it('hides the persisted assistant while the live stream for that request is mounted', () => {
+    expect(excludeLiveAssistantTurns([user, other, live], 'req-turn')).toEqual([user, other]);
+    expect(excludeLiveAssistantTurns([user, live], null)).toEqual([user, live]);
+  });
+
+  it('upserts the finished turn instead of appending a duplicate', () => {
+    const finished: ChatTurn = {
+      ...live,
+      content: 'done',
+      streamState: live.streamState ? { ...live.streamState, streaming: false } : undefined,
+    };
+    const next = upsertAssistantTurn([user, live], finished, 'req-turn');
+    expect(next).toHaveLength(2);
+    expect(next[1]).toEqual(finished);
   });
 });

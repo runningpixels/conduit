@@ -62,3 +62,34 @@ export async function hydrateAssistantTurn(message: Message): Promise<ChatTurn |
   }
   return turn;
 }
+
+/** True when a displayed assistant turn belongs to the live stream `requestId`. */
+export function assistantTurnMatchesRequest(turn: ChatTurn, requestId: string): boolean {
+  if (turn.role !== 'assistant') return false;
+  return (
+    turn.streamState?.requestId === requestId ||
+    turn.id === requestId ||
+    turn.id === `assistant-${requestId}`
+  );
+}
+
+/** Drop hydrated assistants that would double-mount next to `activeStream`. */
+export function excludeLiveAssistantTurns(
+  turns: ChatTurn[],
+  liveRequestId: string | null | undefined,
+): ChatTurn[] {
+  if (!liveRequestId) return turns;
+  return turns.filter((turn) => !assistantTurnMatchesRequest(turn, liveRequestId));
+}
+
+/** Replace any existing row for this request instead of appending a second bubble. */
+export function upsertAssistantTurn(
+  turns: ChatTurn[],
+  next: ChatTurn,
+  requestId: string,
+): ChatTurn[] {
+  const without = turns.filter(
+    (turn) => turn.id !== next.id && !assistantTurnMatchesRequest(turn, requestId),
+  );
+  return [...without, next];
+}

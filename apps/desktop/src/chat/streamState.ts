@@ -189,6 +189,24 @@ function citationAlreadyPresent(
   );
 }
 
+/** Last block with this id — later agent-loop rounds reuse `block-0`. */
+function lastIndexWithBlockId(blocks: ContentBlockState[], blockId: string): number {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    if (blocks[i].blockId === blockId) return i;
+  }
+  return -1;
+}
+
+function updateLastMatchingBlock(
+  blocks: ContentBlockState[],
+  blockId: string,
+  update: (block: ContentBlockState) => ContentBlockState,
+): ContentBlockState[] {
+  const index = lastIndexWithBlockId(blocks, blockId);
+  if (index < 0) return blocks;
+  return blocks.map((block, i) => (i === index ? update(block) : block));
+}
+
 export function applyProviderEvent(
   state: AssistantStreamState,
   event: ProviderEvent,
@@ -207,11 +225,10 @@ export function applyProviderEvent(
     case 'contentDelta':
       return {
         ...state,
-        blocks: state.blocks.map((block) =>
-          block.blockId === event.blockId
-            ? { ...block, content: block.content + event.content }
-            : block,
-        ),
+        blocks: updateLastMatchingBlock(state.blocks, event.blockId, (block) => ({
+          ...block,
+          content: block.content + event.content,
+        })),
       };
     case 'reasoningDelta': {
       const existing = state.reasoning.find((block) => block.blockId === event.blockId);
@@ -358,8 +375,8 @@ export function applyProviderEvent(
         startIndex: annotation.startIndex,
         endIndex: annotation.endIndex,
       };
-      const target = state.blocks.find((block) => block.blockId === event.blockId);
-      if (!target) {
+      const targetIndex = lastIndexWithBlockId(state.blocks, event.blockId);
+      if (targetIndex < 0) {
         const citationsBefore = state.blocks.reduce((acc, b) => acc + b.citations.length, 0);
         return {
           ...state,
@@ -374,21 +391,24 @@ export function applyProviderEvent(
           ],
         };
       }
+      const target = state.blocks[targetIndex];
       if (citationAlreadyPresent(target.citations, next)) {
         return state;
       }
-      const blocks = state.blocks.map((block, blockIndex, all) => {
-        if (block.blockId !== event.blockId) return block;
-        const citationsBefore = all
-          .slice(0, blockIndex)
-          .reduce((acc, b) => acc + b.citations.length, 0);
-        const idx: CitationAnnotation = {
-          ...next,
-          index: citationsBefore + block.citations.length + 1,
-        };
-        return { ...block, citations: [...block.citations, idx] };
-      });
-      return { ...state, blocks };
+      const citationsBefore = state.blocks
+        .slice(0, targetIndex)
+        .reduce((acc, b) => acc + b.citations.length, 0);
+      const idx: CitationAnnotation = {
+        ...next,
+        index: citationsBefore + target.citations.length + 1,
+      };
+      return {
+        ...state,
+        blocks: updateLastMatchingBlock(state.blocks, event.blockId, (block) => ({
+          ...block,
+          citations: [...block.citations, idx],
+        })),
+      };
     }
     case 'searchCost':
       // Phase 7 / M-WebSearch: per-response tool-call count. Surface as a

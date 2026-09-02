@@ -178,6 +178,7 @@ export default function App() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [pendingSendText, setPendingSendText] = useState<string | null>(null);
+  const consumePendingSend = useCallback(() => setPendingSendText(null), []);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [toasts, setToasts] = useState<StatusState[]>([]);
@@ -1127,7 +1128,7 @@ export default function App() {
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
             pendingSendText={pendingSendText}
-            onPendingSendConsumed={() => setPendingSendText(null)}
+            onPendingSendConsumed={consumePendingSend}
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
             convoProviders={convoProviders}
           />

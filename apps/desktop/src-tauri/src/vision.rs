@@ -227,7 +227,7 @@ fn resolve_image_mime(bytes: &[u8], claimed: Option<&str>) -> Option<String> {
 }
 
 fn is_allowed_mime(mime: &str) -> bool {
-    ALLOWED_MIMES.iter().any(|allowed| *allowed == mime)
+    ALLOWED_MIMES.contains(&mime)
 }
 
 fn normalize_mime(mime: &str) -> String {

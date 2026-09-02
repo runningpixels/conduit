@@ -412,7 +412,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
             MessageRole::User => {
                 contents.push(json!({
                     "role": "user",
-                    "parts": [{ "text": message_text(message) }],
+                    "parts": crate::adapters::gemini_user_parts(message),
                 }));
             }
             MessageRole::System | MessageRole::Developer => {}
@@ -936,6 +936,82 @@ mod tests {
                 "gemini-3.5-flash"
             ),
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse"
+        );
+    }
+
+    #[test]
+    fn payload_includes_inline_data_image() {
+        use crate::schema::Message;
+        let request = ProviderRequest {
+            request_id: "req-vision".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gemini-2.0-flash".into(),
+            messages: vec![Message {
+                id: "m1".into(),
+                conversation_id: "conv-1".into(),
+                role: MessageRole::User,
+                author_label: None,
+                provider_message_id: None,
+                request_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![
+                    crate::schema::MessagePart {
+                        id: "p1".into(),
+                        message_id: "m1".into(),
+                        index: 0,
+                        kind: MessagePartKind::Text,
+                        content: Some("look".into()),
+                        mime_type: None,
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: None,
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "now".into(),
+                    },
+                    crate::schema::MessagePart {
+                        id: "p2".into(),
+                        message_id: "m1".into(),
+                        index: 1,
+                        kind: MessagePartKind::Image,
+                        content: Some("QUJD".into()),
+                        mime_type: Some("image/webp".into()),
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: Some("att-1".into()),
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "now".into(),
+                    },
+                ],
+                created_at: "now".into(),
+            }],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+        let body = build_payload(&NormalizedRequest { request });
+        let parts = body
+            .pointer("/contents/0/parts")
+            .and_then(|v| v.as_array())
+            .expect("parts");
+        assert!(parts[0].get("text").is_some());
+        assert_eq!(
+            parts[1]
+                .pointer("/inlineData/mimeType")
+                .and_then(|v| v.as_str()),
+            Some("image/webp")
+        );
+        assert_eq!(
+            parts[1]
+                .pointer("/inlineData/data")
+                .and_then(|v| v.as_str()),
+            Some("QUJD")
         );
     }
 }

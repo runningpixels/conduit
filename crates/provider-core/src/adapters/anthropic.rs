@@ -367,7 +367,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
             MessageRole::User => {
                 messages.push(json!({
                     "role": "user",
-                    "content": message_text(message),
+                    "content": crate::adapters::anthropic_user_content(message),
                 }));
             }
             MessageRole::System | MessageRole::Developer => {
@@ -575,5 +575,80 @@ mod tests {
                 "malformed-shape error should not be retryable"
             );
         }
+    }
+
+    #[test]
+    fn payload_includes_base64_image_block() {
+        use crate::schema::Message;
+        let request = ProviderRequest {
+            request_id: "req-vision".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "claude-sonnet-4".into(),
+            messages: vec![Message {
+                id: "m1".into(),
+                conversation_id: "conv-1".into(),
+                role: MessageRole::User,
+                author_label: None,
+                provider_message_id: None,
+                request_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![
+                    MessagePart {
+                        id: "p1".into(),
+                        message_id: "m1".into(),
+                        index: 0,
+                        kind: MessagePartKind::Text,
+                        content: Some("look".into()),
+                        mime_type: None,
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: None,
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "now".into(),
+                    },
+                    MessagePart {
+                        id: "p2".into(),
+                        message_id: "m1".into(),
+                        index: 1,
+                        kind: MessagePartKind::Image,
+                        content: Some("QUJD".into()),
+                        mime_type: Some("image/jpeg".into()),
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: Some("att-1".into()),
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "now".into(),
+                    },
+                ],
+                created_at: "now".into(),
+            }],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+        let body = build_payload(&NormalizedRequest { request });
+        let content = body
+            .pointer("/messages/0/content")
+            .and_then(|v| v.as_array())
+            .expect("content blocks");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image");
+        assert_eq!(
+            content[1]
+                .pointer("/source/media_type")
+                .and_then(|v| v.as_str()),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            content[1].pointer("/source/data").and_then(|v| v.as_str()),
+            Some("QUJD")
+        );
     }
 }

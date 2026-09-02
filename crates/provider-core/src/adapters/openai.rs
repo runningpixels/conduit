@@ -1,7 +1,7 @@
 use crate::adapter::{AdapterContext, ModelInfo, ProviderAdapter, StreamParser};
 use crate::adapters::{
-    message_text, missing_key, normalized_or_err, parse_fixture_stream, role_to_string,
-    wrap_sse_stream,
+    message_text, missing_key, normalized_or_err, openai_user_content, parse_fixture_stream,
+    role_to_string, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
@@ -899,6 +899,46 @@ fn to_responses_input(messages: Vec<Value>) -> Vec<Value> {
             continue;
         }
 
+        // Multimodal chat-completions content arrays use `text` / `image_url`.
+        // Responses API wants `input_text` / `input_image` instead.
+        if let Some(parts) = message.get("content").and_then(|v| v.as_array()) {
+            if parts.iter().any(|p| {
+                matches!(
+                    p.get("type").and_then(|t| t.as_str()),
+                    Some("text" | "image_url")
+                )
+            }) {
+                let converted: Vec<Value> = parts
+                    .iter()
+                    .filter_map(|p| {
+                        let ty = p.get("type").and_then(|t| t.as_str())?;
+                        match ty {
+                            "text" => Some(json!({
+                                "type": "input_text",
+                                "text": p.get("text").and_then(|t| t.as_str()).unwrap_or(""),
+                            })),
+                            "image_url" => {
+                                let url = p
+                                    .pointer("/image_url/url")
+                                    .and_then(|u| u.as_str())
+                                    .unwrap_or("");
+                                Some(json!({
+                                    "type": "input_image",
+                                    "image_url": url,
+                                }))
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                input.push(json!({
+                    "role": role,
+                    "content": converted,
+                }));
+                continue;
+            }
+        }
+
         input.push(message);
     }
     input
@@ -1013,10 +1053,14 @@ fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> V
                 }
             }
             _ => {
-                // System, Developer, User — unchanged
+                // System, Developer, User — multimodal when images are present
                 messages.push(json!({
                     "role": role_to_string(&message.role),
-                    "content": message_text(message),
+                    "content": if message.role == MessageRole::User {
+                        openai_user_content(message)
+                    } else {
+                        json!(message_text(message))
+                    },
                 }));
             }
         }
@@ -2104,5 +2148,93 @@ mod tests {
             json!({"role": "user", "content": "hi"}),
         ];
         assert_eq!(to_responses_input(messages.clone()), messages);
+    }
+
+    #[test]
+    fn payload_includes_image_url_for_hydrated_png() {
+        let request = ProviderRequest {
+            request_id: "req-vision".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gpt-4o".into(),
+            messages: vec![Message {
+                id: "m1".into(),
+                conversation_id: "conv-1".into(),
+                role: MessageRole::User,
+                author_label: None,
+                provider_message_id: None,
+                request_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![
+                    MessagePart {
+                        id: "p1".into(),
+                        message_id: "m1".into(),
+                        index: 0,
+                        kind: MessagePartKind::Text,
+                        content: Some("what is this?".into()),
+                        mime_type: None,
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: None,
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "2026-01-01T00:00:00Z".into(),
+                    },
+                    MessagePart {
+                        id: "p2".into(),
+                        message_id: "m1".into(),
+                        index: 1,
+                        kind: MessagePartKind::Image,
+                        content: Some("QUJD".into()), // "ABC" base64
+                        mime_type: Some("image/png".into()),
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: Some("att-1".into()),
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "2026-01-01T00:00:00Z".into(),
+                    },
+                ],
+                created_at: "2026-01-01T00:00:00Z".into(),
+            }],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: Some(vec!["att-1".into()]),
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+        let normalized = crate::normalize::validate(request).expect("valid");
+        let body = build_payload(&normalized, false);
+        let content = body
+            .pointer("/messages/0/content")
+            .and_then(|v| v.as_array())
+            .expect("multimodal content array");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(
+            content[1]
+                .pointer("/image_url/url")
+                .and_then(|v| v.as_str()),
+            Some("data:image/png;base64,QUJD")
+        );
+    }
+
+    #[test]
+    fn to_responses_input_converts_image_url_parts() {
+        let input = to_responses_input(vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "describe" },
+                { "type": "image_url", "image_url": { "url": "data:image/png;base64,QUJD" } }
+            ]
+        })]);
+        assert_eq!(input[0]["content"][0]["type"], "input_text");
+        assert_eq!(input[0]["content"][1]["type"], "input_image");
+        assert_eq!(
+            input[0]["content"][1]["image_url"],
+            "data:image/png;base64,QUJD"
+        );
     }
 }

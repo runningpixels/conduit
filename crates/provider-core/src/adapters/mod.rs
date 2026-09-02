@@ -25,6 +25,150 @@ pub fn message_text(message: &Message) -> String {
         .join("\n")
 }
 
+/// True when a user message carries hydrated image parts (base64 in `content`).
+pub fn message_has_images(message: &Message) -> bool {
+    message.parts.iter().any(|p| {
+        p.kind == MessagePartKind::Image
+            && p.content.as_ref().is_some_and(|c| !c.is_empty())
+            && p.mime_type.as_ref().is_some_and(|m| !m.is_empty())
+    })
+}
+
+/// OpenAI chat-completions multimodal `content` array (text + image_url data URIs).
+pub fn openai_user_content(message: &Message) -> serde_json::Value {
+    use serde_json::json;
+    if !message_has_images(message) {
+        return json!(message_text(message));
+    }
+    let mut parts = Vec::new();
+    for part in &message.parts {
+        match part.kind {
+            MessagePartKind::Text | MessagePartKind::Reasoning => {
+                if let Some(text) = part.content.as_ref().filter(|s| !s.is_empty()) {
+                    parts.push(json!({ "type": "text", "text": text }));
+                }
+            }
+            MessagePartKind::Image => {
+                if let (Some(mime), Some(data)) = (&part.mime_type, &part.content) {
+                    if !mime.is_empty() && !data.is_empty() {
+                        parts.push(json!({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": format!("data:{mime};base64,{data}")
+                            }
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if parts.is_empty() {
+        json!("")
+    } else {
+        json!(parts)
+    }
+}
+
+/// Anthropic user `content` blocks (text + base64 image sources).
+pub fn anthropic_user_content(message: &Message) -> serde_json::Value {
+    use serde_json::json;
+    if !message_has_images(message) {
+        return json!(message_text(message));
+    }
+    let mut blocks = Vec::new();
+    for part in &message.parts {
+        match part.kind {
+            MessagePartKind::Text | MessagePartKind::Reasoning => {
+                if let Some(text) = part.content.as_ref().filter(|s| !s.is_empty()) {
+                    blocks.push(json!({ "type": "text", "text": text }));
+                }
+            }
+            MessagePartKind::Image => {
+                if let (Some(mime), Some(data)) = (&part.mime_type, &part.content) {
+                    if !mime.is_empty() && !data.is_empty() {
+                        blocks.push(json!({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mime,
+                                "data": data,
+                            }
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if blocks.is_empty() {
+        json!("")
+    } else {
+        json!(blocks)
+    }
+}
+
+/// Gemini user `parts` (text + inlineData).
+pub fn gemini_user_parts(message: &Message) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    if !message_has_images(message) {
+        return vec![json!({ "text": message_text(message) })];
+    }
+    let mut parts = Vec::new();
+    for part in &message.parts {
+        match part.kind {
+            MessagePartKind::Text | MessagePartKind::Reasoning => {
+                if let Some(text) = part.content.as_ref().filter(|s| !s.is_empty()) {
+                    parts.push(json!({ "text": text }));
+                }
+            }
+            MessagePartKind::Image => {
+                if let (Some(mime), Some(data)) = (&part.mime_type, &part.content) {
+                    if !mime.is_empty() && !data.is_empty() {
+                        parts.push(json!({
+                            "inlineData": {
+                                "mimeType": mime,
+                                "data": data,
+                            }
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if parts.is_empty() {
+        vec![json!({ "text": "" })]
+    } else {
+        parts
+    }
+}
+
+/// Ollama user message with optional top-level `images` array (raw base64).
+pub fn ollama_user_message(message: &Message) -> serde_json::Value {
+    use serde_json::json;
+    let text = message_text(message);
+    let images: Vec<String> = message
+        .parts
+        .iter()
+        .filter(|p| p.kind == MessagePartKind::Image)
+        .filter_map(|p| p.content.clone())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if images.is_empty() {
+        json!({
+            "role": role_to_string(&message.role),
+            "content": text,
+        })
+    } else {
+        json!({
+            "role": role_to_string(&message.role),
+            "content": text,
+            "images": images,
+        })
+    }
+}
+
 pub fn role_to_string(role: &MessageRole) -> &'static str {
     match role {
         MessageRole::System => "system",

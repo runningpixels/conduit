@@ -202,10 +202,14 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                 }
             }
             _ => {
-                messages.push(json!({
-                    "role": role_to_string(&message.role),
-                    "content": message_text(message),
-                }));
+                if message.role == MessageRole::User {
+                    messages.push(crate::adapters::ollama_user_message(message));
+                } else {
+                    messages.push(json!({
+                        "role": role_to_string(&message.role),
+                        "content": message_text(message),
+                    }));
+                }
             }
         }
     }
@@ -328,5 +332,73 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| matches!(e, ProviderEvent::ContentDelta { .. })));
+    }
+
+    #[test]
+    fn payload_includes_images_array() {
+        use crate::schema::Message;
+        let request = ProviderRequest {
+            request_id: "req-vision".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "llava".into(),
+            messages: vec![Message {
+                id: "m1".into(),
+                conversation_id: "conv-1".into(),
+                role: MessageRole::User,
+                author_label: None,
+                provider_message_id: None,
+                request_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![
+                    MessagePart {
+                        id: "p1".into(),
+                        message_id: "m1".into(),
+                        index: 0,
+                        kind: MessagePartKind::Text,
+                        content: Some("look".into()),
+                        mime_type: None,
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: None,
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "now".into(),
+                    },
+                    MessagePart {
+                        id: "p2".into(),
+                        message_id: "m1".into(),
+                        index: 1,
+                        kind: MessagePartKind::Image,
+                        content: Some("QUJD".into()),
+                        mime_type: Some("image/png".into()),
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: Some("att-1".into()),
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: "now".into(),
+                    },
+                ],
+                created_at: "now".into(),
+            }],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+        let body = build_payload(&NormalizedRequest { request });
+        let images = body
+            .pointer("/messages/0/images")
+            .and_then(|v| v.as_array())
+            .expect("images");
+        assert_eq!(images[0].as_str(), Some("QUJD"));
+        assert_eq!(
+            body.pointer("/messages/0/content").and_then(|v| v.as_str()),
+            Some("look")
+        );
     }
 }

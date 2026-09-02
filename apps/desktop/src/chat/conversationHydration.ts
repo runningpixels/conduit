@@ -1,5 +1,6 @@
 import type { Message } from '@conduit/config-schema';
 import { getRequestProviderEvents } from '../ipc/client';
+import { type TurnAttachment } from './composerTypes';
 import { rebuildAssistantStreamStateFromEvents, type AssistantStreamState } from './streamState';
 
 export interface ChatTurn {
@@ -11,9 +12,12 @@ export interface ChatTurn {
   modelId?: string;
   /** Persisted message timestamp when available (hydrated turns). */
   createdAt?: string;
+  /** Image attachment refs for this user turn (retry/fork/edit must keep these). */
+  attachments?: TurnAttachment[];
 }
 
 const DISPLAY_PART_KINDS = new Set(['text', 'reasoning']);
+const ATTACHMENT_PART_KINDS = new Set(['attachmentReference', 'image']);
 
 function joinDisplayContent(message: Message): string {
   return message.parts
@@ -23,6 +27,20 @@ function joinDisplayContent(message: Message): string {
     .join('\n');
 }
 
+function attachmentsFromMessage(message: Message): TurnAttachment[] {
+  const out: TurnAttachment[] = [];
+  for (const part of message.parts) {
+    if (!ATTACHMENT_PART_KINDS.has(part.kind)) continue;
+    const id = part.attachmentId?.trim();
+    if (!id) continue;
+    out.push({
+      id,
+      mimeType: (part.mimeType ?? 'application/octet-stream').toLowerCase(),
+    });
+  }
+  return out;
+}
+
 /** Map a persisted message to a chat-thread turn, or skip non-displayable roles. */
 export function messageToDisplayTurn(message: Message): ChatTurn | null {
   if (message.role === 'tool' || message.role === 'system' || message.role === 'developer') {
@@ -30,7 +48,9 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
   }
 
   const content = joinDisplayContent(message);
-  if (message.role === 'user' && !content.trim()) {
+  const attachments =
+    message.role === 'user' ? attachmentsFromMessage(message) : undefined;
+  if (message.role === 'user' && !content.trim() && !(attachments && attachments.length > 0)) {
     return null;
   }
 
@@ -40,6 +60,7 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
     content,
     interrupted: Boolean(message.interruptedAt),
     createdAt: message.createdAt,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
 }
 

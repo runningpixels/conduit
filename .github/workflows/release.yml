@@ -219,6 +219,8 @@ jobs:
   manifest:
     needs: [meta, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
 
@@ -292,11 +294,17 @@ jobs:
           name: manifest-${{ needs.meta.outputs.channel }}
           path: manifest-out/
 
+      # Upload the asset only. softprops/action-gh-release PATCHes the
+      # release, and that 403s (`workflows: write`, which GITHUB_TOKEN cannot
+      # hold) once main's workflow tree has drifted from the tagged commit —
+      # which is normal if anything lands on main during the matrix build.
       - name: Attach manifest to the release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ needs.meta.outputs.tag }}
-          files: manifest-out/${{ needs.meta.outputs.channel }}/manifest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.meta.outputs.tag }}" \
+            "manifest-out/${{ needs.meta.outputs.channel }}/manifest.json" \
+            --clobber
 
   # Publish the per-channel manifest to GitHub Pages, which is the host
   # `tauri.conf.json` endpoints and `updater.rs::UPDATE_BASE` point at:

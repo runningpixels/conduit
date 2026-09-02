@@ -24,6 +24,7 @@ async fn write_html_document_creates_artifact() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -72,6 +73,7 @@ async fn write_html_document_creates_when_artifact_id_unknown() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -130,6 +132,7 @@ async fn edit_text_document_updates_existing() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
     let result = agent_tools::execute_builtin_tool(
         &ctx,
@@ -180,6 +183,7 @@ async fn export_document_writes_file() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
     let result = agent_tools::execute_builtin_tool(
         &ctx,
@@ -260,6 +264,7 @@ async fn write_brand_theme_creates_parseable_artifact() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -323,6 +328,7 @@ async fn write_brand_theme_rejects_bad_hex_naming_the_field() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
 
     let mut dark = valid_dark_palette();
@@ -370,6 +376,7 @@ async fn write_brand_theme_rejects_missing_light_palette() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -408,6 +415,7 @@ async fn write_brand_theme_surfaces_contrast_warnings_without_failing() {
         conversation_id: &conv.id,
         source_message_id: None,
         workspace: None,
+        search: Default::default(),
     };
 
     let result = agent_tools::execute_builtin_tool(

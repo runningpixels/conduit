@@ -220,7 +220,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'web_search',
     name: 'web_search',
     description:
-      'Search via DuckDuckGo Instant Answer (encyclopedic snippets, not a live news crawl). Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs. Empty results mean Instant Answer has no hit — do not retry similar queries.',
+      'Search the web via the configured local search backend. Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs. Empty results mean no hit — do not retry similar queries.',
     inputSchema: schema([
       { name: 'query', type: 'string', required: true },
     ]),
@@ -400,7 +400,7 @@ export const WORKSPACE_TOOL_NAMES = new Set(
     .map((tool) => tool.name),
 );
 
-/** Local DuckDuckGo `web_search` + `web_fetch`. Only offer when the turn
+/** Local `web_search` + `web_fetch`. Only offer when the turn
  *  resolved to the local search backend — never alongside hosted search. */
 export function selectBuiltinWebTools(): ToolDefinition[] {
   return builtinToolDefinitions().filter((t) => WEB_TOOL_NAMES.has(t.name));

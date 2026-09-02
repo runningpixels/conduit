@@ -15,6 +15,7 @@ fn patterns() -> &'static [Regex] {
             Regex::new(r"(?i)Bearer\s+[A-Za-z0-9\-._~+/]+=*").expect("bearer regex"),
             Regex::new(r"(?i)(api[_-]?key|secret|password|token)\s*[=:]\s*\S+")
                 .expect("key=value regex"),
+            Regex::new(r"(?i)tvly-[A-Za-z0-9_-]{8,}").expect("tavily key regex"),
             Regex::new(
                 r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
             )

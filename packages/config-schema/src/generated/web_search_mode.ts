@@ -4,7 +4,8 @@
  * Where web search runs when the user opts in for a turn.
  *
  * `Auto` picks provider-hosted search when the active provider/endpoint
- * supports it, otherwise Conduit's DuckDuckGo builtin. A turn must never
- * inject both hosted search and the local `web_search` function tool.
+ * supports it (OpenAI, Gemini, Anthropic), otherwise Conduit's configured
+ * local backend. A turn must never inject both hosted search and the local
+ * `web_search` function tool.
  */
 export type WebSearchMode = "auto" | "hosted" | "local";

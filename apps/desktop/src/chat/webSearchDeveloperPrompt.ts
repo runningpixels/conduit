@@ -1,4 +1,6 @@
 import { appName } from '../brand';
+import { localSearchBackendLabel } from './webSearchIntent';
+import type { LocalSearchBackend } from '@conduit/config-schema';
 
 /** Developer prompt for hosted (provider) web-search turns. */
 export function webSearchDeveloperPromptFor(): string {
@@ -24,12 +26,22 @@ export function webSearchCreateDeveloperPromptFor(): string {
   ].join(' ');
 }
 
-/** Developer prompt when the local DuckDuckGo builtin (not provider-hosted) is active. */
-export function localWebSearchDeveloperPromptFor(): string {
+/** Developer prompt when the local builtin (not provider-hosted) is active. */
+export function localWebSearchDeveloperPromptFor(
+  backend?: LocalSearchBackend,
+): string {
+  const label = localSearchBackendLabel(backend);
+  const ddg = (backend ?? 'duckduckgo') === 'duckduckgo';
+  const backendHint = ddg
+    ? `${label} Instant Answer — encyclopedic snippets, not a live news crawl`
+    : `${label} — live web results`;
+  const emptyHint = ddg
+    ? 'If results are empty or the payload includes a note about Instant Answer, stop searching: answer from what you know or tell the user local search cannot find live headlines.'
+    : 'If results are empty or the payload includes a note, stop searching: answer from what you know or tell the user search found nothing.';
   return [
-    `Web search is enabled via ${appName()}'s local web_search tool (DuckDuckGo Instant Answer — encyclopedic snippets, not a live news crawl).`,
+    `Web search is enabled via ${appName()}'s local web_search tool (${backendHint}).`,
     'Call web_search at most once or twice with a clear query. Use web_fetch only when you need the full text of a specific URL from those results.',
-    'If results are empty or the payload includes a note about Instant Answer, stop searching: answer from what you know or tell the user local search cannot find live headlines. Do not retry similar query variants — that burns the agent step budget.',
+    `${emptyHint} Do not retry similar query variants — that burns the agent step budget.`,
     'Results come back as JSON (titles, snippets, URLs) — cite them in your answer; there are no provider inline citations.',
     'Structure your reply: lead with a direct answer in 1–2 sentences, then brief supporting bullets if needed.',
     'Do not use fenced code blocks unless the user explicitly asked for code or a document artifact.',

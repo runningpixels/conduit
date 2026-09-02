@@ -1,9 +1,23 @@
-import { useState } from 'react';
-import type { AppSettings, WebSearchMode } from '@conduit/config-schema';
+import { useEffect, useState } from 'react';
+import type {
+  AppSettings,
+  CredentialSummary,
+  LocalSearchBackend,
+  WebSearchMode,
+} from '@conduit/config-schema';
 import type { WebSearchDefaults } from '@conduit/config-schema';
 import { WebSearchConsentDialog } from './WebSearchConsentDialog';
 import { appName } from '../../brand';
-import { resolveSearchBackend } from '../../chat/webSearchIntent';
+import {
+  SEARCH_CREDENTIAL_IDS,
+  localSearchBackendLabel,
+  localSearchBackendOf,
+  resolveSearchBackend,
+} from '../../chat/webSearchIntent';
+import {
+  loadProviderCredentialReference,
+  saveProviderCredential,
+} from '../../ipc/client';
 
 interface WebSearchSectionProps {
   settings: AppSettings;
@@ -15,7 +29,7 @@ const MODE_OPTIONS: { value: WebSearchMode; label: string; help: string }[] = [
   {
     value: 'auto',
     label: 'Auto',
-    help: 'Provider-hosted when available (OpenAI, Gemini); otherwise DuckDuckGo from this machine.',
+    help: 'Provider-hosted when available (OpenAI, Gemini, Anthropic); otherwise the local backend below.',
   },
   {
     value: 'hosted',
@@ -25,7 +39,30 @@ const MODE_OPTIONS: { value: WebSearchMode; label: string; help: string }[] = [
   {
     value: 'local',
     label: 'Local',
-    help: 'Always use DuckDuckGo Instant Answer from this machine. Queries are not sent to the model provider.',
+    help: 'Always use the local search backend from this machine. Queries are not sent to the model provider.',
+  },
+];
+
+const LOCAL_BACKEND_OPTIONS: { value: LocalSearchBackend; label: string; help: string }[] = [
+  {
+    value: 'duckduckgo',
+    label: 'DuckDuckGo Instant Answer',
+    help: 'No API key. Encyclopedic snippets — not a live web crawl.',
+  },
+  {
+    value: 'tavily',
+    label: 'Tavily',
+    help: 'BYOK. Paid search API with live results.',
+  },
+  {
+    value: 'brave',
+    label: 'Brave Search',
+    help: 'BYOK. Brave Search API.',
+  },
+  {
+    value: 'searxng',
+    label: 'SearXNG',
+    help: 'Self-hosted metasearch. Requires an instance URL; optional API key.',
   },
 ];
 
@@ -37,6 +74,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
   const [pendingConsentState, setPendingConsentState] = useState<AppSettings | null>(null);
 
   const mode = ws.mode ?? 'auto';
+  const localBackend = localSearchBackendOf(ws.localBackend);
   const resolvedBackend = resolveSearchBackend(
     mode,
     settings.activeProvider,
@@ -72,8 +110,9 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
     <div className="settings-section">
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
         Use <strong>Search source</strong> to choose provider-hosted search or {appName()}’s
-        DuckDuckGo builtin. The chat-bar search icon turns search on for the conversation
-        until you turn it off.
+        local backend (DuckDuckGo, Tavily, Brave, or SearXNG). Provider-hosted search
+        may incur provider cost. The chat-bar search icon turns search on for the
+        conversation until you turn it off.
       </p>
 
       {disabled && (
@@ -153,8 +192,76 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
             </div>
             <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
               Current provider ({settings.activeProvider}): would use{' '}
-              <strong>{resolvedBackend === 'hosted' ? 'provider-hosted' : 'DuckDuckGo (local)'}</strong> search.
+              <strong>
+                {resolvedBackend === 'hosted'
+                  ? 'provider-hosted'
+                  : `${localSearchBackendLabel(localBackend)} (local)`}
+              </strong>{' '}
+              search.
             </p>
+          </div>
+
+          {/* Local backend picker — used whenever a turn resolves to local. */}
+          <div>
+            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              Local search backend
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+              {LOCAL_BACKEND_OPTIONS.map((opt) => (
+                <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '13px' }}>
+                  <input
+                    type="radio"
+                    name="localSearchBackend"
+                    checked={localBackend === opt.value}
+                    onChange={() => patchDefaults({ localBackend: opt.value })}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <strong>{opt.label}</strong>
+                    <span style={{ display: 'block', fontSize: '11px', color: 'var(--ink-3)', marginTop: 2 }}>
+                      {opt.help}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {localBackend === 'tavily' && (
+              <SearchBackendKeyField
+                providerId={SEARCH_CREDENTIAL_IDS.tavily}
+                label="Tavily"
+                onStatus={onStatus}
+              />
+            )}
+            {localBackend === 'brave' && (
+              <SearchBackendKeyField
+                providerId={SEARCH_CREDENTIAL_IDS.brave}
+                label="Brave Search"
+                onStatus={onStatus}
+              />
+            )}
+            {localBackend === 'searxng' && (
+              <>
+                <label className="field" style={{ display: 'grid', gap: 4, marginTop: 10 }}>
+                  <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>SearXNG base URL</span>
+                  <input
+                    type="url"
+                    value={ws.searxngBaseUrl ?? ''}
+                    onChange={(e) =>
+                      patchDefaults({
+                        searxngBaseUrl: e.target.value.trim() || undefined,
+                      })
+                    }
+                    placeholder="https://searx.example"
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+                  />
+                </label>
+                <SearchBackendKeyField
+                  providerId={SEARCH_CREDENTIAL_IDS.searxng}
+                  label="SearXNG (optional)"
+                  onStatus={onStatus}
+                />
+              </>
+            )}
           </div>
 
           {/* Hosted-only knobs */}
@@ -333,6 +440,71 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
             </p>
           </fieldset>
         </fieldset>
+      </div>
+    </div>
+  );
+}
+
+function SearchBackendKeyField({
+  providerId,
+  label,
+  onStatus,
+}: {
+  providerId: string;
+  label: string;
+  onStatus: (message: string) => void;
+}) {
+  const [secret, setSecret] = useState('');
+  const [summary, setSummary] = useState<CredentialSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void loadProviderCredentialReference(providerId)
+      .then(setSummary)
+      .catch(() => setSummary(null));
+  }, [providerId]);
+
+  async function handleSave() {
+    setBusy(true);
+    try {
+      const next = await saveProviderCredential({ providerId, secret });
+      setSummary(next);
+      setSecret('');
+      onStatus(`${label} API key stored in keychain`);
+    } catch (e) {
+      onStatus(`Save ${label} key failed: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="form-grid" style={{ marginTop: 10 }}>
+      <label className="field" style={{ display: 'grid', gap: 4 }}>
+        <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{label} API key</span>
+        <input
+          type="password"
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          placeholder="Stored only through Rust"
+          style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+        />
+      </label>
+      <button
+        className="btn primary"
+        type="button"
+        disabled={busy || !secret}
+        onClick={() => void handleSave()}
+      >
+        Save {label} key
+      </button>
+      <div className="status-item">
+        <span>Credential reference</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+          {summary?.storedInKeychain || summary?.credentialRef
+            ? summary.credentialRef
+            : 'No key stored yet'}
+        </span>
       </div>
     </div>
   );

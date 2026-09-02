@@ -80,6 +80,22 @@ pub fn api_key_header(key: &str) -> Result<HeaderMap, ProviderError> {
     Ok(headers)
 }
 
+pub fn api_key_header_with_extras(
+    key: &str,
+    extras: &[(&str, &str)],
+) -> Result<HeaderMap, ProviderError> {
+    let mut headers = api_key_header(key)?;
+    for (name, value) in extras {
+        let header_name =
+            HeaderName::from_bytes(name.as_bytes()).map_err(|e| fatal(e.to_string()))?;
+        headers.insert(
+            header_name,
+            HeaderValue::from_str(value).map_err(|e| fatal(e.to_string()))?,
+        );
+    }
+    Ok(headers)
+}
+
 pub fn gemini_api_key_header(key: &str) -> Result<HeaderMap, ProviderError> {
     let mut headers = HeaderMap::new();
     headers.insert(

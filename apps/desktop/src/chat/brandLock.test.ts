@@ -40,6 +40,7 @@ describe('buildProviderRequest brand appendix on a locked build', () => {
     webSearchEnabled: false,
     webSearch: {
       mode: 'auto' as const,
+      localBackend: 'duckduckgo' as const,
       searchContextSize: 'medium' as const,
       allowedDomains: [],
       blockedDomains: [],

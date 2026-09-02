@@ -13,7 +13,7 @@ interface WebSearchConsentDialogProps {
 /** One-time consent dialog for web search.
  *
  *  Covers both provider-hosted search (queries go to the model provider) and
- *  Conduit's local DuckDuckGo builtin (queries leave this machine to DuckDuckGo).
+ *  Conduit's local search builtin (DuckDuckGo / Tavily / Brave / SearXNG).
  *  Settings → Search source chooses which path a turn uses.
  */
 export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchConsentDialogProps) {
@@ -64,14 +64,16 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
           <li>
             <strong>Provider</strong> — queries go to the model provider’s hosted
-            search (e.g. OpenAI), not to {appName()}. Each call may incur provider cost.
+            search (OpenAI, Gemini, or Anthropic). Each call may incur provider cost.
           </li>
           <li>
-            <strong>Local</strong> — {appName()} searches DuckDuckGo from this machine.
+            <strong>Local</strong> — {appName()} searches from this machine using the
+            backend you pick in Settings (DuckDuckGo, Tavily, Brave, or SearXNG).
             Queries are not sent to the model provider.
           </li>
           <li>
-            <strong>Auto</strong> — provider-hosted when available; otherwise local DuckDuckGo.
+            <strong>Auto</strong> — provider-hosted when available; otherwise the
+            configured local backend.
           </li>
         </ul>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-3)', lineHeight: 1.5 }}>

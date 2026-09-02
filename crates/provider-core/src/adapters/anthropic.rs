@@ -4,14 +4,14 @@ use crate::adapters::{
 };
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
-    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
-    ToolChoice,
+    ContentAnnotation, MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
+    ProviderRequest, ToolChoice, WebSearchRequest,
 };
 use crate::transport::{api_key_header, get_json, post_sse, SseRequest};
 use async_trait::async_trait;
-use futures::stream::Stream;
+use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use tokio_util::sync::CancellationToken;
 
@@ -22,6 +22,7 @@ pub struct AnthropicAdapter;
 struct AnthropicParser {
     blocks: HashMap<usize, String>,
     tool_calls: HashMap<usize, (String, String, String)>,
+    search_result_blocks: HashSet<usize>,
 }
 
 impl AnthropicParser {
@@ -29,6 +30,7 @@ impl AnthropicParser {
         Self {
             blocks: HashMap::new(),
             tool_calls: HashMap::new(),
+            search_result_blocks: HashSet::new(),
         }
     }
 }
@@ -61,7 +63,7 @@ impl StreamParser for AnthropicParser {
                 let block_id = format!("block-{block_index}");
                 self.blocks.insert(block_index, block_id.clone());
 
-                if block_kind == "tool_use" {
+                if block_kind == "tool_use" || block_kind == "server_tool_use" {
                     let tool_id = block
                         .and_then(|b| b.get("id"))
                         .and_then(|v| v.as_str())
@@ -80,6 +82,18 @@ impl StreamParser for AnthropicParser {
                         index: *index,
                         tool_id: name.clone(),
                         name,
+                    });
+                } else if block_kind == "web_search_tool_result" {
+                    self.search_result_blocks.insert(block_index);
+                    let sources = match block.and_then(|b| b.get("content")) {
+                        Some(Value::Array(arr)) => Value::Array(arr.clone()),
+                        Some(other) => json!([other]),
+                        None => json!([]),
+                    };
+                    events.push(ProviderEvent::SearchSources {
+                        request_id: request_id.to_string(),
+                        index: *index,
+                        sources,
                     });
                 } else {
                     events.push(ProviderEvent::ContentBlockStart {
@@ -134,6 +148,18 @@ impl StreamParser for AnthropicParser {
                             content,
                         });
                     }
+                } else if delta_type == "citations_delta" {
+                    if let Some(citation) = delta.and_then(|d| d.get("citation")) {
+                        let block_id = self
+                            .blocks
+                            .get(&block_index)
+                            .cloned()
+                            .unwrap_or_else(|| format!("block-{block_index}"));
+                        if let Some(event) = citation_event(request_id, &block_id, *index, citation)
+                        {
+                            events.push(event);
+                        }
+                    }
                 } else {
                     let content = delta
                         .and_then(|d| d.get("text"))
@@ -168,6 +194,8 @@ impl StreamParser for AnthropicParser {
                         index: *index,
                         arguments,
                     });
+                } else if self.search_result_blocks.remove(&block_index) {
+                    // Hosted search result block — SearchSources already emitted.
                 } else {
                     let block_id = self
                         .blocks
@@ -201,6 +229,19 @@ impl StreamParser for AnthropicParser {
                         },
                     });
                     *index += 1;
+                    if let Some(n) = usage
+                        .pointer("/server_tool_use/web_search_requests")
+                        .and_then(|v| v.as_u64())
+                    {
+                        if n > 0 {
+                            events.push(ProviderEvent::SearchCost {
+                                request_id: request_id.to_string(),
+                                index: *index,
+                                tool_calls: n as u32,
+                            });
+                            *index += 1;
+                        }
+                    }
                 }
             }
             "ping" => {
@@ -388,18 +429,27 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         body["system"] = json!(system);
     }
 
-    if !request.tool_definitions.is_empty() {
-        let tools: Vec<Value> = request
+    let web_search = request.web_search.as_ref().filter(|w| w.enabled);
+
+    if !request.tool_definitions.is_empty() || web_search.is_some() {
+        let mut tools: Vec<Value> = request
             .tool_definitions
             .iter()
             .map(|tool| {
-                json!({
+                let mut obj = json!({
                   "name": tool.name,
                   "description": tool.description,
                   "input_schema": tool.input_schema,
-                })
+                });
+                if web_search.is_some() {
+                    obj["type"] = json!("custom");
+                }
+                obj
             })
             .collect();
+        if let Some(ws) = web_search {
+            tools.push(hosted_web_search_tool(ws));
+        }
         body["tools"] = json!(tools);
     }
 
@@ -431,6 +481,82 @@ fn base_url(ctx: &AdapterContext) -> String {
         .clone()
         .filter(|u| !u.is_empty())
         .unwrap_or_else(|| DEFAULT_BASE.to_string())
+}
+
+pub(crate) fn endpoint_supports_hosted_search(base_url: Option<&str>) -> bool {
+    const ANTHROPIC_HOSTED_SEARCH_HOSTS: &[&str] = &["api.anthropic.com"];
+    let Some(raw) = base_url.filter(|s| !s.is_empty()) else {
+        return true;
+    };
+    let Ok(parsed) = url::Url::parse(raw) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    ANTHROPIC_HOSTED_SEARCH_HOSTS.contains(&host)
+}
+
+fn hosted_web_search_tool(ws: &WebSearchRequest) -> Value {
+    let mut tool = json!({
+        "type": "web_search_20250305",
+        "name": "web_search",
+        "max_uses": 3,
+    });
+    if let Some(filters) = &ws.filters {
+        if let Some(allowed) = &filters.allowed_domains {
+            if !allowed.is_empty() {
+                tool["allowed_domains"] = json!(allowed);
+            }
+        }
+        if let Some(blocked) = &filters.blocked_domains {
+            if !blocked.is_empty() {
+                tool["blocked_domains"] = json!(blocked);
+            }
+        }
+    }
+    if let Some(loc) = &ws.user_location {
+        let mut obj = json!({
+            "type": "approximate",
+            "country": loc.country,
+        });
+        if let Some(city) = &loc.city {
+            obj["city"] = json!(city);
+        }
+        if let Some(region) = &loc.region {
+            obj["region"] = json!(region);
+        }
+        tool["user_location"] = obj;
+    }
+    tool
+}
+
+fn citation_event(
+    request_id: &str,
+    block_id: &str,
+    index: usize,
+    citation: &Value,
+) -> Option<ProviderEvent> {
+    let url = citation.get("url").and_then(|v| v.as_str())?;
+    if url.is_empty() {
+        return None;
+    }
+    let title = citation
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    Some(ProviderEvent::Citation {
+        request_id: request_id.to_string(),
+        block_id: block_id.to_string(),
+        index,
+        annotation: ContentAnnotation::UrlCitation {
+            url: url.to_string(),
+            title,
+            start_index: 0,
+            end_index: 0,
+        },
+    })
 }
 
 /// Parses the Anthropic `/v1/models` response into `ModelInfo`s. Returns an
@@ -501,11 +627,38 @@ impl ProviderAdapter for AnthropicAdapter {
 
     async fn stream_chat(
         &self,
-        request: ProviderRequest,
+        mut request: ProviderRequest,
         ctx: AdapterContext,
         cancel: CancellationToken,
     ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
         let key = ctx.api_key.as_deref().ok_or_else(missing_key)?;
+        let web_search_intent = request
+            .web_search
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or(false);
+        if ctx.local_only && web_search_intent {
+            return Err(ProviderError {
+                provider_code: Some("local_only_block".to_string()),
+                retryable: false,
+                message: "Web search is disabled while local-only mode is on.".to_string(),
+            });
+        }
+
+        let resolved_base = base_url(&ctx);
+        let mut search_unavailable: Option<ProviderEvent> = None;
+        if web_search_intent && !endpoint_supports_hosted_search(Some(&resolved_base)) {
+            search_unavailable = Some(ProviderEvent::SearchUnavailable {
+                request_id: request.request_id.clone(),
+                index: 0,
+                code: "endpoint_mismatch".to_string(),
+                message: format!(
+                    "The configured Anthropic-compatible endpoint ({resolved_base}) does not host web search. Falling back to a no-search response."
+                ),
+            });
+            request.web_search = None;
+        }
+
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
         let body = build_payload(&normalized);
@@ -521,7 +674,15 @@ impl ProviderAdapter for AnthropicAdapter {
         )
         .await?;
 
-        Ok(wrap_sse_stream(request_id, AnthropicParser::new(), sse))
+        let inner = wrap_sse_stream(request_id, AnthropicParser::new(), sse);
+        if let Some(unavailable) = search_unavailable {
+            let prefix = async_stream::stream! {
+                yield unavailable;
+            };
+            Ok(Box::pin(prefix.chain(inner)))
+        } else {
+            Ok(inner)
+        }
     }
 }
 
@@ -650,5 +811,146 @@ mod tests {
             content[1].pointer("/source/data").and_then(|v| v.as_str()),
             Some("QUJD")
         );
+    }
+
+    fn user_request(web_search: Option<crate::schema::WebSearchRequest>) -> ProviderRequest {
+        use crate::schema::Message;
+        ProviderRequest {
+            request_id: "req-search".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "claude-sonnet-4".into(),
+            messages: vec![Message {
+                id: "m1".into(),
+                conversation_id: "conv-1".into(),
+                role: MessageRole::User,
+                author_label: None,
+                provider_message_id: None,
+                request_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![MessagePart {
+                    id: "p1".into(),
+                    message_id: "m1".into(),
+                    index: 0,
+                    kind: MessagePartKind::Text,
+                    content: Some("What's the weather in Paris?".into()),
+                    mime_type: None,
+                    tool_call_id: None,
+                    artifact_id: None,
+                    attachment_id: None,
+                    blob_ref: None,
+                    metadata: None,
+                    created_at: "now".into(),
+                }],
+                created_at: "now".into(),
+            }],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search,
+        }
+    }
+
+    #[test]
+    fn payload_injects_hosted_web_search_tool() {
+        let request = user_request(Some(crate::schema::WebSearchRequest {
+            enabled: true,
+            search_context_size: None,
+            filters: Some(crate::schema::WebSearchFilters {
+                allowed_domains: Some(vec!["weather.gov".into()]),
+                blocked_domains: None,
+            }),
+            external_web_access: None,
+            return_token_budget: None,
+            user_location: Some(crate::schema::UserLocation {
+                country: "FR".into(),
+                city: Some("Paris".into()),
+                region: None,
+            }),
+            include_sources: None,
+        }));
+        let body = build_payload(&NormalizedRequest { request });
+        let tools = body
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .expect("tools array");
+        let ws = tools
+            .iter()
+            .find(|t| t.get("type").and_then(|v| v.as_str()) == Some("web_search_20250305"))
+            .expect("hosted web search tool");
+        assert_eq!(ws.get("name").and_then(|v| v.as_str()), Some("web_search"));
+        assert_eq!(ws.get("max_uses").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(
+            ws.get("allowed_domains")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len()),
+            Some(1)
+        );
+        assert_eq!(
+            ws.pointer("/user_location/country")
+                .and_then(|v| v.as_str()),
+            Some("FR")
+        );
+    }
+
+    #[test]
+    fn payload_omits_hosted_search_when_disabled() {
+        let body = build_payload(&NormalizedRequest {
+            request: user_request(None),
+        });
+        assert!(body.get("tools").is_none());
+    }
+
+    #[test]
+    fn official_anthropic_endpoint_hosts_web_search() {
+        assert!(endpoint_supports_hosted_search(Some(
+            "https://api.anthropic.com"
+        )));
+        assert!(endpoint_supports_hosted_search(Some(
+            "https://api.anthropic.com/v1"
+        )));
+        assert!(endpoint_supports_hosted_search(None));
+        assert!(!endpoint_supports_hosted_search(Some(
+            "https://example.invalid/anthropic"
+        )));
+    }
+
+    #[test]
+    fn parses_hosted_web_search_fixture() {
+        let fixture = include_str!("../../tests/fixtures/anthropic/web_search.sse");
+        let events = parse_fixture("req-search", fixture);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                ProviderEvent::ToolCallStart {
+                    tool_id,
+                    name,
+                    ..
+                } if tool_id == "web_search" && name == "web_search"
+            )),
+            "expected ToolCallStart for web_search, got {events:?}"
+        );
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, ProviderEvent::ToolCallComplete { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, ProviderEvent::SearchSources { .. })));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ProviderEvent::Citation {
+                annotation: ContentAnnotation::UrlCitation { url, .. },
+                ..
+            } if url == "https://example.com/paris"
+        )));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, ProviderEvent::SearchCost { tool_calls: 1, .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, ProviderEvent::ContentDelta { .. })));
     }
 }

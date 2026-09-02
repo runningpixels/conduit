@@ -125,6 +125,32 @@ pub fn validate_web_search_defaults(
             ));
         }
     }
+    if defaults.local_backend == provider_core::schema::LocalSearchBackend::Searxng {
+        let Some(raw) = defaults
+            .searxng_base_url
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        else {
+            return Err(
+                "web search searxngBaseUrl is required when the local backend is SearXNG".into(),
+            );
+        };
+        if validate_external_open_url(raw).is_none() {
+            return Err(
+                "web search searxngBaseUrl must be an absolute http(s) URL with no credentials"
+                    .into(),
+            );
+        }
+    } else if let Some(raw) = defaults.searxng_base_url.as_ref() {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() && validate_external_open_url(trimmed).is_none() {
+            return Err(
+                "web search searxngBaseUrl must be an absolute http(s) URL with no credentials"
+                    .into(),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -492,5 +518,22 @@ mod tests {
         };
         assert!(generation_controls_is_empty(&empty));
         assert!(!generation_controls_is_empty(&sample_controls()));
+    }
+
+    #[test]
+    fn searxng_backend_requires_http_url() {
+        let mut defaults = provider_core::schema::WebSearchDefaults {
+            local_backend: provider_core::schema::LocalSearchBackend::Searxng,
+            ..Default::default()
+        };
+        let err = validate_web_search_defaults(&defaults).unwrap_err();
+        assert!(err.contains("searxngBaseUrl"), "{err}");
+
+        defaults.searxng_base_url = Some("not-a-url".into());
+        let err = validate_web_search_defaults(&defaults).unwrap_err();
+        assert!(err.contains("http"), "{err}");
+
+        defaults.searxng_base_url = Some("https://searx.example".into());
+        validate_web_search_defaults(&defaults).expect("valid searxng url");
     }
 }

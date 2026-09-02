@@ -884,6 +884,14 @@ impl StreamManager {
             workspace_root.map(|root| crate::workspace_tools::WorkspaceToolConfig {
                 root: std::path::PathBuf::from(root),
             });
+        let search_backend = settings.web_search.local_backend;
+        let search_api_key =
+            crate::search::credential_id(search_backend).and_then(|id| {
+                match state.credential_store().get_secret(id) {
+                    Ok(secret) if !secret.trim().is_empty() => Some(secret),
+                    _ => None,
+                }
+            });
         let ctx = agent_tools::AgentToolContext {
             db: &state.db,
             artifacts_dir: &state.paths.artifacts,
@@ -892,6 +900,11 @@ impl StreamManager {
             conversation_id,
             source_message_id,
             workspace: workspace_config.as_ref(),
+            search: crate::search::LocalSearchConfig {
+                backend: search_backend,
+                api_key: search_api_key,
+                searxng_base_url: settings.web_search.searxng_base_url.clone(),
+            },
         };
         let sink = runtime_channel.map(|channel| {
             let channel = channel.clone();

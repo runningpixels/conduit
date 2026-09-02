@@ -29,4 +29,5 @@ pub mod stream_persistence;
 pub mod time;
 pub mod updater;
 pub mod validation;
+pub mod vision;
 pub mod workspace_tools;

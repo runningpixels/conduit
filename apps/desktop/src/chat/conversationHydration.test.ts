@@ -120,6 +120,31 @@ describe('messageToDisplayTurn', () => {
     expect(messageToDisplayTurn(makeMessage({ role: 'user', parts: [textPart('   ')] }))).toBeNull();
   });
 
+  it('keeps image-only user turns with attachment refs', () => {
+    const turn = messageToDisplayTurn(
+      makeMessage({
+        role: 'user',
+        parts: [
+          {
+            id: 'part-att',
+            messageId: 'msg-1',
+            index: 0,
+            kind: 'attachmentReference',
+            attachmentId: 'att-9',
+            mimeType: 'image/png',
+            createdAt: now,
+          },
+        ],
+      }),
+    );
+    expect(turn).toMatchObject({
+      id: 'msg-1',
+      role: 'user',
+      content: '',
+      attachments: [{ id: 'att-9', mimeType: 'image/png' }],
+    });
+  });
+
   it('maps assistant messages to assistant turns', () => {
     const turn = messageToDisplayTurn(
       makeMessage({

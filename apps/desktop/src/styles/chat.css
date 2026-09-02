@@ -75,6 +75,33 @@ html[data-palette="orange-dark"] .bubble {
   font-variant-ligatures: none;
 }
 
+.turn-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.turn-attachment-thumb {
+  display: block;
+  max-width: 180px;
+  max-height: 140px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius: var(--r-md, 8px);
+  border: 1px solid var(--line);
+}
+.turn-attachment-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 72px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--card);
+}
+
 /* t0-3 inline edit: textarea lives inside the bubble shell. */
 .bubble-editing {
   width: min(72%, 36rem);

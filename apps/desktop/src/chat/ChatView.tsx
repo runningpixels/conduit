@@ -32,6 +32,9 @@ import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCand
 import { inlineArtifactIds } from './inlineArtifact';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
 import { composeSystemPrompt, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
+import type { TurnAttachment } from './composerTypes';
+import { UserTurnAttachments } from './UserTurnAttachments';
+import { modelAcceptsImages } from './modelAcceptsImages';
 import {
   webSearchCreateDeveloperPromptFor,
   webSearchDeveloperPromptFor,
@@ -209,33 +212,58 @@ export function buildProviderRequest(
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
-    .filter(
-      (turn) =>
-        (turn.role === 'user' || turn.role === 'assistant') &&
-        turn.content.trim() !== '',
-    )
-    .map((turn) => ({
-      // Use each turn's own globally-unique id (UUID for new user turns, DB
-      // primary key for reloaded turns) so re-sent history dedupes WITHIN a
-      // conversation via `INSERT OR IGNORE`, but never collides ACROSS
-      // conversations. The previous `msg-${index}` scheme reset to `msg-0`
-      // for every conversation, so the second conversation's first user turn
-      // silently failed the PK insert and its content was lost on reload.
-      id: turn.id,
-      conversationId,
-      role: turn.role as MessageRole,
-      parts: [
-        {
+    .filter((turn) => {
+      if (turn.role !== 'user' && turn.role !== 'assistant') return false;
+      if (turn.content.trim() !== '') return true;
+      // Image-only user turns still go to the provider.
+      return turn.role === 'user' && (turn.attachments?.length ?? 0) > 0;
+    })
+    .map((turn) => {
+      const parts: Array<{
+        id: string;
+        messageId: string;
+        index: number;
+        kind: 'text' | 'attachmentReference';
+        content?: string;
+        mimeType?: string;
+        attachmentId?: string;
+        createdAt: string;
+      }> = [];
+      if (turn.content.trim() !== '') {
+        parts.push({
           id: `${turn.id}-part-0`,
           messageId: turn.id,
           index: 0,
-          kind: 'text' as const,
+          kind: 'text',
           content: turn.content,
           createdAt: now,
-        },
-      ],
-      createdAt: now,
-    }));
+        });
+      }
+      for (const att of turn.attachments ?? []) {
+        parts.push({
+          id: `${turn.id}-att-${att.id}`,
+          messageId: turn.id,
+          index: parts.length,
+          kind: 'attachmentReference',
+          attachmentId: att.id,
+          mimeType: att.mimeType,
+          createdAt: now,
+        });
+      }
+      return {
+        // Use each turn's own globally-unique id (UUID for new user turns, DB
+        // primary key for reloaded turns) so re-sent history dedupes WITHIN a
+        // conversation via `INSERT OR IGNORE`, but never collides ACROSS
+        // conversations. The previous `msg-${index}` scheme reset to `msg-0`
+        // for every conversation, so the second conversation's first user turn
+        // silently failed the PK insert and its content was lost on reload.
+        id: turn.id,
+        conversationId,
+        role: turn.role as MessageRole,
+        parts,
+        createdAt: now,
+      };
+    });
   // Creation intent is used only to gate tool visibility, the post-hoc warning,
   // and to suppress edit/informational developer prompts. We deliberately do NOT
   // inject a positive "you must create an artifact" developer prompt here: the
@@ -304,6 +332,12 @@ export function buildProviderRequest(
     resolveUserInstructions(settings, chatOverrides?.userInstructions),
   );
 
+  const attachmentIds = [
+    ...new Set(
+      history.flatMap((turn) => (turn.attachments ?? []).map((att) => att.id)).filter(Boolean),
+    ),
+  ];
+
   return {
     requestId: crypto.randomUUID(),
     conversationId,
@@ -313,6 +347,7 @@ export function buildProviderRequest(
     developerPrompt,
     toolDefinitions,
     webSearch,
+    ...(attachmentIds.length > 0 ? { attachments: attachmentIds } : {}),
     generationControls: mergeGenerationControls(
       settings.generationControls,
       chatOverrides?.generationControls,
@@ -758,19 +793,35 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
-  async function handleSend(override?: { text: string; history: ChatTurn[] }) {
+  async function handleSend(
+    override?: { text: string; history: ChatTurn[]; attachments?: TurnAttachment[] },
+    composerAttachments?: TurnAttachment[],
+  ) {
     const trimmed = (override?.text ?? prompt).trim();
-    if (!trimmed || activeRequestId || !conversationId) return;
+    const attachments = override?.attachments ?? composerAttachments ?? [];
+    if ((!trimmed && attachments.length === 0) || activeRequestId || !conversationId) return;
 
     const userTurn: ChatTurn = {
       id: crypto.randomUUID(),
       role: 'user',
       content: trimmed,
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
     const history = [...(override?.history ?? turns), userTurn];
     setTurns(history);
     if (!override) setPrompt('');
-    onStatus(makeStatus('Loading connector tools', 'active', 'chat'));
+    const imagesDropped =
+      attachments.length > 0 &&
+      !modelAcceptsImages(settings.activeProvider, settings.activeModel);
+    onStatus(
+      makeStatus(
+        imagesDropped
+          ? 'Images were not sent — this model is text-only. Loading tools…'
+          : 'Loading connector tools',
+        imagesDropped ? 'warning' : 'active',
+        'chat',
+      ),
+    );
 
     const searchOn = resolveWebSearchForTurn(settings, webSearchOn, trimmed);
     const searchBackend = searchOn
@@ -1337,6 +1388,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
 
   async function commitMessageEdit(messageId: string, text: string) {
     if (!conversationId || activeRequestId) return;
+    const editedTurn = turns.find((t) => t.id === messageId);
+    const preservedAttachments = editedTurn?.attachments;
     setEditBusy(true);
     setEditConfirm(null);
     try {
@@ -1353,7 +1406,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
       ).filter((t): t is ChatTurn => t !== null);
       setTurns(nextTurns);
-      await handleSend({ text, history: nextTurns });
+      await handleSend({
+        text,
+        history: nextTurns,
+        attachments: preservedAttachments,
+      });
     } catch (error) {
       onStatus(
         makeStatus(
@@ -1527,7 +1584,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   ) : (
                     <>
                       <div className="bubble">
-                        <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
+                        {turn.attachments && turn.attachments.length > 0 ? (
+                          <UserTurnAttachments attachments={turn.attachments} />
+                        ) : null}
+                        {turn.content.trim() ? (
+                          <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
+                        ) : null}
                       </div>
                       {turn.interrupted && <InterruptedBanner visible />}
                       <div className="turn-actions">
@@ -1693,7 +1755,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         conversationId={conversationId}
         prompt={prompt}
         onPromptChange={setPrompt}
-        onSend={() => void handleSend()}
+        onSend={(attachments) => void handleSend(undefined, attachments)}
         onStop={() => void handleCancel()}
         streaming={activeRequestId != null}
         webSearchOn={webSearchOn}

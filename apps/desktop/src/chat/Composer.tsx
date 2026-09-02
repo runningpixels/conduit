@@ -12,7 +12,11 @@ import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerM
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
 import {
   ATTACHMENT_INLINE_CAP_BYTES,
+  COMPOSER_IMAGE_ACCEPT,
+  isForwardableImageMime,
+  turnAttachmentsFromPending,
   type PendingAttachment,
+  type TurnAttachment,
 } from './composerTypes';
 import { useComposerAutosize } from './useComposerAutosize';
 import { readSendWith } from '../shell/uiPrefs';
@@ -34,7 +38,7 @@ export interface ComposerProps {
   conversationId: string | null;
   prompt: string;
   onPromptChange: (value: string) => void;
-  onSend: () => void;
+  onSend: (attachments?: TurnAttachment[]) => void;
   onStop: () => void;
   streaming: boolean;
   webSearchOn: boolean;
@@ -202,10 +206,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       const bytes = await fileToBytes(file);
       const attachment = await saveAttachment(conversationId, bytes, mimeType, file.name);
+      const note = isForwardableImageMime(mimeType)
+        ? undefined
+        : 'Stored — not sent to the model (images only)';
       setPendingAttachments((current) =>
         current.map((item) =>
           item.localId === localId
-            ? { ...item, status: 'uploaded', attachment, error: undefined, file: undefined }
+            ? {
+                ...item,
+                status: 'uploaded',
+                attachment,
+                error: note,
+                file: undefined,
+              }
             : item,
         ),
       );
@@ -217,6 +230,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         ),
       );
     }
+  }
+
+  function sendWithAttachments() {
+    if (pendingAttachments.some((item) => item.status === 'uploading')) return;
+    const attachments = turnAttachmentsFromPending(pendingAttachments);
+    setPendingAttachments([]);
+    onSend(attachments.length > 0 ? attachments : undefined);
   }
 
   async function handleFileInputChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -250,7 +270,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       event.key === 'Enter' && (event.metaKey || event.ctrlKey);
     if ((sendWith === 'enter' && isEnter) || (sendWith === 'cmd-enter' && isCmdEnter)) {
       event.preventDefault();
-      onSend();
+      sendWithAttachments();
     }
   }
 
@@ -290,6 +310,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const tokenCount = prompt.trim() ? Math.max(1, Math.round(prompt.trim().length / 4)) : 0;
   const attachDisabled = !conversationId || streaming;
+  const hasForwardableImages = turnAttachmentsFromPending(pendingAttachments).length > 0;
+  const uploading = pendingAttachments.some((item) => item.status === 'uploading');
+  const canSend =
+    !uploading && (prompt.trim().length > 0 || hasForwardableImages);
 
   return (
     <div className="composer-wrap">
@@ -308,7 +332,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 data-status={item.status}
                 title={
                   item.status === 'uploaded'
-                    ? 'Ready to send with your next message'
+                    ? item.error ?? 'Ready to send with your next message'
                     : item.error
                 }
               >
@@ -320,7 +344,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     : item.status === 'failed'
                       ? 'Failed'
                       : item.status === 'uploaded'
-                        ? 'Ready'
+                        ? isForwardableImageMime(item.mimeType)
+                          ? 'Ready'
+                          : 'Not sent'
                         : formatBytes(item.sizeBytes)}
                 </span>
                 {item.status === 'failed' ? (
@@ -363,13 +389,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             multiple
             hidden
             aria-hidden
+            accept={COMPOSER_IMAGE_ACCEPT}
             onChange={(event) => void handleFileInputChange(event)}
           />
           <button
             className="cbtn attach-btn"
             type="button"
-            aria-label="Attach file"
-            title={attachDisabled ? 'Start a conversation to attach files' : 'Attach file'}
+            aria-label="Attach image"
+            title={attachDisabled ? 'Start a conversation to attach images' : 'Attach image'}
             disabled={attachDisabled}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -558,8 +585,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               type="button"
               aria-label="Send message"
               title="Send message"
-              onClick={onSend}
-              disabled={!prompt.trim()}
+              onClick={sendWithAttachments}
+              disabled={!canSend}
             >
               <SendIcon />
             </button>

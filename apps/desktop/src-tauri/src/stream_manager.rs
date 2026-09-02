@@ -659,7 +659,29 @@ impl StreamManager {
         let release_active = bind.release_active;
         let pool = state.db.clone();
 
-        let stream = match adapter.stream_chat(request, ctx, cancel.clone()).await {
+        // t0-1: hydrate a clone with image bytes. The long-lived agent-loop
+        // request keeps AttachmentReference parts only.
+        let (hydrated_request, vision_report) = crate::vision::hydrate_request_for_vision(
+            &pool,
+            &state.paths.attachments,
+            &state.encryption,
+            &provider_id,
+            &request,
+        )
+        .await;
+        if vision_report.text_only_model {
+            warn!(
+                request_id = %request_id,
+                provider = %provider_id,
+                model = %request.model_id,
+                "images were not sent — this model is treated as text-only"
+            );
+        }
+
+        let stream = match adapter
+            .stream_chat(hydrated_request, ctx, cancel.clone())
+            .await
+        {
             Ok(s) => s,
             Err(e) => {
                 warn!(

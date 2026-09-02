@@ -12,6 +12,7 @@ pub mod normalize;
 pub mod retry;
 pub mod schema;
 pub mod transport;
+pub mod vision;
 
 pub use adapter::{get_adapter, AdapterContext, ModelInfo, ProviderAdapter};
 pub use catalog::{
@@ -20,6 +21,7 @@ pub use catalog::{
 };
 pub use normalize::{validate, NormalizedRequest};
 pub use schema::*;
+pub use vision::model_accepts_images;
 
 pub fn crate_name() -> &'static str {
     "provider-core"

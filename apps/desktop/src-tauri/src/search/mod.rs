@@ -13,7 +13,10 @@ pub const SEARCH_SEARXNG_CREDENTIAL_ID: &str = "search/searxng";
 
 const MAX_RESULTS: usize = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 15;
-const USER_AGENT: &str = "Conduit/1.0";
+
+fn user_agent() -> String {
+    format!("{}/1.0", crate::brand::app_name())
+}
 
 /// Guidance when Instant Answer returns nothing. Without this, models treat
 /// empty `results` as "try another query" and binge until max_steps.
@@ -130,7 +133,7 @@ async fn duckduckgo_search(query: &str) -> Result<Vec<Value>, String> {
     );
     let resp = http_client()?
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", user_agent())
         .send()
         .await
         .map_err(|e| format!("search request failed: {e}"))?;
@@ -208,7 +211,7 @@ pub fn parse_tavily_search(body: &Value) -> Result<Vec<Value>, String> {
 async fn tavily_search(query: &str, api_key: &str) -> Result<Vec<Value>, String> {
     let resp = http_client()?
         .post("https://api.tavily.com/search")
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", user_agent())
         .header("Authorization", format!("Bearer {api_key}"))
         .json(&json!({
             "query": query,
@@ -253,7 +256,7 @@ async fn brave_search(query: &str, api_key: &str) -> Result<Vec<Value>, String> 
     );
     let resp = http_client()?
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", user_agent())
         .header("Accept", "application/json")
         .header("X-Subscription-Token", api_key)
         .send()
@@ -300,7 +303,7 @@ async fn searxng_search(
     let url = format!("{base}/search?q={}&format=json", urlencoding(query));
     let mut req = http_client()?
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", user_agent())
         .header("Accept", "application/json");
     if let Some(key) = api_key.map(str::trim).filter(|s| !s.is_empty()) {
         req = req.header("Authorization", format!("Bearer {key}"));

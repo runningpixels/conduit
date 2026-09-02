@@ -333,6 +333,9 @@ export interface SearchResult {
   matchStart: number;
   matchEnd: number;
   createdAt: string;
+  pinned?: boolean;
+  archived?: boolean;
+  folderName?: string;
 }
 
 export interface SearchMessagesRequest {
@@ -383,4 +386,11 @@ export interface Prompt {
   sortOrder: number;
   createdAt: string;
   updatedAt?: string;
+}
+
+/** One-level history-rail folder (t0-5). Empty folders stay as drop targets. */
+export interface ConversationFolder {
+  id: string;
+  name: string;
+  createdAt: string;
 }

@@ -43,6 +43,7 @@ import type {
   UpdateInfo,
   WipeScope,
   Prompt,
+  ConversationFolder,
   SearchMessagesRequest,
   SearchResult,
   UsagePeriod,
@@ -309,6 +310,43 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 
 export async function setConversationTitle(conversationId: string, title: string): Promise<void> {
   await invoke('set_conversation_title', { conversationId, title });
+}
+
+export async function setConversationPinned(conversationId: string, pinned: boolean): Promise<void> {
+  await invoke('set_conversation_pinned', { conversationId, pinned });
+}
+
+export async function setConversationArchived(
+  conversationId: string,
+  archived: boolean,
+): Promise<void> {
+  await invoke('set_conversation_archived', { conversationId, archived });
+}
+
+export async function setConversationFolder(
+  conversationId: string,
+  folderId: string | null,
+): Promise<void> {
+  await invoke('set_conversation_folder', { conversationId, folderId });
+}
+
+export async function listConversationFolders(): Promise<ConversationFolder[]> {
+  return invoke<ConversationFolder[]>('list_conversation_folders');
+}
+
+export async function createConversationFolder(name: string): Promise<ConversationFolder> {
+  return invoke<ConversationFolder>('create_conversation_folder', { name });
+}
+
+export async function renameConversationFolder(
+  folderId: string,
+  name: string,
+): Promise<ConversationFolder> {
+  return invoke<ConversationFolder>('rename_conversation_folder', { folderId, name });
+}
+
+export async function deleteConversationFolder(folderId: string): Promise<void> {
+  await invoke('delete_conversation_folder', { folderId });
 }
 
 /** Bind or clear the workspace folder for a conversation. `null` clears. */

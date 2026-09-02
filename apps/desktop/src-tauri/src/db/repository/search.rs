@@ -16,7 +16,25 @@ pub struct SearchResult {
     pub match_start: usize,
     pub match_end: usize,
     pub created_at: String,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub folder_name: Option<String>,
 }
+
+type SearchRow = (
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    String,
+    i64,
+    i64,
+    Option<String>,
+);
 
 /// Search all messages using FTS5. Returns up to `limit` results ordered by
 /// relevance rank (bm25). Supports FTS5 query syntax: prefix (`search*`),
@@ -33,7 +51,7 @@ pub async fn search_messages(
 
     // Use the snippet() function to extract match context with <mark> tags.
     // We then parse the offsets ourselves for the TS-side highlight.
-    let rows: Vec<(String, String, Option<String>, String, String, String)> = sqlx::query_as(
+    let rows: Vec<SearchRow> = sqlx::query_as(
         r#"
         SELECT
             f.message_id,
@@ -41,10 +59,14 @@ pub async fn search_messages(
             c.title AS conversation_title,
             f.role,
             snippet(message_fts, 0, '<mark>', '</mark>', '…', 40) AS snippet,
-            m.created_at
+            m.created_at,
+            CASE WHEN c.pinned_at IS NOT NULL THEN 1 ELSE 0 END AS pinned,
+            CASE WHEN c.archived_at IS NOT NULL THEN 1 ELSE 0 END AS archived,
+            fol.name AS folder_name
         FROM message_fts f
         JOIN messages m ON m.id = f.message_id
         LEFT JOIN conversations c ON c.id = f.conversation_id
+        LEFT JOIN conversation_folders fol ON fol.id = c.folder_id
         WHERE message_fts MATCH ?
         ORDER BY rank
         LIMIT ?
@@ -58,7 +80,17 @@ pub async fn search_messages(
     let results = rows
         .into_iter()
         .map(
-            |(message_id, conversation_id, conversation_title, role, snippet, created_at)| {
+            |(
+                message_id,
+                conversation_id,
+                conversation_title,
+                role,
+                snippet,
+                created_at,
+                pinned,
+                archived,
+                folder_name,
+            )| {
                 let mark_start = "<mark>";
                 let mark_end = "</mark>";
                 let start = snippet
@@ -76,6 +108,9 @@ pub async fn search_messages(
                     match_start: start,
                     match_end: end,
                     created_at,
+                    pinned: pinned != 0,
+                    archived: archived != 0,
+                    folder_name,
                 }
             },
         )
@@ -266,5 +301,24 @@ mod tests {
 
         let results = search_messages(&pool, "payment", 1).await.unwrap();
         assert_eq!(results.len(), 1, "limit=1 should return 1 result");
+    }
+
+    #[sqlx::test]
+    async fn test_search_returns_pinned_and_archived_badges() {
+        let pool = pool().await;
+        let (conv_id, _msg_id) = insert_test_data(&pool).await;
+        reindex_all(&pool).await.unwrap();
+
+        crate::db::repository::conversations::set_pinned(&pool, &conv_id, true)
+            .await
+            .unwrap();
+        crate::db::repository::conversations::set_archived(&pool, &conv_id, true)
+            .await
+            .unwrap();
+
+        let results = search_messages(&pool, "payment", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].pinned);
+        assert!(results[0].archived);
     }
 }

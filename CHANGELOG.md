@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Conversation pin, archive, and one-level folders in the history rail.
+
 ## [0.1.0-rc.2] - 2026-09-02
 
 ### Added

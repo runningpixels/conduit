@@ -165,6 +165,21 @@ describe('CommandPalette prefix modes', () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
+  it('> pin this chat runs onPinChat', () => {
+    const onPinChat = vi.fn();
+    renderPalette({ onPinChat });
+    type('>pin this');
+    fireEvent.click(screen.getByRole('option', { name: /Pin this chat/ }));
+    expect(onPinChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('badges archived chats in the default corpus', () => {
+    renderPalette({
+      conversations: [{ id: 'c1', title: 'Triage notes', archived: true }],
+    });
+    expect(screen.getByText('Archived')).toBeInTheDocument();
+  });
+
   it('@ lists artifacts with a size tail', () => {
     renderPalette();
     type('@');

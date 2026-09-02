@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
+import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, ConversationFolder, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
 import { ToastStack } from './workspace/ToastStack';
@@ -18,6 +18,7 @@ import {
   getOnboardingState,
   getSettings,
   listConversations,
+  listConversationFolders,
   listConnectorGrants,
   listProviderDescriptors,
   listProviderModels,
@@ -25,6 +26,12 @@ import {
   searchMessages,
   setArtifactContent,
   setArtifactTitle,
+  setConversationArchived,
+  setConversationFolder,
+  setConversationPinned,
+  createConversationFolder,
+  renameConversationFolder,
+  deleteConversationFolder,
   updateSettings,
 } from './ipc/client';
 import { ChatView, type ChatViewHandle } from './chat/ChatView';
@@ -173,6 +180,7 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeConversationSummary, setActiveConversationSummary] = useState<ConversationSummary | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversationFolders, setConversationFolders] = useState<ConversationFolder[]>([]);
   const [convoProviders, setConvoProviders] = useState<Record<string, string>>(readConvoProviders);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [connectorCount, setConnectorCount] = useState<number | undefined>(undefined);
@@ -184,7 +192,9 @@ export default function App() {
   const [renameValue, setRenameValue] = useState('');
   const [toasts, setToasts] = useState<StatusState[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteConversations, setPaletteConversations] = useState<{ id: string; title: string }[]>([]);
+  const [paletteConversations, setPaletteConversations] = useState<
+    { id: string; title: string; pinned?: boolean; archived?: boolean }[]
+  >([]);
   const chatViewRef = useRef<ChatViewHandle>(null);
 
   const { onPointerDown, onKeyDown: onResizeKeyDown, ariaValueNow, ariaValueMin, ariaValueMax } =
@@ -256,11 +266,16 @@ export default function App() {
 
   const refreshConversations = useCallback(async () => {
     try {
-      const listed = await listConversations();
+      const [listed, folderRows] = await Promise.all([
+        listConversations(),
+        listConversationFolders().catch(() => [] as ConversationFolder[]),
+      ]);
       setConversations(listed);
+      setConversationFolders(folderRows);
       return listed;
     } catch {
       setConversations([]);
+      setConversationFolders([]);
       return [];
     }
   }, []);
@@ -505,8 +520,9 @@ export default function App() {
         });
         if (wasActive) {
           const remaining = await listConversations();
-          if (remaining.length > 0) {
-            setActiveConversationId(remaining[0].id);
+          const next = remaining.find((row) => !row.archivedAt) ?? remaining[0];
+          if (next) {
+            setActiveConversationId(next.id);
           } else {
             const created = await createConversation();
             setActiveConversationId(created.id);
@@ -759,6 +775,85 @@ export default function App() {
     }
   }, [activeConversationId, renameValue, refreshConversations, refreshActiveConversationSummary]);
 
+  const handlePinConversation = useCallback(
+    async (id: string, pinned: boolean) => {
+      try {
+        await setConversationPinned(id, pinned);
+        await refreshConversations();
+        await refreshActiveConversationSummary(activeConversationId);
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to pin conversation', 'error'));
+      }
+    },
+    [activeConversationId, refreshConversations, refreshActiveConversationSummary],
+  );
+
+  const handleArchiveConversation = useCallback(
+    async (id: string, archived: boolean) => {
+      try {
+        await setConversationArchived(id, archived);
+        await refreshConversations();
+        await refreshActiveConversationSummary(activeConversationId);
+      } catch (error) {
+        setStatus(
+          makeStatus(error instanceof Error ? error.message : 'Failed to archive conversation', 'error'),
+        );
+      }
+    },
+    [activeConversationId, refreshConversations, refreshActiveConversationSummary],
+  );
+
+  const handleSetConversationFolder = useCallback(
+    async (id: string, folderId: string | null) => {
+      try {
+        await setConversationFolder(id, folderId);
+        await refreshConversations();
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to move conversation', 'error'));
+      }
+    },
+    [refreshConversations],
+  );
+
+  const handleCreateFolder = useCallback(
+    async (name: string) => {
+      try {
+        const folder = await createConversationFolder(name);
+        await refreshConversations();
+        setStatus(makeStatus('Folder created', 'success'));
+        return folder;
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to create folder', 'error'));
+        return undefined;
+      }
+    },
+    [refreshConversations],
+  );
+
+  const handleRenameFolder = useCallback(
+    async (folderId: string, name: string) => {
+      try {
+        await renameConversationFolder(folderId, name);
+        await refreshConversations();
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to rename folder', 'error'));
+      }
+    },
+    [refreshConversations],
+  );
+
+  const handleDeleteFolder = useCallback(
+    async (folderId: string) => {
+      try {
+        await deleteConversationFolder(folderId);
+        await refreshConversations();
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete folder', 'error'));
+      }
+    },
+    [refreshConversations],
+  );
+
   const handleExportDiagnostics = useCallback(async () => {
     try {
       const result = await exportDiagnostics();
@@ -896,7 +991,14 @@ export default function App() {
     setPaletteOpen(true);
     void listConversations()
       .then((rows) => {
-        setPaletteConversations(rows.map((r) => ({ id: r.id, title: r.displayTitle })));
+        setPaletteConversations(
+          rows.map((r) => ({
+            id: r.id,
+            title: r.displayTitle,
+            pinned: Boolean(r.pinnedAt),
+            archived: Boolean(r.archivedAt),
+          })),
+        );
       })
       .catch(() => {
         setPaletteConversations([]);
@@ -1083,6 +1185,7 @@ export default function App() {
       <div className="body">
         <Sidebar
           conversations={conversations}
+          folders={conversationFolders}
           activeConversationId={activeConversationId}
           convoProviders={convoProviders}
           workspaceLabel={workspaceLabel}
@@ -1098,6 +1201,12 @@ export default function App() {
           onExportDiagnostics={() => void handleExportDiagnostics()}
           onDeleteConversation={handleDeleteConversation}
           onDeleteAllHistory={handleDeleteAllHistory}
+          onPinConversation={(id, pinned) => void handlePinConversation(id, pinned)}
+          onArchiveConversation={(id, archived) => void handleArchiveConversation(id, archived)}
+          onSetConversationFolder={(id, folderId) => void handleSetConversationFolder(id, folderId)}
+          onCreateFolder={handleCreateFolder}
+          onRenameFolder={(folderId, name) => void handleRenameFolder(folderId, name)}
+          onDeleteFolder={(folderId) => void handleDeleteFolder(folderId)}
           logoSrc={brandLogo ?? undefined}
         />
 
@@ -1218,6 +1327,21 @@ export default function App() {
           if (!ok) setStatus(makeStatus('Chat settings unavailable while streaming', 'warning'));
         }}
         onRenameChat={handleRenameChat}
+        onPinChat={() => {
+          if (activeConversationId) {
+            void handlePinConversation(activeConversationId, !activeConversationSummary?.pinnedAt);
+          }
+        }}
+        onArchiveChat={() => {
+          if (activeConversationId) {
+            void handleArchiveConversation(
+              activeConversationId,
+              !activeConversationSummary?.archivedAt,
+            );
+          }
+        }}
+        activePinned={Boolean(activeConversationSummary?.pinnedAt)}
+        activeArchived={Boolean(activeConversationSummary?.archivedAt)}
         onExportDiagnostics={() => void handleExportDiagnostics()}
         onCopyConversationAsMarkdown={() => void handleCopyConversationAsMarkdown()}
         onExportConversationMarkdown={() => void handleExportConversation('markdown')}

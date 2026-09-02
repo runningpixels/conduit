@@ -13,4 +13,20 @@ displayTitle: string, updatedAt: string, messageCount: number, lastMessagePrevie
 /**
  * If this conversation is a fork of another, the source conversation's id.
  */
-forkedFromConversationId?: string, };
+forkedFromConversationId?: string, 
+/**
+ * When set, the chat is pinned to the top of the history rail.
+ */
+pinnedAt?: string, 
+/**
+ * When set, the chat is hidden from the default rail (search still finds it).
+ */
+archivedAt?: string, 
+/**
+ * One-level folder this chat belongs to, if any.
+ */
+folderId?: string, 
+/**
+ * Denormalized folder name for the rail and search badges.
+ */
+folderName?: string, };

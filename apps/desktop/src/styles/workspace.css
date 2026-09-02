@@ -364,6 +364,81 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   transition: opacity var(--tap);
 }
 .convo:hover .convo-meta { opacity: 1; }
+.convo-flag {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--ink-3);
+}
+.convo-flag svg { width: 12px; height: 12px; }
+.sb-group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sb-group-action,
+.sb-folder-edit {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  padding: 0 4px;
+}
+.sb-group-action:hover,
+.sb-folder-edit:hover { color: var(--ink); }
+.sb-group-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.sb-drop[data-over="true"],
+.sb-folder[data-over="true"] {
+  outline: 1px dashed var(--line-hi);
+  outline-offset: -1px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--hue) 8%, transparent);
+}
+.sb-folder { border-radius: var(--r-sm); }
+.sb-folder-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sb-folder-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  text-align: left;
+}
+.sb-folder-toggle:hover { background: var(--card); color: var(--ink); }
+.sb-folder-toggle svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.sb-folder-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.sb-folder-count {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.convo-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 180px;
+}
 
 /* Workspace menu replaces the titlebar chips + the settings/connectors rail tabs. */
 .sb-foot { padding: var(--sp-2); border-top: 1px solid var(--line-soft); position: relative; }

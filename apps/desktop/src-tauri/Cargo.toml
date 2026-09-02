@@ -62,7 +62,7 @@ sha2 = { version = "0.10", default-features = false }
 # Already in Cargo.lock transitively (tauri-plugin-updater and tauri-utils
 # both pull it in), so promoting it to a direct dependency adds nothing new
 # to the supply-chain graph -- see `logo.rs`'s module doc comment.
-infer = "0.19"
+infer = "0.22"
 
 # Phase 3 M6: encryption-at-rest — AES-256-GCM on targeted columns + blob files.
 # Master key is a 256-bit OsRng random value wrapped in the OS keychain (no

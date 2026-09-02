@@ -6,9 +6,9 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "react": "^19.2.7"
+    "react": "^19.2.8"
   },
   "devDependencies": {
-    "@types/react": "^19.2.17"
+    "@types/react": "^19.2.18"
   }
 }

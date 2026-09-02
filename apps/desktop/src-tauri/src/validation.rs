@@ -522,8 +522,10 @@ mod tests {
 
     #[test]
     fn searxng_backend_requires_http_url() {
-        let mut defaults = provider_core::schema::WebSearchDefaults::default();
-        defaults.local_backend = provider_core::schema::LocalSearchBackend::Searxng;
+        let mut defaults = provider_core::schema::WebSearchDefaults {
+            local_backend: provider_core::schema::LocalSearchBackend::Searxng,
+            ..Default::default()
+        };
         let err = validate_web_search_defaults(&defaults).unwrap_err();
         assert!(err.contains("searxngBaseUrl"), "{err}");
 

@@ -23,6 +23,7 @@ pub mod local_data;
 pub mod logo;
 pub mod message_preview;
 pub mod paths;
+pub mod search;
 pub mod state;
 pub mod stream_manager;
 pub mod stream_persistence;

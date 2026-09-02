@@ -21,7 +21,7 @@ import {
 import { useComposerAutosize } from './useComposerAutosize';
 import { readSendWith } from '../shell/uiPrefs';
 import { workspaceFolderLabel } from './agentTools';
-import { resolveSearchBackend } from './webSearchIntent';
+import { localSearchBackendLabel, resolveSearchBackend } from './webSearchIntent';
 import { ComposerChatSettings } from './ComposerChatSettings';
 
 export interface ComposerHandle {
@@ -166,8 +166,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     settings.activeProvider,
     settings.providerEndpoints,
   );
+  const localLabel = localSearchBackendLabel(settings.webSearch.localBackend);
   const searchOnTitle =
-    searchBackend === 'local' ? 'Web search on (DuckDuckGo)' : 'Web search on (provider)';
+    searchBackend === 'local' ? `Web search on (${localLabel})` : 'Web search on (provider)';
   const searchOffTitle = 'Web search off';
   const searchAria = webSearchOn
     ? `${searchOnTitle} — click to disable`

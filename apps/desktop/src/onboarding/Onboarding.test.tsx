@@ -54,6 +54,7 @@ const baseSettings: AppSettings = {
   webSearchEnabled: false,
   webSearch: {
     mode: 'auto' as const,
+    localBackend: 'duckduckgo',
     searchContextSize: 'medium',
     allowedDomains: [],
     blockedDomains: [],

@@ -220,8 +220,9 @@ pub struct ResponseFormatHint {
 /// Where web search runs when the user opts in for a turn.
 ///
 /// `Auto` picks provider-hosted search when the active provider/endpoint
-/// supports it, otherwise Conduit's DuckDuckGo builtin. A turn must never
-/// inject both hosted search and the local `web_search` function tool.
+/// supports it (OpenAI, Gemini, Anthropic), otherwise Conduit's configured
+/// local backend. A turn must never inject both hosted search and the local
+/// `web_search` function tool.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -232,11 +233,32 @@ pub enum WebSearchMode {
     #[default]
     Auto,
     /// Always use the provider's hosted search tool (OpenAI `web_search`,
-    /// Gemini `google_search`). Unsupported endpoints emit `SearchUnavailable`.
+    /// Gemini `google_search`, Anthropic `web_search_20250305`). Unsupported
+    /// endpoints emit `SearchUnavailable`.
     Hosted,
-    /// Always use Conduit's DuckDuckGo Instant Answer builtin + `web_fetch`.
-    /// Never injects hosted search, even on OpenAI/Gemini.
+    /// Always use Conduit's local search builtin (DuckDuckGo / Tavily / Brave /
+    /// SearXNG) + `web_fetch`. Never injects hosted search, even on
+    /// OpenAI/Gemini/Anthropic.
     Local,
+}
+
+/// Which HTTP API the local `web_search` builtin calls.
+///
+/// Distinct from [`WebSearchMode`]: mode chooses hosted vs local; this chooses
+/// the local provider. Keys for Tavily/Brave/SearXNG live in the credential
+/// store, not in this struct.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/local_search_backend.ts"
+)]
+pub enum LocalSearchBackend {
+    #[default]
+    Duckduckgo,
+    Tavily,
+    Brave,
+    Searxng,
 }
 
 /// How much search-result context the model sees before generating a response.
@@ -378,10 +400,19 @@ impl Default for AgentGuardrails {
     export_to = "../packages/config-schema/src/generated/web_search_defaults.ts"
 )]
 pub struct WebSearchDefaults {
-    /// Auto / provider-hosted / Conduit local (DuckDuckGo). Defaults to Auto
-    /// so existing settings files keep working without a migration.
+    /// Auto / provider-hosted / Conduit local. Defaults to Auto so existing
+    /// settings files keep working without a migration.
     #[serde(default)]
     pub mode: WebSearchMode,
+    /// Which local HTTP backend to use when the turn resolves to local search.
+    /// Defaults to DuckDuckGo Instant Answer (no API key).
+    #[serde(default)]
+    pub local_backend: LocalSearchBackend,
+    /// SearXNG instance base URL (`http://` or `https://`). Not a secret.
+    /// Required when `local_backend` is `searxng`.
+    #[serde(default)]
+    #[ts(optional)]
+    pub searxng_base_url: Option<String>,
     #[serde(default = "default_search_context_size")]
     pub search_context_size: SearchContextSize,
     #[serde(default)]
@@ -407,6 +438,8 @@ impl Default for WebSearchDefaults {
     fn default() -> Self {
         Self {
             mode: WebSearchMode::Auto,
+            local_backend: LocalSearchBackend::Duckduckgo,
+            searxng_base_url: None,
             search_context_size: SearchContextSize::Medium,
             allowed_domains: Vec::new(),
             blocked_domains: Vec::new(),

@@ -84,6 +84,18 @@ describe('providerHostsSearch', () => {
       }),
     ).toBe(false);
   });
+
+  it('treats official anthropic as hosted', () => {
+    expect(providerHostsSearch('anthropic', {})).toBe(true);
+  });
+
+  it('treats a custom anthropic-compatible host as not hosted', () => {
+    expect(
+      providerHostsSearch('anthropic', {
+        anthropic: { baseUrl: 'https://example.invalid/anthropic' },
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('resolveSearchBackend', () => {
@@ -103,8 +115,17 @@ describe('resolveSearchBackend', () => {
     expect(resolveSearchBackend('hosted', 'ollama', {})).toBe('hosted');
   });
 
+  it('Auto + Anthropic → hosted', () => {
+    expect(resolveSearchBackend('auto', 'anthropic', {})).toBe('hosted');
+  });
+
+  it('Local + Anthropic → local', () => {
+    expect(resolveSearchBackend('local', 'anthropic', {})).toBe('local');
+  });
+
   it('undefined mode defaults to Auto', () => {
     expect(resolveSearchBackend(undefined, 'ollama', {})).toBe('local');
     expect(resolveSearchBackend(undefined, 'gemini', {})).toBe('hosted');
+    expect(resolveSearchBackend(undefined, 'anthropic', {})).toBe('hosted');
   });
 });

@@ -61,6 +61,8 @@ pub struct AgentToolContext<'a> {
     pub source_message_id: Option<String>,
     /// Present when workspace tools are enabled with a valid root.
     pub workspace: Option<&'a crate::workspace_tools::WorkspaceToolConfig>,
+    /// Local web_search backend + optional API key. Default is DuckDuckGo.
+    pub search: crate::search::LocalSearchConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -292,7 +294,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WEB_SEARCH_TOOL.to_string(),
             name: WEB_SEARCH_TOOL.to_string(),
-            description: "Search via DuckDuckGo Instant Answer (encyclopedic snippets, not a live news crawl). Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs. Empty results mean Instant Answer has no hit — do not retry similar queries.".to_string(),
+            description: "Search the web via the configured local search backend. Provide a `query` string. Returns up to 10 results with titles, snippets, and URLs. Empty results mean no hit — do not retry similar queries.".to_string(),
             input_schema: json_schema(&[
                 ("query", "string", true),
             ]),
@@ -613,8 +615,12 @@ pub async fn execute_builtin_tool(
         // ---------------------------------------------------------------------
         WEB_SEARCH_TOOL => {
             let input: WebSearchInput = parse_args(tool_name, arguments)?;
-            match web_search(&input.query).await {
-                Ok(results) => Ok(web_search_tool_output(&input.query, results)),
+            match crate::search::search(&ctx.search, &input.query).await {
+                Ok(results) => Ok(web_search_tool_output_with_note(
+                    &input.query,
+                    results,
+                    crate::search::empty_note(ctx.search.backend),
+                )),
                 Err(e) => Err(format!("web search error: {e}")),
             }
         }
@@ -1421,19 +1427,25 @@ fn parse_factor(tokens: &[Token], pos: &mut usize) -> Result<f64, String> {
 // Helper: web search via DuckDuckGo Instant Answer API
 // -------------------------------------------------------------------------
 
-/// Guidance when Instant Answer returns nothing. Without this, models treat
-/// empty `results` as "try another query" and binge until max_steps.
-pub const EMPTY_INSTANT_ANSWER_NOTE: &str = "DuckDuckGo Instant Answer returned no hits. This backend is encyclopedic Instant Answer, not a live news index. Do not retry with similar queries; answer from what you know or tell the user local search cannot find live headlines.";
+pub use crate::search::{parse_duckduckgo_instant_answer, EMPTY_INSTANT_ANSWER_NOTE};
 
-/// Shape the tool result the model sees. Empty Instant Answer must include
-/// [`EMPTY_INSTANT_ANSWER_NOTE`] so the agent stops retrying.
+/// Shape the tool result the model sees. Empty results include `empty_note`
+/// so the agent stops retrying.
 pub fn web_search_tool_output(query: &str, results: Vec<serde_json::Value>) -> serde_json::Value {
+    web_search_tool_output_with_note(query, results, EMPTY_INSTANT_ANSWER_NOTE)
+}
+
+pub fn web_search_tool_output_with_note(
+    query: &str,
+    results: Vec<serde_json::Value>,
+    empty_note: &str,
+) -> serde_json::Value {
     if results.is_empty() {
         serde_json::json!({
             "ok": true,
             "query": query,
             "results": results,
-            "note": EMPTY_INSTANT_ANSWER_NOTE,
+            "note": empty_note,
         })
     } else {
         serde_json::json!({
@@ -1442,116 +1454,6 @@ pub fn web_search_tool_output(query: &str, results: Vec<serde_json::Value>) -> s
             "results": results,
         })
     }
-}
-
-/// Parse a DuckDuckGo Instant Answer JSON body into title/snippet/url rows.
-/// Extracted so empty vs non-empty shaping can be unit-tested without network.
-pub fn parse_duckduckgo_instant_answer(body: &serde_json::Value) -> Vec<serde_json::Value> {
-    let mut results = Vec::new();
-
-    // Abstract / answer
-    if let Some(answer) = body.get("AbstractText").and_then(|v| v.as_str()) {
-        if !answer.is_empty() {
-            let source = body
-                .get("AbstractSource")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let url = body
-                .get("AbstractURL")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            results.push(serde_json::json!({
-                "title": source,
-                "snippet": answer,
-                "url": url,
-            }));
-        }
-    }
-
-    // Related topics
-    if let Some(topics) = body.get("RelatedTopics").and_then(|v| v.as_array()) {
-        for topic in topics {
-            if let Some(text) = topic.get("Text").and_then(|v| v.as_str()) {
-                let title = topic.get("FirstURL").and_then(|v| v.as_str()).unwrap_or("");
-                let url = topic.get("FirstURL").and_then(|v| v.as_str()).unwrap_or("");
-                results.push(serde_json::json!({
-                    "title": title,
-                    "snippet": text,
-                    "url": url,
-                }));
-            }
-            // Check for sub-topics
-            if let Some(topics) = topic.get("Topics").and_then(|v| v.as_array()) {
-                for sub in topics {
-                    if let Some(text) = sub.get("Text").and_then(|v| v.as_str()) {
-                        let url = sub.get("FirstURL").and_then(|v| v.as_str()).unwrap_or("");
-                        results.push(serde_json::json!({
-                            "title": url,
-                            "snippet": text,
-                            "url": url,
-                        }));
-                    }
-                }
-            }
-        }
-    }
-
-    if results.is_empty() {
-        // Fallback: use the abstract text
-        if let Some(abstract_text) = body.get("Abstract").and_then(|v| v.as_str()) {
-            if !abstract_text.is_empty() {
-                results.push(serde_json::json!({
-                    "title": "Result",
-                    "snippet": abstract_text,
-                    "url": "",
-                }));
-            }
-        }
-    }
-
-    results
-}
-
-async fn web_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
-    let url = format!(
-        "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
-        urlencoding(query)
-    );
-    // Same 15s bound `web_fetch` uses below. A bare `Client::new()` has no
-    // timeout at all, so an endpoint that accepts the connection and then goes
-    // quiet parks the agent turn on "Running 1 tool" indefinitely.
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("http client error: {e}"))?;
-    let resp = client
-        .get(&url)
-        .header("User-Agent", "Conduit/1.0")
-        .send()
-        .await
-        .map_err(|e| format!("search request failed: {e}"))?;
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("search response parse failed: {e}"))?;
-
-    Ok(parse_duckduckgo_instant_answer(&body))
-}
-
-fn urlencoding(s: &str) -> String {
-    let mut encoded = String::new();
-    for byte in s.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(byte as char);
-            }
-            b' ' => encoded.push_str("%20"),
-            _ => {
-                encoded.push_str(&format!("%{:02X}", byte));
-            }
-        }
-    }
-    encoded
 }
 
 // -------------------------------------------------------------------------

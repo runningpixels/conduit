@@ -319,7 +319,7 @@ export function buildProviderRequest(
     : isCreationIntent
       ? webSearchCreateDeveloperPromptFor()
       : searchBackend === 'local'
-        ? localWebSearchDeveloperPromptFor()
+        ? localWebSearchDeveloperPromptFor(settings.webSearch.localBackend)
         : webSearchDeveloperPromptFor();
   const developerPrompt =
     [infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') || undefined;
@@ -672,7 +672,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const builtinTools = selectBuiltinDocumentTools(intent);
     const brandTools = selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt));
     const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot);
-    // Local DuckDuckGo only when this turn resolved to local — never alongside
+    // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
     const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
     return [...builtinTools, ...brandTools, ...workspaceTools, ...webTools, ...connectorTools];

@@ -32,6 +32,13 @@ describe('localWebSearchDeveloperPromptFor', () => {
     expect(prompt).toMatch(/not a live news/i);
     expect(prompt).toMatch(/Do not retry similar query variants/i);
   });
+
+  it('names Tavily when that backend is selected', () => {
+    const prompt = localWebSearchDeveloperPromptFor('tavily');
+    expect(prompt).toContain('Tavily');
+    expect(prompt).toContain('live web results');
+    expect(prompt).not.toContain('Instant Answer');
+  });
 });
 
 describe('webSearchCreateDeveloperPromptFor', () => {
@@ -66,6 +73,7 @@ describe('buildProviderRequest web search prompts', () => {
     webSearchEnabled: true,
     webSearch: {
       mode: 'auto' as const,
+      localBackend: 'duckduckgo' as const,
       searchContextSize: 'medium' as const,
       allowedDomains: [],
       blockedDomains: [],

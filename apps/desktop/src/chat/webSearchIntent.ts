@@ -1,4 +1,8 @@
-import type { ProviderEndpointConfig, WebSearchMode } from '@conduit/config-schema';
+import type {
+  LocalSearchBackend,
+  ProviderEndpointConfig,
+  WebSearchMode,
+} from '@conduit/config-schema';
 
 /** Heuristic: does the user's message ask for live / internet information?
  *  Used to auto-opt-in to web search when globally enabled but the per-turn
@@ -24,9 +28,37 @@ export function resolveWebSearchForTurn(
 /** Resolved search execution path for a turn. Hosted XOR local — never both. */
 export type SearchBackend = 'hosted' | 'local';
 
+export const SEARCH_CREDENTIAL_IDS = {
+  tavily: 'search/tavily',
+  brave: 'search/brave',
+  searxng: 'search/searxng',
+} as const;
+
+export function localSearchBackendOf(
+  backend: LocalSearchBackend | undefined | null,
+): LocalSearchBackend {
+  return backend ?? 'duckduckgo';
+}
+
+export function localSearchBackendLabel(
+  backend: LocalSearchBackend | undefined | null,
+): string {
+  switch (localSearchBackendOf(backend)) {
+    case 'tavily':
+      return 'Tavily';
+    case 'brave':
+      return 'Brave';
+    case 'searxng':
+      return 'SearXNG';
+    default:
+      return 'DuckDuckGo';
+  }
+}
+
 /**
  * Whether the active provider/endpoint can run a provider-hosted search tool.
- * Mirrors `endpoint_supports_hosted_search` in the OpenAI adapter plus Gemini.
+ * Mirrors OpenAI `endpoint_supports_hosted_search`, Gemini, and Anthropic
+ * `api.anthropic.com`.
  */
 export function providerHostsSearch(
   activeProvider: string,
@@ -34,6 +66,12 @@ export function providerHostsSearch(
 ): boolean {
   const provider = activeProvider.trim().toLowerCase();
   if (provider === 'gemini') return true;
+  if (provider === 'anthropic') {
+    const baseUrl = providerEndpoints[activeProvider]?.baseUrl
+      ?? providerEndpoints[provider]?.baseUrl
+      ?? 'https://api.anthropic.com';
+    return anthropicEndpointSupportsHostedSearch(baseUrl);
+  }
   if (provider === 'openai' || provider === 'openai_compat') {
     const baseUrl = providerEndpoints[activeProvider]?.baseUrl
       ?? providerEndpoints[provider]?.baseUrl
@@ -54,8 +92,20 @@ export function endpointSupportsHostedSearch(baseUrl: string | null | undefined)
   }
 }
 
+/** Official Anthropic Messages API host. Empty base URL means the default. */
+export function anthropicEndpointSupportsHostedSearch(
+  baseUrl: string | null | undefined,
+): boolean {
+  if (!baseUrl?.trim()) return true;
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'api.anthropic.com';
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Pick hosted vs local DuckDuckGo for this turn given Settings mode + provider.
+ * Pick hosted vs local search for this turn given Settings mode + provider.
  * Call only when `resolveWebSearchForTurn` is true.
  */
 export function resolveSearchBackend(
@@ -66,6 +116,5 @@ export function resolveSearchBackend(
   const resolved = mode ?? 'auto';
   if (resolved === 'local') return 'local';
   if (resolved === 'hosted') return 'hosted';
-  // auto
   return providerHostsSearch(activeProvider, providerEndpoints) ? 'hosted' : 'local';
 }

@@ -23,6 +23,7 @@ const EXPECTED_TABLES: &[&str] = &[
     "licenses",
     "license_key_sets",
     "sync_state",
+    "conversation_folders",
 ];
 
 #[tokio::test]
@@ -55,7 +56,8 @@ async fn all_tables_created_by_initial_migration() {
     // The public audit table mirrors the runner's internal table. The count is
     // the number of shipped migrations (0001 + 0004 + 0005 + 0006 FTS search
     // + 0007 prompts library + 0008 usage analytics + 0009 retry/fork
-    // + 0010 workspace root + 0011 conversation chat settings).
+    // + 0010 workspace root + 0011 conversation chat settings
+    // + 0012 conversation organization).
     let (public,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
         .fetch_one(&pool)
         .await
@@ -66,7 +68,7 @@ async fn all_tables_created_by_initial_migration() {
             .await
             .unwrap();
     assert_eq!(public, internal, "schema_migrations out of sync");
-    assert_eq!(public, 9, "expected all shipped migrations applied");
+    assert_eq!(public, 10, "expected all shipped migrations applied");
 }
 
 #[tokio::test]

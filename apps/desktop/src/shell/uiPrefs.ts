@@ -134,12 +134,20 @@ export function applyReduceMotion(value: ReduceMotionPref): void {
 
 /* ── Show reasoning (chat default) ────────────────────────────────────── */
 
+/** Fired on `window` when the always-show/always-hide pref changes. */
+export const SHOW_REASONING_CHANGED_EVENT = 'conduit:show-reasoning-changed';
+
 export function readShowReasoning(): ShowReasoningPref {
-  return readPref(SHOW_REASONING_KEY, ['on', 'off'], 'off');
+  return readPref(SHOW_REASONING_KEY, ['on', 'off'], 'on');
 }
 
 export function writeShowReasoning(value: ShowReasoningPref): void {
   writePref(SHOW_REASONING_KEY, value);
+  try {
+    window.dispatchEvent(new CustomEvent(SHOW_REASONING_CHANGED_EVENT, { detail: value }));
+  } catch {
+    /* non-browser / storage-only environments */
+  }
 }
 
 /* ── Send with (composer key) ─────────────────────────────────────────── */

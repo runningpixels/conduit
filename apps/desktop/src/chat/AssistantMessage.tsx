@@ -161,7 +161,9 @@ function buildTimelineItems(
       const occ = textOccurrence.get(seg.blockId) ?? 0;
       textOccurrence.set(seg.blockId, occ + 1);
       const block = resolveBlockByOrdinal(state.blocks, seg.blockId, occ);
-      if (block) {
+      // Skip empty prose slots (e.g. a contentBlockStart that never received
+      // tokens) so they cannot sit above a Thought chip or tool card in the DOM.
+      if (block && block.content.length > 0) {
         const blockIndex = state.blocks.indexOf(block);
         items.push({
           kind: 'text',
@@ -267,14 +269,20 @@ export function AssistantMessage({
   conversationId = null,
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
-  const text = state.blocks.map((b) => b.content).join('');
+  const text = state.blocks
+    .filter((b) => b.blockKind !== 'thinking' && b.blockKind !== 'reasoning')
+    .map((b) => b.content)
+    .join('');
   const useHostedSearchUi = state.searchBackend !== 'local';
   const segments = useMemo(() => synthesizeSegments(state), [state]);
   const timeline = useMemo(() => buildTimelineItems(state, segments), [state, segments]);
   const elapsed = useLiveElapsed(state.streaming);
   const tokenCount = Math.round(text.length / 4);
 
-  const producingText = state.blocks.some((b) => b.content.length > 0);
+  const producingText = state.blocks.some(
+    (b) =>
+      b.content.length > 0 && b.blockKind !== 'thinking' && b.blockKind !== 'reasoning',
+  );
 
   // Caret on the last text item only when nothing follows it on the timeline
   // (no later tools / ask_user / more text). Otherwise the live tail carries it.

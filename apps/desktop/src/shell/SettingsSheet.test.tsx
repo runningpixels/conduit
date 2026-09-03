@@ -215,8 +215,9 @@ describe('SettingsSheet', () => {
     renderSheet();
     fireEvent.click(screen.getByText('Chat defaults'));
     await waitFor(() => expect(listProviderModels).toHaveBeenCalledWith('anthropic'));
-    fireEvent.click(screen.getByRole('switch', { name: 'Show reasoning by default' }));
-    expect(localStorage.getItem('conduit:v7-show-reasoning')).toBe('on');
+    // Default is always-show (on); toggle once to persist always-hide (off).
+    fireEvent.click(screen.getByRole('switch', { name: 'Always show reasoning' }));
+    expect(localStorage.getItem('conduit:v7-show-reasoning')).toBe('off');
     fireEvent.change(screen.getByLabelText('Send with'), { target: { value: 'cmd-enter' } });
     expect(localStorage.getItem('conduit:v7-send-with')).toBe('cmd-enter');
   });

@@ -240,7 +240,17 @@ function countSegments(
   }).length;
 }
 
-/** Ensure a text segment exists for each blocks[] entry with this id (agent rounds reuse ids). */
+/** Anthropic (and fold.rs) use `thinking`; some adapters use `reasoning`. */
+function isReasoningBlockKind(blockKind: string): boolean {
+  return blockKind === 'thinking' || blockKind === 'reasoning';
+}
+
+/**
+ * Ensure a text segment exists for each blocks[] entry with this id (agent rounds
+ * reuse ids). Called only after a non-empty contentDelta so empty
+ * contentBlockStart / blank deltas cannot push a text segment ahead of reasoning
+ * or tools.
+ */
 function withTextSegmentIfNeeded(
   state: AssistantStreamState,
   blockId: string,
@@ -253,6 +263,38 @@ function withTextSegmentIfNeeded(
   return state.segments;
 }
 
+function withReasoningSegmentIfNeeded(
+  segments: TurnSegment[],
+  blockId: string,
+): TurnSegment[] {
+  if (segments.some((s) => s.kind === 'reasoning' && s.blockId === blockId)) {
+    return segments;
+  }
+  return [...segments, { kind: 'reasoning', blockId }];
+}
+
+/**
+ * Drop text timeline stubs that still have empty content so a late-arriving
+ * reasoning/tool segment is not trapped under a phantom prose slot that will
+ * later fill in and visually push thoughts/tools to the bottom.
+ */
+function withoutEmptyTextSegments(state: AssistantStreamState): TurnSegment[] {
+  const emptyIds = new Set(
+    state.blocks.filter((b) => b.content.length === 0).map((b) => b.blockId),
+  );
+  if (emptyIds.size === 0) return state.segments;
+  // Only drop a text segment when EVERY blocks[] entry with that id is still
+  // empty (agent rounds reuse ids; a prior non-empty round must keep its slot).
+  const nonEmptyIds = new Set(
+    state.blocks.filter((b) => b.content.length > 0).map((b) => b.blockId),
+  );
+  return state.segments.filter((s) => {
+    if (s.kind !== 'text') return true;
+    if (nonEmptyIds.has(s.blockId)) return true;
+    return !emptyIds.has(s.blockId);
+  });
+}
+
 export function applyProviderEvent(
   state: AssistantStreamState,
   event: ProviderEvent,
@@ -261,6 +303,30 @@ export function applyProviderEvent(
     case 'messageStart':
       return { ...state, streaming: true };
     case 'contentBlockStart': {
+      // Match backend fold.rs: thinking/reasoning block starts belong in
+      // reasoning[], not as premature text segments.
+      if (isReasoningBlockKind(event.blockKind)) {
+        const existing = state.reasoning.find((block) => block.blockId === event.blockId);
+        if (existing) {
+          return state;
+        }
+        return {
+          ...state,
+          reasoning: [
+            ...state.reasoning,
+            {
+              blockId: event.blockId,
+              blockKind: event.blockKind,
+              content: '',
+              citations: [],
+            },
+          ],
+          segments: withReasoningSegmentIfNeeded(
+            withoutEmptyTextSegments(state),
+            event.blockId,
+          ),
+        };
+      }
       const blocks = [
         ...state.blocks,
         { blockId: event.blockId, blockKind: event.blockKind, content: '', citations: [] },
@@ -268,10 +334,13 @@ export function applyProviderEvent(
       return {
         ...state,
         blocks,
-        segments: [...state.segments, { kind: 'text', blockId: event.blockId }],
+        // Text segment deferred until the first non-empty contentDelta.
       };
     }
     case 'contentDelta': {
+      if (event.content.length === 0) {
+        return state;
+      }
       const blocks = updateLastMatchingBlock(state.blocks, event.blockId, (block) => ({
         ...block,
         content: block.content + event.content,
@@ -292,6 +361,7 @@ export function applyProviderEvent(
               ? { ...block, content: block.content + event.content }
               : block,
           ),
+          segments: withReasoningSegmentIfNeeded(state.segments, event.blockId),
         };
       }
       return {
@@ -300,7 +370,10 @@ export function applyProviderEvent(
           ...state.reasoning,
           { blockId: event.blockId, blockKind: 'reasoning', content: event.content, citations: [] },
         ],
-        segments: [...state.segments, { kind: 'reasoning', blockId: event.blockId }],
+        segments: withReasoningSegmentIfNeeded(
+          withoutEmptyTextSegments(state),
+          event.blockId,
+        ),
       };
     }
     case 'toolCallStart': {
@@ -320,7 +393,12 @@ export function applyProviderEvent(
             startedAt: Date.now(),
           },
         ],
-        segments: [...state.segments, { kind: 'tool', toolCallId: event.toolCallId }],
+        // Keep tools in event order; strip empty text stubs so a tool that
+        // fires during thinking is not trapped under a later-filled answer.
+        segments: [
+          ...withoutEmptyTextSegments(state),
+          { kind: 'tool', toolCallId: event.toolCallId },
+        ],
       };
     }
     case 'toolCallDelta':

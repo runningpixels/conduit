@@ -195,7 +195,57 @@ impl StreamParser for OpenAiParser {
                 let delta = choice.get("delta");
 
                 if let Some(delta) = delta {
-                    if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
+                    // Reasoning before content so the UI timeline stays chronological
+                    // when a single chunk carries both (e.g. GLM/OpenAI-compat with
+                    // `content: ""` + `reasoning`). Skip empty strings so a blank
+                    // content field does not open a text segment ahead of thought.
+                    if let Some(reasoning) = delta
+                        .get("reasoning_content")
+                        .or_else(|| delta.get("reasoning"))
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
+                        let block_id = format!("reasoning-{choice_index}");
+                        events.push(ProviderEvent::ReasoningDelta {
+                            request_id: request_id.to_string(),
+                            block_id,
+                            index: *index,
+                            content: reasoning.to_string(),
+                        });
+                        *index += 1;
+                    } else if let Some(details) =
+                        delta.get("reasoning_details").and_then(|v| v.as_array())
+                    {
+                        // OpenRouter streams structured reasoning_details; pull
+                        // plain text / summary so the Thought chip stays in sync.
+                        let mut joined = String::new();
+                        for detail in details {
+                            let piece = detail
+                                .get("text")
+                                .or_else(|| detail.get("summary"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if !piece.is_empty() {
+                                joined.push_str(piece);
+                            }
+                        }
+                        if !joined.is_empty() {
+                            let block_id = format!("reasoning-{choice_index}");
+                            events.push(ProviderEvent::ReasoningDelta {
+                                request_id: request_id.to_string(),
+                                block_id,
+                                index: *index,
+                                content: joined,
+                            });
+                            *index += 1;
+                        }
+                    }
+
+                    if let Some(content) = delta
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
                         let block_id = match self.blocks.entry(choice_index) {
                             std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
                             std::collections::hash_map::Entry::Vacant(e) => {
@@ -216,21 +266,6 @@ impl StreamParser for OpenAiParser {
                             block_id,
                             index: *index,
                             content: content.to_string(),
-                        });
-                        *index += 1;
-                    }
-
-                    if let Some(reasoning) = delta
-                        .get("reasoning_content")
-                        .or_else(|| delta.get("reasoning"))
-                        .and_then(|v| v.as_str())
-                    {
-                        let block_id = format!("reasoning-{choice_index}");
-                        events.push(ProviderEvent::ReasoningDelta {
-                            request_id: request_id.to_string(),
-                            block_id,
-                            index: *index,
-                            content: reasoning.to_string(),
                         });
                         *index += 1;
                     }
@@ -1439,6 +1474,47 @@ mod tests {
             e,
             ProviderEvent::Error { error, .. } if error.provider_code.as_deref() == Some("invalid_request_error")
         )));
+    }
+
+    #[test]
+    fn glm_style_empty_content_plus_reasoning_emits_reasoning_first() {
+        // Compat APIs (e.g. GLM via OpenRouter) often send `content: ""` alongside
+        // reasoning in the same delta. Empty content must not open a text block
+        // ahead of thought.
+        let fixture = concat!(
+            r#"data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_content":"Let me think."}}]}"#,
+            "\n\n",
+            r#"data: {"choices":[{"index":0,"delta":{"content":"Rome grew."}}]}"#,
+            "\n\n",
+        );
+        let events = parse_fixture("req-glm", fixture);
+
+        let kinds: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ReasoningDelta { content, .. } if content == "Let me think." => {
+                    Some("reasoning")
+                }
+                ProviderEvent::ContentBlockStart { .. } => Some("content_start"),
+                ProviderEvent::ContentDelta { content, .. } if content == "Rome grew." => {
+                    Some("content")
+                }
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec!["reasoning", "content_start", "content"],
+            "expected reasoning before any text events, got {kinds:?}"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                ProviderEvent::ContentDelta { content, .. } if content.is_empty()
+            )),
+            "empty content deltas must be skipped"
+        );
     }
 
     // ---------------------------------------------------------------------

@@ -309,11 +309,11 @@ export function SettingsSheet({
                 </div>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Show reasoning</b>
-                    <small>Expand thinking blocks by default</small>
+                    <b>Always show reasoning</b>
+                    <small>Keep thinking blocks expanded (off = always collapsed)</small>
                   </span>
                   <Toggle
-                    label="Show reasoning by default"
+                    label="Always show reasoning"
                     pressed={showReasoning === 'on'}
                     onChange={() => {
                       const next = showReasoning === 'on' ? 'off' : 'on';

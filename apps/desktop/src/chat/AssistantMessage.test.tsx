@@ -328,4 +328,95 @@ describe('AssistantMessage chronological timeline', () => {
     expect(card).not.toBeNull();
     expect(card!.compareDocumentPosition(tail!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('renders reasoning above the answer prose', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          streaming: false,
+          reasoning: [
+            { blockId: 'r1', blockKind: 'reasoning', content: 'Let me think about Rome.', citations: [] },
+          ],
+          blocks: [
+            { blockId: 'block-0', blockKind: 'text', content: 'Rome grew from a city-state.', citations: [] },
+          ],
+          segments: [
+            { kind: 'reasoning', blockId: 'r1' },
+            { kind: 'text', blockId: 'block-0' },
+          ],
+        })}
+        provider="openai"
+      />,
+    );
+
+    const article = document.querySelector('article.turn.assistant')!;
+    const think = article.querySelector('.think');
+    const prose = article.querySelector('.prose');
+    expect(think).not.toBeNull();
+    expect(prose).not.toBeNull();
+    expect(think!.compareDocumentPosition(prose!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(think!.textContent).toMatch(/Thought for \d+s/);
+    expect(prose!.textContent).toContain('Rome grew from a city-state.');
+  });
+
+  it('keeps reasoning above answer even when an empty text segment precedes it', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          streaming: false,
+          reasoning: [
+            { blockId: 'r1', blockKind: 'reasoning', content: 'thinking…', citations: [] },
+          ],
+          blocks: [
+            { blockId: 'block-0', blockKind: 'text', content: '', citations: [] },
+            { blockId: 'block-0', blockKind: 'text', content: 'Final answer.', citations: [] },
+          ],
+          segments: [
+            { kind: 'text', blockId: 'block-0' },
+            { kind: 'reasoning', blockId: 'r1' },
+            { kind: 'text', blockId: 'block-0' },
+          ],
+        })}
+        provider="openai"
+      />,
+    );
+
+    const article = document.querySelector('article.turn.assistant')!;
+    const think = article.querySelector('.think');
+    const proseNodes = [...article.querySelectorAll('.prose')];
+    expect(think).not.toBeNull();
+    expect(proseNodes).toHaveLength(1);
+    expect(proseNodes[0].textContent).toContain('Final answer.');
+    expect(think!.compareDocumentPosition(proseNodes[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders reasoning → tool → text in DOM order', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          streaming: false,
+          reasoning: [
+            { blockId: 'r1', blockKind: 'reasoning', content: 'I should look this up.', citations: [] },
+          ],
+          blocks: [
+            { blockId: 'block-0', blockKind: 'text', content: 'Here is what I found.', citations: [] },
+          ],
+          toolCalls: [toolCall('c1', 'web_search')],
+          segments: [
+            { kind: 'reasoning', blockId: 'r1' },
+            { kind: 'tool', toolCallId: 'c1' },
+            { kind: 'text', blockId: 'block-0' },
+          ],
+        })}
+        provider="openai"
+      />,
+    );
+
+    const article = document.querySelector('article.turn.assistant')!;
+    const nodes = [...article.querySelectorAll('.think, .tool, .prose')];
+    expect(nodes).toHaveLength(3);
+    expect(nodes[0].classList.contains('think')).toBe(true);
+    expect(nodes[1].classList.contains('tool')).toBe(true);
+    expect(nodes[2].classList.contains('prose')).toBe(true);
+  });
 });

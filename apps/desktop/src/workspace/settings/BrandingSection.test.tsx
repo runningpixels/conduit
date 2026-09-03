@@ -320,7 +320,11 @@ describe('Import/Export cancellation (ADR 008)', () => {
     vi.mocked(importBrandFileDialog).mockResolvedValue(null);
     const { onStatus } = renderSection();
     await waitFor(() => expect((screen.getByLabelText('App name') as HTMLInputElement).value).toBe('Acme'));
-
+    // Wait for the live preview apply — otherwise hueBefore can still be empty
+    // while getBrandConfig's applyBrand is in flight.
+    await waitFor(() =>
+      expect(document.documentElement.style.getPropertyValue('--hue')).toBe('#3366ff'),
+    );
     const hueBefore = document.documentElement.style.getPropertyValue('--hue');
 
     fireEvent.click(screen.getByRole('button', { name: 'Import brand.md…' }));

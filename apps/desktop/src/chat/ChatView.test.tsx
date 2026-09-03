@@ -45,6 +45,8 @@ const baseSettings: AppSettings = {
 
 vi.mock('../ipc/client', () => ({
   getConversationMessages: vi.fn().mockResolvedValue([]),
+  getConversationCompaction: vi.fn().mockResolvedValue(null),
+  compactConversation: vi.fn().mockResolvedValue(null),
   getConversation: vi.fn().mockResolvedValue({
     id: 'conv-1',
     createdAt: '2026-01-01T00:00:00Z',
@@ -86,7 +88,12 @@ vi.mock('../ipc/client', () => ({
   invokeConnectorTool: vi.fn(),
 }));
 
-import { getConversationMessages, getMessageIdByRequest, startChatStream } from '../ipc/client';
+import {
+  getConversationCompaction,
+  getConversationMessages,
+  getMessageIdByRequest,
+  startChatStream,
+} from '../ipc/client';
 
 function renderChatView(overrides: {
   artifacts?: Artifact[];
@@ -163,6 +170,7 @@ describe('ChatView suggested prompts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getConversationCompaction).mockResolvedValue(null);
     Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
       configurable: true,
       get(this: HTMLTextAreaElement) {

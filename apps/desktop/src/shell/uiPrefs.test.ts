@@ -45,10 +45,10 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
   });
 
-  it('show reasoning defaults off and round-trips', () => {
-    expect(readShowReasoning()).toBe('off');
-    writeShowReasoning('on');
+  it('show reasoning defaults on and round-trips', () => {
     expect(readShowReasoning()).toBe('on');
+    writeShowReasoning('off');
+    expect(readShowReasoning()).toBe('off');
   });
 
   it('send with defaults to Enter and round-trips', () => {
@@ -67,7 +67,7 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(readPalette()).toBe('orange-charcoal');
     expect(readProviderColour()).toBe('on');
     expect(readReduceMotion()).toBe('off');
-    expect(readShowReasoning()).toBe('off');
+    expect(readShowReasoning()).toBe('on');
     expect(readSendWith()).toBe('enter');
     expect(readMermaidScale()).toBe('default');
   });

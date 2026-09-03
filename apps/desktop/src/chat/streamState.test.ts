@@ -815,4 +815,125 @@ describe('streamState turn segments timeline', () => {
     expect(state.segments).toEqual([{ kind: 'text', blockId: 'b1' }]);
     expect(state.blocks[0].content).toBe('ab');
   });
+
+  it('defers text segments until the first non-empty contentDelta', () => {
+    let state = createAssistantStreamState('req-defer');
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-defer',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    expect(state.segments).toEqual([]);
+    expect(state.blocks).toHaveLength(1);
+
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-defer',
+      blockId: 'block-0',
+      index: 0,
+      content: '',
+    });
+    expect(state.segments).toEqual([]);
+
+    state = applyProviderEvent(state, {
+      kind: 'reasoningDelta',
+      requestId: 'req-defer',
+      blockId: 'r1',
+      index: 0,
+      content: 'thinking…',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-defer',
+      blockId: 'block-0',
+      index: 0,
+      content: 'Answer.',
+    });
+
+    expect(state.segments).toEqual([
+      { kind: 'reasoning', blockId: 'r1' },
+      { kind: 'text', blockId: 'block-0' },
+    ]);
+  });
+
+  it('treats thinking contentBlockStart as a reasoning segment, not text', () => {
+    const state = rebuildAssistantStreamStateFromEvents('req-anth', [
+      {
+        kind: 'contentBlockStart',
+        requestId: 'req-anth',
+        blockId: 'block-0',
+        index: 0,
+        blockKind: 'thinking',
+      },
+      {
+        kind: 'reasoningDelta',
+        requestId: 'req-anth',
+        blockId: 'block-0',
+        index: 0,
+        content: 'Let me think',
+      },
+      {
+        kind: 'contentBlockStart',
+        requestId: 'req-anth',
+        blockId: 'block-1',
+        index: 0,
+        blockKind: 'text',
+      },
+      {
+        kind: 'contentDelta',
+        requestId: 'req-anth',
+        blockId: 'block-1',
+        index: 0,
+        content: 'Answer',
+      },
+    ]);
+
+    expect(state.segments).toEqual([
+      { kind: 'reasoning', blockId: 'block-0' },
+      { kind: 'text', blockId: 'block-1' },
+    ]);
+    expect(state.reasoning[0]?.content).toBe('Let me think');
+    expect(state.blocks.map((b) => b.content)).toEqual(['Answer']);
+  });
+
+  it('keeps reasoning → tool → text chronological when empty text stubs precede tools', () => {
+    let state = createAssistantStreamState('req-tools');
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-tools',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'reasoningDelta',
+      requestId: 'req-tools',
+      blockId: 'r1',
+      index: 0,
+      content: 'I should search.',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-tools',
+      toolCallId: 't1',
+      index: 0,
+      toolId: 'web_search',
+      name: 'web_search',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-tools',
+      blockId: 'block-0',
+      index: 0,
+      content: 'Here is what I found.',
+    });
+
+    expect(state.segments).toEqual([
+      { kind: 'reasoning', blockId: 'r1' },
+      { kind: 'tool', toolCallId: 't1' },
+      { kind: 'text', blockId: 'block-0' },
+    ]);
+  });
 });

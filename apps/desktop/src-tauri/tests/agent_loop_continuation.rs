@@ -764,6 +764,7 @@ async fn round_outcome_usage_defaults_to_none() {
         usage: None,
         completion_event: None,
         round_text: String::new(),
+        aborted: false,
     };
     assert!(outcome.usage.is_none());
 }

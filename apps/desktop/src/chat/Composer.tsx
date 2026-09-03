@@ -23,6 +23,7 @@ import { readSendWith } from '../shell/uiPrefs';
 import { workspaceFolderLabel } from './agentTools';
 import { localSearchBackendLabel, resolveSearchBackend } from './webSearchIntent';
 import { ComposerChatSettings } from './ComposerChatSettings';
+import { previewText, type QueuedMessage } from './messageQueue';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -41,6 +42,12 @@ export interface ComposerProps {
   onSend: (attachments?: TurnAttachment[]) => void;
   onStop: () => void;
   streaming: boolean;
+  /** t1-2: follow-ups queued while a run is in flight. */
+  queuedMessages?: QueuedMessage[];
+  /** Remove a queued follow-up by id. */
+  onRemoveQueued?: (id: string) => void;
+  /** Steer: interrupt the in-flight turn with this queued item (M2). */
+  onSendQueuedNow?: (id: string) => void;
   webSearchOn: boolean;
   onWebSearchToggle: () => void;
   /** Absolute workspace folder for this conversation, if bound. */
@@ -81,6 +88,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onSend,
   onStop,
   streaming,
+  queuedMessages = [],
+  onRemoveQueued,
+  onSendQueuedNow,
   webSearchOn,
   onWebSearchToggle,
   workspaceRoot = null,
@@ -316,8 +326,41 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const canSend =
     !uploading && (prompt.trim().length > 0 || hasForwardableImages);
 
+  const queueCount = queuedMessages.length;
+
   return (
     <div className="composer-wrap">
+      {queueCount > 0 && (
+        <div className="composer-queue" aria-label={`${queueCount} queued follow-up${queueCount === 1 ? '' : 's'}`}>
+          <span className="composer-queue-label">
+            {queueCount} queued
+          </span>
+          {queuedMessages.map((item) => (
+            <div key={item.id} className="composer-queue-chip" title={item.text}>
+              <span className="composer-queue-preview">{previewText(item)}</span>
+              {streaming && onSendQueuedNow && (
+                <button
+                  className="composer-queue-action"
+                  type="button"
+                  onClick={() => onSendQueuedNow(item.id)}
+                >
+                  Send now
+                </button>
+              )}
+              {onRemoveQueued && (
+                <button
+                  className="composer-queue-remove"
+                  type="button"
+                  aria-label="Remove queued message"
+                  onClick={() => onRemoveQueued(item.id)}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div
         className={`composer${dropActive ? ' drop-active' : ''}`}
         onDragOver={handleDragOver}
@@ -571,15 +614,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={streaming}
           />
           {streaming ? (
-            <button
-              className="send stop"
-              type="button"
-              aria-label="Stop generating"
-              title="Stop generating"
-              onClick={onStop}
-            >
-              <StopIcon />
-            </button>
+            <>
+              {canSend && (
+                <button
+                  className="send queue"
+                  type="button"
+                  aria-label="Queue follow-up"
+                  title="Queue follow-up (sends when this turn ends)"
+                  onClick={sendWithAttachments}
+                >
+                  <SendIcon />
+                </button>
+              )}
+              <button
+                className="send stop"
+                type="button"
+                aria-label="Stop generating"
+                title="Stop generating"
+                onClick={onStop}
+              >
+                <StopIcon />
+              </button>
+            </>
           ) : (
             <button
               className="send"

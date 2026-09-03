@@ -676,3 +676,143 @@ describe('streamState reused block ids across agent rounds', () => {
     expect(state.blocks[1].citations[0].url).toBe('https://example.com');
   });
 });
+
+describe('streamState turn segments timeline', () => {
+  it('records content → tool → content in event order', () => {
+    let state = createAssistantStreamState('req-seg');
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-seg',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-seg',
+      blockId: 'block-0',
+      index: 0,
+      content: 'Let me check.',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'toolCallStart',
+      requestId: 'req-seg',
+      toolCallId: 'call-1',
+      index: 0,
+      toolId: 'ask_user',
+      name: 'ask_user',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'askUserRequested',
+      requestId: 'req-seg',
+      toolCallId: 'call-1',
+      title: 'Your name?',
+      fields: [{ id: 'name', prompt: 'Name', type: 'text' }],
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-seg',
+      blockId: 'block-0',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-seg',
+      blockId: 'block-0',
+      index: 0,
+      content: 'Hello, Ada.',
+    });
+
+    expect(state.segments).toEqual([
+      { kind: 'text', blockId: 'block-0' },
+      { kind: 'tool', toolCallId: 'call-1' },
+      { kind: 'askUser', toolCallId: 'call-1' },
+      { kind: 'text', blockId: 'block-0' },
+    ]);
+    expect(state.blocks.map((b) => b.content)).toEqual(['Let me check.', 'Hello, Ada.']);
+  });
+
+  it('preserves segment order when rebuilding from the event log', () => {
+    const state = rebuildAssistantStreamStateFromEvents('req-rebuild', [
+      {
+        kind: 'reasoningDelta',
+        requestId: 'req-rebuild',
+        blockId: 'r1',
+        index: 0,
+        content: 'thinking…',
+      },
+      {
+        kind: 'contentBlockStart',
+        requestId: 'req-rebuild',
+        blockId: 'block-0',
+        index: 0,
+        blockKind: 'text',
+      },
+      {
+        kind: 'contentDelta',
+        requestId: 'req-rebuild',
+        blockId: 'block-0',
+        index: 0,
+        content: 'Preamble.',
+      },
+      {
+        kind: 'toolCallStart',
+        requestId: 'req-rebuild',
+        toolCallId: 't1',
+        index: 0,
+        toolId: 'current_time',
+        name: 'current_time',
+      },
+      {
+        kind: 'contentBlockStart',
+        requestId: 'req-rebuild',
+        blockId: 'block-0',
+        index: 0,
+        blockKind: 'text',
+      },
+      {
+        kind: 'contentDelta',
+        requestId: 'req-rebuild',
+        blockId: 'block-0',
+        index: 0,
+        content: 'Final answer.',
+      },
+    ]);
+
+    expect(state.segments).toEqual([
+      { kind: 'reasoning', blockId: 'r1' },
+      { kind: 'text', blockId: 'block-0' },
+      { kind: 'tool', toolCallId: 't1' },
+      { kind: 'text', blockId: 'block-0' },
+    ]);
+  });
+
+  it('does not duplicate text segments on content deltas for an existing block', () => {
+    let state = createAssistantStreamState('req-once');
+    state = applyProviderEvent(state, {
+      kind: 'contentBlockStart',
+      requestId: 'req-once',
+      blockId: 'b1',
+      index: 0,
+      blockKind: 'text',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-once',
+      blockId: 'b1',
+      index: 0,
+      content: 'a',
+    });
+    state = applyProviderEvent(state, {
+      kind: 'contentDelta',
+      requestId: 'req-once',
+      blockId: 'b1',
+      index: 0,
+      content: 'b',
+    });
+
+    expect(state.segments).toEqual([{ kind: 'text', blockId: 'b1' }]);
+    expect(state.blocks[0].content).toBe('ab');
+  });
+});

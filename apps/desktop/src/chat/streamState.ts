@@ -69,11 +69,20 @@ export interface ToolCallState {
   error?: string;
 }
 
+/** Chronological turn timeline for UI (kept alongside detail arrays). */
+export type TurnSegment =
+  | { kind: 'reasoning'; blockId: string }
+  | { kind: 'text'; blockId: string }
+  | { kind: 'tool'; toolCallId: string }
+  | { kind: 'askUser'; toolCallId: string };
+
 export interface AssistantStreamState {
   requestId: string;
   blocks: ContentBlockState[];
   reasoning: ContentBlockState[];
   toolCalls: ToolCallState[];
+  /** Ordered render timeline. Empty only for stale in-memory fixtures; new streams always append. */
+  segments: TurnSegment[];
   /// Phase 7 / M-WebSearch: sources surfaced by the provider when the user
   /// opted in via `include_sources`. One list per `SearchSources` event.
   searchSources: SearchSource[];
@@ -102,7 +111,18 @@ export interface AssistantStreamState {
     /** Total rounds or undefined if unknown. */
     totalRounds?: number;
     /** Sub-phase for more granular feedback. */
-    subPhase: 'connecting' | 'thinking' | 'executing_tools' | 'reviewing' | 'finalizing';
+    subPhase: 'connecting' | 'thinking' | 'executing_tools' | 'reviewing' | 'finalizing' | 'steering';
+  };
+  /** Pending mid-turn ask_user form (t1-2). */
+  askUser?: {
+    toolCallId: string;
+    title: string;
+    fields: Array<{
+      id: string;
+      prompt: string;
+      type: string;
+      options?: string[] | null;
+    }>;
   };
 }
 
@@ -115,6 +135,7 @@ export function createAssistantStreamState(
     blocks: [],
     reasoning: [],
     toolCalls: [],
+    segments: [],
     searchSources: [],
     searchBackend: searchBackend ?? null,
     interrupted: false,
@@ -207,6 +228,31 @@ function updateLastMatchingBlock(
   return blocks.map((block, i) => (i === index ? update(block) : block));
 }
 
+function countSegments(
+  segments: TurnSegment[],
+  kind: TurnSegment['kind'],
+  id: string,
+): number {
+  return segments.filter((s) => {
+    if (s.kind !== kind) return false;
+    if (s.kind === 'tool' || s.kind === 'askUser') return s.toolCallId === id;
+    return s.blockId === id;
+  }).length;
+}
+
+/** Ensure a text segment exists for each blocks[] entry with this id (agent rounds reuse ids). */
+function withTextSegmentIfNeeded(
+  state: AssistantStreamState,
+  blockId: string,
+): TurnSegment[] {
+  const blockCount = state.blocks.filter((b) => b.blockId === blockId).length;
+  const segCount = countSegments(state.segments, 'text', blockId);
+  if (blockCount > segCount) {
+    return [...state.segments, { kind: 'text', blockId }];
+  }
+  return state.segments;
+}
+
 export function applyProviderEvent(
   state: AssistantStreamState,
   event: ProviderEvent,
@@ -214,22 +260,28 @@ export function applyProviderEvent(
   switch (event.kind) {
     case 'messageStart':
       return { ...state, streaming: true };
-    case 'contentBlockStart':
+    case 'contentBlockStart': {
+      const blocks = [
+        ...state.blocks,
+        { blockId: event.blockId, blockKind: event.blockKind, content: '', citations: [] },
+      ];
       return {
         ...state,
-        blocks: [
-          ...state.blocks,
-          { blockId: event.blockId, blockKind: event.blockKind, content: '', citations: [] },
-        ],
+        blocks,
+        segments: [...state.segments, { kind: 'text', blockId: event.blockId }],
       };
-    case 'contentDelta':
+    }
+    case 'contentDelta': {
+      const blocks = updateLastMatchingBlock(state.blocks, event.blockId, (block) => ({
+        ...block,
+        content: block.content + event.content,
+      }));
+      const next = { ...state, blocks };
       return {
-        ...state,
-        blocks: updateLastMatchingBlock(state.blocks, event.blockId, (block) => ({
-          ...block,
-          content: block.content + event.content,
-        })),
+        ...next,
+        segments: withTextSegmentIfNeeded(next, event.blockId),
       };
+    }
     case 'reasoningDelta': {
       const existing = state.reasoning.find((block) => block.blockId === event.blockId);
       if (existing) {
@@ -248,6 +300,7 @@ export function applyProviderEvent(
           ...state.reasoning,
           { blockId: event.blockId, blockKind: 'reasoning', content: event.content, citations: [] },
         ],
+        segments: [...state.segments, { kind: 'reasoning', blockId: event.blockId }],
       };
     }
     case 'toolCallStart': {
@@ -267,6 +320,7 @@ export function applyProviderEvent(
             startedAt: Date.now(),
           },
         ],
+        segments: [...state.segments, { kind: 'tool', toolCallId: event.toolCallId }],
       };
     }
     case 'toolCallDelta':
@@ -389,6 +443,7 @@ export function applyProviderEvent(
               citations: [{ ...next, index: citationsBefore + 1 }],
             },
           ],
+          segments: [...state.segments, { kind: 'text', blockId: event.blockId }],
         };
       }
       const target = state.blocks[targetIndex];
@@ -426,8 +481,33 @@ export function applyProviderEvent(
           label: event.label,
           round: event.round,
           totalRounds: event.totalRounds > 0 ? event.totalRounds : undefined,
-          subPhase: event.subPhase as 'thinking' | 'connecting' | 'executing_tools' | 'reviewing' | 'finalizing',
+          subPhase: event.subPhase as
+            | 'thinking'
+            | 'connecting'
+            | 'executing_tools'
+            | 'reviewing'
+            | 'finalizing'
+            | 'steering',
         },
+      };
+    case 'askUserRequested':
+      return {
+        ...state,
+        askUser: {
+          toolCallId: event.toolCallId,
+          title: event.title,
+          fields: event.fields.map((f) => ({
+            id: f.id,
+            prompt: f.prompt,
+            type: f.type,
+            options: f.options ?? null,
+          })),
+        },
+        segments: state.segments.some(
+          (s) => s.kind === 'askUser' && s.toolCallId === event.toolCallId,
+        )
+          ? state.segments
+          : [...state.segments, { kind: 'askUser', toolCallId: event.toolCallId }],
       };
     case 'toolExecutionStarted': {
       // Mark the matching tool call as executing (not yet complete).
@@ -443,6 +523,8 @@ export function applyProviderEvent(
     case 'toolExecutionFinished':
       return {
         ...state,
+        askUser:
+          state.askUser?.toolCallId === event.toolCallId ? undefined : state.askUser,
         toolCalls: state.toolCalls.map((tc) =>
           tc.toolCallId === event.toolCallId
             ? {

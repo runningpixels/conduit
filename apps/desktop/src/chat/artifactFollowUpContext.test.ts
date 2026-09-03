@@ -30,6 +30,7 @@ function makeStreamState(toolCalls: ToolCallState[]): AssistantStreamState {
     blocks: [],
     reasoning: [],
     toolCalls,
+    segments: [],
     searchSources: [],
     interrupted: false,
     streaming: false,

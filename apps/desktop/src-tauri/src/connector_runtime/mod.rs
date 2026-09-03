@@ -84,6 +84,7 @@ pub struct ActiveConnector {
 pub struct ConnectorRuntimeManager {
     active: Arc<StdMutex<HashMap<String, Arc<ActiveConnector>>>>,
     pending: consent::PendingConsents,
+    pending_metas: consent::PendingConsentMetas,
     client: ClientInfo,
     liveness_interval: Duration,
     call_timeout: Duration,
@@ -99,6 +100,7 @@ impl ConnectorRuntimeManager {
         Self {
             active: Arc::new(StdMutex::new(HashMap::new())),
             pending: Arc::new(StdMutex::new(HashMap::new())),
+            pending_metas: Arc::new(StdMutex::new(HashMap::new())),
             client: ClientInfo {
                 name: "Conduit".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -143,6 +145,7 @@ impl ConnectorRuntimeManager {
         tool_call_id: &str,
         tool_name: &str,
         arguments: &serde_json::Value,
+        conversation_id: Option<&str>,
     ) -> Result<consent::ConsentRequirement, String> {
         let pool = state.db.clone();
         let version = conn_repo::get_version(&pool, connector_version_id)
@@ -156,16 +159,27 @@ impl ConnectorRuntimeManager {
         let active = self
             .active_connector(connector_version_id)
             .ok_or_else(|| "connector is not running".to_string())?;
+        let remembered = crate::db::repository::tool_approval_memory::is_remembered(
+            &pool,
+            connector_version_id,
+            tool_name,
+            conversation_id,
+        )
+        .await
+        .unwrap_or(false);
         tokio::time::timeout(
             self.call_timeout,
             consent::request_consent(
                 &active,
                 &self.pending,
+                &self.pending_metas,
                 &version,
                 &definition,
                 tool_call_id,
                 tool_name,
                 arguments,
+                conversation_id,
+                remembered,
             ),
         )
         .await
@@ -183,12 +197,18 @@ impl ConnectorRuntimeManager {
     }
 
     /// Fulfill a pending consent decision (approve/deny IPC command).
+    /// Returns the pending meta (if any) so the caller can persist approval memory.
     pub fn resolve_consent(
         &self,
         tool_call_id: &str,
         decision: ConsentDecision,
-    ) -> Result<(), String> {
-        consent::resolve_consent(&self.pending, tool_call_id, decision)
+    ) -> Result<Option<consent::PendingConsentMeta>, String> {
+        consent::resolve_consent(&self.pending, &self.pending_metas, tool_call_id, decision)
+    }
+
+    /// Deny every in-flight consent prompt (hard cancel or steer).
+    pub fn deny_all_pending(&self) {
+        consent::deny_all_pending(&self.pending, &self.pending_metas);
     }
 
     /// Look up an active connector for command-driven calls (M4.4/M4.5).

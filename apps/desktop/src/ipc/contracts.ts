@@ -143,6 +143,12 @@ export interface CancelChatStreamRequest {
   conversationId?: string;
 }
 
+export interface SteerChatStreamRequest {
+  requestId: string;
+  conversationId?: string;
+  text: string;
+}
+
 export interface StreamHandle {
   requestId: string;
 }

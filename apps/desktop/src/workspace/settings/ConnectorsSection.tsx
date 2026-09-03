@@ -9,9 +9,12 @@ import {
   getConnectorRuntimeStates,
   listConnectorCapabilities,
   listConnectorGrants,
+  listToolApprovalMemory,
   revokeConnectorGrant,
+  revokeToolApprovalMemory,
   startConnector,
   stopConnector,
+  type ToolApprovalMemoryRow,
 } from '../../ipc/client';
 
 /** Compact health/support → label mapping for the settings list. */
@@ -42,6 +45,13 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
   const [args, setArgs] = useState('');
   const [env, setEnv] = useState('');
   const [consentCopy, setConsentCopy] = useState('');
+  const [approvals, setApprovals] = useState<ToolApprovalMemoryRow[]>([]);
+
+  const refreshApprovals = () => {
+    void listToolApprovalMemory()
+      .then(setApprovals)
+      .catch(() => setApprovals([]));
+  };
 
   const refresh = () => {
     void (async () => {
@@ -63,6 +73,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
         setCapabilities({});
       }
     })();
+    refreshApprovals();
   };
 
   useEffect(() => {
@@ -241,6 +252,52 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <button className="btn primary" type="button" onClick={() => void handleAdd()}>Add local connector</button>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <div className="section-label" style={{ marginBottom: 8 }}>Remembered tool approvals</div>
+          {approvals.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-3)' }}>
+              No always-allow or per-chat approvals yet.
+            </p>
+          ) : (
+            approvals.map((row) => {
+              const tool = row.toolKey.includes('::')
+                ? row.toolKey.slice(row.toolKey.indexOf('::') + 2)
+                : row.toolKey;
+              return (
+                <div
+                  key={row.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 6,
+                    fontSize: 12.5,
+                  }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b>{tool}</b>
+                    {' · '}
+                    {row.scope === 'always' ? 'always' : 'this chat'}
+                  </span>
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    style={{ padding: '4px 10px' }}
+                    onClick={() => {
+                      void (async () => {
+                        await revokeToolApprovalMemory(row.id);
+                        refreshApprovals();
+                        onStatus(`Forgot approval for ${tool}`);
+                      })();
+                    }}
+                  >
+                    Forget
+                  </button>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

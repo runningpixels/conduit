@@ -66,6 +66,7 @@ pub struct ToolCallRequest<'a> {
     pub request_id: &'a str,
     pub tool_name: &'a str,
     pub arguments: &'a serde_json::Value,
+    pub conversation_id: Option<&'a str>,
 }
 
 /// Orchestrate one MCP tool call end-to-end. See the module docs for the
@@ -122,6 +123,7 @@ pub async fn execute_tool_call(
             tool_call_id,
             tool_name,
             arguments,
+            req.conversation_id,
         )
         .await?;
     let decision = match requirement {

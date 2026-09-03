@@ -36,6 +36,8 @@ pub const CURRENT_TIME_TOOL: &str = "current_time";
 pub const UUID_TOOL: &str = "uuid";
 pub const RANDOM_TOOL: &str = "random";
 pub const CALCULATOR_TOOL: &str = "calculator";
+/// Mid-answer structured elicitation (t1-2). Handled specially by the agent loop.
+pub const ASK_USER_TOOL: &str = "ask_user";
 
 // Web tools (ReadOnly/SideEffectful, search-gated)
 pub const WEB_SEARCH_TOOL: &str = "web_search";
@@ -288,6 +290,37 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        ToolDefinition {
+            tool_id: ASK_USER_TOOL.to_string(),
+            name: ASK_USER_TOOL.to_string(),
+            description: "Ask the user a short structured question mid-turn (up to 4 fields). Provide `title` and `fields` (array of {id, prompt, type: text|choice, options?}). Wait for the user's answers before continuing.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string" },
+                    "fields": {
+                        "type": "array",
+                        "maxItems": 4,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": { "type": "string" },
+                                "prompt": { "type": "string" },
+                                "type": { "type": "string" },
+                                "options": { "type": "array", "items": { "type": "string" } }
+                            },
+                            "required": ["id", "prompt", "type"]
+                        }
+                    }
+                },
+                "required": ["title", "fields"]
+            }),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Utilities".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
         // ---------------------------------------------------------------------
         // Web tools (search-gated)
         // ---------------------------------------------------------------------
@@ -441,6 +474,7 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | UUID_TOOL
             | RANDOM_TOOL
             | CALCULATOR_TOOL
+            | ASK_USER_TOOL
             | WEB_SEARCH_TOOL
             | WEB_FETCH_TOOL
             | CLIPBOARD_READ_TOOL

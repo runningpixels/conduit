@@ -41,6 +41,7 @@ describe('deriveSuggestedPrompts', () => {
               status: 'completed',
             },
           ],
+          segments: [],
           searchSources: [],
           interrupted: false,
           streaming: false,

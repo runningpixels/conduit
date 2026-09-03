@@ -8,6 +8,7 @@ vi.mock('../ipc/client', () => ({
   exportArtifact: vi.fn(),
   getArtifactContentBytes: vi.fn(),
   revealPath: vi.fn(),
+  submitAskUser: vi.fn(),
 }));
 
 function streaming(over: Partial<AssistantStreamState> = {}): AssistantStreamState {
@@ -196,5 +197,135 @@ describe('AssistantMessage live tail', () => {
 
     expect(document.querySelectorAll('.streaming')).toHaveLength(0);
     expect(document.querySelector('.turn-live-tail')).toBeNull();
+  });
+});
+
+describe('AssistantMessage chronological timeline', () => {
+  const toolCall = (id: string, name: string): ToolCallState => ({
+    toolCallId: id,
+    toolId: name,
+    name,
+    argumentsText: '',
+    complete: true,
+    startedAt: 1,
+    endedAt: 2,
+    status: 'completed',
+  });
+
+  it('renders tool → final text in DOM order (not all prose then all tools)', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          streaming: false,
+          blocks: [
+            { blockId: 'block-0', blockKind: 'text', content: 'Hello, Ada.', citations: [] },
+          ],
+          toolCalls: [toolCall('c1', 'ask_user')],
+          askUser: undefined,
+          segments: [
+            { kind: 'tool', toolCallId: 'c1' },
+            { kind: 'text', blockId: 'block-0' },
+          ],
+        })}
+        provider="openai"
+      />,
+    );
+
+    const article = document.querySelector('article.turn.assistant');
+    expect(article).not.toBeNull();
+    const card = article!.querySelector('.tool');
+    const prose = article!.querySelector('.prose');
+    expect(card).not.toBeNull();
+    expect(prose).not.toBeNull();
+    expect(card!.compareDocumentPosition(prose!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(prose!.textContent).toContain('Hello, Ada.');
+  });
+
+  it('renders text → tool → text interleaved', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          streaming: false,
+          blocks: [
+            { blockId: 'block-0', blockKind: 'text', content: 'Let me ask.', citations: [] },
+            { blockId: 'block-0', blockKind: 'text', content: 'Thanks!', citations: [] },
+          ],
+          toolCalls: [toolCall('c1', 'current_time')],
+          segments: [
+            { kind: 'text', blockId: 'block-0' },
+            { kind: 'tool', toolCallId: 'c1' },
+            { kind: 'text', blockId: 'block-0' },
+          ],
+        })}
+        provider="openai"
+      />,
+    );
+
+    const article = document.querySelector('article.turn.assistant')!;
+    const nodes = [...article.querySelectorAll('.prose, .tool')];
+    expect(nodes).toHaveLength(3);
+    expect(nodes[0].classList.contains('prose')).toBe(true);
+    expect(nodes[0].textContent).toContain('Let me ask.');
+    expect(nodes[1].classList.contains('tool')).toBe(true);
+    expect(nodes[2].classList.contains('prose')).toBe(true);
+    expect(nodes[2].textContent).toContain('Thanks!');
+  });
+
+  it('keeps ask_user form before the final greeting text', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          streaming: false,
+          blocks: [
+            { blockId: 'block-0', blockKind: 'text', content: 'Nice to meet you, Ada.', citations: [] },
+          ],
+          toolCalls: [toolCall('c1', 'ask_user')],
+          askUser: {
+            toolCallId: 'c1',
+            title: 'Quick question',
+            fields: [{ id: 'name', prompt: 'Your name?', type: 'text', options: null }],
+          },
+          segments: [
+            { kind: 'tool', toolCallId: 'c1' },
+            { kind: 'askUser', toolCallId: 'c1' },
+            { kind: 'text', blockId: 'block-0' },
+          ],
+        })}
+        provider="openai"
+      />,
+    );
+
+    const article = document.querySelector('article.turn.assistant')!;
+    const ask = article.querySelector('.ask-user');
+    const prose = article.querySelector('.prose');
+    expect(ask).not.toBeNull();
+    expect(prose).not.toBeNull();
+    expect(ask!.compareDocumentPosition(prose!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('places the live tail after the timeline end, not above later cards', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          blocks: [
+            { blockId: 'b1', blockKind: 'text', content: 'Working…', citations: [] },
+          ],
+          toolCalls: [toolCall('c1', 'current_time')],
+          segments: [
+            { kind: 'text', blockId: 'b1' },
+            { kind: 'tool', toolCallId: 'c1' },
+          ],
+          agentPhase: inAgentLoop,
+        })}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+      />,
+    );
+
+    const tail = document.querySelector('.turn-live-tail');
+    const card = document.querySelector('.tool');
+    expect(tail).not.toBeNull();
+    expect(card).not.toBeNull();
+    expect(card!.compareDocumentPosition(tail!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

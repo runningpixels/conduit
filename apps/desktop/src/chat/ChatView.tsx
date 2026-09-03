@@ -3,6 +3,7 @@ import type { AppSettings, GenerationControls, MessageRole, ProviderRequest } fr
 import type { ProviderUsage } from '@conduit/config-schema';
 import {
   cancelChatStream,
+  steerChatStream,
   discoverConnector,
   getArtifact,
   getConnectorRuntimeStates,
@@ -98,6 +99,14 @@ import {
   informationalDeveloperPromptFor,
 } from './documentTurnIntent';
 import { CONDUIT_BRAND_SYSTEM_APPENDIX, looksLikeBrandThemeRequest } from './brandPrompt';
+import {
+  createQueuedMessage,
+  enqueue,
+  listFor,
+  remove,
+  shift,
+  type ConversationQueues,
+} from './messageQueue';
 import { allowUserBranding } from '../brand/buildFlags';
 import { appName } from '../brand';
 
@@ -462,6 +471,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [activeStream, setActiveStream] = useState<AssistantStreamState | null>(null);
+  const [messageQueues, setMessageQueues] = useState<ConversationQueues>({});
   const [threadLoading, setThreadLoading] = useState(false);
   const [stuckToBottom, setStuckToBottom] = useState(true);
   const [showJumpPill, setShowJumpPill] = useState(false);
@@ -498,7 +508,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const stuckRef = useRef(true);
   const stickPrefRef = useRef<Record<string, boolean>>({});
   const currentConversationIdRef = useRef<string | null>(conversationId);
-  const activeRequestRef = useRef<{ requestId: string; conversationId: string } | null>(null);
+  const activeRequestRef = useRef<{ requestId: string; conversationId: string; isAgent: boolean } | null>(null);
   // Synchronous source of truth for the active stream's state. The `activeStream`
   // state mirrors it for render, but is updated by React async (and the ref that
   // synced to it via `useEffect` only caught up after paint — so the finally
@@ -512,7 +522,52 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   onPendingSendConsumedRef.current = onPendingSendConsumed;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
+  const messageQueuesRef = useRef(messageQueues);
+  messageQueuesRef.current = messageQueues;
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
+  /** When true, the in-flight handleSend finally must not auto-drain (Send now). */
+  const skipNextDrainRef = useRef(false);
   const [agentPhase, setAgentPhase] = useState<AssistantStreamState['agentPhase']>(undefined);
+
+  const queuedForConversation = listFor(messageQueues, conversationId);
+
+  function enqueueFollowUp(text: string, attachments?: TurnAttachment[]) {
+    if (!conversationId) return;
+    const item = createQueuedMessage(text, attachments);
+    setMessageQueues((current) => {
+      const next = enqueue(current, conversationId, item);
+      messageQueuesRef.current = next;
+      return next;
+    });
+    setPrompt('');
+    const count = listFor(messageQueuesRef.current, conversationId).length;
+    onStatus(makeStatus(`Queued follow-up (${count})`, 'success', 'chat'));
+  }
+
+  function removeQueued(id: string) {
+    if (!conversationId) return;
+    setMessageQueues((current) => {
+      const next = remove(current, conversationId, id);
+      messageQueuesRef.current = next;
+      return next;
+    });
+  }
+
+  /** After a turn settles, send the next queued follow-up (FIFO, one at a time). */
+  function maybeDrainNext(forConversationId: string) {
+    if (currentConversationIdRef.current !== forConversationId) return;
+    if (activeRequestRef.current) return;
+    const { queues: nextQueues, item } = shift(messageQueuesRef.current, forConversationId);
+    if (!item) return;
+    messageQueuesRef.current = nextQueues;
+    setMessageQueues(nextQueues);
+    void handleSend({
+      text: item.text,
+      history: turnsRef.current,
+      attachments: item.attachments,
+    });
+  }
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId;
@@ -799,7 +854,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   ) {
     const trimmed = (override?.text ?? prompt).trim();
     const attachments = override?.attachments ?? composerAttachments ?? [];
-    if ((!trimmed && attachments.length === 0) || activeRequestId || !conversationId) return;
+    if ((!trimmed && attachments.length === 0) || !conversationId) return;
+
+    // t1-2 M1: while a turn is in flight, enqueue instead of starting another stream.
+    // Use the ref (synchronous) so a just-finished turn's stale React state does
+    // not block the FIFO drain that runs from `finally`.
+    if (activeRequestRef.current) {
+      if (override) {
+        // Programmatic send (queue drain / autoSend) must not re-enqueue.
+        return;
+      }
+      enqueueFollowUp(trimmed, attachments.length > 0 ? attachments : undefined);
+      return;
+    }
 
     const userTurn: ChatTurn = {
       id: crypto.randomUUID(),
@@ -860,6 +927,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     activeRequestRef.current = {
       requestId: request.requestId,
       conversationId,
+      isAgent: toolDefinitions.length > 0,
     };
     streamStateRef.current = initialStream;
     setActiveRequestId(request.requestId);
@@ -1060,6 +1128,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       }
       providerToolByCallIdRef.current = {};
       pendingRuntimeCallsRef.current = new Set();
+      // t1-2 M1: drain the next queued follow-up after the turn settles.
+      if (skipNextDrainRef.current) {
+        skipNextDrainRef.current = false;
+      } else {
+        window.setTimeout(() => maybeDrainNext(conversationId), 0);
+      }
     }
   }
 
@@ -1094,6 +1168,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       /* ignore */
     }
     onStatus(makeStatus('Stream cancelled', 'success', 'chat'));
+    // Cancelled turns do not auto-drain: the user stopped on purpose. Queued
+    // follow-ups stay until they send again or hit Send now / remove.
   }
 
   useImperativeHandle(ref, () => ({
@@ -1649,6 +1725,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   onDelete={() => void handleRemoveLastAssistantTurn()}
                   onCopy={() => void handleCopyText(turn.content)}
                   onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                  conversationId={conversationId}
                 />
               );
             }
@@ -1723,11 +1800,31 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           })}
           {activeStream && (
             <AssistantMessage
-              state={{ ...activeStream, agentPhase: agentPhase ?? activeStream.agentPhase }}
+              state={{
+                ...activeStream,
+                agentPhase: (() => {
+                  const base = agentPhase ?? activeStream.agentPhase;
+                  if (queuedForConversation.length === 0 || !base) {
+                    return queuedForConversation.length > 0
+                      ? {
+                          label: `${queuedForConversation.length} queued`,
+                          round: 0,
+                          totalRounds: 0,
+                          subPhase: 'thinking',
+                        }
+                      : base;
+                  }
+                  return {
+                    ...base,
+                    label: `${base.label} · ${queuedForConversation.length} queued`,
+                  };
+                })(),
+              }}
               provider={liveTurnInfo.provider}
               modelId={liveTurnInfo.model}
               switchedFrom={liveTurnInfo.switchedFrom}
               showModelLine={liveTurnInfo.showModelLine}
+              conversationId={conversationId}
             />
           )}
         </div>
@@ -1758,6 +1855,51 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onSend={(attachments) => void handleSend(undefined, attachments)}
         onStop={() => void handleCancel()}
         streaming={activeRequestId != null}
+        queuedMessages={queuedForConversation}
+        onRemoveQueued={removeQueued}
+        onSendQueuedNow={(id) => {
+          // Steer wins: interrupt the in-flight agent iteration and inject this
+          // text; remaining queue stays. Non-agent streams cancel + resend.
+          if (!conversationId) return;
+          const item = listFor(messageQueuesRef.current, conversationId).find((q) => q.id === id);
+          if (!item) return;
+          setMessageQueues((current) => {
+            const next = remove(current, conversationId, id);
+            messageQueuesRef.current = next;
+            return next;
+          });
+          void (async () => {
+            const active = activeRequestRef.current;
+            if (active?.isAgent) {
+              try {
+                await steerChatStream({
+                  requestId: active.requestId,
+                  conversationId,
+                  text: item.text,
+                });
+                onStatus(makeStatus('Steering…', 'active', 'chat'));
+                return;
+              } catch (error) {
+                onStatus(
+                  makeStatus(
+                    error instanceof Error ? error.message : 'Steer failed',
+                    'error',
+                    'chat',
+                  ),
+                );
+              }
+            }
+            if (activeRequestRef.current) {
+              skipNextDrainRef.current = true;
+              await handleCancel();
+            }
+            await handleSend({
+              text: item.text,
+              history: turnsRef.current,
+              attachments: item.attachments,
+            });
+          })();
+        }}
         webSearchOn={webSearchOn}
         onWebSearchToggle={handleWebSearchToggle}
         workspaceRoot={conversationWorkspaceRoot}

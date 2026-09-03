@@ -230,6 +230,7 @@ pub async fn invoke_connector_tool(
             request_id: &request_id,
             tool_name: &tool_name,
             arguments: &arguments,
+            conversation_id: None,
         };
         let _ = execution::execute_tool_call(&state, &mgr, &req, &sink).await;
     });
@@ -245,10 +246,34 @@ pub async fn invoke_connector_tool(
 
 #[tauri::command]
 pub async fn approve_connector_tool_call(
+    state: State<'_, AppState>,
     runtime: State<'_, ConnectorRuntimeManager>,
     tool_call_id: String,
+    remember: Option<String>,
+    conversation_id: Option<String>,
 ) -> Result<(), String> {
-    runtime.resolve_consent(&tool_call_id, ConsentDecision::Approved)
+    let meta = runtime.resolve_consent(&tool_call_id, ConsentDecision::Approved)?;
+    if let (Some(scope_str), Some(meta)) = (remember.as_deref(), meta) {
+        use crate::db::repository::tool_approval_memory::{self, ApprovalScope};
+        use mcp_runtime::protocol::PermissionLevel;
+        // Sensitive tools are never rememberable.
+        if matches!(meta.permission_level, PermissionLevel::Sensitive) {
+            return Ok(());
+        }
+        let scope = ApprovalScope::parse(scope_str).map_err(|e| e.to_string())?;
+        let cid = conversation_id
+            .or(meta.conversation_id.clone())
+            .filter(|s| !s.trim().is_empty());
+        let _ = tool_approval_memory::remember(
+            &state.db,
+            &meta.connector_version_id,
+            &meta.tool_name,
+            scope,
+            cid.as_deref(),
+        )
+        .await;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -256,7 +281,27 @@ pub async fn deny_connector_tool_call(
     runtime: State<'_, ConnectorRuntimeManager>,
     tool_call_id: String,
 ) -> Result<(), String> {
-    runtime.resolve_consent(&tool_call_id, ConsentDecision::Denied)
+    let _ = runtime.resolve_consent(&tool_call_id, ConsentDecision::Denied)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_tool_approval_memory(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::db::repository::tool_approval_memory::ApprovalMemoryRow>, String> {
+    crate::db::repository::tool_approval_memory::list_all(&state.db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn revoke_tool_approval_memory(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool, String> {
+    crate::db::repository::tool_approval_memory::revoke(&state.db, &id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import type {
   Attachment,
   BrandConfig,
   CancelChatStreamRequest,
+  SteerChatStreamRequest,
   ConnectorCapability,
   ConnectorDefinition,
   ConnectorGrant,
@@ -279,6 +280,19 @@ export async function startChatStream(
 
 export async function cancelChatStream(request: CancelChatStreamRequest): Promise<void> {
   await invoke('cancel_chat_stream', { request });
+}
+
+export async function steerChatStream(request: SteerChatStreamRequest): Promise<void> {
+  await invoke('steer_chat_stream', { request });
+}
+
+export async function submitAskUser(
+  toolCallId: string,
+  answers: Record<string, unknown>,
+): Promise<void> {
+  await invoke('submit_ask_user', {
+    request: { toolCallId, answers },
+  });
 }
 
 export async function getConversationMessages(conversationId: string): Promise<Message[]> {
@@ -567,12 +581,35 @@ export async function invokeConnectorTool(
   return invoke<StreamHandle>('invoke_connector_tool', { request, channel });
 }
 
-export async function approveConnectorToolCall(toolCallId: string): Promise<void> {
-  await invoke('approve_connector_tool_call', { toolCallId });
+export async function approveConnectorToolCall(
+  toolCallId: string,
+  options?: { remember?: 'conversation' | 'always'; conversationId?: string },
+): Promise<void> {
+  await invoke('approve_connector_tool_call', {
+    toolCallId,
+    remember: options?.remember ?? null,
+    conversationId: options?.conversationId ?? null,
+  });
 }
 
 export async function denyConnectorToolCall(toolCallId: string): Promise<void> {
   await invoke('deny_connector_tool_call', { toolCallId });
+}
+
+export interface ToolApprovalMemoryRow {
+  id: string;
+  toolKey: string;
+  scope: string;
+  conversationId: string | null;
+  createdAt: string;
+}
+
+export async function listToolApprovalMemory(): Promise<ToolApprovalMemoryRow[]> {
+  return invoke<ToolApprovalMemoryRow[]>('list_tool_approval_memory');
+}
+
+export async function revokeToolApprovalMemory(id: string): Promise<boolean> {
+  return invoke<boolean>('revoke_tool_approval_memory', { id });
 }
 
 export async function revokeConnectorGrant(

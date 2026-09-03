@@ -29,26 +29,43 @@ pub struct ConversationCompaction {
     pub token_estimate_after: i64,
 }
 
+/// Columns for insert (id/created_at assigned here).
+pub struct NewConversationCompaction<'a> {
+    pub conversation_id: &'a str,
+    pub summary_text: &'a str,
+    pub through_message_id: &'a str,
+    pub kept_from_message_id: &'a str,
+    pub model_id: &'a str,
+    pub token_estimate_before: i64,
+    pub token_estimate_after: i64,
+}
+
+type CompactionRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    i64,
+);
+
 pub async fn insert(
     pool: &SqlitePool,
-    conversation_id: &str,
-    summary_text: &str,
-    through_message_id: &str,
-    kept_from_message_id: &str,
-    model_id: &str,
-    token_estimate_before: i64,
-    token_estimate_after: i64,
+    new: NewConversationCompaction<'_>,
 ) -> Result<ConversationCompaction, CompactionError> {
     let row = ConversationCompaction {
         id: Uuid::new_v4().to_string(),
-        conversation_id: conversation_id.to_string(),
+        conversation_id: new.conversation_id.to_string(),
         created_at: now_iso8601(),
-        summary_text: summary_text.to_string(),
-        through_message_id: through_message_id.to_string(),
-        kept_from_message_id: kept_from_message_id.to_string(),
-        model_id: model_id.to_string(),
-        token_estimate_before,
-        token_estimate_after,
+        summary_text: new.summary_text.to_string(),
+        through_message_id: new.through_message_id.to_string(),
+        kept_from_message_id: new.kept_from_message_id.to_string(),
+        model_id: new.model_id.to_string(),
+        token_estimate_before: new.token_estimate_before,
+        token_estimate_after: new.token_estimate_after,
     };
     sqlx::query(
         "INSERT INTO conversation_compactions \
@@ -75,17 +92,7 @@ pub async fn latest_for_conversation(
     pool: &SqlitePool,
     conversation_id: &str,
 ) -> Result<Option<ConversationCompaction>, CompactionError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        i64,
-        i64,
-    )> = sqlx::query_as(
+    let row: Option<CompactionRow> = sqlx::query_as(
         "SELECT id, conversation_id, created_at, summary_text, through_message_id, \
                 kept_from_message_id, model_id, token_estimate_before, token_estimate_after \
          FROM conversation_compactions \

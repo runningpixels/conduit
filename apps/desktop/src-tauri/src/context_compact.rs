@@ -294,13 +294,15 @@ pub async fn compact_conversation(
 
     let row = compactions::insert(
         &state.db,
-        conversation_id,
-        &summary,
-        &through_message_id,
-        &kept_from_message_id,
-        &model_id,
-        before,
-        after,
+        crate::db::repository::compactions::NewConversationCompaction {
+            conversation_id,
+            summary_text: &summary,
+            through_message_id: &through_message_id,
+            kept_from_message_id: &kept_from_message_id,
+            model_id: &model_id,
+            token_estimate_before: before,
+            token_estimate_after: after,
+        },
     )
     .await
     .map_err(|e| e.to_string())?;

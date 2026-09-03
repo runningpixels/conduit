@@ -12,26 +12,30 @@ async fn insert_and_load_latest_compaction() {
 
     let first = compactions::insert(
         &pool,
-        &conv.id,
-        "First summary",
-        "msg-kept-1",
-        "msg-kept-1",
-        "claude-sonnet-4",
-        10_000,
-        2_000,
+        compactions::NewConversationCompaction {
+            conversation_id: &conv.id,
+            summary_text: "First summary",
+            through_message_id: "msg-kept-1",
+            kept_from_message_id: "msg-kept-1",
+            model_id: "claude-sonnet-4",
+            token_estimate_before: 10_000,
+            token_estimate_after: 2_000,
+        },
     )
     .await
     .expect("insert first");
 
     let second = compactions::insert(
         &pool,
-        &conv.id,
-        "Second summary",
-        "msg-kept-2",
-        "msg-kept-2",
-        "claude-sonnet-4",
-        12_000,
-        2_500,
+        compactions::NewConversationCompaction {
+            conversation_id: &conv.id,
+            summary_text: "Second summary",
+            through_message_id: "msg-kept-2",
+            kept_from_message_id: "msg-kept-2",
+            model_id: "claude-sonnet-4",
+            token_estimate_before: 12_000,
+            token_estimate_after: 2_500,
+        },
     )
     .await
     .expect("insert second");

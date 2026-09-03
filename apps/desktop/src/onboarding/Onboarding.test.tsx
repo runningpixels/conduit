@@ -35,6 +35,8 @@ vi.mock('../ipc/client', () => ({
   stopConnector: vi.fn().mockResolvedValue(undefined),
   revokeConnectorGrant: vi.fn().mockResolvedValue(undefined),
   addLocalConnector: vi.fn().mockResolvedValue({ connectorId: 'c1', connectorVersionId: 'v1' }),
+  listToolApprovalMemory: vi.fn().mockResolvedValue([]),
+  revokeToolApprovalMemory: vi.fn().mockResolvedValue(true),
 }));
 
 import { getOnboardingState, updateSettings } from '../ipc/client';

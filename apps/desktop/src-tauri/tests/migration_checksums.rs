@@ -83,6 +83,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "6bbb6f2dc887321b0e0875e6f8d1bd39bd287b0ea377d2c4cc0b1d3b11769572325d078691ff1b8b65166f7917b29483",
         "conversation organization",
     ),
+    (
+        13,
+        "351870e76f9761798e784dc0386fa49062579948d1b2ed6c94e4945be3b73b076417f7c8f3686f2f3e43a8d6460f5eb5",
+        "tool approval memory",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

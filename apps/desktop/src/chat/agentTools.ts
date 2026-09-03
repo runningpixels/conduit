@@ -213,6 +213,35 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     permissionLevel: 'readOnly',
     displayGroup: 'Utilities',
   },
+  {
+    toolId: 'ask_user',
+    name: 'ask_user',
+    description:
+      'Ask the user a short structured question mid-turn (up to 4 fields). Provide `title` and `fields` (array of {id, prompt, type: text|choice, options?}). Wait for the user\'s answers before continuing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        fields: {
+          type: 'array',
+          maxItems: 4,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              prompt: { type: 'string' },
+              type: { type: 'string' },
+              options: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['id', 'prompt', 'type'],
+          },
+        },
+      },
+      required: ['title', 'fields'],
+    },
+    permissionLevel: 'readOnly',
+    displayGroup: 'Utilities',
+  },
   // ---------------------------------------------------------------------------
   // Web tools (search-gated)
   // ---------------------------------------------------------------------------
@@ -390,7 +419,7 @@ export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
   return 'text';
 }
 
-const UTILITY_TOOL_NAMES = new Set(['current_time', 'uuid', 'random', 'calculator']);
+const UTILITY_TOOL_NAMES = new Set(['current_time', 'uuid', 'random', 'calculator', 'ask_user']);
 const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch']);
 const WORKSPACE_TOOL_GROUP = 'Workspace';
 

@@ -39,6 +39,19 @@ pub enum ConsentRequirement {
 /// matching channel.
 pub type PendingConsents = Arc<StdMutex<HashMap<String, oneshot::Sender<ConsentDecision>>>>;
 
+/// Context needed to persist approval memory when the user approves with
+/// "remember" (t1-2 M3).
+#[derive(Debug, Clone)]
+pub struct PendingConsentMeta {
+    pub connector_version_id: String,
+    pub tool_name: String,
+    pub conversation_id: Option<String>,
+    /// Live classification — Sensitive must never be remembered.
+    pub permission_level: PermissionLevel,
+}
+
+pub type PendingConsentMetas = Arc<StdMutex<HashMap<String, PendingConsentMeta>>>;
+
 /// Look up a tool's live declaration on a running connector.
 pub async fn classify_live(
     active: &Arc<ActiveConnector>,
@@ -94,21 +107,30 @@ pub fn build_prompt_with_def(
 /// Classify a tool call and either return `Auto` or register a pending
 /// consent (storing the oneshot sender in `pending`) and return the prompt +
 /// receiver. The caller awaits the receiver; `resolve_consent` fulfills it.
+///
+/// When `remembered` is true and the live level is not Sensitive, Auto is
+/// returned even for SideEffectful tools (approval memory, t1-2 M3).
+#[allow(clippy::too_many_arguments)]
 pub async fn request_consent(
     active: &Arc<ActiveConnector>,
     pending: &PendingConsents,
+    metas: &PendingConsentMetas,
     version: &conn_repo::ConnectorVersion,
     definition: &conn_repo::ConnectorDefinition,
     tool_call_id: &str,
     tool_name: &str,
     arguments: &serde_json::Value,
+    conversation_id: Option<&str>,
+    remembered: bool,
 ) -> Result<ConsentRequirement, McpError> {
     let tool = classify_live(active, tool_name).await?;
     let decision = classify(&tool);
+    let level = decision.level;
+    // Sensitive is never auto-from-memory.
+    let skip_prompt = remembered && !matches!(level, PermissionLevel::Sensitive);
     match decision.required {
-        ConsentKind::Auto => Ok(ConsentRequirement::Auto {
-            level: decision.level,
-        }),
+        ConsentKind::Auto => Ok(ConsentRequirement::Auto { level }),
+        ConsentKind::Prompt if skip_prompt => Ok(ConsentRequirement::Auto { level }),
         ConsentKind::Prompt => {
             let prompt = build_prompt_with_def(
                 &definition.name,
@@ -121,6 +143,17 @@ pub async fn request_consent(
             let (tx, rx) = oneshot::channel();
             if let Ok(mut g) = pending.lock() {
                 g.insert(tool_call_id.to_string(), tx);
+            }
+            if let Ok(mut g) = metas.lock() {
+                g.insert(
+                    tool_call_id.to_string(),
+                    PendingConsentMeta {
+                        connector_version_id: version.id.clone(),
+                        tool_name: tool_name.to_string(),
+                        conversation_id: conversation_id.map(|s| s.to_string()),
+                        permission_level: level,
+                    },
+                );
             }
             Ok(ConsentRequirement::Prompt {
                 prompt: Box::new(prompt),
@@ -135,18 +168,43 @@ pub async fn request_consent(
 /// resolved, or the tool call never required consent).
 pub fn resolve_consent(
     pending: &PendingConsents,
+    metas: &PendingConsentMetas,
     tool_call_id: &str,
     decision: ConsentDecision,
-) -> Result<(), String> {
+) -> Result<Option<PendingConsentMeta>, String> {
+    let meta = metas
+        .lock()
+        .map_err(|_| "consent meta lock poisoned".to_string())?
+        .remove(tool_call_id);
     let tx = pending
         .lock()
         .map_err(|_| "consent registry lock poisoned".to_string())?
         .remove(tool_call_id);
     match tx {
-        Some(tx) => tx
-            .send(decision)
-            .map_err(|_| "consent request was dropped before the decision arrived".to_string()),
+        Some(tx) => {
+            tx.send(decision).map_err(|_| {
+                "consent request was dropped before the decision arrived".to_string()
+            })?;
+            Ok(meta)
+        }
         None => Err("no pending consent for this tool call".to_string()),
+    }
+}
+
+/// Drop every pending consent as Denied (cancel / steer). Best-effort — a
+/// dropped oneshot is the same outcome the waiter sees as cancellation.
+pub fn deny_all_pending(pending: &PendingConsents, metas: &PendingConsentMetas) {
+    if let Ok(mut g) = metas.lock() {
+        g.clear();
+    }
+    let Ok(mut guard) = pending.lock() else {
+        return;
+    };
+    let pending_ids: Vec<String> = guard.keys().cloned().collect();
+    for id in pending_ids {
+        if let Some(tx) = guard.remove(&id) {
+            let _ = tx.send(ConsentDecision::Denied);
+        }
     }
 }
 
@@ -199,11 +257,12 @@ mod tests {
     #[test]
     fn resolve_round_trips_a_decision() {
         let pending: PendingConsents = Arc::new(StdMutex::new(HashMap::new()));
+        let metas: PendingConsentMetas = Arc::new(StdMutex::new(HashMap::new()));
         let (tx, mut rx) = oneshot::channel();
         pending.lock().unwrap().insert("tc".into(), tx);
-        resolve_consent(&pending, "tc", ConsentDecision::Approved).unwrap();
+        resolve_consent(&pending, &metas, "tc", ConsentDecision::Approved).unwrap();
         assert_eq!(rx.try_recv().unwrap(), ConsentDecision::Approved);
         // Second resolve fails (already resolved).
-        assert!(resolve_consent(&pending, "tc", ConsentDecision::Denied).is_err());
+        assert!(resolve_consent(&pending, &metas, "tc", ConsentDecision::Denied).is_err());
     }
 }

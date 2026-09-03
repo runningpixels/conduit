@@ -18,5 +18,6 @@ pub mod messages;
 pub mod prompts;
 pub mod search;
 pub mod tenant_cache;
+pub mod tool_approval_memory;
 pub mod tool_calls;
 pub mod usage_summary;

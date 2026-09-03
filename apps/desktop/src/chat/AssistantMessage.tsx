@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ChatProse } from './ChatProse';
 import { TurnModelLine } from './TurnModelLine';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import type { AssistantStreamState, ToolCallState } from './streamState';
+import type {
+  AssistantStreamState,
+  ContentBlockState,
+  ToolCallState,
+  TurnSegment,
+} from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
 import { CheckIcon, CopyIcon, ForkIcon, PencilIcon, TrashIcon } from '../icons';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ToolCallBlock } from './ToolCallBlock';
+import { AskUserBlock } from './AskUserBlock';
 import { SearchCallGroup } from './SearchCallGroup';
 import { isWebSearchToolCall } from './SearchCallBlock';
 import { UsageSummary } from './UsageSummary';
@@ -49,6 +55,8 @@ interface AssistantMessageProps {
   onDelete?: () => void;
   /// Copy this turn's text (wired from ChatView's clipboard handler).
   onCopy?: () => void;
+  /// Active conversation for approval-memory remember scopes.
+  conversationId?: string | null;
   /// Fork the conversation at this message.
   onFork?: () => void;
   /// Whether this is the last persisted turn (gates retry/delete affordances).
@@ -74,6 +82,144 @@ export function groupToolCalls(calls: ToolCallState[]): (ToolCallState | { group
     out.push(run.length > 1 ? { group: true, name: runName, calls: run } : run[0]);
   }
   return out;
+}
+
+/**
+ * Stale in-memory fixtures may lack `segments`. Synthesize the old bucket order
+ * so they still render; new streams always append segments as events arrive.
+ */
+export function synthesizeSegments(state: AssistantStreamState): TurnSegment[] {
+  if (state.segments.length > 0) return state.segments;
+
+  const useHostedSearchUi = state.searchBackend !== 'local';
+  const out: TurnSegment[] = [];
+  for (const block of state.reasoning) {
+    out.push({ kind: 'reasoning', blockId: block.blockId });
+  }
+  if (useHostedSearchUi) {
+    for (const tc of state.toolCalls) {
+      if (isWebSearchToolCall(tc)) out.push({ kind: 'tool', toolCallId: tc.toolCallId });
+    }
+  }
+  for (const block of state.blocks) {
+    out.push({ kind: 'text', blockId: block.blockId });
+  }
+  for (const tc of state.toolCalls) {
+    if (useHostedSearchUi && isWebSearchToolCall(tc)) continue;
+    out.push({ kind: 'tool', toolCallId: tc.toolCallId });
+  }
+  if (state.askUser) {
+    out.push({ kind: 'askUser', toolCallId: state.askUser.toolCallId });
+  }
+  return out;
+}
+
+/** Resolve the nth text/reasoning segment with a reused blockId to the matching array entry. */
+function resolveBlockByOrdinal(
+  blocks: ContentBlockState[],
+  blockId: string,
+  occurrence: number,
+): ContentBlockState | undefined {
+  let seen = 0;
+  for (const block of blocks) {
+    if (block.blockId !== blockId) continue;
+    if (seen === occurrence) return block;
+    seen += 1;
+  }
+  return undefined;
+}
+
+type TimelineItem =
+  | { kind: 'reasoning'; block: ContentBlockState; key: string }
+  | { kind: 'text'; block: ContentBlockState; key: string; blockIndex: number }
+  | { kind: 'tools'; calls: ToolCallState[]; key: string }
+  | { kind: 'askUser'; toolCallId: string; key: string };
+
+function buildTimelineItems(
+  state: AssistantStreamState,
+  segments: TurnSegment[],
+): TimelineItem[] {
+  const useHostedSearchUi = state.searchBackend !== 'local';
+  const items: TimelineItem[] = [];
+  const textOccurrence = new Map<string, number>();
+  const reasoningOccurrence = new Map<string, number>();
+
+  let i = 0;
+  while (i < segments.length) {
+    const seg = segments[i];
+    if (seg.kind === 'reasoning') {
+      const occ = reasoningOccurrence.get(seg.blockId) ?? 0;
+      reasoningOccurrence.set(seg.blockId, occ + 1);
+      const block = resolveBlockByOrdinal(state.reasoning, seg.blockId, occ);
+      if (block) {
+        items.push({ kind: 'reasoning', block, key: `reasoning-${seg.blockId}-${occ}` });
+      }
+      i += 1;
+      continue;
+    }
+    if (seg.kind === 'text') {
+      const occ = textOccurrence.get(seg.blockId) ?? 0;
+      textOccurrence.set(seg.blockId, occ + 1);
+      const block = resolveBlockByOrdinal(state.blocks, seg.blockId, occ);
+      if (block) {
+        const blockIndex = state.blocks.indexOf(block);
+        items.push({
+          kind: 'text',
+          block,
+          key: `text-${seg.blockId}-${occ}`,
+          blockIndex,
+        });
+      }
+      i += 1;
+      continue;
+    }
+    if (seg.kind === 'askUser') {
+      items.push({ kind: 'askUser', toolCallId: seg.toolCallId, key: `ask-${seg.toolCallId}` });
+      i += 1;
+      continue;
+    }
+
+    // Coalesce consecutive tool segments the same way groupToolCalls would.
+    const run: ToolCallState[] = [];
+    let runName = '';
+    let runIsHostedSearch = false;
+    while (i < segments.length && segments[i].kind === 'tool') {
+      const toolSeg = segments[i] as Extract<TurnSegment, { kind: 'tool' }>;
+      const tc = state.toolCalls.find((c) => c.toolCallId === toolSeg.toolCallId);
+      if (!tc) {
+        i += 1;
+        continue;
+      }
+      const hostedSearch = useHostedSearchUi && isWebSearchToolCall(tc);
+      if (run.length === 0) {
+        run.push(tc);
+        runName = tc.name;
+        runIsHostedSearch = hostedSearch;
+        i += 1;
+        continue;
+      }
+      // Hosted search groups with other hosted search; ordinary tools group by name.
+      if (runIsHostedSearch && hostedSearch) {
+        run.push(tc);
+        i += 1;
+        continue;
+      }
+      if (!runIsHostedSearch && !hostedSearch && tc.name === runName) {
+        run.push(tc);
+        i += 1;
+        continue;
+      }
+      break;
+    }
+    if (run.length > 0) {
+      items.push({
+        kind: 'tools',
+        calls: run,
+        key: `tools-${run.map((c) => c.toolCallId).join('-')}`,
+      });
+    }
+  }
+  return items;
 }
 
 /** P3.9 — live elapsed-time counter for the streaming header. */
@@ -118,29 +264,31 @@ export function AssistantMessage({
   onCopy,
   onFork,
   isLast = true,
+  conversationId = null,
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
   const text = state.blocks.map((b) => b.content).join('');
-  // SearchCallGroup is for provider-hosted search only. Local DuckDuckGo
-  // web_search renders as an ordinary ToolCallBlock with JSON results.
   const useHostedSearchUi = state.searchBackend !== 'local';
-  const webSearchCalls = useHostedSearchUi
-    ? state.toolCalls.filter(isWebSearchToolCall)
-    : [];
-  const otherToolCalls = useHostedSearchUi
-    ? state.toolCalls.filter((tc) => !isWebSearchToolCall(tc))
-    : state.toolCalls;
-  const grouped = groupToolCalls(otherToolCalls);
+  const segments = useMemo(() => synthesizeSegments(state), [state]);
+  const timeline = useMemo(() => buildTimelineItems(state, segments), [state, segments]);
   const elapsed = useLiveElapsed(state.streaming);
   const tokenCount = Math.round(text.length / 4);
 
-  // The caret belongs to whatever is last in the turn. It rides the end of the
-  // prose in the common no-tool case, and moves down to the live tail as soon
-  // as tool cards render below the text — otherwise the cursor would sit above
-  // content that is still arriving. Only the *last* block ever gets it; passing
-  // `streaming` to every block drew one caret per block.
   const producingText = state.blocks.some((b) => b.content.length > 0);
-  const proseCaretVisible = state.streaming && producingText && grouped.length === 0;
+
+  // Caret on the last text item only when nothing follows it on the timeline
+  // (no later tools / ask_user / more text). Otherwise the live tail carries it.
+  const lastTextItemIndex = (() => {
+    for (let i = timeline.length - 1; i >= 0; i -= 1) {
+      if (timeline[i].kind === 'text') return i;
+    }
+    return -1;
+  })();
+  const proseCaretVisible =
+    state.streaming &&
+    producingText &&
+    lastTextItemIndex >= 0 &&
+    lastTextItemIndex === timeline.length - 1;
 
   // Artifacts already shown as a card inside the message body. Without this the
   // same artifact appears twice in one turn — once where it was produced and
@@ -162,6 +310,104 @@ export function AssistantMessage({
   }
 
   const showActions = !!messageId && isLast && !state.streaming;
+
+  const body: ReactNode[] = [];
+  if (timeline.length === 0 && !producingText) {
+    body.push(
+      <ChatProse
+        key="empty-prose"
+        content={text}
+        streaming={false}
+        messageId={messageId}
+        artifacts={artifacts}
+        fileStateMap={fileStateMap}
+        onPromoteArtifact={onPromoteArtifact}
+        onOpenArtifact={onOpenArtifact}
+        onStatus={onStatus}
+      />,
+    );
+  }
+  for (let ti = 0; ti < timeline.length; ti += 1) {
+    const item = timeline[ti];
+    if (item.kind === 'reasoning') {
+      body.push(<ReasoningBlock key={item.key} block={item.block} />);
+      continue;
+    }
+    if (item.kind === 'text') {
+      body.push(
+        <ChatProse
+          key={item.key}
+          content={item.block.content}
+          citations={item.block.citations}
+          streaming={proseCaretVisible && ti === lastTextItemIndex}
+          messageId={messageId}
+          artifacts={artifacts}
+          fileStateMap={fileStateMap}
+          onPromoteArtifact={onPromoteArtifact}
+          onOpenArtifact={onOpenArtifact}
+          onStatus={onStatus}
+        />,
+      );
+      continue;
+    }
+    if (item.kind === 'askUser') {
+      if (state.askUser && state.askUser.toolCallId === item.toolCallId) {
+        body.push(
+          <AskUserBlock
+            key={item.key}
+            toolCallId={state.askUser.toolCallId}
+            title={state.askUser.title}
+            fields={state.askUser.fields}
+          />,
+        );
+      }
+      continue;
+    }
+    // tools
+    const hostedSearch = useHostedSearchUi && item.calls.every(isWebSearchToolCall);
+    if (hostedSearch) {
+      body.push(
+        <SearchCallGroup
+          key={item.key}
+          toolCalls={item.calls}
+          unavailable={state.searchUnavailable}
+          cost={state.searchCost}
+        />,
+      );
+    } else if (item.calls.length > 1) {
+      body.push(
+        <ToolCallBlock
+          key={item.key}
+          toolCall={item.calls[0]}
+          group={{ name: item.calls[0].name, calls: item.calls }}
+          conversationId={conversationId}
+        />,
+      );
+    } else {
+      body.push(
+        <ToolCallBlock
+          key={item.key}
+          toolCall={item.calls[0]}
+          conversationId={conversationId}
+        />,
+      );
+    }
+  }
+
+  // If ask_user is pending but missing from the timeline (stale edge case), show it last.
+  if (
+    state.askUser &&
+    !timeline.some((item) => item.kind === 'askUser' && item.toolCallId === state.askUser?.toolCallId)
+  ) {
+    body.push(
+      <AskUserBlock
+        key={`ask-fallback-${state.askUser.toolCallId}`}
+        toolCallId={state.askUser.toolCallId}
+        title={state.askUser.title}
+        fields={state.askUser.fields}
+      />,
+    );
+  }
 
   return (
     <article
@@ -193,54 +439,7 @@ export function AssistantMessage({
       )}
 
       <InterruptedBanner visible={state.interrupted} onRetry={showActions ? onRetry : undefined} />
-      {state.reasoning.map((block, i) => (
-        <ReasoningBlock key={`${block.blockId}-${i}`} block={block} />
-      ))}
-      {webSearchCalls.length > 0 && (
-        <SearchCallGroup
-          toolCalls={webSearchCalls}
-          unavailable={state.searchUnavailable}
-          cost={state.searchCost}
-        />
-      )}
-      {state.blocks.length > 0 ? (
-        state.blocks.map((block, i) => (
-          <ChatProse
-            key={`${block.blockId}-${i}`}
-            content={block.content}
-            citations={block.citations}
-            streaming={proseCaretVisible && i === state.blocks.length - 1}
-            messageId={messageId}
-            artifacts={artifacts}
-            fileStateMap={fileStateMap}
-            onPromoteArtifact={onPromoteArtifact}
-            onOpenArtifact={onOpenArtifact}
-            onStatus={onStatus}
-          />
-        ))
-      ) : (
-        <ChatProse
-          content={text}
-          streaming={proseCaretVisible}
-          messageId={messageId}
-          artifacts={artifacts}
-          fileStateMap={fileStateMap}
-          onPromoteArtifact={onPromoteArtifact}
-          onOpenArtifact={onOpenArtifact}
-          onStatus={onStatus}
-        />
-      )}
-      {grouped.map((entry, i) =>
-        'group' in entry ? (
-          <ToolCallBlock
-            key={`grp-${entry.name}-${i}`}
-            toolCall={entry.calls[0]}
-            group={{ name: entry.name, calls: entry.calls }}
-          />
-        ) : (
-          <ToolCallBlock key={entry.toolCallId} toolCall={entry} />
-        ),
-      )}
+      {body}
       {/* Live tail — the single "still working" affordance, always the last node
           of the turn. It used to sit above the prose and the tool cards, so new
           cards kept appearing *below* the cursor while the turn ran and the

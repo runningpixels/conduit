@@ -499,6 +499,7 @@ async fn consent_classification_timeout_is_reported() {
             "tc-timeout",
             "post_message",
             &json!({ "channel": "general", "text": "hello" }),
+            None,
         )
         .await
     {

@@ -689,6 +689,30 @@ pub enum ProviderEvent {
         #[ts(optional)]
         error: Option<String>,
     },
+    /// Mid-turn `ask_user` form (t1-2). Answers are user-authored, not tool output.
+    AskUserRequested {
+        request_id: String,
+        tool_call_id: String,
+        title: String,
+        fields: Vec<AskUserField>,
+    },
+}
+
+/// One field in an [`ProviderEvent::AskUserRequested`] form (max 4 per call).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/ask_user_field.ts"
+)]
+pub struct AskUserField {
+    pub id: String,
+    pub prompt: String,
+    /// `"text"` or `"choice"`.
+    #[serde(rename = "type")]
+    pub field_type: String,
+    #[ts(optional)]
+    pub options: Option<Vec<String>>,
 }
 
 /// Annotations attached to a `ContentBlock`. OpenAI's `url_citation` is the

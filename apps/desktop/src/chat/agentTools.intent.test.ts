@@ -43,7 +43,7 @@ describe('selectBuiltinDocumentTools', () => {
   });
 
   it('keeps the full catalog available for reference', () => {
-    // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools.
-    expect(builtinToolDefinitions()).toHaveLength(21);
+    // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user.
+    expect(builtinToolDefinitions()).toHaveLength(22);
   });
 });

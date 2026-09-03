@@ -11,17 +11,18 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, Artifact, ArtifactKind, Attachment, BrandBundle, BrandConfig,
-    BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime, BrandThemes, BrandUpdater,
-    ConnectorDefinition, ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision,
-    ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary, CredentialRequest,
-    CredentialSummary, GenerationControls, GrantScope, GrantStatus, KeychainMode, LicenseClaims,
-    LocalSearchBackend, Message, MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy,
-    PermissionLevel, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
-    ProviderUsage, ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel,
-    SearchContextSize, SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme,
-    ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UserLocation,
-    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
+    AgentGuardrails, AppSettings, Artifact, ArtifactKind, AskUserField, Attachment, BrandBundle,
+    BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime, BrandThemes,
+    BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion,
+    ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary,
+    CredentialRequest, CredentialSummary, GenerationControls, GrantScope, GrantStatus,
+    KeychainMode, LicenseClaims, LocalSearchBackend, Message, MessagePart, MessagePartKind,
+    MessageRole, ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig, ProviderError,
+    ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint, RetentionState,
+    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SupportState,
+    TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ToolDefinition, ToolKind, Transport, UserLocation, WebSearchDefaults, WebSearchFilters,
+    WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -41,6 +42,7 @@ fn main() {
     ProviderRequest::export().expect("export ProviderRequest");
     ProviderUsage::export().expect("export ProviderUsage");
     ProviderError::export().expect("export ProviderError");
+    AskUserField::export().expect("export AskUserField");
     ProviderEvent::export().expect("export ProviderEvent");
 
     // Agent web search (M-WebSearch).

@@ -10,6 +10,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Conversation pin, archive, and one-level folders in the history rail.
+- Agent run-control (t1-2): follow-up message queue while a turn runs, interrupt/steer
+  mid-loop, per-tool approval memory (this chat / always), and native `ask_user` forms.
 
 ## [0.1.0-rc.2] - 2026-09-02
 

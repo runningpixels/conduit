@@ -182,5 +182,6 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::AgentPhase { .. } => "agentPhase",
         ProviderEvent::ToolExecutionStarted { .. } => "toolExecutionStarted",
         ProviderEvent::ToolExecutionFinished { .. } => "toolExecutionFinished",
+        ProviderEvent::AskUserRequested { .. } => "askUserRequested",
     }
 }

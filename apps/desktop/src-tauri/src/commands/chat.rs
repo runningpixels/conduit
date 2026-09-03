@@ -122,8 +122,10 @@ pub async fn start_chat_stream(
 pub async fn cancel_chat_stream(
     state: State<'_, AppState>,
     stream_manager: State<'_, StreamManager>,
+    runtime: State<'_, ConnectorRuntimeManager>,
     request: CancelChatStreamRequest,
 ) -> Result<(), String> {
+    runtime.deny_all_pending();
     match stream_manager
         .cancel_stream(
             state.inner(),
@@ -135,6 +137,42 @@ pub async fn cancel_chat_stream(
         true => Ok(()),
         false => Err(format!("No active stream found for {}", request.request_id)),
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteerChatStreamRequest {
+    pub request_id: String,
+    pub conversation_id: Option<String>,
+    pub text: String,
+}
+
+/// Soft-interrupt an agent turn and inject a steering user message. The turn
+/// continues under the same canonical request id (t1-2).
+#[tauri::command]
+pub async fn steer_chat_stream(
+    stream_manager: State<'_, StreamManager>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    request: SteerChatStreamRequest,
+) -> Result<(), String> {
+    let _ = request.conversation_id;
+    runtime.deny_all_pending();
+    stream_manager.steer_stream(&request.request_id, request.text)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitAskUserRequest {
+    pub tool_call_id: String,
+    pub answers: serde_json::Value,
+}
+
+#[tauri::command]
+pub async fn submit_ask_user(
+    stream_manager: State<'_, StreamManager>,
+    request: SubmitAskUserRequest,
+) -> Result<(), String> {
+    stream_manager.submit_ask_user(&request.tool_call_id, request.answers)
 }
 
 #[tauri::command]

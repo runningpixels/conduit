@@ -36,6 +36,8 @@ pub const CURRENT_TIME_TOOL: &str = "current_time";
 pub const UUID_TOOL: &str = "uuid";
 pub const RANDOM_TOOL: &str = "random";
 pub const CALCULATOR_TOOL: &str = "calculator";
+/// Mid-answer structured elicitation (t1-2). Handled specially by the agent loop.
+pub const ASK_USER_TOOL: &str = "ask_user";
 
 // Web tools (ReadOnly/SideEffectful, search-gated)
 pub const WEB_SEARCH_TOOL: &str = "web_search";
@@ -288,6 +290,37 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        ToolDefinition {
+            tool_id: ASK_USER_TOOL.to_string(),
+            name: ASK_USER_TOOL.to_string(),
+            description: "Ask the user a short structured question mid-turn (up to 4 fields). Provide `title` and `fields` (array of {id, prompt, type: text|choice, options?}). Wait for the user's answers before continuing.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string" },
+                    "fields": {
+                        "type": "array",
+                        "maxItems": 4,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": { "type": "string" },
+                                "prompt": { "type": "string" },
+                                "type": { "type": "string" },
+                                "options": { "type": "array", "items": { "type": "string" } }
+                            },
+                            "required": ["id", "prompt", "type"]
+                        }
+                    }
+                },
+                "required": ["title", "fields"]
+            }),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Utilities".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
         // ---------------------------------------------------------------------
         // Web tools (search-gated)
         // ---------------------------------------------------------------------
@@ -441,6 +474,7 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | UUID_TOOL
             | RANDOM_TOOL
             | CALCULATOR_TOOL
+            | ASK_USER_TOOL
             | WEB_SEARCH_TOOL
             | WEB_FETCH_TOOL
             | CLIPBOARD_READ_TOOL
@@ -694,6 +728,12 @@ pub async fn execute_builtin_tool(
                 .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
             Ok(crate::workspace_tools::execute_workspace_grep(ws, input).unwrap_or_else(|e| e))
         }
+        // Handled by `StreamManager::execute_ask_user_tool` before this match runs;
+        // arm exists so TS/Rust parity treats ask_user as a known builtin.
+        ASK_USER_TOOL => Err(
+            "ask_user must be handled by the agent loop (StreamManager), not execute_builtin_tool"
+                .to_string(),
+        ),
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
 
@@ -1713,7 +1753,8 @@ mod tests {
         let defs = builtin_tool_definitions();
         // 7 original document tools + 8 utility/web/clipboard tools
         // + 1 write_brand_theme (Phase 4)
-        // + 5 workspace file tools = 21
-        assert_eq!(defs.len(), 21);
+        // + 5 workspace file tools
+        // + 1 ask_user (t1-2) = 22
+        assert_eq!(defs.len(), 22);
     }
 }

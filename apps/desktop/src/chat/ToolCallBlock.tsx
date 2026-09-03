@@ -17,6 +17,8 @@ interface ToolCallBlockProps {
   group?: { name: string; calls: ToolCallState[] };
   /** P3.4 — collapse completed calls by default; running calls auto-expand. */
   defaultCollapsed?: boolean;
+  /** Active conversation — used when remembering an approval for this chat. */
+  conversationId?: string | null;
 }
 
 function formatDuration(startedAt?: number, endedAt?: number, running = false): string {
@@ -61,8 +63,10 @@ export function ToolCallBlock({
   toolCall,
   group,
   defaultCollapsed = true,
+  conversationId = null,
 }: ToolCallBlockProps) {
   const [resolving, setResolving] = useState(false);
+  const [rememberScope, setRememberScope] = useState<'none' | 'conversation' | 'always'>('none');
   // Running calls (or a pending consent gate) start expanded; completed calls
   // start collapsed per `defaultCollapsed`.
   const isRunning = toolCall.status === 'running' || (!toolCall.complete && !toolCall.consent);
@@ -117,7 +121,10 @@ export function ToolCallBlock({
     setResolving(true);
     try {
       if (decision === 'approved') {
-        await approveConnectorToolCall(toolCall.toolCallId);
+        await approveConnectorToolCall(toolCall.toolCallId, {
+          remember: rememberScope === 'none' ? undefined : rememberScope,
+          conversationId: conversationId ?? undefined,
+        });
       } else {
         await denyConnectorToolCall(toolCall.toolCallId);
       }
@@ -277,6 +284,28 @@ export function ToolCallBlock({
                   {appName()} never runs a side-effecting tool without your approval. Tool output is
                   sandboxed and never re-injected into the prompt.
                 </p>
+                <div className="consent-remember">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={rememberScope === 'conversation'}
+                      disabled={resolving || !conversationId}
+                      onChange={(e) =>
+                        setRememberScope(e.target.checked ? 'conversation' : 'none')
+                      }
+                    />
+                    Remember for this chat
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={rememberScope === 'always'}
+                      disabled={resolving}
+                      onChange={(e) => setRememberScope(e.target.checked ? 'always' : 'none')}
+                    />
+                    Always allow this tool
+                  </label>
+                </div>
                 <div className="row">
                   <button
                     className="btn primary"

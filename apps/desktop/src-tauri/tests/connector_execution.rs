@@ -195,6 +195,7 @@ async fn auto_tool_runs_and_persists() {
         request_id: "req-1",
         tool_name: "echo",
         arguments: &json!({ "text": "hi there" }),
+        conversation_id: None,
     };
     let outcome = execute_tool_call(&state, &mgr, &req, &sink)
         .await
@@ -242,6 +243,7 @@ async fn side_effectful_tool_blocks_then_approves() {
             request_id: "req-2",
             tool_name: "post_message",
             arguments: &json!({ "channel": "general", "text": "hello" }),
+            conversation_id: None,
         };
         execute_tool_call(&state_for_task, &mgr_for_task, &req, &sink_for_task).await
     });
@@ -293,6 +295,7 @@ async fn denial_records_cancelled_and_does_not_invoke() {
             request_id: "req-3",
             tool_name: "post_message",
             arguments: &json!({ "channel": "general", "text": "hello" }),
+            conversation_id: None,
         };
         execute_tool_call(&state_for_task, &mgr_for_task, &req, &sink_for_task).await
     });
@@ -335,6 +338,7 @@ async fn oversized_output_fails() {
         request_id: "req-4",
         tool_name: "big",
         arguments: &json!({}),
+        conversation_id: None,
     };
     let res = execute_tool_call(&state, &mgr, &req, &sink).await;
 
@@ -375,6 +379,7 @@ async fn redaction_strips_secret_in_persisted_result() {
         request_id: "req-5",
         tool_name: "secret_leak",
         arguments: &json!({}),
+        conversation_id: None,
     };
     execute_tool_call(&state, &mgr, &req, &sink)
         .await
@@ -404,6 +409,7 @@ async fn unknown_tool_is_refused_before_invoke() {
         request_id: "req-6",
         tool_name: "does_not_exist",
         arguments: &json!({}),
+        conversation_id: None,
     };
     let res = execute_tool_call(&state, &mgr, &req, &sink).await;
     assert!(res.is_err());
@@ -460,6 +466,7 @@ async fn tool_output_not_reinjected_into_messages() {
         request_id: "req-7",
         tool_name: "echo",
         arguments: &json!({ "text": marker }),
+        conversation_id: None,
     };
     execute_tool_call(&state, &mgr, &req, &sink)
         .await

@@ -7,8 +7,8 @@ use futures::StreamExt;
 use mcp_runtime::validate_reinjection;
 use provider_core::{
     schema::{
-        ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent,
-        ProviderRequest, ToolCallRecord, ToolCallStatus,
+        AskUserField, ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind, MessageRole,
+        ProviderEvent, ProviderRequest, ToolCallRecord, ToolCallStatus,
     },
     AdapterContext, ModelInfo,
 };
@@ -93,6 +93,10 @@ pub struct RoundOutcome {
     /// use this instead of the full folded snapshot, which would re-inject
     /// earlier rounds after they share one persist identity.
     pub round_text: String,
+    /// True when the round stopped because its cancel token fired (hard cancel
+    /// or steer soft-interrupt). Not a provider error — the agent loop decides
+    /// whether to end the turn or inject a steering message.
+    pub aborted: bool,
 }
 
 /// Split completed tool calls into the ones this request declared and the ones
@@ -383,16 +387,21 @@ pub struct StreamHandle {
 
 pub(crate) struct ActiveStream {
     pub(crate) cancel: CancellationToken,
+    /// Soft interrupt channel for steer (t1-2). Hard cancel uses `cancel`.
+    pub(crate) steer_tx: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
 pub struct StreamManager {
     active: Arc<Mutex<HashMap<String, ActiveStream>>>,
+    /// Pending `ask_user` oneshots keyed by tool_call_id (t1-2).
+    ask_user_pending: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>>>,
 }
 
 impl StreamManager {
     pub fn new() -> Self {
         Self {
             active: Arc::new(Mutex::new(HashMap::new())),
+            ask_user_pending: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -574,9 +583,63 @@ impl StreamManager {
             // stability).
             let pool = state.db.clone();
             let _ = messages::mark_interrupted_by_request(&pool, request_id).await;
+            self.cancel_all_ask_user();
         }
 
         Ok(cancelled)
+    }
+
+    /// Soft-interrupt an in-flight agent turn and inject a steering message.
+    /// Does **not** mark the turn interrupted — the loop continues under the
+    /// same canonical `request_id`.
+    pub fn steer_stream(&self, request_id: &str, text: String) -> Result<(), String> {
+        let trimmed = text.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("steer text must not be empty".to_string());
+        }
+        let guard = self
+            .active
+            .lock()
+            .map_err(|_| "Stream lock poisoned".to_string())?;
+        let active = guard
+            .get(request_id)
+            .ok_or_else(|| format!("No active stream found for {request_id}"))?;
+        active
+            .steer_tx
+            .send(trimmed)
+            .map_err(|_| "steer channel closed".to_string())?;
+        // Drop any in-flight ask_user forms when steering.
+        drop(guard);
+        self.cancel_all_ask_user();
+        Ok(())
+    }
+
+    /// Resolve a pending `ask_user` form with the user's answers (JSON object).
+    pub fn submit_ask_user(
+        &self,
+        tool_call_id: &str,
+        answers: serde_json::Value,
+    ) -> Result<(), String> {
+        let tx = self
+            .ask_user_pending
+            .lock()
+            .map_err(|_| "ask_user lock poisoned".to_string())?
+            .remove(tool_call_id);
+        match tx {
+            Some(tx) => tx
+                .send(answers)
+                .map_err(|_| "ask_user request was dropped".to_string()),
+            None => Err("no pending ask_user for this tool call".to_string()),
+        }
+    }
+
+    /// Cancel every pending ask_user (hard cancel / steer).
+    pub fn cancel_all_ask_user(&self) {
+        if let Ok(mut g) = self.ask_user_pending.lock() {
+            for (_, tx) in g.drain() {
+                let _ = tx.send(serde_json::json!({ "cancelled": true }));
+            }
+        }
     }
 
     /// Registers a new active stream and returns the `CancellationToken` that
@@ -584,7 +647,24 @@ impl StreamManager {
     /// M1: the single cancellation authority — both real and mock streams
     /// register here.
     pub fn register_stream(&self, request_id: &str) -> Result<CancellationToken, String> {
+        let (cancel, _steer_rx) = self.register_stream_with_steer(request_id)?;
+        Ok(cancel)
+    }
+
+    /// Like [`Self::register_stream`], but also returns the steer receiver so
+    /// the agent loop can soft-interrupt and inject user text mid-turn.
+    pub fn register_stream_with_steer(
+        &self,
+        request_id: &str,
+    ) -> Result<
+        (
+            CancellationToken,
+            tokio::sync::mpsc::UnboundedReceiver<String>,
+        ),
+        String,
+    > {
         let cancel = CancellationToken::new();
+        let (steer_tx, steer_rx) = tokio::sync::mpsc::unbounded_channel();
         self.active
             .lock()
             .map_err(|_| "Stream lock poisoned".to_string())?
@@ -592,9 +672,10 @@ impl StreamManager {
                 request_id.to_string(),
                 ActiveStream {
                     cancel: cancel.clone(),
+                    steer_tx,
                 },
             );
-        Ok(cancel)
+        Ok((cancel, steer_rx))
     }
 
     /// Handle to the active-stream map, for spawned tasks that need to remove
@@ -713,7 +794,15 @@ impl StreamManager {
 
         futures::pin_mut!(stream);
         while let Some(event) = stream.next().await {
+            if cancel.is_cancelled() {
+                break;
+            }
             if let ProviderEvent::Error { error, .. } = &event {
+                // Cancelled transport surfaces as a non-retryable error; treat
+                // it as an abort rather than a turn-ending provider failure.
+                if cancel.is_cancelled() || error.message.contains("cancelled") {
+                    break;
+                }
                 warn!(
                     request_id = %request_id,
                     provider = %provider_id,
@@ -820,6 +909,7 @@ impl StreamManager {
             usage: round_usage,
             completion_event,
             round_text,
+            aborted: cancel.is_cancelled(),
         }
     }
 
@@ -845,6 +935,7 @@ impl StreamManager {
         successful_creates_so_far: &mut u32,
         web_search_so_far: &mut u32,
         web_fetch_so_far: &mut u32,
+        cancel: &CancellationToken,
     ) -> u32 {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -918,6 +1009,10 @@ impl StreamManager {
         let mut created_this_round = 0u32;
 
         for (idx, (call, action)) in calls.iter().zip(clamp_actions.iter()).enumerate() {
+            if cancel.is_cancelled() {
+                runtime.deny_all_pending();
+                break;
+            }
             let tool_name = if call.name.trim().is_empty() {
                 call.tool_id.clone().unwrap_or_default()
             } else {
@@ -990,6 +1085,68 @@ impl StreamManager {
             }
 
             if agent_tools::is_builtin_tool_name(&tool_name) {
+                if tool_name == agent_tools::ASK_USER_TOOL {
+                    let outcome = self
+                        .execute_ask_user_tool(
+                            state,
+                            &call.tool_call_id,
+                            request_id,
+                            &call.arguments,
+                            provider_channel,
+                            cancel,
+                        )
+                        .await;
+                    if let Some(channel) = runtime_channel {
+                        match &outcome {
+                            Ok(exec) => {
+                                let size = serde_json::to_vec(&exec.output)
+                                    .map(|bytes| bytes.len() as u64)
+                                    .unwrap_or(0);
+                                let _ = channel.send(ConnectorRuntimeEvent::ToolCallFinished {
+                                    tool_call_id: exec.record.id.clone(),
+                                    status: exec.record.status,
+                                    is_error: Some(exec.is_error),
+                                    size_bytes: size,
+                                    mime_hints: Vec::new(),
+                                    error: exec.record.error.clone(),
+                                });
+                            }
+                            Err(error) => {
+                                let _ = channel.send(ConnectorRuntimeEvent::ToolCallFinished {
+                                    tool_call_id: call.tool_call_id.clone(),
+                                    status: provider_core::schema::ToolCallStatus::Cancelled,
+                                    is_error: Some(true),
+                                    size_bytes: 0,
+                                    mime_hints: Vec::new(),
+                                    error: Some(error.clone()),
+                                });
+                            }
+                        }
+                    }
+                    if let Some(ch) = provider_channel {
+                        match outcome {
+                            Ok(exec) => {
+                                let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                                    request_id: request_id.to_string(),
+                                    tool_call_id: exec.record.id,
+                                    tool_name: tool_name.clone(),
+                                    is_error: exec.is_error,
+                                    error: exec.record.error,
+                                });
+                            }
+                            Err(error) => {
+                                let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                                    request_id: request_id.to_string(),
+                                    tool_call_id: call.tool_call_id.clone(),
+                                    tool_name: tool_name.clone(),
+                                    is_error: true,
+                                    error: Some(error),
+                                });
+                            }
+                        }
+                    }
+                    continue;
+                }
                 // Count toward per-turn web caps whether Instant Answer is empty
                 // or the call fails — each attempt burns a slot so binge-retries stop.
                 if tool_name == agent_tools::WEB_SEARCH_TOOL {
@@ -1091,6 +1248,7 @@ impl StreamManager {
                 request_id,
                 tool_name: &binding.tool_name,
                 arguments: &call.arguments,
+                conversation_id: Some(conversation_id),
             };
             let sink = sink
                 .clone()
@@ -1101,6 +1259,158 @@ impl StreamManager {
         }
 
         created_this_round
+    }
+
+    /// Pause the agent loop for a native `ask_user` form (t1-2).
+    async fn execute_ask_user_tool(
+        &self,
+        state: &AppState,
+        tool_call_id: &str,
+        request_id: &str,
+        arguments: &serde_json::Value,
+        provider_channel: Option<&Channel<ProviderEvent>>,
+        cancel: &CancellationToken,
+    ) -> Result<agent_tools::AgentToolExecution, String> {
+        let title = arguments
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Question")
+            .to_string();
+        let fields_val = arguments
+            .get("fields")
+            .cloned()
+            .unwrap_or(serde_json::json!([]));
+        let mut fields: Vec<AskUserField> = serde_json::from_value(fields_val).unwrap_or_default();
+        if fields.is_empty() {
+            return Err("ask_user requires at least one field".to_string());
+        }
+        if fields.len() > 4 {
+            fields.truncate(4);
+        }
+        for field in &mut fields {
+            if field.field_type != "text" && field.field_type != "choice" {
+                field.field_type = "text".to_string();
+            }
+        }
+
+        let pending = ToolCallRecord {
+            id: tool_call_id.to_string(),
+            tool_id: agent_tools::ASK_USER_TOOL.to_string(),
+            request_id: request_id.to_string(),
+            status: ToolCallStatus::Pending,
+            arguments: Some(arguments.clone()),
+            result: None,
+            error: None,
+            approved_at: None,
+            completed_at: None,
+        };
+        tool_calls::insert_tool_call(&state.db, &pending)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(ch) = provider_channel {
+            let _ = ch.send(ProviderEvent::AskUserRequested {
+                request_id: request_id.to_string(),
+                tool_call_id: tool_call_id.to_string(),
+                title: title.clone(),
+                fields: fields.clone(),
+            });
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        {
+            let mut guard = self
+                .ask_user_pending
+                .lock()
+                .map_err(|_| "ask_user lock poisoned".to_string())?;
+            guard.insert(tool_call_id.to_string(), tx);
+        }
+
+        let answers = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                let _ = self.ask_user_pending.lock().map(|mut g| g.remove(tool_call_id));
+                return Err("ask_user cancelled".to_string());
+            }
+            result = rx => {
+                result.map_err(|_| "ask_user request was dropped".to_string())?
+            }
+        };
+
+        if answers
+            .get("cancelled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            tool_calls::update_tool_call_status(
+                &state.db,
+                tool_call_id,
+                ToolCallStatus::Cancelled,
+                Some("user dismissed ask_user"),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            return Err("ask_user dismissed".to_string());
+        }
+
+        let mut content = format!("User answered \"{title}\":\n");
+        if let Some(obj) = answers.as_object() {
+            for (k, v) in obj {
+                let val = v
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| v.to_string());
+                content.push_str(&format!("- {k}: {val}\n"));
+            }
+        } else {
+            content.push_str(&answers.to_string());
+        }
+
+        let result_value = serde_json::json!({
+            "title": title,
+            "answers": answers,
+            "user_authored": true,
+            "text": content,
+        });
+
+        if let Err(risk) = validate_reinjection(&result_value) {
+            warn!(
+                tool_call_id = %tool_call_id,
+                risk = %risk.reason(),
+                "ask_user answers failed reinjection validation"
+            );
+            return Err("ask_user answers blocked by reinjection gate".to_string());
+        }
+
+        let completed = ToolCallRecord {
+            id: tool_call_id.to_string(),
+            tool_id: agent_tools::ASK_USER_TOOL.to_string(),
+            request_id: request_id.to_string(),
+            status: ToolCallStatus::Completed,
+            arguments: Some(arguments.clone()),
+            result: Some(result_value.clone()),
+            error: None,
+            approved_at: None,
+            completed_at: Some(crate::time::now_iso8601()),
+        };
+        tool_calls::insert_tool_call(&state.db, &completed)
+            .await
+            .map_err(|e| e.to_string())?;
+        tool_calls::insert_tool_result(
+            &state.db,
+            &state.encryption,
+            tool_call_id,
+            &result_value,
+            false,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+        Ok(agent_tools::AgentToolExecution {
+            record: completed,
+            output: result_value,
+            is_error: false,
+        })
     }
 
     /// Build a continuation `ProviderRequest` for the next provider round.
@@ -1195,7 +1505,19 @@ impl StreamManager {
                     match tool_calls::latest_tool_result(pool, &state.encryption, &record.id).await
                     {
                         Ok(Some((value, _is_error))) => {
-                            let raw = value.to_string();
+                            let raw = if value
+                                .get("user_authored")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false)
+                            {
+                                value
+                                    .get("text")
+                                    .and_then(|t| t.as_str())
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| value.to_string())
+                            } else {
+                                value.to_string()
+                            };
                             match validate_reinjection(&value) {
                                 Ok(()) => raw,
                                 Err(risk) => {
@@ -1471,6 +1793,66 @@ impl StreamManager {
         })
     }
 
+    /// Persist a mid-turn steering user message and append it to the in-flight
+    /// provider request (t1-2). Keeps the agent turn's canonical persist id;
+    /// mints a fresh HTTP `request_id` for the next provider round.
+    #[allow(clippy::too_many_arguments)]
+    async fn apply_steer_message(
+        state: &AppState,
+        conversation_id: &str,
+        turn_request_id: &str,
+        current_request: &mut ProviderRequest,
+        text: &str,
+        channel: &Channel<ProviderEvent>,
+        round: u32,
+        total_rounds: u32,
+    ) -> Result<(), String> {
+        let _ = channel.send(ProviderEvent::AgentPhase {
+            request_id: turn_request_id.to_string(),
+            label: "Steering".to_string(),
+            round,
+            total_rounds,
+            sub_phase: "steering".to_string(),
+        });
+
+        let now = crate::time::now_iso8601();
+        let msg_id = Uuid::new_v4().to_string();
+        let user_msg = Message {
+            id: msg_id.clone(),
+            conversation_id: conversation_id.to_string(),
+            role: MessageRole::User,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: Some(serde_json::json!({ "steer": true })),
+            parts: vec![MessagePart {
+                id: format!("{msg_id}/text"),
+                message_id: msg_id.clone(),
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some(text.to_string()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: now.clone(),
+            }],
+            created_at: now,
+        };
+        messages::persist_request_messages(&state.db, std::slice::from_ref(&user_msg))
+            .await
+            .map_err(|e| e.to_string())?;
+        conversations::touch(&state.db, conversation_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        current_request.messages.push(user_msg);
+        current_request.request_id = Uuid::new_v4().to_string();
+        Ok(())
+    }
+
     /// Run a multi-round agent turn when the request includes tool definitions.
     /// Enforces guardrails (max_steps, wall-clock budget) and coordinates rounds
     /// until no further tool calls are requested or a terminal condition occurs.
@@ -1507,7 +1889,7 @@ impl StreamManager {
             .await
             .map_err(|e| e.to_string())?;
 
-        let cancel = self.register_stream(&request_id)?;
+        let (cancel, mut steer_rx) = self.register_stream_with_steer(&request_id)?;
 
         let guardrails = state.settings().map_err(|e| e.to_string())?.agent;
         let max_steps = guardrails.max_steps as usize;
@@ -1551,6 +1933,25 @@ impl StreamManager {
                 break;
             }
 
+            // Apply any steer that arrived between steps before starting a round.
+            while let Ok(text) = steer_rx.try_recv() {
+                runtime.deny_all_pending();
+                if let Err(e) = Self::apply_steer_message(
+                    state,
+                    &conversation_id,
+                    &request_id,
+                    &mut current_request,
+                    &text,
+                    &channel,
+                    (step + 1) as u32,
+                    max_steps as u32,
+                )
+                .await
+                {
+                    warn!(request_id = %request_id, error = %e, "failed to apply steer");
+                }
+            }
+
             // Emit agent phase event before each provider round.
             let total = max_steps as u32;
             let round_num = (step + 1) as u32;
@@ -1567,47 +1968,91 @@ impl StreamManager {
                 sub_phase,
             });
 
-            // Bounded by whatever is left of the wall-clock budget.
-            //
-            // The check at the top of this loop can only fire *between* rounds,
-            // so it cannot rescue a round that never returns — and nothing
-            // downstream bounds one either: the HTTP client sets a connect
-            // timeout but no read timeout, so a stream that opens and then goes
-            // quiet parks in `stream.next().await` forever. Observed in the
-            // wild at 368s against a 300s budget, still counting.
+            // Soft-cancel for this round only — steer cancels the child without
+            // ending the turn; hard cancel cancels the parent and ends it.
+            let round_cancel = cancel.child_token();
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            let round = self.run_provider_round(
+            let round_fut = self.run_provider_round(
                 state,
                 current_request.clone(),
                 channel.clone(),
-                cancel.clone(),
+                round_cancel.clone(),
                 CompletionDelivery::Deferred,
                 ProviderRoundBind {
                     persist_request_id: &request_id,
                     release_active: false,
                 },
             );
-            let mut outcome = match tokio::time::timeout(remaining, round).await {
-                Ok(outcome) => outcome,
-                Err(_) => {
-                    warn!(
-                        request_id = %request_id,
-                        step,
-                        "provider round exceeded the remaining wall-clock budget"
-                    );
-                    terminal = Some(ProviderEvent::Error {
-                        request_id: request_id.clone(),
-                        error: provider_core::schema::ProviderError {
-                            provider_code: None,
-                            message: format!(
-                                "Agent turn exceeded wall-clock budget ({wall_clock_secs}s) waiting on the provider. Increase it in Settings → Agent."
-                            ),
-                            retryable: false,
-                        },
-                    });
-                    break;
+            let mut steered_during_round: Option<String> = None;
+            let outcome = tokio::select! {
+                biased;
+                text = steer_rx.recv() => {
+                    if let Some(text) = text {
+                        round_cancel.cancel();
+                        runtime.deny_all_pending();
+                        steered_during_round = Some(text);
+                    }
+                    // Drop the in-flight round by exiting select; collect a
+                    // minimal aborted outcome so the loop can inject steer.
+                    RoundOutcome { aborted: true, ..Default::default() }
+                }
+                timed = tokio::time::timeout(remaining, round_fut) => {
+                    match timed {
+                        Ok(outcome) => outcome,
+                        Err(_) => {
+                            warn!(
+                                request_id = %request_id,
+                                step,
+                                "provider round exceeded the remaining wall-clock budget"
+                            );
+                            terminal = Some(ProviderEvent::Error {
+                                request_id: request_id.clone(),
+                                error: provider_core::schema::ProviderError {
+                                    provider_code: None,
+                                    message: format!(
+                                        "Agent turn exceeded wall-clock budget ({wall_clock_secs}s) waiting on the provider. Increase it in Settings → Agent."
+                                    ),
+                                    retryable: false,
+                                },
+                            });
+                            break;
+                        }
+                    }
                 }
             };
+
+            if let Some(text) = steered_during_round.take() {
+                if let Err(e) = Self::apply_steer_message(
+                    state,
+                    &conversation_id,
+                    &request_id,
+                    &mut current_request,
+                    &text,
+                    &channel,
+                    round_num,
+                    total,
+                )
+                .await
+                {
+                    warn!(request_id = %request_id, error = %e, "failed to apply steer");
+                }
+                continue;
+            }
+
+            if cancel.is_cancelled() {
+                break;
+            }
+
+            if outcome.aborted {
+                // Soft abort without a steer message (e.g. channel closed) —
+                // treat like cancel if the parent fired; otherwise continue.
+                if cancel.is_cancelled() {
+                    break;
+                }
+                continue;
+            }
+
+            let mut outcome = outcome;
 
             // Accumulate usage across rounds.
             if let Some(ref round_usage) = outcome.usage {
@@ -1725,20 +2170,55 @@ impl StreamManager {
                 sub_phase: "executing_tools".to_string(),
             });
 
-            let created_this_round = self
-                .execute_resolved_tool_calls(
+            let tools_cancel = cancel.child_token();
+            let tools_fut = self.execute_resolved_tool_calls(
+                state,
+                runtime,
+                &outcome.completed_tool_calls,
+                &request_id,
+                &conversation_id,
+                Some(&runtime_channel),
+                Some(&channel),
+                &mut successful_document_creates,
+                &mut web_search_calls,
+                &mut web_fetch_calls,
+                &tools_cancel,
+            );
+            let mut steered_during_tools: Option<String> = None;
+            let created_this_round = tokio::select! {
+                biased;
+                text = steer_rx.recv() => {
+                    if let Some(text) = text {
+                        tools_cancel.cancel();
+                        runtime.deny_all_pending();
+                        steered_during_tools = Some(text);
+                    }
+                    0u32
+                }
+                n = tools_fut => n,
+            };
+
+            if let Some(text) = steered_during_tools {
+                if let Err(e) = Self::apply_steer_message(
                     state,
-                    runtime,
-                    &outcome.completed_tool_calls,
-                    &request_id,
                     &conversation_id,
-                    Some(&runtime_channel),
-                    Some(&channel),
-                    &mut successful_document_creates,
-                    &mut web_search_calls,
-                    &mut web_fetch_calls,
+                    &request_id,
+                    &mut current_request,
+                    &text,
+                    &channel,
+                    round_num,
+                    total,
                 )
-                .await;
+                .await
+                {
+                    warn!(request_id = %request_id, error = %e, "failed to apply steer after tools");
+                }
+                continue;
+            }
+
+            if cancel.is_cancelled() {
+                break;
+            }
 
             // After the first successful create, later rounds must not offer
             // write_* — revisions go through edit_* with the returned id.

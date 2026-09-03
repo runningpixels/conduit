@@ -157,20 +157,27 @@ pub async fn post_sse(
     // completion nor an error, and the turn would end having told the UI
     // nothing.
     let guarded = futures::stream::unfold(
-        (Box::pin(byte_stream), false),
-        |(mut stream, finished)| async move {
+        (Box::pin(byte_stream), false, cancel.clone()),
+        |(mut stream, finished, cancel)| async move {
             if finished {
                 return None;
             }
-            match tokio::time::timeout(SSE_IDLE_TIMEOUT, stream.next()).await {
-                Ok(Some(item)) => Some((item, (stream, false))),
-                Ok(None) => None,
-                Err(_) => {
-                    let err = retryable(format!(
-                        "the provider sent nothing for {}s and the connection was still open",
-                        SSE_IDLE_TIMEOUT.as_secs()
-                    ));
-                    Some((Err(err), (stream, true)))
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    Some((Err(fatal("request cancelled")), (stream, true, cancel)))
+                }
+                result = tokio::time::timeout(SSE_IDLE_TIMEOUT, stream.next()) => {
+                    match result {
+                        Ok(Some(item)) => Some((item, (stream, false, cancel))),
+                        Ok(None) => None,
+                        Err(_) => {
+                            let err = retryable(format!(
+                                "the provider sent nothing for {}s and the connection was still open",
+                                SSE_IDLE_TIMEOUT.as_secs()
+                            ));
+                            Some((Err(err), (stream, true, cancel)))
+                        }
+                    }
                 }
             }
         },

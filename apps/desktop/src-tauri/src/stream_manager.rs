@@ -1796,6 +1796,7 @@ impl StreamManager {
     /// Persist a mid-turn steering user message and append it to the in-flight
     /// provider request (t1-2). Keeps the agent turn's canonical persist id;
     /// mints a fresh HTTP `request_id` for the next provider round.
+    #[allow(clippy::too_many_arguments)]
     async fn apply_steer_message(
         state: &AppState,
         conversation_id: &str,

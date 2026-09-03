@@ -110,6 +110,7 @@ pub fn build_prompt_with_def(
 ///
 /// When `remembered` is true and the live level is not Sensitive, Auto is
 /// returned even for SideEffectful tools (approval memory, t1-2 M3).
+#[allow(clippy::too_many_arguments)]
 pub async fn request_consent(
     active: &Arc<ActiveConnector>,
     pending: &PendingConsents,

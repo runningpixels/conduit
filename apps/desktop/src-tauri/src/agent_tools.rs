@@ -728,6 +728,12 @@ pub async fn execute_builtin_tool(
                 .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
             Ok(crate::workspace_tools::execute_workspace_grep(ws, input).unwrap_or_else(|e| e))
         }
+        // Handled by `StreamManager::execute_ask_user_tool` before this match runs;
+        // arm exists so TS/Rust parity treats ask_user as a known builtin.
+        ASK_USER_TOOL => Err(
+            "ask_user must be handled by the agent loop (StreamManager), not execute_builtin_tool"
+                .to_string(),
+        ),
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
 

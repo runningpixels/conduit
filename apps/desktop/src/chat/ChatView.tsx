@@ -3,12 +3,15 @@ import type { AppSettings, GenerationControls, MessageRole, ProviderRequest } fr
 import type { ProviderUsage } from '@conduit/config-schema';
 import {
   cancelChatStream,
+  compactConversation,
   steerChatStream,
   discoverConnector,
   getArtifact,
   getConnectorRuntimeStates,
   getConversation,
+  getConversationCompaction,
   getConversationMessages,
+  getMessageIdByRequest,
   invokeConnectorTool,
   listConnectorCapabilities,
   pickWorkspaceFolder,
@@ -19,6 +22,7 @@ import {
   startConnector,
   startChatStream,
   updateSettings,
+  type ConversationCompaction,
 } from '../ipc/client';
 import type { Conversation } from '../ipc/contracts';
 import { ConfirmDialog } from '@conduit/ui';
@@ -62,7 +66,12 @@ import {
   upsertAssistantTurn,
   type ChatTurn,
 } from './conversationHydration';
-import { mergeProviderUsage } from '../lib/contextWindows';
+import { mergeProviderUsage, estimatePromptTokens, DEFAULT_COMPACT_THRESHOLD_PERCENT, getContextWindow } from '../lib/contextWindows';
+import {
+  formatCompactionDeveloperPrompt,
+  historyForProviderRequest,
+  splitTurnsAtCompaction,
+} from './contextCompact';
 import { dayRuleLabel, sameCalendarDay } from '../lib/dayGroup';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
@@ -74,7 +83,6 @@ import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDi
 import { WorkspaceToolsConsentDialog } from '../workspace/settings/WorkspaceToolsConsentDialog';
 import { SuggestedPrompts } from './SuggestedPrompts';
 import { deriveSuggestedPrompts } from './suggestedPromptLogic';
-import { getMessageIdByRequest } from '../ipc/client';
 import { resolveSearchBackend, resolveWebSearchForTurn, type SearchBackend } from './webSearchIntent';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
@@ -206,6 +214,8 @@ export function baseSystemPrompt(): string {
 export interface ChatRequestOverrides {
   generationControls?: GenerationControls | null;
   userInstructions?: string | null;
+  /** Journaled compaction summary injected as a developer prompt. */
+  compactionSummary?: string | null;
 }
 
 export function buildProviderRequest(
@@ -330,8 +340,13 @@ export function buildProviderRequest(
       : searchBackend === 'local'
         ? localWebSearchDeveloperPromptFor(settings.webSearch.localBackend)
         : webSearchDeveloperPromptFor();
+  const compactionDevPrompt = chatOverrides?.compactionSummary?.trim()
+    ? formatCompactionDeveloperPrompt(chatOverrides.compactionSummary)
+    : undefined;
   const developerPrompt =
-    [infoDevPrompt, editDevPrompt, webSearchDevPrompt].filter(Boolean).join('\n\n') || undefined;
+    [compactionDevPrompt, infoDevPrompt, editDevPrompt, webSearchDevPrompt]
+      .filter(Boolean)
+      .join('\n\n') || undefined;
   const systemPrompt = composeSystemPrompt(
     [
       baseSystemPrompt(),
@@ -503,6 +518,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   );
   const [showWorkspaceConsent, setShowWorkspaceConsent] = useState(false);
   const [workspacePicking, setWorkspacePicking] = useState(false);
+  const [compaction, setCompaction] = useState<ConversationCompaction | null>(null);
+  const [showCompactedOriginals, setShowCompactedOriginals] = useState(false);
+  const compactionRef = useRef<ConversationCompaction | null>(null);
+  compactionRef.current = compaction;
   const threadRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const stuckRef = useRef(true);
@@ -589,6 +608,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       setConversationWorkspaceRoot(null);
       setConversationGenerationControls(null);
       setConversationUserInstructions(null);
+      setCompaction(null);
+      setShowCompactedOriginals(false);
       setThreadLoading(false);
       return;
     }
@@ -598,14 +619,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setShowJumpPill(false);
     setEditingTurnId(null);
     setEditConfirm(null);
+    setShowCompactedOriginals(false);
 
     let cancelled = false;
     setThreadLoading(true);
     void (async () => {
       try {
-        const [messages, conversation] = await Promise.all([
+        const [messages, conversation, latestCompaction] = await Promise.all([
           getConversationMessages(conversationId),
           getConversation(conversationId),
+          getConversationCompaction(conversationId),
         ]);
         if (!cancelled) {
           const nextTurns = (
@@ -615,6 +638,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             activeRequestRef.current?.requestId ?? streamStateRef.current?.requestId ?? null;
           const visible = excludeLiveAssistantTurns(nextTurns, liveRequestId);
           setTurns(visible);
+          setCompaction(latestCompaction);
           setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
           setConversationGenerationControls(conversation?.generationControls ?? null);
           setConversationUserInstructions(conversation?.userInstructions ?? null);
@@ -868,6 +892,62 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       return;
     }
 
+    // t1-3: auto-compact older turns before the pending user message is sent.
+    // Compaction reads DB messages only — never the in-flight composer turn.
+    let activeCompaction = compactionRef.current;
+    if (settings.contextCompactEnabled) {
+      const windowTokens = getContextWindow(settings.activeModel);
+      const threshold =
+        settings.contextCompactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT;
+      if (windowTokens != null && windowTokens > 0) {
+        const priorForEstimate = override?.history ?? turns;
+        const keptForEstimate = historyForProviderRequest(priorForEstimate, activeCompaction);
+        const intent = classifyDocumentTurnIntent(trimmed);
+        const estimateTools = [
+          ...selectBuiltinDocumentTools(intent),
+          ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(trimmed)),
+          ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
+        ];
+        const systemPrompt = composeSystemPrompt(
+          [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
+          resolveUserInstructions(settings, conversationUserInstructions),
+        );
+        const est = estimatePromptTokens({
+          historyTexts: keptForEstimate.map((t) => t.content).filter(Boolean),
+          systemTexts: [
+            systemPrompt,
+            ...(activeCompaction?.summaryText
+              ? [formatCompactionDeveloperPrompt(activeCompaction.summaryText)]
+              : []),
+          ],
+          toolDefinitions: estimateTools,
+          composerText: trimmed,
+          compactionSummary: activeCompaction?.summaryText,
+        });
+        if ((est / windowTokens) * 100 >= threshold) {
+          onStatus(makeStatus('Compacting context…', 'active', 'chat'));
+          try {
+            const row = await compactConversation(conversationId);
+            if (row) {
+              activeCompaction = row;
+              compactionRef.current = row;
+              setCompaction(row);
+              setShowCompactedOriginals(false);
+              onStatus(makeStatus('Earlier messages summarized', 'success', 'chat'));
+            }
+          } catch (error) {
+            onStatus(
+              makeStatus(
+                error instanceof Error ? error.message : 'Context compaction failed',
+                'warning',
+                'chat',
+              ),
+            );
+          }
+        }
+      }
+    }
+
     const userTurn: ChatTurn = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -907,10 +987,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       getArtifact,
       activeArtifact,
     );
+    const providerHistory = [
+      ...historyForProviderRequest(priorHistory, activeCompaction),
+      userTurn,
+    ];
     const request = buildProviderRequest(
       settings,
       trimmed,
-      history,
+      providerHistory,
       conversationId,
       toolDefinitions,
       followUpArtifact,
@@ -918,6 +1002,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       {
         generationControls: conversationGenerationControls,
         userInstructions: conversationUserInstructions,
+        compactionSummary: activeCompaction?.summaryText ?? null,
       },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
@@ -1335,8 +1420,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   );
 
   // Accumulated usage across the whole conversation: every committed assistant
-  // turn's usage plus the live streaming turn. The status line is the
-  // single canonical consumer of this figure (V9 §2.2).
+  // turn's usage plus the live streaming turn. Spend (not context fill) uses this.
   const accumulatedUsage = useMemo(() => {
     let merged: ProviderUsage | null = null;
     for (const turn of turns) {
@@ -1346,6 +1430,52 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (activeStream?.usage) merged = mergeProviderUsage(merged, activeStream.usage);
     return merged;
   }, [turns, activeStream]);
+
+  // Next-request prompt size (chars÷4). Live as history/composer change — do not
+  // sum per-turn API usage (that double-counts re-sent history).
+  const contextTokens = useMemo(() => {
+    const kept = historyForProviderRequest(turns, compaction);
+    const historyTexts: string[] = [];
+    for (const turn of kept) {
+      if (turn.role !== 'user' && turn.role !== 'assistant') continue;
+      if (turn.content) historyTexts.push(turn.content);
+    }
+    if (activeStream) {
+      const live = activeStream.blocks.map((b) => b.content).join('');
+      if (live) historyTexts.push(live);
+    }
+    const intent = classifyDocumentTurnIntent(prompt);
+    const toolDefinitions = [
+      ...selectBuiltinDocumentTools(intent),
+      ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
+      ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
+    ];
+    const systemPrompt = composeSystemPrompt(
+      [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
+      resolveUserInstructions(settings, conversationUserInstructions),
+    );
+    const compactionDev = compaction?.summaryText
+      ? formatCompactionDeveloperPrompt(compaction.summaryText)
+      : undefined;
+    return estimatePromptTokens({
+      historyTexts,
+      systemTexts: [systemPrompt, ...(compactionDev ? [compactionDev] : [])],
+      toolDefinitions,
+      composerText: prompt,
+      compactionSummary: compaction?.summaryText,
+    });
+  }, [
+    turns,
+    compaction,
+    activeStream,
+    prompt,
+    settings,
+    conversationUserInstructions,
+    conversationWorkspaceRoot,
+  ]);
+
+  const compactThresholdPercent =
+    settings.contextCompactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT;
 
   const showInlineSuggestions =
     turns.length > 0 &&
@@ -1360,6 +1490,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     turns,
     activeStream?.requestId ?? activeRequestId,
   );
+  const { kept: keptTurns, compacted: compactedTurns } = splitTurnsAtCompaction(
+    visibleTurns,
+    compaction,
+  );
+  const displayTurns = showCompactedOriginals ? visibleTurns : keptTurns;
 
   // Per-turn provider/model for the conditional model line (§6.4).
   // Session-tracked turns win; hydrated turns fall back to the conversation's
@@ -1603,12 +1738,30 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               ) : null}
             </div>
           )}
-          {!threadLoading && visibleTurns.flatMap((turn, turnIndex) => {
+          {!threadLoading && compactedTurns.length > 0 && (
+            <div className="compaction-block">
+              <button
+                type="button"
+                className="compaction-toggle"
+                aria-expanded={showCompactedOriginals}
+                onClick={() => setShowCompactedOriginals((v) => !v)}
+              >
+                Earlier messages summarized
+                <span className="compaction-toggle-meta">
+                  {showCompactedOriginals ? 'Hide originals' : `Show ${compactedTurns.length}`}
+                </span>
+              </button>
+              {showCompactedOriginals && compaction?.summaryText ? (
+                <p className="compaction-summary">{compaction.summaryText}</p>
+              ) : null}
+            </div>
+          )}
+          {!threadLoading && displayTurns.flatMap((turn, turnIndex) => {
             // Day separator (V9 §4): rendered only where the calendar day
             // actually changes, so it marks a boundary instead of captioning
             // every turn. Never above the first turn — there is no boundary
             // between a thread and its own beginning.
-            const prevTurn = turnIndex > 0 ? visibleTurns[turnIndex - 1] : undefined;
+            const prevTurn = turnIndex > 0 ? displayTurns[turnIndex - 1] : undefined;
             const dayRule =
               turn.createdAt &&
               prevTurn?.createdAt &&
@@ -1912,6 +2065,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }
         onOpenSettings={onOpenSettings}
         usage={accumulatedUsage}
+        contextTokens={contextTokens}
+        compactThresholdPercent={compactThresholdPercent}
       />
       <div id="composer-anchor" tabIndex={-1} />
     </section>

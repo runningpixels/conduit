@@ -49,6 +49,8 @@ const settings: AppSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 /**
@@ -73,6 +75,8 @@ const SHAPES: Record<string, unknown> = {
   listConnectorCapabilities: [],
   getConnectorRuntimeStates: [],
   getConversationMessages: [],
+  getConversationCompaction: null,
+  compactConversation: null,
   searchMessages: [],
   createConversation: { id: 'c1', title: 'New chat', updatedAt: new Date().toISOString() },
   loadProviderCredentialReference: { providerId: 'anthropic', credentialRef: '', storedInKeychain: false },
@@ -88,7 +92,7 @@ const IPC_EXPORTS = [
   'getAppPaths', 'getSettings', 'updateSettings', 'saveProviderCredential',
   'loadProviderCredentialReference', 'validateProviderCredentials',
   'listProviderDescriptors', 'listProviderModels', 'startChatStream',
-  'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getRequestProviderEvents',
+  'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getConversationCompaction', 'compactConversation', 'getRequestProviderEvents',
   'createConversation', 'listConversations', 'getConversation',
   'deleteConversation', 'setConversationTitle', 'setConversationPinned',
   'setConversationArchived', 'setConversationFolder', 'listConversationFolders',

@@ -5,6 +5,9 @@
  * one would be a capability regression wearing a test edit.
  *
  * Where a case moved, the assertion moved with it and says so.
+ *
+ * t1-3: context fill comes from `contextTokens` (prompt estimate), not summed
+ * per-turn usage. Spend still uses `usage`.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -47,12 +50,14 @@ const settings: AppSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 const baseProps = {
   settings,
   usage: null,
-  composerTokenEstimate: 0,
+  contextTokens: 0,
   credentialMode: 'required' as const,
   credentialRef: 'keychain://conduit/anthropic',
   modelMenuOpen: vi.fn(),
@@ -66,20 +71,46 @@ function openDetails() {
 
 describe('StatusLine — the sentence', () => {
   it('carries model, context ratio, spend and network posture', () => {
-    render(<StatusLine {...baseProps} usage={{ inputTokens: 2800n, outputTokens: 400n }} />);
+    render(
+      <StatusLine
+        {...baseProps}
+        contextTokens={3200}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+      />,
+    );
     const line = screen.getByTitle('Chat details');
     expect(line).toHaveTextContent('claude-sonnet-4');
     // The ratio, not the raw count — the count is the popover's job.
     expect(line).toHaveTextContent('2% of 200k');
     expect(line).toHaveTextContent('$0.0144');
     expect(line).toHaveTextContent('local only');
+    expect(line.querySelector('.ctx-meter')).toBeTruthy();
   });
 
-  it('adds the pending composer estimate to context use', () => {
-    render(<StatusLine {...baseProps} usage={null} composerTokenEstimate={120} />);
-    expect(screen.getByTitle('Chat details')).toHaveTextContent('0% of 200k');
+  it('uses contextTokens for fill, not usage', () => {
+    render(
+      <StatusLine
+        {...baseProps}
+        contextTokens={4000}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+      />,
+    );
+    expect(screen.getByTitle('Chat details')).toHaveTextContent('2% of 200k');
     openDetails();
-    expect(screen.getByText(/Context 120 of 200k/)).toBeInTheDocument();
+    expect(screen.getByText(/Context 4,000 of 200k/)).toBeInTheDocument();
+  });
+
+  it('warns when fill reaches the compact threshold', () => {
+    render(
+      <StatusLine
+        {...baseProps}
+        contextTokens={180_000}
+        compactThresholdPercent={90}
+      />,
+    );
+    const line = screen.getByTitle('Chat details');
+    expect(line).toHaveAttribute('data-context-warn', 'true');
+    expect(line).toHaveTextContent('90% of 200k');
   });
 
   it('degrades to a raw token count for unknown models', () => {
@@ -87,6 +118,7 @@ describe('StatusLine — the sentence', () => {
       <StatusLine
         {...baseProps}
         settings={{ ...settings, activeModel: 'internal-llama' }}
+        contextTokens={500}
         usage={{ inputTokens: 500n }}
       />,
     );
@@ -98,6 +130,7 @@ describe('StatusLine — the sentence', () => {
       <StatusLine
         {...baseProps}
         settings={{ ...settings, activeModel: 'internal-llama' }}
+        contextTokens={500}
         usage={{ inputTokens: 500n }}
       />,
     );
@@ -111,6 +144,7 @@ describe('StatusLine — the sentence', () => {
       <StatusLine
         {...baseProps}
         settings={{ ...settings, activeModel: 'internal-llama' }}
+        contextTokens={500}
         usage={{ inputTokens: 500n, costHint: '$0.0012' }}
       />,
     );
@@ -141,7 +175,13 @@ describe('StatusLine — the sentence', () => {
 
 describe('StatusLine — the detail popover', () => {
   it('holds the key location, the raw context counts and the exact spend', () => {
-    render(<StatusLine {...baseProps} usage={{ inputTokens: 2800n, outputTokens: 400n }} />);
+    render(
+      <StatusLine
+        {...baseProps}
+        contextTokens={3200}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+      />,
+    );
     openDetails();
     // Scoped to the popover: spend deliberately appears in both places — the
     // sentence for the glance, the popover for the breakdown — so an unscoped
@@ -191,6 +231,7 @@ describe('StatusLine — the detail popover', () => {
       <StatusLine
         {...baseProps}
         onOpenSettings={onOpenSettings}
+        contextTokens={3200}
         usage={{ inputTokens: 2800n, outputTokens: 400n }}
       />,
     );
@@ -205,7 +246,7 @@ describe('StatusLine — the detail popover', () => {
       <StatusLine
         settings={settings}
         usage={null}
-        composerTokenEstimate={0}
+        contextTokens={0}
         credentialMode="required"
         credentialRef="keychain://conduit/anthropic"
         modelMenuOpen={vi.fn()}
@@ -233,7 +274,13 @@ describe('StatusLine — the detail popover', () => {
     ['spend', /Spend this chat/],
     ['network posture', /Local only/],
   ])('still reports %s within one click', (_fact, pattern) => {
-    render(<StatusLine {...baseProps} usage={{ inputTokens: 2800n, outputTokens: 400n }} />);
+    render(
+      <StatusLine
+        {...baseProps}
+        contextTokens={3200}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+      />,
+    );
     openDetails();
     expect(screen.getAllByText(pattern).length).toBeGreaterThan(0);
   });
@@ -245,7 +292,13 @@ describe('StatusLine — the detail popover', () => {
    */
   it('re-inflates the sentence when the expanded pref is on', () => {
     localStorage.setItem('conduit:v9-expanded-status', 'on');
-    render(<StatusLine {...baseProps} usage={{ inputTokens: 2800n, outputTokens: 400n }} />);
+    render(
+      <StatusLine
+        {...baseProps}
+        contextTokens={3200}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+      />,
+    );
     const line = screen.getByTitle('Chat details');
     // The key location and the raw count join the line instead of waiting in
     // the popover; the ratio-only form is gone.
@@ -256,7 +309,13 @@ describe('StatusLine — the detail popover', () => {
   });
 
   it('stays collapsed by default', () => {
-    render(<StatusLine {...baseProps} usage={{ inputTokens: 2800n, outputTokens: 400n }} />);
+    render(
+      <StatusLine
+        {...baseProps}
+        contextTokens={3200}
+        usage={{ inputTokens: 2800n, outputTokens: 400n }}
+      />,
+    );
     const line = screen.getByTitle('Chat details');
     expect(line).toHaveTextContent('2% of 200k');
     expect(line).not.toHaveTextContent('keychain://conduit/anthropic');

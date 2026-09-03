@@ -299,6 +299,30 @@ export async function getConversationMessages(conversationId: string): Promise<M
   return invoke<Message[]>('get_conversation_messages', { conversationId });
 }
 
+export interface ConversationCompaction {
+  id: string;
+  conversationId: string;
+  createdAt: string;
+  summaryText: string;
+  throughMessageId: string;
+  keptFromMessageId: string;
+  modelId: string;
+  tokenEstimateBefore: number;
+  tokenEstimateAfter: number;
+}
+
+export async function getConversationCompaction(
+  conversationId: string,
+): Promise<ConversationCompaction | null> {
+  return invoke<ConversationCompaction | null>('get_conversation_compaction', { conversationId });
+}
+
+export async function compactConversation(
+  conversationId: string,
+): Promise<ConversationCompaction | null> {
+  return invoke<ConversationCompaction | null>('compact_conversation', { conversationId });
+}
+
 export async function getRequestProviderEvents(
   conversationId: string,
   requestId: string,

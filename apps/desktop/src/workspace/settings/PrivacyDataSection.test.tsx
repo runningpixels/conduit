@@ -50,6 +50,8 @@ const settings: AppSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 function renderSection(overrides: Partial<AppSettings> = {}) {

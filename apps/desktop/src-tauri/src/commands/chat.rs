@@ -186,6 +186,26 @@ pub async fn get_conversation_messages(
 }
 
 #[tauri::command]
+pub async fn get_conversation_compaction(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Option<crate::db::repository::compactions::ConversationCompaction>, String> {
+    crate::db::repository::compactions::latest_for_conversation(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Summarize older turns when context is near the model window. Returns `None`
+/// when guards skip (too few turns, incomplete tools, disabled, etc.).
+#[tauri::command]
+pub async fn compact_conversation(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Option<crate::db::repository::compactions::ConversationCompaction>, String> {
+    crate::context_compact::compact_conversation(&state, &conversation_id).await
+}
+
+#[tauri::command]
 pub async fn get_request_provider_events(
     state: State<'_, AppState>,
     conversation_id: String,

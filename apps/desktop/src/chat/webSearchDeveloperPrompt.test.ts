@@ -93,6 +93,8 @@ describe('buildProviderRequest web search prompts', () => {
     workspaceToolsConsentAcknowledged: false,
     generationControls: null,
     userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
   };
 
   it('uses hosted developer prompt and injects webSearch for hosted turns', () => {

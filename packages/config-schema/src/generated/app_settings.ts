@@ -105,4 +105,14 @@ generationControls: GenerationControls | null,
  * App-level value lives in settings.json (plaintext); conversation-level
  * value is encrypted at rest like prompt bodies.
  */
-userInstructions: string | null, };
+userInstructions: string | null, 
+/**
+ * t1-3: when true, auto-summarize older turns once context fill crosses
+ * `context_compact_threshold_percent`. Defaults on.
+ */
+contextCompactEnabled: boolean, 
+/**
+ * t1-3: percent of the model context window that triggers auto-compact.
+ * Clamped to 85–95 on write. Default 90.
+ */
+contextCompactThresholdPercent: number, };

@@ -69,7 +69,7 @@ async fn all_tables_created_by_initial_migration() {
             .await
             .unwrap();
     assert_eq!(public, internal, "schema_migrations out of sync");
-    assert_eq!(public, 11, "expected all shipped migrations applied");
+    assert_eq!(public, 12, "expected all shipped migrations applied");
 }
 
 #[tokio::test]

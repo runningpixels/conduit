@@ -72,6 +72,8 @@ const baseSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 const listedArtifacts: Artifact[] = [

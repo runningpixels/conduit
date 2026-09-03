@@ -49,6 +49,8 @@ const settings: AppSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 /**

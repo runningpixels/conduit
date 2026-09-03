@@ -74,6 +74,8 @@ fn main() {
             steer_chat_stream,
             submit_ask_user,
             get_conversation_messages,
+            get_conversation_compaction,
+            compact_conversation,
             get_request_provider_events,
             create_conversation,
             list_conversations,

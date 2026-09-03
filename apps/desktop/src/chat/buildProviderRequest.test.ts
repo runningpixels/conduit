@@ -38,6 +38,8 @@ const baseSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 } as AppSettings;
 
 function userTurn(id: string, content: string): ChatTurn {
@@ -206,5 +208,23 @@ describe('buildProviderRequest message id uniqueness (regression: saved user tur
       [],
     );
     expect(req.systemPrompt).toContain('Default voice.');
+  });
+
+  it('injects compaction summary as developer prompt and keeps only provided history', () => {
+    const kept = [userTurn('u3', 'later'), assistantTurn('a3', 'ok')];
+    const req = buildProviderRequest(
+      baseSettings,
+      'next',
+      [...kept, userTurn('u4', 'next')],
+      'c1',
+      [],
+      undefined,
+      undefined,
+      { compactionSummary: 'We discussed cats earlier.' },
+    );
+    expect(req.developerPrompt).toContain('Earlier conversation summary');
+    expect(req.developerPrompt).toContain('We discussed cats earlier.');
+    expect(req.messages.map((m) => m.id)).toEqual(['u3', 'a3', 'u4']);
+    expect(req.messages.some((m) => m.id === 'u1')).toBe(false);
   });
 });

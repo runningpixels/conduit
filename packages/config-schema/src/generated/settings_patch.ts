@@ -43,4 +43,12 @@ generationControls?: GenerationControls | null,
 /**
  * Replace or clear app-default user instructions. `Some(None)` clears.
  */
-userInstructions?: string | null, };
+userInstructions?: string | null, 
+/**
+ * t1-3: toggle auto context compaction.
+ */
+contextCompactEnabled?: boolean, 
+/**
+ * t1-3: compact threshold percent (85–95).
+ */
+contextCompactThresholdPercent?: number, };

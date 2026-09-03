@@ -65,8 +65,12 @@ export interface ComposerProps {
   ) => void;
   /// Open a settings section ('providers' | 'privacy' …) from the strip.
   onOpenSettings?: (tab?: string) => void;
-  /// Accumulated usage for the whole conversation (turns + live stream).
+  /// Accumulated usage for spend (turns + live stream).
   usage?: ProviderUsage | null;
+  /// Estimated tokens for the next request (prompt fill).
+  contextTokens?: number;
+  /// Auto-compact threshold percent for status warn styling.
+  compactThresholdPercent?: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -101,6 +105,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onSaveChatSettings,
   onOpenSettings,
   usage,
+  contextTokens = 0,
+  compactThresholdPercent,
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -319,7 +325,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     for (const file of files) void uploadAttachment(file);
   }
 
-  const tokenCount = prompt.trim() ? Math.max(1, Math.round(prompt.trim().length / 4)) : 0;
   const attachDisabled = !conversationId || streaming;
   const hasForwardableImages = turnAttachmentsFromPending(pendingAttachments).length > 0;
   const uploading = pendingAttachments.some((item) => item.status === 'uploading');
@@ -654,7 +659,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         settings={settings}
         onOpenSettings={onOpenSettings}
         usage={usage ?? null}
-        composerTokenEstimate={tokenCount}
+        contextTokens={contextTokens}
+        compactThresholdPercent={compactThresholdPercent}
         credentialMode={credentialMode}
         credentialRef={credentialRef ?? ''}
         modelMenuOpen={() => modelPickerRef.current?.open()}

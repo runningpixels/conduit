@@ -416,6 +416,15 @@ impl AppState {
                 None => settings.user_instructions = None,
             }
         }
+        if let Some(value) = patch.context_compact_enabled {
+            settings.context_compact_enabled = value;
+        }
+        if let Some(value) = patch.context_compact_threshold_percent {
+            if !(85..=95).contains(&value) {
+                return Err("context_compact_threshold_percent must be between 85 and 95".into());
+            }
+            settings.context_compact_threshold_percent = value;
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())

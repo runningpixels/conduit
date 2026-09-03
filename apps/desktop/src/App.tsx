@@ -141,6 +141,8 @@ const defaultSettings: AppSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';

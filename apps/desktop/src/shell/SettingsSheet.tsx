@@ -341,6 +341,47 @@ export function SettingsSheet({
                     <option value="cmd-enter">{modKey()} + Enter</option>
                   </select>
                 </div>
+                <div className="srow">
+                  <span className="srow-text">
+                    <b>Auto-compact context</b>
+                    <small>Summarize older turns when the chat nears the model window</small>
+                  </span>
+                  <Toggle
+                    label="Auto-compact context"
+                    pressed={settings.contextCompactEnabled}
+                    onChange={() =>
+                      save({
+                        ...settings,
+                        contextCompactEnabled: !settings.contextCompactEnabled,
+                      })
+                    }
+                  />
+                </div>
+                {settings.contextCompactEnabled && (
+                  <div className="srow">
+                    <span className="srow-text">
+                      <b>Compact threshold</b>
+                      <small>{settings.contextCompactThresholdPercent}% of context window</small>
+                    </span>
+                    <select
+                      className="sel"
+                      aria-label="Compact threshold"
+                      value={settings.contextCompactThresholdPercent}
+                      onChange={(e) =>
+                        save({
+                          ...settings,
+                          contextCompactThresholdPercent: Number(e.target.value),
+                        })
+                      }
+                    >
+                      {[85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95].map((n) => (
+                        <option key={n} value={n}>
+                          {n}%
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <GenerationControlsSection settings={settings} onUpdate={save} onStatus={onStatus} />
               <AgentSection settings={settings} onUpdate={save} onStatus={onStatus} />

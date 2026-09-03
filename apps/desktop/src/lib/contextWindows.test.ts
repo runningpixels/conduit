@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  contextFillPercent,
+  estimatePromptTokens,
+  estimateTokensFromText,
   getContextWindow,
   mergeProviderUsage,
   sumUsageCostCents,
@@ -12,6 +15,32 @@ describe('contextWindows', () => {
     expect(getContextWindow('gpt-4.1')).toBe(1000000);
     expect(getContextWindow('not-a-model')).toBeNull();
     expect(getContextWindow('')).toBeNull();
+  });
+
+  it('resolves OpenRouter-style and family prefixes', () => {
+    expect(getContextWindow('z-ai/glm-5.3-flash')).toBe(200000);
+    expect(getContextWindow('anthropic/claude-sonnet-4-20250514')).toBe(200000);
+    expect(getContextWindow('google/gemini-2.5-flash')).toBe(1_000_000);
+    expect(getContextWindow('openai/gpt-4o-mini')).toBe(128000);
+    expect(getContextWindow('deepseek-chat')).toBe(128000);
+  });
+
+  it('estimates tokens from text and full prompt parts', () => {
+    expect(estimateTokensFromText('abcd')).toBe(1);
+    expect(estimateTokensFromText('')).toBe(0);
+    expect(
+      estimatePromptTokens({
+        historyTexts: ['hello world'], // 11
+        systemTexts: ['sys'], // 3
+        composerText: 'draft', // 5
+        toolDefinitions: [{ toolId: 't', name: 'echo', description: 'd', inputSchema: {} }],
+      }),
+    ).toBeGreaterThan(estimateTokensFromText('hello worldsysdraft'));
+  });
+
+  it('computes fill percent against the model window', () => {
+    expect(contextFillPercent(100_000, 'claude-sonnet-4')).toBe(50);
+    expect(contextFillPercent(10, 'totally-unknown-model')).toBeNull();
   });
 
   it('sums tokens including cache read/write', () => {

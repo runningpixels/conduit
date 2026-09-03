@@ -39,6 +39,8 @@ const baseSettings: AppSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 vi.mock('../ipc/client', () => ({

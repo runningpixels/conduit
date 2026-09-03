@@ -1079,6 +1079,62 @@ html[data-palette="orange-dark"] .prose { font-size: 16.5px; line-height: 1.7; }
 /* A missing key is the one actionable fact on this line, so it keeps its
  * colour instead of sitting in the muted register with the rest. */
 .status .warn { color: var(--warn); }
+/* t1-3: compact meter for context fill next to the % label. */
+.status .ctx-meter {
+  display: inline-block;
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-soft);
+  overflow: hidden;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.status .ctx-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--ink-3);
+  border-radius: 2px;
+  transition: width var(--tap), background var(--tap);
+}
+.status[data-context-warn="true"] .ctx-meter-fill { background: var(--warn); }
+
+/* t1-3: summarized earlier-turns journal block */
+.compaction-block {
+  margin: 8px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--bg-2) 80%, transparent);
+}
+.compaction-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+.compaction-toggle-meta {
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.compaction-summary {
+  margin: 10px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 /* Expanded (V9 §10.1): the same line carrying the key location and the raw
  * context count as well. It is roughly twice as long, so it wraps rather than
  * running under the composer's edge — the promise was "no layout change", and a

@@ -79,6 +79,8 @@ const baseSettings: AppSettings = {
   workspaceToolsConsentAcknowledged: false,
   generationControls: null,
   userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
 };
 
 const SAVED_CONFIG: BrandConfig = {

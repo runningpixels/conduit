@@ -1672,10 +1672,22 @@ pub struct AppSettings {
     /// value is encrypted at rest like prompt bodies.
     #[serde(default)]
     pub user_instructions: Option<String>,
+    /// t1-3: when true, auto-summarize older turns once context fill crosses
+    /// `context_compact_threshold_percent`. Defaults on.
+    #[serde(default = "default_true")]
+    pub context_compact_enabled: bool,
+    /// t1-3: percent of the model context window that triggers auto-compact.
+    /// Clamped to 85–95 on write. Default 90.
+    #[serde(default = "default_compact_threshold")]
+    pub context_compact_threshold_percent: u8,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_compact_threshold() -> u8 {
+    90
 }
 
 impl Default for AppSettings {
@@ -1703,6 +1715,8 @@ impl Default for AppSettings {
             workspace_tools_consent_acknowledged: false,
             generation_controls: None,
             user_instructions: None,
+            context_compact_enabled: true,
+            context_compact_threshold_percent: 90,
         }
     }
 }
@@ -1769,6 +1783,12 @@ pub struct SettingsPatch {
     /// Replace or clear app-default user instructions. `Some(None)` clears.
     #[ts(optional)]
     pub user_instructions: Option<Option<String>>,
+    /// t1-3: toggle auto context compaction.
+    #[ts(optional)]
+    pub context_compact_enabled: Option<bool>,
+    /// t1-3: compact threshold percent (85–95).
+    #[ts(optional)]
+    pub context_compact_threshold_percent: Option<u8>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

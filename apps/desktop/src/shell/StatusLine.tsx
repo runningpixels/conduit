@@ -8,29 +8,18 @@
  * muted line under the composer, with the fuller breakdown one click away in a
  * popover.
  *
- * It reads exactly the inputs the strip did — same props, same helpers
- * (`getContextWindow`, `sumUsageTokens`, `estimateCostCents`,
- * `formatCostCents`, `providerDisplayName`). Only the presentation collapses;
- * nothing about the data model moves.
- *
- * Two deliberate departures from the mockup:
- *
- *   1. A missing key is promoted into the sentence in `--warn`, not buried in
- *      the popover. Every other fact here is a reference fact you consult; an
- *      unconfigured key is the one that is *actionable*, and hiding it one
- *      click down turns a fixable state into a send that fails for no visible
- *      reason.
- *   2. The popover keeps a route to the model switcher. V9 moves the model
- *      chip to the composer, which is right — that is where a switch happens —
- *      but the strip's chip was also the only way to reach the picker from
- *      here, and dropping the route outright would lose a capability rather
- *      than relocate one.
+ * t1-3: context fill is `contextTokens` (prompt-size estimate from ChatView),
+ * not summed per-turn API usage. Spend still comes from `usage`. A compact
+ * meter sits beside the %; warn styling when fill ≥ compact threshold.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
 import { providerDisplayName } from '../lib/providerIdentity';
-import { getContextWindow, sumUsageTokens } from '../lib/contextWindows';
+import {
+  DEFAULT_COMPACT_THRESHOLD_PERCENT,
+  getContextWindow,
+} from '../lib/contextWindows';
 import { estimateCostCents, formatCostCents } from '../lib/costTable';
 import { readExpandedStatus } from './uiPrefs';
 import { ContextIcon, LockIcon, ModelIcon, ShieldIcon, SpendIcon } from '../icons';
@@ -42,10 +31,12 @@ interface StatusLineProps {
   /** Open a settings section ('providers' | 'privacy' …). Optional — when
    *  absent, the popover's deep links render as non-interactive rows. */
   onOpenSettings?: (tab?: string) => void;
-  /** Accumulated usage for the whole conversation (turns + live stream). */
+  /** Accumulated usage for spend (not context fill). */
   usage: ProviderUsage | null;
-  /** Pending composer token estimate, added to the context-use segment. */
-  composerTokenEstimate: number;
+  /** Estimated tokens for the next request (history + system + tools + draft). */
+  contextTokens: number;
+  /** Auto-compact threshold percent; drives warn styling on the meter. */
+  compactThresholdPercent?: number;
   /** Key posture of the active provider ('loading' while resolving). */
   credentialMode: CredentialMode;
   /** `keychain://…` reference, or empty when not configured. */
@@ -68,7 +59,8 @@ export function StatusLine({
   settings,
   onOpenSettings,
   usage,
-  composerTokenEstimate,
+  contextTokens,
+  compactThresholdPercent = DEFAULT_COMPACT_THRESHOLD_PERCENT,
   credentialMode,
   credentialRef,
   modelMenuOpen,
@@ -102,9 +94,11 @@ export function StatusLine({
     };
   }, [open]);
 
-  const tokens = sumUsageTokens(usage) + composerTokenEstimate;
+  const tokens = Math.max(0, contextTokens);
   const contextWindow = getContextWindow(settings.activeModel);
   const percent = contextWindow != null ? Math.round((tokens / contextWindow) * 100) : null;
+  const nearLimit = percent != null && percent >= compactThresholdPercent;
+  const meterFill = percent != null ? Math.min(100, Math.max(0, percent)) : 0;
 
   // The sentence carries the ratio; the popover carries the raw counts. Same
   // fact, two volumes — which is the whole point of the collapse.
@@ -147,6 +141,7 @@ export function StatusLine({
         type="button"
         className="status"
         data-expanded={expanded ? 'true' : undefined}
+        data-context-warn={nearLimit ? 'true' : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         title="Chat details"
@@ -161,7 +156,21 @@ export function StatusLine({
           </>
         )}
         {sep}
-        <span>{expanded ? contextFull : contextBrief}</span>
+        {contextWindow != null && (
+          <span
+            className="ctx-meter"
+            role="meter"
+            aria-label={`Context ${percent}% of ${formatWindow(contextWindow)}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={meterFill}
+          >
+            <span className="ctx-meter-fill" style={{ width: `${meterFill}%` }} />
+          </span>
+        )}
+        <span className={nearLimit ? 'warn' : undefined}>
+          {expanded ? contextFull : contextBrief}
+        </span>
         {spendLabel != null && (
           <>
             {sep}
@@ -220,7 +229,7 @@ export function StatusLine({
               </span>
             ))}
 
-          <span className="menu-item">
+          <span className={`menu-item${nearLimit ? ' warn' : ''}`}>
             <ContextIcon />
             Context {contextFull}
             {percent != null && <span className="tail">{percent}%</span>}

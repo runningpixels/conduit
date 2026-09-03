@@ -77,6 +77,8 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     workspaceToolsConsentAcknowledged: false,
     generationControls: null,
     userInstructions: null,
+  contextCompactEnabled: true,
+  contextCompactThresholdPercent: 90,
   };
 
   it('omits the brand appendix on an ordinary turn', () => {

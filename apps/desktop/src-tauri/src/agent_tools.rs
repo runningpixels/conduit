@@ -1810,7 +1810,8 @@ mod tests {
         // 7 original document tools + 8 utility/web/clipboard tools
         // + 1 write_brand_theme (Phase 4)
         // + 5 workspace file tools
-        // + 1 ask_user (t1-2) = 22
-        assert_eq!(defs.len(), 22);
+        // + 1 ask_user (t1-2)
+        // + 1 remember (t1-5) = 23
+        assert_eq!(defs.len(), 23);
     }
 }

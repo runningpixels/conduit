@@ -540,6 +540,16 @@
   background: var(--card);
   border: 1px solid var(--line);
 }
+.skill-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.memory-pending {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 4px;
+}
 .skill-row-title {
   display: flex;
   flex-wrap: wrap;

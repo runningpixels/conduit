@@ -1,3 +1,4 @@
+import { appName } from '../brand';
 import type { SkillSource, SkillSummary } from '../ipc/contracts';
 
 interface ComposerSkillsProps {
@@ -11,7 +12,7 @@ interface ComposerSkillsProps {
 }
 
 const SOURCE_LABEL: Record<SkillSource, string> = {
-  conduit: 'Conduit',
+  conduit: appName(),
   claude: 'Claude',
   agents: 'Agents',
   brand: 'Brand',

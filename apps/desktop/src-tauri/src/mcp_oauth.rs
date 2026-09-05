@@ -244,7 +244,10 @@ async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Resul
                 .unwrap_or("authorization error")
         )
     } else {
-        "Signed in. You can close this window and return to Conduit.".to_string()
+        format!(
+            "Signed in. You can close this window and return to {}.",
+            crate::brand::app_name()
+        )
     };
     let html = format!("<!doctype html><html><body><p>{body}</p></body></html>");
     let resp = format!(

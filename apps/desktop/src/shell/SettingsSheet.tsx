@@ -459,7 +459,7 @@ export function SettingsSheet({
             <>
               <h2 className="sheet-h">Skills</h2>
               <p className="sheet-sub">
-                SKILL.md packages from the Conduit folder, <code>~/.claude/skills</code>, and{' '}
+                SKILL.md packages from the {appName()} folder, <code>~/.claude/skills</code>, and{' '}
                 <code>~/.agents/skills</code>. Enable them per chat from the composer.
               </p>
               <SkillsSection onStatus={onStatus} workspaceRoot={settings.workspaceRoot} />

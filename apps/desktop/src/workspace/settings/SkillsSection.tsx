@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { appName } from '../../brand';
 import type { SkillSource, SkillSummary } from '../../ipc/contracts';
 import {
   deleteManagedSkill,
@@ -16,7 +17,7 @@ interface SkillsSectionProps {
 }
 
 const SOURCE_LABEL: Record<SkillSource, string> = {
-  conduit: 'Conduit',
+  conduit: appName(),
   claude: 'Claude',
   agents: 'Agents',
   brand: 'Brand',
@@ -82,18 +83,18 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
           type="button"
           disabled={busy}
           onClick={() =>
-            void run('Opened Conduit skills folder', async () => {
+            void run(`Opened ${appName()} skills folder`, async () => {
               await revealSkillsDir();
               return true;
             })
           }
         >
-          Open Conduit folder
+          Open {appName()} folder
         </button>
       </div>
       {skills.length === 0 ? (
         <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-          No skills yet. Drop a valid package into the Conduit skills folder, import a
+          No skills yet. Drop a valid package into the {appName()} skills folder, import a
           folder or zip, or keep packages in <code>~/.claude/skills</code> — those
           list here without copying.
         </p>
@@ -144,7 +145,7 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
                     type="button"
                     disabled={busy}
                     onClick={() => {
-                      if (!confirm(`Delete Conduit skill "${skill.name}"?`)) return;
+                      if (!confirm(`Delete ${appName()} skill "${skill.name}"?`)) return;
                       void run(`Deleted ${skill.name}`, async () => {
                         await deleteManagedSkill(skill.id);
                         return true;

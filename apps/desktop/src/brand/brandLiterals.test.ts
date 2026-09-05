@@ -155,6 +155,18 @@ const WIRE_IDENTITY_ALLOWLIST: { file: string; pattern: RegExp; reason: string }
       'to the connector, not the user; some servers allowlist or log by this field.',
   },
   {
+    file: 'src-tauri/src/commands/connectors.rs',
+    pattern: /name:\s*"Conduit"\.to_string\(\)/,
+    reason:
+      "ClientInfo.name sent to MCP servers during the initialize handshake (OAuth discovery path). Same wire identity as connector_runtime.",
+  },
+  {
+    file: 'src-tauri/src/mcp_registry.rs',
+    pattern: /user_agent\("Conduit-MCP\/0\.1"\)/,
+    reason:
+      'User-Agent on official MCP registry HTTP requests. The registry (and operators reading access logs) identify this client by this string.',
+  },
+  {
     file: 'src-tauri/src/agent_tools.rs',
     pattern: /"User-Agent",\s*"Conduit\/1\.0"/,
     reason:

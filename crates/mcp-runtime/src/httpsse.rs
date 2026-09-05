@@ -462,10 +462,8 @@ fn parse_sse_jsonrpc(body: &str) -> Result<String, McpError> {
             data.push_str(piece);
             continue;
         }
-        if line.is_empty() {
-            if !data.is_empty() {
-                last_payload = Some(std::mem::take(&mut data));
-            }
+        if line.is_empty() && !data.is_empty() {
+            last_payload = Some(std::mem::take(&mut data));
         }
     }
     if !data.is_empty() {

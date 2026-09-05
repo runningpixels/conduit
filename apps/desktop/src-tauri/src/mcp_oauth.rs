@@ -234,7 +234,7 @@ async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Resul
         .query_pairs()
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
-    let body = if pairs.get("error").is_some() {
+    let body = if pairs.contains_key("error") {
         format!(
             "Sign-in failed: {}",
             pairs

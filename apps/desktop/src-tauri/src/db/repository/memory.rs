@@ -172,7 +172,7 @@ pub async fn create(
     enc: &Encryption,
     new: NewMemory,
 ) -> Result<MemoryItem, DbError> {
-    let body = validate_body(&new.body).map_err(|e| DbError::Query(e))?;
+    let body = validate_body(&new.body).map_err(DbError::Query)?;
     let id = Uuid::new_v4().to_string();
     let now = now_iso8601();
     let encrypted = enc.encrypt(&body)?;
@@ -211,7 +211,7 @@ pub async fn update(
     body: &str,
     pinned: bool,
 ) -> Result<MemoryItem, DbError> {
-    let body = validate_body(body).map_err(|e| DbError::Query(e))?;
+    let body = validate_body(body).map_err(DbError::Query)?;
     let existing = get(pool, enc, id)
         .await?
         .ok_or_else(|| DbError::Query("memory item not found".into()))?;
@@ -345,13 +345,13 @@ mod tests {
             created_at: "t".into(),
             updated_at: "t".into(),
         };
-        assert!(compose_prompt_block(&[item.clone()], true).is_empty());
+        assert!(compose_prompt_block(std::slice::from_ref(&item), true).is_empty());
         let active = MemoryItem {
             status: MemoryStatus::Active,
             ..item
         };
-        assert!(compose_prompt_block(&[active.clone()], false).is_empty());
-        let on = compose_prompt_block(&[active], true);
+        assert!(compose_prompt_block(std::slice::from_ref(&active), false).is_empty());
+        let on = compose_prompt_block(std::slice::from_ref(&active), true);
         assert!(on.contains("BANANA-MEMORY"));
         assert!(on.contains(MEMORY_HEADING));
     }

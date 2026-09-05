@@ -249,6 +249,25 @@ export interface AddLocalConnectorResult {
   connectorVersionId: string;
 }
 
+export interface AddRemoteConnectorRequest {
+  name: string;
+  description?: string;
+  url: string;
+  version?: string;
+  consentCopy?: string;
+}
+
+export interface RegistryServer {
+  name: string;
+  title?: string;
+  description: string;
+  version: string;
+  remoteUrl?: string;
+  remoteType?: string;
+  installable: boolean;
+  reason?: string;
+}
+
 export interface ConnectorServerInfo {
   name: string;
   version: string;
@@ -392,6 +411,37 @@ export interface Prompt {
   sortOrder: number;
   createdAt: string;
   updatedAt?: string;
+}
+
+/** SKILL.md package metadata (t1-4). Body is omitted until the skill is enabled. */
+export type SkillSource = 'conduit' | 'claude' | 'agents' | 'brand' | 'workspace';
+
+export interface SkillSummary {
+  id: string;
+  name: string;
+  description: string;
+  source: SkillSource;
+  path: string;
+  hasScripts: boolean;
+  hasReferences: boolean;
+  hasAssets: boolean;
+  compatibility?: string;
+  license?: string;
+  parseError?: string;
+}
+
+export type MemoryKind = 'core' | 'note';
+export type MemoryStatus = 'pending' | 'active';
+
+export interface MemoryItem {
+  id: string;
+  kind: MemoryKind;
+  body: string;
+  sourceConversationId?: string;
+  pinned: boolean;
+  status: MemoryStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** One-level history-rail folder (t0-5). Empty folders stay as drop targets. */

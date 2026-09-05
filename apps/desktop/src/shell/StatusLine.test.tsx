@@ -52,6 +52,7 @@ const settings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 const baseProps = {

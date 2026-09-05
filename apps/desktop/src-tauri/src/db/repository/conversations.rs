@@ -717,6 +717,15 @@ pub async fn fork_at(
 
     messages::insert_copied_messages_in_txn(&mut tx, &fork_id, &to_copy).await?;
 
+    sqlx::query(
+        "INSERT INTO conversation_skills (conversation_id, skill_id) \
+         SELECT ?, skill_id FROM conversation_skills WHERE conversation_id = ?",
+    )
+    .bind(&fork_id)
+    .bind(source_conversation_id)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
 
     Ok(Conversation {
@@ -837,6 +846,15 @@ pub async fn fork_before(
     .await?;
 
     messages::insert_copied_messages_in_txn(&mut tx, &fork_id, &to_copy).await?;
+
+    sqlx::query(
+        "INSERT INTO conversation_skills (conversation_id, skill_id) \
+         SELECT ?, skill_id FROM conversation_skills WHERE conversation_id = ?",
+    )
+    .bind(&fork_id)
+    .bind(source_conversation_id)
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
 

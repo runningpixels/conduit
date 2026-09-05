@@ -3,7 +3,9 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use conduit_desktop::commands::revoke_connector_grant_inner;
+use conduit_desktop::commands::{
+    add_remote_connector_inner, revoke_connector_grant_inner, AddRemoteConnectorRequest,
+};
 use conduit_desktop::connector_runtime::ConnectorRuntimeManager;
 use conduit_desktop::db::repository::connectors::{
     self, ConnectorDefinition, ConnectorGrant, ConnectorVersion,
@@ -126,4 +128,57 @@ async fn revoke_command_resolves_version_from_grant_and_stops_connector() {
         .unwrap()
         .unwrap();
     assert_eq!(runtime_state.health, "down");
+}
+
+#[tokio::test]
+async fn add_remote_connector_persists_https_http_sse_definition() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let result = add_remote_connector_inner(
+        &state,
+        AddRemoteConnectorRequest {
+            name: "ACME Analytics".into(),
+            description: Some("bi".into()),
+            url: "https://analytics.example.com/mcp".into(),
+            version: Some("2.0.0".into()),
+            consent_copy: None,
+        },
+    )
+    .await
+    .expect("add remote");
+    assert_eq!(result.connector_id, "remote:acme-analytics");
+    let def = connectors::get(&pool, &result.connector_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(def.transport, "httpSse");
+    let version = connectors::get_version(&pool, &result.connector_version_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        version.transport_config["url"],
+        "https://analytics.example.com/mcp"
+    );
+}
+
+#[tokio::test]
+async fn add_remote_connector_rejects_plain_http_non_loopback() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let err = add_remote_connector_inner(
+        &state,
+        AddRemoteConnectorRequest {
+            name: "bad".into(),
+            description: None,
+            url: "http://example.com/mcp".into(),
+            version: None,
+            consent_copy: None,
+        },
+    )
+    .await
+    .expect_err("plain http");
+    assert!(err.contains("https"), "got {err}");
 }

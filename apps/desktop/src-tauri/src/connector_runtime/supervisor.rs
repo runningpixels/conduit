@@ -91,6 +91,22 @@ async fn supervise(
                     persist_health(&pool, &version_id, "healthy", None, restart_count, false).await;
                 info!(target: "mcp_connector", %version_id, restart_count, "connector restarted");
             }
+            Err(e) if e.category == mcp_runtime::ErrorCategory::AuthExpired => {
+                let _ = persist_health(
+                    &pool,
+                    &version_id,
+                    "authRequired",
+                    Some(&e.message),
+                    restart_count,
+                    false,
+                )
+                .await;
+                conn.cancel.cancel();
+                if let Ok(mut guard) = active.lock() {
+                    guard.remove(&version_id);
+                }
+                break;
+            }
             Err(e) => {
                 warn!(target: "mcp_connector", %version_id, error = %e.message, "restart failed");
                 let _ = persist_health(

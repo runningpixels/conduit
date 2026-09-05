@@ -41,6 +41,7 @@ const baseSettings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 vi.mock('../ipc/client', () => ({
@@ -86,6 +87,11 @@ vi.mock('../ipc/client', () => ({
   discoverConnector: vi.fn(),
   startConnector: vi.fn(),
   invokeConnectorTool: vi.fn(),
+  listSkills: vi.fn().mockResolvedValue([]),
+  listConversationSkills: vi.fn().mockResolvedValue([]),
+  setConversationSkills: vi.fn().mockResolvedValue([]),
+  getSkillPromptBlock: vi.fn().mockResolvedValue(''),
+  getMemoryPromptBlock: vi.fn().mockResolvedValue(''),
 }));
 
 import {

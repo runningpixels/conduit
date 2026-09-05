@@ -6,7 +6,7 @@ import {
   loadProviderCredentialReference,
   saveAttachment,
 } from '../ipc/client';
-import { AttachIcon, FilePlainIcon, FolderIcon, SearchIcon, SendIcon, SlidersIcon, StopIcon } from '../icons';
+import { AttachIcon, FilePlainIcon, FolderIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
 import { brand } from '../brand';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
@@ -23,6 +23,8 @@ import { readSendWith } from '../shell/uiPrefs';
 import { workspaceFolderLabel } from './agentTools';
 import { localSearchBackendLabel, resolveSearchBackend } from './webSearchIntent';
 import { ComposerChatSettings } from './ComposerChatSettings';
+import { ComposerSkills } from './ComposerSkills';
+import type { SkillSummary } from '../ipc/contracts';
 import { previewText, type QueuedMessage } from './messageQueue';
 
 export interface ComposerHandle {
@@ -63,6 +65,10 @@ export interface ComposerProps {
     generationControls: GenerationControls | null,
     userInstructions: string | null,
   ) => void;
+  /** Discovered SKILL.md packages and which ones are on for this chat. */
+  skills?: SkillSummary[];
+  enabledSkillIds?: string[];
+  onToggleSkill?: (skillId: string, enabled: boolean) => void;
   /// Open a settings section ('providers' | 'privacy' …) from the strip.
   onOpenSettings?: (tab?: string) => void;
   /// Accumulated usage for spend (turns + live stream).
@@ -103,6 +109,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   generationControls = null,
   userInstructions = null,
   onSaveChatSettings,
+  skills = [],
+  enabledSkillIds = [],
+  onToggleSkill,
   onOpenSettings,
   usage,
   contextTokens = 0,
@@ -118,6 +127,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [dropActive, setDropActive] = useState(false);
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
 
   useComposerAutosize(textareaRef, prompt);
 
@@ -588,6 +598,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 disabled={!conversationId}
                 onClick={() => {
                   setWorkspaceMenuOpen(false);
+                  setSkillsOpen(false);
                   setChatSettingsOpen((open) => !open);
                 }}
               >
@@ -606,6 +617,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onOpenSettingsDefaults={
                   onOpenSettings ? () => onOpenSettings('chat') : undefined
                 }
+              />
+            </span>
+          )}
+          {onToggleSkill && !streaming && (
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                className={`cbtn${enabledSkillIds.length > 0 ? ' armed' : ''}${skillsOpen ? ' armed' : ''}`}
+                type="button"
+                aria-label="Skills for this chat"
+                title="Skills — enable SKILL.md packages for this chat"
+                aria-haspopup="dialog"
+                aria-expanded={skillsOpen}
+                disabled={!conversationId}
+                onClick={() => {
+                  setWorkspaceMenuOpen(false);
+                  setChatSettingsOpen(false);
+                  setSkillsOpen((open) => !open);
+                }}
+              >
+                <SkillIcon />
+              </button>
+              <ComposerSkills
+                open={skillsOpen}
+                streaming={streaming}
+                skills={skills}
+                enabledIds={enabledSkillIds}
+                onClose={() => setSkillsOpen(false)}
+                onToggle={onToggleSkill}
+                onOpenSettings={onOpenSettings ? () => onOpenSettings('skills') : undefined}
               />
             </span>
           )}

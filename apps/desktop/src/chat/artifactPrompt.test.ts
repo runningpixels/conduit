@@ -77,6 +77,7 @@ describe('buildProviderRequest artifact prompts', () => {
     userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
   };
 
   it('includes the artifact appendix in systemPrompt', () => {

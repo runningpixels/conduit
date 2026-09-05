@@ -143,6 +143,7 @@ const defaultSettings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';

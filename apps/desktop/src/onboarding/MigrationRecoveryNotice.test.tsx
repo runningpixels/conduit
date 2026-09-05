@@ -33,6 +33,9 @@ vi.mock('../ipc/client', () => ({
   stopConnector: vi.fn(),
   revokeConnectorGrant: vi.fn(),
   addLocalConnector: vi.fn(),
+  addRemoteConnector: vi.fn(),
+  searchMcpRegistry: vi.fn().mockResolvedValue([]),
+  signinRemoteConnector: vi.fn(),
 }));
 
 import {

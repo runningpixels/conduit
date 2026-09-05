@@ -425,6 +425,9 @@ impl AppState {
             }
             settings.context_compact_threshold_percent = value;
         }
+        if let Some(value) = patch.memory_enabled {
+            settings.memory_enabled = value;
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())

@@ -7,16 +7,29 @@ const USER_INSTRUCTIONS_PREAMBLE =
 
 /**
  * Compose the system prompt: auto-composed blocks always come first.
- * User instructions are appended as a reserved block and never replace them.
+ * Optional extra sections (enabled skills, workspace AGENTS.md, memory) sit
+ * between those blocks and user instructions. User instructions are appended
+ * as a reserved block and never replace either.
  */
 export function composeSystemPrompt(
   autoComposed: string[],
   userInstructions?: string | null,
+  extraSections?: string | null,
 ): string {
   const auto = autoComposed.map((s) => s.trim()).filter(Boolean).join(' ');
+  const extra = extraSections?.trim();
   const user = userInstructions?.trim();
-  if (!user) return auto;
-  return `${auto}\n\n${USER_INSTRUCTIONS_HEADING}\n\n${USER_INSTRUCTIONS_PREAMBLE}\n\n${user}`;
+  const head = [auto, extra].filter(Boolean).join('\n\n');
+  if (!user) return head;
+  return `${head}\n\n${USER_INSTRUCTIONS_HEADING}\n\n${USER_INSTRUCTIONS_PREAMBLE}\n\n${user}`;
+}
+
+/** Join skill / memory / AGENTS.md blocks; empty pieces drop out. */
+export function joinExtraSystemSections(
+  ...blocks: Array<string | null | undefined>
+): string | undefined {
+  const joined = blocks.map((s) => s?.trim()).filter(Boolean).join('\n\n');
+  return joined || undefined;
 }
 
 /**

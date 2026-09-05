@@ -53,6 +53,10 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
     let connectors = root.join("connectors");
     let exports = root.join("exports");
     let branding = root.join("branding");
+    // t1-4: Conduit-managed SKILL.md packages. Not an AppPaths field — tests
+    // construct AppPaths by hand in many places; deriving from `root` keeps
+    // those literals compiling. Created here so dropping a folder in works.
+    let skills = root.join("skills");
 
     for path in [
         &root,
@@ -65,6 +69,7 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
         &connectors,
         &exports,
         &branding,
+        &skills,
     ] {
         fs::create_dir_all(path).map_err(|error| error.to_string())?;
     }

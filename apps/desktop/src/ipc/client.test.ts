@@ -23,11 +23,23 @@ import {
   exportConversationDialog,
   prepareMessageEdit,
   setConversationChatSettings,
+  listSkills,
+  setConversationSkills,
+  getSkillPromptBlock,
+  listMemoryItems,
+  createMemoryItem,
+  updateMemoryItem,
+  deleteMemoryItem,
+  acceptMemoryItem,
+  getMemoryPromptBlock,
   openExternalUrl,
   saveAttachment,
   listAttachments,
   deleteAttachment,
   getAttachmentBytes,
+  searchMcpRegistry,
+  addRemoteConnector,
+  signinRemoteConnector,
 } from './client';
 
 beforeEach(() => {
@@ -162,10 +174,84 @@ describe('artifact + attachment IPC wrappers', () => {
     });
   });
 
+  it('listSkills / setConversationSkills / getSkillPromptBlock', async () => {
+    invoke.mockResolvedValue([]);
+    await listSkills('/ws');
+    expect(invoke).toHaveBeenCalledWith('list_skills', { workspaceRoot: '/ws' });
+
+    invoke.mockResolvedValue(['conduit:pdf-processing']);
+    await setConversationSkills('c1', ['conduit:pdf-processing']);
+    expect(invoke).toHaveBeenCalledWith('set_conversation_skills', {
+      conversationId: 'c1',
+      skillIds: ['conduit:pdf-processing'],
+    });
+
+    invoke.mockResolvedValue('## Skills\n\nBANANA-SKILL');
+    const block = await getSkillPromptBlock(['conduit:pdf-processing'], '/ws');
+    expect(invoke).toHaveBeenCalledWith('get_skill_prompt_block', {
+      skillIds: ['conduit:pdf-processing'],
+      workspaceRoot: '/ws',
+    });
+    expect(block).toContain('BANANA-SKILL');
+  });
+
+  it('listMemoryItems / create / update / delete / accept / getMemoryPromptBlock', async () => {
+    invoke.mockResolvedValue([]);
+    await listMemoryItems('pending');
+    expect(invoke).toHaveBeenCalledWith('list_memory_items', { status: 'pending' });
+
+    invoke.mockResolvedValue({ id: 'm1' });
+    await createMemoryItem('I prefer terse commits', 'core', true);
+    expect(invoke).toHaveBeenCalledWith('create_memory_item', {
+      body: 'I prefer terse commits',
+      kind: 'core',
+      pinned: true,
+    });
+
+    await updateMemoryItem('m1', 'Updated', 'note', false);
+    expect(invoke).toHaveBeenCalledWith('update_memory_item', {
+      id: 'm1',
+      body: 'Updated',
+      kind: 'note',
+      pinned: false,
+    });
+
+    invoke.mockResolvedValue(undefined);
+    await deleteMemoryItem('m1');
+    expect(invoke).toHaveBeenCalledWith('delete_memory_item', { id: 'm1' });
+
+    invoke.mockResolvedValue({ id: 'm1', status: 'active' });
+    await acceptMemoryItem('m1');
+    expect(invoke).toHaveBeenCalledWith('accept_memory_item', { id: 'm1' });
+
+    invoke.mockResolvedValue('## Memory\n\nBANANA-MEMORY');
+    const block = await getMemoryPromptBlock();
+    expect(invoke).toHaveBeenCalledWith('get_memory_prompt_block');
+    expect(block).toContain('BANANA-MEMORY');
+  });
+
   it('openExternalUrl calls open_external_url with the url', async () => {
     invoke.mockResolvedValue(undefined);
     await openExternalUrl('https://example.com/a');
     expect(invoke).toHaveBeenCalledWith('open_external_url', { url: 'https://example.com/a' });
+  });
+
+  it('searchMcpRegistry / addRemoteConnector / signinRemoteConnector', async () => {
+    invoke.mockResolvedValue([]);
+    await searchMcpRegistry('github');
+    expect(invoke).toHaveBeenCalledWith('search_mcp_registry', { query: 'github' });
+
+    invoke.mockResolvedValue({ connectorId: 'remote:x', connectorVersionId: 'remote:x:1' });
+    await addRemoteConnector({ name: 'X', url: 'https://x.example/mcp' });
+    expect(invoke).toHaveBeenCalledWith('add_remote_connector', {
+      request: { name: 'X', url: 'https://x.example/mcp' },
+    });
+
+    invoke.mockResolvedValue(undefined);
+    await signinRemoteConnector('remote:x:1');
+    expect(invoke).toHaveBeenCalledWith('signin_remote_connector', {
+      connectorVersionId: 'remote:x:1',
+    });
   });
 
   it('saveAttachment / listAttachments / deleteAttachment / getAttachmentBytes', async () => {

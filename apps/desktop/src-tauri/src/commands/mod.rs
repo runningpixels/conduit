@@ -8,12 +8,16 @@ pub mod artifacts;
 pub mod branding;
 pub mod chat;
 pub mod connectors;
+pub mod memory;
 pub mod prompts;
 pub mod settings;
+pub mod skills;
 
 pub use artifacts::*;
 pub use branding::*;
 pub use chat::*;
 pub use connectors::*;
+pub use memory::*;
 pub use prompts::*;
 pub use settings::*;
+pub use skills::*;

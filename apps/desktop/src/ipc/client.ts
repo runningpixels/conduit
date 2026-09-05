@@ -2,6 +2,7 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import type {
   AddLocalConnectorRequest,
   AddLocalConnectorResult,
+  AddRemoteConnectorRequest,
   AppPaths,
   AppSettings,
   Artifact,
@@ -37,6 +38,7 @@ import type {
   ProviderDescriptor,
   ProviderEvent,
   ProviderRequest,
+  RegistryServer,
   RemovalReport,
   SettingsPatch,
   StreamEvent,
@@ -44,6 +46,8 @@ import type {
   UpdateInfo,
   WipeScope,
   Prompt,
+  SkillSummary,
+  MemoryItem,
   ConversationFolder,
   SearchMessagesRequest,
   SearchResult,
@@ -647,6 +651,18 @@ export async function addLocalConnector(request: AddLocalConnectorRequest): Prom
   return invoke<AddLocalConnectorResult>('add_local_connector', { request });
 }
 
+export async function searchMcpRegistry(query: string): Promise<RegistryServer[]> {
+  return invoke<RegistryServer[]>('search_mcp_registry', { query });
+}
+
+export async function addRemoteConnector(request: AddRemoteConnectorRequest): Promise<AddLocalConnectorResult> {
+  return invoke<AddLocalConnectorResult>('add_remote_connector', { request });
+}
+
+export async function signinRemoteConnector(connectorVersionId: string): Promise<void> {
+  await invoke('signin_remote_connector', { connectorVersionId });
+}
+
 // =============================================================================
 // Phase 5 — Artifacts (single-payload model) + attachments
 // =============================================================================
@@ -752,6 +768,102 @@ export async function deletePrompt(id: string): Promise<void> {
 
 export async function listPromptFolders(): Promise<string[]> {
   return invoke<string[]>('list_prompt_folders');
+}
+
+export async function listSkills(workspaceRoot?: string | null): Promise<SkillSummary[]> {
+  return invoke<SkillSummary[]>('list_skills', {
+    workspaceRoot: workspaceRoot ?? null,
+  });
+}
+
+export async function getSkillPromptBlock(
+  skillIds: string[],
+  workspaceRoot?: string | null,
+): Promise<string> {
+  return invoke<string>('get_skill_prompt_block', {
+    skillIds,
+    workspaceRoot: workspaceRoot ?? null,
+  });
+}
+
+export async function listConversationSkills(conversationId: string): Promise<string[]> {
+  return invoke<string[]>('list_conversation_skills', { conversationId });
+}
+
+export async function setConversationSkills(
+  conversationId: string,
+  skillIds: string[],
+): Promise<string[]> {
+  return invoke<string[]>('set_conversation_skills', { conversationId, skillIds });
+}
+
+export async function importSkillFolder(): Promise<SkillSummary | null> {
+  return invoke<SkillSummary | null>('import_skill_folder');
+}
+
+export async function importSkillZip(): Promise<SkillSummary | null> {
+  return invoke<SkillSummary | null>('import_skill_zip');
+}
+
+export async function exportSkillFolder(
+  skillId: string,
+  workspaceRoot?: string | null,
+): Promise<string | null> {
+  return invoke<string | null>('export_skill_folder', {
+    skillId,
+    workspaceRoot: workspaceRoot ?? null,
+  });
+}
+
+export async function exportSkillZip(
+  skillId: string,
+  workspaceRoot?: string | null,
+): Promise<string | null> {
+  return invoke<string | null>('export_skill_zip', {
+    skillId,
+    workspaceRoot: workspaceRoot ?? null,
+  });
+}
+
+export async function deleteManagedSkill(skillId: string): Promise<void> {
+  return invoke('delete_managed_skill', { skillId });
+}
+
+export async function revealSkillsDir(): Promise<string> {
+  return invoke<string>('reveal_skills_dir');
+}
+
+export async function listMemoryItems(status?: 'pending' | 'active' | null): Promise<MemoryItem[]> {
+  return invoke<MemoryItem[]>('list_memory_items', { status: status ?? null });
+}
+
+export async function createMemoryItem(
+  body: string,
+  kind?: 'core' | 'note',
+  pinned?: boolean,
+): Promise<MemoryItem> {
+  return invoke<MemoryItem>('create_memory_item', { body, kind: kind ?? null, pinned: pinned ?? null });
+}
+
+export async function updateMemoryItem(
+  id: string,
+  body: string,
+  kind?: 'core' | 'note',
+  pinned?: boolean,
+): Promise<MemoryItem> {
+  return invoke<MemoryItem>('update_memory_item', { id, body, kind: kind ?? null, pinned: pinned ?? null });
+}
+
+export async function deleteMemoryItem(id: string): Promise<void> {
+  return invoke('delete_memory_item', { id });
+}
+
+export async function acceptMemoryItem(id: string): Promise<MemoryItem> {
+  return invoke<MemoryItem>('accept_memory_item', { id });
+}
+
+export async function getMemoryPromptBlock(): Promise<string> {
+  return invoke<string>('get_memory_prompt_block');
 }
 
 /// Fetch a single payload-bearing artifact (inline content decrypted).

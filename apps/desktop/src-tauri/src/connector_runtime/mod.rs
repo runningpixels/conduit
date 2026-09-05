@@ -306,18 +306,29 @@ impl ConnectorRuntimeManager {
             }
         }
 
-        let spec = TransportSpec::from_definition(&definition.transport, &version.transport_config)
-            .map_err(|e| e.to_string())?;
+        let mut spec =
+            TransportSpec::from_definition(&definition.transport, &version.transport_config)
+                .map_err(|e| e.to_string())?;
+        if let TransportSpec::HttpSse(cfg) = &mut spec {
+            cfg.access_token =
+                crate::mcp_oauth::access_token_for_grants(state, &grants, connector_version_id)
+                    .await?;
+        }
         let mut transport = build_transport(&spec, &self.client).map_err(|e| e.to_string())?;
         let cancel = CancellationToken::new();
         let init_fut = transport.initialize(&cancel);
         let server = match tokio::time::timeout(self.call_timeout, init_fut).await {
             Ok(Ok(s)) => s,
             Ok(Err(e)) => {
+                let health = if e.category == mcp_runtime::ErrorCategory::AuthExpired {
+                    "authRequired"
+                } else {
+                    "down"
+                };
                 let _ = persist_health(
                     &pool,
                     connector_version_id,
-                    "down",
+                    health,
                     Some(&e.message),
                     0,
                     false,
@@ -445,7 +456,9 @@ fn build_transport(
             cfg.clone(),
             client.clone(),
         )?)),
-        TransportSpec::HttpSse(cfg) => Ok(Box::new(HttpSseTransport::new(cfg.clone()))),
+        TransportSpec::HttpSse(cfg) => {
+            Ok(Box::new(HttpSseTransport::new(cfg.clone(), client.clone())))
+        }
     }
 }
 

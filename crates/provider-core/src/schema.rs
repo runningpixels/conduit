@@ -1680,6 +1680,10 @@ pub struct AppSettings {
     /// Clamped to 85–95 on write. Default 90.
     #[serde(default = "default_compact_threshold")]
     pub context_compact_threshold_percent: u8,
+    /// t1-5: inject saved memory facts into the system prompt. Disable-all
+    /// stops injection immediately; stored items are kept.
+    #[serde(default = "default_true")]
+    pub memory_enabled: bool,
 }
 
 fn default_true() -> bool {
@@ -1717,6 +1721,7 @@ impl Default for AppSettings {
             user_instructions: None,
             context_compact_enabled: true,
             context_compact_threshold_percent: 90,
+            memory_enabled: true,
         }
     }
 }
@@ -1789,6 +1794,9 @@ pub struct SettingsPatch {
     /// t1-3: compact threshold percent (85–95).
     #[ts(optional)]
     pub context_compact_threshold_percent: Option<u8>,
+    /// t1-5: disable-all for memory injection.
+    #[ts(optional)]
+    pub memory_enabled: Option<bool>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

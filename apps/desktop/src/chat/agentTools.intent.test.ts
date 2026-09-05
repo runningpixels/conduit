@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { builtinToolDefinitions, selectBuiltinDocumentTools } from './agentTools';
+import { builtinToolDefinitions, selectBuiltinDocumentTools, selectBuiltinMemoryTools } from './agentTools';
 
 describe('selectBuiltinDocumentTools', () => {
   it('exposes utility tools for info or general turns', () => {
@@ -43,7 +43,13 @@ describe('selectBuiltinDocumentTools', () => {
   });
 
   it('keeps the full catalog available for reference', () => {
-    // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user.
-    expect(builtinToolDefinitions()).toHaveLength(22);
+    // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember.
+    expect(builtinToolDefinitions()).toHaveLength(23);
+  });
+
+  it('advertises remember only when memory injection is on', () => {
+    expect(selectBuiltinMemoryTools(false)).toEqual([]);
+    expect(selectBuiltinMemoryTools(true).map((t) => t.name)).toEqual(['remember']);
+    expect(selectBuiltinDocumentTools('general').map((t) => t.name)).not.toContain('remember');
   });
 });

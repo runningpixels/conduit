@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AppSettings, GenerationControls } from '@conduit/config-schema';
 import {
   composeSystemPrompt,
+  joinExtraSystemSections,
   mergeGenerationControls,
   resolveUserInstructions,
   USER_INSTRUCTIONS_HEADING,
@@ -27,6 +28,25 @@ describe('composeSystemPrompt', () => {
     const result = composeSystemPrompt(['Base.'], '   ');
     expect(result).toBe('Base.');
     expect(result).not.toContain(USER_INSTRUCTIONS_HEADING);
+  });
+
+  it('inserts extra sections between auto-composed blocks and user instructions', () => {
+    const result = composeSystemPrompt(['Base.'], 'Be brief.', '## Skills\n\nBANANA-SKILL');
+    expect(result.startsWith('Base.')).toBe(true);
+    expect(result).toContain('BANANA-SKILL');
+    expect(result).toContain(USER_INSTRUCTIONS_HEADING);
+    expect(result.indexOf('BANANA-SKILL')).toBeLessThan(result.indexOf(USER_INSTRUCTIONS_HEADING));
+  });
+
+  it('drops extra sections when they are empty', () => {
+    expect(composeSystemPrompt(['Base.'], null, '   ')).toBe('Base.');
+  });
+
+  it('places the memory heading before user instructions', () => {
+    const extra = joinExtraSystemSections('## Skills\n\nBANANA-SKILL', '## Memory\n\nBANANA-MEMORY');
+    const result = composeSystemPrompt(['Base.'], 'Be brief.', extra);
+    expect(result.indexOf('BANANA-MEMORY')).toBeLessThan(result.indexOf(USER_INSTRUCTIONS_HEADING));
+    expect(result.indexOf('BANANA-SKILL')).toBeLessThan(result.indexOf('BANANA-MEMORY'));
   });
 });
 

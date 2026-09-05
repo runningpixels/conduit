@@ -22,9 +22,14 @@ import {
   startConnector,
   startChatStream,
   updateSettings,
+  listSkills,
+  listConversationSkills,
+  setConversationSkills,
+  getSkillPromptBlock,
+  getMemoryPromptBlock,
   type ConversationCompaction,
 } from '../ipc/client';
-import type { Conversation } from '../ipc/contracts';
+import type { Conversation, SkillSummary } from '../ipc/contracts';
 import { ConfirmDialog } from '@conduit/ui';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
@@ -36,7 +41,7 @@ import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
-import { composeSystemPrompt, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
+import { composeSystemPrompt, joinExtraSystemSections, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
 import type { TurnAttachment } from './composerTypes';
 import { UserTurnAttachments } from './UserTurnAttachments';
 import { modelAcceptsImages } from './modelAcceptsImages';
@@ -98,6 +103,7 @@ import {
   isDocumentContentTool,
   selectBuiltinBrandTools,
   selectBuiltinDocumentTools,
+  selectBuiltinMemoryTools,
   selectBuiltinWebTools,
   selectBuiltinWorkspaceTools,
   type DocumentToolActivity,
@@ -216,6 +222,8 @@ export interface ChatRequestOverrides {
   userInstructions?: string | null;
   /** Journaled compaction summary injected as a developer prompt. */
   compactionSummary?: string | null;
+  /** Enabled skills + workspace AGENTS.md (t1-4). */
+  extraSystemSections?: string | null;
 }
 
 export function buildProviderRequest(
@@ -354,6 +362,7 @@ export function buildProviderRequest(
       ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
     ],
     resolveUserInstructions(settings, chatOverrides?.userInstructions),
+    chatOverrides?.extraSystemSections,
   );
 
   const attachmentIds = [
@@ -516,6 +525,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [conversationUserInstructions, setConversationUserInstructions] = useState<string | null>(
     null,
   );
+  const [discoveredSkills, setDiscoveredSkills] = useState<SkillSummary[]>([]);
+  const [enabledSkillIds, setEnabledSkillIds] = useState<string[]>([]);
+  const enabledSkillIdsRef = useRef<string[]>([]);
+  enabledSkillIdsRef.current = enabledSkillIds;
+  const [skillPromptBlock, setSkillPromptBlock] = useState('');
+  const [memoryPromptBlock, setMemoryPromptBlock] = useState('');
   const [showWorkspaceConsent, setShowWorkspaceConsent] = useState(false);
   const [workspacePicking, setWorkspacePicking] = useState(false);
   const [compaction, setCompaction] = useState<ConversationCompaction | null>(null);
@@ -608,6 +623,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       setConversationWorkspaceRoot(null);
       setConversationGenerationControls(null);
       setConversationUserInstructions(null);
+      setDiscoveredSkills([]);
+      setEnabledSkillIds([]);
+      setSkillPromptBlock('');
       setCompaction(null);
       setShowCompactedOriginals(false);
       setThreadLoading(false);
@@ -662,6 +680,64 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       cancelled = true;
     };
   }, [conversationId, pendingSendText]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [listed, enabled] = await Promise.all([
+          listSkills(conversationWorkspaceRoot),
+          listConversationSkills(conversationId),
+        ]);
+        if (!cancelled) {
+          setDiscoveredSkills(listed);
+          setEnabledSkillIds(enabled);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          onStatusRef.current(
+            error instanceof Error ? error.message : 'Failed to load skills',
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, conversationWorkspaceRoot]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setSkillPromptBlock('');
+      return;
+    }
+    let cancelled = false;
+    void getSkillPromptBlock(enabledSkillIds, conversationWorkspaceRoot)
+      .then((block) => {
+        if (!cancelled) setSkillPromptBlock(block);
+      })
+      .catch(() => {
+        if (!cancelled) setSkillPromptBlock('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, enabledSkillIds, conversationWorkspaceRoot]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getMemoryPromptBlock()
+      .then((block) => {
+        if (!cancelled) setMemoryPromptBlock(block);
+      })
+      .catch(() => {
+        if (!cancelled) setMemoryPromptBlock('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.memoryEnabled, conversationId]);
 
   const STICK_THRESHOLD_PX = 48;
 
@@ -751,10 +827,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const builtinTools = selectBuiltinDocumentTools(intent);
     const brandTools = selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt));
     const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot);
+    const memoryTools = selectBuiltinMemoryTools(settings.memoryEnabled);
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
     const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
-    return [...builtinTools, ...brandTools, ...workspaceTools, ...webTools, ...connectorTools];
+    return [...builtinTools, ...brandTools, ...workspaceTools, ...memoryTools, ...webTools, ...connectorTools];
   }
 
   function applyRuntimeEventToActiveStream(
@@ -907,10 +984,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           ...selectBuiltinDocumentTools(intent),
           ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(trimmed)),
           ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
+          ...selectBuiltinMemoryTools(settings.memoryEnabled),
         ];
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
           resolveUserInstructions(settings, conversationUserInstructions),
+          joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
         );
         const est = estimatePromptTokens({
           historyTexts: keptForEstimate.map((t) => t.content).filter(Boolean),
@@ -991,6 +1070,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ...historyForProviderRequest(priorHistory, activeCompaction),
       userTurn,
     ];
+    const extraSystemSections = joinExtraSystemSections(
+      ...(await Promise.all([
+        getSkillPromptBlock(enabledSkillIdsRef.current, conversationWorkspaceRoot).catch(
+          () => skillPromptBlock,
+        ),
+        getMemoryPromptBlock().catch(() => memoryPromptBlock),
+      ])),
+    );
     const request = buildProviderRequest(
       settings,
       trimmed,
@@ -1003,6 +1090,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         generationControls: conversationGenerationControls,
         userInstructions: conversationUserInstructions,
         compactionSummary: activeCompaction?.summaryText ?? null,
+        extraSystemSections,
       },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
@@ -1409,6 +1497,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
+  async function handleToggleSkill(skillId: string, enabled: boolean) {
+    if (!conversationId) return;
+    const next = enabled
+      ? [...enabledSkillIdsRef.current, skillId]
+      : enabledSkillIdsRef.current.filter((id) => id !== skillId);
+    const unique = [...new Set(next)];
+    setEnabledSkillIds(unique);
+    try {
+      await setConversationSkills(conversationId, unique);
+    } catch (error) {
+      onStatus(error instanceof Error ? error.message : 'Could not update skills');
+    }
+  }
+
   function handleSuggestionSelect(text: string) {
     setPrompt(text);
     requestAnimationFrame(() => composerRef.current?.focusPrompt());
@@ -1449,10 +1551,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ...selectBuiltinDocumentTools(intent),
       ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
       ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
+      ...selectBuiltinMemoryTools(settings.memoryEnabled),
     ];
     const systemPrompt = composeSystemPrompt(
       [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
       resolveUserInstructions(settings, conversationUserInstructions),
+      joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
     );
     const compactionDev = compaction?.summaryText
       ? formatCompactionDeveloperPrompt(compaction.summaryText)
@@ -1472,6 +1576,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     settings,
     conversationUserInstructions,
     conversationWorkspaceRoot,
+    skillPromptBlock,
+    memoryPromptBlock,
   ]);
 
   const compactThresholdPercent =
@@ -2063,6 +2169,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onSaveChatSettings={(controls, instructions) =>
           void handleSaveChatSettings(controls, instructions)
         }
+        skills={discoveredSkills}
+        enabledSkillIds={enabledSkillIds}
+        onToggleSkill={(id, on) => void handleToggleSkill(id, on)}
         onOpenSettings={onOpenSettings}
         usage={accumulatedUsage}
         contextTokens={contextTokens}

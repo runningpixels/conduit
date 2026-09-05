@@ -7,10 +7,11 @@ use crate::{
         self, ConnectorCapability, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeState,
         ConnectorVersion,
     },
+    mcp_registry::RegistryServer,
     state::AppState,
     stream_manager::StreamHandle,
 };
-use mcp_runtime::StdioConfig;
+use mcp_runtime::{HttpSseConfig, McpTransport, StdioConfig};
 use provider_core::schema::{ConnectorRuntimeEvent, ConsentDecision};
 use serde::{Deserialize, Serialize};
 use tauri::{ipc::Channel, State};
@@ -447,8 +448,184 @@ pub async fn add_local_connector(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Remote / registry connectors
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddRemoteConnectorRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub version: Option<String>,
+    pub consent_copy: Option<String>,
+}
+
+#[tauri::command]
+pub async fn search_mcp_registry(query: String) -> Result<Vec<RegistryServer>, String> {
+    crate::mcp_registry::search_official_registry(&query).await
+}
+
+#[tauri::command]
+pub async fn add_remote_connector(
+    state: State<'_, AppState>,
+    request: AddRemoteConnectorRequest,
+) -> Result<AddLocalConnectorResult, String> {
+    add_remote_connector_inner(state.inner(), request).await
+}
+
+pub async fn add_remote_connector_inner(
+    state: &AppState,
+    request: AddRemoteConnectorRequest,
+) -> Result<AddLocalConnectorResult, String> {
+    let transport_config = serde_json::json!({ "url": request.url });
+    HttpSseConfig::from_value(&transport_config).map_err(|e| e.message)?;
+
+    let now = crate::time::now_iso8601();
+    let version_label = request
+        .version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("1.0.0");
+    let connector_id = format!("remote:{}", slugify(&request.name));
+    let version_id = format!("{connector_id}:{version_label}");
+
+    let def = ConnectorDefinition {
+        id: connector_id.clone(),
+        name: request.name.clone(),
+        description: request.description.unwrap_or_default(),
+        transport: "httpSse".to_string(),
+        owner: "remote".to_string(),
+        icon: None,
+        support_url: None,
+        consent_copy: request.consent_copy.clone(),
+        policy_metadata: None,
+        cloud_id: None,
+        created_at: now.clone(),
+        updated_at: now.clone(),
+    };
+    connectors::upsert_definition(&state.db, &def)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if connectors::get_version(&state.db, &version_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_none()
+    {
+        let version = ConnectorVersion {
+            id: version_id.clone(),
+            connector_id: connector_id.clone(),
+            version: version_label.to_string(),
+            transport_config,
+            scope_grants: None,
+            capability_allowlist: None,
+            rollout_channel: None,
+            support_state: Some("available".to_string()),
+            created_at: now.clone(),
+        };
+        connectors::insert_version(&state.db, &version)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let grant = ConnectorGrant {
+        id: format!("grant:{version_id}"),
+        connector_version_id: version_id.clone(),
+        scope: "user".to_string(),
+        status: "active".to_string(),
+        credential_ref: None,
+        approved_by: Some("local".to_string()),
+        revoked_at: None,
+        notes: None,
+        created_at: now,
+    };
+    connectors::upsert_grant(&state.db, &grant)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(AddLocalConnectorResult {
+        connector_id,
+        connector_version_id: version_id,
+    })
+}
+
+#[tauri::command]
+#[allow(deprecated)]
+pub async fn signin_remote_connector(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    connector_version_id: String,
+) -> Result<(), String> {
+    signin_remote_connector_inner(
+        state.inner(),
+        runtime.inner(),
+        &connector_version_id,
+        |url| {
+            use tauri_plugin_shell::ShellExt;
+            let validated = crate::validation::validate_external_open_url(url)
+                .ok_or_else(|| "Invalid authorization URL".to_string())?;
+            app.shell().open(validated, None).map_err(|e| e.to_string())
+        },
+    )
+    .await
+}
+
+pub async fn signin_remote_connector_inner(
+    state: &AppState,
+    runtime: &ConnectorRuntimeManager,
+    connector_version_id: &str,
+    open_browser: impl FnOnce(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    let version = connectors::get_version(&state.db, connector_version_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("connector version {connector_version_id} not found"))?;
+    let url = version
+        .transport_config
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "remote connector is missing a URL".to_string())?;
+    let cfg = HttpSseConfig::from_value(&version.transport_config).map_err(|e| e.message)?;
+    let mut transport = mcp_runtime::HttpSseTransport::new(
+        cfg,
+        mcp_runtime::ClientInfo {
+            name: "Conduit".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    );
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let www_authenticate = match transport.initialize(&cancel).await {
+        Ok(_) => {
+            runtime.start_connector(state, connector_version_id).await?;
+            return Ok(());
+        }
+        Err(e) if e.category == mcp_runtime::ErrorCategory::AuthExpired => e.www_authenticate,
+        Err(e) => return Err(e.message),
+    };
+
+    let token =
+        crate::mcp_oauth::authorize_connector(url, www_authenticate.as_deref(), open_browser)
+            .await?;
+    let cred_ref = crate::mcp_oauth::persist_token(state, connector_version_id, &token)?;
+    let mut grants = connectors::list_grants_for_version(&state.db, connector_version_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(grant) = grants.iter_mut().find(|g| g.status == "active") {
+        grant.credential_ref = Some(cred_ref);
+        connectors::upsert_grant(&state.db, grant)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    runtime.start_connector(state, connector_version_id).await?;
+    Ok(())
+}
+
 /// Lowercase + replace non-alphanumerics with `-` for a stable connector id.
-fn slugify(s: &str) -> String {
+pub(crate) fn slugify(s: &str) -> String {
     let slug: String = s
         .trim()
         .to_lowercase()

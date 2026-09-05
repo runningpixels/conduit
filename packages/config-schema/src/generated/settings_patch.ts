@@ -51,4 +51,8 @@ contextCompactEnabled?: boolean,
 /**
  * t1-3: compact threshold percent (85–95).
  */
-contextCompactThresholdPercent?: number, };
+contextCompactThresholdPercent?: number, 
+/**
+ * t1-5: disable-all for memory injection.
+ */
+memoryEnabled?: boolean, };

@@ -38,6 +38,8 @@ pub const RANDOM_TOOL: &str = "random";
 pub const CALCULATOR_TOOL: &str = "calculator";
 /// Mid-answer structured elicitation (t1-2). Handled specially by the agent loop.
 pub const ASK_USER_TOOL: &str = "ask_user";
+/// t1-5: propose a memory fact. Writes `pending` until the user saves it.
+pub const REMEMBER_TOOL: &str = "remember";
 
 // Web tools (ReadOnly/SideEffectful, search-gated)
 pub const WEB_SEARCH_TOOL: &str = "web_search";
@@ -321,6 +323,20 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        ToolDefinition {
+            tool_id: REMEMBER_TOOL.to_string(),
+            name: REMEMBER_TOOL.to_string(),
+            description: "Propose a durable personal fact for the user to save. Provide `fact` (one short sentence) and optional `kind` (`core` or `note`). The fact is queued until the user saves it in Settings → Memory; it is not used until then.".to_string(),
+            input_schema: json_schema(&[
+                ("fact", "string", true),
+                ("kind", "string", false),
+            ]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Memory".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
         // ---------------------------------------------------------------------
         // Web tools (search-gated)
         // ---------------------------------------------------------------------
@@ -475,6 +491,7 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | RANDOM_TOOL
             | CALCULATOR_TOOL
             | ASK_USER_TOOL
+            | REMEMBER_TOOL
             | WEB_SEARCH_TOOL
             | WEB_FETCH_TOOL
             | CLIPBOARD_READ_TOOL
@@ -734,6 +751,10 @@ pub async fn execute_builtin_tool(
             "ask_user must be handled by the agent loop (StreamManager), not execute_builtin_tool"
                 .to_string(),
         ),
+        REMEMBER_TOOL => {
+            let input: RememberInput = parse_args(tool_name, arguments)?;
+            remember_fact(ctx, input).await
+        }
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
 
@@ -1314,6 +1335,40 @@ struct ClipboardWriteInput {
     text: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct RememberInput {
+    fact: String,
+    kind: Option<String>,
+}
+
+async fn remember_fact(ctx: &AgentToolContext<'_>, input: RememberInput) -> Result<Value, String> {
+    let kind = match input.kind.as_deref().unwrap_or("core") {
+        "core" => crate::db::repository::memory::MemoryKind::Core,
+        "note" => crate::db::repository::memory::MemoryKind::Note,
+        other => return Err(format!("unknown memory kind {other:?}")),
+    };
+    let item = crate::db::repository::memory::create(
+        ctx.db,
+        ctx.encryption,
+        crate::db::repository::memory::NewMemory {
+            kind,
+            body: input.fact,
+            source_conversation_id: Some(ctx.conversation_id.to_string()),
+            pinned: false,
+            status: crate::db::repository::memory::MemoryStatus::Pending,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "memoryId": item.id,
+        "status": "pending",
+        "kind": item.kind.as_str(),
+        "message": "Queued for the user to save in Settings → Memory. It will not be used until they save it.",
+    }))
+}
+
 // -------------------------------------------------------------------------
 // Helper: safe arithmetic expression evaluator
 // Supports +, -, *, /, parentheses, and integer/float numbers.
@@ -1628,6 +1683,7 @@ mod tests {
         assert!(is_builtin_tool_name(CLIPBOARD_READ_TOOL));
         assert!(is_builtin_tool_name(WRITE_HTML_TOOL)); // existing still works
         assert!(is_builtin_tool_name(WRITE_BRAND_THEME_TOOL));
+        assert!(is_builtin_tool_name(REMEMBER_TOOL));
         assert!(!is_builtin_tool_name("nonexistent_tool"));
     }
 
@@ -1754,7 +1810,8 @@ mod tests {
         // 7 original document tools + 8 utility/web/clipboard tools
         // + 1 write_brand_theme (Phase 4)
         // + 5 workspace file tools
-        // + 1 ask_user (t1-2) = 22
-        assert_eq!(defs.len(), 22);
+        // + 1 ask_user (t1-2)
+        // + 1 remember (t1-5) = 23
+        assert_eq!(defs.len(), 23);
     }
 }

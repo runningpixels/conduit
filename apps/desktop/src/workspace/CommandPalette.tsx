@@ -198,6 +198,8 @@ export function CommandPalette({
       { id: 'cmd-web-search', group: 'Commands', kind: 'cmd', label: 'Web search settings', run: () => { onOpenSettings('web-search'); close(); } },
       { id: 'cmd-workspace', group: 'Commands', kind: 'cmd', label: 'Workspace defaults', run: () => { onOpenSettings('workspace'); close(); } },
       { id: 'cmd-connectors', group: 'Commands', kind: 'cmd', label: 'Connect a service', run: () => { onOpenSettings('connectors'); close(); } },
+      { id: 'cmd-skills', group: 'Commands', kind: 'cmd', label: 'Manage skills', run: () => { onOpenSettings('skills'); close(); } },
+      { id: 'cmd-memory', group: 'Commands', kind: 'cmd', label: 'Manage memory', run: () => { onOpenSettings('memory'); close(); } },
       { id: 'cmd-about', group: 'Commands', kind: 'cmd', label: 'About', run: () => { onOpenSettings('about'); close(); } },
       { id: 'cmd-rename', group: 'Commands', kind: 'cmd', label: 'Rename this chat', run: () => { onRenameChat(); close(); } },
       { id: 'cmd-pin', group: 'Commands', kind: 'cmd', label: activePinned ? 'Unpin this chat' : 'Pin this chat', run: () => { onPinChat?.(); close(); } },

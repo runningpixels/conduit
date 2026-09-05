@@ -40,6 +40,7 @@ const baseSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 } as AppSettings;
 
 function userTurn(id: string, content: string): ChatTurn {

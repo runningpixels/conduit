@@ -74,6 +74,7 @@ const baseSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 const listedArtifacts: Artifact[] = [

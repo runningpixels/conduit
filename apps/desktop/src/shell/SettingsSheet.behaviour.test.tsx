@@ -32,6 +32,7 @@ vi.mock('../ipc/client', () => ({
   revealPath: vi.fn().mockResolvedValue(undefined),
   resetLocalDatabase: vi.fn().mockResolvedValue({ backupPath: '/backup' }),
   listProviderModels: vi.fn().mockResolvedValue([]),
+  listMemoryItems: vi.fn().mockResolvedValue([]),
   listProviderDescriptors: vi.fn().mockResolvedValue([]),
   getUsageSummary: vi.fn().mockResolvedValue({
     totalCostCents: 0,
@@ -82,6 +83,7 @@ const baseSettings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 function renderSheet(overrides: Partial<AppSettings> = {}) {

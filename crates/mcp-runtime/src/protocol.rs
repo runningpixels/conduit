@@ -12,14 +12,24 @@
 //! the tool to read-only (never silently side-effectful).
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
+
+use crate::transport::McpError;
 
 // Re-export the canonical consent-tier enum so the whole stack shares one
 // source of truth for `ReadOnly | SideEffectful | Sensitive`.
 pub use provider_core::schema::PermissionLevel;
 
-/// MCP protocol version advertised by the client in `initialize`.
+/// MCP protocol version advertised by the client in stdio `initialize`.
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
+
+/// Streamable HTTP protocol version (spec 2026-07-28). Each HTTP request
+/// carries this in `_meta` and the `MCP-Protocol-Version` header.
+pub const HTTP_PROTOCOL_VERSION: &str = "2026-07-28";
+
+/// Legacy Streamable HTTP revision used when a server still requires the
+/// `initialize` handshake (2025-03-26 through 2025-11-25).
+pub const HTTP_LEGACY_PROTOCOL_VERSION: &str = "2025-03-26";
 
 // --- JSON-RPC envelope -------------------------------------------------------
 
@@ -170,6 +180,79 @@ pub struct ToolOutput {
     pub size_bytes: u64,
     #[serde(default)]
     pub mime_hints: Vec<String>,
+}
+
+/// Build the per-request `_meta` object required by spec 2026-07-28.
+pub fn request_meta(client: &ClientInfo, protocol_version: &str) -> Value {
+    json!({
+        "io.modelcontextprotocol/protocolVersion": protocol_version,
+        "io.modelcontextprotocol/clientInfo": client,
+        "io.modelcontextprotocol/clientCapabilities": {},
+    })
+}
+
+/// Merge `_meta` into an existing params object (or create one).
+pub fn params_with_meta(
+    params: Option<Value>,
+    client: &ClientInfo,
+    protocol_version: &str,
+) -> Value {
+    let mut obj = match params {
+        Some(Value::Object(map)) => map,
+        Some(other) => {
+            let mut map = serde_json::Map::new();
+            map.insert("value".to_string(), other);
+            map
+        }
+        None => serde_json::Map::new(),
+    };
+    obj.insert("_meta".to_string(), request_meta(client, protocol_version));
+    Value::Object(obj)
+}
+
+pub fn resp_to_result(resp: JsonRpcResponse) -> Result<Value, McpError> {
+    if let Some(err) = resp.error {
+        return Err(McpError::new(
+            crate::transport::ErrorCategory::Protocol,
+            err.message,
+        ));
+    }
+    resp.result
+        .ok_or_else(|| McpError::protocol("response had no result and no error"))
+}
+
+/// Decode a `tools/call` result into a typed `ToolOutput`, computing the
+/// size + MIME hints the supervisor / Phase 5 need.
+pub fn decode_tool_output(result: &Value) -> Result<ToolOutput, McpError> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Wire {
+        #[serde(default)]
+        content: Vec<ToolContent>,
+        #[serde(default)]
+        is_error: bool,
+    }
+    let wire: Wire = serde_json::from_value(result.clone())
+        .map_err(|e| McpError::protocol(format!("decode tools/call result failed: {e}")))?;
+
+    let size_bytes = serde_json::to_vec(&wire.content)
+        .map(|v| v.len() as u64)
+        .unwrap_or(0);
+    let mime_hints: Vec<String> = wire
+        .content
+        .iter()
+        .map(|c| match c {
+            ToolContent::Text { .. } => "text/plain".to_string(),
+            ToolContent::Other { .. } => "application/octet-stream".to_string(),
+        })
+        .collect();
+
+    Ok(ToolOutput {
+        content: wire.content,
+        is_error: wire.is_error,
+        size_bytes,
+        mime_hints,
+    })
 }
 
 impl ToolOutput {

@@ -242,6 +242,18 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     permissionLevel: 'readOnly',
     displayGroup: 'Utilities',
   },
+  {
+    toolId: 'remember',
+    name: 'remember',
+    description:
+      'Propose a durable personal fact for the user to save. Provide `fact` (one short sentence) and optional `kind` (`core` or `note`). The fact is queued until the user saves it in Settings → Memory; it is not used until then.',
+    inputSchema: schema([
+      { name: 'fact', type: 'string', required: true },
+      { name: 'kind', type: 'string' },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: 'Memory',
+  },
   // ---------------------------------------------------------------------------
   // Web tools (search-gated)
   // ---------------------------------------------------------------------------
@@ -469,6 +481,12 @@ export function selectBuiltinWorkspaceTools(
     return [];
   }
   return builtinToolDefinitions().filter((t) => WORKSPACE_TOOL_NAMES.has(t.name));
+}
+
+/** `remember` — advertised only while Settings → Memory injection is on. */
+export function selectBuiltinMemoryTools(enabled: boolean): ToolDefinition[] {
+  if (!enabled) return [];
+  return builtinToolDefinitions().filter((t) => t.name === 'remember');
 }
 
 /** Basename for chip display (Windows + POSIX). */

@@ -5,6 +5,7 @@ import type {
 } from '../../ipc/contracts';
 import {
   addLocalConnector,
+  addRemoteConnector,
   discoverConnector,
   getConnectorRuntimeStates,
   listConnectorCapabilities,
@@ -12,16 +13,20 @@ import {
   listToolApprovalMemory,
   revokeConnectorGrant,
   revokeToolApprovalMemory,
+  searchMcpRegistry,
+  signinRemoteConnector,
   startConnector,
   stopConnector,
   type ToolApprovalMemoryRow,
 } from '../../ipc/client';
+import type { RegistryServer } from '../../ipc/contracts';
 
 /** Compact health/support → label mapping for the settings list. */
 function connectorLabel(s: ConnectorRuntimeSnapshot): { tone: 'ok' | 'warn' | 'bad' | 'hold'; label: string } {
   if (s.grantStatus === 'revoked') return { tone: 'bad', label: 'revoked' };
   if (s.supportState === 'adminDisabled') return { tone: 'bad', label: 'disabled' };
   if (s.supportState === 'revoked') return { tone: 'bad', label: 'revoked' };
+  if (s.health === 'authRequired') return { tone: 'warn', label: 'sign in' };
   if (s.supportState === 'authRequired') return { tone: 'warn', label: 'sign in' };
   if (s.supportState === 'unsupported') return { tone: 'bad', label: 'unsupported' };
   if (s.running && s.health === 'healthy') return { tone: 'ok', label: 'live' };
@@ -31,10 +36,10 @@ function connectorLabel(s: ConnectorRuntimeSnapshot): { tone: 'ok' | 'warn' | 'b
 }
 
 /** Connectors section: list registered connectors with health + start/stop,
- *  revoke a grant, and add a local stdio connector. Transport config is
- *  untrusted renderer input — `add_local_connector` validates it server-side
- *  via `StdioConfig` before persisting. Exported so the first-run `Onboarding`
- *  can reuse it for the optional connector step (no duplication). */
+ *  revoke a grant, install from the official MCP registry, add a remote
+ *  streamable-HTTP URL, or add a local stdio connector. Transport config is
+ *  untrusted renderer input — add commands validate it server-side before
+ *  persisting. Exported so the first-run `Onboarding` can reuse it. */
 export function ConnectorsSection({ onStatus }: { onStatus: (message: string) => void }) {
   const [rows, setRows] = useState<ConnectorRuntimeSnapshot[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, ConnectorCapability[]>>({});
@@ -46,6 +51,11 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
   const [env, setEnv] = useState('');
   const [consentCopy, setConsentCopy] = useState('');
   const [approvals, setApprovals] = useState<ToolApprovalMemoryRow[]>([]);
+  const [registryQuery, setRegistryQuery] = useState('');
+  const [registryHits, setRegistryHits] = useState<RegistryServer[]>([]);
+  const [registryBusy, setRegistryBusy] = useState(false);
+  const [remoteName, setRemoteName] = useState('');
+  const [remoteUrl, setRemoteUrl] = useState('');
 
   const refreshApprovals = () => {
     void listToolApprovalMemory()
@@ -162,6 +172,73 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
     }
   }
 
+  async function handleSignIn(s: ConnectorRuntimeSnapshot) {
+    setBusy(s.connectorVersionId);
+    try {
+      await signinRemoteConnector(s.connectorVersionId);
+      onStatus(`Signed in to ${s.connectorName}`);
+      refresh();
+    } catch (e) {
+      onStatus(`Sign-in failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRegistrySearch() {
+    setRegistryBusy(true);
+    try {
+      const hits = await searchMcpRegistry(registryQuery.trim());
+      setRegistryHits(hits);
+      onStatus(hits.length === 0 ? 'No remote servers matched that search' : `Found ${hits.length} remote servers`);
+    } catch (e) {
+      onStatus(`Registry search failed: ${String(e)}`);
+    } finally {
+      setRegistryBusy(false);
+    }
+  }
+
+  async function handleInstallRegistry(hit: RegistryServer) {
+    if (!hit.installable || !hit.remoteUrl) {
+      onStatus(hit.reason ?? 'This server needs streamable HTTP');
+      return;
+    }
+    setRegistryBusy(true);
+    try {
+      const result = await addRemoteConnector({
+        name: hit.title || hit.name,
+        description: hit.description,
+        url: hit.remoteUrl,
+        version: hit.version,
+      });
+      onStatus(`Added ${result.connectorId}. Start it, or sign in if it requires OAuth.`);
+      refresh();
+    } catch (e) {
+      onStatus(`Install failed: ${String(e)}`);
+    } finally {
+      setRegistryBusy(false);
+    }
+  }
+
+  async function handleAddRemote() {
+    if (!remoteName.trim() || !remoteUrl.trim()) {
+      onStatus('Remote connector name and URL are required');
+      return;
+    }
+    try {
+      const result = await addRemoteConnector({
+        name: remoteName.trim(),
+        url: remoteUrl.trim(),
+      });
+      onStatus(`Added remote connector ${result.connectorId}`);
+      setRemoteName('');
+      setRemoteUrl('');
+      refresh();
+    } catch (e) {
+      onStatus(`Add remote failed: ${String(e)}`);
+    }
+  }
+
   return (
     <div className="settings-section">
       <div className="settings-section-header">
@@ -169,11 +246,12 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
       </div>
       <div className="status-item">
         {rows.length === 0 ? (
-          <span style={{ fontSize: '13px' }}>No connectors registered yet. Add a local stdio connector below.</span>
+          <span style={{ fontSize: '13px' }}>No connectors registered yet. Install from the official registry or add a local stdio connector below.</span>
         ) : (
           rows.map((s) => {
             const st = connectorLabel(s);
-            const canToggle = s.grantStatus === 'active' && s.supportState !== 'adminDisabled' && s.supportState !== 'revoked' && s.supportState !== 'authRequired';
+            const needsSignIn = st.label === 'sign in';
+            const canToggle = s.grantStatus === 'active' && s.supportState !== 'adminDisabled' && s.supportState !== 'revoked' && !needsSignIn;
             const toolCaps = (capabilities[s.connectorVersionId] ?? []).filter((cap) => cap.kind === 'tool');
             return (
               <div key={s.connectorVersionId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
@@ -187,6 +265,17 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                   )}
                 </span>
                 <span className={`status-pill ${st.tone}`} style={{ fontSize: '11px' }}>{st.label}</span>
+                {needsSignIn && (
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    style={{ padding: '4px 10px' }}
+                    disabled={busy === s.connectorVersionId}
+                    onClick={() => void handleSignIn(s)}
+                  >
+                    Sign in
+                  </button>
+                )}
                 {canToggle && (
                   <button
                     className="btn ghost"
@@ -252,6 +341,56 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <button className="btn primary" type="button" onClick={() => void handleAdd()}>Add local connector</button>
+        </div>
+        <div style={{ display: 'grid', gap: 6, marginTop: 16 }}>
+          <div className="section-label">Official MCP registry</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              placeholder="Search remote servers"
+              value={registryQuery}
+              onChange={(e) => setRegistryQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleRegistrySearch();
+              }}
+              style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
+            />
+            <button className="btn ghost" type="button" disabled={registryBusy} onClick={() => void handleRegistrySearch()}>
+              Search
+            </button>
+          </div>
+          {registryHits.map((hit) => (
+            <div key={`${hit.name}:${hit.version}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b>{hit.title || hit.name}</b>
+                <small style={{ display: 'block', color: 'var(--ink-3)' }}>
+                  {hit.description}
+                  {hit.reason ? ` — ${hit.reason}` : ''}
+                </small>
+              </span>
+              <button
+                className="btn ghost"
+                type="button"
+                style={{ padding: '4px 10px' }}
+                disabled={registryBusy || !hit.installable}
+                onClick={() => void handleInstallRegistry(hit)}
+              >
+                {hit.installable ? 'Install' : 'Unavailable'}
+              </button>
+            </div>
+          ))}
+          <input
+            placeholder="Remote connector name"
+            value={remoteName}
+            onChange={(e) => setRemoteName(e.target.value)}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
+          />
+          <input
+            placeholder="Streamable HTTP URL (https://…/mcp)"
+            value={remoteUrl}
+            onChange={(e) => setRemoteUrl(e.target.value)}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
+          />
+          <button className="btn ghost" type="button" onClick={() => void handleAddRemote()}>Add remote connector</button>
         </div>
         <div style={{ marginTop: 16 }}>
           <div className="section-label" style={{ marginBottom: 8 }}>Remembered tool approvals</div>

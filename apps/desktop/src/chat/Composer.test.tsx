@@ -43,6 +43,7 @@ const baseSettings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 vi.mock('../ipc/client', () => ({

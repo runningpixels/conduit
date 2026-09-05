@@ -4,7 +4,7 @@
 //! mcp-runtime — transport-agnostic MCP connector runtime core.
 //!
 //! This crate owns the JSON-RPC protocol framing, the `McpTransport`
-//! abstraction and its first implementation (stdio; HTTP/SSE is scaffolded),
+//! abstraction and its implementations (stdio and streamable HTTP),
 //! consent *policy*, and secret redaction. It deliberately does not depend on
 //! the app's `AppState`, SQLite, or Tauri — the conduit-desktop
 //! `connector_runtime` supervisor composes this core with persistence,

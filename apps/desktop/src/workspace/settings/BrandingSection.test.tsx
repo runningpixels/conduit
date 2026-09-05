@@ -81,6 +81,7 @@ const baseSettings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 const SAVED_CONFIG: BrandConfig = {

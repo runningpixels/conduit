@@ -47,6 +47,12 @@ vi.mock('../workspace/settings/AgentSection', () => ({
 vi.mock('../workspace/settings/PromptsSection', () => ({
   PromptsSection: () => <div data-testid="prompts-section" />,
 }));
+vi.mock('../workspace/settings/SkillsSection', () => ({
+  SkillsSection: () => <div data-testid="skills-section" />,
+}));
+vi.mock('../workspace/settings/MemorySection', () => ({
+  MemorySection: () => <div data-testid="memory-section" />,
+}));
 vi.mock('../workspace/settings/UsageSection', () => ({
   UsageSection: () => <div data-testid="usage-section" />,
 }));
@@ -87,6 +93,7 @@ const baseSettings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 function renderSheet(overrides: { initialSection?: SettingsSection } = {}) {
@@ -124,6 +131,8 @@ describe('SettingsSheet', () => {
     expect(screen.getByText('Workspace')).toBeTruthy();
     expect(screen.getByText('Connectors')).toBeTruthy();
     expect(screen.getByText('Prompts')).toBeTruthy();
+    expect(screen.getByText('Skills')).toBeTruthy();
+    expect(screen.getByText('Memory')).toBeTruthy();
     expect(screen.getByText('Appearance')).toBeTruthy();
     expect(screen.getByText('Privacy & data')).toBeTruthy();
     expect(screen.getByText('About')).toBeTruthy();
@@ -140,6 +149,10 @@ describe('SettingsSheet', () => {
     expect(screen.getByTestId('connectors-section')).toBeTruthy();
     fireEvent.click(screen.getByText('Prompts'));
     expect(screen.getByTestId('prompts-section')).toBeTruthy();
+    fireEvent.click(screen.getByText('Skills'));
+    expect(screen.getByTestId('skills-section')).toBeTruthy();
+    fireEvent.click(screen.getByText('Memory'));
+    expect(screen.getByTestId('memory-section')).toBeTruthy();
     fireEvent.click(screen.getByText('Web search'));
     expect(screen.getByTestId('web-search-section')).toBeTruthy();
     fireEvent.click(screen.getByText('Workspace'));
@@ -149,6 +162,11 @@ describe('SettingsSheet', () => {
   it('honours initialSection', () => {
     renderSheet({ initialSection: 'prompts' });
     expect(screen.getByTestId('prompts-section')).toBeTruthy();
+  });
+
+  it('honours initialSection for memory', () => {
+    renderSheet({ initialSection: 'memory' });
+    expect(screen.getByTestId('memory-section')).toBeTruthy();
   });
 
   it('honours initialSection for web search', () => {

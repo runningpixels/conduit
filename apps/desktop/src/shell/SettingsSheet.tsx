@@ -8,7 +8,7 @@
  * uiPrefs.
  *
  * Nav order groups by intent: configure (providers → chat → web search →
- * workspace → connectors → prompts), look (appearance → branding), trust
+ * workspace → connectors → prompts → skills → memory), look (appearance → branding), trust
  * (privacy → about). Web search and workspace tools used to live under Chat
  * defaults; usage/updates/about used to live under Privacy & data.
  */
@@ -31,6 +31,8 @@ import { WorkspaceToolsSection } from '../workspace/settings/WorkspaceToolsSecti
 import { AgentSection } from '../workspace/settings/AgentSection';
 import { GenerationControlsSection } from '../workspace/settings/GenerationControlsSection';
 import { PromptsSection } from '../workspace/settings/PromptsSection';
+import { SkillsSection } from '../workspace/settings/SkillsSection';
+import { MemorySection } from '../workspace/settings/MemorySection';
 import { UsageSection } from '../workspace/settings/UsageSection';
 import {
   readProviderColour,
@@ -73,6 +75,8 @@ export type SettingsSection =
   | 'workspace'
   | 'connectors'
   | 'prompts'
+  | 'skills'
+  | 'memory'
   | 'appearance'
   | 'branding'
   | 'privacy'
@@ -106,6 +110,8 @@ const NAV_ITEMS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
   { id: 'workspace', label: 'Workspace', icon: <FolderIcon /> },
   { id: 'connectors', label: 'Connectors', icon: <ConnectorsIcon /> },
   { id: 'prompts', label: 'Prompts', icon: <ListNavIcon /> },
+  { id: 'skills', label: 'Skills', icon: <SkillNavIcon /> },
+  { id: 'memory', label: 'Memory', icon: <MemoryNavIcon /> },
   { id: 'appearance', label: 'Appearance', icon: <SunNavIcon /> },
   { id: 'branding', label: 'Branding', icon: <BrandingNavIcon /> },
   { id: 'privacy', label: 'Privacy & data', icon: <LockIcon /> },
@@ -134,6 +140,25 @@ function ListNavIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
       <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />
+    </svg>
+  );
+}
+
+function SkillNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+      <path d="M8 7h8M8 11h5" />
+    </svg>
+  );
+}
+
+function MemoryNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h8M12 8v8" />
     </svg>
   );
 }
@@ -427,6 +452,27 @@ export function SettingsSheet({
               <h2 className="sheet-h">Prompts</h2>
               <p className="sheet-sub">Saved prompts you can insert into the composer.</p>
               <PromptsSection onStatus={onStatus} onInsertPrompt={onInsertPrompt ?? (() => {})} />
+            </>
+          )}
+
+          {section === 'skills' && (
+            <>
+              <h2 className="sheet-h">Skills</h2>
+              <p className="sheet-sub">
+                SKILL.md packages from the {appName()} folder, <code>~/.claude/skills</code>, and{' '}
+                <code>~/.agents/skills</code>. Enable them per chat from the composer.
+              </p>
+              <SkillsSection onStatus={onStatus} workspaceRoot={settings.workspaceRoot} />
+            </>
+          )}
+
+          {section === 'memory' && (
+            <>
+              <h2 className="sheet-h">Memory</h2>
+              <p className="sheet-sub">
+                Facts you save are injected into every chat (budgeted). Proposed facts wait here until you confirm them.
+              </p>
+              <MemorySection settings={settings} onUpdate={save} onStatus={onStatus} />
             </>
           )}
 

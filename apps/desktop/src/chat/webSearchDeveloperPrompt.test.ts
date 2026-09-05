@@ -95,6 +95,7 @@ describe('buildProviderRequest web search prompts', () => {
     userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
   };
 
   it('uses hosted developer prompt and injects webSearch for hosted turns', () => {

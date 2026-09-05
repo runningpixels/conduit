@@ -59,6 +59,9 @@ impl std::fmt::Display for ErrorCategory {
 pub struct McpError {
     pub category: ErrorCategory,
     pub message: String,
+    /// RFC 9728 `WWW-Authenticate` value from a 401, when the transport saw one.
+    /// Desktop OAuth uses this for Protected Resource Metadata discovery.
+    pub www_authenticate: Option<String>,
 }
 
 impl McpError {
@@ -66,6 +69,7 @@ impl McpError {
         Self {
             category,
             message: message.into(),
+            www_authenticate: None,
         }
     }
     pub fn crash(msg: impl Into<String>) -> Self {
@@ -82,6 +86,16 @@ impl McpError {
     }
     pub fn auth_expired(msg: impl Into<String>) -> Self {
         Self::new(ErrorCategory::AuthExpired, msg)
+    }
+    pub fn auth_expired_challenge(
+        msg: impl Into<String>,
+        www_authenticate: Option<String>,
+    ) -> Self {
+        Self {
+            category: ErrorCategory::AuthExpired,
+            message: msg.into(),
+            www_authenticate,
+        }
     }
     pub fn cancelled() -> Self {
         Self::new(ErrorCategory::Cancelled, "cancelled")

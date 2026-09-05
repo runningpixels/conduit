@@ -20,8 +20,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::protocol::{
-    ClientInfo, InitializeResult, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse, McpPrompt,
-    McpResource, McpTool, RequestId, ServerInfo, ToolContent, ToolOutput, PROTOCOL_VERSION,
+    decode_tool_output, resp_to_result, ClientInfo, InitializeResult, JsonRpcMessage,
+    JsonRpcRequest, McpPrompt, McpResource, McpTool, RequestId, ServerInfo, ToolOutput,
+    PROTOCOL_VERSION,
 };
 use crate::redact;
 use crate::transport::{McpError, McpTransport};
@@ -255,17 +256,6 @@ impl StdioTransport {
     }
 }
 
-fn resp_to_result(resp: JsonRpcResponse) -> Result<Value, McpError> {
-    if let Some(err) = resp.error {
-        return Err(McpError::new(
-            crate::transport::ErrorCategory::Protocol,
-            err.message,
-        ));
-    }
-    resp.result
-        .ok_or_else(|| McpError::protocol("response had no result and no error"))
-}
-
 #[async_trait]
 impl McpTransport for StdioTransport {
     async fn initialize(&mut self, cancel: &CancellationToken) -> Result<ServerInfo, McpError> {
@@ -391,38 +381,4 @@ impl Drop for StdioTransport {
         // child outlive the transport.
         let _ = self.child.start_kill();
     }
-}
-
-/// Decode a `tools/call` result into a typed `ToolOutput`, computing the
-/// size + MIME hints the supervisor / Phase 5 need.
-fn decode_tool_output(result: &Value) -> Result<ToolOutput, McpError> {
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Wire {
-        #[serde(default)]
-        content: Vec<ToolContent>,
-        #[serde(default)]
-        is_error: bool,
-    }
-    let wire: Wire = serde_json::from_value(result.clone())
-        .map_err(|e| McpError::protocol(format!("decode tools/call result failed: {e}")))?;
-
-    let size_bytes = serde_json::to_vec(&wire.content)
-        .map(|v| v.len() as u64)
-        .unwrap_or(0);
-    let mime_hints: Vec<String> = wire
-        .content
-        .iter()
-        .map(|c| match c {
-            ToolContent::Text { .. } => "text/plain".to_string(),
-            ToolContent::Other { .. } => "application/octet-stream".to_string(),
-        })
-        .collect();
-
-    Ok(ToolOutput {
-        content: wire.content,
-        is_error: wire.is_error,
-        size_bytes,
-        mime_hints,
-    })
 }

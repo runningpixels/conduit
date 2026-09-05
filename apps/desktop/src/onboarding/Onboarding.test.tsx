@@ -35,6 +35,9 @@ vi.mock('../ipc/client', () => ({
   stopConnector: vi.fn().mockResolvedValue(undefined),
   revokeConnectorGrant: vi.fn().mockResolvedValue(undefined),
   addLocalConnector: vi.fn().mockResolvedValue({ connectorId: 'c1', connectorVersionId: 'v1' }),
+  addRemoteConnector: vi.fn(),
+  searchMcpRegistry: vi.fn().mockResolvedValue([]),
+  signinRemoteConnector: vi.fn(),
   listToolApprovalMemory: vi.fn().mockResolvedValue([]),
   revokeToolApprovalMemory: vi.fn().mockResolvedValue(true),
 }));
@@ -78,6 +81,7 @@ const baseSettings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {

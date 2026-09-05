@@ -73,6 +73,7 @@ pub fn export(paths: &AppPaths, settings: &AppSettings) -> Result<DiagnosticsExp
         "local_only": settings.local_only,
         "diagnostics_enabled": settings.diagnostics_enabled,
         "theme": settings.theme,
+        "memory_enabled": settings.memory_enabled,
       },
       "redacted_fields": redacted_fields.clone(),
       "paths": serde_json::Value::Object(paths_json),
@@ -236,5 +237,16 @@ mod tests {
             .and_then(|v| v.get("exports"))
             .expect("payload must include the exports path entry");
         assert!(paths_obj.is_string(), "exports path must be a string");
+        // t1-5: support bundles must not dump memory bodies (same bar as
+        // conversation export — user facts stay out of diagnostics).
+        assert!(
+            parsed.get("memory_items").is_none(),
+            "diagnostics must not include memory_items"
+        );
+        let as_text = written.to_lowercase();
+        assert!(
+            !as_text.contains("memory_items"),
+            "diagnostics JSON must not name the memory table"
+        );
     }
 }

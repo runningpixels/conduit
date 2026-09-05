@@ -51,6 +51,7 @@ const settings: AppSettings = {
   userInstructions: null,
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
+  memoryEnabled: true,
 };
 
 /**
@@ -79,6 +80,11 @@ const SHAPES: Record<string, unknown> = {
   compactConversation: null,
   searchMessages: [],
   createConversation: { id: 'c1', title: 'New chat', updatedAt: new Date().toISOString() },
+  listSkills: [],
+  listConversationSkills: [],
+  getSkillPromptBlock: '',
+  getMemoryPromptBlock: '',
+  listMemoryItems: [],
   loadProviderCredentialReference: { providerId: 'anthropic', credentialRef: '', storedInKeychain: false },
   checkArtifactFileState: {},
 };
@@ -106,7 +112,7 @@ const IPC_EXPORTS = [
   'listConnectorCapabilities', 'getConnectorRuntimeStates', 'startConnector',
   'stopConnector', 'discoverConnector', 'invokeConnectorTool',
   'approveConnectorToolCall', 'denyConnectorToolCall', 'listToolApprovalMemory', 'revokeToolApprovalMemory', 'revokeConnectorGrant',
-  'addLocalConnector', 'createArtifact', 'listArtifacts', 'getMessageIdByRequest',
+  'addLocalConnector', 'addRemoteConnector', 'searchMcpRegistry', 'signinRemoteConnector', 'createArtifact', 'listArtifacts', 'getMessageIdByRequest',
   'searchMessages', 'getUsageSummary', 'removeLastTurn', 'forkConversation',
   'prepareMessageEdit',
   'createPrompt', 'listPrompts', 'getPrompt', 'updatePrompt', 'deletePrompt',
@@ -114,6 +120,11 @@ const IPC_EXPORTS = [
   'getArtifactContentBytes', 'readArtifactFileBytes', 'checkArtifactFileState',
   'exportArtifact', 'saveAttachment', 'listAttachments', 'deleteAttachment',
   'getAttachmentBytes', 'resetLocalDatabase',
+  'listSkills', 'getSkillPromptBlock', 'listConversationSkills', 'setConversationSkills',
+  'importSkillFolder', 'importSkillZip', 'exportSkillFolder', 'exportSkillZip',
+  'deleteManagedSkill', 'revealSkillsDir',
+  'listMemoryItems', 'createMemoryItem', 'updateMemoryItem', 'deleteMemoryItem',
+  'acceptMemoryItem', 'getMemoryPromptBlock',
   'previewConversationExport', 'exportConversationDialog',
   // White-label Phase 3 (Settings → Branding): App.tsx's boot effect already
   // calls getBrandConfig/getBrandLogo unconditionally, same as every other

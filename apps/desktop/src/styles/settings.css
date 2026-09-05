@@ -525,6 +525,51 @@
   font-weight: 500;
 }
 
+.skill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.skill-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.skill-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.memory-pending {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.skill-row-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.skill-source,
+.skill-flag {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.skill-error {
+  color: var(--err);
+}
+.skill-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* ── Branding (white-label plan §4, Phase 3) ───────────────────────────── */
 .branding-note {
   margin: 0 0 16px;

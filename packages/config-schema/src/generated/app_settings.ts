@@ -115,4 +115,9 @@ contextCompactEnabled: boolean,
  * t1-3: percent of the model context window that triggers auto-compact.
  * Clamped to 85–95 on write. Default 90.
  */
-contextCompactThresholdPercent: number, };
+contextCompactThresholdPercent: number, 
+/**
+ * t1-5: inject saved memory facts into the system prompt. Disable-all
+ * stops injection immediately; stored items are kept.
+ */
+memoryEnabled: boolean, };

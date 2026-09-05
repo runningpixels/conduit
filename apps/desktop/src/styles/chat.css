@@ -1721,3 +1721,22 @@ html[data-palette="orange-dark"] .prose { font-size: 16.5px; line-height: 1.7; }
 .chat-settings-pop .gen-fields textarea {
   max-width: none;
 }
+
+.composer-skill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.composer-skill-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.composer-skill-list small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11px;
+}

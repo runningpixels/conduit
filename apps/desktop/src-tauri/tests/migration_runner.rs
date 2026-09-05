@@ -25,6 +25,9 @@ const EXPECTED_TABLES: &[&str] = &[
     "sync_state",
     "conversation_folders",
     "tool_approval_memory",
+    "conversation_compactions",
+    "conversation_skills",
+    "memory_items",
 ];
 
 #[tokio::test]
@@ -58,7 +61,9 @@ async fn all_tables_created_by_initial_migration() {
     // the number of shipped migrations (0001 + 0004 + 0005 + 0006 FTS search
     // + 0007 prompts library + 0008 usage analytics + 0009 retry/fork
     // + 0010 workspace root + 0011 conversation chat settings
-    // + 0012 conversation organization + 0013 tool approval memory).
+    // + 0012 conversation organization + 0013 tool approval memory
+    // + 0014 conversation compactions + 0015 conversation skills
+    // + 0016 memory items).
     let (public,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
         .fetch_one(&pool)
         .await
@@ -69,7 +74,7 @@ async fn all_tables_created_by_initial_migration() {
             .await
             .unwrap();
     assert_eq!(public, internal, "schema_migrations out of sync");
-    assert_eq!(public, 12, "expected all shipped migrations applied");
+    assert_eq!(public, 14, "expected all shipped migrations applied");
 }
 
 #[tokio::test]

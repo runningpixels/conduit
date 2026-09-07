@@ -45,7 +45,11 @@ function navFor(code) {
   return [NAV_START, NAV_NOTE, '', row, '', NAV_END].join('\n');
 }
 
-const read = (f) => readFileSync(join(ROOT, f), 'utf8');
+// core.autocrlf hands Windows checkouts CRLF, so compare on normalized text —
+// otherwise every file reads as "selector out of date" on a Windows clone while
+// Linux CI sees nothing wrong.
+const read = (f) => readFileSync(join(ROOT, f), 'utf8').replace(/\r\n/g, '\n');
+const hadCrlf = (f) => readFileSync(join(ROOT, f), 'utf8').includes('\r\n');
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
 
 function replaceNav(text, code) {
@@ -75,7 +79,9 @@ function write() {
     const before = read(file);
     const after = replaceNav(before, code);
     if (before !== after) {
-      writeFileSync(join(ROOT, file), after, 'utf8');
+      // Give the file back the line endings it arrived with.
+      const out = hadCrlf(file) ? after.replace(/\n/g, '\r\n') : after;
+      writeFileSync(join(ROOT, file), out, 'utf8');
       changed++;
       console.log(`  wrote ${file}`);
     } else {

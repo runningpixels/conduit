@@ -48,6 +48,7 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     localOnly: true,
     diagnosticsEnabled: true,
     theme: 'system' as const,
+    language: 'system' as const,
     providerEndpoints: {},
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,

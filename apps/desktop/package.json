@@ -20,9 +20,11 @@
     "prism-react-renderer": "^2.4.1",
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-intl": "^10.1.26"
   },
   "devDependencies": {
+    "@formatjs/icu-messageformat-parser": "^3.5.17",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

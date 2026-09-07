@@ -64,6 +64,7 @@ describe('buildProviderRequest web search prompts', () => {
     localOnly: false,
     diagnosticsEnabled: true,
     theme: 'system' as const,
+    language: 'system' as const,
     providerEndpoints: {},
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,

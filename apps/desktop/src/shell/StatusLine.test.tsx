@@ -21,6 +21,7 @@ const settings: AppSettings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'system',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,

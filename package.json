@@ -11,6 +11,9 @@
     "dev": "pnpm --dir apps/desktop dev",
     "build": "pnpm --dir apps/desktop build",
     "check": "pnpm --dir apps/desktop check",
+    "i18n:pseudo": "node scripts/i18n-pseudo.mjs",
+    "i18n:status": "node scripts/i18n-status.mjs",
+    "i18n:check": "node scripts/i18n-check.mjs",
     "prepare": "husky"
   },
   "lint-staged": {

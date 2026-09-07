@@ -164,6 +164,7 @@ async fn settings_and_db_survive_in_place_reopen() {
         local_only: None,
         diagnostics_enabled: None,
         theme: None,
+        language: None,
         provider_endpoints: None,
         artifact_remote_allowlist: None,
         artifact_styled_preview: None,

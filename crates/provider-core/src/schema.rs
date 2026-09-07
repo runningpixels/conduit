@@ -1540,6 +1540,40 @@ pub enum Theme {
     Light,
 }
 
+/// `System` is the default: the interface follows the OS by reading the
+/// webview's `navigator.language` rather than assuming English, and a fresh
+/// install should not need a trip to Settings before it looks right. This is
+/// one setting, not two — it drives both the language the interface renders
+/// in and the language the model is asked to reply in (D12 of the
+/// localization plan), because a UI in German that replies in English reads
+/// as broken, not as a feature. The region-qualified variants are spelled the
+/// way BCP 47 spells them (`pt-BR`, `zh-CN`), not the way `camelCase` would
+/// spell them, because the renderer matches this value against the same
+/// locale table the marketing site uses, and that table is keyed by the BCP
+/// 47 tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/language_setting.ts"
+)]
+pub enum LanguageSetting {
+    #[default]
+    System,
+    En,
+    De,
+    Es,
+    Fr,
+    Ja,
+    Ko,
+    #[serde(rename = "pt-BR")]
+    #[ts(rename = "pt-BR")]
+    PtBr,
+    #[serde(rename = "zh-CN")]
+    #[ts(rename = "zh-CN")]
+    ZhCn,
+}
+
 /// Where provider secrets are stored (V9 design spec §2.6).
 ///
 /// `Os` is the default and the only mode with real OS-level protection: the
@@ -1588,6 +1622,13 @@ pub struct AppSettings {
     pub local_only: bool,
     pub diagnostics_enabled: bool,
     pub theme: Theme,
+    /// Phase 1 of the localization plan: `"system"` (default) follows the OS
+    /// via the webview's `navigator.language`; any other value pins both the
+    /// interface language and the language the model replies in (D12).
+    /// Existing settings files predate this field, so it must default rather
+    /// than fail to deserialize.
+    #[serde(default)]
+    pub language: LanguageSetting,
     #[serde(default)]
     pub provider_endpoints: HashMap<String, ProviderEndpointConfig>,
     /// Phase 5: origins a rendered HTML/JS artifact may load passive resources
@@ -1702,6 +1743,7 @@ impl Default for AppSettings {
             local_only: true,
             diagnostics_enabled: true,
             theme: Theme::Dark,
+            language: LanguageSetting::System,
             provider_endpoints: HashMap::new(),
             artifact_remote_allowlist: Vec::new(),
             artifact_styled_preview: true,
@@ -1743,6 +1785,8 @@ pub struct SettingsPatch {
     pub diagnostics_enabled: Option<bool>,
     #[ts(optional)]
     pub theme: Option<Theme>,
+    #[ts(optional)]
+    pub language: Option<LanguageSetting>,
     #[ts(optional)]
     pub provider_endpoints: Option<HashMap<String, ProviderEndpointConfig>>,
     /// Replace the artifact remote allowlist. Each entry must be an absolute
@@ -1836,4 +1880,46 @@ pub struct CredentialSummary {
     pub provider_id: String,
     pub credential_ref: String,
     pub stored_in_keychain: bool,
+}
+
+#[cfg(test)]
+mod language_setting_tests {
+    use super::*;
+
+    #[test]
+    fn default_is_system() {
+        assert_eq!(LanguageSetting::default(), LanguageSetting::System);
+    }
+
+    #[test]
+    fn pt_br_round_trips_as_bcp47_tag() {
+        let json = serde_json::to_string(&LanguageSetting::PtBr).expect("serialize");
+        assert_eq!(json, "\"pt-BR\"");
+        let back: LanguageSetting = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, LanguageSetting::PtBr);
+    }
+
+    #[test]
+    fn zh_cn_round_trips_as_bcp47_tag() {
+        let json = serde_json::to_string(&LanguageSetting::ZhCn).expect("serialize");
+        assert_eq!(json, "\"zh-CN\"");
+        let back: LanguageSetting = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, LanguageSetting::ZhCn);
+    }
+
+    #[test]
+    fn settings_json_without_language_key_defaults_to_system() {
+        // The real-world upgrade path: a `settings.json` written before this
+        // field existed has no `language` key at all, and must still
+        // deserialize — the whole point of `#[serde(default)]` here.
+        let json = r#"{
+            "activeProvider": "anthropic",
+            "activeModel": "claude-sonnet-4",
+            "localOnly": true,
+            "diagnosticsEnabled": true,
+            "theme": "dark"
+        }"#;
+        let settings: AppSettings = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(settings.language, LanguageSetting::System);
+    }
 }

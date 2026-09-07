@@ -27,6 +27,12 @@ apps/desktop/src-tauri/migrations/** -text
 *.sqlite-wal binary
 *.sqlite-shm binary
 
+# Generated catalogs, written with LF by scripts/i18n-*.mjs. Pinned to LF so a
+# checkout does not convert them to CRLF and leave every Windows clone with two
+# permanently 'modified' files that flip back the next time the generator runs.
+apps/desktop/src/i18n/messages/en-XA.json text eol=lf linguist-generated=true
+apps/desktop/src/i18n/provenance.json     text eol=lf linguist-generated=true
+
 # Generated: collapse in review, exclude from language statistics.
 packages/config-schema/src/generated/** linguist-generated=true
 pnpm-lock.yaml linguist-generated=true -diff

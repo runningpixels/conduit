@@ -2,12 +2,21 @@
 import type { AgentGuardrails } from "./agent_guardrails";
 import type { GenerationControls } from "./generation_controls";
 import type { KeychainMode } from "./keychain_mode";
+import type { LanguageSetting } from "./language_setting";
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
 import type { WebSearchDefaults } from "./web_search_defaults";
 
-export type AppSettings = { activeProvider: string, activeModel: string, localOnly: boolean, diagnosticsEnabled: boolean, theme: Theme, providerEndpoints: { [key in string]?: ProviderEndpointConfig }, 
+export type AppSettings = { activeProvider: string, activeModel: string, localOnly: boolean, diagnosticsEnabled: boolean, theme: Theme, 
+/**
+ * Phase 1 of the localization plan: `"system"` (default) follows the OS
+ * via the webview's `navigator.language`; any other value pins both the
+ * interface language and the language the model replies in (D12).
+ * Existing settings files predate this field, so it must default rather
+ * than fail to deserialize.
+ */
+language: LanguageSetting, providerEndpoints: { [key in string]?: ProviderEndpointConfig }, 
 /**
  * Phase 5: origins a rendered HTML/JS artifact may load passive resources
  * (images/fonts/styles) from. Default empty → fully offline artifacts

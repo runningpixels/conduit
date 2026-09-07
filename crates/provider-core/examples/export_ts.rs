@@ -16,11 +16,11 @@ use provider_core::schema::{
     BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion,
     ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary,
     CredentialRequest, CredentialSummary, GenerationControls, GrantScope, GrantStatus,
-    KeychainMode, LicenseClaims, LocalSearchBackend, Message, MessagePart, MessagePartKind,
-    MessageRole, ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig, ProviderError,
-    ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint, RetentionState,
-    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SupportState,
-    TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
+    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig,
+    ProviderError, ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint,
+    RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch,
+    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
     ToolDefinition, ToolKind, Transport, UserLocation, WebSearchDefaults, WebSearchFilters,
     WebSearchMode, WebSearchRequest,
 };
@@ -105,6 +105,7 @@ fn main() {
 
     // App shell config
     Theme::export().expect("export Theme");
+    LanguageSetting::export().expect("export LanguageSetting");
     KeychainMode::export().expect("export KeychainMode");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
     AgentGuardrails::export().expect("export AgentGuardrails");

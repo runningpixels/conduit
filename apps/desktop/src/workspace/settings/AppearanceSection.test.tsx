@@ -12,9 +12,10 @@
  */
 
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { AppSettings } from '../../ipc/contracts';
 import { AppearanceSection } from './AppearanceSection';
+import { PSEUDO_LOCALE, SHIPPED_LOCALES } from '../../i18n';
 
 const settings = {
   activeProvider: 'anthropic',
@@ -22,6 +23,7 @@ const settings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'system',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
@@ -110,5 +112,68 @@ describe('diagram size select', () => {
     const { onUpdate } = renderSection();
     fireEvent.change(screen.getByLabelText('Diagram size'), { target: { value: 'full' } });
     expect(onUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('language select', () => {
+  /**
+   * The only control in the app whose own label a user may not be able to
+   * read: someone who has just installed on a German machine and wants
+   * English is looking at a settings pane written in German. That is why the
+   * options are native names rather than translated ones, and why it sits at
+   * the top of the first pane.
+   */
+  it('offers System plus every shipped locale, named in its own language', () => {
+    renderSection();
+    const select = screen.getByLabelText('Language');
+    expect(select).toBeInTheDocument();
+
+    // Scoped to this select: "System" is also a Theme option, and the two
+    // must not be confused for one another.
+    const options = within(select);
+    expect(options.getByRole('option', { name: 'System' })).toBeInTheDocument();
+    for (const locale of SHIPPED_LOCALES) {
+      expect(
+        options.getByRole('option', { name: locale.nativeName }),
+        `${locale.code} is missing from the picker`,
+      ).toBeInTheDocument();
+    }
+    // System + the eight shipped locales, and nothing else.
+    expect(select.querySelectorAll('option')).toHaveLength(SHIPPED_LOCALES.length + 1);
+  });
+
+  it('never offers the pseudo-locale', () => {
+    // `en-XA` is a layout-QA tool reachable only by a dev override. A user
+    // who picked it would get `[Šààvvéé———]` with no obvious way back.
+    renderSection();
+    const values = Array.from(
+      screen.getByLabelText('Language').querySelectorAll('option'),
+      (o) => o.value,
+    );
+    expect(values).not.toContain(PSEUDO_LOCALE);
+  });
+
+  it('writes the choice into AppSettings, where it crosses into Rust', () => {
+    // Unlike the palette above, this one *is* AppSettings-backed: it has to
+    // survive a restart, and Rust needs it for the reply-language line in the
+    // system prompt (D12).
+    const { onUpdate } = renderSection();
+    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'de' } });
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ language: 'de' }));
+  });
+
+  it('round-trips a region-qualified tag without mangling it', () => {
+    // `pt-BR`, not `ptBr` — the value written here is the exact string the
+    // Rust enum and the catalog filenames use.
+    const { onUpdate } = renderSection();
+    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'pt-BR' } });
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ language: 'pt-BR' }));
+  });
+
+  it('says that the choice also moves the reply language', () => {
+    // D12 folds two things into one setting; the only defence against that
+    // being a surprise is saying so next to the control.
+    renderSection();
+    expect(screen.getByText(/language the assistant replies in/i)).toBeInTheDocument();
   });
 });

@@ -286,6 +286,12 @@ impl AppState {
             settings.theme = value;
         }
 
+        // `LanguageSetting` is an enum, so serde rejects invalid values at
+        // deserialization; here we only need to apply it.
+        if let Some(value) = patch.language {
+            settings.language = value;
+        }
+
         if let Some(value) = patch.provider_endpoints {
             for (provider_id, config) in value {
                 if let Some(base_url) = &config.base_url {

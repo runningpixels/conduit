@@ -48,6 +48,7 @@ import {
   type PendingArtifact,
 } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
+import { useLocale } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
@@ -112,6 +113,7 @@ const defaultSettings: AppSettings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'dark',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
@@ -949,6 +951,21 @@ export default function App() {
     setEffectiveTheme(eff);
     return watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
   }, [settings.theme]);
+
+  /* The language analogue of the theme effect above, and the reconcile half of
+   * the pre-paint language read in `main.tsx`. `settings` starts as
+   * `defaultSettings` and is replaced by the authoritative Rust value in the
+   * boot effect, so this fires once on boot — correcting the localStorage
+   * mirror if it was stale, absent, or hand-edited — and again on every change
+   * from the Settings picker.
+   *
+   * `setPreference` is deliberately inert while a dev locale override is
+   * active. Without that, this effect would undo `?locale=en-XA` the instant
+   * settings loaded, and the pseudo-locale would be unreachable. */
+  const { setPreference } = useLocale();
+  useEffect(() => {
+    setPreference(settings.language);
+  }, [settings.language, setPreference]);
 
   // A brand palette is inline CSS on <html>, which beats every stylesheet
   // rule including [data-theme="light"] — so it has to be re-applied for the

@@ -30,8 +30,14 @@ export interface Brand {
   appName: string;
   /** Full name for headings and about-style surfaces. Often the same. */
   displayName: string;
-  /** Composer placeholder. Defaults to `Message <appName>…`. */
-  tagline: string;
+  /**
+   * Composer placeholder, when a brand supplies one.
+   *
+   * `null` means this build has none of its own, and the placeholder comes
+   * from the message catalog instead — which is what lets it be translated.
+   * A brand's own tagline is their copy and is rendered verbatim.
+   */
+  tagline: string | null;
 }
 
 /**
@@ -69,7 +75,7 @@ export function setBrand(next: Partial<Brand>): void {
   current = {
     appName: appNameNext,
     displayName: next.displayName?.trim() || appNameNext,
-    tagline: next.tagline?.trim() || `Message ${appNameNext}…`,
+    tagline: next.tagline?.trim() || null,
   };
 }
 

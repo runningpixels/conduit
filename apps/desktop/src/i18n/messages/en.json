@@ -120,6 +120,7 @@
   "chat.composer.attachments.ariaLabel": "Attached files",
   "chat.composer.chatSettings.ariaLabel": "Chat settings",
   "chat.composer.chatSettings.title": "Chat settings — temperature, instructions",
+  "chat.composer.placeholder": "Message {appName}…",
   "chat.composer.prompt.ariaLabel": "Message the active provider",
   "chat.composer.queue.ariaLabel": "{count, plural, one {# queued follow-up} other {# queued follow-ups}}",
   "chat.composer.queue.label": "{count} queued",

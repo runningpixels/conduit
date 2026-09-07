@@ -191,7 +191,34 @@ export function pseudoLocalizeMessage(message, icu) {
   }
 
   const padCount = Math.ceil(totalLiteralLength * PAD_RATIO);
-  return `[${rebuilt}${'—'.repeat(padCount)}]`;
+  return `[${rebuilt}${padding(padCount)}]`;
+}
+
+/**
+ * The length padding, as several short words rather than one long one.
+ *
+ * A single run of dashes is not a simulation of German — it is a simulation of
+ * a 67-character URL. It has no break opportunity a line-breaker will take, so
+ * every padded string becomes an unbreakable token that overflows any centred
+ * or narrow container, and the layout pass drowns in findings that no real
+ * translation would ever produce.
+ *
+ * German is longer than English word by word; it is not one enormous word. So
+ * the padding is chunked and space-separated, which lengthens the string by
+ * the same amount while leaving it wrappable. What remains after that is a
+ * real finding.
+ *
+ * Genuinely unbreakable content does exist — file paths, URLs, model ids — and
+ * containers should survive it. That is a different property, better checked
+ * against the real thing than against a fake word made of dashes.
+ */
+function padding(count) {
+  const CHUNK = 6;
+  const chunks = [];
+  for (let remaining = count; remaining > 0; remaining -= CHUNK) {
+    chunks.push('—'.repeat(Math.min(CHUNK, remaining)));
+  }
+  return chunks.length > 0 ? ` ${chunks.join(' ')}` : '';
 }
 
 /**

@@ -431,11 +431,21 @@ pub fn render_generated_ts(cfg: &BrandConfig, invocation: &str) -> String {
         .expect("String always serializes to a JSON string literal");
     let display_name_lit = serde_json::to_string(&cfg.identity.display_name)
         .expect("String always serializes to a JSON string literal");
+    // `None` is emitted as `null`, not as a derived English sentence.
+    //
+    // It used to render `Message {app_name}\u{2026}`, which reads like a
+    // harmless default and is not one: the renderer had no way to tell a
+    // brand's own tagline from a sentence we invented, so the composer
+    // placeholder — the most prominent string on the main screen — could never
+    // be translated without also overwriting a reseller's copy. The brand model
+    // already carries the distinction as an `Option`; this stops throwing it
+    // away at the TypeScript boundary, and the renderer falls back to a
+    // catalogued, translatable placeholder.
     let tagline_lit = match &cfg.identity.tagline {
-        Some(tagline) => serde_json::to_string(tagline),
-        None => serde_json::to_string(&format!("Message {}\u{2026}", cfg.identity.app_name)),
-    }
-    .expect("String always serializes to a JSON string literal");
+        Some(tagline) => serde_json::to_string(tagline)
+            .expect("String always serializes to a JSON string literal"),
+        None => "null".to_string(),
+    };
 
     format!(
         "// SPDX-License-Identifier: AGPL-3.0-only\n\
@@ -451,7 +461,7 @@ pub fn render_generated_ts(cfg: &BrandConfig, invocation: &str) -> String {
          */\n\n\
          export const GENERATED_APP_NAME = {app_name_lit};\n\
          export const GENERATED_DISPLAY_NAME = {display_name_lit};\n\
-         export const GENERATED_TAGLINE = {tagline_lit};\n"
+         export const GENERATED_TAGLINE: string | null = {tagline_lit};\n"
     )
 }
 
@@ -675,7 +685,8 @@ link     = "#0969DA"
         let ts = render_generated_ts(&fixture_config(), "test invocation");
         assert!(ts.contains("export const GENERATED_APP_NAME = \"Northwind\";"));
         assert!(ts.contains("export const GENERATED_DISPLAY_NAME = \"Northwind AI\";"));
-        assert!(ts.contains("export const GENERATED_TAGLINE = \"Message Northwind...\";"));
+        assert!(ts
+            .contains("export const GENERATED_TAGLINE: string | null = \"Message Northwind...\";"));
         assert!(ts.contains("Produced by:\n *   test invocation"));
     }
 
@@ -686,11 +697,13 @@ link     = "#0969DA"
         cfg.identity.tagline = None;
         let ts = render_generated_ts(&cfg, "test");
         assert!(ts.contains("export const GENERATED_APP_NAME = \"Foo \\\"Bar\\\"\";"));
-        // No tagline -> derived default, matching `setBrand`'s own fallback
-        // shape. `serde_json::to_string` escapes the quotes but leaves the
-        // non-ASCII ellipsis character itself in the output (it only escapes
+        // No tagline emits `null`, not a derived English sentence. That is
+        // the point: the renderer cannot tell an invented default from a
+        // reseller's own copy, so it could never translate the composer
+        // placeholder without risking overwriting theirs.
         // control characters, `"`, and `\`), so the literal `…` appears here.
-        assert!(ts.contains("GENERATED_TAGLINE = \"Message Foo \\\"Bar\\\"\u{2026}\";"));
+        assert!(ts.contains("export const GENERATED_TAGLINE: string | null = null;"));
+        assert!(!ts.contains("Message Foo"));
     }
 
     #[test]

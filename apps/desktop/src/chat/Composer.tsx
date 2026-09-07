@@ -446,6 +446,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ))}
           </div>
         )}
+        {/* A brand tagline is the brand's own copy and is shown verbatim.
+            Without one the placeholder is ours, so it comes from the
+            catalog and is translated. */}
         <textarea
           ref={textareaRef}
           className="composer-textarea scroll"
@@ -453,7 +456,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={(event) => void handlePaste(event)}
-          placeholder={brand().tagline}
+          placeholder={brand().tagline ?? t('chat.composer.placeholder')}
           rows={1}
           aria-label={t('chat.composer.prompt.ariaLabel')}
         />

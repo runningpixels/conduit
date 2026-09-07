@@ -549,12 +549,12 @@ export function Sidebar({
       </div>
 
       <div className="sb-foot sidebar-inner">
+        {/* `title` names the bound folder: truncated with no reveal, a reader
+            cannot tell which folder the assistant can reach. */}
         <button
           ref={chipRef}
           className="wschip"
           type="button"
-          // The chip names the bound folder; truncated with no reveal, the user
-          // cannot tell which folder the assistant can reach.
           title={workspaceLabel ?? undefined}
           aria-haspopup="menu"
           aria-expanded={menuOpen}

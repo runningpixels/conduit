@@ -95,7 +95,11 @@ describe('i18n-pseudo: committed en-XA.json is well-formed pseudo-ICU', () => {
 
   it('onboarding.actions.back is a short accented, bracket-wrapped, padded message', () => {
     const pseudo = enXA['onboarding.actions.back'];
-    expect(pseudo).toBe(`[${accentLiteral('Back')}${'—'.repeat(Math.ceil('Back'.length * 0.4))}]`);
+    // Padding is chunked and space-separated on purpose: one long run of
+    // dashes simulates a URL, not German, and turned every padded string
+    // into an unbreakable token that overflowed narrow containers.
+    const pad = Math.ceil('Back'.length * 0.4);
+    expect(pseudo).toBe(`[${accentLiteral('Back')} ${'—'.repeat(pad)}]`);
   });
 });
 

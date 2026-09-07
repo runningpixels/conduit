@@ -41,8 +41,22 @@ take on that cost to answer a question Mode A already answers.
 | App icon, taskbar icon, installer name | No — impossible at runtime | Yes |
 | Bundle identifier (`com.example.app`) | No | Yes |
 | Custom fonts | No — blocked by the content security policy | Yes — bundled into the build |
+| Non-Latin scripts | Falls back to a system face; nothing is fetched | Same, unless the brand bundles its own |
 | Update server and signing key | N/A — Mode A doesn't touch the updater | Yes — and it's mandatory, not optional (`SHIPPING.md` §2) |
 | Native window title, taskbar text | Yes | Yes |
+
+The non-Latin row is a localization consequence, not a branding feature. The
+bundled faces (Geist, Geist Mono, Source Serif 4) have no CJK coverage, so
+Japanese, Korean and Simplified Chinese resolve through the system: Windows
+ships Yu Gothic, Malgun Gothic and Microsoft YaHei; macOS ships Hiragino Sans,
+Apple SD Gothic Neo and PingFang SC; Linux desktops ship Noto CJK. That costs
+nothing to download and adds nothing to the installer, which is why the app
+does not do what the marketing site does and bundle 4.7 MB of Noto.
+
+It is a reversible bet. If wave-2 QA finds those faces render inconsistently
+across the three platforms, the fallback is to bundle the Noto faces and gate
+them by `unicode-range`, exactly as `pixel-website/public/css/cjk.css` already
+does. See D17 in [`docs/plans/localization.md`](../plans/localization.md).
 
 Neither mode can change the on-disk data directory's organisation name (still
 `Conduit`, regardless of brand — see `SHIPPING.md` §1), the updater's

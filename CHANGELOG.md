@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- German interface. Pick a language in Settings → Appearance, or leave it on
+  System to follow the OS. The choice also sets the language the assistant
+  replies in, unless you write to it in another language.
+- Dates, times, number grouping, file sizes and sorting now follow the language
+  you picked rather than the machine's region. A German reader gets German
+  month names and `2,5 MB`, not `2.5 MB`.
+
+### Changed
+
+- File sizes read `4.2 kB` rather than `4.2 KB`, and context windows read
+  `200K` rather than `200k` — both are the standard forms for the reader's
+  locale rather than hardcoded English.
+
+### Fixed
+
+- Truncated text — folder names, tool-call summaries, the workspace-folder chip
+  — now shows its full value on hover instead of ending in an ellipsis with no
+  way to read the rest.
+- The connector consent dialog described a tool's permission level with a
+  sentence assembled in the backend, so it could not be translated. It is built
+  from the permission level and the tool's own description now.
+
 ## [0.1.0-rc.3] - 2026-09-06
 
 ### Added

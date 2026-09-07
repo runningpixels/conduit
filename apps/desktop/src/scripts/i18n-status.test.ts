@@ -39,6 +39,17 @@ describe('i18n-status: on the real, current tree', () => {
   it('`node scripts/i18n-status.mjs` exits 0 — the seeded German catalog is fully current', () => {
     expect(() => execFileSync('node', [scriptPath], { cwd: repoRoot, stdio: 'pipe' })).not.toThrow();
   });
+
+  it('`--strict` exits 0 too, which is what CI runs', () => {
+    /* The bare command tolerates missing keys by design (D6), so on its own it
+     * cannot tell "German is complete" from "German is 7% done". `--strict` is
+     * the mode that distinguishes them, and now that German IS complete it has
+     * to keep passing — otherwise the completeness this phase just achieved
+     * could regress with nothing to say so. */
+    expect(() =>
+      execFileSync('node', [scriptPath, '--strict'], { cwd: repoRoot, stdio: 'pipe' }),
+    ).not.toThrow();
+  });
 });
 
 describe('i18n-status: classifyLocale', () => {

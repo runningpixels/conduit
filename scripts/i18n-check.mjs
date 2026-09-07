@@ -66,11 +66,14 @@ const EN_PATH = join(SRC_ROOT, 'i18n/messages/en.json');
 /** Mirrors the feature-area list `catalogs.test.ts` enforces for every en.json key (D3). */
 export const FEATURE_AREAS = [
   'chat', 'common', 'consent', 'error', 'onboarding',
-  'recovery', 'settings', 'shell', 'workspace', 'artifacts',
+  'recovery', 'settings', 'shell', 'workspace', 'artifacts', 'app',
 ];
 
 /** A catalog key: `<known feature area>(.<alphanumeric segment>)+`. See module comment for why the first segment is restricted. */
-export const KEY_SHAPE = new RegExp(`^(?:${FEATURE_AREAS.join('|')})(?:\\.[a-zA-Z0-9]+)+$`);
+// A segment may carry a hyphen so a key can mirror an id the source already
+// uses: `shell.settingsSheet.nav.web-search` tracks the 'web-search' section
+// id, and renaming one without the other is how they drift apart.
+export const KEY_SHAPE = new RegExp(`^(?:${FEATURE_AREAS.join('|')})(?:\\.[a-zA-Z0-9-]+)+$`);
 
 /** Single- or double-quoted string literal, handling `\\`-escaped quotes. Deliberately not template literals: a dynamic `t(\`...${x}\`)` id cannot be a static reference anyway. */
 const STRING_LITERAL = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g;

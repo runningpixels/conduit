@@ -23,6 +23,7 @@ import {
 import { estimateCostCents, formatCostCents } from '../lib/costTable';
 import { readExpandedStatus } from './uiPrefs';
 import { ContextIcon, LockIcon, ModelIcon, ShieldIcon, SpendIcon } from '../icons';
+import { useT } from '../i18n';
 
 export type CredentialMode = 'none' | 'optional' | 'required' | 'loading';
 
@@ -65,6 +66,7 @@ export function StatusLine({
   credentialRef,
   modelMenuOpen,
 }: StatusLineProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -104,12 +106,12 @@ export function StatusLine({
   // fact, two volumes — which is the whole point of the collapse.
   const contextBrief =
     contextWindow != null
-      ? `${percent}% of ${formatWindow(contextWindow)}`
-      : `${tokens.toLocaleString()} ctx`;
+      ? t('shell.statusLine.context.ratio', { percent, window: formatWindow(contextWindow) })
+      : t('shell.statusLine.context.raw', { tokens: tokens.toLocaleString() });
   const contextFull =
     contextWindow != null
-      ? `${tokens.toLocaleString()} of ${formatWindow(contextWindow)}`
-      : `${tokens.toLocaleString()} tokens`;
+      ? t('shell.statusLine.context.full', { tokens: tokens.toLocaleString(), window: formatWindow(contextWindow) })
+      : t('shell.statusLine.context.fullRaw', { tokens: tokens.toLocaleString() });
 
   const estimatedCents = estimateCostCents(usage, settings.activeModel);
   const spendLabel =
@@ -121,7 +123,8 @@ export function StatusLine({
   // resolves rather than flash "not configured" on every mount.
   const keyResolved = credentialMode !== 'loading';
   const keyMissing = keyResolved && credentialMode !== 'none' && !credentialRef;
-  const keyLabel = credentialMode === 'none' ? 'no key required' : credentialRef || 'not configured';
+  const notConfiguredLabel = t('shell.statusLine.notConfigured');
+  const keyLabel = credentialMode === 'none' ? t('shell.statusLine.noKeyRequired') : credentialRef || notConfiguredLabel;
 
   const sep = <span className="sep" aria-hidden="true">·</span>;
 
@@ -144,7 +147,7 @@ export function StatusLine({
         data-context-warn={nearLimit ? 'true' : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Chat details"
+        title={t('shell.statusLine.chatDetails')}
         onClick={() => setOpen((v) => !v)}
       >
         <i className="pdot" aria-hidden="true" />
@@ -160,7 +163,7 @@ export function StatusLine({
           <span
             className="ctx-meter"
             role="meter"
-            aria-label={`Context ${percent}% of ${formatWindow(contextWindow)}`}
+            aria-label={t('shell.statusLine.context.meterAriaLabel', { percent, window: formatWindow(contextWindow) })}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={meterFill}
@@ -180,18 +183,18 @@ export function StatusLine({
         {keyMissing && (
           <>
             {sep}
-            <span className="warn">not configured</span>
+            <span className="warn">{notConfiguredLabel}</span>
           </>
         )}
         {sep}
         <span className={settings.localOnly ? 'local' : undefined}>
-          {settings.localOnly ? 'local only' : 'online'}
+          {settings.localOnly ? t('shell.statusLine.localOnly') : t('shell.statusLine.online')}
         </span>
       </button>
 
       {open && (
-        <div ref={menuRef} className="menu status-menu" data-open="true" role="menu" aria-label="Chat details">
-          <div className="menu-label">This chat</div>
+        <div ref={menuRef} className="menu status-menu" data-open="true" role="menu" aria-label={t('shell.statusLine.chatDetails')}>
+          <div className="menu-label">{t('shell.statusLine.menu.thisChatHeading')}</div>
 
           <button
             type="button"
@@ -204,7 +207,7 @@ export function StatusLine({
           >
             <ModelIcon />
             {providerDisplayName(settings.activeProvider)} / {settings.activeModel}
-            <span className="tail">change</span>
+            <span className="tail">{t('shell.statusLine.menu.change')}</span>
           </button>
 
           {keyResolved &&
@@ -220,7 +223,7 @@ export function StatusLine({
               >
                 <LockIcon />
                 {keyLabel}
-                <span className="tail">{keyMissing ? 'set up' : 'verified'}</span>
+                <span className="tail">{keyMissing ? t('shell.statusLine.menu.setUp') : t('shell.statusLine.menu.verified')}</span>
               </button>
             ) : (
               <span className={`menu-item${keyMissing ? ' warn' : ''}`}>
@@ -231,14 +234,14 @@ export function StatusLine({
 
           <span className={`menu-item${nearLimit ? ' warn' : ''}`}>
             <ContextIcon />
-            Context {contextFull}
+            {t('shell.statusLine.menu.contextRow', { full: contextFull })}
             {percent != null && <span className="tail">{percent}%</span>}
           </span>
 
           {spendLabel != null && (
             <span className="menu-item">
               <SpendIcon />
-              Spend this chat
+              {t('shell.statusLine.menu.spendThisChat')}
               <span className="tail">{spendLabel}</span>
             </span>
           )}
@@ -256,12 +259,12 @@ export function StatusLine({
               }}
             >
               <ShieldIcon />
-              {settings.localOnly ? 'Local only — nothing leaves this machine' : 'Online'}
+              {settings.localOnly ? t('shell.statusLine.menu.localOnlyDetail') : t('shell.statusLine.menu.online')}
             </button>
           ) : (
             <span className={`menu-item${settings.localOnly ? ' local' : ''}`}>
               <ShieldIcon />
-              {settings.localOnly ? 'Local only — nothing leaves this machine' : 'Online'}
+              {settings.localOnly ? t('shell.statusLine.menu.localOnlyDetail') : t('shell.statusLine.menu.online')}
             </span>
           )}
         </div>

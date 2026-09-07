@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
-import { appName } from '../brand';
+import { useT } from '../i18n';
 
 export interface OpenExternalLinkDialogProps {
   /** When null, the dialog is hidden. */
@@ -15,6 +15,7 @@ export interface OpenExternalLinkDialogProps {
  * so we do not need `allow-modals`.
  */
 export function OpenExternalLinkDialog({ url, onConfirm, onCancel }: OpenExternalLinkDialogProps) {
+  const t = useT();
   const open = url != null;
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -72,19 +73,19 @@ export function OpenExternalLinkDialog({ url, onConfirm, onCancel }: OpenExterna
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 id="open-external-link-title" style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
-          Open external link
+          {t('workspace.externalLink.title')}
         </h2>
         <p
           id="open-external-link-desc"
           style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}
         >
-          You&apos;re leaving {appName()} to visit an external link:
+          {t('workspace.externalLink.description')}
         </p>
         <input
           type="text"
           readOnly
           value={url}
-          aria-label="External URL"
+          aria-label={t('workspace.externalLink.urlAriaLabel')}
           onFocus={(e) => e.currentTarget.select()}
           style={{
             width: '100%',
@@ -99,10 +100,10 @@ export function OpenExternalLinkDialog({ url, onConfirm, onCancel }: OpenExterna
         />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button ref={cancelRef} className="btn ghost" type="button" onClick={onCancel}>
-            Cancel
+            {t('common.actions.cancel')}
           </button>
           <button className="btn primary" type="button" onClick={onConfirm}>
-            Open link
+            {t('workspace.externalLink.openButton')}
           </button>
         </div>
       </div>

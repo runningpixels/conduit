@@ -6,6 +6,7 @@
 
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { useT } from '../../i18n';
 
 export function renderKatexHtml(tex: string, displayMode: boolean): string | null {
   try {
@@ -30,13 +31,14 @@ export interface KatexHtmlProps {
 }
 
 export function KatexHtml({ tex, displayMode = false, fallback }: KatexHtmlProps) {
+  const t = useT();
   const html = renderKatexHtml(tex, displayMode);
   if (html == null) {
     const source = fallback ?? tex;
     if (displayMode) {
       return (
         <span className="md-render-error" role="note">
-          Couldn’t render math
+          {t('artifacts.katex.renderError')}
           <code className="md-code">{source}</code>
         </span>
       );

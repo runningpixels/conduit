@@ -18,6 +18,7 @@
 
 import { useEffect, useState } from 'react';
 import { isMacPlatform } from '../lib/shortcuts';
+import { useT } from '../i18n';
 
 /** Tauri v2 injects this before any app code runs. */
 function hasTauriBridge(): boolean {
@@ -31,6 +32,7 @@ async function currentWindow() {
 }
 
 export function WindowControls() {
+  const t = useT();
   const enabled = hasTauriBridge() && !isMacPlatform();
   const [maximized, setMaximized] = useState(false);
 
@@ -64,8 +66,8 @@ export function WindowControls() {
       <button
         type="button"
         className="wincontrol"
-        aria-label="Minimise"
-        title="Minimise"
+        aria-label={t('shell.windowControls.minimise')}
+        title={t('shell.windowControls.minimise')}
         onClick={() => void currentWindow().then((w) => w.minimize())}
       >
         <svg viewBox="0 0 10 10" aria-hidden="true">
@@ -75,8 +77,8 @@ export function WindowControls() {
       <button
         type="button"
         className="wincontrol"
-        aria-label={maximized ? 'Restore' : 'Maximise'}
-        title={maximized ? 'Restore' : 'Maximise'}
+        aria-label={maximized ? t('shell.windowControls.restore') : t('shell.windowControls.maximise')}
+        title={maximized ? t('shell.windowControls.restore') : t('shell.windowControls.maximise')}
         onClick={() => void currentWindow().then((w) => w.toggleMaximize())}
       >
         {maximized ? (
@@ -93,8 +95,8 @@ export function WindowControls() {
       <button
         type="button"
         className="wincontrol close"
-        aria-label="Close"
-        title="Close"
+        aria-label={t('common.actions.close')}
+        title={t('common.actions.close')}
         onClick={() => void currentWindow().then((w) => w.close())}
       >
         <svg viewBox="0 0 10 10" aria-hidden="true">

@@ -13,6 +13,7 @@ import { formatModelPriceLabel } from '../lib/costTable';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
+import { useT } from '../i18n';
 
 export interface CommandPaletteConversation {
   id: string;
@@ -94,10 +95,10 @@ function highlightSnippet(result: SearchResult): string {
   return `${escaped.slice(0, start)}<mark>${escaped.slice(start, end)}</mark>${escaped.slice(end)}`;
 }
 
-const MODE_LABEL: Record<string, string> = {
-  '>': 'commands',
-  '@': 'artifacts',
-  '/': 'models',
+const MODE_LABEL_IDS: Record<string, string> = {
+  '>': 'workspace.commandPalette.mode.commands',
+  '@': 'workspace.commandPalette.mode.artifacts',
+  '/': 'workspace.commandPalette.mode.models',
 };
 
 function PaletteIcon({ kind }: { kind: PaletteKind }) {
@@ -142,6 +143,7 @@ export function CommandPalette({
   onSearchMessages,
   onSelectSearchResult,
 }: CommandPaletteProps) {
+  const t = useT();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -185,35 +187,36 @@ export function CommandPalette({
 
   const commands = useMemo((): PaletteItem[] => {
     const close = () => onClose();
+    const group = t('workspace.commandPalette.group.commands');
     return [
-      { id: 'cmd-new-chat', group: 'Commands', kind: 'cmd', label: 'New chat', tail: modShortcutHint('N'), run: () => { onNewChat(); close(); } },
-      { id: 'cmd-fork', group: 'Commands', kind: 'cmd', label: 'Fork conversation here', tail: modShiftShortcutHint('F'), run: () => { onForkConversationHere(); close(); } },
-      { id: 'cmd-edit-last-user', group: 'Commands', kind: 'cmd', label: 'Edit last user message', run: () => { onEditLastUserMessage(); close(); } },
-      { id: 'cmd-chat-settings', group: 'Commands', kind: 'cmd', label: 'Chat settings for this conversation', run: () => { onOpenChatSettings(); close(); } },
-      { id: 'cmd-toggle-panel', group: 'Commands', kind: 'cmd', label: 'Toggle context panel', tail: modShortcutHint('J'), run: () => { onToggleDocPanel(); close(); } },
-      { id: 'cmd-toggle-sidebar', group: 'Commands', kind: 'cmd', label: 'Toggle sidebar', tail: modShortcutHint('\\'), run: () => { onToggleSidebar(); close(); } },
-      { id: 'cmd-toggle-web', group: 'Commands', kind: 'cmd', label: 'Toggle web search for this turn', tail: modShiftShortcutHint('W'), run: () => { onToggleWebSearch(); close(); } },
-      { id: 'cmd-settings', group: 'Commands', kind: 'cmd', label: 'Open settings', tail: modShortcutHint(','), run: () => { onOpenSettings(); close(); } },
-      { id: 'cmd-providers', group: 'Commands', kind: 'cmd', label: 'Manage providers & keys', run: () => { onOpenSettings('providers'); close(); } },
-      { id: 'cmd-web-search', group: 'Commands', kind: 'cmd', label: 'Web search settings', run: () => { onOpenSettings('web-search'); close(); } },
-      { id: 'cmd-workspace', group: 'Commands', kind: 'cmd', label: 'Workspace defaults', run: () => { onOpenSettings('workspace'); close(); } },
-      { id: 'cmd-connectors', group: 'Commands', kind: 'cmd', label: 'Connect a service', run: () => { onOpenSettings('connectors'); close(); } },
-      { id: 'cmd-skills', group: 'Commands', kind: 'cmd', label: 'Manage skills', run: () => { onOpenSettings('skills'); close(); } },
-      { id: 'cmd-memory', group: 'Commands', kind: 'cmd', label: 'Manage memory', run: () => { onOpenSettings('memory'); close(); } },
-      { id: 'cmd-about', group: 'Commands', kind: 'cmd', label: 'About', run: () => { onOpenSettings('about'); close(); } },
-      { id: 'cmd-rename', group: 'Commands', kind: 'cmd', label: 'Rename this chat', run: () => { onRenameChat(); close(); } },
-      { id: 'cmd-pin', group: 'Commands', kind: 'cmd', label: activePinned ? 'Unpin this chat' : 'Pin this chat', run: () => { onPinChat?.(); close(); } },
-      { id: 'cmd-archive', group: 'Commands', kind: 'cmd', label: activeArchived ? 'Restore this chat' : 'Archive this chat', run: () => { onArchiveChat?.(); close(); } },
-      { id: 'cmd-export-diag', group: 'Commands', kind: 'cmd', label: 'Export diagnostics bundle', run: () => { onExportDiagnostics(); close(); } },
-      { id: 'cmd-copy-md', group: 'Commands', kind: 'cmd', label: 'Copy conversation as Markdown', run: () => { onCopyConversationAsMarkdown(); close(); } },
-      { id: 'cmd-export-md', group: 'Commands', kind: 'cmd', label: 'Export conversation as Markdown…', run: () => { onExportConversationMarkdown(); close(); } },
-      { id: 'cmd-export-json', group: 'Commands', kind: 'cmd', label: 'Export conversation as JSON…', run: () => { onExportConversationJson(); close(); } },
-      { id: 'cmd-delete', group: 'Commands', kind: 'cmd', label: 'Delete this chat', run: () => { onDeleteChat(); close(); } },
-      { id: 'cmd-delete-all', group: 'Commands', kind: 'cmd', label: 'Delete all chats…', tail: '⌫', run: () => { onDeleteAllHistory(); close(); } },
-      { id: 'cmd-theme', group: 'Commands', kind: 'cmd', label: 'Toggle theme', run: () => { onToggleTheme(); close(); } },
+      { id: 'cmd-new-chat', group, kind: 'cmd', label: t('workspace.commandPalette.command.newChat'), tail: modShortcutHint('N'), run: () => { onNewChat(); close(); } },
+      { id: 'cmd-fork', group, kind: 'cmd', label: t('workspace.commandPalette.command.forkHere'), tail: modShiftShortcutHint('F'), run: () => { onForkConversationHere(); close(); } },
+      { id: 'cmd-edit-last-user', group, kind: 'cmd', label: t('workspace.commandPalette.command.editLastMessage'), run: () => { onEditLastUserMessage(); close(); } },
+      { id: 'cmd-chat-settings', group, kind: 'cmd', label: t('workspace.commandPalette.command.chatSettings'), run: () => { onOpenChatSettings(); close(); } },
+      { id: 'cmd-toggle-panel', group, kind: 'cmd', label: t('workspace.commandPalette.command.togglePanel'), tail: modShortcutHint('J'), run: () => { onToggleDocPanel(); close(); } },
+      { id: 'cmd-toggle-sidebar', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleSidebar'), tail: modShortcutHint('\\'), run: () => { onToggleSidebar(); close(); } },
+      { id: 'cmd-toggle-web', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleWebSearch'), tail: modShiftShortcutHint('W'), run: () => { onToggleWebSearch(); close(); } },
+      { id: 'cmd-settings', group, kind: 'cmd', label: t('workspace.commandPalette.command.openSettings'), tail: modShortcutHint(','), run: () => { onOpenSettings(); close(); } },
+      { id: 'cmd-providers', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageProviders'), run: () => { onOpenSettings('providers'); close(); } },
+      { id: 'cmd-web-search', group, kind: 'cmd', label: t('workspace.commandPalette.command.webSearchSettings'), run: () => { onOpenSettings('web-search'); close(); } },
+      { id: 'cmd-workspace', group, kind: 'cmd', label: t('workspace.commandPalette.command.workspaceDefaults'), run: () => { onOpenSettings('workspace'); close(); } },
+      { id: 'cmd-connectors', group, kind: 'cmd', label: t('workspace.commandPalette.command.connectService'), run: () => { onOpenSettings('connectors'); close(); } },
+      { id: 'cmd-skills', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageSkills'), run: () => { onOpenSettings('skills'); close(); } },
+      { id: 'cmd-memory', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageMemory'), run: () => { onOpenSettings('memory'); close(); } },
+      { id: 'cmd-about', group, kind: 'cmd', label: t('workspace.commandPalette.command.about'), run: () => { onOpenSettings('about'); close(); } },
+      { id: 'cmd-rename', group, kind: 'cmd', label: t('workspace.commandPalette.command.renameChat'), run: () => { onRenameChat(); close(); } },
+      { id: 'cmd-pin', group, kind: 'cmd', label: activePinned ? t('workspace.commandPalette.command.unpinChat') : t('workspace.commandPalette.command.pinChat'), run: () => { onPinChat?.(); close(); } },
+      { id: 'cmd-archive', group, kind: 'cmd', label: activeArchived ? t('workspace.commandPalette.command.restoreChat') : t('workspace.commandPalette.command.archiveChat'), run: () => { onArchiveChat?.(); close(); } },
+      { id: 'cmd-export-diag', group, kind: 'cmd', label: t('workspace.commandPalette.command.exportDiagnostics'), run: () => { onExportDiagnostics(); close(); } },
+      { id: 'cmd-copy-md', group, kind: 'cmd', label: t('workspace.commandPalette.command.copyAsMarkdown'), run: () => { onCopyConversationAsMarkdown(); close(); } },
+      { id: 'cmd-export-md', group, kind: 'cmd', label: t('workspace.commandPalette.command.exportMarkdown'), run: () => { onExportConversationMarkdown(); close(); } },
+      { id: 'cmd-export-json', group, kind: 'cmd', label: t('workspace.commandPalette.command.exportJson'), run: () => { onExportConversationJson(); close(); } },
+      { id: 'cmd-delete', group, kind: 'cmd', label: t('workspace.commandPalette.command.deleteChat'), run: () => { onDeleteChat(); close(); } },
+      { id: 'cmd-delete-all', group, kind: 'cmd', label: t('workspace.commandPalette.command.deleteAllChats'), tail: '⌫', run: () => { onDeleteAllHistory(); close(); } },
+      { id: 'cmd-theme', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleTheme'), run: () => { onToggleTheme(); close(); } },
     ];
   }, [
-    onClose, onNewChat, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
+    t, onClose, onNewChat, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
@@ -229,7 +232,7 @@ export function CommandPalette({
         const label = `${providerDisplayName(provider.id)} / ${model.displayName ?? model.id}`;
         const tail =
           provider.credentialMode === 'none'
-            ? 'local'
+            ? t('workspace.commandPalette.tail.local')
             : (formatModelPriceLabel(model.id) ?? undefined);
         items.push({
           id: `model-${provider.id}-${model.id}`,
@@ -245,7 +248,7 @@ export function CommandPalette({
       }
     }
     return items;
-  }, [providers, modelsByProvider, onSelectModel, onClose]);
+  }, [providers, modelsByProvider, onSelectModel, onClose, t]);
 
   const items = useMemo((): PaletteItem[] => {
     if (prefix === '>') {
@@ -255,9 +258,9 @@ export function CommandPalette({
       return artifacts
         .map((a) => ({
           id: `art-${a.id}`,
-          group: 'Artifacts',
+          group: t('workspace.commandPalette.group.artifacts'),
           kind: 'file' as const,
-          label: a.title ?? a.contentPath?.split(/[\\/]/).pop() ?? 'Untitled artifact',
+          label: a.title ?? a.contentPath?.split(/[\\/]/).pop() ?? t('workspace.commandPalette.untitledArtifact'),
           tail: formatSize(a.sizeBytes, ''),
           run: () => {
             onOpenArtifact?.(a.id);
@@ -270,13 +273,15 @@ export function CommandPalette({
       return modelItems.filter((m) => m.label.toLowerCase().includes(q));
     }
     // Default corpus: New chat (empty query) + recent conversations + FTS hits.
+    const untitledChat = t('workspace.commandPalette.untitledChat');
+    const chatsGroup = t('workspace.commandPalette.group.chats');
     const convItems: PaletteItem[] = conversations
-      .filter((c) => (c.title || 'Untitled chat').toLowerCase().includes(q))
+      .filter((c) => (c.title || untitledChat).toLowerCase().includes(q))
       .map((c) => ({
         id: `conv-${c.id}`,
-        group: 'Chats',
+        group: chatsGroup,
         kind: 'chat' as const,
-        label: c.title || 'Untitled chat',
+        label: c.title || untitledChat,
         tail: organizationBadge(c),
         run: () => {
           onSelectConversation(c.id);
@@ -285,9 +290,9 @@ export function CommandPalette({
       }));
     const searchItems: PaletteItem[] = results.map((r) => ({
       id: `msg-${r.messageId}`,
-      group: 'Messages',
+      group: t('workspace.commandPalette.group.messages'),
       kind: 'search' as const,
-      label: r.snippet || '(message)',
+      label: r.snippet || t('workspace.commandPalette.messageFallback'),
       result: r,
       tail: organizationBadge(r),
       run: () => {
@@ -297,7 +302,7 @@ export function CommandPalette({
     }));
     if (!q) {
       return [
-        { id: 'cmd-new-chat', group: 'Chats', kind: 'cmd', label: 'New chat', tail: modShortcutHint('N'), run: () => { onNewChat(); onClose(); } },
+        { id: 'cmd-new-chat', group: chatsGroup, kind: 'cmd', label: t('workspace.commandPalette.command.newChat'), tail: modShortcutHint('N'), run: () => { onNewChat(); onClose(); } },
         ...convItems,
         ...searchItems,
       ];
@@ -305,7 +310,7 @@ export function CommandPalette({
     return [...convItems, ...searchItems];
   }, [
     prefix, q, commands, artifacts, modelItems, conversations, results,
-    onClose, onNewChat, onOpenArtifact, onSelectConversation, onSelectSearchResult,
+    onClose, onNewChat, onOpenArtifact, onSelectConversation, onSelectSearchResult, t,
   ]);
 
   const handleQueryChange = (value: string) => {
@@ -400,7 +405,7 @@ export function CommandPalette({
     }
   }
 
-  const modeLabel = prefix ? MODE_LABEL[prefix] : undefined;
+  const modeLabel = prefix ? t(MODE_LABEL_IDS[prefix]) : undefined;
 
   return (
     <div
@@ -415,7 +420,7 @@ export function CommandPalette({
         className="palette"
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t('workspace.commandPalette.dialogAriaLabel')}
         onKeyDown={onKeyDown}
       >
         <div className="pal-input">
@@ -423,23 +428,23 @@ export function CommandPalette({
           <input
             ref={inputRef}
             type="search"
-            placeholder="Search chats…  >commands  @artifacts  /models"
+            placeholder={t('workspace.commandPalette.searchPlaceholder')}
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
-            aria-label="Search chats, commands, artifacts, and models"
+            aria-label={t('workspace.commandPalette.searchAriaLabel')}
             autoComplete="off"
             spellCheck={false}
           />
           {modeLabel ? <span className="pal-mode">{modeLabel}</span> : null}
         </div>
 
-        <div className="pal-list scroll" role="listbox" aria-label="Results">
+        <div className="pal-list scroll" role="listbox" aria-label={t('workspace.commandPalette.resultsAriaLabel')}>
           {/* V9 §7's empty state is an invitation rather than a dead end. "No
               matches. Try > for commands." told the user what they had failed
               to do; this tells them what they can do next. */}
           {items.length === 0 ? (
             <div className="pal-empty" role="status">
-              {searching ? 'Searching…' : 'Nothing matches. Try a different word, or start a new chat.'}
+              {searching ? t('workspace.commandPalette.searching') : t('workspace.commandPalette.noResults')}
             </div>
           ) : (
             (() => {
@@ -482,12 +487,13 @@ export function CommandPalette({
         </div>
 
         <div className="pal-foot">
-          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> open</span>
-          <span><kbd>&gt;</kbd> commands</span>
-          <span><kbd>@</kbd> artifacts</span>
-          <span><kbd>/</kbd> models</span>
-          <span style={{ marginLeft: 'auto' }}><kbd>esc</kbd> close</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> {t('workspace.commandPalette.footer.navigate')}</span>
+          <span><kbd>↵</kbd> {t('workspace.commandPalette.footer.open')}</span>
+          <span><kbd>&gt;</kbd> {t('workspace.commandPalette.mode.commands')}</span>
+          <span><kbd>@</kbd> {t('workspace.commandPalette.mode.artifacts')}</span>
+          <span><kbd>/</kbd> {t('workspace.commandPalette.mode.models')}</span>
+          {/* i18n-exempt: the key cap, which is printed the same on every keyboard we ship to */}
+          <span style={{ marginLeft: 'auto' }}><kbd>esc</kbd> {t('workspace.commandPalette.footer.close')}</span>
         </div>
       </div>
     </div>

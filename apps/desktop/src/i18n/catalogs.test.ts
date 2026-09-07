@@ -100,9 +100,12 @@ describe('English catalog', () => {
       'shell',
       'workspace',
       'artifacts',
+      // The app shell itself: dialogs and toasts owned by App.tsx rather
+      // than by any one feature.
+      'app',
     ];
     for (const key of Object.keys(en)) {
-      expect(key, `${key} is not dot.namespaced`).toMatch(/^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)+$/);
+      expect(key, `${key} is not dot.namespaced`).toMatch(/^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9-]+)+$/);
       expect(areas, `${key} has an unknown feature area`).toContain(key.split('.')[0]);
     }
   });

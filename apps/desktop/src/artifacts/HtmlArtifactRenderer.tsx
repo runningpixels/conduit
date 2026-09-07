@@ -36,6 +36,7 @@ import {
   ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE,
   parseArtifactExternalLinkMessage,
 } from './externalUrl';
+import { useT } from '../i18n';
 
 export type ArtifactColorScheme = 'light' | 'dark';
 
@@ -135,6 +136,7 @@ export function HtmlArtifactRenderer({
   colorScheme = 'light',
   onExternalLink,
 }: HtmlArtifactRendererProps) {
+  const t = useT();
   const srcdoc = useMemo(
     () => assembleArtifactDoc(html, allowlist, styledPreview, colorScheme),
     [html, allowlist, styledPreview, colorScheme],
@@ -168,7 +170,7 @@ export function HtmlArtifactRenderer({
       <iframe
         ref={iframeRef}
         className="artifact-html-frame"
-        title="Artifact preview"
+        title={t('artifacts.html.previewTitle')}
         // `allow-scripts` only. NEVER add allow-same-origin / allow-top-navigation /
         // allow-popups / allow-forms / allow-modals — those would break containment.
         sandbox="allow-scripts"

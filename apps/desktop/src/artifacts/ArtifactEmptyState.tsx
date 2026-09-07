@@ -1,4 +1,5 @@
 import { BrandMark } from '../icons';
+import { useT } from '../i18n';
 
 /**
  * Orientation empty state for the artifact pane when no document is open.
@@ -18,8 +19,9 @@ export interface ArtifactEmptyStateProps {
 }
 
 export function ArtifactEmptyState({ logoSrc }: ArtifactEmptyStateProps = {}) {
+  const t = useT();
   return (
-    <section className="doc-panel doc-panel-empty" aria-label="Document panel">
+    <section className="doc-panel doc-panel-empty" aria-label={t('artifacts.emptyState.panelAriaLabel')}>
       <div className="doc-body scroll">
         <div className="artifact-empty">
           {/* aria-hidden on this wrapper already makes the mark decorative —
@@ -29,12 +31,8 @@ export function ArtifactEmptyState({ logoSrc }: ArtifactEmptyStateProps = {}) {
           <div className="artifact-empty-icon" aria-hidden="true">
             <BrandMark src={logoSrc} />
           </div>
-          <h2 className="artifact-empty-title">Artifacts live here</h2>
-          <p className="artifact-empty-copy">
-            When you promote a reply — markdown, HTML, JSON, or code — it opens
-            in this panel for preview, edit, and export. Start from chat; results
-            show up here.
-          </p>
+          <h2 className="artifact-empty-title">{t('artifacts.emptyState.title')}</h2>
+          <p className="artifact-empty-copy">{t('artifacts.emptyState.body')}</p>
         </div>
       </div>
     </section>

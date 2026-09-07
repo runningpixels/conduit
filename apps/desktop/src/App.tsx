@@ -48,7 +48,7 @@ import {
   type PendingArtifact,
 } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
-import { useLocale } from './i18n';
+import { useLocale, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
@@ -163,9 +163,10 @@ async function resolveSourceMessageId(messageId: string): Promise<string> {
 }
 
 export default function App() {
+  const t = useT();
   const [paths, setPaths] = useState<AppPaths | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [status, setStatus] = useState<StatusState | null>(makeStatus('Booting desktop shell', 'active'));
+  const [status, setStatus] = useState<StatusState | null>(makeStatus(t('app.status.booting'), 'active'));
   const [boundaryOk, setBoundaryOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
@@ -260,7 +261,7 @@ export default function App() {
       if (localStorage.getItem(DOC_PANEL_HINT_KEY) === '1') return;
       localStorage.setItem(DOC_PANEL_HINT_KEY, '1');
       const hint = makeStatus(
-        `Artifact panel hidden. Press ${modShortcutHint('J')} or use the panel button in the top bar to bring it back.`,
+        t('app.status.artifactPanelHidden', { shortcut: modShortcutHint('J') }),
         'success',
       );
       setToasts((current) => [...current.slice(-4), hint]);
@@ -423,7 +424,7 @@ export default function App() {
         }
       } catch (error) {
         setBoundaryOk(false);
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to load desktop state', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.loadDesktopStateFailed'), 'error'));
       }
     })();
   }, [ensureConversation, refreshConversations]);
@@ -448,9 +449,9 @@ export default function App() {
       setActiveConversationId(created.id);
       clearWorkspaceArtifactSelection();
       await refreshConversations();
-      setStatus(makeStatus('Started a new chat', 'success'));
+      setStatus(makeStatus(t('app.status.newChatStarted'), 'success'));
     } catch (error) {
-      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to create chat', 'error'));
+      setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.createChatFailed'), 'error'));
     }
   }, [clearWorkspaceArtifactSelection, refreshConversations]);
 
@@ -493,10 +494,10 @@ export default function App() {
         setActiveConversationId(fork.id);
         clearWorkspaceArtifactSelection();
         await refreshConversations();
-        setStatus(makeStatus('Forked conversation', 'success'));
+        setStatus(makeStatus(t('app.status.conversationForked'), 'success'));
       } catch (error) {
         setStatus(
-          makeStatus(error instanceof Error ? error.message : 'Failed to fork conversation', 'error'),
+          makeStatus(error instanceof Error ? error.message : t('app.status.forkConversationFailed'), 'error'),
         );
       }
     },
@@ -535,9 +536,9 @@ export default function App() {
           clearWorkspaceArtifactSelection();
         }
         await refreshConversations();
-        setStatus(makeStatus('Conversation deleted', 'success'));
+        setStatus(makeStatus(t('app.status.conversationDeleted'), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete conversation', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.deleteConversationFailed'), 'error'));
       }
     },
     [activeConversationId, clearWorkspaceArtifactSelection, refreshConversations],
@@ -555,9 +556,9 @@ export default function App() {
       setConvoProviders({});
       writeConvoProviders({});
       await refreshConversations();
-      setStatus(makeStatus('All conversation history deleted', 'success'));
+      setStatus(makeStatus(t('app.status.allHistoryDeleted'), 'success'));
     } catch (error) {
-      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete history', 'error'));
+      setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.deleteHistoryFailed'), 'error'));
     }
   }, [clearWorkspaceArtifactSelection, refreshConversations]);
 
@@ -570,7 +571,7 @@ export default function App() {
     } catch (error) {
       setArtifacts([]);
       setFileStateMap({});
-      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to load artifacts', 'error'));
+      setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.loadArtifactsFailed'), 'error'));
       return [];
     }
   }, []);
@@ -596,7 +597,7 @@ export default function App() {
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
         setDocTab('preview');
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to open artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.openArtifactFailed'), 'error'));
       }
     },
     [addOpenArtifactId, expandDocPanel],
@@ -630,7 +631,7 @@ export default function App() {
         await handleOpenArtifact(artifactId);
       }
       setPendingArtifact(null);
-      setStatus(makeStatus('Document updated', 'success'));
+      setStatus(makeStatus(t('app.status.documentUpdated'), 'success'));
     },
     [
       activeConversationId,
@@ -672,9 +673,9 @@ export default function App() {
         }
         const state = await checkArtifactFileState(artifactId);
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
-        setStatus(makeStatus('Saved artifact', 'success'));
+        setStatus(makeStatus(t('app.status.artifactSaved'), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to save artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.saveArtifactFailed'), 'error'));
         throw error;
       }
     },
@@ -685,9 +686,9 @@ export default function App() {
     async (artifactId: string, includeMetadata: boolean) => {
       try {
         const result = await exportArtifact(artifactId, includeMetadata);
-        setStatus(makeStatus(`Exported to ${result.exportedTo}`, 'success'));
+        setStatus(makeStatus(t('app.status.artifactExportedTo', { path: result.exportedTo }), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to export artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.exportArtifactFailed'), 'error'));
       }
     },
     [],
@@ -736,9 +737,9 @@ export default function App() {
         await setArtifactContent(created.id, { kind: 'text', text: candidate.body }, candidate.mimeType);
         await refreshArtifacts(activeConversationId);
         await handleOpenArtifact(created.id);
-        setStatus(makeStatus('Promoted to artifact', 'success'));
+        setStatus(makeStatus(t('app.status.artifactPromoted'), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to promote artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.promoteArtifactFailed'), 'error'));
       }
     },
     [activeConversationId, refreshArtifacts, handleOpenArtifact],
@@ -752,7 +753,7 @@ export default function App() {
           await refreshArtifacts(activeConversationId);
         }
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to rename artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.renameArtifactFailed'), 'error'));
       }
     },
     [activeConversationId, refreshArtifacts],
@@ -772,10 +773,10 @@ export default function App() {
       await setConversationTitle(activeConversationId, title);
       await refreshConversations();
       await refreshActiveConversationSummary(activeConversationId);
-      setStatus(makeStatus('Conversation renamed', 'success'));
+      setStatus(makeStatus(t('app.status.conversationRenamed'), 'success'));
     } catch (error) {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Failed to rename conversation', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.renameConversationFailed'), 'error'),
       );
     }
   }, [activeConversationId, renameValue, refreshConversations, refreshActiveConversationSummary]);
@@ -787,7 +788,7 @@ export default function App() {
         await refreshConversations();
         await refreshActiveConversationSummary(activeConversationId);
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to pin conversation', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.pinConversationFailed'), 'error'));
       }
     },
     [activeConversationId, refreshConversations, refreshActiveConversationSummary],
@@ -801,7 +802,7 @@ export default function App() {
         await refreshActiveConversationSummary(activeConversationId);
       } catch (error) {
         setStatus(
-          makeStatus(error instanceof Error ? error.message : 'Failed to archive conversation', 'error'),
+          makeStatus(error instanceof Error ? error.message : t('app.status.archiveConversationFailed'), 'error'),
         );
       }
     },
@@ -814,7 +815,7 @@ export default function App() {
         await setConversationFolder(id, folderId);
         await refreshConversations();
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to move conversation', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.moveConversationFailed'), 'error'));
       }
     },
     [refreshConversations],
@@ -825,10 +826,10 @@ export default function App() {
       try {
         const folder = await createConversationFolder(name);
         await refreshConversations();
-        setStatus(makeStatus('Folder created', 'success'));
+        setStatus(makeStatus(t('app.status.folderCreated'), 'success'));
         return folder;
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to create folder', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.createFolderFailed'), 'error'));
         return undefined;
       }
     },
@@ -841,7 +842,7 @@ export default function App() {
         await renameConversationFolder(folderId, name);
         await refreshConversations();
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to rename folder', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.renameFolderFailed'), 'error'));
       }
     },
     [refreshConversations],
@@ -853,7 +854,7 @@ export default function App() {
         await deleteConversationFolder(folderId);
         await refreshConversations();
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete folder', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.deleteFolderFailed'), 'error'));
       }
     },
     [refreshConversations],
@@ -862,30 +863,30 @@ export default function App() {
   const handleExportDiagnostics = useCallback(async () => {
     try {
       const result = await exportDiagnostics();
-      setStatus(makeStatus(`Diagnostics exported to ${result.exportedTo}`, 'success'));
+      setStatus(makeStatus(t('app.status.diagnosticsExportedTo', { path: result.exportedTo }), 'success'));
     } catch (error) {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Failed to export diagnostics', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.exportDiagnosticsFailed'), 'error'),
       );
     }
   }, []);
 
   const handleCopyConversationAsMarkdown = useCallback(async () => {
     if (!activeConversationId) {
-      setStatus(makeStatus('Nothing to copy', 'warning'));
+      setStatus(makeStatus(t('app.status.nothingToCopy'), 'warning'));
       return;
     }
     try {
       const md = await previewConversationExport(activeConversationId, 'markdown');
       if (!md.trim()) {
-        setStatus(makeStatus('Nothing to copy', 'warning'));
+        setStatus(makeStatus(t('app.status.nothingToCopy'), 'warning'));
         return;
       }
       await navigator.clipboard.writeText(md);
-      setStatus(makeStatus('Conversation copied as Markdown', 'success'));
+      setStatus(makeStatus(t('app.status.conversationCopiedMarkdown'), 'success'));
     } catch (error) {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Failed to copy conversation', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.copyConversationFailed'), 'error'),
       );
     }
   }, [activeConversationId]);
@@ -893,16 +894,16 @@ export default function App() {
   const handleExportConversation = useCallback(
     async (format: 'markdown' | 'json') => {
       if (!activeConversationId) {
-        setStatus(makeStatus('Nothing to export', 'warning'));
+        setStatus(makeStatus(t('app.status.nothingToExport'), 'warning'));
         return;
       }
       try {
         const result = await exportConversationDialog(activeConversationId, format);
         if (result === null) return;
-        setStatus(makeStatus(`Exported to ${result.exportedTo}`, 'success'));
+        setStatus(makeStatus(t('app.status.artifactExportedTo', { path: result.exportedTo }), 'success'));
       } catch (error) {
         setStatus(
-          makeStatus(error instanceof Error ? error.message : 'Failed to export conversation', 'error'),
+          makeStatus(error instanceof Error ? error.message : t('app.status.exportConversationFailed'), 'error'),
         );
       }
     },
@@ -1002,7 +1003,7 @@ export default function App() {
   const handleRevealWorkspace = useCallback(() => {
     void revealArtifactsDir().catch((error) => {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Could not reveal artifacts folder', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.revealArtifactsFolderFailed'), 'error'),
       );
     });
   }, []);
@@ -1055,10 +1056,10 @@ export default function App() {
       }
       setSettings(nextSettings);
       void updateSettingsPersisted(nextSettings);
-      setStatusMessage(makeStatus(`Switched to ${providerDisplayName(next.id)}`, 'success'));
+      setStatusMessage(makeStatus(t('app.status.switchedProvider', { provider: providerDisplayName(next.id) }), 'success'));
     } catch (error) {
       setStatusMessage(
-        makeStatus(error instanceof Error ? error.message : 'Failed to switch provider', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.switchProviderFailed'), 'error'),
       );
     }
   }, [settings, setStatusMessage]);
@@ -1080,13 +1081,13 @@ export default function App() {
       },
       forkConversationHere: () => {
         void chatViewRef.current?.forkConversationHere().then((ok) => {
-          if (ok) setStatus(makeStatus('Forked conversation', 'success'));
+          if (ok) setStatus(makeStatus(t('app.status.conversationForked'), 'success'));
         });
       },
       copyLastAssistant: () => {
         void chatViewRef.current?.copyLastAssistantMessage().then((ok) => {
-          if (ok) setStatus(makeStatus('Copied last assistant message', 'success'));
-          else setStatus(makeStatus('Nothing to copy', 'warning'));
+          if (ok) setStatus(makeStatus(t('app.status.copiedLastAssistantMessage'), 'success'));
+          else setStatus(makeStatus(t('app.status.nothingToCopy'), 'warning'));
         });
       },
       escape: () => {
@@ -1106,7 +1107,7 @@ export default function App() {
         const active = document.activeElement;
         if (
           active instanceof HTMLTextAreaElement &&
-          active.getAttribute('aria-label') === 'Message the active provider' &&
+          active.getAttribute('aria-label') === t('chat.composer.prompt.ariaLabel') &&
           chatViewRef.current?.isStreaming()
         ) {
           chatViewRef.current.stopStreaming();
@@ -1195,8 +1196,8 @@ export default function App() {
       <button
         className="sb-reveal"
         type="button"
-        aria-label="Open sidebar"
-        title={`Open sidebar  ${modShortcutHint('\\')}`}
+        aria-label={t('app.sidebar.openAriaLabel')}
+        title={t('app.sidebar.openTitle', { shortcut: modShortcutHint('\\') })}
         onClick={() => toggleSidebar()}
       >
         <SidebarIcon />
@@ -1269,7 +1270,7 @@ export default function App() {
           id="columnResize"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize document column"
+          aria-label={t('app.resizeHandle.ariaLabel')}
           aria-valuenow={ariaValueNow}
           aria-valuemin={ariaValueMin}
           aria-valuemax={ariaValueMax}
@@ -1335,16 +1336,16 @@ export default function App() {
         onToggleWebSearch={() => chatViewRef.current?.toggleWebSearch()}
         onForkConversationHere={() => {
           void chatViewRef.current?.forkConversationHere().then((ok) => {
-            if (ok) setStatus(makeStatus('Forked conversation', 'success'));
+            if (ok) setStatus(makeStatus(t('app.status.conversationForked'), 'success'));
           });
         }}
         onEditLastUserMessage={() => {
           const ok = chatViewRef.current?.editLastUserMessage() ?? false;
-          if (!ok) setStatus(makeStatus('No user message to edit', 'warning'));
+          if (!ok) setStatus(makeStatus(t('app.status.noUserMessageToEdit'), 'warning'));
         }}
         onOpenChatSettings={() => {
           const ok = chatViewRef.current?.openChatSettings() ?? false;
-          if (!ok) setStatus(makeStatus('Chat settings unavailable while streaming', 'warning'));
+          if (!ok) setStatus(makeStatus(t('app.status.chatSettingsUnavailable'), 'warning'));
         }}
         onRenameChat={handleRenameChat}
         onPinChat={() => {
@@ -1389,18 +1390,18 @@ export default function App() {
             className="cu-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Rename chat"
+            aria-label={t('app.renameChat.ariaLabel')}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <h2 className="cu-dialog-title">Rename this chat</h2>
-            <div className="cu-dialog-body">Choose a title for this conversation.</div>
+            <h2 className="cu-dialog-title">{t('app.renameChat.title')}</h2>
+            <div className="cu-dialog-body">{t('app.renameChat.body')}</div>
             <label className="cu-dialog-phrase">
-              <span>Title</span>
+              <span>{t('app.renameChat.fieldLabel')}</span>
               <input
                 autoFocus
                 type="text"
                 value={renameValue}
-                aria-label="Conversation title"
+                aria-label={t('app.renameChat.inputAriaLabel')}
                 autoComplete="off"
                 onChange={(e) => setRenameValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -1416,7 +1417,7 @@ export default function App() {
             </label>
             <div className="cu-dialog-actions">
               <button className="btn ghost" type="button" onClick={() => setRenameDialogOpen(false)}>
-                Cancel
+                {t('common.actions.cancel')}
               </button>
               <button
                 className="btn primary"
@@ -1424,7 +1425,7 @@ export default function App() {
                 disabled={!renameValue.trim()}
                 onClick={() => void commitRenameChat()}
               >
-                Rename
+                {t('common.actions.rename')}
               </button>
             </div>
           </div>
@@ -1435,14 +1436,15 @@ export default function App() {
         open={confirmDeleteId != null}
         // Now that any row can be deleted from the sidebar — not just the open
         // one — the dialog has to say which chat it means.
-        title={
-          confirmDeleteTitle ? `Delete “${confirmDeleteTitle}”?` : 'Delete conversation?'
-        }
+        title={t('app.deleteConversation.title', {
+          hasTitle: confirmDeleteTitle ? 'yes' : 'no',
+          title: confirmDeleteTitle ?? '',
+        })}
         // `delete_with_files` removes artifact files and attachment blobs from
         // disk alongside the rows, so the dialog names both. Attachments shared
         // with another chat are kept — hence "its".
-        description="Its messages, and the artifacts and attachments stored on disk with them, will be deleted."
-        confirmLabel="Delete"
+        description={t('app.deleteConversation.description')}
+        confirmLabel={t('common.actions.delete')}
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={() => {
           const id = confirmDeleteId;
@@ -1452,13 +1454,13 @@ export default function App() {
       />
       <ConfirmDialog
         open={confirmDeleteAll}
-        title="Delete all conversation history?"
+        title={t('app.deleteAllHistory.title')}
         // Usage history is in the list because `usage_summary` cascades from
         // `conversations` — deleting your chats silently takes your token and
         // cost record with them, which the old "App settings are preserved"
         // line implied was safe. Prompts have no such foreign key and survive.
-        description="Every conversation and message will be deleted, along with the artifacts and attachments stored on disk and your usage history. Settings, API keys, and saved prompts are kept."
-        confirmLabel="Delete all"
+        description={t('app.deleteAllHistory.description')}
+        confirmLabel={t('app.deleteAllHistory.confirmLabel')}
         confirmPhrase="delete all"
         onCancel={() => setConfirmDeleteAll(false)}
         onConfirm={() => {

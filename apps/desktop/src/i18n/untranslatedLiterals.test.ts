@@ -20,16 +20,12 @@
  * would make the guard something people silence rather than fix. TypeScript is
  * already a devDependency, so the real answer is available for free.
  *
- * **The pending list is a burn-down, not an allowlist.** Phase 2 extracts the
- * renderer area by area, so for a while some files legitimately still hold
- * literals. Those are listed in `PENDING`. The list only shrinks:
- *
- *   - a file NOT in `PENDING` may contain no user-facing literal at all;
- *   - a file IN `PENDING` that now has none must be removed from the list.
- *
- * That second rule is what stops the list from quietly becoming permanent —
- * finishing a file *forces* the edit that shortens it. When `PENDING` is empty
- * the constant and this paragraph go away, and G10 is an ordinary guard.
+ * It ran through Phase 2 as a burn-down: files still holding literals were
+ * listed in a `PENDING` constant that only ever shrank, because a file whose
+ * last literal was extracted *had* to be removed or the guard failed. That
+ * list reached empty when the last of the 54 files was converted, so it is
+ * gone and this is now an ordinary guard: no renderer file may hold a
+ * user-facing literal, full stop.
  *
  * Escape hatch: `// i18n-exempt: <reason>` on the offending line or the line
  * above. For developer-facing strings only — a debug label, a dev-only
@@ -62,37 +58,6 @@ const USER_FACING_ATTRIBUTES = new Set(['aria-label', 'placeholder', 'title', 'a
  */
 const STATUS_CALLBACKS = new Set(['onStatus', 'setStatus', 'pushToast', 'showToast']);
 
-/**
- * Files that still hold literals, pending extraction. Shrinks to empty over
- * Phase 2; see the module comment. Ordered by the plan's extraction order so
- * the remaining work reads off the top.
- */
-const PENDING: readonly string[] = [
-  // 1. workspace/settings — the largest surface; 13 files extracted so far.
-  // 2. chat — 119 sites.
-  'src/chat/ThinkingIndicator.tsx',
-  // 3. shell — 97 sites.
-  'src/shell/SettingsSheet.tsx',
-  'src/shell/Sidebar.tsx',
-  'src/shell/StatusLine.tsx',
-  'src/shell/WindowControls.tsx',
-  // 4. workspace root — 62 sites.
-  'src/workspace/DocumentPanel.tsx',
-  'src/workspace/CommandPalette.tsx',
-  'src/workspace/OpenExternalLinkDialog.tsx',
-  'src/workspace/MainHead.tsx',
-  'src/workspace/ToastStack.tsx',
-  // 5. artifacts — 15 sites.
-  'src/artifacts/renderers.tsx',
-  'src/artifacts/ArtifactEmptyState.tsx',
-  'src/artifacts/DocumentPanelErrorBoundary.tsx',
-  'src/artifacts/markdown/MermaidBlock.tsx',
-  'src/artifacts/markdown/KatexHtml.tsx',
-  'src/artifacts/HtmlArtifactRenderer.tsx',
-  // 6. the app shell itself — 10 sites.
-  'src/App.tsx',
-];
-
 interface Violation {
   file: string;
   line: number;
@@ -122,9 +87,18 @@ const sourceFiles = walkFiles(srcRoot)
   .filter((f) => !f.startsWith('src/scripts/'))
   .sort();
 
-/** A string is prose if it contains a letter — digits and punctuation alone are not. */
+/**
+ * Prose is text with a letter in it — digits and punctuation alone are not.
+ *
+ * HTML entities are stripped first, because `&times;`, `&hellip;` and `&gt;`
+ * are how JSX spells `×`, `…` and `>`. They are punctuation that happens to be
+ * written with letters, and flagging them would mean an exemption comment on
+ * every close button in the app — which trains people to reach for the
+ * exemption rather than the catalog.
+ */
 function isProse(text: string): boolean {
-  return /[A-Za-z]/.test(text.trim()) && text.trim().length > 1;
+  const withoutEntities = text.replace(/&(?:[a-zA-Z]+|#\d+);/g, '').trim();
+  return /[A-Za-z]/.test(withoutEntities) && withoutEntities.length > 1;
 }
 
 /**
@@ -135,7 +109,10 @@ function isProse(text: string): boolean {
  */
 function isExempt(lines: string[], lineIndex: number): boolean {
   const candidates = [lines[lineIndex], lines[lineIndex - 1]].filter((l) => l !== undefined);
-  return candidates.some((l) => /\/\/\s*i18n-exempt:\s*\S/.test(l));
+  // Both comment forms, because JSX has no `//`: inside markup an exemption is
+  // either `{/* i18n-exempt: … */}` or `{ // i18n-exempt: … }`, and outside it
+  // is a plain line comment.
+  return candidates.some((l) => /(?:\/\/|\/\*)\s*i18n-exempt:\s*\S/.test(l));
 }
 
 /**
@@ -211,16 +188,9 @@ const violationsByFile = new Map<string, Violation[]>(
 );
 
 describe('Guard G10 — user-facing literals live in the catalog', () => {
-  it('has a pending list that names only real files', () => {
-    // A stale entry would silently exempt nothing while looking like progress.
-    const unknown = PENDING.filter((f) => !sourceFiles.includes(f));
-    expect(unknown, 'PENDING names files that do not exist').toEqual([]);
-  });
-
-  it('finds no literal outside the pending list', () => {
+  it('finds no user-facing literal anywhere in the renderer', () => {
     const offenders: Violation[] = [];
-    for (const [file, violations] of violationsByFile) {
-      if (PENDING.includes(file)) continue;
+    for (const violations of violationsByFile.values()) {
       offenders.push(...violations);
     }
     const report = offenders.map((v) => `${v.file}:${v.line} [${v.kind}] ${v.text}`);
@@ -232,13 +202,11 @@ describe('Guard G10 — user-facing literals live in the catalog', () => {
     ).toEqual([]);
   });
 
-  it('keeps the pending list shrinking — no finished file left on it', () => {
-    // The rule that makes this a burn-down instead of an allowlist: extracting
-    // a file's last literal forces the edit that removes it from PENDING.
-    const finished = PENDING.filter((f) => (violationsByFile.get(f) ?? []).length === 0);
-    expect(
-      finished,
-      'These files are fully extracted — delete them from PENDING in this file.',
-    ).toEqual([]);
+  it('covers the whole renderer, not a shrinking subset of it', () => {
+    // Cheap insurance that the walk still reaches the tree: a refactor that
+    // moved or renamed `src/` would otherwise turn this file into a guard that
+    // scans nothing and passes forever.
+    expect(sourceFiles.length).toBeGreaterThan(100);
+    expect(sourceFiles).toContain('src/App.tsx');
   });
 });

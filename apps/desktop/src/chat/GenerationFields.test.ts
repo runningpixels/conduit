@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { draftFromControls, emptyGenerationDraft, parseGenerationDraft } from './GenerationFields';
+import { enTranslate } from '../test/enTranslate';
 
 describe('parseGenerationDraft', () => {
   it('returns null controls when all fields are empty', () => {
     const parsed = parseGenerationDraft(emptyGenerationDraft());
-    expect(parsed.error).toBeUndefined();
+    expect(parsed.errorId).toBeUndefined();
     expect(parsed.controls).toBeNull();
     expect(parsed.userInstructions).toBeNull();
   });
@@ -16,7 +17,7 @@ describe('parseGenerationDraft', () => {
       stopSequences: 'END\nSTOP',
       userInstructions: '  Be brief.  ',
     });
-    expect(parsed.error).toBeUndefined();
+    expect(parsed.errorId).toBeUndefined();
     expect(parsed.controls).toEqual({ temperature: 0.2, stopSequences: ['END', 'STOP'] });
     expect(parsed.userInstructions).toBe('Be brief.');
   });
@@ -26,7 +27,11 @@ describe('parseGenerationDraft', () => {
       ...emptyGenerationDraft(),
       temperature: '2.5',
     });
-    expect(parsed.error).toMatch(/Temperature/);
+    // The id is the contract now, not the sentence. Rendering it through the
+    // real English catalog keeps the assertion honest about what a user reads
+    // while still failing if the key is ever deleted.
+    expect(parsed.errorId).toBe('error.validation.temperatureRange');
+    expect(enTranslate(parsed.errorId!)).toMatch(/Temperature/);
   });
 });
 

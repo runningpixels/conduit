@@ -4,6 +4,8 @@ import type { AssistantStreamState, ToolCallState } from './streamState';
 import type { DocumentTurnIntent } from './documentTurnIntent';
 import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
+import type { Translate } from '../i18n';
+import { documentKindLabel } from '../lib/documentKind';
 
 const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
@@ -657,14 +659,6 @@ export function summarizeDocumentToolCall(toolCall: ToolCallState): DocumentTool
 }
 
 /// Artifact `kind` as it appears in backend error strings → display word.
-const KIND_WORD: Record<string, string> = {
-  markdown: 'Markdown',
-  html: 'HTML',
-  code: 'Code',
-  json: 'JSON',
-  text: 'Text',
-};
-
 /// `ensure_kind` in `src-tauri/src/agent_tools.rs` — the only tool error whose
 /// wording maps to something a reader can act on.
 const KIND_MISMATCH = /^artifact '[^']+' is '([^']+)' not '([^']+)'$/;
@@ -677,13 +671,13 @@ const KIND_MISMATCH = /^artifact '[^']+' is '([^']+)' not '([^']+)'$/;
  * sentence that says what happened and what to do; everything else falls back
  * to the original text. Callers keep the raw string available either way.
  */
-export function explainToolError(error: string | undefined, fallback: string): string {
+export function explainToolError(error: string | undefined, fallback: string, t: Translate): string {
   if (!error) return fallback;
   const mismatch = KIND_MISMATCH.exec(error.trim());
   if (mismatch) {
-    const actual = KIND_WORD[mismatch[1]] ?? mismatch[1];
-    const expected = KIND_WORD[mismatch[2]] ?? mismatch[2];
-    return `This document is ${actual} and a document's format is fixed once it is created. Ask for a new ${expected} document instead of converting this one.`;
+    const actual = documentKindLabel(mismatch[1], t);
+    const expected = documentKindLabel(mismatch[2], t);
+    return t('chat.toolError.kindMismatch', { actual, expected });
   }
   return error;
 }

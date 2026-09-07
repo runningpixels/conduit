@@ -5,21 +5,17 @@ import { renderHighlightedCode, useHighlightTokens } from '../artifacts/codeHigh
 import type { ArtifactCandidate } from './messageSegments';
 import { findPromotedArtifact, isPromotable } from './inlineArtifact';
 import { CheckIcon, CopyIcon, PlusIcon } from '../icons';
+import { useT, type Translate } from '../i18n';
+import { documentKindLabel } from '../lib/documentKind';
 
-const KIND_LABEL: Record<ArtifactCandidate['kind'], string> = {
-  markdown: 'Markdown',
-  text: 'Text',
-  code: 'Code',
-  json: 'JSON',
-  html: 'HTML',
-};
-
-function languageLabel(candidate: ArtifactCandidate): string {
+// Artifact kind names — format identifiers, not prose (see the same map and
+// comment in `ArtifactResultCard.tsx`).
+function languageLabel(candidate: ArtifactCandidate, t: Translate): string {
   const fromMime = languageFromMime(candidate.mimeType);
   if (fromMime) return fromMime;
   const infoLang = candidate.info.split(/\s+/)[0]?.toLowerCase();
   if (infoLang) return infoLang;
-  return KIND_LABEL[candidate.kind] ?? candidate.kind;
+  return documentKindLabel(candidate.kind, t);
 }
 
 interface InlineCodeBlockProps {
@@ -43,9 +39,10 @@ export function InlineCodeBlock({
   onPromote,
   onOpenArtifact,
 }: InlineCodeBlockProps) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
-  const lang = languageLabel(candidate);
+  const lang = languageLabel(candidate, t);
   const highlighted = useHighlightTokens(candidate.body, lang);
   const promoted = messageId ? findPromotedArtifact(artifacts, messageId, candidate) : undefined;
   // A formula or a one-line command is part of the answer, not a document.
@@ -87,8 +84,8 @@ export function InlineCodeBlock({
           <button
             type="button"
             className="icon-btn inline-code-block-btn"
-            aria-label={copied ? 'Copied' : 'Copy code'}
-            title={copied ? 'Copied' : 'Copy code'}
+            aria-label={copied ? t('chat.codeBlock.copied') : t('chat.codeBlock.copy')}
+            title={copied ? t('chat.codeBlock.copied') : t('chat.codeBlock.copy')}
             onClick={handleCopy}
             disabled={!candidate.body || streaming}
           >
@@ -100,7 +97,7 @@ export function InlineCodeBlock({
               className="btn ghost inline-code-block-promote"
               onClick={() => onOpenArtifact!(promoted!.id)}
             >
-              Open artifact
+              {t('chat.codeBlock.openArtifact')}
             </button>
           )}
           {canPromote && (
@@ -108,11 +105,11 @@ export function InlineCodeBlock({
               type="button"
               className="btn ghost inline-code-block-promote"
               disabled={promoteDisabled || pending}
-              title={`Open ${KIND_LABEL[candidate.kind].toLowerCase()} in the document panel`}
+              title={t('chat.codeBlock.openInDocumentPanel', { kind: candidate.kind })}
               onClick={handlePromote}
             >
               <PlusIcon />
-              Open as artifact
+              {t('chat.codeBlock.openAsArtifact')}
             </button>
           )}
         </div>

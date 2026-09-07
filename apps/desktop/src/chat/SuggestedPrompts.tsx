@@ -1,4 +1,5 @@
 import type { SuggestedPrompt } from './suggestedPromptData';
+import { useT } from '../i18n';
 
 export interface SuggestedPromptsProps {
   prompts: readonly SuggestedPrompt[];
@@ -15,13 +16,14 @@ export interface SuggestedPromptsProps {
  * composer (§10); the card grid that used to live there was removed with it.
  */
 export function SuggestedPrompts({ prompts, onSelect }: SuggestedPromptsProps) {
+  const t = useT();
   if (prompts.length === 0) return null;
 
   return (
     <div
       className="suggested-prompts suggested-prompts-inline"
       role="group"
-      aria-label="Suggested follow-ups"
+      aria-label={t('chat.suggestedPrompts.ariaLabel')}
     >
       {prompts.map((prompt) => (
         <button

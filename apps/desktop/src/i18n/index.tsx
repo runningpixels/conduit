@@ -209,12 +209,32 @@ const RICH_TAGS = {
   strong: (chunks: ReactNode[]) => <strong>{chunks}</strong>,
   b: (chunks: ReactNode[]) => <b>{chunks}</b>,
   em: (chunks: ReactNode[]) => <em>{chunks}</em>,
+  /**
+   * A phrase the reader can act on — a button sitting inside a sentence.
+   *
+   * Unlike the four above, this one has no useful default: the behaviour lives
+   * at the call site, which overrides `action` with its own renderer. What it
+   * gets here is a safe degrade, so a call site that forgets still renders a
+   * readable sentence rather than losing the words entirely.
+   *
+   * It exists because the alternative is worse. Reusing `<b>` for a button —
+   * which is what the first attempt did — leaves a translator looking at a
+   * tag that says "bold", free to move or drop it, taking the only control in
+   * the sentence with it. `<action>` says what it is.
+   */
+  action: (chunks: ReactNode[]) => <span>{chunks}</span>,
 };
 
 /** The tag names `useRichT` understands. Asserted against the catalogs. */
 export const RICH_TAG_NAMES: readonly string[] = Object.keys(RICH_TAGS);
 
-export type RichTranslate = (id: string, values?: TranslateValues) => ReactNode;
+/**
+ * Values a rich message accepts: ordinary placeholders, plus overrides for the
+ * tag renderers above (which is how `<action>` is given its behaviour).
+ */
+export type RichValues = Record<string, PrimitiveType | ((chunks: ReactNode[]) => ReactNode)>;
+
+export type RichTranslate = (id: string, values?: RichValues) => ReactNode;
 
 /**
  * `t()` for messages that carry inline markup. Returns a node, not a string.
@@ -226,7 +246,7 @@ export type RichTranslate = (id: string, values?: TranslateValues) => ReactNode;
 export function useRichT(): RichTranslate {
   const intl = useContext(IntlContext) ?? fallbackIntl;
   return useCallback(
-    (id: string, values?: TranslateValues) =>
+    (id: string, values?: RichValues) =>
       intl.formatMessage(
         { id, defaultMessage: EN_MESSAGES[id] },
         { appName: appName(), ...RICH_TAGS, ...values },

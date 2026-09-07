@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { useT } from '../i18n';
 
 interface Props {
   children: ReactNode;
@@ -34,33 +35,40 @@ export class ChatErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      return (
-        <div className="chat-error-boundary" role="alert">
-          <div className="chat-error-boundary-body">
-            <p>
-              <strong>Something went wrong</strong>
-            </p>
-            <p className="chat-error-boundary-detail">
-              The chat thread encountered an error while rendering.
-              {this.state.error?.message && (
-                <span className="chat-error-boundary-message">
-                  {' '}
-                  ({this.state.error.message})
-                </span>
-              )}
-            </p>
-            <button
-              className="btn"
-              type="button"
-              onClick={this.handleRetry}
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      );
+      return <ChatErrorFallback error={this.state.error} onRetry={this.handleRetry} />;
     }
 
     return this.props.children;
   }
+}
+
+/** A class component's `render()` cannot call hooks itself, so the fallback
+ *  markup — and the `useT()` call it needs — lives in this function component. */
+function ChatErrorFallback({ error, onRetry }: { error: Error | null; onRetry: () => void }) {
+  const t = useT();
+  return (
+    <div className="chat-error-boundary" role="alert">
+      <div className="chat-error-boundary-body">
+        <p>
+          <strong>{t('chat.errorBoundary.title')}</strong>
+        </p>
+        <p className="chat-error-boundary-detail">
+          {t('chat.errorBoundary.detail')}
+          {error?.message && (
+            <span className="chat-error-boundary-message">
+              {' '}
+              ({error.message})
+            </span>
+          )}
+        </p>
+        <button
+          className="btn"
+          type="button"
+          onClick={onRetry}
+        >
+          {t('common.actions.retry')}
+        </button>
+      </div>
+    </div>
+  );
 }

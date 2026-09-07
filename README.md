@@ -13,8 +13,8 @@
 Conduit is a desktop chat client for large language models, built on Tauri 2
 with a Rust core and a React renderer. You bring your own API key, talk to any
 of eleven providers, and everything — conversations, attachments, artifacts —
-is stored locally in an encrypted SQLite database. There is no Conduit account,
-no backend, and no telemetry.
+is stored locally in a SQLite database on your own disk, with optional
+encryption at rest. There is no Conduit account, no backend, and no telemetry.
 
 ## Why Conduit
 
@@ -22,8 +22,10 @@ no backend, and no telemetry.
   settings hold only a `keychain://conduit/<provider>` reference. All network
   calls happen in Rust. This is enforced by the architecture, not by policy —
   see [`docs/architecture/foundation-contracts.md`](./docs/architecture/foundation-contracts.md).
-- **Encrypted at rest.** AES-256-GCM over attachment and artifact blobs, with a
-  master key wrapped in the OS keychain. Encryption never silently downgrades:
+- **Optional encryption at rest.** AES-256-GCM over attachment and artifact
+  blobs and several database columns, with a master key wrapped in the OS
+  keychain. It is **off by default** (`AppSettings.encryption_at_rest`) and does
+  not cover message content yet. Encryption never silently downgrades:
   if the key is unavailable and encrypted data exists, the app refuses to start
   rather than fall back to plaintext.
 - **Bring your own provider.** Anthropic, OpenAI, Gemini, OpenRouter, OpenCode

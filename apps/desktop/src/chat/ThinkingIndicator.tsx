@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { AssistantStreamState } from './streamState';
+import { useT } from '../i18n';
 
 export interface ThinkingIndicatorProps {
   /** Optional model identifier shown in the label. */
@@ -24,6 +25,7 @@ export interface ThinkingIndicatorProps {
 const MIN_DISPLAY_MS = 300;
 
 export function ThinkingIndicator({ modelId, phase, message, visible = true }: ThinkingIndicatorProps) {
+  const t = useT();
   const [show, setShow] = useState(visible);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shownAt = useRef<number | null>(null);
@@ -53,7 +55,7 @@ export function ThinkingIndicator({ modelId, phase, message, visible = true }: T
 
   const label = message
     ?? phase?.label
-    ?? (modelId ? `${modelId} is thinking` : 'Thinking');
+    ?? (modelId ? t('chat.thinking.modelThinking', { modelId }) : t('chat.thinking.default'));
 
   return (
     <div className="thinking-indicator" role="status" aria-live="polite">

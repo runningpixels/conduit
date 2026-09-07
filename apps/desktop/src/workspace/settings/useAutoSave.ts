@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
 import { updateSettings } from '../../ipc/client';
+import { useT } from '../../i18n';
 
 /**
  * Auto-save hook: updates local state immediately (optimistic UI) and
@@ -11,6 +12,7 @@ export function useAutoSave(
   onSettingsChange: (s: AppSettings) => void,
   onStatus: (message: string) => void,
 ) {
+  const t = useT();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<AppSettings | null>(null);
 
@@ -21,9 +23,9 @@ export function useAutoSave(
       onSettingsChange(persisted);
     } catch (e) {
       const message = e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
-      onStatus(`Settings save failed: ${message}`);
+      onStatus(t('settings.autoSave.failed', { error: message }));
     }
-  }, [onSettingsChange, onStatus]);
+  }, [onSettingsChange, onStatus, t]);
 
   const save = useCallback((next: AppSettings) => {
     // Optimistic: update local state immediately

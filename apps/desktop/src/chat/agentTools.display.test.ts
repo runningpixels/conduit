@@ -11,6 +11,7 @@ import {
   isDocumentContentTool,
   resolveDocumentArtifactId,
 } from './agentTools';
+import { enTranslate } from '../test/enTranslate';
 
 function makeToolCall(name: string, args: Record<string, unknown>): ToolCallState {
   return {
@@ -119,8 +120,8 @@ describe('document tool activity helpers', () => {
 
 describe('explainToolError', () => {
   it('falls back when there is no error string', () => {
-    expect(explainToolError(undefined, 'Nothing happened.')).toBe('Nothing happened.');
-    expect(explainToolError('', 'Nothing happened.')).toBe('Nothing happened.');
+    expect(explainToolError(undefined, 'Nothing happened.', enTranslate)).toBe('Nothing happened.');
+    expect(explainToolError('', 'Nothing happened.', enTranslate)).toBe('Nothing happened.');
   });
 
   it('translates the kind-mismatch error into an actionable sentence', () => {
@@ -129,6 +130,7 @@ describe('explainToolError', () => {
     const out = explainToolError(
       "artifact 'c71e929c-7379-40c4-b9d5-6fa4a51fbbfa' is 'markdown' not 'html'",
       'unused',
+      enTranslate,
     );
     expect(out).toContain('Markdown');
     expect(out).toContain('HTML');
@@ -138,7 +140,9 @@ describe('explainToolError', () => {
   });
 
   it('passes unrecognised errors through unchanged', () => {
-    expect(explainToolError('connector is not running', 'unused')).toBe('connector is not running');
+    expect(explainToolError('connector is not running', 'unused', enTranslate)).toBe(
+      'connector is not running',
+    );
   });
 });
 

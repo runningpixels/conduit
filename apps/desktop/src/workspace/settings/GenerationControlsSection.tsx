@@ -41,8 +41,8 @@ export function GenerationControlsSection({
 
   function handleCommit(next: ReturnType<typeof draftFromControls>) {
     const parsed = parseGenerationDraft(next);
-    if (parsed.error) {
-      onStatus(parsed.error);
+    if (parsed.errorId) {
+      onStatus(t(parsed.errorId));
       return;
     }
     onUpdate({

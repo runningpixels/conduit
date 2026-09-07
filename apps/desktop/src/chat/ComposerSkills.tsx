@@ -1,5 +1,6 @@
 import { appName } from '../brand';
 import type { SkillSource, SkillSummary } from '../ipc/contracts';
+import { useT, type Translate } from '../i18n';
 
 interface ComposerSkillsProps {
   open: boolean;
@@ -11,13 +12,20 @@ interface ComposerSkillsProps {
   onOpenSettings?: () => void;
 }
 
-const SOURCE_LABEL: Record<SkillSource, string> = {
-  conduit: appName(),
-  claude: 'Claude',
-  agents: 'Agents',
-  brand: 'Brand',
-  workspace: 'Workspace',
-};
+function sourceLabel(source: SkillSource, t: Translate): string {
+  switch (source) {
+    case 'conduit':
+      return appName();
+    case 'claude':
+      return 'Claude';
+    case 'agents':
+      return t('chat.skills.source.agents');
+    case 'brand':
+      return t('chat.skills.source.brand');
+    case 'workspace':
+      return t('chat.skills.source.workspace');
+  }
+}
 
 /** Per-conversation skill enablement popover (t1-4). */
 export function ComposerSkills({
@@ -29,21 +37,22 @@ export function ComposerSkills({
   onToggle,
   onOpenSettings,
 }: ComposerSkillsProps) {
+  const t = useT();
   if (!open) return null;
 
   const enabled = new Set(enabledIds);
   const usable = skills.filter((s) => !s.parseError);
 
   return (
-    <div id="composer-skills" role="dialog" aria-label="Skills for this chat" className="chat-settings-pop">
+    <div id="composer-skills" role="dialog" aria-label={t('chat.skills.ariaLabel')} className="chat-settings-pop">
       <p className="chat-settings-pop-lead">
-        Enabled skills inject their instructions into the next turn. Scripts are not run.
+        {t('chat.skills.intro')}
       </p>
       {usable.length === 0 ? (
         <p className="chat-settings-pop-lead">
           {skills.length === 0
-            ? 'No skills discovered yet.'
-            : 'Discovered packages are invalid and cannot be enabled.'}
+            ? t('chat.skills.noneDiscovered')
+            : t('chat.skills.allInvalid')}
         </p>
       ) : (
         <ul className="composer-skill-list">
@@ -56,14 +65,17 @@ export function ComposerSkills({
                   type="button"
                   role="switch"
                   aria-pressed={on}
-                  aria-label={`${on ? 'Disable' : 'Enable'} ${skill.name}`}
+                  aria-label={t('chat.skills.toggleAriaLabel', {
+                    action: on ? 'disable' : 'enable',
+                    name: skill.name,
+                  })}
                   disabled={streaming}
                   onClick={() => onToggle(skill.id, !on)}
                 />
                 <span>
                   <b>{skill.name}</b>
                   <small>
-                    {SOURCE_LABEL[skill.source]}
+                    {sourceLabel(skill.source, t)}
                     {skill.description ? ` · ${skill.description}` : ''}
                   </small>
                 </span>
@@ -74,7 +86,7 @@ export function ComposerSkills({
       )}
       <div className="chat-settings-pop-actions">
         <button className="btn ghost" type="button" onClick={onClose}>
-          Close
+          {t('common.actions.close')}
         </button>
         {onOpenSettings ? (
           <button
@@ -85,7 +97,7 @@ export function ComposerSkills({
               onOpenSettings();
             }}
           >
-            Manage in Settings
+            {t('chat.skills.manageInSettings')}
           </button>
         ) : null}
       </div>

@@ -51,6 +51,18 @@ const desktopRoot = join(srcRoot, '..');
 const USER_FACING_ATTRIBUTES = new Set(['aria-label', 'placeholder', 'title', 'alt']);
 
 /**
+ * Callbacks whose first argument is rendered to the user as a toast.
+ *
+ * These are the half of the surface that JSX scanning cannot see:
+ * `onStatus('Saved')` is an ordinary call expression, indistinguishable by
+ * shape from any other function taking a string. They were missed once
+ * already — `useAutoSave.ts` has no JSX at all, so it never appeared in this
+ * guard's list and no extraction pass was pointed at it, while quietly
+ * rendering "Settings save failed" in English under a German UI.
+ */
+const STATUS_CALLBACKS = new Set(['onStatus', 'setStatus', 'pushToast', 'showToast']);
+
+/**
  * Files that still hold literals, pending extraction. Shrinks to empty over
  * Phase 2; see the module comment. Ordered by the plan's extraction order so
  * the remaining work reads off the top.
@@ -58,24 +70,7 @@ const USER_FACING_ATTRIBUTES = new Set(['aria-label', 'placeholder', 'title', 'a
 const PENDING: readonly string[] = [
   // 1. workspace/settings — the largest surface; 13 files extracted so far.
   // 2. chat — 119 sites.
-  'src/chat/ChatView.tsx',
-  'src/chat/Composer.tsx',
-  'src/chat/GenerationFields.tsx',
-  'src/chat/ToolCallBlock.tsx',
-  'src/chat/AssistantMessage.tsx',
-  'src/chat/ComposerChatSettings.tsx',
-  'src/chat/ComposerModelPicker.tsx',
-  'src/chat/ComposerSkills.tsx',
-  'src/chat/AskUserBlock.tsx',
-  'src/chat/ChatErrorBoundary.tsx',
-  'src/chat/InterruptedBanner.tsx',
-  'src/chat/ArtifactResultCard.tsx',
-  'src/chat/InlineCodeBlock.tsx',
-  'src/chat/SearchCallGroup.tsx',
-  'src/chat/UserTurnAttachments.tsx',
-  'src/chat/SuggestedPrompts.tsx',
   'src/chat/ThinkingIndicator.tsx',
-  'src/chat/TurnModelLine.tsx',
   // 3. shell — 97 sites.
   'src/shell/SettingsSheet.tsx',
   'src/shell/Sidebar.tsx',
@@ -101,7 +96,7 @@ const PENDING: readonly string[] = [
 interface Violation {
   file: string;
   line: number;
-  kind: 'jsx-text' | 'attribute';
+  kind: 'jsx-text' | 'attribute' | 'status';
   text: string;
 }
 
@@ -143,6 +138,20 @@ function isExempt(lines: string[], lineIndex: number): boolean {
   return candidates.some((l) => /\/\/\s*i18n-exempt:\s*\S/.test(l));
 }
 
+/**
+ * The literal text of a status argument, or `undefined` if it is not a
+ * literal. A template literal counts: `` `Saved ${name}` `` is still English
+ * prose with a hole in it, and is exactly the shape that has to become an ICU
+ * message with a named placeholder.
+ */
+function statusLiteral(arg: ts.Expression): string | undefined {
+  if (ts.isStringLiteralLike(arg)) return arg.text;
+  if (ts.isTemplateExpression(arg)) {
+    return arg.head.text + arg.templateSpans.map((span) => span.literal.text).join('');
+  }
+  return undefined;
+}
+
 function findViolations(file: string): Violation[] {
   const text = readFileSync(join(desktopRoot, file), 'utf8');
   const lines = text.split('\n');
@@ -156,6 +165,22 @@ function findViolations(file: string): Violation[] {
   };
 
   const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      const name = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee)
+          ? callee.name.text
+          : '';
+      if (STATUS_CALLBACKS.has(name)) {
+        for (const arg of node.arguments) {
+          const literal = statusLiteral(arg);
+          if (literal !== undefined && isProse(literal)) {
+            record(arg, 'status', `${name}(${JSON.stringify(literal)})`);
+          }
+        }
+      }
+    }
     if (ts.isJsxText(node) && isProse(node.text)) {
       record(node, 'jsx-text', node.text);
     } else if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) {
@@ -202,7 +227,8 @@ describe('Guard G10 — user-facing literals live in the catalog', () => {
     expect(
       report,
       'Move these into src/i18n/messages/en.json and render them with useT(), ' +
-        'or mark them `// i18n-exempt: <reason>` if no user ever reads them.',
+        'or mark them `// i18n-exempt: <reason>` if no user ever reads them. ' +
+        'A `status` finding is a toast: same rule, it is just not in the JSX.',
     ).toEqual([]);
   });
 

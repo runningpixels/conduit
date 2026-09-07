@@ -1,4 +1,5 @@
 import { providerDisplayName } from '../lib/providerIdentity';
+import { useT } from '../i18n';
 
 interface TurnModelLineProps {
   /** Adapter id of the provider that produced this turn. */
@@ -32,13 +33,16 @@ export function shouldShowModelLine(
 /** The conditional model line (§6.4). Mono, 10.5px, `--ink-3`; the leading
  *  dot and "switched from …" carry the provider hue. */
 export function TurnModelLine({ provider, model, time, switchedFrom }: TurnModelLineProps) {
+  const t = useT();
   return (
     <div className="turn-model">
       <i className="pdot" aria-hidden="true" />
       <b>{providerDisplayName(provider)}</b> / {model}
       {time ? <span className="turn-model-time">· {time}</span> : null}
       {switchedFrom ? (
-        <span className="switched">· switched from {providerDisplayName(switchedFrom)}</span>
+        <span className="switched">
+          · {t('chat.turnModel.switchedFrom', { provider: providerDisplayName(switchedFrom) })}
+        </span>
       ) : null}
     </div>
   );

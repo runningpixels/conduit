@@ -33,6 +33,7 @@ import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 import { formatModelPriceLabel } from '../lib/costTable';
 import { providerHueId } from '../lib/providerIdentity';
 import { ChevronDown } from '../icons';
+import { useT, type Translate } from '../i18n';
 
 /**
  * How long a single provider gets to answer before its group renders empty.
@@ -56,21 +57,21 @@ export interface ComposerModelPickerHandle {
 }
 
 /** The group caption's suffix: where this provider's key comes from. */
-function keyPosture(descriptor: ProviderDescriptor): string {
-  if (descriptor.credentialMode === 'none') return 'no key needed';
-  if (descriptor.isLocal) return 'local';
-  return 'keychain';
+function keyPosture(descriptor: ProviderDescriptor, t: Translate): string {
+  if (descriptor.credentialMode === 'none') return t('chat.modelPicker.keyPosture.none');
+  if (descriptor.isLocal) return t('chat.modelPicker.keyPosture.local');
+  return t('chat.modelPicker.keyPosture.keychain');
 }
 
 /**
  * The row's right-hand tail. A bundled price when we know one; otherwise a
  * posture word from the descriptor, never a guessed number.
  */
-function modelTail(descriptor: ProviderDescriptor, modelId: string): string | undefined {
+function modelTail(descriptor: ProviderDescriptor, modelId: string, t: Translate): string | undefined {
   const price = formatModelPriceLabel(modelId);
   if (price) return price;
-  if (descriptor.credentialMode === 'none' || descriptor.isLocal) return 'local';
-  if (descriptor.defaultBaseUrl) return 'self-hosted';
+  if (descriptor.credentialMode === 'none' || descriptor.isLocal) return t('chat.modelPicker.keyPosture.local');
+  if (descriptor.defaultBaseUrl) return t('chat.modelPicker.tail.selfHosted');
   return undefined;
 }
 
@@ -94,6 +95,7 @@ function ModelIdRow({
   initial: string;
   onCommit: (descriptor: ProviderDescriptor, modelId: string) => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState(initial);
   const commit = () => {
     const next = value.trim();
@@ -105,8 +107,8 @@ function ModelIdRow({
       <input
         className="model-id-input"
         value={value}
-        placeholder="Model id"
-        aria-label={`Model id for ${provider.displayName}`}
+        placeholder={t('chat.modelPicker.modelIdPlaceholder')}
+        aria-label={t('chat.modelPicker.modelIdAriaLabel', { provider: provider.displayName })}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== 'Enter') return;
@@ -115,7 +117,7 @@ function ModelIdRow({
         }}
       />
       <button type="button" className="tail" onClick={commit} disabled={!value.trim()}>
-        use
+        {t('chat.modelPicker.useButton')}
       </button>
     </div>
   );
@@ -139,6 +141,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
 
 export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, ComposerModelPickerProps>(
   function ComposerModelPicker({ settings, onSelectModel, disabled = false }, ref) {
+    const t = useT();
     const [open, setOpen] = useState(false);
     const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
     const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
@@ -223,7 +226,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
           ref={triggerRef}
           className="cbtn model"
           type="button"
-          title="Switch model"
+          title={t('chat.modelPicker.switchModel')}
           aria-haspopup="menu"
           aria-expanded={open}
           disabled={disabled}
@@ -235,21 +238,21 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
         </button>
 
         {open && (
-          <div className="menu model-menu" data-open="true" role="menu" aria-label="Switch model">
+          <div className="menu model-menu" data-open="true" role="menu" aria-label={t('chat.modelPicker.switchModel')}>
             {settled &&
               sortedProviders.map((provider) => {
                 const models = modelsByProvider[provider.id] ?? [];
                 return (
                   <div key={provider.id} data-provider={providerHueId(provider.id)}>
                     <div className="menu-label">
-                      {provider.displayName} · {keyPosture(provider)}
+                      {provider.displayName} · {keyPosture(provider, t)}
                     </div>
                     {models.length > 0 ? (
                       models.map((model) => {
                         const active =
                           provider.id === settings.activeProvider &&
                           model.id === settings.activeModel;
-                        const tail = modelTail(provider, model.id);
+                        const tail = modelTail(provider, model.id, t);
                         return (
                           <button
                             key={model.id}
@@ -280,7 +283,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
 
             {!settled && (
               <div className="menu-empty">
-                {loading ? 'Loading models…' : 'No providers configured. Check Providers & keys.'}
+                {loading ? t('chat.modelPicker.loadingModels') : t('chat.modelPicker.noProviders')}
               </div>
             )}
           </div>

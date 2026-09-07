@@ -9,7 +9,7 @@ import {
   summarizeDocumentToolCall,
 } from './agentTools';
 import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
-import { appName } from '../brand';
+import { useRichT, useT } from '../i18n';
 
 interface ToolCallBlockProps {
   toolCall: ToolCallState;
@@ -65,6 +65,8 @@ export function ToolCallBlock({
   defaultCollapsed = true,
   conversationId = null,
 }: ToolCallBlockProps) {
+  const t = useT();
+  const tr = useRichT();
   const [resolving, setResolving] = useState(false);
   const [rememberScope, setRememberScope] = useState<'none' | 'conversation' | 'always'>('none');
   // Running calls (or a pending consent gate) start expanded; completed calls
@@ -99,9 +101,9 @@ export function ToolCallBlock({
   const anyFailed = activeCalls.some((c) => callTone(c) === 'fail');
   const running = anyRunning;
   const statusSuffix = anyFailed
-    ? 'failed'
+    ? t('chat.toolCall.status.failed')
     : anyRunning
-      ? 'running…'
+      ? t('chat.toolCall.status.running')
       : '';
 
   const totalMs = activeCalls.reduce((acc, c) => {
@@ -143,7 +145,7 @@ export function ToolCallBlock({
 
   if (group) {
     name = splitToolDisplayName(group.name).tool || group.name;
-    summary = `${group.calls.length} call${group.calls.length > 1 ? 's' : ''}`;
+    summary = t('chat.toolCall.callCount', { count: group.calls.length });
     body = (
       <div className="tool-sub">
         {group.calls.map((c) => (
@@ -158,7 +160,7 @@ export function ToolCallBlock({
       </div>
     );
   } else if (isDocumentTool && docSummary) {
-    name = 'Documents';
+    name = t('chat.toolCall.documentsName');
     summary = `${docSummary.action} · ${docSummary.filename || docSummary.title || docSummary.kind}`;
     const rows: [string, string][] = [];
     if (docSummary.title) rows.push(['title', docSummary.title]);
@@ -169,20 +171,23 @@ export function ToolCallBlock({
     }
     const redacted = redactDocumentToolArguments(toolCall.arguments ?? {}, toolCall.name);
     const json = JSON.stringify(redacted, null, 2);
-    const docFallback = 'The document was not created or updated.';
-    const docExplained = explainToolError(toolCall.error, docFallback);
+    const docFallback = t('chat.toolCall.document.fallbackError');
+    const docExplained = explainToolError(toolCall.error, docFallback, t);
     resultText =
       status === 'failed' ? (
         <>
-          <b>Couldn&rsquo;t {docSummary.action.toLowerCase()} the document.</b> {docExplained}
+          {tr('chat.toolCall.document.failed', {
+            action: docSummary.action.toLowerCase(),
+            explained: docExplained,
+          })}
           {toolCall.error && toolCall.error !== docExplained && (
             <div className="tool-raw">{toolCall.error}</div>
           )}
         </>
       ) : status === 'cancelled' ? (
-        <b>Document tool cancelled.</b>
+        <b>{t('chat.toolCall.document.cancelled')}</b>
       ) : (
-        <b>Document updated.</b>
+        <b>{t('chat.toolCall.document.updated')}</b>
       );
     body = (
       <>
@@ -214,16 +219,15 @@ export function ToolCallBlock({
         {toolCall.complete && consent !== 'denied' && (
           <div className={`tool-out${status === 'failed' ? ' tool-out-prose' : ''}`}>
             {status === 'failed' ? (
-              <>
-                <b>Tool call failed.</b>{' '}
-                {explainToolError(toolCall.error, 'The tool returned no result.')}
-              </>
+              tr('chat.toolCall.generic.failed', {
+                explained: explainToolError(toolCall.error, t('chat.toolCall.generic.fallbackError'), t),
+              })
             ) : status === 'cancelled' ? (
-              <b>Tool call cancelled.</b>
+              <b>{t('chat.toolCall.generic.cancelled')}</b>
             ) : (
-              <>
-                <b>Tool call complete.</b> {toolCall.error ? toolCall.error : 'Result stored locally.'}
-              </>
+              tr('chat.toolCall.generic.complete', {
+                detail: toolCall.error ? toolCall.error : t('chat.toolCall.generic.resultStored'),
+              })
             )}
           </div>
         )}
@@ -266,13 +270,15 @@ export function ToolCallBlock({
             {showConsentGate && (
               <div className="consent">
                 <p>
-                  <b>{prompt?.connectorName ?? 'A connector'}</b> wants to run <b>{prompt?.toolName ?? toolCall.name}</b>.
-                  {' '}
-                  {prompt?.expectedEffect ?? 'This writes to an external service.'}
+                  {tr('chat.toolCall.consent.prompt', {
+                    connectorName: prompt?.connectorName ?? t('chat.toolCall.consent.defaultConnectorName'),
+                    toolName: prompt?.toolName ?? toolCall.name,
+                    expectedEffect: prompt?.expectedEffect ?? t('chat.toolCall.consent.defaultExpectedEffect'),
+                  })}
                 </p>
                 {prompt?.dataSummary && (
                   <p className="data-summary">
-                    <small>Data being sent: {prompt.dataSummary}</small>
+                    <small>{t('chat.toolCall.consent.dataSummary', { dataSummary: prompt.dataSummary })}</small>
                   </p>
                 )}
                 {prompt?.consentCopy && (
@@ -280,10 +286,7 @@ export function ToolCallBlock({
                     <small>{prompt.consentCopy}</small>
                   </p>
                 )}
-                <p>
-                  {appName()} never runs a side-effecting tool without your approval. Tool output is
-                  sandboxed and never re-injected into the prompt.
-                </p>
+                <p>{t('chat.toolCall.consent.safetyNote')}</p>
                 <div className="consent-remember">
                   <label>
                     <input
@@ -294,7 +297,7 @@ export function ToolCallBlock({
                         setRememberScope(e.target.checked ? 'conversation' : 'none')
                       }
                     />
-                    Remember for this chat
+                    {t('chat.toolCall.consent.rememberChat')}
                   </label>
                   <label>
                     <input
@@ -303,7 +306,7 @@ export function ToolCallBlock({
                       disabled={resolving}
                       onChange={(e) => setRememberScope(e.target.checked ? 'always' : 'none')}
                     />
-                    Always allow this tool
+                    {t('chat.toolCall.consent.rememberAlways')}
                   </label>
                 </div>
                 <div className="row">
@@ -313,7 +316,7 @@ export function ToolCallBlock({
                     disabled={resolving}
                     onClick={() => void resolve('approved')}
                   >
-                    Approve and run
+                    {t('chat.toolCall.consent.approveButton')}
                   </button>
                   <button
                     className="btn ghost"
@@ -321,14 +324,14 @@ export function ToolCallBlock({
                     disabled={resolving}
                     onClick={() => void resolve('denied')}
                   >
-                    Deny
+                    {t('chat.toolCall.consent.denyButton')}
                   </button>
                 </div>
               </div>
             )}
             {toolCall.sideEffecting && consent === 'denied' && (
               <div className="tool-out">
-                <b>Denied.</b> The tool call was not executed.
+                {tr('chat.toolCall.deniedNotice')}
               </div>
             )}
           </div>

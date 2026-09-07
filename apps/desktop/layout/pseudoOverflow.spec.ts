@@ -116,6 +116,44 @@ async function open(page: import('@playwright/test').Page, locale: string) {
   await page.waitForSelector('.composer-textarea', { timeout: 30_000 });
 }
 
+/**
+ * Walk every screen reachable without a backend, measuring each.
+ *
+ * Settings is walked pane by pane because it holds 285 of the app's extracted
+ * strings — more than the rest of the UI put together — and each pane is a
+ * separate layout that only renders when its nav item is selected.
+ */
+async function measureEveryScreen(
+  page: import('@playwright/test').Page,
+  locale: string,
+): Promise<Map<string, Clip[]>> {
+  const byScreen = new Map<string, Clip[]>();
+
+  await open(page, locale);
+  byScreen.set('shell', await clippedElements(page));
+
+  /* The workspace chip's menu is the way in. Selected structurally rather than
+   * by text, because the text is accented under `en-XA` — and it is the only
+   * item in that menu carrying a keyboard hint, which makes `:has(kbd)` both
+   * stable and language-independent. */
+  await page.locator('.wschip').click();
+  await page.locator('.menu-item:has(kbd)').click();
+  await page.waitForSelector('.sheet[role="dialog"]', { timeout: 10_000 });
+
+  const navItems = page.locator('.sheet-nav button');
+  const paneCount = await navItems.count();
+  expect(paneCount, 'the settings sheet rendered no navigation').toBeGreaterThan(5);
+
+  for (let index = 0; index < paneCount; index += 1) {
+    await navItems.nth(index).click();
+    // The pane swaps synchronously; this settles the sheet's own transition.
+    await page.waitForTimeout(100);
+    byScreen.set(`settings/pane${index}`, await clippedElements(page));
+  }
+
+  return byScreen;
+}
+
 for (const viewport of VIEWPORTS) {
   test.describe(`${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
@@ -129,19 +167,32 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('nothing clips under en-XA that does not already clip under en', async ({ page }) => {
-      await open(page, 'en');
-      const baseline = new Set((await clippedElements(page)).map((c) => c.key));
+      const baseline = await measureEveryScreen(page, 'en');
+      const pseudo = await measureEveryScreen(page, 'en-XA');
 
-      await open(page, 'en-XA');
-      const pseudo = await clippedElements(page);
+      /* A walk that silently failed to navigate would compare two empty maps
+       * and pass forever. The shell plus every settings pane is a dozen-odd
+       * screens; anything less means the menu or the nav stopped working. */
+      expect(
+        pseudo.size,
+        'the walk did not reach the settings panes',
+      ).toBeGreaterThan(10);
+      expect(pseudo.size).toBe(baseline.size);
 
-      const regressions = pseudo
-        .filter((c) => !baseline.has(c.key))
-        .map((c) => `${c.key}\n      clipped by ${c.overflowBy}px: ${JSON.stringify(c.text)}`);
+      const regressions: string[] = [];
+      for (const [screen, clips] of pseudo) {
+        const seen = new Set((baseline.get(screen) ?? []).map((c) => c.key));
+        for (const clip of clips) {
+          if (seen.has(clip.key)) continue;
+          regressions.push(
+            `[${screen}] ${clip.key}\n      over by ${clip.overflowBy}px: ${JSON.stringify(clip.text)}`,
+          );
+        }
+      }
 
       expect(
         regressions,
-        'These clip only when the text gets longer, which is what German will do. ' +
+        'These clip only once the text gets longer, which is what German will do. ' +
           'Let the container grow, let the text wrap, or truncate it with a title.',
       ).toEqual([]);
     });

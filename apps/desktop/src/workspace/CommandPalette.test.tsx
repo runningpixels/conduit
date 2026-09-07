@@ -184,7 +184,7 @@ describe('CommandPalette prefix modes', () => {
     renderPalette();
     type('@');
     expect(screen.getByRole('option', { name: /triage-notes.md/ })).toBeInTheDocument();
-    expect(screen.getByText('8.2 KB')).toBeInTheDocument();
+    expect(screen.getByText('8.2 kB')).toBeInTheDocument();
   });
 
   it('/ lists models grouped by provider with price or local tails', async () => {

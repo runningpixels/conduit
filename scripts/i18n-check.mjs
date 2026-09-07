@@ -92,12 +92,25 @@ function rel(file) {
   return relative(SRC_ROOT, file).split(sep).join('/');
 }
 
-/** Every `.ts`/`.tsx` source file this check considers: no tests, nothing under `src/i18n/` (the catalogs themselves and their own tests, exempt per the task brief). */
+/**
+ * Every `.ts`/`.tsx` source file this check considers: no tests, and none of
+ * the catalog plumbing that resolves ids dynamically.
+ *
+ * The exclusion is deliberately narrow. It used to be all of `src/i18n/`,
+ * which quietly hid a whole class of reference: `formatters.ts` names
+ * `common.time.*` directly, so those keys were reported as defined-but-unused
+ * — and a dead-key report that lists live keys is one people stop believing.
+ * Only the modules that look up ids at runtime (`index.tsx` indexes
+ * `EN_MESSAGES[id]`) and the locale table are skipped, because they contain no
+ * literal keys to find.
+ */
+const DYNAMIC_KEY_MODULES = ['i18n/index.tsx', 'i18n/locales.ts', 'i18n/devLocale.ts'];
+
 export function sourceFiles(srcRoot = SRC_ROOT) {
   return walk(srcRoot)
     .filter((f) => /\.tsx?$/.test(f))
     .filter((f) => !/\.test\.tsx?$/.test(f))
-    .filter((f) => !rel(f).startsWith('i18n/'));
+    .filter((f) => !DYNAMIC_KEY_MODULES.includes(rel(f)));
 }
 
 /**

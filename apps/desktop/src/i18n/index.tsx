@@ -209,6 +209,8 @@ const RICH_TAGS = {
   strong: (chunks: ReactNode[]) => <strong>{chunks}</strong>,
   b: (chunks: ReactNode[]) => <b>{chunks}</b>,
   em: (chunks: ReactNode[]) => <em>{chunks}</em>,
+  /** A key or a phrase the user is being asked to type. */
+  kbd: (chunks: ReactNode[]) => <kbd>{chunks}</kbd>,
   /**
    * A phrase the reader can act on — a button sitting inside a sentence.
    *

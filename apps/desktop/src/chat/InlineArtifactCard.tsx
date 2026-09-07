@@ -12,10 +12,10 @@ import type { Artifact, ArtifactKind, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './messageSegments';
 import { renderHighlightedCode, useHighlightTokens } from '../artifacts/codeHighlight';
 import { languageFromMime } from '../artifacts/selectRenderer';
-import { formatSize } from '../artifacts/format';
 import { ArtifactResultCard } from './ArtifactResultCard';
 import { isPromotable } from './inlineArtifact';
 import { CheckIcon, CopyIcon, FilePlainIcon } from '../icons';
+import { useFormatters } from '../i18n/formatters';
 
 const KIND_LABEL: Record<ArtifactKind, string> = {
   markdown: 'Markdown',
@@ -59,6 +59,7 @@ export function InlineArtifactCard({
   onOpenArtifact,
   onStatus,
 }: InlineArtifactCardProps) {
+  const fmt = useFormatters();
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
@@ -67,7 +68,7 @@ export function InlineArtifactCard({
 
   const title = candidate.title || 'Untitled';
   const kindLabel = KIND_LABEL[candidate.kind] ?? candidate.kind;
-  const size = formatSize(byteSize(candidate.body), '');
+  const size = fmt.size(byteSize(candidate.body), '');
 
   async function handleCopy() {
     if (!candidate.body) return;

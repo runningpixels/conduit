@@ -14,7 +14,7 @@ import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
-import { formatSize, inlineArtifactText, timeAgo } from '../artifacts/format';
+import { inlineArtifactText } from '../artifacts/format';
 import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
 import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
@@ -25,6 +25,7 @@ import { applyBrand, applyBrandTheme, clearBrand } from '../brand/applyBrand';
 import { allowUserBranding } from '../brand/buildFlags';
 import { ConfirmDialog } from '@conduit/ui';
 import { useRichT, useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 import { documentKindLabel } from '../lib/documentKind';
 
 type DocTab = 'preview' | 'source';
@@ -195,7 +196,7 @@ function ArtifactPendingState({
           <div className="artifact-pending">
             <div className="artifact-skeleton" aria-hidden="true" />
             <p className="artifact-pending-copy">
-              {t('workspace.documentPanel.pending.body', { action: actionLabel, kind: kindLabel.toLowerCase() })}
+              {t('workspace.documentPanel.pending.body', { action: actionLabel, kind: pending.kind })}
             </p>
           </div>
         )}
@@ -230,6 +231,7 @@ export function DocumentPanel({
 }: DocumentPanelProps) {
   const t = useT();
   const tr = useRichT();
+  const fmt = useFormatters();
   const [copied, setCopied] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabValue, setEditingTabValue] = useState('');
@@ -617,8 +619,8 @@ export function DocumentPanel({
   }
 
   const artifactPath = artifact.contentPath ?? t('workspace.documentPanel.inlinePayloadFallback');
-  const metaModified = timeAgo(artifact.updatedAt ?? artifact.createdAt);
-  const metaSize = formatSize(artifact.sizeBytes);
+  const metaModified = fmt.timeAgo(artifact.updatedAt ?? artifact.createdAt);
+  const metaSize = fmt.size(artifact.sizeBytes);
   const metaVersion = versionLabel(artifact);
   const footMeta = [
     metaSize,
@@ -1021,6 +1023,7 @@ export function DocumentPanel({
       />
 
       <ConfirmDialog
+        cancelLabel={t('common.actions.cancel')}
         open={confirmApplyBrand}
         title={t('workspace.documentPanel.confirmApply.title')}
         description={t('workspace.documentPanel.confirmApply.description')}

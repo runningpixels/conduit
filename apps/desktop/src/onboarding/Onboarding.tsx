@@ -12,6 +12,7 @@ import {
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
 import { useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 
 type OnboardingStep = 'provider' | 'connectors' | 'finish';
 
@@ -183,6 +184,7 @@ export function MigrationRecoveryNotice({
   onDismissed: () => void;
 }) {
   const t = useT();
+  const fmt = useFormatters();
   const [busy, setBusy] = useState<null | 'continue' | 'restart' | 'discard' | 'wipe'>(null);
   const [showDelete, setShowDelete] = useState(false);
   const [scope, setScope] = useState<WipeScope>('conversations');
@@ -215,7 +217,7 @@ export function MigrationRecoveryNotice({
         report.removedPaths.length
           ? t('recovery.discardBackup.deleted', {
               count: report.removedPaths.length,
-              freed: formatBytes(report.freedBytes),
+              freed: fmt.size(report.freedBytes),
             })
           : t('recovery.discardBackup.none'),
       );
@@ -283,7 +285,7 @@ export function MigrationRecoveryNotice({
                 <b>{t('recovery.delete.backupOnly.title')}</b>
                 <small>
                   {recovery.backupExists
-                    ? t('recovery.delete.backupOnly.body', { backupSize: formatBytes(recovery.backupBytes) })
+                    ? t('recovery.delete.backupOnly.body', { backupSize: fmt.size(recovery.backupBytes) })
                     : t('recovery.delete.backupOnly.bodyUnknownSize')}
                 </small>
               </div>
@@ -351,18 +353,4 @@ export function MigrationRecoveryNotice({
       </div>
     </div>
   );
-}
-
-/** Byte counts here exist to justify a delete, so one decimal is enough —
- *  more digits imply a precision the user has no way to check. */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(1)} ${units[unit]}`;
 }

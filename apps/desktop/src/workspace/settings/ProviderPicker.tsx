@@ -9,6 +9,7 @@ import {
   validateProviderCredentials,
 } from '../../ipc/client';
 import { useT } from '../../i18n';
+import { useFormatters } from '../../i18n/formatters';
 
 /**
  * The provider list shown only when `listProviderDescriptors()` fails.
@@ -51,6 +52,7 @@ export function ProviderPicker({
   onStatus: (message: string) => void;
 }) {
   const t = useT();
+  const fmt = useFormatters();
   const [providerSecret, setProviderSecret] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [credentialSummary, setCredentialSummary] = useState<CredentialSummary | null>(null);
@@ -158,7 +160,7 @@ export function ProviderPicker({
     });
   }
 
-  const sortedProviders = [...providers].sort((a, b) => a.tier - b.tier || a.displayName.localeCompare(b.displayName));
+  const sortedProviders = [...providers].sort((a, b) => a.tier - b.tier || fmt.compare(a.displayName, b.displayName));
 
   return (
     <div className="form-grid">

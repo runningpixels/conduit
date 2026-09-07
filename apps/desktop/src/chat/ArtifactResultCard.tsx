@@ -12,11 +12,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Artifact, ArtifactKind, FileState } from '../ipc/contracts';
 import { exportArtifact, getArtifactContentBytes, revealPath } from '../ipc/client';
-import { formatSize, inlineArtifactText } from '../artifacts/format';
+import { inlineArtifactText } from '../artifacts/format';
 import { readExportMetadata } from '../shell/uiPrefs';
 import { Menu } from '../workspace/Menu';
 import { CopyIcon, DownloadIcon, FilePlainIcon, MoreIcon } from '../icons';
 import { useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 import { documentKindLabel } from '../lib/documentKind';
 
 // Artifact kind names — format identifiers, not prose, so they are not passed
@@ -47,6 +48,7 @@ interface ArtifactResultCardProps {
 /** Full-width result card for an artifact produced by this message. */
 export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: ArtifactResultCardProps) {
   const t = useT();
+  const fmt = useFormatters();
   const [menuOpen, setMenuOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -56,7 +58,7 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
   const kindLabel = documentKindLabel(artifact.kind, t);
   // '' rather than the panel's em dash: an unknown size should drop out of the
   // subtitle entirely, not render as a placeholder next to the kind.
-  const size = formatSize(artifact.sizeBytes, '');
+  const size = fmt.size(artifact.sizeBytes, '');
 
   useEffect(() => {
     if (!menuOpen) return;

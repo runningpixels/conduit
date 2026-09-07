@@ -48,7 +48,7 @@ import {
   type PendingArtifact,
 } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
-import { useLocale, useT } from './i18n';
+import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
@@ -164,6 +164,7 @@ async function resolveSourceMessageId(messageId: string): Promise<string> {
 
 export default function App() {
   const t = useT();
+  const tr = useRichT();
   const [paths, setPaths] = useState<AppPaths | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [status, setStatus] = useState<StatusState | null>(makeStatus(t('app.status.booting'), 'active'));
@@ -1445,6 +1446,7 @@ export default function App() {
         // with another chat are kept — hence "its".
         description={t('app.deleteConversation.description')}
         confirmLabel={t('common.actions.delete')}
+        cancelLabel={t('common.actions.cancel')}
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={() => {
           const id = confirmDeleteId;
@@ -1461,7 +1463,14 @@ export default function App() {
         // line implied was safe. Prompts have no such foreign key and survive.
         description={t('app.deleteAllHistory.description')}
         confirmLabel={t('app.deleteAllHistory.confirmLabel')}
-        confirmPhrase="delete all"
+        cancelLabel={t('common.actions.cancel')}
+        confirmPhrase={t('app.deleteAllHistory.confirmPhrase')}
+        confirmPhraseHint={tr('common.confirm.typePhrase', {
+          phrase: t('app.deleteAllHistory.confirmPhrase'),
+        })}
+        confirmPhraseInputLabel={t('common.confirm.typePhraseLabel', {
+          phrase: t('app.deleteAllHistory.confirmPhrase'),
+        })}
         onCancel={() => setConfirmDeleteAll(false)}
         onConfirm={() => {
           setConfirmDeleteAll(false);

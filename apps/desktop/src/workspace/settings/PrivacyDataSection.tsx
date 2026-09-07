@@ -3,7 +3,7 @@ import type { AppSettings } from '../../ipc/contracts';
 import { resetLocalDatabase } from '../../ipc/client';
 import { ConfirmDialog } from '@conduit/ui';
 import type { ConnectionState } from '../../lib/connectionState';
-import { useT } from '../../i18n';
+import { useRichT, useT } from '../../i18n';
 
 interface PrivacyDataSectionProps {
   settings: AppSettings;
@@ -52,6 +52,7 @@ export function PrivacyDataSection({
   hasCredential = true,
 }: PrivacyDataSectionProps) {
   const t = useT();
+  const tr = useRichT();
   const [resetting, setResetting] = useState(false);
   const [lastBackupPath, setLastBackupPath] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -177,7 +178,14 @@ export function PrivacyDataSection({
         title={t('settings.privacy.resetDialog.title')}
         description={t('settings.privacy.resetDialog.description')}
         confirmLabel={t('settings.privacy.resetDialog.confirmLabel')}
-        confirmPhrase="reset"
+        cancelLabel={t('common.actions.cancel')}
+        confirmPhrase={t('settings.privacy.resetDialog.confirmPhrase')}
+        confirmPhraseHint={tr('common.confirm.typePhrase', {
+          phrase: t('settings.privacy.resetDialog.confirmPhrase'),
+        })}
+        confirmPhraseInputLabel={t('common.confirm.typePhraseLabel', {
+          phrase: t('settings.privacy.resetDialog.confirmPhrase'),
+        })}
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => void handleReset()}
       />

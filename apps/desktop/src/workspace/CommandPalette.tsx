@@ -6,7 +6,6 @@ import type {
   SearchResult,
 } from '../ipc/contracts';
 import { listProviderDescriptors, listProviderModels } from '../ipc/client';
-import { formatSize } from '../artifacts/format';
 import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../icons';
 import { providerDisplayName } from '../lib/providerIdentity';
 import { formatModelPriceLabel } from '../lib/costTable';
@@ -14,6 +13,7 @@ import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
 import { useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 
 export interface CommandPaletteConversation {
   id: string;
@@ -144,6 +144,7 @@ export function CommandPalette({
   onSelectSearchResult,
 }: CommandPaletteProps) {
   const t = useT();
+  const fmt = useFormatters();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -261,7 +262,7 @@ export function CommandPalette({
           group: t('workspace.commandPalette.group.artifacts'),
           kind: 'file' as const,
           label: a.title ?? a.contentPath?.split(/[\\/]/).pop() ?? t('workspace.commandPalette.untitledArtifact'),
-          tail: formatSize(a.sizeBytes, ''),
+          tail: fmt.size(a.sizeBytes, ''),
           run: () => {
             onOpenArtifact?.(a.id);
             onClose();

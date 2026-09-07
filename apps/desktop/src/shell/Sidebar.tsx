@@ -14,6 +14,7 @@ import { organizeConversations } from '../lib/conversationOrganization';
 import { modShortcutHint } from '../lib/shortcuts';
 import { appName } from '../brand';
 import { useRichT, useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 import {
   ArchiveIcon,
   BrandMark,
@@ -66,21 +67,6 @@ interface SidebarProps {
 }
 
 const DRAG_TYPE = 'text/conduit-conversation-id';
-
-/** "2m" relative label, hover-only per §8.2. */
-function relativeFromIso(iso: string): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return iso;
-  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (seconds < 60) return 'now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(then).toLocaleDateString();
-}
 
 function KeyIcon() {
   return (
@@ -143,6 +129,7 @@ export function Sidebar({
 }: SidebarProps) {
   const t = useT();
   const tr = useRichT();
+  const fmt = useFormatters();
   const [menuOpen, setMenuOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -157,7 +144,7 @@ export function Sidebar({
   const contextRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setMenuOpen(false);
-  const organized = organizeConversations(conversations, folders);
+  const organized = organizeConversations(conversations, folders, { locale: fmt.locale, t });
 
   // Outside click + Escape close the workspace menu; focus returns to the chip.
   useEffect(() => {
@@ -362,7 +349,7 @@ export function Sidebar({
             </span>
           ) : null}
           <span className="convo-name">{row.displayTitle}</span>
-          <span className="convo-meta">{relativeFromIso(row.updatedAt)}</span>
+          <span className="convo-meta">{fmt.timeAgoTerse(row.updatedAt)}</span>
         </button>
         {onDeleteConversation && (
           <button
@@ -423,10 +410,7 @@ export function Sidebar({
       <div className="sb-list scroll sidebar-inner">
         {!hasList ? (
           <div className="sb-empty">
-            {tr('shell.sidebar.empty.noChats', {
-              shortcut: modShortcutHint('N'),
-              code: (chunks: ReactNode[]) => <kbd>{chunks}</kbd>,
-            })}
+            {tr('shell.sidebar.empty.noChats', { shortcut: modShortcutHint('N') })}
           </div>
         ) : (
           <>

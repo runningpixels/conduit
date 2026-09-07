@@ -2,21 +2,13 @@ import { useEffect, useState } from 'react';
 import { getUsageSummary } from '../../ipc/client';
 import type { UsageSummaryResponse, UsagePeriod } from '../../ipc/contracts';
 import { useT } from '../../i18n';
-
-function formatCents(cents: number): string {
-  const d = cents / 100;
-  if (d < 0.01) return '<$0.01';
-  return `$${d.toFixed(2)}`;
-}
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
-  return tokens.toLocaleString();
-}
+import { useFormatters } from '../../i18n/formatters';
 
 export function UsageSection() {
   const t = useT();
+  const fmt = useFormatters();
+  const formatCents = fmt.money;
+  const formatTokens = fmt.compact;
   const [period, setPeriod] = useState<UsagePeriod>('thisMonth');
   const [data, setData] = useState<UsageSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);

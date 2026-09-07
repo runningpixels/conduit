@@ -34,6 +34,7 @@ import { formatModelPriceLabel } from '../lib/costTable';
 import { providerHueId } from '../lib/providerIdentity';
 import { ChevronDown } from '../icons';
 import { useT, type Translate } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 
 /**
  * How long a single provider gets to answer before its group renders empty.
@@ -142,6 +143,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
 export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, ComposerModelPickerProps>(
   function ComposerModelPicker({ settings, onSelectModel, disabled = false }, ref) {
     const t = useT();
+    const fmt = useFormatters();
     const [open, setOpen] = useState(false);
     const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
     const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
@@ -214,7 +216,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
     }
 
     const sortedProviders = [...providers].sort(
-      (a, b) => a.tier - b.tier || a.displayName.localeCompare(b.displayName),
+      (a, b) => a.tier - b.tier || fmt.compare(a.displayName, b.displayName),
     );
     // Every configured provider gets a group, including ones that listed no
     // models — filtering those out would make them unselectable from here.

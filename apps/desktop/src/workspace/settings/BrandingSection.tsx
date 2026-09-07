@@ -735,6 +735,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
       </fieldset>
 
       <ConfirmDialog
+        cancelLabel={t('common.actions.cancel')}
         open={confirmReset}
         title={t('settings.branding.resetDialog.title')}
         description={t('settings.branding.resetDialog.description')}

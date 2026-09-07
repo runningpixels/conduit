@@ -3,8 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { Sidebar } from './Sidebar';
 import { conversationGroup } from '../lib/dayGroup';
+import { enTranslate } from '../test/enTranslate';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
+const ctx = { locale: 'en', t: enTranslate };
 
 function row(
   id: string,
@@ -19,22 +21,22 @@ describe('conversationGroup', () => {
   it('buckets Today and Yesterday', () => {
     const today = '2026-08-03T08:00:00Z';
     const yesterday = '2026-08-02T08:00:00Z';
-    expect(conversationGroup(today, NOW)).toBe('Today');
-    expect(conversationGroup(yesterday, NOW)).toBe('Yesterday');
+    expect(conversationGroup(today, ctx, NOW)).toBe('Today');
+    expect(conversationGroup(yesterday, ctx, NOW)).toBe('Yesterday');
   });
 
   it('uses month names for older rows in the same year', () => {
     const july = '2026-07-15T08:00:00Z';
-    expect(conversationGroup(july, NOW)).toBe('July');
+    expect(conversationGroup(july, ctx, NOW)).toBe('July');
   });
 
   it('falls back to the year for rows older than the current year', () => {
     const old = '2025-12-01T08:00:00Z';
-    expect(conversationGroup(old, NOW)).toBe('2025');
+    expect(conversationGroup(old, ctx, NOW)).toBe('2025');
   });
 
   it('handles unparseable dates as Earlier', () => {
-    expect(conversationGroup('not-a-date', NOW)).toBe('Earlier');
+    expect(conversationGroup('not-a-date', ctx, NOW)).toBe('Earlier');
   });
 });
 

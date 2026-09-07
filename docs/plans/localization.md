@@ -163,6 +163,84 @@ rather than the separator, so a passing suite does not cement the bug.
 **Carried into Phase 6:** the three scripts are not yet wired into `ci.yml`.
 D14 puts that in Phase 6 alongside G10; nothing else depends on it.
 
+### Phase 2 — done
+
+`pnpm test` is green at 1280 passed / 4 skipped, `tsc -b` is clean, and all
+three i18n scripts exit 0. `en.json` holds **1028 keys**, every one of them
+referenced from source and none referenced but undefined.
+
+The renderer is extracted: 54 files, 587 sites — nearly double the ~300 the
+plan estimated, because that figure came from grep and this one came from the
+TypeScript AST.
+
+**Guard G10 landed here, not in Phase 6.** It was built first, as a burn-down:
+files still holding literals were listed, a file *not* listed could hold none,
+and a file whose last literal was extracted *had* to be removed or the guard
+failed. That made every area's progress verifiable without trusting a report,
+and the list could only shrink. It reached empty, so the list is gone and G10
+is an ordinary guard.
+
+It parses with TypeScript rather than scanning text, unlike G8/G9. Those hunt
+one known string; G10 has to decide whether a literal is *rendered*, which
+depends on syntactic position — `'Save'` is a violation as JSX text and fine
+as a `className`, an object key, or an enum value. Across ~600 sites the false
+positives would have made it a guard people silence.
+
+**Four things the guards could not see, each found by looking rather than by
+being told:**
+
+1. **Toasts.** `onStatus('Saved')` is an ordinary call expression. `useAutoSave.ts`
+   has no JSX at all, so it never entered the list and no extraction pass was
+   aimed at it — while rendering "Settings save failed" in English under a
+   German UI, inside an area already reported finished. G10 now covers status
+   callbacks.
+2. **Prose returned from plain functions.** `parseGenerationDraft` handed five
+   English validation sentences to its callers. They travel as message ids now.
+3. **`packages/ui`.** The plan's inventory says it "is effectively copy-free…
+   needs no translation layer". It was not: `ConfirmDialog` hardcoded "Type X
+   to confirm", and `confirmLabel`/`cancelLabel` had English *default parameter
+   values* — invisible to any JSX scan, and six of seven dialogs relied on
+   them. Both are required props now, so the compiler finds any omission, and
+   the package is copy-free for real.
+4. **A whole namespace, invisible to the key checker.** `app` was missing from
+   the feature-area list, so 56 live keys were reported as dead. Believing that
+   report would have meant deleting them.
+
+**D16 in full.** Every formatter now follows the chosen language rather than
+the OS: sizes, counts, compact context windows, money, wall clock, relative
+times, day grouping, and three bare `.localeCompare()` sorts.
+`Intl.RelativeTimeFormat` at `style: 'narrow'` produces exactly the English the
+hand-rolled version did — `2h ago`, `5m ago`, `3d ago` — so that swap cost
+English nothing while giving German and Japanese correct output. Sizes did
+change: `4.2 KB` → `4.2 kB`, CLDR's spelling, which is the point since `KB` is
+not universal and `.toFixed(1)` forced a `.` on every German reader.
+
+**Deviations worth recording:**
+
+- **D4's `formatjs extract` still does not apply**, as recorded in Phase 1.
+  `pnpm i18n:check` is the inverse and did real work here.
+- **Rich text was not in the plan and turned out to be required.** Sentences
+  with a styled fragment in the middle appeared in every area. Splitting them
+  freezes English word order; dropping the markup loses the styling. Both were
+  tried by extraction passes before `useRichT` existed. ICU tags inside the
+  message keep the sentence one translatable unit; the tag set is fixed in
+  code (`code`, `strong`, `b`, `em`, `kbd`, `action`) so a catalog cannot
+  introduce markup the app did not sanction, and the parity gate treats a
+  dropped or invented tag as a failure.
+- **Two latent bugs localization would have activated**, both comparing
+  *display text* to make a decision: `st.label === 'sign in'` in
+  `ConnectorsSection`, and an `aria-label` identity check in `App.tsx`. Both
+  now compare stable ids.
+- **`common.*` is limited to action verbs.** Nouns stay per-area: "Provider" as
+  a section heading and as a table column can want different German words.
+- **Brand names are data, not catalog entries.** Ten provider names briefly
+  became pass-through keys, which is ten chances for a locale to return a
+  translated brand. They are held as data and rendered through a JSX
+  expression.
+
+**Carried into Phase 4:** the pseudo-locale now covers all 1028 keys, which is
+what makes the layout pass possible. Nothing else is outstanding.
+
 
 The website was localized by duplicating whole HTML pages. That approach is
 correct for four static marketing pages and **fatal** for an app that ships

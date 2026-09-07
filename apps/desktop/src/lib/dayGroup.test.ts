@@ -1,18 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { conversationGroup, dayRuleLabel, sameCalendarDay } from './dayGroup';
+import { enTranslate } from '../test/enTranslate';
 
 const NOW = new Date('2026-08-03T12:00:00');
+const ctx = { locale: 'en', t: enTranslate };
 
 describe('conversationGroup', () => {
   it('buckets by relative day, then month, then year', () => {
-    expect(conversationGroup('2026-08-03T09:00:00', NOW)).toBe('Today');
-    expect(conversationGroup('2026-08-02T23:59:00', NOW)).toBe('Yesterday');
-    expect(conversationGroup('2026-07-14T09:00:00', NOW)).toBe('July');
-    expect(conversationGroup('2025-11-02T09:00:00', NOW)).toBe('2025');
+    expect(conversationGroup('2026-08-03T09:00:00', ctx, NOW)).toBe('Today');
+    expect(conversationGroup('2026-08-02T23:59:00', ctx, NOW)).toBe('Yesterday');
+    expect(conversationGroup('2026-07-14T09:00:00', ctx, NOW)).toBe('July');
+    expect(conversationGroup('2025-11-02T09:00:00', ctx, NOW)).toBe('2025');
   });
 
   it('degrades rather than throwing on an unparseable date', () => {
-    expect(conversationGroup('not-a-date', NOW)).toBe('Earlier');
+    expect(conversationGroup('not-a-date', ctx, NOW)).toBe('Earlier');
   });
 });
 
@@ -40,8 +42,8 @@ describe('sameCalendarDay', () => {
 
 describe('dayRuleLabel', () => {
   it('keeps the relative words while they are unambiguous', () => {
-    expect(dayRuleLabel('2026-08-03T09:00:00', NOW)).toBe('Today');
-    expect(dayRuleLabel('2026-08-02T09:00:00', NOW)).toBe('Yesterday');
+    expect(dayRuleLabel('2026-08-03T09:00:00', ctx, NOW)).toBe('Today');
+    expect(dayRuleLabel('2026-08-02T09:00:00', ctx, NOW)).toBe('Yesterday');
   });
 
   /**
@@ -51,12 +53,12 @@ describe('dayRuleLabel', () => {
    * would read "August" and say nothing about which day changed.
    */
   it('uses a dated label once a month label would be ambiguous', () => {
-    expect(dayRuleLabel('2026-08-01T09:00:00', NOW)).not.toBe('August');
-    expect(dayRuleLabel('2026-08-01T09:00:00', NOW)).toMatch(/Aug/);
+    expect(dayRuleLabel('2026-08-01T09:00:00', ctx, NOW)).not.toBe('August');
+    expect(dayRuleLabel('2026-08-01T09:00:00', ctx, NOW)).toMatch(/Aug/);
   });
 
   it('adds the year only when it differs from now', () => {
-    expect(dayRuleLabel('2026-07-14T09:00:00', NOW)).not.toMatch(/2026/);
-    expect(dayRuleLabel('2025-11-02T09:00:00', NOW)).toMatch(/2025/);
+    expect(dayRuleLabel('2026-07-14T09:00:00', ctx, NOW)).not.toMatch(/2026/);
+    expect(dayRuleLabel('2025-11-02T09:00:00', ctx, NOW)).toMatch(/2025/);
   });
 });

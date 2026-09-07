@@ -11,6 +11,8 @@ describe('ConfirmDialog', () => {
         open
         title="Delete?"
         description="This cannot be undone."
+        confirmLabel="Confirm"
+        cancelLabel="Cancel"
         onConfirm={onConfirm}
         onCancel={onCancel}
       />,
@@ -29,6 +31,8 @@ describe('ConfirmDialog', () => {
         open
         title="Delete?"
         description="This cannot be undone."
+        confirmLabel="Confirm"
+        cancelLabel="Cancel"
         onConfirm={onConfirm}
         onCancel={onCancel}
       />,
@@ -46,7 +50,10 @@ describe('ConfirmDialog', () => {
         title="Delete all?"
         description="Wipe history."
         confirmPhrase="delete all"
+        confirmPhraseHint={<>Type <kbd>delete all</kbd> to confirm</>}
+        confirmPhraseInputLabel="Type delete all to confirm"
         confirmLabel="Delete all"
+        cancelLabel="Cancel"
         onConfirm={onConfirm}
         onCancel={vi.fn()}
       />,

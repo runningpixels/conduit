@@ -24,6 +24,7 @@ import { estimateCostCents, formatCostCents } from '../lib/costTable';
 import { readExpandedStatus } from './uiPrefs';
 import { ContextIcon, LockIcon, ModelIcon, ShieldIcon, SpendIcon } from '../icons';
 import { useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 
 export type CredentialMode = 'none' | 'optional' | 'required' | 'loading';
 
@@ -46,16 +47,6 @@ interface StatusLineProps {
   modelMenuOpen: () => void;
 }
 
-/** Compact window formatting: 200000 → "200k", 1000000 → "1M". */
-export function formatWindow(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    const m = tokens / 1_000_000;
-    return `${m % 1 === 0 ? m : m.toFixed(1)}M`;
-  }
-  if (tokens >= 1000) return `${Math.round(tokens / 1000)}k`;
-  return String(tokens);
-}
-
 export function StatusLine({
   settings,
   onOpenSettings,
@@ -67,6 +58,7 @@ export function StatusLine({
   modelMenuOpen,
 }: StatusLineProps) {
   const t = useT();
+  const fmt = useFormatters();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -106,12 +98,12 @@ export function StatusLine({
   // fact, two volumes — which is the whole point of the collapse.
   const contextBrief =
     contextWindow != null
-      ? t('shell.statusLine.context.ratio', { percent, window: formatWindow(contextWindow) })
-      : t('shell.statusLine.context.raw', { tokens: tokens.toLocaleString() });
+      ? t('shell.statusLine.context.ratio', { percent, window: fmt.compact(contextWindow) })
+      : t('shell.statusLine.context.raw', { tokens: fmt.count(tokens) });
   const contextFull =
     contextWindow != null
-      ? t('shell.statusLine.context.full', { tokens: tokens.toLocaleString(), window: formatWindow(contextWindow) })
-      : t('shell.statusLine.context.fullRaw', { tokens: tokens.toLocaleString() });
+      ? t('shell.statusLine.context.full', { tokens: fmt.count(tokens), window: fmt.compact(contextWindow) })
+      : t('shell.statusLine.context.fullRaw', { tokens: fmt.count(tokens) });
 
   const estimatedCents = estimateCostCents(usage, settings.activeModel);
   const spendLabel =
@@ -163,7 +155,7 @@ export function StatusLine({
           <span
             className="ctx-meter"
             role="meter"
-            aria-label={t('shell.statusLine.context.meterAriaLabel', { percent, window: formatWindow(contextWindow) })}
+            aria-label={t('shell.statusLine.context.meterAriaLabel', { percent, window: fmt.compact(contextWindow) })}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={meterFill}

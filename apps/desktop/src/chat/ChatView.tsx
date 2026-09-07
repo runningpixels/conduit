@@ -78,6 +78,7 @@ import {
   splitTurnsAtCompaction,
 } from './contextCompact';
 import { dayRuleLabel, sameCalendarDay } from '../lib/dayGroup';
+import { useFormatters, type Formatters } from '../i18n/formatters';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
@@ -450,10 +451,10 @@ function deriveAgentPhase(
   return undefined;
 }
 
-function formatMsgTime(iso: string): string {
+function formatMsgTime(iso: string, fmt: Formatters): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return '';
-  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return fmt.wallClock(ms);
 }
 
 /** Session-scoped map of turn id → { provider, model }.
@@ -495,6 +496,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
 ) {
   const t = useT();
   const tr = useRichT();
+  const fmt = useFormatters();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -1637,13 +1639,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         model,
         switchedFrom: prev && prev.provider !== provider ? prev.provider : undefined,
         showModelLine: shouldShowModelLine(prev, { provider, model }),
-        time: turn.createdAt ? formatMsgTime(turn.createdAt) : undefined,
+        time: turn.createdAt ? formatMsgTime(turn.createdAt, fmt) : undefined,
       };
       lastProvider = provider;
       lastModel = model;
     }
     return info;
-  }, [turns, convoProviders, conversationId, settings.activeProvider, settings.activeModel]);
+  }, [turns, convoProviders, conversationId, settings.activeProvider, settings.activeModel, fmt]);
 
   // Provider/model of the last committed assistant turn (for the live turn's
   // model line + "switched from …" note).
@@ -1898,7 +1900,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               prevTurn?.createdAt &&
               !sameCalendarDay(prevTurn.createdAt, turn.createdAt) ? (
                 <div className="day-rule" key={`day-${turn.id}`}>
-                  <span>{dayRuleLabel(turn.createdAt)}</span>
+                  <span>{dayRuleLabel(turn.createdAt, { locale: fmt.locale, t })}</span>
                 </div>
               ) : null;
             // Returned as a flat pair so the rule is a sibling of the turn
@@ -2247,6 +2249,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }}
       />
       <ConfirmDialog
+        cancelLabel={t('common.actions.cancel')}
         open={editConfirm != null}
         title={
           editConfirm?.kind === 'fork'

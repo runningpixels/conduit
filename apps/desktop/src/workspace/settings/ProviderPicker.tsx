@@ -8,6 +8,33 @@ import {
   updateSettings,
   validateProviderCredentials,
 } from '../../ipc/client';
+import { useT } from '../../i18n';
+
+/**
+ * The provider list shown only when `listProviderDescriptors()` fails.
+ *
+ * These are brand names, and they are deliberately NOT in the message catalog
+ * (D7): a translator must never be handed "Anthropic" or "Ollama" as something
+ * to translate, and 10 pass-through keys would be 10 chances for one of them
+ * to come back translated in some locale. Holding them as data and rendering
+ * through a JSX expression also satisfies Guard G10 without an exemption
+ * comment on every line.
+ *
+ * `openai_compat` is not in this list because "Compatible" is prose, not a
+ * name, and does translate — it is rendered from the catalog below.
+ */
+const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
+  { id: 'anthropic', brand: 'Anthropic' },
+  { id: 'openai', brand: 'OpenAI' },
+  { id: 'gemini', brand: 'Google Gemini' },
+  { id: 'openrouter', brand: 'OpenRouter' },
+  { id: 'opencode_zen', brand: 'OpenCode Zen' },
+  { id: 'ollama', brand: 'Ollama' },
+  { id: 'groq', brand: 'Groq' },
+  { id: 'deepseek', brand: 'DeepSeek' },
+  { id: 'mistral', brand: 'Mistral' },
+  { id: 'lmstudio', brand: 'LM Studio' },
+];
 
 /** Phase 6 M6.4: shared provider + BYOK surface. Used by Onboarding and
  *  SettingsScreen. Owns provider selection, model listing, the optional base
@@ -23,6 +50,7 @@ export function ProviderPicker({
   onSettingsChange: (s: AppSettings) => void;
   onStatus: (message: string) => void;
 }) {
+  const t = useT();
   const [providerSecret, setProviderSecret] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [credentialSummary, setCredentialSummary] = useState<CredentialSummary | null>(null);
@@ -84,9 +112,9 @@ export function ProviderPicker({
       });
       setCredentialSummary(summary);
       setProviderSecret('');
-      onStatus('Provider credential stored in keychain');
+      onStatus(t('settings.provider.credentialSaved'));
     } catch (e) {
-      onStatus(`Save provider key failed: ${String(e)}`);
+      onStatus(t('settings.provider.credentialSaveFailed', { error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -97,9 +125,9 @@ export function ProviderPicker({
     try {
       const listed = await listProviderModels(settings.activeProvider);
       setModels(listed);
-      onStatus(`Loaded ${listed.length} models`);
+      onStatus(t('settings.provider.modelsLoaded', { count: listed.length }));
     } catch (e) {
-      onStatus(`Load models failed: ${String(e)}`);
+      onStatus(t('settings.provider.loadModelsFailed', { error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -109,9 +137,9 @@ export function ProviderPicker({
     setBusy(true);
     try {
       await validateProviderCredentials(settings.activeProvider);
-      onStatus('Provider credentials validated');
+      onStatus(t('settings.provider.credentialsValidated'));
     } catch (e) {
-      onStatus(`Test connection failed: ${String(e)}`);
+      onStatus(t('settings.provider.testConnectionFailed', { error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -135,7 +163,7 @@ export function ProviderPicker({
   return (
     <div className="form-grid">
       <label className="field">
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.providerLabel')}</span>
         <select
           value={settings.activeProvider}
           onChange={(e) => handleProviderChange(e.target.value)}
@@ -147,17 +175,10 @@ export function ProviderPicker({
             ))
           ) : (
             <>
-              <option value="anthropic">Anthropic</option>
-              <option value="openai">OpenAI</option>
-              <option value="gemini">Google Gemini</option>
-              <option value="openrouter">OpenRouter</option>
-              <option value="opencode_zen">OpenCode Zen</option>
-              <option value="ollama">Ollama</option>
-              <option value="groq">Groq</option>
-              <option value="deepseek">DeepSeek</option>
-              <option value="mistral">Mistral</option>
-              <option value="lmstudio">LM Studio</option>
-              <option value="openai_compat">OpenAI Compatible</option>
+              {FALLBACK_PROVIDER_BRANDS.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.brand}</option>
+              ))}
+              <option value="openai_compat">{t('settings.provider.fallback.openaiCompat')}</option>
             </>
           )}
         </select>
@@ -166,7 +187,7 @@ export function ProviderPicker({
         ) : null}
       </label>
       <label className="field">
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Model</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.modelLabel')}</span>
         {models.length > 0 ? (
           <select
             value={settings.activeModel}
@@ -187,40 +208,40 @@ export function ProviderPicker({
       </label>
       {activeDescriptor?.showBaseUrlField && (
         <label className="field">
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Base URL</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.baseUrlLabel')}</span>
           <input
             value={providerBaseUrl}
             onChange={(e) => updateProviderBaseUrl(e.target.value)}
-            placeholder={activeDescriptor.defaultBaseUrl ?? 'https://your-endpoint.example/v1'}
+            placeholder={activeDescriptor.defaultBaseUrl ?? t('settings.provider.baseUrlPlaceholder')}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           />
         </label>
       )}
       {activeDescriptor?.credentialMode !== 'none' && (
         <label className="field">
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Provider secret</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.secretLabel')}</span>
           <input
             type="password"
             value={providerSecret}
             onChange={(e) => setProviderSecret(e.target.value)}
-            placeholder="Stored only through Rust"
+            placeholder={t('settings.provider.secretPlaceholder')}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           />
         </label>
       )}
       <div className="actions">
-        <button className="btn primary" type="button" disabled={busy || activeDescriptor?.credentialMode === 'none'} onClick={() => void handleSaveCredential()}>Save provider key</button>
-        <button className="btn" type="button" disabled={busy} onClick={() => void handleLoadModels()}>Load models</button>
-        <button className="btn" type="button" disabled={busy} onClick={() => void handleValidateProvider()}>Test connection</button>
+        <button className="btn primary" type="button" disabled={busy || activeDescriptor?.credentialMode === 'none'} onClick={() => void handleSaveCredential()}>{t('settings.provider.saveKeyButton')}</button>
+        <button className="btn" type="button" disabled={busy} onClick={() => void handleLoadModels()}>{t('settings.provider.loadModelsButton')}</button>
+        <button className="btn" type="button" disabled={busy} onClick={() => void handleValidateProvider()}>{t('settings.provider.testConnectionButton')}</button>
       </div>
       <div className="status-item">
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Credential reference</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.credentialReferenceLabel')}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
           {credentialSummary?.storedInKeychain
-            ? `${credentialSummary.credentialRef} (active provider)`
+            ? t('settings.provider.credentialRefActive', { ref: credentialSummary.credentialRef })
             : activeDescriptor?.credentialMode === 'none'
-              ? 'No key required for this provider'
-              : 'No key stored yet'}
+              ? t('settings.provider.noKeyRequired')
+              : t('settings.provider.noKeyStored')}
         </span>
       </div>
     </div>

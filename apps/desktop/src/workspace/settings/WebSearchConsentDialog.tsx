@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { appName } from '../../brand';
+import { useRichT, useT } from '../../i18n';
 
 interface WebSearchConsentDialogProps {
   /** True when the dialog should be visible. The parent controls this. */
@@ -17,6 +17,8 @@ interface WebSearchConsentDialogProps {
  *  Settings → Search source chooses which path a turn uses.
  */
 export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchConsentDialogProps) {
+  const t = useT();
+  const tr = useRichT();
   const [acknowledging, setAcknowledging] = useState(false);
 
   if (!visible) return null;
@@ -26,7 +28,7 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
       className="consent-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Web search consent"
+      aria-label={t('settings.webSearch.consent.dialogAriaLabel')}
       style={{
         position: 'fixed',
         inset: 0,
@@ -54,30 +56,18 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
         }}
       >
         <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
-          Enable web search?
+          {t('settings.webSearch.consent.title')}
         </h2>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
-          When you turn on web search, the model can look things up on the
-          internet during this conversation. Where the query goes depends on
-          Settings → Web Search → Search source:
+          {t('settings.webSearch.consent.intro')}
         </p>
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
-          <li>
-            <strong>Provider</strong> — queries go to the model provider’s hosted
-            search (OpenAI, Gemini, or Anthropic). Each call may incur provider cost.
-          </li>
-          <li>
-            <strong>Local</strong> — {appName()} searches from this machine using the
-            backend you pick in Settings (DuckDuckGo, Tavily, Brave, or SearXNG).
-            Queries are not sent to the model provider.
-          </li>
-          <li>
-            <strong>Auto</strong> — provider-hosted when available; otherwise the
-            configured local backend.
-          </li>
+          <li>{tr('settings.webSearch.consent.hostedItem')}</li>
+          <li>{tr('settings.webSearch.consent.localItem')}</li>
+          <li>{tr('settings.webSearch.consent.autoItem')}</li>
         </ul>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-3)', lineHeight: 1.5 }}>
-          {appName()} does not cache or index the web. Local-only mode keeps web search off.
+          {t('settings.webSearch.consent.privacyNote')}
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button
@@ -86,7 +76,7 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
             disabled={acknowledging}
             onClick={onDeny}
           >
-            Not now
+            {t('common.actions.notNow')}
           </button>
           <button
             className="btn primary"
@@ -97,7 +87,7 @@ export function WebSearchConsentDialog({ visible, onAllow, onDeny }: WebSearchCo
               onAllow();
             }}
           >
-            Allow
+            {t('common.actions.allow')}
           </button>
         </div>
       </div>

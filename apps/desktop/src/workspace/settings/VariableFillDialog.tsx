@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Prompt } from '../../ipc/contracts';
+import { useT } from '../../i18n';
 
 interface VariableFillDialogProps {
   prompt: Prompt;
@@ -19,6 +20,7 @@ function substituteVariables(body: string, values: Record<string, string>): stri
 }
 
 export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFillDialogProps) {
+  const t = useT();
   const variables = prompt.variables ?? [];
   const [values, setValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -59,9 +61,9 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ margin: '0 0 4px', fontSize: '14px' }}>Fill in variables</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: '14px' }}>{t('settings.variableFill.title')}</h3>
         <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--ink-2)' }}>
-          Prompt: <strong>{prompt.title}</strong>
+          {t('settings.variableFill.promptLabel')} <strong>{prompt.title}</strong>
         </p>
 
         <div style={{ display: 'grid', gap: 10 }}>
@@ -70,7 +72,7 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
               <span style={{ fontWeight: 500 }}>{varName}</span>
               <input
                 autoFocus={varName === variables[0]}
-                placeholder={`Value for ${varName}`}
+                placeholder={t('settings.variableFill.valuePlaceholder', { name: varName })}
                 value={values[varName] ?? ''}
                 onChange={(e) => setValues({ ...values, [varName]: e.target.value })}
                 onKeyDown={(e) => {
@@ -94,14 +96,14 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn ghost" type="button" onClick={onCancel}>
-            Cancel
+            {t('common.actions.cancel')}
           </button>
           <button
             className="btn primary"
             type="button"
             onClick={() => onConfirm(substituteVariables(prompt.body, values))}
           >
-            Insert
+            {t('common.actions.insert')}
           </button>
         </div>
       </div>

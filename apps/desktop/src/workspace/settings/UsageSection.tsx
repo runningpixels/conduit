@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getUsageSummary } from '../../ipc/client';
 import type { UsageSummaryResponse, UsagePeriod } from '../../ipc/contracts';
+import { useT } from '../../i18n';
 
 function formatCents(cents: number): string {
   const d = cents / 100;
@@ -15,6 +16,7 @@ function formatTokens(tokens: number): string {
 }
 
 export function UsageSection() {
+  const t = useT();
   const [period, setPeriod] = useState<UsagePeriod>('thisMonth');
   const [data, setData] = useState<UsageSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,9 +33,9 @@ export function UsageSection() {
     return (
       <div className="settings-section">
         <div className="settings-section-header">
-          <span>Usage & Cost</span>
+          <span>{t('settings.usage.header')}</span>
         </div>
-        <span className="status-pill hold">Loading…</span>
+        <span className="status-pill hold">{t('common.status.loading')}</span>
       </div>
     );
   }
@@ -42,10 +44,10 @@ export function UsageSection() {
     return (
       <div className="settings-section">
         <div className="settings-section-header">
-          <span>Usage & Cost</span>
+          <span>{t('settings.usage.header')}</span>
         </div>
         <p style={{ fontSize: '13px', color: 'var(--ink-2)', padding: '12px 0' }}>
-          No usage data yet. Start chatting to see analytics.
+          {t('settings.usage.empty')}
         </p>
       </div>
     );
@@ -56,9 +58,9 @@ export function UsageSection() {
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>Usage & Cost</span>
+        <span>{t('settings.usage.header')}</span>
         <select
-          aria-label="Usage period"
+          aria-label={t('settings.usage.periodAriaLabel')}
           value={period}
           onChange={(e) => setPeriod(e.target.value as UsagePeriod)}
           style={{
@@ -70,10 +72,10 @@ export function UsageSection() {
             color: 'var(--ink)',
           }}
         >
-          <option value="today">Today</option>
-          <option value="thisWeek">This Week</option>
-          <option value="thisMonth">This Month</option>
-          <option value="allTime">All Time</option>
+          <option value="today">{t('settings.usage.period.optionToday')}</option>
+          <option value="thisWeek">{t('settings.usage.period.optionThisWeek')}</option>
+          <option value="thisMonth">{t('settings.usage.period.optionThisMonth')}</option>
+          <option value="allTime">{t('settings.usage.period.optionAllTime')}</option>
         </select>
       </div>
 
@@ -95,7 +97,7 @@ export function UsageSection() {
           }}
         >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatCents(data.totalCostCents)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>Total cost (est.)</div>
+          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>{t('settings.usage.stats.totalCost')}</div>
         </div>
         <div
           style={{
@@ -107,7 +109,7 @@ export function UsageSection() {
           }}
         >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatTokens(data.totalInputTokens)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>Input tokens</div>
+          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>{t('settings.usage.stats.inputTokens')}</div>
         </div>
         <div
           style={{
@@ -119,7 +121,7 @@ export function UsageSection() {
           }}
         >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatTokens(data.totalOutputTokens)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>Output tokens</div>
+          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>{t('settings.usage.stats.outputTokens')}</div>
         </div>
       </div>
 
@@ -134,11 +136,11 @@ export function UsageSection() {
         >
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              <th style={{ textAlign: 'left', padding: '6px 8px' }}>Provider</th>
-              <th style={{ textAlign: 'left', padding: '6px 8px' }}>Model</th>
-              <th style={{ textAlign: 'right', padding: '6px 8px' }}>Input</th>
-              <th style={{ textAlign: 'right', padding: '6px 8px' }}>Output</th>
-              <th style={{ textAlign: 'right', padding: '6px 8px' }}>Cost</th>
+              <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('settings.usage.table.provider')}</th>
+              <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('settings.usage.table.model')}</th>
+              <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('settings.usage.table.input')}</th>
+              <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('settings.usage.table.output')}</th>
+              <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('settings.usage.table.cost')}</th>
             </tr>
           </thead>
           <tbody>
@@ -169,7 +171,7 @@ export function UsageSection() {
             marginBottom: 12,
           }}
           role="img"
-          aria-label="Daily usage chart"
+          aria-label={t('settings.usage.dailyChartAriaLabel')}
         >
           {data.dailyTotals.map((day) => (
             <div
@@ -182,7 +184,7 @@ export function UsageSection() {
                 height: '100%',
                 justifyContent: 'flex-end',
               }}
-              title={`${day.date}: ${formatCents(day.costCents)}`}
+              title={t('settings.usage.dailyBarTitle', { date: day.date, cost: formatCents(day.costCents) })}
             >
               <div
                 style={{
@@ -203,7 +205,7 @@ export function UsageSection() {
       )}
 
       <p style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: 8 }}>
-        Costs are estimates based on published pricing. Actual billing may differ.
+        {t('settings.usage.footer')}
       </p>
     </div>
   );

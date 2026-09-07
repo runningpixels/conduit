@@ -66,19 +66,45 @@ describe('i18n-status: acceptLocale', () => {
 });
 
 describe('i18n-status: mutation tests against a scratch catalog (never the real one)', () => {
-  it('exits 1 when a key is removed from a locale catalog (missing)', () => {
+  it('reports a missing key without failing, and fails on it under --strict', () => {
+    /* The split D6 asks for, and the reason it is a split: through Phase 2
+     * every extracted file adds English keys no translation has yet, so
+     * "missing" is the expected state of a locale that has not shipped. A
+     * command that always exits non-zero is one people stop reading. CI runs
+     * `--strict` from wave 1, when a shipped locale really must be complete. */
     const en = { 'onboarding.actions.back': 'Back', 'onboarding.actions.continue': 'Continue' };
     const de = { 'onboarding.actions.back': 'Zurück' }; // "continue" removed
     const provenance = { de: { 'onboarding.actions.back': hashMessage('Back') } };
     const dir = makeI18nDir(en, de, provenance);
     try {
-      expect(() => runStatus(dir)).toThrow();
+      // The `node:child_process` shim in vite-env.d.ts types execFileSync as
+      // `unknown`, which is honest — it returns a Buffer here.
+      const report = String(runStatus(dir));
+      expect(report).toContain('onboarding.actions.continue');
+
+      expect(() => runStatus(dir, ['--strict'])).toThrow();
       try {
-        runStatus(dir);
+        runStatus(dir, ['--strict']);
       } catch (err) {
-        const status = (err as { status?: number }).status;
-        expect(status).toBe(1);
+        expect((err as { status?: number }).status).toBe(1);
       }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails on an orphaned key whether or not --strict is passed', () => {
+    /* An orphan is a key the locale has and English does not: it was renamed
+     * or deleted upstream and the translation was left behind, where it can
+     * never render again. That is a bug at any point in the rollout, so it is
+     * the one classification that is not softened during Phase 2. */
+    const en = { 'onboarding.actions.back': 'Back' };
+    const de = { 'onboarding.actions.back': 'Zurück', 'onboarding.actions.gone': 'Weg' };
+    const provenance = { de: { 'onboarding.actions.back': hashMessage('Back') } };
+    const dir = makeI18nDir(en, de, provenance);
+    try {
+      expect(() => runStatus(dir)).toThrow();
+      expect(() => runStatus(dir, ['--strict'])).toThrow();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

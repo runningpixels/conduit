@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { AppSettings, RolloutChannel, UpdateInfo } from '../../ipc/contracts';
 import { checkForUpdate, downloadAndInstallUpdate } from '../../ipc/client';
-import { appName } from '../../brand';
+import { useT } from '../../i18n';
 
 interface UpdatesSectionProps {
   settings: AppSettings;
@@ -11,6 +11,7 @@ interface UpdatesSectionProps {
 
 /** Updates section: update channel, check toggle, check now, download & install. */
 export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionProps) {
+  const t = useT();
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
@@ -22,10 +23,14 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
     try {
       const found = await checkForUpdate();
       setUpdate(found);
-      onStatus(found ? `Update available: ${found.version}` : 'You are up to date');
+      onStatus(
+        found
+          ? t('settings.updates.status.available', { version: found.version })
+          : t('settings.updates.status.upToDate'),
+      );
     } catch (e) {
       setError(String(e));
-      onStatus(`Update check failed: ${String(e)}`);
+      onStatus(t('settings.updates.status.checkFailed', { error: String(e) }));
     } finally {
       setChecking(false);
     }
@@ -36,10 +41,10 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
     setError(null);
     try {
       await downloadAndInstallUpdate();
-      onStatus('Update installed — restarting…');
+      onStatus(t('settings.updates.status.installed'));
     } catch (e) {
       setError(String(e));
-      onStatus(`Update install failed: ${String(e)}`);
+      onStatus(t('settings.updates.status.installFailed', { error: String(e) }));
     } finally {
       setInstalling(false);
     }
@@ -48,18 +53,18 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>Updates</span>
+        <span>{t('settings.updates.header.title')}</span>
       </div>
       <div className="status-item">
         <label className="field" style={{ display: 'grid', gap: 6 }}>
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Channel</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.updates.channel.label')}</span>
           <select
             value={settings.updateChannel}
             onChange={(e) => onUpdate({ ...settings, updateChannel: e.target.value as RolloutChannel })}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           >
-            <option value="stable">Stable</option>
-            <option value="beta">Beta</option>
+            <option value="stable">{t('settings.updates.channel.stable')}</option>
+            <option value="beta">{t('settings.updates.channel.beta')}</option>
           </select>
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
@@ -68,14 +73,10 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
             checked={settings.updateCheckEnabled}
             onChange={(e) => onUpdate({ ...settings, updateCheckEnabled: e.target.checked })}
           />
-          Allow update checks
+          {t('settings.updates.checkbox.allow')}
         </label>
         <span style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-          {appName()} checks for updates only when you choose — there is no background
-          telemetry. Sent: your {appName()} version, release notes, and the download
-          URL. Updates are signature-verified and applied only after a migration
-          dry-run confirms your local data is safe; installing asks you to confirm
-          (passive install mode).
+          {t('settings.updates.disclosure.body')}
         </span>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
           <button
@@ -84,7 +85,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
             disabled={checking || !settings.updateCheckEnabled}
             onClick={() => void handleCheck()}
           >
-            {checking ? 'Checking…' : 'Check now'}
+            {checking ? t('settings.updates.actions.checking') : t('settings.updates.actions.checkNow')}
           </button>
           {update && (
             <button
@@ -93,13 +94,15 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
               disabled={installing}
               onClick={() => void handleInstall()}
             >
-              {installing ? 'Installing…' : `Download & install ${update.version}`}
+              {installing
+                ? t('settings.updates.actions.installing')
+                : t('settings.updates.actions.downloadInstall', { version: update.version })}
             </button>
           )}
         </div>
         {update && (
           <div style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-            <b>{appName()} {update.version}</b> is available.
+            <b>{t('settings.updates.available.notice', { version: update.version })}</b>
             {update.notes && (
               <pre className="code-block" style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
                 {update.notes}
@@ -108,7 +111,9 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
           </div>
         )}
         {!update && !checking && settings.updateCheckEnabled && (
-          <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>No update checked yet — use "Check now".</span>
+          <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>
+            {t('settings.updates.noCheckYet.hint', { action: t('settings.updates.actions.checkNow') })}
+          </span>
         )}
         {error && (
           <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>{error}</span>

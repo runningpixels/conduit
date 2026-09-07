@@ -3,7 +3,7 @@ import type { AppSettings } from '../../ipc/contracts';
 import { resetLocalDatabase } from '../../ipc/client';
 import { ConfirmDialog } from '@conduit/ui';
 import type { ConnectionState } from '../../lib/connectionState';
-import { appName } from '../../brand';
+import { useT } from '../../i18n';
 
 interface PrivacyDataSectionProps {
   settings: AppSettings;
@@ -14,32 +14,29 @@ interface PrivacyDataSectionProps {
   hasCredential?: boolean;
 }
 
-const RESET_LOCAL_DATA_DESCRIPTION =
-  'All conversations, messages, and indexed metadata will be removed. ' +
-  'Attachment and artifact files on disk are left in place, but will no longer be indexed. ' +
-  'A backup of the current database file will be saved before reset.\n\n' +
-  'This cannot be undone from the app.';
-
-function trustCopy(): Record<ConnectionState, { label: string; detail: string; health: 'live' | 'warn' | 'off' }> {
+function trustCopy(): Record<
+  ConnectionState,
+  { labelId: string; detailId: string; health: 'live' | 'warn' | 'off' }
+> {
   return {
     connected: {
-      label: 'Trust boundary online',
-      detail: 'Rust shell is reachable. Provider calls use your key; nothing else leaves this device unless you enable web search.',
+      labelId: 'settings.privacy.trust.connected.label',
+      detailId: 'settings.privacy.trust.connected.detail',
       health: 'live',
     },
     'local-only': {
-      label: 'Local-only mode',
-      detail: 'Web search and other egress features stay off. BYOK provider calls still go straight to your provider with your key.',
+      labelId: 'settings.privacy.trust.localOnly.label',
+      detailId: 'settings.privacy.trust.localOnly.detail',
       health: 'live',
     },
     'no-key': {
-      label: 'No API key stored',
-      detail: 'Add a provider credential under Provider & Model to start chatting. Keys stay in the OS keychain.',
+      labelId: 'settings.privacy.trust.noKey.label',
+      detailId: 'settings.privacy.trust.noKey.detail',
       health: 'warn',
     },
     disconnected: {
-      label: 'Trust boundary unreachable',
-      detail: `The desktop shell could not reach the local Rust backend. Restart ${appName()} if this persists.`,
+      labelId: 'settings.privacy.trust.disconnected.label',
+      detailId: 'settings.privacy.trust.disconnected.detail',
       health: 'off',
     },
   };
@@ -54,6 +51,7 @@ export function PrivacyDataSection({
   boundaryOk = true,
   hasCredential = true,
 }: PrivacyDataSectionProps) {
+  const t = useT();
   const [resetting, setResetting] = useState(false);
   const [lastBackupPath, setLastBackupPath] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -66,9 +64,9 @@ export function PrivacyDataSection({
     try {
       const result = await resetLocalDatabase();
       setLastBackupPath(result.backupPath);
-      onStatus(`Local database reset. Backup saved to ${result.backupPath}`);
+      onStatus(t('settings.privacy.status.resetComplete', { backupPath: result.backupPath }));
     } catch (e) {
-      onStatus(`Database reset failed: ${String(e)}`);
+      onStatus(t('settings.privacy.status.resetFailed', { error: String(e) }));
     } finally {
       setResetting(false);
     }
@@ -77,24 +75,24 @@ export function PrivacyDataSection({
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>Privacy & Data</span>
+        <span>{t('settings.privacy.header')}</span>
       </div>
 
       <div className="status-item trust-health" style={{ marginBottom: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-          Trust & connection
+          {t('settings.privacy.trustConnection.heading')}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span className={`health ${trust.health}`} aria-hidden="true" />
-          <strong style={{ fontSize: '13px' }}>{trust.label}</strong>
+          <strong style={{ fontSize: '13px' }}>{t(trust.labelId)}</strong>
         </div>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-          {trust.detail}
+          {t(trust.detailId)}
         </p>
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.55 }}>
-          <li>Boundary: {boundaryOk ? 'online' : 'unreachable'}</li>
-          <li>API key: {hasCredential ? 'stored in OS keychain' : 'not stored'}</li>
-          <li>Local-only mode: {settings.localOnly ? 'on' : 'off'}</li>
+          <li>{t('settings.privacy.trust.boundaryLine', { status: boundaryOk ? 'online' : 'unreachable' })}</li>
+          <li>{t('settings.privacy.trust.apiKeyLine', { status: hasCredential ? 'stored' : 'notStored' })}</li>
+          <li>{t('settings.privacy.trust.localOnlyLine', { status: settings.localOnly ? 'on' : 'off' })}</li>
         </ul>
       </div>
 
@@ -105,7 +103,7 @@ export function PrivacyDataSection({
             checked={settings.localOnly}
             onChange={(e) => onUpdate({ ...settings, localOnly: e.target.checked })}
           />
-          Local-only mode
+          {t('settings.privacy.localOnlyToggle.label')}
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
           <input
@@ -113,12 +111,10 @@ export function PrivacyDataSection({
             checked={settings.diagnosticsEnabled}
             onChange={(e) => onUpdate({ ...settings, diagnosticsEnabled: e.target.checked })}
           />
-          Diagnostics export enabled
+          {t('settings.privacy.diagnosticsToggle.label')}
         </label>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-          When diagnostics is enabled, you can export a support bundle from the Diagnostics block below.
-          It contains only redacted paths and your active provider/model/toggles/theme — never secrets,
-          base URLs, allowlists, or conversation content.
+          {t('settings.privacy.diagnosticsHint')}
         </p>
       </div>
 
@@ -129,7 +125,7 @@ export function PrivacyDataSection({
           where it lives, and a settings dropdown is not consent for it. */}
       <div className="status-item" style={{ marginTop: 16 }}>
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-          Where keys are stored
+          {t('settings.privacy.keychainMode.heading')}
         </span>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
           <select
@@ -139,45 +135,38 @@ export function PrivacyDataSection({
               onUpdate({ ...settings, keychainMode: e.target.value as AppSettings['keychainMode'] })
             }
           >
-            <option value="os">OS keychain (recommended)</option>
-            <option value="file">File (encrypted)</option>
+            <option value="os">{t('settings.privacy.keychainMode.optionOs')}</option>
+            <option value="file">{t('settings.privacy.keychainMode.optionFile')}</option>
           </select>
-          Keychain mode
+          {t('settings.privacy.keychainMode.label')}
         </label>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {settings.keychainMode === 'file' ? (
             <>
-              Keys are stored in an encrypted file under your data folder. The encryption key comes
-              from the <code>CONDUIT_CREDENTIAL_KEY</code> environment variable — a base64-encoded
-              32-byte value — and is never written to disk beside the file it protects. Without that
-              variable set, {appName()} cannot read or save keys in this mode and will say so rather
-              than falling back to the keychain. This is weaker than the OS keychain and is intended
-              for machines that have none, such as headless CI.
+              {t('settings.privacy.keychainMode.fileBody.before')}
+              { // i18n-exempt: environment variable name, not user prose (D7)
+              }<code>CONDUIT_CREDENTIAL_KEY</code>
+              {t('settings.privacy.keychainMode.fileBody.after')}
             </>
           ) : (
-            <>
-              Keys live in the operating system&rsquo;s keychain, guarded by your login session.
-              Switch to the file store only on a machine without one — it is a weaker posture, and
-              switching does not move keys you have already saved.
-            </>
+            <>{t('settings.privacy.keychainMode.osBody')}</>
           )}
         </p>
       </div>
 
       <div className="status-item" style={{ marginTop: 16 }}>
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>Local data</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.privacy.localData.heading')}</span>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-          Reset the local SQLite store if migrations fail or you want a clean slate. Your previous
-          database file is backed up first (same as automatic recovery at startup).
+          {t('settings.privacy.localData.hint')}
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn" type="button" disabled={resetting} onClick={() => setConfirmReset(true)}>
-            {resetting ? 'Resetting…' : 'Reset local database'}
+            {resetting ? t('settings.privacy.localData.resetting') : t('settings.privacy.localData.resetButton')}
           </button>
         </div>
         {lastBackupPath && (
           <div style={{ display: 'grid', gap: 4 }}>
-            <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>Last backup</span>
+            <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>{t('settings.privacy.localData.lastBackupLabel')}</span>
             <code style={{ fontSize: '11px', wordBreak: 'break-all' }}>{lastBackupPath}</code>
           </div>
         )}
@@ -185,9 +174,9 @@ export function PrivacyDataSection({
 
       <ConfirmDialog
         open={confirmReset}
-        title="Reset the local database?"
-        description={RESET_LOCAL_DATA_DESCRIPTION}
-        confirmLabel="Reset database"
+        title={t('settings.privacy.resetDialog.title')}
+        description={t('settings.privacy.resetDialog.description')}
+        confirmLabel={t('settings.privacy.resetDialog.confirmLabel')}
         confirmPhrase="reset"
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => void handleReset()}

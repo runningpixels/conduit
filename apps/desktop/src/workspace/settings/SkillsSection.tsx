@@ -10,21 +10,31 @@ import {
   listSkills,
   revealSkillsDir,
 } from '../../ipc/client';
+import { useRichT, useT, type Translate } from '../../i18n';
 
 interface SkillsSectionProps {
   onStatus: (message: string) => void;
   workspaceRoot?: string | null;
 }
 
-const SOURCE_LABEL: Record<SkillSource, string> = {
-  conduit: appName(),
-  claude: 'Claude',
-  agents: 'Agents',
-  brand: 'Brand',
-  workspace: 'Workspace',
-};
+function sourceLabel(source: SkillSource, t: Translate): string {
+  switch (source) {
+    case 'conduit':
+      return appName();
+    case 'claude':
+      return 'Claude';
+    case 'agents':
+      return t('settings.skills.source.agents');
+    case 'brand':
+      return t('settings.skills.source.brand');
+    case 'workspace':
+      return t('settings.skills.source.workspace');
+  }
+}
 
 export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
+  const t = useT();
+  const tr = useRichT();
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -32,9 +42,9 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
     try {
       setSkills(await listSkills(workspaceRoot));
     } catch (e) {
-      onStatus(`Failed to load skills: ${String(e)}`);
+      onStatus(t('settings.skills.status.loadFailed', { error: String(e) }));
     }
-  }, [onStatus, workspaceRoot]);
+  }, [onStatus, workspaceRoot, t]);
 
   useEffect(() => {
     void refresh();
@@ -49,7 +59,7 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
       }
       await refresh();
     } catch (e) {
-      onStatus(`${label} failed: ${String(e)}`);
+      onStatus(t('settings.skills.status.actionFailed', { label, error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -58,46 +68,41 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
   return (
     <div className="settings-section">
       <p className="sheet-sub" style={{ marginTop: 0 }}>
-        Agent Skills are SKILL.md packages. Enable them per chat from the composer.
-        Scripts are never executed.
+        {t('settings.skills.intro')}
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <button
           className="btn primary"
           type="button"
           disabled={busy}
-          onClick={() => void run('Imported skill folder', importSkillFolder)}
+          onClick={() => void run(t('settings.skills.status.importedFolder'), importSkillFolder)}
         >
-          Import folder
+          {t('settings.skills.actions.importFolder')}
         </button>
         <button
           className="btn ghost"
           type="button"
           disabled={busy}
-          onClick={() => void run('Imported skill zip', importSkillZip)}
+          onClick={() => void run(t('settings.skills.status.importedZip'), importSkillZip)}
         >
-          Import zip
+          {t('settings.skills.actions.importZip')}
         </button>
         <button
           className="btn ghost"
           type="button"
           disabled={busy}
           onClick={() =>
-            void run(`Opened ${appName()} skills folder`, async () => {
+            void run(t('settings.skills.status.openedFolder'), async () => {
               await revealSkillsDir();
               return true;
             })
           }
         >
-          Open {appName()} folder
+          {t('settings.skills.actions.openFolder')}
         </button>
       </div>
       {skills.length === 0 ? (
-        <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-          No skills yet. Drop a valid package into the {appName()} skills folder, import a
-          folder or zip, or keep packages in <code>~/.claude/skills</code> — those
-          list here without copying.
-        </p>
+        <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>{tr('settings.skills.empty.hint')}</p>
       ) : (
         <ul className="skill-list">
           {skills.map((skill) => (
@@ -105,8 +110,8 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
               <div className="skill-row-main">
                 <div className="skill-row-title">
                   <b>{skill.name}</b>
-                  <span className="skill-source">{SOURCE_LABEL[skill.source]}</span>
-                  {skill.hasScripts ? <span className="skill-flag">scripts unused</span> : null}
+                  <span className="skill-source">{sourceLabel(skill.source, t)}</span>
+                  {skill.hasScripts ? <span className="skill-flag">{t('settings.skills.scriptsUnusedFlag')}</span> : null}
                 </div>
                 {skill.parseError ? (
                   <small className="skill-error">{skill.parseError}</small>
@@ -120,24 +125,24 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
                   type="button"
                   disabled={busy}
                   onClick={() =>
-                    void run(`Exported ${skill.name}`, () =>
+                    void run(t('settings.skills.status.exported', { name: skill.name }), () =>
                       exportSkillFolder(skill.id, workspaceRoot),
                     )
                   }
                 >
-                  Export folder
+                  {t('settings.skills.actions.exportFolder')}
                 </button>
                 <button
                   className="btn ghost"
                   type="button"
                   disabled={busy}
                   onClick={() =>
-                    void run(`Exported ${skill.name}.zip`, () =>
+                    void run(t('settings.skills.status.exportedZip', { name: skill.name }), () =>
                       exportSkillZip(skill.id, workspaceRoot),
                     )
                   }
                 >
-                  Export zip
+                  {t('settings.skills.actions.exportZip')}
                 </button>
                 {skill.source === 'conduit' ? (
                   <button
@@ -145,14 +150,14 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
                     type="button"
                     disabled={busy}
                     onClick={() => {
-                      if (!confirm(`Delete ${appName()} skill "${skill.name}"?`)) return;
-                      void run(`Deleted ${skill.name}`, async () => {
+                      if (!confirm(t('settings.skills.confirm.delete', { name: skill.name }))) return;
+                      void run(t('settings.skills.status.deleted', { name: skill.name }), async () => {
                         await deleteManagedSkill(skill.id);
                         return true;
                       });
                     }}
                   >
-                    Delete
+                    {t('common.actions.delete')}
                   </button>
                 ) : null}
               </div>

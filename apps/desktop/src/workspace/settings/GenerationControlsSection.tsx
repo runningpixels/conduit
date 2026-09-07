@@ -5,6 +5,7 @@ import {
   GenerationFields,
   parseGenerationDraft,
 } from '../../chat/GenerationFields';
+import { useT } from '../../i18n';
 
 interface GenerationControlsSectionProps {
   settings: AppSettings;
@@ -18,6 +19,7 @@ export function GenerationControlsSection({
   onUpdate,
   onStatus,
 }: GenerationControlsSectionProps) {
+  const t = useT();
   const [draft, setDraft] = useState(() =>
     draftFromControls(settings.generationControls, settings.userInstructions),
   );
@@ -53,11 +55,10 @@ export function GenerationControlsSection({
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>Model parameters</span>
+        <span>{t('settings.generationControls.header.title')}</span>
       </div>
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
-        Applied to new chats. A single chat can override these from the composer Chat settings
-        chip. Empty fields leave the provider default.
+        {t('settings.generationControls.intro')}
       </p>
       <GenerationFields
         draft={draft}

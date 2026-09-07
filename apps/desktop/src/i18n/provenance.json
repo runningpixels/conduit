@@ -54,6 +54,23 @@
     "recovery.status.errorLabel": "7f2f6a15cf8da2b27e5a4af47b58e7ad71c0b3d9",
     "settings.appearance.language.hint": "fa2f136c5a4cc2aab6a83992184aa52046940a30",
     "settings.appearance.language.label": "89b86ab0e66f527166d98df92ddbcf5416ed58f6",
-    "settings.appearance.language.system": "bc0792d8dc81e8aa30b987246a5ce97c40cd6833"
+    "settings.appearance.language.system": "bc0792d8dc81e8aa30b987246a5ce97c40cd6833",
+    "common.actions.allow": "3ad0e3698278f45b2af94445396e9865f213f617",
+    "common.actions.cancel": "77dfd2135f4db726c47299bb55be26f7f4525a46",
+    "common.actions.close": "bbfa773e5a63a5ea58c9b6207e608ca0120e592a",
+    "common.actions.copy": "af74f7c5362aaee985bf8cda3dd75fc80751ce51",
+    "common.actions.delete": "f6fdbe48dc54dd86f63097a03bd24094dedd713a",
+    "common.actions.dismiss": "70afe9eff3f2888493d9b5169fec8331af1810de",
+    "common.actions.edit": "5301648dcf6b53cefc9ed52999aaa92d4603cae0",
+    "common.actions.fork": "471121e27a3e0f2a208ec3e9a0b109102268a22f",
+    "common.actions.insert": "95802daab3a23990338179f72248350c1434cf39",
+    "common.actions.notNow": "e45714907316a161b3c502a4678cf42c0f4824d9",
+    "common.actions.open": "cf9b77061f7b3126b49d50a6fa68f7ca8c26b7a3",
+    "common.actions.remove": "e963907dac5cd5c017869b4c96c18021c9bd058b",
+    "common.actions.rename": "d3f4cb898fbe0c7a7ac4f721438c4c26ad1a2513",
+    "common.actions.retry": "9f5cd8a2e8807d73efa02c844bfbca9fe552b283",
+    "common.actions.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "common.actions.search": "bce06414177f72ab70e6387b6af9f8ceef0d6049",
+    "common.status.loading": "33ce417454bfd838897deaeee2355e818a5d4160"
   }
 }

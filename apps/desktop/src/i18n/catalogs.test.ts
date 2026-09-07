@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse, TYPE, type MessageFormatElement } from '@formatjs/icu-messageformat-parser';
 import { DEFAULT_BRAND } from '../brand';
+import { RICH_TAG_NAMES } from './index';
 import { SHIPPED_LOCALE_CODES } from './locales';
 import enMessages from './messages/en.json';
 import deMessages from './messages/de.json';
@@ -17,6 +18,15 @@ import deMessages from './messages/de.json';
 type Catalog = Record<string, string>;
 
 const en = enMessages as Catalog;
+
+/**
+ * Locales we have told users exist, and which must therefore be complete.
+ *
+ * Empty until wave 1 (de, es, fr) ships in Phase 6. `de` is on disk today as
+ * the Phase 0 spike translation — real, reviewed for the screens it covers,
+ * and deliberately far from complete while extraction is still running.
+ */
+const SHIPPED_FOR_RELEASE: readonly string[] = [];
 
 /** Catalogs that exist on disk today. Grows one row per wave (D1). */
 const TRANSLATIONS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
@@ -45,6 +55,15 @@ function walk(elements: MessageFormatElement[], found: Set<string>): void {
         // Arms hold their own sub-messages, and a placeholder used in only one
         // arm is still a placeholder the translation must keep.
         for (const option of Object.values(el.options)) walk(option.value, found);
+        break;
+      case TYPE.tag:
+        // Inline markup (`<code>`, `<strong>`) is part of the contract too: a
+        // translation that drops the tag loses the styling, and one that
+        // invents a tag the app does not supply renders the literal angle
+        // brackets to the user. Recorded in the same set as placeholders so
+        // both failures are caught by the same assertion.
+        found.add(`<${el.value}>`);
+        walk(el.children, found);
         break;
       default:
         break;
@@ -96,6 +115,18 @@ describe('English catalog', () => {
       expect(value, `${key} contains a literal product name`).not.toContain(DEFAULT_BRAND.appName);
     }
   });
+
+  it('uses only inline tags the renderer knows how to render', () => {
+    // `useRichT` supplies a fixed set of tag handlers. A message carrying any
+    // other tag renders as literal text with the angle brackets showing.
+    for (const [key, value] of Object.entries(en)) {
+      for (const name of [...placeholders(value)].filter((p) => p.startsWith('<'))) {
+        expect(RICH_TAG_NAMES, `${key} uses unsupported tag ${name}`).toContain(
+          name.slice(1, -1),
+        );
+      }
+    }
+  });
 });
 
 describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
@@ -105,13 +136,28 @@ describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
     expect(SHIPPED_LOCALE_CODES).toContain(locale);
   });
 
-  it('has exactly the English key set — no missing, no orphans', () => {
-    // Missing keys would silently render English (D5), which is correct
-    // behaviour at runtime and a bug at build time: a shipped locale is
-    // supposed to be complete. Orphans mean English moved on without it.
-    const missing = Object.keys(en).filter((k) => !(k in catalog));
+  it('has no key English does not', () => {
+    // An orphan is always a bug, shipped or not: English is the source of
+    // truth, so the key was renamed or deleted and the translation was left
+    // behind, where it will never render again.
     const orphaned = Object.keys(catalog).filter((k) => !(k in en));
-    expect({ missing, orphaned }).toEqual({ missing: [], orphaned: [] });
+    expect(orphaned).toEqual([]);
+  });
+
+  it('is complete, once it has shipped', () => {
+    // Missing keys render English (D5) — correct at runtime, and a bug at
+    // build time only once we have told users the locale exists.
+    //
+    // Through Phase 2 every extracted file adds English keys that no
+    // translation has yet, which is the expected state for weeks. So this
+    // holds only shipped locales to completeness, exactly as `i18n:status
+    // --strict` does, and `SHIPPED_FOR_RELEASE` fills in wave by wave.
+    const missing = Object.keys(en).filter((k) => !(k in catalog));
+    if (!SHIPPED_FOR_RELEASE.includes(locale)) {
+      expect(Object.keys(catalog).length, `${locale} has no keys at all`).toBeGreaterThan(0);
+      return;
+    }
+    expect(missing).toEqual([]);
   });
 
   it('parses as ICU', () => {
@@ -143,7 +189,9 @@ describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
     // Identical-to-English is legitimate for proper nouns and loanwords
     // ("Connectors", "Ollama"), so this is a floor, not a per-key rule: if
     // most of a catalog matches English it was never really translated.
+    // Measured against what the catalog actually holds, not against English:
+    // a partially translated locale is not more suspicious for being partial.
     const identical = Object.keys(catalog).filter((k) => catalog[k] === en[k]);
-    expect(identical.length / Object.keys(en).length).toBeLessThan(0.25);
+    expect(identical.length / Object.keys(catalog).length).toBeLessThan(0.25);
   });
 });

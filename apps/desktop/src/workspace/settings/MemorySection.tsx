@@ -8,6 +8,7 @@ import {
   listMemoryItems,
   updateMemoryItem,
 } from '../../ipc/client';
+import { useT } from '../../i18n';
 
 interface MemorySectionProps {
   settings: AppSettings;
@@ -16,6 +17,7 @@ interface MemorySectionProps {
 }
 
 export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionProps) {
+  const t = useT();
   const [items, setItems] = useState<MemoryItem[]>([]);
   const [draft, setDraft] = useState('');
   const [kind, setKind] = useState<MemoryKind>('core');
@@ -27,9 +29,9 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
     try {
       setItems(await listMemoryItems());
     } catch (e) {
-      onStatus(`Failed to load memory: ${String(e)}`);
+      onStatus(t('settings.memory.status.loadFailed', { error: String(e) }));
     }
-  }, [onStatus]);
+  }, [onStatus, t]);
 
   useEffect(() => {
     void refresh();
@@ -45,7 +47,7 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
       onStatus(label);
       await refresh();
     } catch (e) {
-      onStatus(`${label} failed: ${String(e)}`);
+      onStatus(t('settings.memory.status.actionFailed', { label, error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -55,22 +57,22 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
     <div className="settings-section">
       <div className="srow">
         <span className="srow-text">
-          <b>Use saved memory</b>
-          <small>Inject saved facts into every chat. Off stops injection immediately.</small>
+          <b>{t('settings.memory.toggle.label')}</b>
+          <small>{t('settings.memory.toggle.hint')}</small>
         </span>
         <button
           className="toggle"
           type="button"
           role="switch"
           aria-pressed={settings.memoryEnabled}
-          aria-label="Use saved memory"
+          aria-label={t('settings.memory.toggle.label')}
           onClick={() => onUpdate({ ...settings, memoryEnabled: !settings.memoryEnabled })}
         />
       </div>
 
       <div style={{ display: 'grid', gap: 8, margin: '12px 0' }}>
         <textarea
-          placeholder="A fact to remember — e.g. I prefer terse commit messages"
+          placeholder={t('settings.memory.draft.placeholder')}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={3}
@@ -87,7 +89,7 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
         />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select
-            aria-label="Memory kind"
+            aria-label={t('settings.memory.kind.ariaLabel')}
             value={kind}
             onChange={(e) => setKind(e.target.value as MemoryKind)}
             style={{
@@ -98,30 +100,30 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
               padding: '6px 8px',
             }}
           >
-            <option value="core">Core</option>
-            <option value="note">Note</option>
+            <option value="core">{t('settings.memory.kind.core')}</option>
+            <option value="note">{t('settings.memory.kind.note')}</option>
           </select>
           <button
             className="btn primary"
             type="button"
             disabled={busy || !draft.trim()}
             onClick={() =>
-              void run('Saved memory', async () => {
+              void run(t('settings.memory.status.savedMemory'), async () => {
                 await createMemoryItem(draft.trim(), kind);
                 setDraft('');
               })
             }
           >
-            Save fact
+            {t('settings.memory.actions.saveFact')}
           </button>
         </div>
       </div>
 
       {pending.length > 0 ? (
         <div className="memory-pending">
-          <div className="settings-section-header">Waiting for you</div>
+          <div className="settings-section-header">{t('settings.memory.pending.header')}</div>
           <p className="sheet-sub" style={{ marginTop: 0 }}>
-            The model proposed these. They are not injected until you save them.
+            {t('settings.memory.pending.hint')}
           </p>
           <ul className="skill-list">
             {pending.map((item) => (
@@ -134,17 +136,21 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
                     className="btn primary"
                     type="button"
                     disabled={busy}
-                    onClick={() => void run('Saved proposed memory', () => acceptMemoryItem(item.id))}
+                    onClick={() =>
+                      void run(t('settings.memory.status.savedProposal'), () => acceptMemoryItem(item.id))
+                    }
                   >
-                    Save
+                    {t('common.actions.save')}
                   </button>
                   <button
                     className="btn ghost"
                     type="button"
                     disabled={busy}
-                    onClick={() => void run('Discarded proposal', () => deleteMemoryItem(item.id))}
+                    onClick={() =>
+                      void run(t('settings.memory.status.discardedProposal'), () => deleteMemoryItem(item.id))
+                    }
                   >
-                    Discard
+                    {t('settings.memory.actions.discard')}
                   </button>
                 </div>
               </li>
@@ -154,10 +160,7 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
       ) : null}
 
       {active.length === 0 && pending.length === 0 ? (
-        <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-          No saved facts yet. Add one here, or let the model propose via the remember tool
-          and confirm above.
-        </p>
+        <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>{t('settings.memory.empty.hint')}</p>
       ) : (
         <ul className="skill-list">
           {active.map((item) => (
@@ -183,16 +186,16 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
                       type="button"
                       disabled={busy}
                       onClick={() =>
-                        void run('Updated memory', async () => {
+                        void run(t('settings.memory.status.updatedMemory'), async () => {
                           await updateMemoryItem(item.id, editBody, item.kind, item.pinned);
                           setEditingId(null);
                         })
                       }
                     >
-                      Save
+                      {t('common.actions.save')}
                     </button>
                     <button className="btn ghost" type="button" onClick={() => setEditingId(null)}>
-                      Cancel
+                      {t('common.actions.cancel')}
                     </button>
                   </div>
                 </div>
@@ -200,8 +203,8 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
                 <>
                   <div className="skill-row-main">
                     <div className="skill-row-title">
-                      <b>{item.kind === 'core' ? 'Core' : 'Note'}</b>
-                      {item.pinned ? <span className="skill-flag">pinned</span> : null}
+                      <b>{item.kind === 'core' ? t('settings.memory.kind.core') : t('settings.memory.kind.note')}</b>
+                      {item.pinned ? <span className="skill-flag">{t('settings.memory.pinnedFlag')}</span> : null}
                     </div>
                     <small>{item.body}</small>
                   </div>
@@ -211,12 +214,15 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
                       type="button"
                       disabled={busy}
                       onClick={() =>
-                        void run(item.pinned ? 'Unpinned' : 'Pinned', () =>
-                          updateMemoryItem(item.id, item.body, item.kind, !item.pinned),
+                        void run(
+                          item.pinned
+                            ? t('settings.memory.status.unpinned')
+                            : t('settings.memory.status.pinned'),
+                          () => updateMemoryItem(item.id, item.body, item.kind, !item.pinned),
                         )
                       }
                     >
-                      {item.pinned ? 'Unpin' : 'Pin'}
+                      {item.pinned ? t('settings.memory.actions.unpin') : t('settings.memory.actions.pin')}
                     </button>
                     <button
                       className="btn ghost"
@@ -227,18 +233,18 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
                         setEditBody(item.body);
                       }}
                     >
-                      Edit
+                      {t('common.actions.edit')}
                     </button>
                     <button
                       className="btn ghost"
                       type="button"
                       disabled={busy}
                       onClick={() => {
-                        if (!confirm('Delete this memory?')) return;
-                        void run('Deleted memory', () => deleteMemoryItem(item.id));
+                        if (!confirm(t('settings.memory.confirm.delete'))) return;
+                        void run(t('settings.memory.status.deletedMemory'), () => deleteMemoryItem(item.id));
                       }}
                     >
-                      Delete
+                      {t('common.actions.delete')}
                     </button>
                   </div>
                 </>

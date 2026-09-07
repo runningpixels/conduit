@@ -213,10 +213,35 @@ export function main(argv = process.argv.slice(2)) {
 
   printReport(results);
 
-  const failed = results.some((r) => r.missing.length > 0 || r.orphaned.length > 0);
-  if (failed) {
-    console.error('\ni18n-status: FAIL — one or more locales have missing or orphaned keys.');
+  /* An orphan — a key the locale has and English does not — is always a bug:
+   * English is the source of truth, so the key was renamed or deleted and the
+   * translation was left behind. It fails whatever mode we are in.
+   *
+   * A *missing* key is only a bug once the locale has shipped. Through Phase 2
+   * every extraction adds English keys no translation has yet, which is the
+   * expected state for weeks, and a command that always exits non-zero is a
+   * command people stop reading. So `--strict` is what CI runs from wave 1
+   * (D6: CI fails on missing for any shipped locale), and the bare command
+   * reports the same numbers without failing. */
+  const strict = argv.includes('--strict');
+  const anyOrphaned = results.some((r) => r.orphaned.length > 0);
+  const anyMissing = results.some((r) => r.missing.length > 0);
+
+  if (anyOrphaned) {
+    console.error('\ni18n-status: FAIL — a locale has keys English does not. Rename or delete them.');
     process.exit(1);
+    return;
+  }
+  if (anyMissing && strict) {
+    console.error('\ni18n-status: FAIL — a shipped locale is missing keys (--strict).');
+    process.exit(1);
+    return;
+  }
+  if (anyMissing) {
+    console.log(
+      '\ni18n-status: OK — missing keys are reported above and not yet translated. ' +
+        'CI runs --strict, which fails on them.',
+    );
     return;
   }
   console.log('\ni18n-status: OK (stale keys, if any, are reported above but do not fail — D6).');

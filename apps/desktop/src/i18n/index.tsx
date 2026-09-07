@@ -186,6 +186,56 @@ export function useT(): Translate {
 }
 
 /**
+ * Inline markup that a message may carry, and what each tag renders as.
+ *
+ * Some sentences have a styled fragment in the middle of them — a path in
+ * `<code>`, an emphasised phrase in `<strong>`. Splitting those into three
+ * messages ("text before", the fragment, "text after") is the concatenation
+ * trap the plan warns about: the pieces cannot be reordered, so German gets
+ * English word order. Dropping the markup instead loses the styling.
+ *
+ * ICU already has the answer — tags inside the message — so the whole sentence
+ * stays one translatable unit and the translator can move the tagged fragment
+ * wherever their language needs it:
+ *
+ *   "Skills load from <code>~/.claude/skills</code>."
+ *
+ * Only presentational tags are allowed, and they are fixed here rather than
+ * passed per call site, so a catalog can never introduce markup that the app
+ * did not sanction.
+ */
+const RICH_TAGS = {
+  code: (chunks: ReactNode[]) => <code>{chunks}</code>,
+  strong: (chunks: ReactNode[]) => <strong>{chunks}</strong>,
+  b: (chunks: ReactNode[]) => <b>{chunks}</b>,
+  em: (chunks: ReactNode[]) => <em>{chunks}</em>,
+};
+
+/** The tag names `useRichT` understands. Asserted against the catalogs. */
+export const RICH_TAG_NAMES: readonly string[] = Object.keys(RICH_TAGS);
+
+export type RichTranslate = (id: string, values?: TranslateValues) => ReactNode;
+
+/**
+ * `t()` for messages that carry inline markup. Returns a node, not a string.
+ *
+ * Use it only where a message actually has a tag; `useT()` stays the default,
+ * because a string is easier to assert on and cannot be accidentally rendered
+ * as an array of fragments.
+ */
+export function useRichT(): RichTranslate {
+  const intl = useContext(IntlContext) ?? fallbackIntl;
+  return useCallback(
+    (id: string, values?: TranslateValues) =>
+      intl.formatMessage(
+        { id, defaultMessage: EN_MESSAGES[id] },
+        { appName: appName(), ...RICH_TAGS, ...values },
+      ) as ReactNode,
+    [intl],
+  );
+}
+
+/**
  * Escape hatch for the formatters `t()` cannot express — dates, numbers,
  * relative times, and rich text with embedded elements. Same provider-less
  * fallback as `useT()`.

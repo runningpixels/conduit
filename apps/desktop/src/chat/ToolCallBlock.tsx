@@ -172,7 +172,7 @@ export function ToolCallBlock({
             <span className={`t-sub-ok${callTone(c) === 'fail' ? ' fail' : ''}`}>
               {callTone(c) === 'ok' ? '✓' : callTone(c) === 'fail' ? '✕' : '…'}
             </span>
-            <span className="t-sub-label">{callLabel(c)}</span>
+            <span className="t-sub-label" title={callLabel(c)}>{callLabel(c)}</span>
             <span className="t-sub-dur">{formatDuration(c.startedAt, c.endedAt, callTone(c) === 'run')}</span>
           </div>
         ))}
@@ -278,7 +278,9 @@ export function ToolCallBlock({
             5 sources · 1.4s" is what the mockup shows — but they stop being
             three separately-boxed things reporting on one line. */}
         {toolSummary && (
-          <span className={`tool-sum${anyFailed ? ' err' : ''}`}>{toolSummary}</span>
+          <span className={`tool-sum${anyFailed ? ' err' : ''}`} title={toolSummary}>
+            {toolSummary}
+          </span>
         )}
         <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
       </button>

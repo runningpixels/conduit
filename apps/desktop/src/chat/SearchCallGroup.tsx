@@ -97,7 +97,7 @@ export function SearchCallGroup({ toolCalls, unavailable, cost }: SearchCallGrou
           <SearchIcon />
         </span>
         <span className="tool-name">{t('chat.search.title')}</span>
-        <span className="tool-sum">{summary}</span>
+        <span className="tool-sum" title={summary}>{summary}</span>
         <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
       </button>
       <div className="tool-body">

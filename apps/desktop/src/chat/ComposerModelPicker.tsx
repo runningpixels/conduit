@@ -246,7 +246,10 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
                 const models = modelsByProvider[provider.id] ?? [];
                 return (
                   <div key={provider.id} data-provider={providerHueId(provider.id)}>
-                    <div className="menu-label">
+                    <div
+                      className="menu-label"
+                      title={`${provider.displayName} · ${keyPosture(provider, t)}`}
+                    >
                       {provider.displayName} · {keyPosture(provider, t)}
                     </div>
                     {models.length > 0 ? (

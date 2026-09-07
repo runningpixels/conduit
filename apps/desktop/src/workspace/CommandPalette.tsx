@@ -473,6 +473,9 @@ export function CommandPalette({
                     {item.result ? (
                       <b
                         className="pal-snippet"
+                        // The raw snippet, not the highlighted HTML: a `title`
+                        // renders as text, so markup would show as markup.
+                        title={item.result.snippet}
                         dangerouslySetInnerHTML={{ __html: highlightSnippet(item.result) }}
                       />
                     ) : (

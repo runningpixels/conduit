@@ -475,7 +475,7 @@ export function Sidebar({
                           }
                         >
                           <FolderIcon />
-                          <span className="sb-folder-name">{folder.name}</span>
+                          <span className="sb-folder-name" title={folder.name}>{folder.name}</span>
                           <span className="sb-folder-count">{rows.length}</span>
                         </button>
                         {onRenameFolder && (
@@ -553,6 +553,9 @@ export function Sidebar({
           ref={chipRef}
           className="wschip"
           type="button"
+          // The chip names the bound folder; truncated with no reveal, the user
+          // cannot tell which folder the assistant can reach.
+          title={workspaceLabel ?? undefined}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((current) => !current)}

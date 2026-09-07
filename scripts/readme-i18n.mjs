@@ -60,7 +60,7 @@ function replaceNav(text, code) {
   const stamp = text.match(STAMP);
   if (stamp && text.trimStart().startsWith('<!--')) {
     const after = text.indexOf('\n', text.indexOf(stamp[0]));
-    return `${text.slice(0, after + 1)}\n${nav}\n${text.slice(after + 1).replace(/^\n+/, '')}`;
+    return `${text.slice(0, after + 1)}\n${nav}\n\n${text.slice(after + 1).replace(/^\n+/, '')}`;
   }
   return `${nav}\n\n${text.replace(/^\n+/, '')}`;
 }

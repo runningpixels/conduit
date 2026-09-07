@@ -54,13 +54,26 @@
 // is not actually a catalog id, that is a real ambiguity to resolve by
 // tightening this list, not a bug in the scan.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = dirname(here);
 const SRC_ROOT = join(REPO_ROOT, 'apps/desktop/src');
+
+/**
+ * Rust names catalog keys too, since Phase 3.
+ *
+ * `AppError::new("error.validation.temperatureRange", …)` is a reference in
+ * exactly the sense this check cares about, and scanning only TypeScript
+ * reported all 32 of the Phase 3 codes as dead. A dead-key report that lists
+ * live keys is one people learn to skip, so it has to see both languages.
+ */
+const RUST_ROOTS = [
+  join(REPO_ROOT, 'apps/desktop/src-tauri/src'),
+  join(REPO_ROOT, 'crates'),
+];
 const EN_PATH = join(SRC_ROOT, 'i18n/messages/en.json');
 
 /** Mirrors the feature-area list `catalogs.test.ts` enforces for every en.json key (D3). */
@@ -73,7 +86,11 @@ export const FEATURE_AREAS = [
 // A segment may carry a hyphen so a key can mirror an id the source already
 // uses: `shell.settingsSheet.nav.web-search` tracks the 'web-search' section
 // id, and renaming one without the other is how they drift apart.
-export const KEY_SHAPE = new RegExp(`^(?:${FEATURE_AREAS.join('|')})(?:\\.[a-zA-Z0-9-]+)+$`);
+// At least two segments after the feature area. Every key in the catalog has
+// three or more, and requiring it keeps filenames out of the report: `chat.md`
+// and `settings.json` both start with a real feature area and would otherwise
+// be read as references to keys that do not exist.
+export const KEY_SHAPE = new RegExp(`^(?:${FEATURE_AREAS.join('|')})(?:\\.[a-zA-Z0-9-]+){2,}$`);
 
 /** Single- or double-quoted string literal, handling `\\`-escaped quotes. Deliberately not template literals: a dynamic `t(\`...${x}\`)` id cannot be a static reference anyway. */
 const STRING_LITERAL = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g;
@@ -87,9 +104,11 @@ function walk(dir, out = []) {
   return out;
 }
 
-/** Posix-style path relative to apps/desktop/src, for stable reporting. */
+/** Posix-style path for stable reporting, relative to whichever root holds it. */
 function rel(file) {
-  return relative(SRC_ROOT, file).split(sep).join('/');
+  const fromSrc = relative(SRC_ROOT, file);
+  if (!fromSrc.startsWith('..')) return fromSrc.split(sep).join('/');
+  return relative(REPO_ROOT, file).split(sep).join('/');
 }
 
 /**
@@ -104,7 +123,34 @@ function rel(file) {
  * `EN_MESSAGES[id]`) and the locale table are skipped, because they contain no
  * literal keys to find.
  */
+/**
+ * Key-shaped strings that are deliberately absent from the catalog.
+ *
+ * `error.unknown` is the code every un-triaged Rust error carries (D9). It
+ * must NOT have a catalog entry: `translateError` renders a message only when
+ * the catalog knows its code, so giving this one an entry would replace the
+ * specific English sentence Rust sent with a generic "Something went wrong" —
+ * strictly less information for the user, and untranslatable detail lost for
+ * good. The absence is the feature.
+ */
+const CODES_WITHOUT_CATALOG_ENTRY = new Set(['error.unknown']);
+
 const DYNAMIC_KEY_MODULES = ['i18n/index.tsx', 'i18n/locales.ts', 'i18n/devLocale.ts'];
+
+/**
+ * Rust files that may name a catalog key. Tests are included on purpose: a
+ * test asserting `err.code == "error.validation.…"` is still a reference, and
+ * a key used only by a test is a key whose production use was deleted — worth
+ * seeing in the report rather than hiding.
+ */
+export function rustSourceFiles(roots = RUST_ROOTS) {
+  const out = [];
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    out.push(...walk(root).filter((f) => f.endsWith('.rs')));
+  }
+  return out;
+}
 
 export function sourceFiles(srcRoot = SRC_ROOT) {
   return walk(srcRoot)
@@ -147,6 +193,7 @@ export function findKeyReferences(files) {
 export function crossReference(en, refs) {
   const usedButUndefined = new Map();
   for (const [key, occurrences] of refs) {
+    if (CODES_WITHOUT_CATALOG_ENTRY.has(key)) continue;
     if (!(key in en)) usedButUndefined.set(key, occurrences);
   }
   const referenced = refs;
@@ -156,7 +203,7 @@ export function crossReference(en, refs) {
 
 export function main() {
   const en = JSON.parse(readFileSync(EN_PATH, 'utf8'));
-  const files = sourceFiles();
+  const files = [...sourceFiles(), ...rustSourceFiles()];
   const refs = findKeyReferences(files);
   const { usedButUndefined, definedButUnused } = crossReference(en, refs);
 

@@ -437,7 +437,10 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
     setSaveError(null);
     setImporting(true);
     try {
-      const result = await importBrandFileDialog();
+      const result = await importBrandFileDialog(
+        t('settings.branding.dialog.importTitle'),
+        t('settings.branding.dialog.filterName'),
+      );
       if (result === null) return; // cancelled
       setSavedConfig(result);
       setIdentity(deriveIdentity(result));
@@ -462,7 +465,10 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
     setSaveError(null);
     setExporting(true);
     try {
-      const result = await exportBrandConfigDialog();
+      const result = await exportBrandConfigDialog(
+        t('settings.branding.dialog.exportTitle'),
+        t('settings.branding.dialog.filterName'),
+      );
       if (result === null) return; // cancelled
       onStatus(t('settings.branding.status.exported'));
     } catch (e) {

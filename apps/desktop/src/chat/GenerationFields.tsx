@@ -43,10 +43,20 @@ export function draftFromControls(
  * settings validation errors out as one of the three surfaces that get
  * native-speaker review, which is why they are worth this indirection.
  */
+/** Mirrors `STOP_SEQUENCE_MAX_COUNT` / `_CHARS` in `src-tauri/src/validation.rs`. */
+const STOP_SEQUENCE_MAX_COUNT = 8;
+const STOP_SEQUENCE_MAX_CHARS = 64;
+
 export function parseGenerationDraft(draft: GenerationFieldDraft): {
   controls: GenerationControls | null;
   userInstructions: string | null;
   errorId?: string;
+  /**
+   * Values the message interpolates. The bounds live here and in
+   * `src-tauri/src/validation.rs`; they must not also live in the catalog,
+   * or a changed constant leaves the sentence quietly claiming the old one.
+   */
+  errorParams?: Record<string, string>;
 } {
   const controls: GenerationControls = {};
   const tempRaw = draft.temperature.trim();
@@ -77,11 +87,21 @@ export function parseGenerationDraft(draft: GenerationFieldDraft): {
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (stopSequences.length > 8) {
-    return { controls: null, userInstructions: null, errorId: 'error.validation.stopSequenceCount' };
+  if (stopSequences.length > STOP_SEQUENCE_MAX_COUNT) {
+    return {
+      controls: null,
+      userInstructions: null,
+      errorId: 'error.validation.stopSequenceCount',
+      errorParams: { max: String(STOP_SEQUENCE_MAX_COUNT) },
+    };
   }
-  if (stopSequences.some((s) => s.length > 64)) {
-    return { controls: null, userInstructions: null, errorId: 'error.validation.stopSequenceLength' };
+  if (stopSequences.some((s) => s.length > STOP_SEQUENCE_MAX_CHARS)) {
+    return {
+      controls: null,
+      userInstructions: null,
+      errorId: 'error.validation.stopSequenceLength',
+      errorParams: { max: String(STOP_SEQUENCE_MAX_CHARS) },
+    };
   }
   if (stopSequences.length > 0) controls.stopSequences = stopSequences;
 

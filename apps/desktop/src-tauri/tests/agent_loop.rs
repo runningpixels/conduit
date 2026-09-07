@@ -652,7 +652,12 @@ fn validate_agent_guardrails_rejects_negative_steps() {
         ..AgentGuardrails::default()
     };
     let err = validation::validate_agent_guardrails(&guardrails).unwrap_err();
-    assert!(err.contains("max_steps"), "must mention max_steps: {err}");
+    assert_eq!(err.code, "error.validation.agentMaxStepsRange");
+    assert!(
+        err.fallback.contains("max_steps"),
+        "must mention max_steps: {}",
+        err.fallback
+    );
 }
 
 #[test]
@@ -662,7 +667,13 @@ fn validate_agent_guardrails_rejects_excessive_steps() {
         ..AgentGuardrails::default()
     };
     let err = validation::validate_agent_guardrails(&guardrails).unwrap_err();
-    assert!(err.contains("50"), "must mention max bound: {err}");
+    assert_eq!(err.code, "error.validation.agentMaxStepsRange");
+    assert!(
+        err.fallback.contains("50"),
+        "must mention max bound: {}",
+        err.fallback
+    );
+    assert_eq!(err.params.get("max").map(String::as_str), Some("50"));
 }
 
 #[test]
@@ -672,9 +683,11 @@ fn validate_agent_guardrails_rejects_low_wall_clock() {
         ..AgentGuardrails::default()
     };
     let err = validation::validate_agent_guardrails(&guardrails).unwrap_err();
+    assert_eq!(err.code, "error.validation.agentWallClockRange");
     assert!(
-        err.contains("wall_clock_budget_secs"),
-        "must mention wall_clock: {err}"
+        err.fallback.contains("wall_clock_budget_secs"),
+        "must mention wall_clock: {}",
+        err.fallback
     );
 }
 
@@ -685,9 +698,11 @@ fn validate_agent_guardrails_rejects_high_wall_clock() {
         ..AgentGuardrails::default()
     };
     let err = validation::validate_agent_guardrails(&guardrails).unwrap_err();
+    assert_eq!(err.code, "error.validation.agentWallClockRange");
     assert!(
-        err.contains("wall_clock_budget_secs"),
-        "must mention wall_clock: {err}"
+        err.fallback.contains("wall_clock_budget_secs"),
+        "must mention wall_clock: {}",
+        err.fallback
     );
 }
 
@@ -720,9 +735,11 @@ fn validate_web_search_defaults_rejects_empty_domain_via_public_api() {
         ..WebSearchDefaults::default()
     };
     let err = validation::validate_web_search_defaults(&defaults).unwrap_err();
+    assert_eq!(err.code, "error.validation.webSearchDomainEmpty");
     assert!(
-        err.contains("empty"),
-        "empty domain must be rejected: {err}"
+        err.fallback.contains("empty"),
+        "empty domain must be rejected: {}",
+        err.fallback
     );
 }
 
@@ -733,9 +750,11 @@ fn validate_web_search_defaults_rejects_domain_without_dot_via_public_api() {
         ..WebSearchDefaults::default()
     };
     let err = validation::validate_web_search_defaults(&defaults).unwrap_err();
+    assert_eq!(err.code, "error.validation.webSearchDomainNoDot");
     assert!(
-        err.contains("at least one '.'"),
-        "domain without dot must be rejected: {err}"
+        err.fallback.contains("at least one '.'"),
+        "domain without dot must be rejected: {}",
+        err.fallback
     );
 }
 
@@ -746,9 +765,11 @@ fn validate_web_search_defaults_rejects_http_prefix_domain() {
         ..WebSearchDefaults::default()
     };
     let err = validation::validate_web_search_defaults(&defaults).unwrap_err();
+    assert_eq!(err.code, "error.validation.webSearchDomainPrefix");
     assert!(
-        err.contains("http(s)://"),
-        "http-prefixed domain must be rejected: {err}"
+        err.fallback.contains("http(s)://"),
+        "http-prefixed domain must be rejected: {}",
+        err.fallback
     );
 }
 
@@ -774,9 +795,11 @@ fn validate_web_search_defaults_rejects_over_100_entries() {
         ..WebSearchDefaults::default()
     };
     let err = validation::validate_web_search_defaults(&defaults).unwrap_err();
+    assert_eq!(err.code, "error.validation.webSearchAllowedDomainsCap");
     assert!(
-        err.contains("100-entry"),
-        "too many entries must be rejected: {err}"
+        err.fallback.contains("100-entry"),
+        "too many entries must be rejected: {}",
+        err.fallback
     );
 }
 

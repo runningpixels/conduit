@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { PermissionLevel } from '@conduit/config-schema';
 import type { ToolCallState } from './streamState';
 import { approveConnectorToolCall, denyConnectorToolCall } from '../ipc/client';
 import { splitToolDisplayName } from './connectorTools';
@@ -10,6 +11,7 @@ import {
 } from './agentTools';
 import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
 import { useRichT, useT } from '../i18n';
+import type { Translate } from '../i18n';
 
 interface ToolCallBlockProps {
   toolCall: ToolCallState;
@@ -43,6 +45,23 @@ function callTone(toolCall: ToolCallState): 'ok' | 'fail' | 'run' {
   if (toolCall.status === 'failed' || toolCall.status === 'cancelled') return 'fail';
   if (toolCall.complete) return 'ok';
   return 'run';
+}
+
+/** Catalog key for each `PermissionLevel`'s consent-prompt description. */
+const PERMISSION_LEVEL_KEYS: Record<PermissionLevel, string> = {
+  readOnly: 'consent.permission.readOnly',
+  sideEffectful: 'consent.permission.sideEffectful',
+  sensitive: 'consent.permission.sensitive',
+};
+
+/** Compose the consent prompt's expected-effect sentence from the facts Rust
+ *  now sends — the permission level and the tool's own description — instead
+ *  of the English sentence Rust used to compose (D9/D10 item 2). Mirrors the
+ *  former `mcp_runtime::consent::expected_effect`: the level's sentence,
+ *  followed by the description on its own line when non-empty. */
+function expectedEffectText(t: Translate, level: PermissionLevel, description: string): string {
+  const kind = t(PERMISSION_LEVEL_KEYS[level]);
+  return description.trim().length === 0 ? kind : `${kind}\n${description}`;
 }
 
 /** kv rows for the tool's arguments — mono, flat, one level of disclosure. */
@@ -273,7 +292,9 @@ export function ToolCallBlock({
                   {tr('chat.toolCall.consent.prompt', {
                     connectorName: prompt?.connectorName ?? t('chat.toolCall.consent.defaultConnectorName'),
                     toolName: prompt?.toolName ?? toolCall.name,
-                    expectedEffect: prompt?.expectedEffect ?? t('chat.toolCall.consent.defaultExpectedEffect'),
+                    expectedEffect: prompt
+                      ? expectedEffectText(t, prompt.permissionLevel, prompt.toolDescription)
+                      : t('chat.toolCall.consent.defaultExpectedEffect'),
                   })}
                 </p>
                 {prompt?.dataSummary && (

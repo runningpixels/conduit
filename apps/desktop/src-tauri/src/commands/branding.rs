@@ -447,8 +447,12 @@ pub fn export_brand_config(state: State<'_, AppState>, dest_path: String) -> Res
 pub async fn import_brand_file_dialog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    dialog_title: String,
+    filter_name: String,
 ) -> Result<Option<BrandConfig>, String> {
-    let picked = pick_file(&app, "Import brand.md").await?;
+    // Dialog chrome arrives translated from the renderer: the native dialog is
+    // outside the webview, so it cannot reach the catalog itself (D15).
+    let picked = pick_file(&app, &dialog_title, &filter_name).await?;
     import_brand_file_dialog_impl(&state, picked, ALLOW_USER_BRANDING)
 }
 
@@ -488,8 +492,12 @@ pub fn import_brand_file_dialog_impl(
 pub async fn export_brand_config_dialog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    dialog_title: String,
+    filter_name: String,
 ) -> Result<Option<()>, String> {
-    let picked = pick_save_path(&app, "Export brand.md").await?;
+    // Dialog chrome arrives translated from the renderer: the native dialog is
+    // outside the webview, so it cannot reach the catalog itself (D15).
+    let picked = pick_save_path(&app, &dialog_title, &filter_name).await?;
     export_brand_config_dialog_impl(&state, picked)
 }
 
@@ -516,13 +524,14 @@ pub fn export_brand_config_dialog_impl(
 async fn pick_file(
     app: &tauri::AppHandle,
     title: &str,
+    filter_name: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Brand file", &["md"])
+        .add_filter(filter_name, &["md"])
         .set_title(title)
         .pick_file(move |file_path| {
             // The dialog delivers its result exactly once; if the receiver
@@ -541,13 +550,14 @@ async fn pick_file(
 async fn pick_save_path(
     app: &tauri::AppHandle,
     title: &str,
+    filter_name: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Brand file", &["md"])
+        .add_filter(filter_name, &["md"])
         .set_file_name(crate::branding::BRAND_FILE_NAME)
         .set_title(title)
         .save_file(move |file_path| {

@@ -899,7 +899,14 @@ export default function App() {
         return;
       }
       try {
-        const result = await exportConversationDialog(activeConversationId, format);
+        const result = await exportConversationDialog(
+          activeConversationId,
+          format,
+          t('chat.export.dialog.title', { format: format === 'json' ? 'JSON' : 'Markdown' }),
+          // The file-type filter names a format, and format names are not
+          // translated (D7).
+          format === 'json' ? 'JSON' : 'Markdown',
+        );
         if (result === null) return;
         setStatus(makeStatus(t('app.status.artifactExportedTo', { path: result.exportedTo }), 'success'));
       } catch (error) {

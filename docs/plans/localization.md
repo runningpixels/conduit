@@ -241,6 +241,78 @@ not universal and `.toFixed(1)` forced a `.` on every German reader.
 **Carried into Phase 4:** the pseudo-locale now covers all 1028 keys, which is
 what makes the layout pass possible. Nothing else is outstanding.
 
+### Phase 3 — done, to the depth the plan asked for
+
+`cargo build`, `cargo fmt --check` and `cargo test` are green; `pnpm test` is
+1280 passed / 4 skipped; `tsc -b` is clean. `en.json` holds **1074 keys**, all
+referenced, none undefined.
+
+**The seam.** `AppError { code, params, fallback }` in `provider-core`, with
+`From<String>` so every un-triaged `Err` keeps compiling and behaving exactly
+as before. On the renderer, `IpcError` + `translateError` + an `invokeCommand`
+wrapper every command goes through.
+
+`IpcError` deliberately does **not** extend `Error`. Every existing catch site
+does `String(e)`, and `String(new Error('x'))` is `"Error: x"` — subclassing
+would have prefixed a hundred toasts overnight. A plain class with a
+`toString` keeps them byte-identical, which is what makes converting call
+sites optional rather than urgent.
+
+**Converted (D10 items 1–3):** all of `validation.rs` (16 codes), the three
+`PermissionLevel` descriptions, and the credential/keychain surface (16 codes).
+`commands/settings.rs`, `state.rs` and `credentials.rs` moved to `AppError`.
+
+**`ConsentPrompt` was restructured, not translated.** It carried
+`expected_effect: String` — a sentence *composed in Rust* from a permission
+level and a tool description. It now carries `permission_level` and
+`tool_description`, and the renderer composes. `expected_effect()` had no other
+consumer and is gone. A test that asserted on a substring of the composed
+English now asserts on the typed level, which is strictly stronger.
+
+**Not converted, deliberately (D10 items 4–6):** `stream_manager.rs` tool-call
+status lines, `commands/chat.rs` workspace validation, and `db/mod.rs`'s
+`DbError`. The plan calls this phase the most deferrable and says the value
+stops here; those keep `error.unknown` with an English fallback, which is the
+honest resting state the plan describes. Two narrow `.map_err(|e| e.fallback)`
+shims exist where a converted function is called from an unconverted one —
+`save_provider_secret` and `build_adapter_context`. They are seams to collapse,
+not permanent.
+
+**Deviations:**
+
+1. **D15's Rust-side string table was not built, because it is not needed.**
+   All three surfaces reach the renderer instead:
+   - Native file dialogs take `dialogTitle` and `filterName` as command
+     arguments (7 commands).
+   - The OAuth callback page threads its two sentences down the same way; the
+     chain is only three functions deep. `{detail}` rides through untouched
+     because only Rust, at callback time, knows what the authorization server
+     said — the alternative reassembles the sentence in Rust, in an order no
+     translator can change.
+   - The migration marker file is **not** localized. It is only ever written
+     and deleted (`local_data.rs` never reads it back), so it is a support
+     breadcrumb on disk, not UI. D15 listed it as a user-facing string; it is
+     not one.
+
+   The result is what D9 wanted in spirit: **no second catalog in Rust at all.**
+
+2. **`i18n-check` now scans Rust.** Phase 3 put catalog keys in `.rs` files,
+   and a TypeScript-only scan reported all 32 of them as dead. A dead-key
+   report that lists live keys is one people learn to skip. Key shape also
+   tightened to three-plus segments, because `chat.md` and `settings.json` are
+   filenames that start with a real feature area.
+
+3. **A hardcoded bound was removed from the catalog.** `error.validation.stopSequenceCount`
+   read "At most 8 stop sequences." with the limit baked into English, while
+   the real limit lives in `validation.rs` *and* in `GenerationFields.tsx`. It
+   takes `{max}` now — the catalog no longer asserts a number it does not own.
+
+**Exit criteria, honestly.** Every command returns something renderable, and
+the consent dialog and settings validation now render *through the catalog*
+with correct codes and parameters. They display **English** until wave 1
+translates `error.*` and `consent.permission.*` in Phase 5 — the D5 fallback
+working as designed, not a gap in this phase.
+
 
 The website was localized by duplicating whole HTML pages. That approach is
 correct for four static marketing pages and **fatal** for an app that ships

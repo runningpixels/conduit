@@ -1,6 +1,92 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use ts_rs::TS;
+
+// =============================================================================
+// Errors that cross the IPC boundary
+// =============================================================================
+
+/// An error a user will read, carried as a code the renderer can translate.
+///
+/// Rust does not translate. Standing up a second catalog here — `fluent`,
+/// `rust-i18n`, its own locale plumbing and its own drift problem — would mean
+/// two sources of truth for the same seven languages. Instead the code travels
+/// and the renderer formats it against the catalog it already has (D9).
+///
+/// `fallback` is always populated with English. It is what the user sees when
+/// the renderer meets a code it does not know: a build where Rust is newer
+/// than the catalog degrades to an English sentence rather than to
+/// `error.validation.temperatureRange` rendered raw into a dialog.
+///
+/// The `From<String>` impl below is what makes the migration survivable. Every
+/// one of the ~137 existing `Err("…".to_string())` sites keeps compiling and
+/// keeps behaving exactly as it does today, landing on `error.unknown` with
+/// its original text as the fallback. Commands move to `AppError` file by
+/// file, and only the triaged subset (D10) is given a real code — the rest are
+/// internal invariants that mean "a bug", and translating those helps nobody.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_error.ts"
+)]
+pub struct AppError {
+    /// A catalog key, e.g. `error.validation.temperatureRange`.
+    pub code: String,
+    /// Values the message interpolates. `BTreeMap` so the order is stable and
+    /// two identical errors serialize identically, which keeps tests honest.
+    pub params: BTreeMap<String, String>,
+    /// English, always. Rendered verbatim if `code` is unknown to the catalog.
+    pub fallback: String,
+}
+
+/// The code every unconverted error lands on.
+pub const ERROR_UNKNOWN: &str = "error.unknown";
+
+impl AppError {
+    /// A coded error. `fallback` must be the English sentence, because it is
+    /// what a renderer that does not know this code will show.
+    pub fn new(code: &str, fallback: impl Into<String>) -> Self {
+        AppError {
+            code: code.to_string(),
+            params: BTreeMap::new(),
+            fallback: fallback.into(),
+        }
+    }
+
+    /// Add an interpolation value. Chainable:
+    /// `AppError::new(…, …).with("max", "8")`.
+    pub fn with(mut self, key: &str, value: impl Into<String>) -> Self {
+        self.params.insert(key.to_string(), value.into());
+        self
+    }
+}
+
+impl From<String> for AppError {
+    fn from(message: String) -> Self {
+        AppError {
+            code: ERROR_UNKNOWN.to_string(),
+            params: BTreeMap::new(),
+            fallback: message,
+        }
+    }
+}
+
+impl From<&str> for AppError {
+    fn from(message: &str) -> Self {
+        AppError::from(message.to_string())
+    }
+}
+
+impl std::fmt::Display for AppError {
+    /// The English text. Rust-side logging and any `.to_string()` that still
+    /// expects a plain message keep working unchanged.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.fallback)
+    }
+}
+
+impl std::error::Error for AppError {}
 
 // =============================================================================
 // Message and Content Types
@@ -1433,8 +1519,9 @@ pub enum ConsentDecision {
 
 /// The payload rendered in a tool-consent prompt. Carried by
 /// `ConnectorRuntimeEvent::ConsentRequested`. All tenant-authored text
-/// (`consent_copy`) and connector output (`arguments`, `data_summary`) is
-/// untrusted display data — redacted before it reaches the renderer.
+/// (`consent_copy`) and connector output (`arguments`, `data_summary`,
+/// `tool_description`) is untrusted display data — redacted before it
+/// reaches the renderer.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -1448,7 +1535,14 @@ pub struct ConsentPrompt {
     pub tool_name: String,
     #[ts(type = "Record<string, unknown>")]
     pub arguments: serde_json::Value,
-    pub expected_effect: String,
+    /// Declared permission level. The renderer looks up
+    /// `consent.permission.<level>` and appends `tool_description` (when
+    /// non-empty) to compose the expected-effect text — Rust sends the facts,
+    /// not the composed English sentence.
+    pub permission_level: PermissionLevel,
+    /// The tool's own description, as declared by the connector. Untrusted
+    /// display data — redacted/truncated upstream like `arguments`.
+    pub tool_description: String,
     pub data_summary: String,
     #[ts(optional)]
     pub consent_copy: Option<String>,

@@ -58,7 +58,7 @@ export function ComposerChatSettings({
   function save() {
     const parsed = parseGenerationDraft(draft);
     if (parsed.errorId) {
-      setError(t(parsed.errorId));
+      setError(t(parsed.errorId, parsed.errorParams));
       return;
     }
     onSave(parsed.controls, parsed.userInstructions);

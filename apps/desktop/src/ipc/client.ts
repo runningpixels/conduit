@@ -1,4 +1,5 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
+import { invokeCommand } from './errors';
 import type {
   AddLocalConnectorRequest,
   AddLocalConnectorResult,
@@ -56,20 +57,20 @@ import type {
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
-  return invoke<AppPaths>('get_app_paths');
+  return invokeCommand<AppPaths>('get_app_paths');
 }
 
 export async function getSettings(): Promise<AppSettings> {
-  return invoke<AppSettings>('get_settings');
+  return invokeCommand<AppSettings>('get_settings');
 }
 
 export async function updateSettings(patch: SettingsPatch): Promise<AppSettings> {
-  return invoke<AppSettings>('update_settings', { patch });
+  return invokeCommand<AppSettings>('update_settings', { patch });
 }
 
 /** ADR-008: OS folder picker for workspace tools (Rust-side only). `null` = cancel. */
 export async function pickWorkspaceFolder(): Promise<string | null> {
-  return invoke<string | null>('pick_workspace_folder');
+  return invokeCommand<string | null>('pick_workspace_folder');
 }
 
 /**
@@ -79,7 +80,7 @@ export async function pickWorkspaceFolder(): Promise<string | null> {
  * the pre-paint boot path, and a cache is not a source of truth.
  */
 export async function getBrandConfig(): Promise<BrandConfig | null> {
-  return invoke<BrandConfig | null>('get_brand_config');
+  return invokeCommand<BrandConfig | null>('get_brand_config');
 }
 
 /**
@@ -93,7 +94,7 @@ export async function getBrandConfig(): Promise<BrandConfig | null> {
  * `<img src>`.
  */
 export async function getBrandLogo(): Promise<string | null> {
-  return invoke<string | null>('get_brand_logo');
+  return invokeCommand<string | null>('get_brand_logo');
 }
 
 /**
@@ -103,11 +104,11 @@ export async function getBrandLogo(): Promise<string | null> {
  * to the stored filename.
  */
 export async function saveBrandLogo(bytes: number[], fileName: string): Promise<string> {
-  return invoke<string>('save_brand_logo', { bytes, fileName });
+  return invokeCommand<string>('save_brand_logo', { bytes, fileName });
 }
 
 export async function clearBrandLogo(): Promise<void> {
-  return invoke<void>('clear_brand_logo');
+  return invokeCommand<void>('clear_brand_logo');
 }
 
 /**
@@ -125,7 +126,7 @@ export interface BrandWarning {
 }
 
 export async function getBrandWarnings(): Promise<BrandWarning[]> {
-  return invoke<BrandWarning[]>('get_brand_warnings');
+  return invokeCommand<BrandWarning[]>('get_brand_warnings');
 }
 
 /**
@@ -134,7 +135,7 @@ export async function getBrandWarnings(): Promise<BrandWarning[]> {
  * (`brand/applyBrand.ts`) to restore the stock look.
  */
 export async function clearBrandConfig(): Promise<void> {
-  return invoke<void>('clear_brand_config');
+  return invokeCommand<void>('clear_brand_config');
 }
 
 /**
@@ -148,14 +149,14 @@ export async function clearBrandConfig(): Promise<void> {
  * caller that already has a trusted path in hand.
  */
 export async function importBrandFile(path: string): Promise<BrandConfig> {
-  return invoke<BrandConfig>('import_brand_file', { path });
+  return invokeCommand<BrandConfig>('import_brand_file', { path });
 }
 
 /**
  * Import a `brand.md` chosen through an OS file picker, entirely on the Rust
  * side (ADR 008: `docs/adr/adr-008-tauri-capability-surface.md`). The
  * default capability grants `core:*` only — no `dialog:default` — precisely
- * so the renderer cannot call `invoke('plugin:dialog|open')` directly and
+ * so the renderer cannot call `invokeCommand('plugin:dialog|open')` directly and
  * bypass Conduit's own command layer. This command shows the picker and does
  * the import in one Rust-side round trip; the renderer never sees, and
  * cannot supply, a filesystem path.
@@ -165,8 +166,20 @@ export async function importBrandFile(path: string): Promise<BrandConfig> {
  * toast, no state change). Resolves to the imported `BrandConfig` on
  * success.
  */
-export async function importBrandFileDialog(): Promise<BrandConfig | null> {
-  return invoke<BrandConfig | null>('import_brand_file_dialog');
+/**
+ * Native file dialogs are drawn by the OS, outside the webview, so they cannot
+ * reach the message catalog. The caller passes their chrome down already
+ * translated (D15) — which is why these wrappers take a `dialogTitle` and,
+ * where the picker has a file-type dropdown, a `filterName`.
+ */
+export async function importBrandFileDialog(
+  dialogTitle: string,
+  filterName: string,
+): Promise<BrandConfig | null> {
+  return invokeCommand<BrandConfig | null>('import_brand_file_dialog', {
+    dialogTitle,
+    filterName,
+  });
 }
 
 /**
@@ -182,7 +195,7 @@ export async function importBrandFileDialog(): Promise<BrandConfig | null> {
  * against. Callers must not assume it always resolves.
  */
 export async function applyBrandEdits(config: BrandConfig): Promise<BrandConfig> {
-  return invoke<BrandConfig>('apply_brand_edits', { config });
+  return invokeCommand<BrandConfig>('apply_brand_edits', { config });
 }
 
 /**
@@ -201,7 +214,7 @@ export async function applyBrandEdits(config: BrandConfig): Promise<BrandConfig>
  * build this runs against. Callers must not assume it always resolves.
  */
 export async function parseBrandSource(source: string): Promise<BrandConfig> {
-  return invoke<BrandConfig>('parse_brand_source', { source });
+  return invokeCommand<BrandConfig>('parse_brand_source', { source });
 }
 
 /**
@@ -222,7 +235,7 @@ export async function parseBrandSource(source: string): Promise<BrandConfig> {
  * predates this phase, wired for the Settings → Branding import path.
  */
 export async function setBrandConfig(source: string): Promise<BrandConfig> {
-  return invoke<BrandConfig>('set_brand_config', { source });
+  return invokeCommand<BrandConfig>('set_brand_config', { source });
 }
 
 /**
@@ -233,41 +246,47 @@ export async function setBrandConfig(source: string): Promise<BrandConfig> {
  * Branding section — see `exportBrandConfigDialog` below.
  */
 export async function exportBrandConfig(destPath: string): Promise<void> {
-  return invoke<void>('export_brand_config', { destPath });
+  return invokeCommand<void>('export_brand_config', { destPath });
 }
 
 /**
  * Export the active brand through an OS save-location picker, entirely on
  * the Rust side — the export counterpart of `importBrandFileDialog` above;
  * see that comment and ADR 008 for why this exists instead of a JS-side
- * `invoke('plugin:dialog|save')`.
+ * `invokeCommand('plugin:dialog|save')`.
  *
  * Resolves to `null` when the user cancels the picker (not an error — no
  * error text, no status toast, no state change). A non-null resolution means
  * the export completed.
  */
-export async function exportBrandConfigDialog(): Promise<void | null> {
-  return invoke<void | null>('export_brand_config_dialog');
+export async function exportBrandConfigDialog(
+  dialogTitle: string,
+  filterName: string,
+): Promise<void | null> {
+  return invokeCommand<void | null>('export_brand_config_dialog', {
+    dialogTitle,
+    filterName,
+  });
 }
 
 export async function saveProviderCredential(request: CredentialRequest): Promise<CredentialSummary> {
-  return invoke<CredentialSummary>('save_provider_credential', { request });
+  return invokeCommand<CredentialSummary>('save_provider_credential', { request });
 }
 
 export async function loadProviderCredentialReference(providerId: string): Promise<CredentialSummary> {
-  return invoke<CredentialSummary>('load_provider_credential_reference', { providerId });
+  return invokeCommand<CredentialSummary>('load_provider_credential_reference', { providerId });
 }
 
 export async function validateProviderCredentials(providerId: string): Promise<void> {
-  await invoke('validate_provider_credentials', { providerId });
+  await invokeCommand('validate_provider_credentials', { providerId });
 }
 
 export async function listProviderDescriptors(): Promise<ProviderDescriptor[]> {
-  return invoke<ProviderDescriptor[]>('list_provider_descriptors');
+  return invokeCommand<ProviderDescriptor[]>('list_provider_descriptors');
 }
 
 export async function listProviderModels(providerId: string): Promise<ModelInfo[]> {
-  return invoke<ModelInfo[]>('list_provider_models', { providerId });
+  return invokeCommand<ModelInfo[]>('list_provider_models', { providerId });
 }
 
 export async function startChatStream(
@@ -279,28 +298,28 @@ export async function startChatStream(
   channel.onmessage = onEvent;
   const runtimeChannel = new Channel<ConnectorRuntimeEvent>();
   if (onRuntimeEvent) runtimeChannel.onmessage = onRuntimeEvent;
-  return invoke<StreamHandle>('start_chat_stream', { request, channel, runtimeChannel });
+  return invokeCommand<StreamHandle>('start_chat_stream', { request, channel, runtimeChannel });
 }
 
 export async function cancelChatStream(request: CancelChatStreamRequest): Promise<void> {
-  await invoke('cancel_chat_stream', { request });
+  await invokeCommand('cancel_chat_stream', { request });
 }
 
 export async function steerChatStream(request: SteerChatStreamRequest): Promise<void> {
-  await invoke('steer_chat_stream', { request });
+  await invokeCommand('steer_chat_stream', { request });
 }
 
 export async function submitAskUser(
   toolCallId: string,
   answers: Record<string, unknown>,
 ): Promise<void> {
-  await invoke('submit_ask_user', {
+  await invokeCommand('submit_ask_user', {
     request: { toolCallId, answers },
   });
 }
 
 export async function getConversationMessages(conversationId: string): Promise<Message[]> {
-  return invoke<Message[]>('get_conversation_messages', { conversationId });
+  return invokeCommand<Message[]>('get_conversation_messages', { conversationId });
 }
 
 export interface ConversationCompaction {
@@ -318,77 +337,77 @@ export interface ConversationCompaction {
 export async function getConversationCompaction(
   conversationId: string,
 ): Promise<ConversationCompaction | null> {
-  return invoke<ConversationCompaction | null>('get_conversation_compaction', { conversationId });
+  return invokeCommand<ConversationCompaction | null>('get_conversation_compaction', { conversationId });
 }
 
 export async function compactConversation(
   conversationId: string,
 ): Promise<ConversationCompaction | null> {
-  return invoke<ConversationCompaction | null>('compact_conversation', { conversationId });
+  return invokeCommand<ConversationCompaction | null>('compact_conversation', { conversationId });
 }
 
 export async function getRequestProviderEvents(
   conversationId: string,
   requestId: string,
 ): Promise<ProviderEvent[]> {
-  return invoke<ProviderEvent[]>('get_request_provider_events', { conversationId, requestId });
+  return invokeCommand<ProviderEvent[]>('get_request_provider_events', { conversationId, requestId });
 }
 
 export async function createConversation(title?: string): Promise<Conversation> {
-  return invoke<Conversation>('create_conversation', { title });
+  return invokeCommand<Conversation>('create_conversation', { title });
 }
 
 export async function listConversations(): Promise<ConversationSummary[]> {
-  return invoke<ConversationSummary[]>('list_conversations');
+  return invokeCommand<ConversationSummary[]>('list_conversations');
 }
 
 export async function getConversation(conversationId: string): Promise<Conversation | null> {
-  return invoke<Conversation | null>('get_conversation', { conversationId });
+  return invokeCommand<Conversation | null>('get_conversation', { conversationId });
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {
-  await invoke('delete_conversation', { conversationId });
+  await invokeCommand('delete_conversation', { conversationId });
 }
 
 export async function setConversationTitle(conversationId: string, title: string): Promise<void> {
-  await invoke('set_conversation_title', { conversationId, title });
+  await invokeCommand('set_conversation_title', { conversationId, title });
 }
 
 export async function setConversationPinned(conversationId: string, pinned: boolean): Promise<void> {
-  await invoke('set_conversation_pinned', { conversationId, pinned });
+  await invokeCommand('set_conversation_pinned', { conversationId, pinned });
 }
 
 export async function setConversationArchived(
   conversationId: string,
   archived: boolean,
 ): Promise<void> {
-  await invoke('set_conversation_archived', { conversationId, archived });
+  await invokeCommand('set_conversation_archived', { conversationId, archived });
 }
 
 export async function setConversationFolder(
   conversationId: string,
   folderId: string | null,
 ): Promise<void> {
-  await invoke('set_conversation_folder', { conversationId, folderId });
+  await invokeCommand('set_conversation_folder', { conversationId, folderId });
 }
 
 export async function listConversationFolders(): Promise<ConversationFolder[]> {
-  return invoke<ConversationFolder[]>('list_conversation_folders');
+  return invokeCommand<ConversationFolder[]>('list_conversation_folders');
 }
 
 export async function createConversationFolder(name: string): Promise<ConversationFolder> {
-  return invoke<ConversationFolder>('create_conversation_folder', { name });
+  return invokeCommand<ConversationFolder>('create_conversation_folder', { name });
 }
 
 export async function renameConversationFolder(
   folderId: string,
   name: string,
 ): Promise<ConversationFolder> {
-  return invoke<ConversationFolder>('rename_conversation_folder', { folderId, name });
+  return invokeCommand<ConversationFolder>('rename_conversation_folder', { folderId, name });
 }
 
 export async function deleteConversationFolder(folderId: string): Promise<void> {
-  await invoke('delete_conversation_folder', { folderId });
+  await invokeCommand('delete_conversation_folder', { folderId });
 }
 
 /** Bind or clear the workspace folder for a conversation. `null` clears. */
@@ -396,7 +415,7 @@ export async function setConversationWorkspace(
   conversationId: string,
   workspaceRoot: string | null,
 ): Promise<Conversation> {
-  return invoke<Conversation>('set_conversation_workspace', {
+  return invokeCommand<Conversation>('set_conversation_workspace', {
     conversationId,
     workspaceRoot,
   });
@@ -408,7 +427,7 @@ export async function setConversationChatSettings(
   generationControls: GenerationControls | null,
   userInstructions: string | null,
 ): Promise<Conversation> {
-  return invoke<Conversation>('set_conversation_chat_settings', {
+  return invokeCommand<Conversation>('set_conversation_chat_settings', {
     conversationId,
     generationControls,
     userInstructions,
@@ -416,29 +435,33 @@ export async function setConversationChatSettings(
 }
 
 export async function deleteAllConversations(): Promise<Conversation> {
-  return invoke<Conversation>('delete_all_conversations');
+  return invokeCommand<Conversation>('delete_all_conversations');
 }
 
 export async function exportDiagnostics(): Promise<DiagnosticsExport> {
-  return invoke<DiagnosticsExport>('export_diagnostics');
+  return invokeCommand<DiagnosticsExport>('export_diagnostics');
 }
 
 export async function previewConversationExport(
   conversationId: string,
   format: ConversationExportFormat,
 ): Promise<string> {
-  return invoke<string>('preview_conversation_export', { conversationId, format });
+  return invokeCommand<string>('preview_conversation_export', { conversationId, format });
 }
 
 export async function exportConversationDialog(
   conversationId: string,
   format: ConversationExportFormat,
+  dialogTitle: string,
+  filterName: string,
   includeAttachments = false,
 ): Promise<ConversationExportResult | null> {
-  return invoke<ConversationExportResult | null>('export_conversation_dialog', {
+  return invokeCommand<ConversationExportResult | null>('export_conversation_dialog', {
     conversationId,
     format,
     includeAttachments,
+    dialogTitle,
+    filterName,
   });
 }
 
@@ -452,36 +475,36 @@ export async function exportConversationDialog(
 // =============================================================================
 
 export async function getDiagnosticsDisclosureAcknowledged(): Promise<boolean> {
-  return invoke<boolean>('get_diagnostics_disclosure_acknowledged');
+  return invokeCommand<boolean>('get_diagnostics_disclosure_acknowledged');
 }
 
 export async function acknowledgeDiagnosticsDisclosure(): Promise<void> {
-  await invoke('acknowledge_diagnostics_disclosure');
+  await invokeCommand('acknowledge_diagnostics_disclosure');
 }
 
 /// Reveal the app's exports directory in the OS file manager. Takes no path —
 /// the Rust command opens `AppPaths::exports` server-side, so the renderer
 /// cannot direct the shell to open an arbitrary path/URL.
 export async function revealPath(): Promise<void> {
-  await invoke('reveal_path');
+  await invokeCommand('reveal_path');
 }
 
 /// Reveal the artifacts workspace directory in the OS file manager.
 /// Path is resolved server-side from `AppPaths::artifacts`.
 export async function revealArtifactsDir(): Promise<void> {
-  await invoke('reveal_artifacts_dir');
+  await invokeCommand('reveal_artifacts_dir');
 }
 
 /// Reveal a file-backed artifact's parent folder in the OS file manager.
 /// The renderer supplies only the artifact id; the path is resolved server-side.
 export async function revealArtifact(artifactId: string): Promise<void> {
-  await invoke('reveal_artifact', { artifactId });
+  await invokeCommand('reveal_artifact', { artifactId });
 }
 
 /// Open a validated http(s) URL in the system browser. Rust rejects non-http(s)
 /// schemes, userinfo, empty hosts, and overlong strings before calling shell.
 export async function openExternalUrl(url: string): Promise<void> {
-  await invoke('open_external_url', { url });
+  await invokeCommand('open_external_url', { url });
 }
 
 // =============================================================================
@@ -497,11 +520,11 @@ export async function openExternalUrl(url: string): Promise<void> {
 // =============================================================================
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
-  return invoke<UpdateInfo | null>('check_for_update');
+  return invokeCommand<UpdateInfo | null>('check_for_update');
 }
 
 export async function downloadAndInstallUpdate(): Promise<void> {
-  await invoke('download_and_install_update');
+  await invokeCommand('download_and_install_update');
 }
 
 // =============================================================================
@@ -512,39 +535,39 @@ export async function downloadAndInstallUpdate(): Promise<void> {
  *  migration recovery takes priority, then the BYOK gate (`onboardingCompleted`
  *  + `hasProviderCredential`). */
 export async function getOnboardingState(): Promise<OnboardingState> {
-  return invoke<OnboardingState>('get_onboarding_state');
+  return invokeCommand<OnboardingState>('get_onboarding_state');
 }
 
 /** Dismiss the migration-recovery notice and continue with the fresh store.
  *  The backup file is left on disk — acknowledging the failure is not consent
  *  to delete the only copy of the user's data. */
 export async function acknowledgeMigrationRecovery(): Promise<void> {
-  await invoke('acknowledge_migration_recovery');
+  await invokeCommand('acknowledge_migration_recovery');
 }
 
 /** Delete the recovery backups and dismiss the notice. Runs in-session: the
  *  backups are inert copies, and the live store is untouched. */
 export async function discardMigrationBackup(): Promise<RemovalReport> {
-  return invoke<RemovalReport>('discard_migration_backup');
+  return invokeCommand<RemovalReport>('discard_migration_backup');
 }
 
 /** Schedule a local-data wipe for the next launch. Nothing is deleted until
  *  the app restarts — the live database is held open for the whole session, so
  *  the delete has to happen at startup. Follow this with `restartApp()`. */
 export async function requestLocalDataWipe(scope: WipeScope): Promise<PendingWipeResult> {
-  return invoke<PendingWipeResult>('request_local_data_wipe', { scope });
+  return invokeCommand<PendingWipeResult>('request_local_data_wipe', { scope });
 }
 
 /** Abandon a scheduled wipe (the user backed out of the restart). */
 export async function cancelLocalDataWipe(): Promise<void> {
-  await invoke('cancel_local_data_wipe');
+  await invokeCommand('cancel_local_data_wipe');
 }
 
 /** Restart the app process. `window.location.reload()` is not a substitute:
  *  it reloads the webview but leaves the Rust process and its startup state
  *  untouched, so migrations never re-run and a pending wipe never applies. */
 export async function restartApp(): Promise<void> {
-  await invoke('restart_app');
+  await invokeCommand('restart_app');
 }
 
 export async function startMockStream(
@@ -553,11 +576,11 @@ export async function startMockStream(
 ): Promise<StreamHandle> {
   const channel = new Channel<StreamEvent>();
   channel.onmessage = onEvent;
-  return invoke<StreamHandle>('start_mock_stream', { request, channel });
+  return invokeCommand<StreamHandle>('start_mock_stream', { request, channel });
 }
 
 export async function cancelMockStream(requestId: string): Promise<void> {
-  await invoke('cancel_mock_stream', { requestId });
+  await invokeCommand('cancel_mock_stream', { requestId });
 }
 
 // =============================================================================
@@ -565,35 +588,35 @@ export async function cancelMockStream(requestId: string): Promise<void> {
 // =============================================================================
 
 export async function listConnectorDefinitions(): Promise<ConnectorDefinition[]> {
-  return invoke<ConnectorDefinition[]>('list_connector_definitions');
+  return invokeCommand<ConnectorDefinition[]>('list_connector_definitions');
 }
 
 export async function listConnectorVersions(connectorId: string): Promise<ConnectorVersion[]> {
-  return invoke<ConnectorVersion[]>('list_connector_versions', { connectorId });
+  return invokeCommand<ConnectorVersion[]>('list_connector_versions', { connectorId });
 }
 
 export async function listConnectorGrants(status?: 'active' | 'revoked' | 'pending' | 'provisioned'): Promise<ConnectorGrant[]> {
-  return invoke<ConnectorGrant[]>('list_connector_grants', { status });
+  return invokeCommand<ConnectorGrant[]>('list_connector_grants', { status });
 }
 
 export async function listConnectorCapabilities(connectorVersionId: string): Promise<ConnectorCapability[]> {
-  return invoke<ConnectorCapability[]>('list_connector_capabilities', { connectorVersionId });
+  return invokeCommand<ConnectorCapability[]>('list_connector_capabilities', { connectorVersionId });
 }
 
 export async function getConnectorRuntimeStates(): Promise<ConnectorRuntimeSnapshot[]> {
-  return invoke<ConnectorRuntimeSnapshot[]>('get_connector_runtime_states');
+  return invokeCommand<ConnectorRuntimeSnapshot[]>('get_connector_runtime_states');
 }
 
 export async function startConnector(connectorVersionId: string): Promise<ConnectorServerInfo> {
-  return invoke<ConnectorServerInfo>('start_connector', { connectorVersionId });
+  return invokeCommand<ConnectorServerInfo>('start_connector', { connectorVersionId });
 }
 
 export async function stopConnector(connectorVersionId: string): Promise<void> {
-  await invoke('stop_connector', { connectorVersionId });
+  await invokeCommand('stop_connector', { connectorVersionId });
 }
 
 export async function discoverConnector(connectorVersionId: string): Promise<ConnectorCapability[]> {
-  return invoke<ConnectorCapability[]>('discover_connector', { connectorVersionId });
+  return invokeCommand<ConnectorCapability[]>('discover_connector', { connectorVersionId });
 }
 
 /// Invoke a connector tool. Runtime events (consent prompts, completion) stream
@@ -606,14 +629,14 @@ export async function invokeConnectorTool(
 ): Promise<StreamHandle> {
   const channel = new Channel<ConnectorRuntimeEvent>();
   channel.onmessage = onEvent;
-  return invoke<StreamHandle>('invoke_connector_tool', { request, channel });
+  return invokeCommand<StreamHandle>('invoke_connector_tool', { request, channel });
 }
 
 export async function approveConnectorToolCall(
   toolCallId: string,
   options?: { remember?: 'conversation' | 'always'; conversationId?: string },
 ): Promise<void> {
-  await invoke('approve_connector_tool_call', {
+  await invokeCommand('approve_connector_tool_call', {
     toolCallId,
     remember: options?.remember ?? null,
     conversationId: options?.conversationId ?? null,
@@ -621,7 +644,7 @@ export async function approveConnectorToolCall(
 }
 
 export async function denyConnectorToolCall(toolCallId: string): Promise<void> {
-  await invoke('deny_connector_tool_call', { toolCallId });
+  await invokeCommand('deny_connector_tool_call', { toolCallId });
 }
 
 export interface ToolApprovalMemoryRow {
@@ -633,34 +656,49 @@ export interface ToolApprovalMemoryRow {
 }
 
 export async function listToolApprovalMemory(): Promise<ToolApprovalMemoryRow[]> {
-  return invoke<ToolApprovalMemoryRow[]>('list_tool_approval_memory');
+  return invokeCommand<ToolApprovalMemoryRow[]>('list_tool_approval_memory');
 }
 
 export async function revokeToolApprovalMemory(id: string): Promise<boolean> {
-  return invoke<boolean>('revoke_tool_approval_memory', { id });
+  return invokeCommand<boolean>('revoke_tool_approval_memory', { id });
 }
 
 export async function revokeConnectorGrant(
   grantId: string,
   connectorVersionId?: string,
 ): Promise<void> {
-  await invoke('revoke_connector_grant', { grantId, connectorVersionId });
+  await invokeCommand('revoke_connector_grant', { grantId, connectorVersionId });
 }
 
 export async function addLocalConnector(request: AddLocalConnectorRequest): Promise<AddLocalConnectorResult> {
-  return invoke<AddLocalConnectorResult>('add_local_connector', { request });
+  return invokeCommand<AddLocalConnectorResult>('add_local_connector', { request });
 }
 
 export async function searchMcpRegistry(query: string): Promise<RegistryServer[]> {
-  return invoke<RegistryServer[]>('search_mcp_registry', { query });
+  return invokeCommand<RegistryServer[]>('search_mcp_registry', { query });
 }
 
 export async function addRemoteConnector(request: AddRemoteConnectorRequest): Promise<AddLocalConnectorResult> {
-  return invoke<AddLocalConnectorResult>('add_remote_connector', { request });
+  return invokeCommand<AddLocalConnectorResult>('add_remote_connector', { request });
 }
 
-export async function signinRemoteConnector(connectorVersionId: string): Promise<void> {
-  await invoke('signin_remote_connector', { connectorVersionId });
+/**
+ * `signedInMessage` and `signInFailedMessage` are the callback page's copy.
+ * That page is served on loopback and rendered in the user's system browser,
+ * outside the webview, so it cannot reach the catalog — the caller translates
+ * it here and Rust only substitutes the authorization server's own error text
+ * into the `{detail}` placeholder (D15).
+ */
+export async function signinRemoteConnector(
+  connectorVersionId: string,
+  signedInMessage: string,
+  signInFailedMessage: string,
+): Promise<void> {
+  await invokeCommand('signin_remote_connector', {
+    connectorVersionId,
+    signedInMessage,
+    signInFailedMessage,
+  });
 }
 
 // =============================================================================
@@ -676,18 +714,18 @@ export async function createArtifact(
   title?: string,
   sourceMessageId?: string,
 ): Promise<Artifact> {
-  return invoke<Artifact>('create_artifact', { conversationId, kind, title, sourceMessageId });
+  return invokeCommand<Artifact>('create_artifact', { conversationId, kind, title, sourceMessageId });
 }
 
 /// List a conversation's artifacts, newest-first. Payload metadata is included
 /// but inline content is NOT — fetch via `getArtifact` or `getArtifactContentBytes`.
 export async function listArtifacts(conversationId: string): Promise<Artifact[]> {
-  return invoke<Artifact[]>('list_artifacts', { conversationId });
+  return invokeCommand<Artifact[]>('list_artifacts', { conversationId });
 }
 
 /// Resolve the persisted message row id for a chat stream `requestId`.
 export async function getMessageIdByRequest(requestId: string): Promise<string | null> {
-  return invoke<string | null>('get_message_id_by_request', { requestId });
+  return invokeCommand<string | null>('get_message_id_by_request', { requestId });
 }
 
 // =============================================================================
@@ -698,20 +736,20 @@ export async function getMessageIdByRequest(requestId: string): Promise<string |
 export async function searchMessages(
   request: SearchMessagesRequest,
 ): Promise<SearchResult[]> {
-  return invoke<SearchResult[]>('search_messages', { request });
+  return invokeCommand<SearchResult[]>('search_messages', { request });
 }
 
 // --- Usage Analytics -------------------------------------------------------
 
 export async function getUsageSummary(period: UsagePeriod): Promise<UsageSummaryResponse> {
-  return invoke<UsageSummaryResponse>('get_usage_summary', { period });
+  return invokeCommand<UsageSummaryResponse>('get_usage_summary', { period });
 }
 
 // --- Retry & Fork ----------------------------------------------------------
 
 /** Remove the last assistant turn's data; returns remaining message count. */
 export async function removeLastTurn(conversationId: string): Promise<number> {
-  return invoke<number>('remove_last_turn', { conversationId });
+  return invokeCommand<number>('remove_last_turn', { conversationId });
 }
 
 /** Fork a conversation at a message; returns the new conversation. */
@@ -719,7 +757,7 @@ export async function forkConversation(
   conversationId: string,
   forkMessageId: string,
 ): Promise<Conversation> {
-  return invoke<Conversation>('fork_conversation', { conversationId, forkMessageId });
+  return invokeCommand<Conversation>('fork_conversation', { conversationId, forkMessageId });
 }
 
 /** Truncate tip or fork mid-thread before edit-and-resend. Does not start a stream. */
@@ -727,7 +765,7 @@ export async function prepareMessageEdit(
   conversationId: string,
   messageId: string,
 ): Promise<PrepareMessageEditResult> {
-  return invoke<PrepareMessageEditResult>('prepare_message_edit', {
+  return invokeCommand<PrepareMessageEditResult>('prepare_message_edit', {
     conversationId,
     messageId,
   });
@@ -741,15 +779,15 @@ export async function createPrompt(
   folder?: string,
   tags?: string[],
 ): Promise<Prompt> {
-  return invoke<Prompt>('create_prompt', { title, body, folder, tags });
+  return invokeCommand<Prompt>('create_prompt', { title, body, folder, tags });
 }
 
 export async function listPrompts(folder?: string): Promise<Prompt[]> {
-  return invoke<Prompt[]>('list_prompts', { folder });
+  return invokeCommand<Prompt[]>('list_prompts', { folder });
 }
 
 export async function getPrompt(id: string): Promise<Prompt | null> {
-  return invoke<Prompt | null>('get_prompt', { id });
+  return invokeCommand<Prompt | null>('get_prompt', { id });
 }
 
 export async function updatePrompt(
@@ -759,19 +797,19 @@ export async function updatePrompt(
   folder?: string,
   tags?: string[],
 ): Promise<Prompt> {
-  return invoke<Prompt>('update_prompt', { id, title, body, folder, tags });
+  return invokeCommand<Prompt>('update_prompt', { id, title, body, folder, tags });
 }
 
 export async function deletePrompt(id: string): Promise<void> {
-  return invoke<void>('delete_prompt', { id });
+  return invokeCommand<void>('delete_prompt', { id });
 }
 
 export async function listPromptFolders(): Promise<string[]> {
-  return invoke<string[]>('list_prompt_folders');
+  return invokeCommand<string[]>('list_prompt_folders');
 }
 
 export async function listSkills(workspaceRoot?: string | null): Promise<SkillSummary[]> {
-  return invoke<SkillSummary[]>('list_skills', {
+  return invokeCommand<SkillSummary[]>('list_skills', {
     workspaceRoot: workspaceRoot ?? null,
   });
 }
@@ -780,61 +818,70 @@ export async function getSkillPromptBlock(
   skillIds: string[],
   workspaceRoot?: string | null,
 ): Promise<string> {
-  return invoke<string>('get_skill_prompt_block', {
+  return invokeCommand<string>('get_skill_prompt_block', {
     skillIds,
     workspaceRoot: workspaceRoot ?? null,
   });
 }
 
 export async function listConversationSkills(conversationId: string): Promise<string[]> {
-  return invoke<string[]>('list_conversation_skills', { conversationId });
+  return invokeCommand<string[]>('list_conversation_skills', { conversationId });
 }
 
 export async function setConversationSkills(
   conversationId: string,
   skillIds: string[],
 ): Promise<string[]> {
-  return invoke<string[]>('set_conversation_skills', { conversationId, skillIds });
+  return invokeCommand<string[]>('set_conversation_skills', { conversationId, skillIds });
 }
 
-export async function importSkillFolder(): Promise<SkillSummary | null> {
-  return invoke<SkillSummary | null>('import_skill_folder');
+export async function importSkillFolder(dialogTitle: string): Promise<SkillSummary | null> {
+  return invokeCommand<SkillSummary | null>('import_skill_folder', { dialogTitle });
 }
 
-export async function importSkillZip(): Promise<SkillSummary | null> {
-  return invoke<SkillSummary | null>('import_skill_zip');
+export async function importSkillZip(
+  dialogTitle: string,
+  filterName: string,
+): Promise<SkillSummary | null> {
+  return invokeCommand<SkillSummary | null>('import_skill_zip', { dialogTitle, filterName });
 }
 
 export async function exportSkillFolder(
   skillId: string,
+  dialogTitle: string,
   workspaceRoot?: string | null,
 ): Promise<string | null> {
-  return invoke<string | null>('export_skill_folder', {
+  return invokeCommand<string | null>('export_skill_folder', {
     skillId,
     workspaceRoot: workspaceRoot ?? null,
+    dialogTitle,
   });
 }
 
 export async function exportSkillZip(
   skillId: string,
+  dialogTitle: string,
+  filterName: string,
   workspaceRoot?: string | null,
 ): Promise<string | null> {
-  return invoke<string | null>('export_skill_zip', {
+  return invokeCommand<string | null>('export_skill_zip', {
     skillId,
     workspaceRoot: workspaceRoot ?? null,
+    dialogTitle,
+    filterName,
   });
 }
 
 export async function deleteManagedSkill(skillId: string): Promise<void> {
-  return invoke('delete_managed_skill', { skillId });
+  return invokeCommand('delete_managed_skill', { skillId });
 }
 
 export async function revealSkillsDir(): Promise<string> {
-  return invoke<string>('reveal_skills_dir');
+  return invokeCommand<string>('reveal_skills_dir');
 }
 
 export async function listMemoryItems(status?: 'pending' | 'active' | null): Promise<MemoryItem[]> {
-  return invoke<MemoryItem[]>('list_memory_items', { status: status ?? null });
+  return invokeCommand<MemoryItem[]>('list_memory_items', { status: status ?? null });
 }
 
 export async function createMemoryItem(
@@ -842,7 +889,7 @@ export async function createMemoryItem(
   kind?: 'core' | 'note',
   pinned?: boolean,
 ): Promise<MemoryItem> {
-  return invoke<MemoryItem>('create_memory_item', { body, kind: kind ?? null, pinned: pinned ?? null });
+  return invokeCommand<MemoryItem>('create_memory_item', { body, kind: kind ?? null, pinned: pinned ?? null });
 }
 
 export async function updateMemoryItem(
@@ -851,24 +898,24 @@ export async function updateMemoryItem(
   kind?: 'core' | 'note',
   pinned?: boolean,
 ): Promise<MemoryItem> {
-  return invoke<MemoryItem>('update_memory_item', { id, body, kind: kind ?? null, pinned: pinned ?? null });
+  return invokeCommand<MemoryItem>('update_memory_item', { id, body, kind: kind ?? null, pinned: pinned ?? null });
 }
 
 export async function deleteMemoryItem(id: string): Promise<void> {
-  return invoke('delete_memory_item', { id });
+  return invokeCommand('delete_memory_item', { id });
 }
 
 export async function acceptMemoryItem(id: string): Promise<MemoryItem> {
-  return invoke<MemoryItem>('accept_memory_item', { id });
+  return invokeCommand<MemoryItem>('accept_memory_item', { id });
 }
 
 export async function getMemoryPromptBlock(): Promise<string> {
-  return invoke<string>('get_memory_prompt_block');
+  return invokeCommand<string>('get_memory_prompt_block');
 }
 
 /// Fetch a single payload-bearing artifact (inline content decrypted).
 export async function getArtifact(artifactId: string): Promise<Artifact | null> {
-  return invoke<Artifact | null>('get_artifact', { artifactId });
+  return invokeCommand<Artifact | null>('get_artifact', { artifactId });
 }
 
 /// Overwrite the artifact's single payload in place (no version history). For
@@ -879,31 +926,31 @@ export async function setArtifactContent(
   content: ArtifactContent,
   mimeType?: string,
 ): Promise<Artifact> {
-  return invoke<Artifact>('set_artifact_content', { artifactId, mimeType, content });
+  return invokeCommand<Artifact>('set_artifact_content', { artifactId, mimeType, content });
 }
 
 export async function setArtifactTitle(artifactId: string, title: string): Promise<Artifact> {
-  return invoke<Artifact>('set_artifact_title', { artifactId, title });
+  return invokeCommand<Artifact>('set_artifact_title', { artifactId, title });
 }
 
 /// Read the artifact's content as raw bytes (inline content as UTF-8; File-content
 /// as the decrypted blob). Capped at 5 MiB for preview — larger File-content must
 /// use `exportArtifact`.
 export async function getArtifactContentBytes(artifactId: string): Promise<number[]> {
-  return invoke<number[]>('get_artifact_content_bytes', { artifactId });
+  return invokeCommand<number[]>('get_artifact_content_bytes', { artifactId });
 }
 
 /// Read full File-content bytes for recovery ("Use disk"). Not capped; only for
 /// the modified-file recovery path.
 export async function readArtifactFileBytes(artifactId: string): Promise<number[]> {
-  return invoke<number[]>('read_artifact_file_bytes', { artifactId });
+  return invokeCommand<number[]>('read_artifact_file_bytes', { artifactId });
 }
 
 /// File-state machine for File-content artifacts. `noFileContent` for inline
 /// (non-file) payloads; otherwise the on-disk blob hash is compared to
 /// `content_hash` → `ok` | `modified` | `missing`.
 export async function checkArtifactFileState(artifactId: string): Promise<FileState> {
-  return invoke<FileState>('check_artifact_file_state', { artifactId });
+  return invokeCommand<FileState>('check_artifact_file_state', { artifactId });
 }
 
 /// Export the artifact's current payload to disk, with an optional `.conduit.json`
@@ -912,7 +959,7 @@ export async function exportArtifact(
   artifactId: string,
   includeMetadata: boolean,
 ): Promise<ArtifactExportResult> {
-  return invoke<ArtifactExportResult>('export_artifact', { artifactId, includeMetadata });
+  return invokeCommand<ArtifactExportResult>('export_artifact', { artifactId, includeMetadata });
 }
 
 // --- Attachments -----------------------------------------------------------
@@ -923,19 +970,19 @@ export async function saveAttachment(
   mimeType: string,
   origin?: string,
 ): Promise<Attachment> {
-  return invoke<Attachment>('save_attachment', { conversationId, bytes, mimeType, origin });
+  return invokeCommand<Attachment>('save_attachment', { conversationId, bytes, mimeType, origin });
 }
 
 export async function listAttachments(conversationId: string): Promise<Attachment[]> {
-  return invoke<Attachment[]>('list_attachments', { conversationId });
+  return invokeCommand<Attachment[]>('list_attachments', { conversationId });
 }
 
 export async function deleteAttachment(attachmentId: string): Promise<void> {
-  await invoke('delete_attachment', { attachmentId });
+  await invokeCommand('delete_attachment', { attachmentId });
 }
 
 export async function getAttachmentBytes(attachmentId: string): Promise<number[]> {
-  return invoke<number[]>('get_attachment_bytes', { attachmentId });
+  return invokeCommand<number[]>('get_attachment_bytes', { attachmentId });
 }
 
 // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
@@ -943,5 +990,5 @@ export async function getAttachmentBytes(attachmentId: string): Promise<number[]
 // Conduit to create a fresh store. Attachments and artifacts on disk are
 // left in place but are no longer indexed.
 export async function resetLocalDatabase(): Promise<{ backupPath: string }> {
-  return invoke<{ backupPath: string }>('reset_local_database');
+  return invokeCommand<{ backupPath: string }>('reset_local_database');
 }

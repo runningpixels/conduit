@@ -11,18 +11,18 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, Artifact, ArtifactKind, AskUserField, Attachment, BrandBundle,
-    BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime, BrandThemes,
-    BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeEvent, ConnectorVersion,
-    ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary,
-    CredentialRequest, CredentialSummary, GenerationControls, GrantScope, GrantStatus,
-    KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
-    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel, ProviderEndpointConfig,
-    ProviderError, ProviderEvent, ProviderRequest, ProviderUsage, ResponseFormatHint,
-    RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch,
-    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
-    ToolDefinition, ToolKind, Transport, UserLocation, WebSearchDefaults, WebSearchFilters,
-    WebSearchMode, WebSearchRequest,
+    AgentGuardrails, AppError, AppSettings, Artifact, ArtifactKind, AskUserField, Attachment,
+    BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime,
+    BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeEvent,
+    ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
+    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
+    GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
+    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel,
+    ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
+    ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
+    SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
+    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UserLocation,
+    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -109,7 +109,9 @@ fn main() {
     KeychainMode::export().expect("export KeychainMode");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
     AgentGuardrails::export().expect("export AgentGuardrails");
-    AppSettings::export().expect("export AppSettings");
+    AppError::export()
+        .and_then(|_| AppSettings::export())
+        .expect("export AppSettings");
     SettingsPatch::export().expect("export SettingsPatch");
     ModelInfo::export().expect("export ModelInfo");
     CredentialRequest::export().expect("export CredentialRequest");

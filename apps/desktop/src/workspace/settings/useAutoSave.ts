@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
 import { updateSettings } from '../../ipc/client';
+import { translateError } from '../../ipc/errors';
 import { useT } from '../../i18n';
 
 /**
@@ -22,8 +23,7 @@ export function useAutoSave(
       // Use the Rust-normalized version (in case it adjusts anything)
       onSettingsChange(persisted);
     } catch (e) {
-      const message = e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
-      onStatus(t('settings.autoSave.failed', { error: message }));
+      onStatus(t('settings.autoSave.failed', { error: translateError(e, t) }));
     }
   }, [onSettingsChange, onStatus, t]);
 

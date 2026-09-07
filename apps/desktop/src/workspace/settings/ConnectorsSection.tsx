@@ -177,7 +177,13 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
   async function handleSignIn(s: ConnectorRuntimeSnapshot) {
     setBusy(s.connectorVersionId);
     try {
-      await signinRemoteConnector(s.connectorVersionId);
+      await signinRemoteConnector(
+        s.connectorVersionId,
+        t('settings.connectors.oauth.signedIn'),
+        // `{detail}` is passed through untouched: only Rust, at callback time,
+        // knows what the authorization server said.
+        t('settings.connectors.oauth.signInFailed', { detail: '{detail}' }),
+      );
       onStatus(t('settings.connectors.signedIn', { name: s.connectorName }));
       refresh();
     } catch (e) {

@@ -48,6 +48,7 @@ use rand::RngCore;
 
 // C1: `CredentialSummary` is defined in `provider_core::schema` and codegen'd
 // into `@conduit/config-schema`.
+use provider_core::schema::AppError;
 pub use provider_core::schema::CredentialSummary;
 pub use provider_core::schema::KeychainMode;
 
@@ -118,9 +119,15 @@ impl CredentialStore {
                     .map_err(|error| error.to_string())?;
             }
             KeychainMode::File => {
-                let mut map = self.read_file_store()?;
+                // `read_file_store`/`write_file_store` carry real `AppError`
+                // codes (D10 item 3), but this function's `Result<_, String>`
+                // is pinned by `mcp_oauth.rs::save_token`, which is not this
+                // migration's file to convert — fold back to the English
+                // fallback rather than losing the code silently to
+                // `error.unknown` (which `?` alone would do here).
+                let mut map = self.read_file_store().map_err(|e| e.fallback)?;
                 map.insert(provider_id.to_string(), secret.to_string());
-                self.write_file_store(&map)?;
+                self.write_file_store(&map).map_err(|e| e.fallback)?;
             }
         }
 
@@ -164,28 +171,46 @@ impl CredentialStore {
 
     /// Retrieve a secret for provider API calls.
     /// Returns Err if the secret doesn't exist or can't be retrieved.
-    pub fn get_secret(&self, provider_id: &str) -> Result<String, String> {
+    pub fn get_secret(&self, provider_id: &str) -> Result<String, AppError> {
         match self.mode {
             KeychainMode::Os => {
-                let entry = Entry::new(&self.service_name, provider_id)
-                    .map_err(|error| format!("Failed to access keychain: {error}"))?;
-                entry
-                    .get_password()
-                    .map_err(|error| format!("Failed to retrieve secret: {error}"))
+                let entry = Entry::new(&self.service_name, provider_id).map_err(|error| {
+                    AppError::new(
+                        "error.keychain.access",
+                        format!("Failed to access keychain: {error}"),
+                    )
+                    .with("detail", error.to_string())
+                })?;
+                entry.get_password().map_err(|error| {
+                    AppError::new(
+                        "error.keychain.retrieve",
+                        format!("Failed to retrieve secret: {error}"),
+                    )
+                    .with("detail", error.to_string())
+                })
             }
             KeychainMode::File => self
                 .read_file_store()?
                 .get(provider_id)
                 .cloned()
-                .ok_or_else(|| format!("No stored secret for provider {provider_id}")),
+                .ok_or_else(|| {
+                    AppError::new(
+                        "error.credentials.notFound",
+                        format!("No stored secret for provider {provider_id}"),
+                    )
+                    .with("providerId", provider_id)
+                }),
         }
     }
 
     // --- file backend ------------------------------------------------------
 
-    fn store_path(&self) -> Result<PathBuf, String> {
+    fn store_path(&self) -> Result<PathBuf, AppError> {
         let dir = self.data_dir.as_ref().ok_or_else(|| {
-            "File credential store selected but no data directory was configured".to_string()
+            AppError::new(
+                "error.credentials.noDataDirectory",
+                "File credential store selected but no data directory was configured",
+            )
         })?;
         Ok(dir.join(FILE_STORE_NAME))
     }
@@ -193,73 +218,122 @@ impl CredentialStore {
     /// The 32-byte key from the environment. Absent or malformed is a hard
     /// error: the alternative is writing a secret somewhere weaker than the
     /// user asked for, without telling them.
-    fn file_key(&self) -> Result<[u8; KEY_LEN], String> {
+    fn file_key(&self) -> Result<[u8; KEY_LEN], AppError> {
         let raw = std::env::var(FILE_KEY_ENV).map_err(|_| {
-            format!(
-                "{FILE_KEY_ENV} is not set. The file-backed credential store takes its key from \
-                 the environment — set it to a base64-encoded 32-byte value, or switch back to \
-                 the OS keychain in Privacy & data."
+            AppError::new(
+                "error.credentials.fileKeyMissing",
+                format!(
+                    "{FILE_KEY_ENV} is not set. The file-backed credential store takes its key \
+                     from the environment — set it to a base64-encoded 32-byte value, or switch \
+                     back to the OS keychain in Privacy & data."
+                ),
             )
         })?;
-        let bytes = B64
-            .decode(raw.trim())
-            .map_err(|e| format!("{FILE_KEY_ENV} is not valid base64: {e}"))?;
+        let bytes = B64.decode(raw.trim()).map_err(|e| {
+            AppError::new(
+                "error.credentials.fileKeyInvalid",
+                format!("{FILE_KEY_ENV} is not valid base64: {e}"),
+            )
+            .with("detail", e.to_string())
+        })?;
         if bytes.len() != KEY_LEN {
-            return Err(format!(
-                "{FILE_KEY_ENV} decodes to {} bytes, expected {KEY_LEN}",
-                bytes.len()
-            ));
+            return Err(AppError::new(
+                "error.credentials.fileKeyWrongLength",
+                format!(
+                    "{FILE_KEY_ENV} decodes to {} bytes, expected {KEY_LEN}",
+                    bytes.len()
+                ),
+            )
+            .with("actual", bytes.len().to_string())
+            .with("expected", KEY_LEN.to_string()));
         }
         let mut key = [0u8; KEY_LEN];
         key.copy_from_slice(&bytes);
         Ok(key)
     }
 
-    fn read_file_store(&self) -> Result<BTreeMap<String, String>, String> {
+    fn read_file_store(&self) -> Result<BTreeMap<String, String>, AppError> {
         let path = self.store_path()?;
         let key = self.file_key()?;
         if !path_exists(&path) {
             return Ok(BTreeMap::new());
         }
-        let blob = std::fs::read(&path)
-            .map_err(|e| format!("Failed to read the credential store: {e}"))?;
+        let blob = std::fs::read(&path).map_err(|e| {
+            AppError::new(
+                "error.credentials.storeReadFailed",
+                format!("Failed to read the credential store: {e}"),
+            )
+            .with("detail", e.to_string())
+        })?;
         if blob.len() < NONCE_LEN {
-            return Err("The credential store is truncated or corrupt".to_string());
+            return Err(AppError::new(
+                "error.credentials.storeCorrupt",
+                "The credential store is truncated or corrupt",
+            ));
         }
         let (nonce_bytes, ciphertext) = blob.split_at(NONCE_LEN);
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
         let plaintext = cipher
             .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
             .map_err(|_| {
-                format!(
-                    "Could not decrypt the credential store. This usually means {FILE_KEY_ENV} \
-                     differs from the key the secrets were saved with."
+                AppError::new(
+                    "error.credentials.keyMismatch",
+                    format!(
+                        "Could not decrypt the credential store. This usually means \
+                         {FILE_KEY_ENV} differs from the key the secrets were saved with."
+                    ),
                 )
             })?;
-        serde_json::from_slice(&plaintext)
-            .map_err(|e| format!("The credential store is not valid JSON: {e}"))
+        serde_json::from_slice(&plaintext).map_err(|e| {
+            AppError::new(
+                "error.credentials.storeInvalidJson",
+                format!("The credential store is not valid JSON: {e}"),
+            )
+            .with("detail", e.to_string())
+        })
     }
 
-    fn write_file_store(&self, map: &BTreeMap<String, String>) -> Result<(), String> {
+    fn write_file_store(&self, map: &BTreeMap<String, String>) -> Result<(), AppError> {
         let path = self.store_path()?;
         let key = self.file_key()?;
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create the data directory: {e}"))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                AppError::new(
+                    "error.credentials.dataDirCreateFailed",
+                    format!("Failed to create the data directory: {e}"),
+                )
+                .with("detail", e.to_string())
+            })?;
         }
-        let plaintext = serde_json::to_vec(map)
-            .map_err(|e| format!("Failed to serialize the credential store: {e}"))?;
+        let plaintext = serde_json::to_vec(map).map_err(|e| {
+            AppError::new(
+                "error.credentials.storeSerializeFailed",
+                format!("Failed to serialize the credential store: {e}"),
+            )
+            .with("detail", e.to_string())
+        })?;
         let mut nonce_bytes = [0u8; NONCE_LEN];
         OsRng.fill_bytes(&mut nonce_bytes);
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
         let ciphertext = cipher
             .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_ref())
-            .map_err(|e| format!("Failed to encrypt the credential store: {e}"))?;
+            .map_err(|e| {
+                AppError::new(
+                    "error.credentials.storeEncryptFailed",
+                    format!("Failed to encrypt the credential store: {e}"),
+                )
+                .with("detail", e.to_string())
+            })?;
         let mut blob = Vec::with_capacity(NONCE_LEN + ciphertext.len());
         blob.extend_from_slice(&nonce_bytes);
         blob.extend_from_slice(&ciphertext);
-        std::fs::write(&path, blob)
-            .map_err(|e| format!("Failed to write the credential store: {e}"))?;
+        std::fs::write(&path, blob).map_err(|e| {
+            AppError::new(
+                "error.credentials.storeWriteFailed",
+                format!("Failed to write the credential store: {e}"),
+            )
+            .with("detail", e.to_string())
+        })?;
         Ok(())
     }
 }
@@ -381,8 +455,8 @@ mod tests {
         with_key(Some(&B64.encode([9u8; KEY_LEN])), || {
             let err = file_store(&dir).get_secret("anthropic").unwrap_err();
             assert!(
-                err.contains(FILE_KEY_ENV),
-                "the error must point at the key: {err}"
+                err.fallback.contains(FILE_KEY_ENV),
+                "the error must point at the key: {err:?}"
             );
             // Reporting "no secret" here would invite the user to re-enter and
             // overwrite the store they still have the real key for.

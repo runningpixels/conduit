@@ -21,7 +21,7 @@ pub mod reinject;
 pub mod stdio;
 pub mod transport;
 
-pub use consent::{classify, expected_effect, ConsentDecision, ConsentKind};
+pub use consent::{classify, ConsentDecision, ConsentKind};
 pub use httpsse::{HttpSseConfig, HttpSseTransport};
 pub use protocol::{
     ClientInfo, McpPrompt, McpResource, McpTool, PermissionLevel, ServerInfo, ToolContent,

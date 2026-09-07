@@ -75,7 +75,9 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
           className="btn primary"
           type="button"
           disabled={busy}
-          onClick={() => void run(t('settings.skills.status.importedFolder'), importSkillFolder)}
+          onClick={() => void run(t('settings.skills.status.importedFolder'), () =>
+              importSkillFolder(t('settings.skills.dialog.importFolderTitle')),
+            )}
         >
           {t('settings.skills.actions.importFolder')}
         </button>
@@ -83,7 +85,12 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
           className="btn ghost"
           type="button"
           disabled={busy}
-          onClick={() => void run(t('settings.skills.status.importedZip'), importSkillZip)}
+          onClick={() => void run(t('settings.skills.status.importedZip'), () =>
+              importSkillZip(
+                t('settings.skills.dialog.importZipTitle'),
+                t('settings.skills.dialog.filterName'),
+              ),
+            )}
         >
           {t('settings.skills.actions.importZip')}
         </button>
@@ -126,7 +133,11 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
                   disabled={busy}
                   onClick={() =>
                     void run(t('settings.skills.status.exported', { name: skill.name }), () =>
-                      exportSkillFolder(skill.id, workspaceRoot),
+                      exportSkillFolder(
+                        skill.id,
+                        t('settings.skills.dialog.exportFolderTitle'),
+                        workspaceRoot,
+                      ),
                     )
                   }
                 >
@@ -138,7 +149,12 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
                   disabled={busy}
                   onClick={() =>
                     void run(t('settings.skills.status.exportedZip', { name: skill.name }), () =>
-                      exportSkillZip(skill.id, workspaceRoot),
+                      exportSkillZip(
+                        skill.id,
+                        t('settings.skills.dialog.exportZipTitle'),
+                        t('settings.skills.dialog.filterName'),
+                        workspaceRoot,
+                      ),
                     )
                   }
                 >

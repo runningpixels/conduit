@@ -18,7 +18,11 @@ jobs:
       # line-tables-only keeps panic backtraces with line numbers.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
+      # fetch-depth: 0 — the localized-README check below asks git when
+      # README.md last changed, which a depth-1 checkout cannot answer.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # ~20 GB of preinstalled toolchains this job never touches. Removing them
       # is cheaper than being clever about the link, and `df` on both sides
@@ -60,6 +64,17 @@ jobs:
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
+
+      # GitHub has no native localized-README support, so nothing stops the
+      # seven translations from drifting away from README.md. This reports the
+      # ones that have fallen behind their `i18n-source` stamp.
+      #
+      # Warn-only for now: a red build on the first documentation PR is how a
+      # policy like this gets deleted. Drop `continue-on-error` to make it
+      # blocking once updating the translations is a settled habit.
+      - name: Localized README drift
+        continue-on-error: true
+        run: node scripts/readme-i18n.mjs --check
 
       - name: Format check
         run: cargo fmt --all --check

@@ -67,14 +67,16 @@ describe('relative time', () => {
     expect(formatTimeAgo(undefined, en)).toBe(EN_MESSAGES['common.time.never']);
   });
 
-  it('gives a German reader English for a word German has not been given yet (D5)', () => {
-    // `common.time.*` is translated in the wave-1 pass. Until then a German
-    // reader sees the English word rather than a raw key — which is exactly
-    // what makes shipping a partially translated locale safe. When Phase 5
-    // lands, this expectation should flip to the German string, and the fact
-    // that it fails is the signal to do so.
-    expect(deMessages['common.time.never' as keyof typeof deMessages]).toBeUndefined();
-    expect(formatTimeAgo(undefined, de)).toBe(EN_MESSAGES['common.time.never']);
+  it('reads its words from the German catalog now that wave 1 has landed', () => {
+    /* This assertion used to say the opposite: that German had no
+     * `common.time.*` yet and fell back to English, which is what made
+     * shipping a partial locale safe (D5). It was written to fail the moment
+     * the translation arrived, and it did — that failure was the signal to
+     * flip it, not a defect. The fallback itself is still covered above. */
+    const never = deMessages['common.time.never' as keyof typeof deMessages];
+    expect(never).toBeTruthy();
+    expect(formatTimeAgo(undefined, de)).toBe(never);
+    expect(formatTimeAgo(undefined, de)).not.toBe(EN_MESSAGES['common.time.never']);
   });
 });
 

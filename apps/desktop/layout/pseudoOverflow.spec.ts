@@ -24,6 +24,17 @@ import { expect, test } from '@playwright/test';
  * This covers the shell, the empty states, and whatever opens without data.
  */
 
+/**
+ * The languages measured against English.
+ *
+ * `en-XA` is the synthetic stressor: uniformly ~40% longer, so it finds length
+ * sensitivity everywhere at once. `de` is the real thing, and it is the one
+ * that decides whether a finding matters — pseudo-localisation lengthens every
+ * string equally, whereas German lengthens some words enormously ("Memory"
+ * becomes "Gespeicherte Fakten") and leaves others alone.
+ */
+const LONGER_LOCALES = ['en-XA', 'de'];
+
 /** The shipped window size, and a plausible narrow resize. */
 const VIEWPORTS = [
   { name: 'default 1360x900', width: 1360, height: 900 },
@@ -158,17 +169,18 @@ for (const viewport of VIEWPORTS) {
   test.describe(`${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
-    test('the page never scrolls horizontally, in either language', async ({ page }) => {
-      for (const locale of ['en', 'en-XA']) {
+    test('the page never scrolls horizontally, in any language', async ({ page }) => {
+      for (const locale of ['en', ...LONGER_LOCALES]) {
         await open(page, locale);
         const overflow = await documentOverflow(page);
         expect(overflow, `the page scrolls horizontally under ${locale}`).toBeLessThanOrEqual(1);
       }
     });
 
-    test('nothing clips under en-XA that does not already clip under en', async ({ page }) => {
+    for (const locale of LONGER_LOCALES) {
+      test(`nothing clips under ${locale} that does not already clip under en`, async ({ page }) => {
       const baseline = await measureEveryScreen(page, 'en');
-      const pseudo = await measureEveryScreen(page, 'en-XA');
+      const pseudo = await measureEveryScreen(page, locale);
 
       /* A walk that silently failed to navigate would compare two empty maps
        * and pass forever. The shell plus every settings pane is a dozen-odd
@@ -195,6 +207,7 @@ for (const viewport of VIEWPORTS) {
         'These clip only once the text gets longer, which is what German will do. ' +
           'Let the container grow, let the text wrap, or truncate it with a title.',
       ).toEqual([]);
-    });
+      });
+    }
   });
 }

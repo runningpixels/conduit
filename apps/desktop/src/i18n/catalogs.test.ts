@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse, TYPE, type MessageFormatElement } from '@formatjs/icu-messageformat-parser';
 import { DEFAULT_BRAND } from '../brand';
 import { RICH_TAG_NAMES } from './index';
@@ -20,13 +23,17 @@ type Catalog = Record<string, string>;
 const en = enMessages as Catalog;
 
 /**
- * Locales we have told users exist, and which must therefore be complete.
+ * Locales that must be complete.
  *
- * Empty until wave 1 (de, es, fr) ships in Phase 6. `de` is on disk today as
- * the Phase 0 spike translation — real, reviewed for the screens it covers,
- * and deliberately far from complete while extraction is still running.
+ * A locale joins this list the moment it *is* complete, not when it ships —
+ * the two are different decisions, and this is the one that keeps it from
+ * quietly rotting. Once German is here, an English key added without a German
+ * one fails the build on the commit that adds it, rather than being discovered
+ * by a reader who suddenly sees an English sentence in a German dialog.
+ *
+ * Shipping is Phase 6's call and additionally requires native review.
  */
-const SHIPPED_FOR_RELEASE: readonly string[] = [];
+const SHIPPED_FOR_RELEASE: readonly string[] = ['de'];
 
 /** Catalogs that exist on disk today. Grows one row per wave (D1). */
 const TRANSLATIONS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
@@ -69,6 +76,21 @@ function walk(elements: MessageFormatElement[], found: Set<string>): void {
         break;
     }
   }
+}
+
+/**
+ * The names that must survive translation verbatim (D7).
+ *
+ * Read from `do-not-translate.txt` rather than duplicated here, so the list a
+ * translator is handed and the list the build enforces cannot drift apart —
+ * which is the only way a do-not-translate list ever fails.
+ */
+function doNotTranslate(): string[] {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return readFileSync(join(here, 'do-not-translate.txt'), 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
 }
 
 describe('English catalog', () => {
@@ -186,6 +208,32 @@ describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
         DEFAULT_BRAND.appName,
       );
     }
+  });
+
+  it('keeps every name that must not be translated (D7)', () => {
+    /* A name that varies by locale stops being a name. This is the failure it
+     * exists for: "API-Schlüssel" is right and "Schnittstellen-Schlüssel" is
+     * not, and only the second one is tempting to a translator working through
+     * a thousand rows without context.
+     *
+     * Checked in the direction that matters — a term English uses must also
+     * appear in the translation. The reverse is not a rule: a translation may
+     * name a format English left implicit. */
+    const terms = doNotTranslate();
+    expect(terms.length, 'do-not-translate.txt is empty').toBeGreaterThan(10);
+
+    const dropped: string[] = [];
+    for (const [key, english] of Object.entries(en)) {
+      const translated = catalog[key];
+      if (translated === undefined) continue;
+      for (const term of terms) {
+        const inEnglish = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`);
+        if (inEnglish.test(english) && !translated.includes(term)) {
+          dropped.push(`${key}: "${term}" is missing from ${JSON.stringify(translated)}`);
+        }
+      }
+    }
+    expect(dropped).toEqual([]);
   });
 
   it('leaves no value untranslated by accident', () => {

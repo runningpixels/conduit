@@ -11,6 +11,7 @@ import {
 } from './agentTools';
 import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
 import { useRichT, useT } from '../i18n';
+import { documentKindLabel } from '../lib/documentKind';
 import type { Translate } from '../i18n';
 
 interface ToolCallBlockProps {
@@ -180,7 +181,9 @@ export function ToolCallBlock({
     );
   } else if (isDocumentTool && docSummary) {
     name = t('chat.toolCall.documentsName');
-    summary = `${docSummary.action} · ${docSummary.filename || docSummary.title || docSummary.kind}`;
+    summary = `${t('chat.toolCall.document.action', { action: docSummary.action })} · ${
+      docSummary.filename || docSummary.title || documentKindLabel(docSummary.kind, t)
+    }`;
     const rows: [string, string][] = [];
     if (docSummary.title) rows.push(['title', docSummary.title]);
     if (docSummary.filename) rows.push(['file', docSummary.filename]);
@@ -196,7 +199,7 @@ export function ToolCallBlock({
       status === 'failed' ? (
         <>
           {tr('chat.toolCall.document.failed', {
-            action: docSummary.action.toLowerCase(),
+            action: docSummary.action,
             explained: docExplained,
           })}
           {toolCall.error && toolCall.error !== docExplained && (

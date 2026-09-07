@@ -46,8 +46,10 @@ describe('agentTools display helpers', () => {
       html: '<!doctype html>\n<html><body>ok</body></html>',
     });
     const s = summarizeDocumentToolCall(tc)!;
-    expect(s.action).toBe('Create');
-    expect(s.kind).toBe('HTML');
+    // An id now, not a display word: `Create` was rendered straight into the
+    // UI and was English in every locale.
+    expect(s.action).toBe('create');
+    expect(s.kind).toBe('html');
     expect(s.title).toBe('History of FIFA');
     expect(s.filename).toBe('history-of-fifa.html');
     expect(s.lineCount).toBe(2);
@@ -67,8 +69,8 @@ describe('agentTools display helpers', () => {
       updated_markdown: '# Title\n\nBody line 1\nBody line 2',
     });
     const s = summarizeDocumentToolCall(tc)!;
-    expect(s.action).toBe('Edit');
-    expect(s.kind).toBe('Markdown');
+    expect(s.action).toBe('edit');
+    expect(s.kind).toBe('markdown');
     expect(s.lineCount).toBe(4);
     const redacted = redactDocumentToolArguments(tc.arguments!, tc.name);
     expect(redacted.updated_markdown).toBe('…');

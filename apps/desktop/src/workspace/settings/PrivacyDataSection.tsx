@@ -144,10 +144,9 @@ export function PrivacyDataSection({
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {settings.keychainMode === 'file' ? (
             <>
-              {t('settings.privacy.keychainMode.fileBody.before')}
-              { // i18n-exempt: environment variable name, not user prose (D7)
-              }<code>CONDUIT_CREDENTIAL_KEY</code>
-              {t('settings.privacy.keychainMode.fileBody.after')}
+              {tr('settings.privacy.keychainMode.fileBody', {
+                envVar: 'CONDUIT_CREDENTIAL_KEY',
+              })}
             </>
           ) : (
             <>{t('settings.privacy.keychainMode.osBody')}</>

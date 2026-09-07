@@ -313,6 +313,106 @@ with correct codes and parameters. They display **English** until wave 1
 translates `error.*` and `consent.permission.*` in Phase 5 — the D5 fallback
 working as designed, not a gap in this phase.
 
+### Phase 4 — done for what a source scan and a browser can decide
+
+Two halves, both delivered, and the boundary between them is worth being
+precise about.
+
+**The half that is decidable from source.** 22 elements clipped their text with
+no way to read it; 20 are fixed and **Guard G11** keeps it that way. This is
+worth a guard rather than a sweep because the bug is invisible in the language
+it is written in: English fits, the ellipsis never appears, nobody notices the
+value is unreachable — and German finds it months later.
+
+**The half that needs a real layout engine.** `pnpm test:layout` (opt-in,
+Playwright) walks the shell and all fourteen settings panes at two viewports
+and measures, rather than eyeballing screenshots. It is differential: an
+element clipping in *both* locales is by-design truncation, one that clips only
+in a longer language is the bug. It runs against `en-XA` **and** real German.
+
+Scoped so nobody pays for it who does not want it: the specs sit outside
+vitest's include glob, `@playwright/test` has no postinstall, and the config
+drives a Chrome or Edge already on the machine. A clone pays 13 MB and no
+browser download; `pnpm test` and CI are untouched.
+
+**The plan's numbers were both wrong, in opposite directions.** It cites "103
+fixed-pixel width declarations" as the risk surface: there are 85, 63 are
+square icon boxes, and exactly two constrain translated text — both already had
+a tooltip. Meanwhile the truncation-without-reveal count it does not give was
+22, which was the real content of the phase.
+
+**Corrections found by running it:**
+
+- **The pseudo-locale was simulating a URL, not German.** Padding was one
+  unbroken 67-character run of em dashes, which nothing will break inside, so
+  every padded string became an unbreakable token that overflowed narrow
+  containers. German is longer word by word; it is not one enormous word. The
+  padding is chunked now — same length, still obviously fake, wrappable. Had
+  this not been fixed, every long string would have "overflowed" somewhere and
+  the real findings would have drowned.
+- **The first version of the browser check could not fail.** It passed
+  immediately, and still passed with the known bug reintroduced. The reason is
+  worth keeping: that bug was not clipped text but content spilling out of an
+  `overflow: visible` box, surfacing on an ancestor scroll container. The
+  detector skipped `auto`/`scroll` boxes as "meant to scroll" — hiding exactly
+  the case it existed to find.
+
+**Not covered:** `dev:web` has no Tauri backend, so anything behind IPC — a
+populated conversation, the connector list, the consent dialog — never renders.
+Those need the real build.
+
+### Phase 5 — German complete; native review still outstanding
+
+`de.json` goes from 72 to **1076 keys**: complete, zero missing, zero orphaned,
+every ICU message parsing with placeholder and inline-tag parity against
+English. `i18n:status --strict` passes and provenance is stamped, so from here
+an English change surfaces as `stale` rather than silently diverging.
+
+**The prerequisites did not exist and had to be written first.** D7 calls for a
+glossary and a do-not-translate list; neither had been. The German column is
+read out of the copy already translated and reviewed in the Phase 0 spike
+rather than invented, so the catalog stays consistent with what shipped. Two
+entries where the obvious choice is wrong are recorded: *memory* →
+*Gespeicherte Fakten*, because *Erinnerung* reads as reminiscence and
+*Speicher* is already the local store in the recovery copy; *workspace* →
+*Arbeitsbereich* rather than the loanword, unlike *Skill*.
+
+The do-not-translate list holds **names** — Anthropic, MCP, JSON, API — not
+"English words". Ordinary words like *connector* translate; they just have to
+translate consistently, which is the glossary's job. A gate reads that file
+directly, so the list a translator is handed and the list the build enforces
+cannot drift.
+
+**`SHIPPED_FOR_RELEASE` now contains `de`.** A locale joins that list when it
+is complete, not when it ships — the two are different decisions, and this is
+the one that stops it rotting: an English key added without a German one now
+fails on the commit that adds it.
+
+**Translation found three source bugs that extraction had missed**, each the
+same shape — an English word spliced into a sentence:
+
+1. `ACTION_BY_TOOL` produced `Create`/`Edit` and `KIND_BY_TOOL` produced
+   `HTML`/`Text`, both rendered straight into the UI. G10 never saw them: they
+   are assigned into a template literal, not JSX text or a toast. They are ids
+   now, resolved through an ICU `select` so German inflects the participle
+   instead of receiving an English infinitive.
+2. `keychainMode.fileBody` was split into `.before` + `<code>VAR</code>` +
+   `.after`, freezing English word order. The translator had to move the join
+   point between the halves to fake a German compound. It is one message with
+   a `<code>{envVar}</code>` tag now.
+3. The English itself is not self-consistent: it calls the same stored record
+   both "chat" and "conversation", and the same three settings both "flags" and
+   "toggles". German unified each; the English is worth tidying.
+
+**What is still outstanding, and it is the point of the phase:** native review.
+The machine checks the mechanical half — ICU, placeholders, tags, do-not-
+translate, no hardcoded product name. It cannot check that the glossary was
+followed, and consistency of word choice is exactly what a reviewer is for. The
+plan's priority list stands: onboarding's delete-data copy, the three consent
+permission levels, and the settings validation errors.
+
+Also outstanding: **es and fr**, which the same pipeline now produces.
+
 
 The website was localized by duplicating whole HTML pages. That approach is
 correct for four static marketing pages and **fatal** for an app that ships

@@ -1,0 +1,41 @@
+# Terms that must survive translation verbatim (D7).
+#
+# One term per line; `#` starts a comment. Enforced by `catalogs.test.ts`: if a
+# translated string drops one of these, or bends it into a local spelling, the
+# build fails.
+#
+# The rule is not "English words stay English". It is narrower than that:
+# these are *names* — of companies, products, protocols and formats — and a
+# name that varies by locale stops being a name. Ordinary English words that
+# happen to appear in the UI ("connector", "skill", "workspace") are in
+# glossary.md instead, because those DO translate, just consistently.
+#
+# The product's own name is deliberately absent: it never appears literally in
+# a message at all. It arrives through the `{appName}` placeholder so a
+# white-label build can change it in one place (D8), and `catalogs.test.ts`
+# fails any message that hardcodes it.
+
+# ── Providers and vendors ──────────────────────────────────────────────────
+Anthropic
+Claude
+OpenAI
+GPT
+Gemini
+Ollama
+LM Studio
+OpenRouter
+Groq
+DeepSeek
+Mistral
+OpenCode Zen
+
+# ── Protocols, formats and technologies ────────────────────────────────────
+# `API` is here because it is an initialism used as a name in this UI ("API
+# key"), not because initialisms are untranslatable in general.
+MCP
+API
+JSON
+Markdown
+HTML
+SQLite
+AGPL

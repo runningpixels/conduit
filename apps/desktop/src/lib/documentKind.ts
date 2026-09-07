@@ -32,6 +32,9 @@ export function documentKindLabel(kind: string, t: Translate): string {
       return t('common.format.code');
     case 'text':
       return t('common.format.text');
+    case 'document':
+      // The fallback a document tool falls back to when its name is unknown.
+      return t('common.format.document');
     default:
       // An unrecognised kind is data from a tool call, not prose. Show it.
       return kind;

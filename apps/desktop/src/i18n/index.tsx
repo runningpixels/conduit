@@ -38,7 +38,7 @@ import {
 } from 'react-intl';
 import enMessages from './messages/en.json';
 import { appName } from '../brand';
-import { DEFAULT_LOCALE, isSupportedLocale, resolveLocale } from './locales';
+import { DEFAULT_LOCALE, PSEUDO_LOCALE, isSupportedLocale, resolveLocale } from './locales';
 
 export type Messages = Record<string, string>;
 
@@ -83,6 +83,26 @@ const fallbackIntl = createAppIntl(DEFAULT_LOCALE, EN_MESSAGES);
  * whole change — there is no second list to forget.
  */
 const CATALOG_LOADERS = import.meta.glob<{ default: Messages }>('./messages/*.json');
+
+/**
+ * The locales with a catalog actually on disk, English included.
+ *
+ * Read off the same glob that loads them, so `messages/ko.json` is still the
+ * whole change. `SHIPPED_LOCALES` is the eight this app intends to support and
+ * is what the parity gate holds to English; this is the subset a user can be
+ * given *today*, and mid-rollout the two differ.
+ *
+ * The picker needs the difference. Falling back to English for an untranslated
+ * locale is right (D5), but offering 日本語 in a menu, accepting the click and
+ * then rendering English is not a fallback a user can interpret — the setting
+ * saves, the screen does not change, and nothing says why.
+ */
+export const TRANSLATED_LOCALE_CODES: readonly string[] = [
+  DEFAULT_LOCALE,
+  ...Object.keys(CATALOG_LOADERS)
+    .map((path) => path.slice('./messages/'.length, -'.json'.length))
+    .filter((code) => code !== DEFAULT_LOCALE && code !== PSEUDO_LOCALE),
+].sort();
 
 export async function loadMessages(locale: string): Promise<Messages> {
   if (locale === DEFAULT_LOCALE) return EN_MESSAGES;

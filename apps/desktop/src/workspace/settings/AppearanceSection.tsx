@@ -8,7 +8,7 @@ import {
   type UiFontSize,
 } from '../readability';
 import { readPalette, writePalette, type PalettePref, readMermaidScale, writeMermaidScale, type MermaidScalePref } from '../../shell/uiPrefs';
-import { SHIPPED_LOCALES, useT } from '../../i18n';
+import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../../i18n';
 
 interface AppearanceSectionProps {
   settings: AppSettings;
@@ -58,7 +58,14 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
             }
           >
             <option value="system">{t('settings.appearance.language.system')}</option>
-            {SHIPPED_LOCALES.map((locale) => (
+            {SHIPPED_LOCALES.filter(
+              (locale) =>
+                TRANSLATED_LOCALE_CODES.includes(locale.code) ||
+                /* Keep whatever is already saved, even with no catalog behind
+                 * it: a user who picked a locale from an earlier build should
+                 * see their choice in the menu rather than a blank select. */
+                locale.code === settings.language,
+            ).map((locale) => (
               <option key={locale.code} value={locale.code}>
                 {locale.nativeName}
               </option>

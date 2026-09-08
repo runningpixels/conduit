@@ -15,7 +15,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { AppSettings } from '../../ipc/contracts';
 import { AppearanceSection } from './AppearanceSection';
-import { PSEUDO_LOCALE, SHIPPED_LOCALES } from '../../i18n';
+import { PSEUDO_LOCALE, SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES } from '../../i18n';
 
 const settings = {
   activeProvider: 'anthropic',
@@ -123,7 +123,7 @@ describe('language select', () => {
    * options are native names rather than translated ones, and why it sits at
    * the top of the first pane.
    */
-  it('offers System plus every shipped locale, named in its own language', () => {
+  it('offers System plus every translated locale, named in its own language', () => {
     renderSection();
     const select = screen.getByLabelText('Language');
     expect(select).toBeInTheDocument();
@@ -132,14 +132,55 @@ describe('language select', () => {
     // must not be confused for one another.
     const options = within(select);
     expect(options.getByRole('option', { name: 'System' })).toBeInTheDocument();
-    for (const locale of SHIPPED_LOCALES) {
+    const translated = SHIPPED_LOCALES.filter((l) => TRANSLATED_LOCALE_CODES.includes(l.code));
+    for (const locale of translated) {
       expect(
         options.getByRole('option', { name: locale.nativeName }),
         `${locale.code} is missing from the picker`,
       ).toBeInTheDocument();
     }
-    // System + the eight shipped locales, and nothing else.
-    expect(select.querySelectorAll('option')).toHaveLength(SHIPPED_LOCALES.length + 1);
+    expect(select.querySelectorAll('option')).toHaveLength(translated.length + 1);
+  });
+
+  it('does not offer a locale that has no catalog yet', () => {
+    /* `SHIPPED_LOCALES` lists all eight from day one and catalogs land wave by
+     * wave, so mid-rollout the picker would otherwise advertise languages that
+     * do nothing: the option is selectable, the setting saves, and the UI stays
+     * in English with no explanation. Falling back to English is right (D5);
+     * offering the choice in the first place is not. */
+    renderSection();
+    const values = Array.from(
+      screen.getByLabelText('Language').querySelectorAll('option'),
+      (o) => o.value,
+    );
+    const untranslated = SHIPPED_LOCALES
+      .filter((l) => !TRANSLATED_LOCALE_CODES.includes(l.code))
+      .map((l) => l.code);
+    /* Guards the guard: once every locale ships this list empties out and the
+     * assertion below becomes vacuous, which is the correct end state but not
+     * something to reach silently. */
+    expect(untranslated.length + TRANSLATED_LOCALE_CODES.length).toBe(SHIPPED_LOCALES.length);
+    for (const code of untranslated) {
+      expect(values, `${code} has no catalog and must not be offered`).not.toContain(code);
+    }
+  });
+
+  it('keeps a saved locale in the list even with no catalog behind it', () => {
+    // Otherwise the select renders blank for someone who picked a language
+    // from a build that offered more than this one does.
+    const untranslated = SHIPPED_LOCALES.find((l) => !TRANSLATED_LOCALE_CODES.includes(l.code));
+    if (!untranslated) return; // every locale ships; nothing to fall back to
+    render(
+      <AppearanceSection
+        settings={{ ...settings, language: untranslated.code } as AppSettings}
+        onUpdate={vi.fn()}
+      />,
+    );
+    const select = screen.getByLabelText('Language') as HTMLSelectElement;
+    expect(select.value).toBe(untranslated.code);
+    expect(
+      within(select).getByRole('option', { name: untranslated.nativeName }),
+    ).toBeInTheDocument();
   });
 
   it('never offers the pseudo-locale', () => {
@@ -163,11 +204,25 @@ describe('language select', () => {
   });
 
   it('round-trips a region-qualified tag without mangling it', () => {
-    // `pt-BR`, not `ptBr` — the value written here is the exact string the
-    // Rust enum and the catalog filenames use.
-    const { onUpdate } = renderSection();
-    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'pt-BR' } });
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ language: 'pt-BR' }));
+    /* `pt-BR`, not `ptBr` — the value here is the exact string the Rust enum
+     * and the catalog filenames use.
+     *
+     * Driven from the saved setting rather than by selecting the option,
+     * because `pt-BR` is a wave-2 locale and the picker no longer offers what
+     * it cannot render. The mangling this guards against happens on the way
+     * through the option's `value`, which is exactly what is asserted. */
+    const onUpdate = vi.fn();
+    render(
+      <AppearanceSection
+        settings={{ ...settings, language: 'pt-BR' } as AppSettings}
+        onUpdate={onUpdate}
+      />,
+    );
+    const select = screen.getByLabelText('Language') as HTMLSelectElement;
+    expect(select.value).toBe('pt-BR');
+
+    fireEvent.change(select, { target: { value: 'de' } });
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ language: 'de' }));
   });
 
   it('says that the choice also moves the reply language', () => {

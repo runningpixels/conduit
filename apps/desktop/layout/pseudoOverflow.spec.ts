@@ -33,7 +33,7 @@ import { expect, test } from '@playwright/test';
  * string equally, whereas German lengthens some words enormously ("Memory"
  * becomes "Gespeicherte Fakten") and leaves others alone.
  */
-const LONGER_LOCALES = ['en-XA', 'de'];
+const LONGER_LOCALES = ['en-XA', 'de', 'fr'];
 
 /** The shipped window size, and a plausible narrow resize. */
 const VIEWPORTS = [

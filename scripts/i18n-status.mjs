@@ -178,28 +178,39 @@ export function main(argv = process.argv.slice(2)) {
   const i18nDir = resolveI18nDir(argv);
   const messagesDir = join(i18nDir, 'messages');
   const provenancePath = join(i18nDir, 'provenance.json');
-  const acceptArg = argv.find((a) => a.startsWith('--accept='));
+  /* Repeatable. It reads as repeatable, and stamping three locales after a
+   * shared English edit is the normal case, so honouring only the first was
+   * a silent no-op for the other two. */
+  const acceptLocales = argv
+    .filter((a) => a.startsWith('--accept='))
+    .map((a) => a.slice('--accept='.length));
   const en = JSON.parse(readFileSync(join(messagesDir, 'en.json'), 'utf8'));
 
-  if (acceptArg) {
-    const locale = acceptArg.slice('--accept='.length);
-    if (!locale) {
+  if (acceptLocales.length > 0) {
+    if (acceptLocales.some((locale) => !locale)) {
       console.error('i18n-status: --accept= requires a locale, e.g. --accept=de');
       process.exit(1);
       return;
     }
-    if (!existsSync(join(messagesDir, `${locale}.json`))) {
-      console.error(`i18n-status: no catalog at ${join(messagesDir, `${locale}.json`)}`);
+    const unknown = acceptLocales.filter(
+      (locale) => !existsSync(join(messagesDir, `${locale}.json`)),
+    );
+    if (unknown.length > 0) {
+      /* Checked before writing anything: a typo in the third of three should
+       * not leave the first two stamped. */
+      for (const locale of unknown) {
+        console.error(`i18n-status: no catalog at ${join(messagesDir, `${locale}.json`)}`);
+      }
       process.exit(1);
       return;
     }
-    const catalog = loadCatalog(messagesDir, locale);
     const allProvenance = loadProvenance(provenancePath);
-    const before = allProvenance[locale] ?? {};
-    const after = acceptLocale(en, catalog, before);
-    allProvenance[locale] = after;
+    for (const locale of acceptLocales) {
+      const catalog = loadCatalog(messagesDir, locale);
+      allProvenance[locale] = acceptLocale(en, catalog, allProvenance[locale] ?? {});
+      console.log(`i18n-status: accepted ${locale} — stamped ${Object.keys(catalog).length} key(s) as current.`);
+    }
     writeFileSync(provenancePath, `${JSON.stringify(allProvenance, null, 2)}\n`, 'utf8');
-    console.log(`i18n-status: accepted ${locale} — stamped ${Object.keys(catalog).length} key(s) as current.`);
     return;
   }
 

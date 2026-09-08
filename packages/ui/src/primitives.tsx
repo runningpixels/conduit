@@ -239,7 +239,13 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  const phraseOk = !confirmPhrase || phrase.trim() === confirmPhrase;
+  /* Compared in NFC. Every phrase used to be ASCII, where `===` was fine;
+   * translated ones are not ("alle loeschen", "reinitialiser"), and a keyboard
+   * or paste source that emits the decomposed form produces a string that
+   * looks identical in the input and fails the comparison, with the button
+   * staying disabled and nothing on screen explaining why. */
+  const phraseOk =
+    !confirmPhrase || phrase.trim().normalize('NFC') === confirmPhrase.normalize('NFC');
   const confirmDisabled = !phraseOk;
 
   return (

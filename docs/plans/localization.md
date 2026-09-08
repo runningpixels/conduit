@@ -361,7 +361,7 @@ a tooltip. Meanwhile the truncation-without-reveal count it does not give was
 populated conversation, the connector list, the consent dialog — never renders.
 Those need the real build.
 
-### Phase 5 — German complete; native review still outstanding
+### Phase 5 — wave 1 translated; native review still outstanding
 
 `de.json` goes from 72 to **1076 keys**: complete, zero missing, zero orphaned,
 every ICU message parsing with placeholder and inline-tag parity against
@@ -422,6 +422,69 @@ already free to drift, silently, and nothing reports it.
 
 Conduit needs the opposite shape: one English catalog as source of truth, six
 sibling catalogs generated from it, and CI that fails when they diverge. This
+#### Spanish and French
+
+Both are complete on the same terms as German: **1076 keys each**, zero missing,
+zero orphaned, ICU valid, placeholder and tag parity against English, and
+provenance stamped. `i18n:status --strict` reports 3228 current keys and nothing
+stale. The layout walk now covers `fr` alongside `en-XA` and `de` at both
+viewports — eight checks, all passing, nothing clipping under French that does
+not already clip under English.
+
+The glossary gained Spanish and French columns, and three places where those two
+should *not* copy German are written down with the reason (German's *memory*,
+*connector* and *tool call* entries are all workarounds for German-specific
+collisions).
+
+#### What translation found that the guards could not
+
+Four defects, none of which any existing gate could see, because every one of
+them is a string that is correctly translated and still wrong:
+
+1. **English named a section that does not exist.**
+   `settings.privacy.trust.noKey.detail` sent the user to "Provider & Model".
+   The section is "Providers & keys" — in the nav, the heading and the sidebar
+   menu. German, Spanish and French had each faithfully translated the wrong
+   name, which is precisely what a good translator does.
+2. **French named one element two ways.** The composer chip is labelled
+   *Paramètres du chat*; `settings.generationControls.intro` told the user to
+   look for a chip called *Réglages de la conversation*. Two translators, two
+   slices, no shared word for the app's own furniture.
+3. **Spanish did the same thing four times.** The settings sheet is titled
+   *Configuración*, and four separate strings told the user to go to *Ajustes*.
+4. **The type-to-confirm dialog compared raw code points.**
+   `phrase.trim() === confirmPhrase` was harmless while every phrase was ASCII.
+   Once the phrases became *alle löschen* and *réinitialiser*, a keyboard or
+   paste source emitting the decomposed form produced a string that looks
+   identical in the input and fails the comparison — the confirm button stays
+   disabled with nothing on screen explaining why. Now compared in NFC, with a
+   test that fails without the fix.
+
+The first three share one cause: a UI element's name is duplicated as free prose
+in another key, and nothing ties the two together. **Guard G12**
+(`i18n/uiCrossReferences.test.ts`) now checks that a sentence naming an element
+contains that element's own label, per locale, comparing content words after
+folding away case, accents, punctuation and articles so that legitimate
+rephrasing passes. It found all three, and one entry of its own registry that
+was wrong — English's "Add a provider key…" is an instruction that happens to
+share three words with the "Add a provider" button, not a reference to it, and
+German's correct translation would never contain the button's name.
+
+The glossary now carries the app's own furniture (the settings screen, and
+generation *parameters* kept distinct from it) rather than only product
+concepts, because that gap is what split French.
+
+Two smaller repairs: German's `error.validation.stopSequenceLength` fused
+*Stoppsequenzen* where the field is labelled *Stopp-Sequenzen*, and
+`i18n-status --accept` reads as repeatable but silently honoured only the first
+locale, so stamping three locales after a shared English edit was a no-op for
+two of them.
+
+**Still outstanding:** native review of de/es/fr, which is the point of this
+phase and cannot be done by an agent.
+
+---
+
 plan builds that, extracts roughly 300 renderer strings and a triaged subset of
 the Rust error surface into it, and ships in three waves matching the website's
 own rollout.

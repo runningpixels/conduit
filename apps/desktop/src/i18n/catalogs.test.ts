@@ -8,6 +8,8 @@ import { RICH_TAG_NAMES } from './index';
 import { SHIPPED_LOCALE_CODES } from './locales';
 import enMessages from './messages/en.json';
 import deMessages from './messages/de.json';
+import esMessages from './messages/es.json';
+import frMessages from './messages/fr.json';
 
 /// The catalog gates from D14, minus G10 (which scans *source* and lands with
 /// the rest of the extraction in Phase 6). These three run against the catalog
@@ -33,11 +35,13 @@ const en = enMessages as Catalog;
  *
  * Shipping is Phase 6's call and additionally requires native review.
  */
-const SHIPPED_FOR_RELEASE: readonly string[] = ['de'];
+const SHIPPED_FOR_RELEASE: readonly string[] = ['de', 'es', 'fr'];
 
 /** Catalogs that exist on disk today. Grows one row per wave (D1). */
 const TRANSLATIONS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
   ['de', deMessages as Catalog],
+  ['es', esMessages as Catalog],
+  ['fr', frMessages as Catalog],
 ];
 
 /** Placeholder names an ICU message reads, including inside plural arms. */
@@ -93,6 +97,36 @@ function doNotTranslate(): string[] {
     .filter((line) => line.length > 0 && !line.startsWith('#'));
 }
 
+/**
+ * Keys whose cardinal plural has no `one` (or `=1`) arm.
+ *
+ * Applied to every catalog, not just English: a translation that drops the arm
+ * renders "1 servidores" exactly as English rendered "Found 1 servers", and
+ * the placeholder-parity check does not see it — parity compares argument
+ * names, and the arms are inside the argument.
+ */
+function pluralsMissingSingular(catalog: Catalog): string[] {
+  const missing: string[] = [];
+  for (const [key, value] of Object.entries(catalog)) {
+    const check = (elements: MessageFormatElement[]): void => {
+      for (const el of elements) {
+        if (el.type === TYPE.plural && el.pluralType === 'cardinal') {
+          const arms = Object.keys(el.options);
+          if (!arms.includes('one') && !arms.includes('=1')) {
+            missing.push(`${key}: arms are ${arms.join(', ')}`);
+          }
+        }
+        if (el.type === TYPE.plural || el.type === TYPE.select) {
+          for (const option of Object.values(el.options)) check(option.value);
+        }
+        if (el.type === TYPE.tag) check(el.children);
+      }
+    };
+    check(parse(value));
+  }
+  return missing;
+}
+
 describe('English catalog', () => {
   it('is not empty and has no blank values', () => {
     expect(Object.keys(en).length).toBeGreaterThan(0);
@@ -139,6 +173,13 @@ describe('English catalog', () => {
     for (const [key, value] of Object.entries(en)) {
       expect(value, `${key} contains a literal product name`).not.toContain(DEFAULT_BRAND.appName);
     }
+  });
+
+  it('gives every plural a singular arm', () => {
+    /* `{count, plural, =0 {none} other {Found # servers}}` renders "Found 1
+     * servers". Six of these were found during extraction; a seventh survived
+     * and was caught by a translator rather than by anything here. */
+    expect(pluralsMissingSingular(en)).toEqual([]);
   });
 
   it('uses only inline tags the renderer knows how to render', () => {
@@ -208,6 +249,10 @@ describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
         DEFAULT_BRAND.appName,
       );
     }
+  });
+
+  it('gives every plural a singular arm', () => {
+    expect(pluralsMissingSingular(catalog)).toEqual([]);
   });
 
   it('keeps every name that must not be translated (D7)', () => {

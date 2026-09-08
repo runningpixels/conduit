@@ -122,7 +122,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
   it('shows the diagnostics disclosure copy on the finish step', () => {
     renderOnboarding();
     goToFinishStep();
-    const copy = screen.getAllByText(/never secrets, base URLs, allowlists, or conversation content/i);
+    const copy = screen.getAllByText(/never secrets, base URLs, allowlists, or chat content/i);
     expect(copy).toHaveLength(1);
   });
 

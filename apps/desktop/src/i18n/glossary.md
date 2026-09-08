@@ -22,7 +22,7 @@ choice, the entry says so.
 | --- | --- | --- | --- | --- |
 | artifact | Artefakt | Artefacto | Artefact | Established: `recovery.delete.wipe.scopeConversationsLabel`. |
 | connector | Connector | Conector | Connecteur | Kept as a loanword, capitalised as a German noun. It names a feature of this app, and *Adapter* / *Erweiterung* both already mean something else in the ecosystem. |
-| conversation | Unterhaltung | Conversación | Conversation | Established: `onboarding.welcome.lede`. Not *Gespräch* — the UI means the stored record, not the act. |
+| chat (the stored record) | Chat | chat | conversation | English said both "chat" and "conversation" for one object and now says only *chat*. The three locales split on purpose — see below. Never *Gespräch* / *charla*: the UI means the stored record, not the act of talking. |
 | provider | Anbieter | Proveedor | Fournisseur | Established: `onboarding.finish.needCredential`. |
 | model | Modell | Modelo | Modèle | Established. The model *id* is data and never translates. |
 | key (API key) | Schlüssel | Clave | Clé | Established. `API` itself stays English. |
@@ -38,20 +38,59 @@ choice, the entry says so.
 | store (local data) | Speicher | Almacén local | Stockage local | Established: `recovery.actions.continueFresh`. |
 | settings (the screen) | Einstellungen | Configuración | Paramètres | The settings sheet, and every sentence that points at it. Not French *Réglages*, which is the macOS word — this app is Windows-first and its window controls already follow Windows. |
 | parameters (generation) | Modellparameter | Parámetros | Paramètres du modèle | Always qualified, so it does not collide with the screen above. |
+| composer | Eingabebereich | campo de mensaje | zone de saisie | The region holding the input, the Chat settings chip, the skills and search icons and the folder binding. Never the calque: `Composer` reads as *Komponist*, and *compositor* / *compositeur* are people who write music. Spanish and French both took the name from the skip link, the one place the element names itself to a screen reader. |
+| sidebar | Seitenleiste | Barra lateral | Barre latérale | The `<aside>`. The `<nav>` inside it is the chat list and is named separately — they were briefly both "Chats", which a screen reader reads as "Chats region, Chats navigation". |
 
 ## Name every screen before the work is split
 
-The two rows above were added after the fact. French came back with the
-settings screen called *Paramètres* in one slice and *Réglages* in another,
-because the glossary covered product concepts and said nothing about the app's
-own furniture — and the two translators split the work between them before
-either could notice.
+These four rows were all added after the fact, and the same way each time.
+French came back with the settings screen called *Paramètres* in one slice and
+*Réglages* in another, because the glossary covered product concepts and said
+nothing about the app's own furniture — and the two translators split the work
+between them before either could notice. The composer was worse: English itself
+called it two things ("the composer", "the chat bar"), and underneath that
+German had three names for it, Spanish five and French five.
 
 That is cheap to fix inside one locale and expensive across seven, so anything
 the copy points at *by name* belongs here before a wave starts: screens, rails,
-chips, and the buttons that prose tells the user to press. Guard G12
-(`uiCrossReferences.test.ts`) enforces the half of this that can be checked
-mechanically — that a sentence naming an element uses that element's own label.
+chips, and the buttons that prose tells the user to press. Two guards in `uiCrossReferences.test.ts` enforce what can be checked
+mechanically. **G12** compares a sentence against the label of the element it
+names. **G13** covers the elements that have no label to compare against — the
+composer is a region whose only name lives in a skip link — by pinning the word
+each locale settled on, and failing when a locale has no row at all. That last
+part is why the table is hard-coded rather than inferred: inferring a rendering
+from the catalog can only discover what is already there, so it would bless a
+split instead of catching one.
+
+## Why French says *conversation* where German and Spanish say *Chat*
+
+English normalised onto "chat" for the stored record. German and Spanish
+followed it into the loanword; French refused, and all three were right.
+
+- **German — *Chat*.** It is what German consumer messaging UI says (WhatsApp,
+  Telegram, Teams), it is 4 characters against 12, and it was already the word
+  inside every compound label the app ships (*Chat-Einstellungen*,
+  *Chat-Sitzung*, *Neuer Chat*). Choosing *Unterhaltung* would have renamed
+  every one of those and turned the composer chip into
+  *Unterhaltungseinstellungen*. Note the gender change it forced: *die
+  Unterhaltung* to *der Chat* moved articles and adjectives in about ten
+  strings, not just the noun.
+- **Spanish — *chat*.** Same reasoning. *El chat* is masculine and short where
+  *la conversación* is twelve characters and drags agreement through 49
+  strings, and the app furniture already read *barra de chat*, *sesión de
+  chat*, *Ajustes del chat*.
+- **French — *conversation*.** *Chat* is the French word for **cat**. The
+  rename would have put a bare, unqualified *Chats* in the sidebar landmark,
+  the command-palette heading and the search placeholder — exactly the places
+  with no surrounding context to disambiguate it. *Conversation* is also what
+  French messaging UI ships. The width cost is real (*Paramètres de la
+  conversation* is 29 characters against 13) and is paid deliberately: if a
+  label overflows, the fix is a shorter label, not a word that reads as an
+  animal.
+
+The lesson is the one this table exists for. A per-locale glossary is not a
+translation of an English table — it is the place each language records the
+constraint the others do not have.
 
 ## Why Spanish and French diverge from German in three places
 

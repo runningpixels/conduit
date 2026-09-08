@@ -32,6 +32,8 @@ import frMessages from './messages/fr.json';
 
 type Catalog = Record<string, string>;
 
+const en = enMessages as Catalog;
+
 const CATALOGS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
   ['en', enMessages as Catalog],
   ['de', deMessages as Catalog],
@@ -43,6 +45,11 @@ const CATALOGS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
 const CROSS_REFERENCES: ReadonlyArray<{ prose: string; names: string }> = [
   { prose: 'settings.generationControls.intro', names: 'chat.composer.chatSettings.ariaLabel' },
   { prose: 'app.status.chatSettingsUnavailable', names: 'chat.composer.chatSettings.ariaLabel' },
+  /* The command palette entry that opens the chip. It briefly read "Settings
+   * for this chat", which matched its siblings ("Archive this chat") and broke
+   * the one thing a palette is for: typing the name on the chip stopped
+   * finding it. Registered so the two names stay one name. */
+  { prose: 'workspace.commandPalette.command.chatSettings', names: 'chat.composer.chatSettings.ariaLabel' },
   { prose: 'chat.view.status.chatSettingsSaved', names: 'chat.composer.chatSettings.ariaLabel' },
   { prose: 'error.credentials.fileKeyMissing', names: 'shell.settingsSheet.nav.privacy' },
   { prose: 'shell.settingsSheet.webSearch.intro', names: 'shell.settingsSheet.nav.privacy' },
@@ -125,6 +132,115 @@ function appearsIn(word: string, haystack: readonly string[]): boolean {
   const stem = word.slice(0, Math.min(6, word.length));
   return haystack.some((candidate) => candidate.startsWith(stem));
 }
+
+/**
+ * Elements the copy points at by name, but which carry no label of their own.
+ *
+ * G12 below compares a sentence against the label of the thing it names. That
+ * only works when the thing *has* a label. The composer has none — it is a
+ * region, and the one place it is named to the user is a visually-hidden skip
+ * link. Registering that link as a G12 target does not work either: its text
+ * is "Skip to composer", so every sentence merely mentioning the composer
+ * would be required to contain "skip", and correct translations would fail.
+ *
+ * So these are pinned the other way round — by naming the word each locale
+ * settled on. That is the glossary in executable form, and it is deliberately
+ * a hard-coded table: a new locale has to add a row, which is the point. The
+ * alternative, inferring the rendering from the catalog, can only discover
+ * what is already there and would bless a split rather than catch it.
+ *
+ * Both entries were settled by hand after the same defect appeared twice.
+ * English called the composer "the composer" in seven strings and "the chat
+ * bar" in three; underneath that, German had three names for it, French five,
+ * Spanish five. Every locale independently rejected the obvious calque —
+ * `Composer` reads as *Komponist*, and *compositor* / *compositeur* are the
+ * people who write music.
+ */
+const ELEMENT_NAMES: ReadonlyArray<{
+  element: string;
+  /** Matches the English values that name this element. */
+  english: RegExp;
+  /** The one rendering per locale. English is the key it was settled from. */
+  renderings: Readonly<Record<string, string>>;
+  /** Names that lost, and must not come back. */
+  rejected: readonly string[];
+}> = [
+  {
+    element: 'composer',
+    english: /composer/i,
+    renderings: {
+      en: 'composer',
+      de: 'Eingabebereich',
+      es: 'campo de mensaje',
+      fr: 'zone de saisie',
+    },
+    rejected: [
+      'Composer', // German: reads as Komponist
+      'compositor', // Spanish: writes music
+      'compositeur', // French: writes music
+      'Eingabefeld',
+      'Chat-Leiste',
+      'cuadro de mensaje', // Spanish for a modal MessageBox
+      'campo de entrada',
+      'barra de chat',
+      'champ de saisie', // any text field, so not a name
+      'barre de saisie',
+      'zone de message', // reads as the transcript, the opposite element
+    ],
+  },
+  {
+    element: 'sidebar',
+    english: /sidebar/i,
+    renderings: {
+      en: 'Sidebar',
+      de: 'Seitenleiste',
+      es: 'barra lateral',
+      fr: 'barre latérale',
+    },
+    rejected: [],
+  },
+];
+
+describe('element names (G13)', () => {
+  for (const { element, english, renderings, rejected } of ELEMENT_NAMES) {
+    const named = Object.keys(en).filter((key) => english.test(en[key]));
+
+    it(`${element}: English names it in at least one string`, () => {
+      // Guards the guard. A regex that stops matching would make every
+      // assertion below vacuously true.
+      expect(named.length).toBeGreaterThan(0);
+    });
+
+    for (const [locale, catalog] of CATALOGS) {
+      it(`${element}: ${locale} uses one name for it`, () => {
+        const expected = renderings[locale];
+        /* A locale with no row is the failure, not an exemption: it means a
+         * wave-2 translator picked a word and nothing recorded which. */
+        expect(expected, `no ${element} rendering recorded for ${locale}`).toBeDefined();
+
+        const wrong = named.filter((key) => {
+          const value = catalog[key];
+          return typeof value === 'string' && !value.toLowerCase().includes(expected.toLowerCase());
+        });
+        expect(wrong, `${locale} strings naming the ${element} some other way`).toEqual([]);
+      });
+    }
+
+    if (rejected.length > 0) {
+      it(`${element}: the names that lost stay gone`, () => {
+        const survivors: string[] = [];
+        for (const [locale, catalog] of CATALOGS) {
+          for (const [key, value] of Object.entries(catalog)) {
+            for (const name of rejected) {
+              if (value.includes(name)) survivors.push(`${locale} ${key}: "${name}"`);
+            }
+          }
+        }
+        expect(survivors).toEqual([]);
+      });
+    }
+  }
+});
 
 describe('UI cross-references (G12)', () => {
   for (const [locale, catalog] of CATALOGS) {

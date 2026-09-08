@@ -269,7 +269,7 @@ describe('Sidebar', () => {
         />,
       );
       expect(screen.getByText('Pinned')).toBeTruthy();
-      const list = screen.getByLabelText('Conversations').querySelector('.sb-list');
+      const list = screen.getByLabelText('Sidebar').querySelector('.sb-list');
       const text = list?.textContent ?? '';
       expect(text.indexOf('Pinned')).toBeLessThan(text.indexOf('Today'));
       expect(text.indexOf('Old pin')).toBeLessThan(text.indexOf('Triage notes'));

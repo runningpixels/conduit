@@ -480,6 +480,72 @@ Two smaller repairs: German's `error.validation.stopSequenceLength` fused
 locale, so stamping three locales after a shared English edit was a no-op for
 two of them.
 
+#### The naming pass, and why it came before wave 2
+
+Translating the same UI three times surfaced a defect English had all along:
+**the app called its own parts by more than one name, and every locale
+inherited the split and made it worse.**
+
+English called the stored record a "chat" in 57 keys and a "conversation" in
+39. On the user's decision it now says *chat* everywhere, and the 44 affected
+strings were rewritten. Each locale then had to collapse its own split, and
+**they did not collapse the same way** — which is the whole argument for a
+per-locale glossary rather than a translated English one:
+
+| | record | reasoning |
+| --- | --- | --- |
+| German | *Chat* | What German messaging UI says; 4 characters against 12; already the word inside every compound label the app ships. Forced a gender change (*die Unterhaltung* to *der Chat*) through roughly ten strings. |
+| Spanish | *chat* | Same, plus *la conversación* drags agreement through 49 strings in a width-constrained UI. |
+| French | *conversation* | **In French, *chat* is the word for "cat".** The rename would have put a bare, unqualified *Chats* in the sidebar landmark, the command-palette heading and the search placeholder — the three places with no context to disambiguate it. The width cost is paid deliberately. |
+
+Underneath that, one element had no agreed name at all. English called the
+composer "the composer" in seven strings and "the chat bar" in three; German
+had three renderings, Spanish five, French five. All three locales
+independently rejected the calque — `Composer` reads as *Komponist*, and
+*compositor* / *compositeur* are people who write music — and Spanish and
+French independently anchored on the skip link, the one place the element names
+itself to a screen reader.
+
+Four English defects fell out of the same pass. `settings.privacy.trust.noKey`
+pointed at a section that has never existed. The sidebar's `<aside>` and its
+`<nav>` were briefly both "Chats", which a screen reader announces as "Chats
+region, Chats navigation". `chat.errorBoundary.detail` said "the chat thread",
+a third noun for the record, which forced German into *Chatverlauf* and
+collided with "chat history". And renaming the palette entry to "Settings for
+this chat" — which matched its siblings — silently broke discoverability:
+typing the chip's own name stopped finding the command.
+
+**Guard G13** now enforces what G12 cannot. G12 compares a sentence against the
+label of the element it names, which only works when the element *has* a label;
+the composer is a region whose only name is a visually-hidden skip link.
+Registering that link as a G12 target fails on correct translations, because
+its text is "Skip to composer" and no sentence mentioning the composer contains
+"skip" — the Spanish translator caught that, and it is why G13 pins the settled
+word per locale instead, failing loudly when a locale has no row. The table is
+hard-coded on purpose: a rendering inferred from the catalog can only discover
+what is already there, so it would bless a split rather than catch one.
+
+#### Accessibility and D17, which the same pass unblocked
+
+`index.html` shipped `<html lang="en">` and nothing ever moved it, so every
+locale was announced to a screen reader in an English voice — the one i18n
+defect a sighted reviewer cannot see. `I18nProvider` now sets `lang` and `dir`
+from the resolved locale.
+
+That is also the prerequisite for D17. Geist carries no CJK, so Japanese,
+Chinese and Korean reach the browser's per-character fallback, which picks *a*
+font with the glyph — and Han characters are unified across the three languages
+at the code-point level but drawn differently, so a Japanese UI on a machine
+carrying a Chinese font can render kanji in Chinese letterforms. `lang` breaks
+the tie; explicit per-language stacks in `tokens.css` (UI, mono **and** serif,
+since Source Serif 4 has no CJK either) name the platform face rather than
+trusting the guess.
+
+One shipping gap closed alongside: the language picker offered all eight
+locales while only four had catalogs, so selecting 日本語 saved the setting,
+crossed into Rust, and changed nothing on screen. It now offers only what it
+can render, derived from the same glob that loads the catalogs.
+
 **Still outstanding:** native review of de/es/fr, which is the point of this
 phase and cannot be done by an agent.
 

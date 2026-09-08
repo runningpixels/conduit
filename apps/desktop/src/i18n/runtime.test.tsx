@@ -144,6 +144,25 @@ describe('I18nProvider', () => {
     // a settings picker can show what the user actually chose.
     await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('de/de-AT'));
   });
+
+  it('moves html[lang] to the resolved locale', async () => {
+    /* `index.html` hard-codes `lang="en"`. Left there, a screen reader reads
+     * German with an English voice — the one i18n defect a sighted reviewer
+     * cannot see — and the font fallback engine loses the only signal that
+     * separates Japanese kanji from Simplified Chinese at the same code point
+     * (D17).
+     *
+     * Asserted on the resolved locale, not the preference: `de-AT` resolves to
+     * the `de` catalog, and claiming `de-AT` would describe text that is not
+     * Austrian. */
+    render(
+      <I18nProvider initialPreference="de-AT">
+        <Probe id="onboarding.actions.back" />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(document.documentElement.lang).toBe('de'));
+    expect(document.documentElement.dir).toBe('ltr');
+  });
 });
 
 describe('loadMessages', () => {
@@ -230,6 +249,22 @@ describe('changing language at runtime', () => {
     await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('de'));
     // Written so the *next* launch paints German on its first frame.
     expect(readCachedLanguage()).toBe('de');
+  });
+
+  it('moves html[lang] with the switch, not just on mount', async () => {
+    // A stale `lang` is worse than none: it asserts a language the text is not
+    // in, and everything downstream — screen reader voice, font fallback,
+    // line breaking — believes it.
+    document.documentElement.lang = 'en';
+    render(
+      <I18nProvider>
+        <LocaleSwitcher />
+      </I18nProvider>,
+    );
+    expect(document.documentElement.lang).toBe('en');
+
+    fireEvent.click(screen.getByRole('button', { name: 'switch' }));
+    await waitFor(() => expect(document.documentElement.lang).toBe('de'));
   });
 
   it('refuses to change language while a dev override is pinned', () => {

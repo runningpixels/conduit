@@ -38,7 +38,7 @@ import {
 } from 'react-intl';
 import enMessages from './messages/en.json';
 import { appName } from '../brand';
-import { DEFAULT_LOCALE, PSEUDO_LOCALE, isSupportedLocale, resolveLocale } from './locales';
+import { DEFAULT_LOCALE, PSEUDO_LOCALE, isSupportedLocale, localeEntry, resolveLocale } from './locales';
 
 export type Messages = Record<string, string>;
 
@@ -359,6 +359,26 @@ export function I18nProvider({
     return () => {
       cancelled = true;
     };
+  }, [locale]);
+
+  /* `index.html` ships `<html lang="en">` and nothing ever moved it, so every
+   * locale was announced as English. That is not cosmetic:
+   *
+   *   - A screen reader picks its voice and pronunciation rules from this
+   *     attribute. German read aloud by an English synthesiser is unusable,
+   *     and it is the one i18n defect a sighted reviewer cannot see.
+   *   - The font fallback engine uses it to disambiguate Han characters. Kanji
+   *     and Simplified Chinese share code points but not glyph shapes, so a
+   *     Japanese UI on a machine that also has a Chinese font can render
+   *     Chinese letterforms without `lang` to break the tie (D17).
+   *   - Line breaking, hyphenation and locale-aware quotes key off it too.
+   *
+   * Set on the resolved locale rather than the preference, because `'system'`
+   * is not a language. */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.lang = locale;
+    root.dir = localeEntry(locale)?.dir ?? 'ltr';
   }, [locale]);
 
   const intl = useMemo(() => createAppIntl(locale, messages), [locale, messages]);

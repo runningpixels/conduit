@@ -66,6 +66,19 @@ const CROSS_REFERENCES: ReadonlyArray<{ prose: string; names: string }> = [
    * button's name. A registry entry that fires on good translations is worse
    * than no entry. */
   { prose: 'settings.agent.status.maxStepsRange', names: 'settings.agent.maxSteps.label' },
+
+  /* The `error.validation.*` twins. Each named its field by a name the field
+   * does not have — "Wall-clock budget" for a control labelled "Turn time
+   * limit", "Max steps" for "Max agent steps", "Instructions" for "User
+   * instructions" — which is "Provider & Model" again, surviving only because
+   * the status twin was registered and the validation twin was not. Found by
+   * the Japanese lead while deciding terminology, before a line was
+   * translated. */
+  { prose: 'error.validation.agentMaxStepsRange', names: 'settings.agent.maxSteps.label' },
+  { prose: 'error.validation.userInstructionsLength', names: 'chat.generation.userInstructions.label' },
+  { prose: 'settings.diagnostics.actions.exportDisabledTitle', names: 'shell.settingsSheet.nav.privacy' },
+  { prose: 'settings.diagnostics.disabledHint', names: 'shell.settingsSheet.nav.privacy' },
+  { prose: 'settings.privacy.header', names: 'shell.settingsSheet.nav.privacy' },
   { prose: 'error.validation.webSearchAllowedDomainsCap', names: 'settings.webSearch.allowedDomains.heading' },
   { prose: 'error.validation.webSearchBlockedDomainsCap', names: 'settings.webSearch.blockedDomains.heading' },
   { prose: 'error.validation.stopSequenceLength', names: 'chat.generation.stopSequences.label' },
@@ -94,10 +107,23 @@ const CROSS_REFERENCES: ReadonlyArray<{ prose: string; names: string }> = [
  * user is being sent to.
  */
 const FUNCTION_WORDS = new Set([
-  'a', 'an', 'and', 'or', 'the', 'of', 'in', 'on', 'to', 'for', 'under',
+  // English
+  'a', 'an', 'and', 'or', 'the', 'of', 'in', 'on', 'to', 'for', 'under', 'with', 'from',
+  // German
   'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'und', 'im', 'unter', 'zum', 'zur',
-  'el', 'la', 'los', 'las', 'un', 'una', 'del', 'de', 'y', 'e', 'en',
-  'le', 'les', 'du', 'et', 'une', 'aux', 'au', 'dans',
+  // Spanish
+  'el', 'la', 'los', 'las', 'un', 'una', 'del', 'de', 'y', 'e', 'en', 'al', 'con', 'para', 'por',
+  // French
+  'le', 'les', 'du', 'et', 'une', 'aux', 'au', 'dans', 'des', 'avec', 'pour', 'par',
+  /* Portuguese. Every one of these is a preposition fused with an article, and
+   * that fusion is the whole problem: a chip labelled "Configurações do chat"
+   * keeps `do` as a content word, so the correct sentence "Configurações
+   * salvas somente para este chat." was reported as missing it. The guard
+   * would have failed good Portuguese on three of its eleven labels before a
+   * line was translated — found by the pt-BR lead reading the guard rather
+   * than by running it. */
+  'do', 'da', 'dos', 'das', 'no', 'na', 'nos', 'nas', 'ao', 'aos', 'à', 'às',
+  'pelo', 'pela', 'pelos', 'pelas', 'num', 'numa', 'os', 'as', 'uma', 'sob',
 ]);
 
 /** Case-folded, accent-stripped, punctuation-free content words. */
@@ -207,17 +233,25 @@ const ELEMENT_NAMES: ReadonlyArray<{
       es: 'campo de mensaje',
       fr: 'zone de saisie',
     },
+    /* Scanned across the whole catalog, so this list may hold only names that
+     * are wrong *everywhere*. The generic field words are deliberately absent
+     * — `Eingabefeld`, `champ de saisie`, `campo de entrada`, `入力欄` are the
+     * correct words for an ordinary text input, of which this app has many.
+     * Listing them would fail a correct translation somewhere else in the
+     * catalog, which is the failure mode that gets a guard deleted. Using one
+     * of them *as the composer's name* is still caught, by the check above.
+     *
+     * The Japanese lead spotted this while deciding their own reject list, and
+     * it was already live in the German and French rows. */
     rejected: [
       'Composer', // German: reads as Komponist
       'compositor', // Spanish: writes music
       'compositeur', // French: writes music
-      'Eingabefeld',
-      'Chat-Leiste',
-      'cuadro de mensaje', // Spanish for a modal MessageBox
-      'campo de entrada',
-      'barra de chat',
-      'champ de saisie', // any text field, so not a name
+      'コンポーザー', // Japanese: also a music composer — the fourth locale to reject the calque
+      'Chat-Leiste', // calque of English's own abandoned second name
       'barre de saisie',
+      'チャットバー',
+      'cuadro de mensaje', // Spanish for a modal MessageBox
       'zone de message', // reads as the transcript, the opposite element
     ],
   },
@@ -362,6 +396,35 @@ describe('UI cross-references (G12)', () => {
       }
 
       expect(broken).toEqual([]);
+    });
+
+    it(`${locale}: the comparison is actually capable of failing`, () => {
+      /* Guard the guard. This check reported green for every CJK locale not
+       * because the names agreed but because it could not see them: the
+       * content-word tokeniser keeps `a-z0-9` runs, so a Japanese label folded
+       * to an empty list and "nothing missing" was true by construction.
+       *
+       * Fixed above by routing those scripts to a subsequence match — but the
+       * next script with no Latin letters would reintroduce it silently, and a
+       * check that cannot fail is worse than one that is absent, because the
+       * suite reports it as passing. So: assert that at least one comparison
+       * per locale had something to compare. */
+      const vacuous: string[] = [];
+      let compared = 0;
+
+      for (const { prose, names } of CROSS_REFERENCES) {
+        const sentence = catalog[prose];
+        const label = catalog[names];
+        if (typeof sentence !== 'string' || typeof label !== 'string') continue;
+        compared += 1;
+        const empty = SCRIPT_WITHOUT_SPACES.test(label)
+          ? significantChars(label).length === 0
+          : contentWords(label).length === 0;
+        if (empty) vacuous.push(`${names} ("${label}") yields nothing to match on`);
+      }
+
+      expect(compared).toBeGreaterThan(0);
+      expect(vacuous).toEqual([]);
     });
   }
 });

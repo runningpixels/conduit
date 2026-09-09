@@ -39,3 +39,20 @@ Markdown
 HTML
 SQLite
 AGPL
+
+# Vendor and format names the wave-2 pass found unprotected. Japanese
+# transliterates by reflex, so these are the ones most at risk.
+# `Explorer` is deliberately NOT here: Japanese Windows calls it
+# エクスプローラー, so that string should be localised.
+SearXNG
+Tavily
+Brave
+DuckDuckGo
+Rust
+SKILL.md
+brand.md
+OAuth
+PNG
+SVG
+JPEG
+WebP

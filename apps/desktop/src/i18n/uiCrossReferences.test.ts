@@ -133,6 +133,39 @@ function appearsIn(word: string, haystack: readonly string[]): boolean {
   return haystack.some((candidate) => candidate.startsWith(stem));
 }
 
+/* Kana, CJK ideographs and Hangul. */
+const SCRIPT_WITHOUT_SPACES = /[぀-ヿ㐀-䶿一-鿿가-힯ｦ-ﾟ]/;
+
+/**
+ * The content-word check above cannot see these scripts at all.
+ *
+ * `contentWords` accumulates runs of `a-z0-9`, so a Japanese label folds to an
+ * empty word list, `missing` is empty by construction, and every pair passes.
+ * The guard was not lenient for ja/ko/zh — it was inert, which is worse than
+ * absent, because the suite reports it green.
+ *
+ * These languages need a different primitive rather than a different word list:
+ * they have no spaces to tokenise on, so the label is compared as a
+ * **subsequence** of the sentence, over significant characters only. That
+ * tolerates exactly what a translator legitimately does — inserting a particle,
+ * so that a chip labelled チャット設定 may be pointed at as チャットの設定 — while
+ * still failing when the sentence uses a different word.
+ */
+function significantChars(value: string): string[] {
+  return Array.from(value.toLowerCase()).filter((char) => /[\p{L}\p{N}]/u.test(char));
+}
+
+function containsSubsequence(sentence: string, label: string): boolean {
+  const needle = significantChars(label);
+  if (needle.length === 0) return true;
+  let at = 0;
+  for (const char of significantChars(sentence)) {
+    if (char === needle[at]) at += 1;
+    if (at === needle.length) return true;
+  }
+  return false;
+}
+
 /**
  * Elements the copy points at by name, but which carry no label of their own.
  *
@@ -201,6 +234,52 @@ const ELEMENT_NAMES: ReadonlyArray<{
   },
 ];
 
+describe('the CJK matcher itself', () => {
+  /* Tested directly rather than through a catalog, because no CJK catalog
+   * exists yet. Wiring a matcher for ja/ko/zh and shipping it unexercised
+   * until wave 2 lands would repeat the mistake it was written to fix: a check
+   * that reports green without ever having run. */
+
+  it('accepts a label the sentence carries verbatim', () => {
+    expect(containsSubsequence('チャット設定を保存しました', 'チャット設定')).toBe(true);
+  });
+
+  it('accepts a particle inserted inside the label', () => {
+    // A translator writing チャットの設定 for a chip labelled チャット設定 has
+    // pointed at the right element, and must not be reported.
+    expect(containsSubsequence('チャットの設定を保存しました', 'チャット設定')).toBe(true);
+  });
+
+  it('rejects a sentence that uses a different word', () => {
+    // 会話 rather than チャット — the drift this whole file exists to catch.
+    expect(containsSubsequence('会話の設定を保存しました', 'チャット設定')).toBe(false);
+  });
+
+  it('works for Hangul, which has spaces but no Latin letters', () => {
+    expect(containsSubsequence('채팅 설정이 저장되었습니다', '채팅 설정')).toBe(true);
+    expect(containsSubsequence('대화 설정이 저장되었습니다', '채팅 설정')).toBe(false);
+  });
+
+  it('ignores punctuation and spacing differences', () => {
+    expect(containsSubsequence('「チャット設定」を保存しました。', 'チャット設定')).toBe(true);
+  });
+
+  it('is not vacuous the way the content-word check was', () => {
+    /* The bug that prompted this: `contentWords` accumulates runs of a-z0-9,
+     * so every CJK label folded to nothing and every pair passed. */
+    expect(contentWords('チャット設定')).toEqual([]);
+    expect(containsSubsequence('まったく別の文', 'チャット設定')).toBe(false);
+  });
+
+  it('routes CJK labels away from the content-word path', () => {
+    expect(SCRIPT_WITHOUT_SPACES.test('チャット設定')).toBe(true);
+    expect(SCRIPT_WITHOUT_SPACES.test('채팅 설정')).toBe(true);
+    expect(SCRIPT_WITHOUT_SPACES.test('简体中文')).toBe(true);
+    expect(SCRIPT_WITHOUT_SPACES.test('Chat settings')).toBe(false);
+    expect(SCRIPT_WITHOUT_SPACES.test('Paramètres de la conversation')).toBe(false);
+  });
+});
+
 describe('element names (G13)', () => {
   for (const { element, english, renderings, rejected } of ELEMENT_NAMES) {
     const named = Object.keys(en).filter((key) => english.test(en[key]));
@@ -220,7 +299,13 @@ describe('element names (G13)', () => {
 
         const wrong = named.filter((key) => {
           const value = catalog[key];
-          return typeof value === 'string' && !value.toLowerCase().includes(expected.toLowerCase());
+          if (typeof value !== 'string') return false;
+          /* Same split as G12, for the same reason: a plain substring check
+           * fails a Japanese sentence that inserts a particle inside the name,
+           * which is correct Japanese rather than a second name. */
+          return SCRIPT_WITHOUT_SPACES.test(expected)
+            ? !containsSubsequence(value, expected)
+            : !value.toLowerCase().includes(expected.toLowerCase());
         });
         expect(wrong, `${locale} strings naming the ${element} some other way`).toEqual([]);
       });
@@ -253,6 +338,17 @@ describe('UI cross-references (G12)', () => {
         /* Parity is catalogs.test.ts's job; an absent key is not this test's
          * failure to report, and reporting it twice buries the real signal. */
         if (typeof sentence !== 'string' || typeof label !== 'string') continue;
+
+        if (SCRIPT_WITHOUT_SPACES.test(label)) {
+          if (!containsSubsequence(sentence, label)) {
+            broken.push(
+              `${prose}\n    points at ${names} ("${label}")\n` +
+                `    but says: "${sentence}"\n` +
+                `    the label does not appear in it`,
+            );
+          }
+          continue;
+        }
 
         const inSentence = contentWords(sentence);
         const missing = contentWords(label).filter((word) => !appearsIn(word, inSentence));

@@ -104,8 +104,22 @@ function doNotTranslate(): string[] {
  * renders "1 servidores" exactly as English rendered "Found 1 servers", and
  * the placeholder-parity check does not see it — parity compares argument
  * names, and the arms are inside the argument.
+ *
+ * Locale-aware, because "every catalog" is not the same as "every language".
+ * A language with no `one` category is not missing an arm; it has nothing to
+ * miss.
  */
-function pluralsMissingSingular(catalog: Catalog): string[] {
+function pluralsMissingSingular(locale: string, catalog: Catalog): string[] {
+  /* Which categories this language actually has, from CLDR rather than from a
+   * list maintained here. Japanese has only `other`: it does not inflect for
+   * number, so a `one` arm would be dead code that ICU never selects, and
+   * demanding one would fail correct Japanese and reward a translator for
+   * adding a branch that cannot run. English, German, Spanish, French and
+   * Brazilian Portuguese all have `one`, which is where the bug this catches
+   * actually lives. */
+  const categories = new Intl.PluralRules(locale).resolvedOptions().pluralCategories;
+  if (!categories.includes('one')) return [];
+
   const missing: string[] = [];
   for (const [key, value] of Object.entries(catalog)) {
     const check = (elements: MessageFormatElement[]): void => {
@@ -179,7 +193,7 @@ describe('English catalog', () => {
     /* `{count, plural, =0 {none} other {Found # servers}}` renders "Found 1
      * servers". Six of these were found during extraction; a seventh survived
      * and was caught by a translator rather than by anything here. */
-    expect(pluralsMissingSingular(en)).toEqual([]);
+    expect(pluralsMissingSingular('en', en)).toEqual([]);
   });
 
   it('uses only inline tags the renderer knows how to render', () => {
@@ -252,7 +266,7 @@ describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
   });
 
   it('gives every plural a singular arm', () => {
-    expect(pluralsMissingSingular(catalog)).toEqual([]);
+    expect(pluralsMissingSingular(locale, catalog)).toEqual([]);
   });
 
   it('keeps every name that must not be translated (D7)', () => {

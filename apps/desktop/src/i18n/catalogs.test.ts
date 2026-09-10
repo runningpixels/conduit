@@ -10,6 +10,8 @@ import enMessages from './messages/en.json';
 import deMessages from './messages/de.json';
 import esMessages from './messages/es.json';
 import frMessages from './messages/fr.json';
+import jaMessages from './messages/ja.json';
+import ptBrMessages from './messages/pt-BR.json';
 
 /// The catalog gates from D14, minus G10 (which scans *source* and lands with
 /// the rest of the extraction in Phase 6). These three run against the catalog
@@ -35,13 +37,15 @@ const en = enMessages as Catalog;
  *
  * Shipping is Phase 6's call and additionally requires native review.
  */
-const SHIPPED_FOR_RELEASE: readonly string[] = ['de', 'es', 'fr'];
+const SHIPPED_FOR_RELEASE: readonly string[] = ['de', 'es', 'fr', 'ja', 'pt-BR'];
 
 /** Catalogs that exist on disk today. Grows one row per wave (D1). */
 const TRANSLATIONS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
   ['de', deMessages as Catalog],
   ['es', esMessages as Catalog],
   ['fr', frMessages as Catalog],
+  ['ja', jaMessages as Catalog],
+  ['pt-BR', ptBrMessages as Catalog],
 ];
 
 /** Placeholder names an ICU message reads, including inside plural arms. */
@@ -303,5 +307,32 @@ describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
     // a partially translated locale is not more suspicious for being partial.
     const identical = Object.keys(catalog).filter((k) => catalog[k] === en[k]);
     expect(identical.length / Object.keys(catalog).length).toBeLessThan(0.25);
+  });
+});
+
+describe('every catalog, English included', () => {
+  it('renders no HTML character entity', () => {
+    /* A catalog value reaches the user as text, never as markup: react-intl
+     * escapes it, and a `<textarea>` placeholder does not decode entities at
+     * all. So `&#10;` is not a newline on screen — it is five visible
+     * characters sitting in the middle of the string.
+     *
+     * This is not hypothetical. The two domain-list placeholders shipped with
+     * exactly that entity; English was fixed and the three translated catalogs
+     * were not, so de, es and fr rendered it literally for a full wave with
+     * every gate green. Nothing could have caught it: an entity is not a
+     * placeholder, so parity had nothing to compare, and it is not a product
+     * name or a do-not-translate term. Wave 2 found it only by translating the
+     * same two strings and noticing they came back identical to English.
+     *
+     * The inline tags the renderer does support (`<code>`, `<strong>`) are
+     * real ICU tag elements and are checked separately; they are unaffected. */
+    const entity = /&(#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i;
+    for (const [locale, catalog] of [['en', en] as const, ...TRANSLATIONS]) {
+      const offenders = Object.entries(catalog)
+        .filter(([, value]) => entity.test(value))
+        .map(([key, value]) => `${locale}/${key}: ${value}`);
+      expect(offenders).toEqual([]);
+    }
   });
 });

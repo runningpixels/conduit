@@ -549,6 +549,94 @@ can render, derived from the same glob that loads the catalogs.
 **Still outstanding:** native review of de/es/fr, which is the point of this
 phase and cannot be done by an agent.
 
+### Phase 7, wave 2 — ja and pt-BR are complete; native review outstanding
+
+`i18n:status --strict` reports **5380 current keys across five locales**, zero
+missing, zero stale, zero orphaned. Both new catalogs are 1076 keys, ICU-valid,
+placeholder- and tag-identical to English, and stamped. `SHIPPED_FOR_RELEASE`
+and the G12/G13 catalog lists gained both. Full suite green at 1362 passed /
+4 skipped, `tsc -b` clean, and the layout walk passes 12 checks with `pt-BR`
+and `ja` added to it.
+
+**This wave settled terminology before splitting the keys, which is the one
+process change wave 1 earned.** Every wave-1 locale shipped with two names for
+something because the words were agreed after the split; nothing like that
+happened here. The glossary carries Japanese and Portuguese columns, and the
+four rows worth arguing about are written down with the reason:
+
+- **memory — 記憶, not メモリ.** German's problem in a second language: メモリ
+  is RAM to a Japanese reader exactly as *Speicher* is disk to a German one.
+- **composer — 入力エリア, not 入力欄.** Japanese draws the region/field line
+  harder than anywhere else, because 入力欄 is the ordinary word for a text
+  input and this app has dozens. It reaches German's *Eingabebereich*
+  independently. コンポーザー was rejected for the reason all four earlier
+  locales rejected the calque.
+- **chat — チャット and *chat*, both loanwords.** pt-BR is the interesting one:
+  its own messaging apps say *conversa* and it still takes *chat*, because
+  *conversa* carries the act-of-talking sense the glossary has forbidden since
+  German, and unlike French there is no homograph to run from.
+- **settings — Configurações, not Ajustes.** *Ajustes* is the European
+  Portuguese and Apple word; this app is Windows-first, the same reason French
+  rejected *Réglages*.
+
+**Japanese needed one decision no Latin-script locale has: a type-to-confirm
+phrase has to survive IME conversion.** The confirm gate compares NFC-equal
+strings exactly, so a phrase whose reading has two common conversions can leave
+the button disabled while the input looks right. *reset* → リセット is direct
+katakana with no conversion step at all. *delete all* → すべて削除 is the
+riskier of the two — すべて and 全て are both valid conversions of the same
+reading — and is accepted because the dialog prints the phrase directly above
+the field, so a mismatch is visible rather than silent. Worth revisiting if
+anyone reports it; worth recording either way, because wave 3 hits it again in
+Korean and Chinese.
+
+#### What translating this wave found
+
+**One live rendering bug, shipped in three locales for a full wave.** The
+domain-list placeholders held a literal `&#10;` HTML entity. It is a
+`<textarea>` placeholder, which does not decode entities — so it rendered as
+five visible characters. The English fix landed in the previous commit and
+**nothing carried it into de, es or fr**, which have been showing it ever
+since. Every gate stayed green because an entity is not a placeholder, so
+parity had nothing to compare, and it is not a product name or a
+do-not-translate term. It surfaced here only because translating the same two
+strings produced values identical to English, which is the one thing a
+wave-2 pass looks at hardest.
+
+All three catalogs are fixed, and **`catalogs.test.ts` now rejects any HTML
+character entity in any catalog value, English included** — a catalog value
+reaches the user as text, never as markup, so an entity is never right. The
+supported inline tags (`<code>`, `<strong>`) are real ICU tag elements and are
+unaffected.
+
+**The layout walk's list was renamed, because Japanese broke its premise.** It
+was `LONGER_LOCALES` — the check exists to find text that clips under a
+language longer than English. Japanese is *shorter* almost everywhere and will
+never fire that finding. What it can find is the other half of the same
+failure: no spaces means no break opportunity unless the browser applies CJK
+line breaking, and a container tuned for English word wrapping spills instead —
+which shows up in the identical measurement. It is `MEASURED_LOCALES` now, with
+`ja` and `pt-BR` in it. Nothing clips under either that does not already clip
+under English, at both viewports.
+
+#### D17, and the half of it that is still open
+
+The walk now asserts the **wiring**: `html[lang]` follows the resolved locale,
+and the `:lang`-gated stack in `tokens.css` actually reaches the DOM and
+differs from the Latin default. Both are one attribute and one selector away
+from silently doing nothing, and that is the part that can regress.
+
+**It does not validate the glyphs, and cannot.** Whether kanji are drawn with
+Japanese rather than Chinese letterforms depends on which fonts the machine
+has. This was exercised on **Windows/Chrome only**. The plan asks for Windows,
+macOS and Linux before wave 3 commits to the stack, and macOS and Linux still
+need a human in front of the real build.
+
+**Still outstanding:** native review, now of five locales rather than three.
+Unchanged in kind — the machine checks ICU, placeholders, tags, verbatim names,
+entities and cross-referenced element names; it cannot check that the glossary
+was followed or that a sentence reads naturally.
+
 ---
 
 plan builds that, extracts roughly 300 renderer strings and a triaged subset of

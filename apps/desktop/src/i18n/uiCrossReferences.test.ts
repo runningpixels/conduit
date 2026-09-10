@@ -4,6 +4,8 @@ import deMessages from './messages/de.json';
 import enMessages from './messages/en.json';
 import esMessages from './messages/es.json';
 import frMessages from './messages/fr.json';
+import jaMessages from './messages/ja.json';
+import ptBrMessages from './messages/pt-BR.json';
 
 /**
  * Guard G12 — prose that names a UI element must name it the way it is labelled.
@@ -39,6 +41,8 @@ const CATALOGS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
   ['de', deMessages as Catalog],
   ['es', esMessages as Catalog],
   ['fr', frMessages as Catalog],
+  ['ja', jaMessages as Catalog],
+  ['pt-BR', ptBrMessages as Catalog],
 ];
 
 /** Prose that points somewhere, and the key that owns the name it points at. */
@@ -232,6 +236,11 @@ const ELEMENT_NAMES: ReadonlyArray<{
       de: 'Eingabebereich',
       es: 'campo de mensaje',
       fr: 'zone de saisie',
+      /* 入力エリア names the region; 入力欄 is an ordinary text input, of which
+       * this app has dozens. Japanese draws that line harder than the other
+       * locales do, and arrived at German's distinction independently. */
+      ja: '入力エリア',
+      'pt-BR': 'campo de mensagem',
     },
     /* Scanned across the whole catalog, so this list may hold only names that
      * are wrong *everywhere*. The generic field words are deliberately absent
@@ -252,6 +261,8 @@ const ELEMENT_NAMES: ReadonlyArray<{
       'barre de saisie',
       'チャットバー',
       'cuadro de mensaje', // Spanish for a modal MessageBox
+      'caixa de mensagem', // Portuguese for the same modal MessageBox
+      'compositor de mensagem', // Portuguese: also the person who writes music
       'zone de message', // reads as the transcript, the opposite element
     ],
   },
@@ -263,16 +274,22 @@ const ELEMENT_NAMES: ReadonlyArray<{
       de: 'Seitenleiste',
       es: 'barra lateral',
       fr: 'barre latérale',
+      ja: 'サイドバー',
+      'pt-BR': 'barra lateral',
     },
     rejected: [],
   },
 ];
 
 describe('the CJK matcher itself', () => {
-  /* Tested directly rather than through a catalog, because no CJK catalog
-   * exists yet. Wiring a matcher for ja/ko/zh and shipping it unexercised
-   * until wave 2 lands would repeat the mistake it was written to fix: a check
-   * that reports green without ever having run. */
+  /* These predate ja.json: the matcher was written a wave early, and testing
+   * it directly was the only way to keep it from shipping unexercised — a
+   * check that reports green without ever having run is the mistake it exists
+   * to fix. The Japanese catalog now drives it for real through G12 and G13
+   * below, and these stay because they pin the *primitive*: they say which
+   * rewrites are meant to pass (an inserted particle) and which are meant to
+   * fail (a different word), which a catalog that happens to be correct today
+   * cannot say. Korean is covered here and nowhere else until wave 3. */
 
   it('accepts a label the sentence carries verbatim', () => {
     expect(containsSubsequence('チャット設定を保存しました', 'チャット設定')).toBe(true);

@@ -9,9 +9,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- German interface. Pick a language in Settings → Appearance, or leave it on
-  System to follow the OS. The choice also sets the language the assistant
-  replies in, unless you write to it in another language.
+- The interface is available in German, Spanish, French, Japanese and
+  Brazilian Portuguese. Pick a language in Settings → Appearance, or leave it
+  on System to follow the OS. The choice also sets the language the assistant
+  replies in, unless you write to it in another language. Only languages with a
+  translation are offered; Korean and Simplified Chinese are still to come.
+- Japanese, Chinese and Korean text is drawn with the platform's own font for
+  that language rather than whichever font the browser happened to pick, so
+  kanji are not rendered in Chinese letterforms.
 - Dates, times, number grouping, file sizes and sorting now follow the language
   you picked rather than the machine's region. A German reader gets German
   month names and `2,5 MB`, not `2.5 MB`.
@@ -24,6 +29,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The allowed- and blocked-domain boxes showed a literal `&#10;` in their
+  placeholder text in German, Spanish and French instead of a line break.
 - Truncated text — folder names, tool-call summaries, the workspace-folder chip
   — now shows its full value on hover instead of ending in an ellipsis with no
   way to read the rest.

@@ -9,7 +9,8 @@ dialog and *Erweiterung* in a toast describes three features to a reader who
 has one. Names that must not translate at all live in
 [`do-not-translate.txt`](./do-not-translate.txt).
 
-Filled in wave by wave (D1). All three wave-1 locales are decided.
+Filled in wave by wave (D1). Waves 1 (de, es, fr) and 2 (ja, pt-BR) are
+decided; ko and zh-CN are not.
 
 ## How the German column was decided
 
@@ -18,28 +19,28 @@ translated and reviewed during the Phase 0 spike, so the catalog stays
 internally consistent with copy that already shipped. Where the spike made no
 choice, the entry says so.
 
-| Concept | German | Spanish | French | Note |
-| --- | --- | --- | --- | --- |
-| artifact | Artefakt | Artefacto | Artefact | Established: `recovery.delete.wipe.scopeConversationsLabel`. |
-| connector | Connector | Conector | Connecteur | Kept as a loanword, capitalised as a German noun. It names a feature of this app, and *Adapter* / *Erweiterung* both already mean something else in the ecosystem. |
-| chat (the stored record) | Chat | chat | conversation | English said both "chat" and "conversation" for one object and now says only *chat*. The three locales split on purpose — see below. Never *Gespräch* / *charla*: the UI means the stored record, not the act of talking. |
-| provider | Anbieter | Proveedor | Fournisseur | Established: `onboarding.finish.needCredential`. |
-| model | Modell | Modelo | Modèle | Established. The model *id* is data and never translates. |
-| key (API key) | Schlüssel | Clave | Clé | Established. `API` itself stays English. |
-| keychain | Schlüsselbund | Llavero del sistema | Trousseau du système | Matches the OS vocabulary users already see. |
-| skill | Skill | Skill | Skill | Loanword. *Fähigkeit* reads as a capability of the assistant rather than a named, installable package. |
-| workspace | Arbeitsbereich | Espacio de trabajo | Espace de travail | The bound folder. Not *Workspace*: unlike *Skill*, this one has a settled German word in developer tooling. |
-| memory | Gespeicherte Fakten | Memoria | Mémoire | Descriptive rather than literal: *Erinnerung* reads as reminiscence, *Speicher* as disk or RAM — and `Speicher` is already the store in the recovery copy. |
-| token | Token | Token | Token | Loanword; the plural is *Tokens*. |
-| context window | Kontextfenster | Ventana de contexto | Fenêtre de contexte | Compound, one word. |
-| tool call | Tool-Aufruf | Llamada a herramienta | Appel d'outil | `Tool` is a loanword here (established in `onboarding.connectors.hint`); the action half translates. |
-| consent | Zustimmung | Consentimiento | Consentement | Not *Einwilligung*, which carries a legal register this UI does not mean. |
-| thought | Gedanke | Pensamiento | Pensée | The assistant's reasoning trace. |
-| store (local data) | Speicher | Almacén local | Stockage local | Established: `recovery.actions.continueFresh`. |
-| settings (the screen) | Einstellungen | Configuración | Paramètres | The settings sheet, and every sentence that points at it. Not French *Réglages*, which is the macOS word — this app is Windows-first and its window controls already follow Windows. |
-| parameters (generation) | Modellparameter | Parámetros | Paramètres du modèle | Always qualified, so it does not collide with the screen above. |
-| composer | Eingabebereich | campo de mensaje | zone de saisie | The region holding the input, the Chat settings chip, the skills and search icons and the folder binding. Never the calque: `Composer` reads as *Komponist*, and *compositor* / *compositeur* are people who write music. Spanish and French both took the name from the skip link, the one place the element names itself to a screen reader. |
-| sidebar | Seitenleiste | Barra lateral | Barre latérale | The `<aside>`. The `<nav>` inside it is the chat list and is named separately — they were briefly both "Chats", which a screen reader reads as "Chats region, Chats navigation". |
+| Concept | German | Spanish | French | Japanese | Portuguese (BR) | Note |
+| --- | --- | --- | --- | --- | --- | --- |
+| artifact | Artefakt | Artefacto | Artefact | アーティファクト | Artefato | Established: `recovery.delete.wipe.scopeConversationsLabel`. |
+| connector | Connector | Conector | Connecteur | コネクタ | Conector | Kept as a loanword, capitalised as a German noun. It names a feature of this app, and *Adapter* / *Erweiterung* both already mean something else in the ecosystem. |
+| chat (the stored record) | Chat | chat | conversation | チャット | chat | English said both "chat" and "conversation" for one object and now says only *chat*. The three locales split on purpose — see below. Never *Gespräch* / *charla*: the UI means the stored record, not the act of talking. |
+| provider | Anbieter | Proveedor | Fournisseur | プロバイダー | Provedor | Established: `onboarding.finish.needCredential`. |
+| model | Modell | Modelo | Modèle | モデル | Modelo | Established. The model *id* is data and never translates. |
+| key (API key) | Schlüssel | Clave | Clé | キー | Chave | Established. `API` itself stays English. |
+| keychain | Schlüsselbund | Llavero del sistema | Trousseau du système | キーチェーン | Chaveiro do sistema | Matches the OS vocabulary users already see. |
+| skill | Skill | Skill | Skill | スキル | Skill | Loanword. *Fähigkeit* reads as a capability of the assistant rather than a named, installable package. |
+| workspace | Arbeitsbereich | Espacio de trabajo | Espace de travail | ワークスペース | Espaço de trabalho | The bound folder. Not *Workspace*: unlike *Skill*, this one has a settled German word in developer tooling. |
+| memory | Gespeicherte Fakten | Memoria | Mémoire | 記憶 | Memória | Descriptive rather than literal: *Erinnerung* reads as reminiscence, *Speicher* as disk or RAM — and `Speicher` is already the store in the recovery copy. |
+| token | Token | Token | Token | トークン | Token | Loanword; the plural is *Tokens*. |
+| context window | Kontextfenster | Ventana de contexto | Fenêtre de contexte | コンテキストウィンドウ | Janela de contexto | Compound, one word. |
+| tool call | Tool-Aufruf | Llamada a herramienta | Appel d'outil | ツール呼び出し | Chamada de ferramenta | `Tool` is a loanword here (established in `onboarding.connectors.hint`); the action half translates. |
+| consent | Zustimmung | Consentimiento | Consentement | 同意 | Consentimento | Not *Einwilligung*, which carries a legal register this UI does not mean. |
+| thought | Gedanke | Pensamiento | Pensée | 思考 | Pensamento | The assistant's reasoning trace. |
+| store (local data) | Speicher | Almacén local | Stockage local | ローカルデータ | Armazenamento local | Established: `recovery.actions.continueFresh`. |
+| settings (the screen) | Einstellungen | Configuración | Paramètres | 設定 | Configurações | The settings sheet, and every sentence that points at it. Not French *Réglages*, which is the macOS word — this app is Windows-first and its window controls already follow Windows. |
+| parameters (generation) | Modellparameter | Parámetros | Paramètres du modèle | モデルパラメーター | Parâmetros do modelo | Always qualified, so it does not collide with the screen above. |
+| composer | Eingabebereich | campo de mensaje | zone de saisie | 入力エリア | campo de mensagem | The region holding the input, the Chat settings chip, the skills and search icons and the folder binding. Never the calque: `Composer` reads as *Komponist*, and *compositor* / *compositeur* are people who write music. Spanish and French both took the name from the skip link, the one place the element names itself to a screen reader. |
+| sidebar | Seitenleiste | Barra lateral | Barre latérale | サイドバー | Barra lateral | The `<aside>`. The `<nav>` inside it is the chat list and is named separately — they were briefly both "Chats", which a screen reader reads as "Chats region, Chats navigation". |
 
 ## Name every screen before the work is split
 
@@ -107,6 +108,43 @@ constraint the others do not have.
 *Skill* stays a loanword in all three: it names an installable package, and
 *habilidad* / *compétence* would read as a capability of the assistant.
 
+## Why Japanese and Brazilian Portuguese diverge in turn
+
+Wave 2 settled its terminology *before* the keys were split, which wave 1 did
+not — every wave-1 locale shipped with two names for something because the
+words were agreed after the split. Four rows are worth the reasoning.
+
+- **memory — 記憶, not メモリ.** This is German's problem in a second language:
+  メモリ is RAM to any Japanese reader, exactly as *Speicher* is disk to a
+  German one. 記憶 is what the AI sense of the word actually is, it reads as a
+  noun in *この記憶を削除しますか？* as naturally as it does in the section
+  heading, and it leaves メモリ free to mean hardware if this UI ever needs it.
+  Portuguese has no such collision — *Memória* is simply right, like Spanish.
+- **composer — 入力エリア, not 入力欄.** The distinction matters more in
+  Japanese than anywhere else, because 入力欄 is the ordinary word for a text
+  input and this app has dozens of them. 入力エリア names the *region* — the
+  input plus the Chat settings chip, the skills and search icons, the folder
+  binding — and mirrors German's *Eingabebereich* by arriving at the same
+  distinction independently. コンポーザー was rejected for the reason all four
+  earlier locales rejected the calque: it is a person who writes music.
+  Portuguese took *campo de mensagem* from the skip link, as Spanish did.
+- **chat — チャット and *chat*, both loanwords, for opposite-looking reasons.**
+  Japanese has no native short word for the stored record: 会話 is the act of
+  talking (the thing the glossary has forbidden since German), and チャット is
+  already what Japanese messaging UI ships. Brazilian Portuguese is the
+  interesting one, because its own messaging apps say *conversa* — WhatsApp and
+  Telegram both do — and it still takes *chat*. The reason is that *conversa*
+  carries the same act-of-talking sense the other locales rejected, while
+  *chat* is unambiguous in Brazilian software, is 4 characters against 8, and
+  keeps the possessive furniture short: *Configurações do chat* against
+  *Configurações da conversa*. Unlike French, there is no homograph to run
+  from — *chat* means nothing else in Portuguese.
+- **settings — Configurações, not Ajustes.** *Ajustes* is the European
+  Portuguese and Apple word; Brazilian Windows software says *Configurações*,
+  and this app is Windows-first for the same reason French rejected
+  *Réglages*. Spanish made the same call and then broke it in four strings,
+  which is why the settings sheet is registered in G12.
+
 ## Register
 
 **German** — informal *du*, not *Sie*. Consumer software, and the English copy
@@ -125,6 +163,24 @@ genuinely unavoidable, use *tú* — the register matches the English.
 informal the English is; *tu* in an interface reads as a mistake rather than as
 friendliness. Impersonal constructions where they read naturally, for the same
 brevity reason as the other two.
+
+**Japanese** — です・ます調 throughout, and no further. Plain 敬語 (ご確認ください)
+is right for a prompt addressed to the user; 尊敬語 and 謙譲語 are not, because
+the app is not a service desk. Two conventions carry back most of the width
+Japanese loses elsewhere: buttons and headings are 体言止め — noun phrases,
+*保存* rather than *保存します* — and the subject is dropped wherever it is
+recoverable, which is nearly everywhere, so *あなたの* almost never appears.
+Where English hedges with "may" or "can", Japanese states the condition
+instead; a literal ～かもしれません reads as the app being unsure of its own
+behaviour.
+
+**Brazilian Portuguese** — *você* implied rather than written, and impersonal
+or infinitive constructions preferred, as in Spanish and for the same reasons:
+*"Aplicado na próxima inicialização"* rather than *"Você aplicará isto…"*.
+Buttons are infinitives (*Salvar*, *Cancelar*, *Excluir*), which is what
+Brazilian software ships and what keeps them short. Never *tu*, and never the
+European Portuguese vocabulary — *ecrã*, *ficheiro*, *utilizador* — which reads
+as foreign in Brazil: this locale is *tela*, *arquivo*, *usuário*.
 
 ## What the machine checks, and what it cannot
 

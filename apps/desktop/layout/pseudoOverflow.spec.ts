@@ -32,8 +32,20 @@ import { expect, test } from '@playwright/test';
  * that decides whether a finding matters — pseudo-localisation lengthens every
  * string equally, whereas German lengthens some words enormously ("Memory"
  * becomes "Gespeicherte Fakten") and leaves others alone.
+ *
+ * `pt-BR` joins for the ordinary reason: it is Romance and runs long, like
+ * `fr`.
+ *
+ * `ja` is here for the opposite reason, and it is why this list is no longer
+ * called LONGER_LOCALES. Japanese is *shorter* than English nearly everywhere,
+ * so it will never fire the length-sensitivity finding this check was built
+ * for. What it can find is the other half of the same failure: Japanese has no
+ * spaces, so a long run offers no break opportunity unless the browser applies
+ * CJK line breaking, and a container tuned for English word wrapping spills
+ * instead. That shows up in exactly the same measurement, which is why it
+ * belongs here rather than in a check of its own.
  */
-const LONGER_LOCALES = ['en-XA', 'de', 'fr'];
+const MEASURED_LOCALES = ['en-XA', 'de', 'fr', 'pt-BR', 'ja'];
 
 /** The shipped window size, and a plausible narrow resize. */
 const VIEWPORTS = [
@@ -169,15 +181,51 @@ for (const viewport of VIEWPORTS) {
   test.describe(`${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
+    test('a CJK locale gets html[lang] and the font stack that depends on it', async ({
+      page,
+    }) => {
+      /* D17, the half a machine can decide.
+       *
+       * Han characters are unified across Japanese and Chinese at the code
+       * point level and drawn differently, so a Japanese UI on a machine
+       * carrying a Chinese font can render kanji in Chinese letterforms. Two
+       * things prevent it: `html[lang]`, which lets the fallback engine break
+       * the tie, and the per-language stacks in `tokens.css`, which name the
+       * platform face rather than trusting the guess. Both are one attribute
+       * and one selector away from silently doing nothing.
+       *
+       * So this asserts the wiring: the attribute arrives, and the variable it
+       * gates actually changes. Whether the resulting glyphs are the Japanese
+       * shapes is not decidable from here — it depends on which fonts the
+       * machine has — and that part still needs a human on each platform. */
+      await open(page, 'en');
+      const latin = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--font-ui'),
+      );
+
+      await open(page, 'ja');
+      const japanese = await page.evaluate(() => ({
+        lang: document.documentElement.lang,
+        fontUi: getComputedStyle(document.documentElement).getPropertyValue('--font-ui'),
+      }));
+
+      expect(japanese.lang, 'html[lang] did not follow the locale').toBe('ja');
+      expect(
+        japanese.fontUi,
+        'the ja font stack did not reach the DOM — the :lang rule is not matching',
+      ).not.toBe(latin);
+      expect(japanese.fontUi).toContain('Yu Gothic UI');
+    });
+
     test('the page never scrolls horizontally, in any language', async ({ page }) => {
-      for (const locale of ['en', ...LONGER_LOCALES]) {
+      for (const locale of ['en', ...MEASURED_LOCALES]) {
         await open(page, locale);
         const overflow = await documentOverflow(page);
         expect(overflow, `the page scrolls horizontally under ${locale}`).toBeLessThanOrEqual(1);
       }
     });
 
-    for (const locale of LONGER_LOCALES) {
+    for (const locale of MEASURED_LOCALES) {
       test(`nothing clips under ${locale} that does not already clip under en`, async ({ page }) => {
       const baseline = await measureEveryScreen(page, 'en');
       const pseudo = await measureEveryScreen(page, locale);

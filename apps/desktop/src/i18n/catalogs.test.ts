@@ -12,6 +12,8 @@ import esMessages from './messages/es.json';
 import frMessages from './messages/fr.json';
 import jaMessages from './messages/ja.json';
 import ptBrMessages from './messages/pt-BR.json';
+import koMessages from './messages/ko.json';
+import zhCnMessages from './messages/zh-CN.json';
 
 /// The catalog gates from D14, minus G10 (which scans *source* and lands with
 /// the rest of the extraction in Phase 6). These three run against the catalog
@@ -37,7 +39,15 @@ const en = enMessages as Catalog;
  *
  * Shipping is Phase 6's call and additionally requires native review.
  */
-const SHIPPED_FOR_RELEASE: readonly string[] = ['de', 'es', 'fr', 'ja', 'pt-BR'];
+const SHIPPED_FOR_RELEASE: readonly string[] = [
+  'de',
+  'es',
+  'fr',
+  'ja',
+  'pt-BR',
+  'ko',
+  'zh-CN',
+];
 
 /** Catalogs that exist on disk today. Grows one row per wave (D1). */
 const TRANSLATIONS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
@@ -46,6 +56,8 @@ const TRANSLATIONS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> =
   ['fr', frMessages as Catalog],
   ['ja', jaMessages as Catalog],
   ['pt-BR', ptBrMessages as Catalog],
+  ['ko', koMessages as Catalog],
+  ['zh-CN', zhCnMessages as Catalog],
 ];
 
 /** Placeholder names an ICU message reads, including inside plural arms. */

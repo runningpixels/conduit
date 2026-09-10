@@ -6,6 +6,8 @@ import esMessages from './messages/es.json';
 import frMessages from './messages/fr.json';
 import jaMessages from './messages/ja.json';
 import ptBrMessages from './messages/pt-BR.json';
+import koMessages from './messages/ko.json';
+import zhCnMessages from './messages/zh-CN.json';
 
 /**
  * Guard G12 — prose that names a UI element must name it the way it is labelled.
@@ -43,6 +45,8 @@ const CATALOGS: ReadonlyArray<readonly [locale: string, catalog: Catalog]> = [
   ['fr', frMessages as Catalog],
   ['ja', jaMessages as Catalog],
   ['pt-BR', ptBrMessages as Catalog],
+  ['ko', koMessages as Catalog],
+  ['zh-CN', zhCnMessages as Catalog],
 ];
 
 /** Prose that points somewhere, and the key that owns the name it points at. */
@@ -241,6 +245,10 @@ const ELEMENT_NAMES: ReadonlyArray<{
        * locales do, and arrived at German's distinction independently. */
       ja: '入力エリア',
       'pt-BR': 'campo de mensagem',
+      /* Korean and Chinese draw the same region/field line Japanese does:
+       * 입력란 and 输入框 are the ordinary words for a text input. */
+      ko: '입력 영역',
+      'zh-CN': '输入区',
     },
     /* Scanned across the whole catalog, so this list may hold only names that
      * are wrong *everywhere*. The generic field words are deliberately absent
@@ -257,6 +265,8 @@ const ELEMENT_NAMES: ReadonlyArray<{
       'compositor', // Spanish: writes music
       'compositeur', // French: writes music
       'コンポーザー', // Japanese: also a music composer — the fourth locale to reject the calque
+      '작곡가', // Korean for a music composer, which is what a dictionary offers
+      '作曲家', // Chinese for the same. Six locales, six rejections of one calque.
       'Chat-Leiste', // calque of English's own abandoned second name
       'barre de saisie',
       'チャットバー',
@@ -276,6 +286,8 @@ const ELEMENT_NAMES: ReadonlyArray<{
       fr: 'barre latérale',
       ja: 'サイドバー',
       'pt-BR': 'barra lateral',
+      ko: '사이드바',
+      'zh-CN': '侧边栏',
     },
     rejected: [],
   },

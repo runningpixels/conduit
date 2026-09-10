@@ -4,6 +4,7 @@ import { DEFAULT_BRAND, resetBrand, setBrand } from '../brand';
 import {
   EN_MESSAGES,
   I18nProvider,
+  TRANSLATED_LOCALE_CODES,
   bootstrapI18n,
   createAppIntl,
   loadMessages,
@@ -13,6 +14,7 @@ import {
   useT,
   writeCachedLanguage,
 } from './index';
+import { SHIPPED_LOCALE_CODES } from './locales';
 import deMessages from './messages/de.json';
 
 /// The four properties everything else in the project is built on:
@@ -171,8 +173,21 @@ describe('loadMessages', () => {
   });
 
   it('returns English for a listed locale whose catalog has not landed yet', async () => {
-    // ko is in the locale table from day one and ships in wave 3 (D1).
-    await expect(loadMessages('ko')).resolves.toBe(EN_MESSAGES);
+    /* This used to name `ko`, which was in the locale table from day one and
+     * had no catalog until wave 3 shipped one. Every locale in the table now
+     * has a catalog — the correct end state, and the reason this assertion had
+     * to be rewritten rather than repointed at the next victim.
+     *
+     * The behaviour is still worth holding: the table is allowed to list a
+     * locale before its catalog lands (D1), and D5 says that renders English
+     * rather than raw keys. What the branch actually keys on is a missing
+     * catalog, not a missing translation, so exercise it with a code the glob
+     * has nothing for. */
+    const listed = SHIPPED_LOCALE_CODES.filter((code) => !TRANSLATED_LOCALE_CODES.includes(code));
+    for (const code of listed) {
+      await expect(loadMessages(code)).resolves.toBe(EN_MESSAGES);
+    }
+    await expect(loadMessages('xx')).resolves.toBe(EN_MESSAGES);
   });
 
   it('loads a catalog that does exist', async () => {

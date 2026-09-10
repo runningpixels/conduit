@@ -9,11 +9,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- The interface is available in German, Spanish, French, Japanese and
-  Brazilian Portuguese. Pick a language in Settings → Appearance, or leave it
-  on System to follow the OS. The choice also sets the language the assistant
-  replies in, unless you write to it in another language. Only languages with a
-  translation are offered; Korean and Simplified Chinese are still to come.
+- The interface is available in German, Spanish, French, Japanese, Brazilian
+  Portuguese, Korean and Simplified Chinese. Pick a language in Settings →
+  Appearance, or leave it on System to follow the OS. The choice also sets the
+  language the assistant replies in, unless you write to it in another
+  language.
 - Japanese, Chinese and Korean text is drawn with the platform's own font for
   that language rather than whichever font the browser happened to pick, so
   kanji are not rendered in Chinese letterforms.

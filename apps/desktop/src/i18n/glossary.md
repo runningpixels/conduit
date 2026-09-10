@@ -9,8 +9,8 @@ dialog and *Erweiterung* in a toast describes three features to a reader who
 has one. Names that must not translate at all live in
 [`do-not-translate.txt`](./do-not-translate.txt).
 
-Filled in wave by wave (D1). Waves 1 (de, es, fr) and 2 (ja, pt-BR) are
-decided; ko and zh-CN are not.
+Filled in wave by wave (D1). All eight locales are decided: waves 1 (de, es,
+fr), 2 (ja, pt-BR) and 3 (ko, zh-CN).
 
 ## How the German column was decided
 
@@ -19,28 +19,28 @@ translated and reviewed during the Phase 0 spike, so the catalog stays
 internally consistent with copy that already shipped. Where the spike made no
 choice, the entry says so.
 
-| Concept | German | Spanish | French | Japanese | Portuguese (BR) | Note |
-| --- | --- | --- | --- | --- | --- | --- |
-| artifact | Artefakt | Artefacto | Artefact | アーティファクト | Artefato | Established: `recovery.delete.wipe.scopeConversationsLabel`. |
-| connector | Connector | Conector | Connecteur | コネクタ | Conector | Kept as a loanword, capitalised as a German noun. It names a feature of this app, and *Adapter* / *Erweiterung* both already mean something else in the ecosystem. |
-| chat (the stored record) | Chat | chat | conversation | チャット | chat | English said both "chat" and "conversation" for one object and now says only *chat*. The three locales split on purpose — see below. Never *Gespräch* / *charla*: the UI means the stored record, not the act of talking. |
-| provider | Anbieter | Proveedor | Fournisseur | プロバイダー | Provedor | Established: `onboarding.finish.needCredential`. |
-| model | Modell | Modelo | Modèle | モデル | Modelo | Established. The model *id* is data and never translates. |
-| key (API key) | Schlüssel | Clave | Clé | キー | Chave | Established. `API` itself stays English. |
-| keychain | Schlüsselbund | Llavero del sistema | Trousseau du système | キーチェーン | Chaveiro do sistema | Matches the OS vocabulary users already see. |
-| skill | Skill | Skill | Skill | スキル | Skill | Loanword. *Fähigkeit* reads as a capability of the assistant rather than a named, installable package. |
-| workspace | Arbeitsbereich | Espacio de trabajo | Espace de travail | ワークスペース | Espaço de trabalho | The bound folder. Not *Workspace*: unlike *Skill*, this one has a settled German word in developer tooling. |
-| memory | Gespeicherte Fakten | Memoria | Mémoire | 記憶 | Memória | Descriptive rather than literal: *Erinnerung* reads as reminiscence, *Speicher* as disk or RAM — and `Speicher` is already the store in the recovery copy. |
-| token | Token | Token | Token | トークン | Token | Loanword; the plural is *Tokens*. |
-| context window | Kontextfenster | Ventana de contexto | Fenêtre de contexte | コンテキストウィンドウ | Janela de contexto | Compound, one word. |
-| tool call | Tool-Aufruf | Llamada a herramienta | Appel d'outil | ツール呼び出し | Chamada de ferramenta | `Tool` is a loanword here (established in `onboarding.connectors.hint`); the action half translates. |
-| consent | Zustimmung | Consentimiento | Consentement | 同意 | Consentimento | Not *Einwilligung*, which carries a legal register this UI does not mean. |
-| thought | Gedanke | Pensamiento | Pensée | 思考 | Pensamento | The assistant's reasoning trace. |
-| store (local data) | Speicher | Almacén local | Stockage local | ローカルデータ | Armazenamento local | Established: `recovery.actions.continueFresh`. |
-| settings (the screen) | Einstellungen | Configuración | Paramètres | 設定 | Configurações | The settings sheet, and every sentence that points at it. Not French *Réglages*, which is the macOS word — this app is Windows-first and its window controls already follow Windows. |
-| parameters (generation) | Modellparameter | Parámetros | Paramètres du modèle | モデルパラメーター | Parâmetros do modelo | Always qualified, so it does not collide with the screen above. |
-| composer | Eingabebereich | campo de mensaje | zone de saisie | 入力エリア | campo de mensagem | The region holding the input, the Chat settings chip, the skills and search icons and the folder binding. Never the calque: `Composer` reads as *Komponist*, and *compositor* / *compositeur* are people who write music. Spanish and French both took the name from the skip link, the one place the element names itself to a screen reader. |
-| sidebar | Seitenleiste | Barra lateral | Barre latérale | サイドバー | Barra lateral | The `<aside>`. The `<nav>` inside it is the chat list and is named separately — they were briefly both "Chats", which a screen reader reads as "Chats region, Chats navigation". |
+| Concept | German | Spanish | French | Japanese | Portuguese (BR) | Korean | Chinese (Simplified) | Note |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| artifact | Artefakt | Artefacto | Artefact | アーティファクト | Artefato | 아티팩트 | 工件 | Established: `recovery.delete.wipe.scopeConversationsLabel`. |
+| connector | Connector | Conector | Connecteur | コネクタ | Conector | 커넥터 | 连接器 | Kept as a loanword, capitalised as a German noun. It names a feature of this app, and *Adapter* / *Erweiterung* both already mean something else in the ecosystem. |
+| chat (the stored record) | Chat | chat | conversation | チャット | chat | 채팅 | 聊天 | English said both "chat" and "conversation" for one object and now says only *chat*. The three locales split on purpose — see below. Never *Gespräch* / *charla*: the UI means the stored record, not the act of talking. |
+| provider | Anbieter | Proveedor | Fournisseur | プロバイダー | Provedor | 공급자 | 提供商 | Established: `onboarding.finish.needCredential`. |
+| model | Modell | Modelo | Modèle | モデル | Modelo | 모델 | 模型 | Established. The model *id* is data and never translates. |
+| key (API key) | Schlüssel | Clave | Clé | キー | Chave | 키 | 密钥 | Established. `API` itself stays English. |
+| keychain | Schlüsselbund | Llavero del sistema | Trousseau du système | キーチェーン | Chaveiro do sistema | 시스템 키체인 | 系统钥匙串 | Matches the OS vocabulary users already see. |
+| skill | Skill | Skill | Skill | スキル | Skill | 스킬 | 技能 | Loanword. *Fähigkeit* reads as a capability of the assistant rather than a named, installable package. |
+| workspace | Arbeitsbereich | Espacio de trabajo | Espace de travail | ワークスペース | Espaço de trabalho | 작업 공간 | 工作区 | The bound folder. Not *Workspace*: unlike *Skill*, this one has a settled German word in developer tooling. |
+| memory | Gespeicherte Fakten | Memoria | Mémoire | 記憶 | Memória | 기억 | 记忆 | Descriptive rather than literal: *Erinnerung* reads as reminiscence, *Speicher* as disk or RAM — and `Speicher` is already the store in the recovery copy. |
+| token | Token | Token | Token | トークン | Token | 토큰 | Token | Loanword; the plural is *Tokens*. |
+| context window | Kontextfenster | Ventana de contexto | Fenêtre de contexte | コンテキストウィンドウ | Janela de contexto | 컨텍스트 창 | 上下文窗口 | Compound, one word. |
+| tool call | Tool-Aufruf | Llamada a herramienta | Appel d'outil | ツール呼び出し | Chamada de ferramenta | 도구 호출 | 工具调用 | `Tool` is a loanword here (established in `onboarding.connectors.hint`); the action half translates. |
+| consent | Zustimmung | Consentimiento | Consentement | 同意 | Consentimento | 동의 | 同意 | Not *Einwilligung*, which carries a legal register this UI does not mean. |
+| thought | Gedanke | Pensamiento | Pensée | 思考 | Pensamento | 생각 | 思考 | The assistant's reasoning trace. |
+| store (local data) | Speicher | Almacén local | Stockage local | ローカルデータ | Armazenamento local | 로컬 데이터 | 本地数据 | Established: `recovery.actions.continueFresh`. |
+| settings (the screen) | Einstellungen | Configuración | Paramètres | 設定 | Configurações | 설정 | 设置 | The settings sheet, and every sentence that points at it. Not French *Réglages*, which is the macOS word — this app is Windows-first and its window controls already follow Windows. |
+| parameters (generation) | Modellparameter | Parámetros | Paramètres du modèle | モデルパラメーター | Parâmetros do modelo | 모델 매개변수 | 模型参数 | Always qualified, so it does not collide with the screen above. |
+| composer | Eingabebereich | campo de mensaje | zone de saisie | 入力エリア | campo de mensagem | 입력 영역 | 输入区 | The region holding the input, the Chat settings chip, the skills and search icons and the folder binding. Never the calque: `Composer` reads as *Komponist*, and *compositor* / *compositeur* are people who write music. Spanish and French both took the name from the skip link, the one place the element names itself to a screen reader. |
+| sidebar | Seitenleiste | Barra lateral | Barre latérale | サイドバー | Barra lateral | 사이드바 | 侧边栏 | The `<aside>`. The `<nav>` inside it is the chat list and is named separately — they were briefly both "Chats", which a screen reader reads as "Chats region, Chats navigation". |
 
 ## Name every screen before the work is split
 
@@ -145,6 +145,39 @@ words were agreed after the split. Four rows are worth the reasoning.
   *Réglages*. Spanish made the same call and then broke it in four strings,
   which is why the settings sheet is registered in G12.
 
+## Wave 3, and the one row where Chinese leaves the pattern
+
+Korean and Simplified Chinese mostly confirm what the earlier waves settled —
+*memory* is 기억 / 记忆 for Japanese's reason (메모리 and 内存 are both RAM),
+*composer* is 입력 영역 / 输入区 against 입력란 / 输入框 for Japanese's reason,
+and *chat* is 채팅 / 聊天 because both are what the local messaging UI says
+while 대화 / 对话 carry the act-of-talking sense the glossary has rejected since
+German. Three rows are their own.
+
+- **skill — 技能, and Chinese is the first locale to translate it.** Every
+  earlier locale kept the loanword, on the grounds that *Fähigkeit* /
+  *habilidad* / *compétence* read as a capability of the assistant rather than
+  a named, installable package. That argument is about the *word*; the reason
+  it does not carry to Chinese is about the *script*. The five earlier locales
+  all write Latin script natively, so *Skill* sits in a sentence without
+  looking like a foreign body. In a Chinese label it does, and Chinese UI
+  convention is to translate rather than embed. 技能 survives the objection
+  because the package sense is carried by what surrounds it — 技能包, SKILL.md
+  — rather than by the noun alone. Korean keeps 스킬, which is a
+  transliteration and not the same move.
+- **token — Token, kept in Latin script, and it is the opposite call.** The
+  temptation is 令牌, which is wrong: in Chinese that is an *auth* token, the
+  security sense, and this UI means the language-model unit. 词元 is right and
+  academic — it belongs in a paper, not in a status line four characters wide.
+  Chinese LLM interfaces ship "Token", so this one row stays Latin while
+  *skill* on the row above does not, and the difference is that 技能 has a
+  correct everyday word and *token* does not.
+- **artifact — 工件.** No cognate exists, so unlike the five locales above this
+  is a real choice rather than a spelling. 工件 is what Chinese developer
+  tooling calls a build artifact, which is the sense the app means: a thing the
+  assistant produced and stored. 产物 is more transparent to a non-developer
+  and was the runner-up; 制品 reads as manufactured goods.
+
 ## Register
 
 **German** — informal *du*, not *Sie*. Consumer software, and the English copy
@@ -181,6 +214,24 @@ Buttons are infinitives (*Salvar*, *Cancelar*, *Excluir*), which is what
 Brazilian software ships and what keeps them short. Never *tu*, and never the
 European Portuguese vocabulary — *ecrã*, *ficheiro*, *utilizador* — which reads
 as foreign in Brazil: this locale is *tela*, *arquivo*, *usuário*.
+
+**Korean** — 하십시오체: statements end 습니다, requests end 십시오
+(*저장되었습니다*, *다시 시도하십시오*). That is what Korean software ships for
+system messages; 해요체 is softer and belongs in conversational products, and
+반말 in an interface reads as broken rather than friendly. Buttons and headings
+are bare nouns or verb stems (*저장*, *삭제*) rather than full sentences, for the
+same width reason as everywhere else. The subject is
+dropped wherever it is recoverable, so 당신의 almost never appears — 당신 in
+Korean UI reads as a translation artifact.
+
+**Chinese (Simplified)** — plain declarative, no 您 unless the sentence genuinely
+addresses the reader, and 你 almost never. Buttons and headings are verbs or
+noun phrases of two to four characters (*保存*, *删除*, *导出*), which is both
+the convention and the reason Chinese wins back the width Japanese loses.
+Chinese takes full-width punctuation （），、。 and no space around Latin runs
+is a common house style, but this app's copy mixes in Latin names constantly
+(*OpenAI*, *SKILL.md*, *{appName}*), so a thin space around them is kept for
+legibility, matching what the Japanese column does.
 
 ## What the machine checks, and what it cannot
 

@@ -44,8 +44,14 @@ import { expect, test } from '@playwright/test';
  * CJK line breaking, and a container tuned for English word wrapping spills
  * instead. That shows up in exactly the same measurement, which is why it
  * belongs here rather than in a check of its own.
+ *
+ * `ko` and `zh-CN` complete the set. Chinese is the shortest language the app
+ * ships and Korean sits between it and English, so neither is a length threat
+ * either — but Korean wraps on spaces while Chinese does not, and the two get
+ * different fallback fonts, so measuring them is the only way to know that a
+ * row which fits in Japanese also fits in Hangul.
  */
-const MEASURED_LOCALES = ['en-XA', 'de', 'fr', 'pt-BR', 'ja'];
+const MEASURED_LOCALES = ['en-XA', 'de', 'fr', 'pt-BR', 'ja', 'ko', 'zh-CN'];
 
 /** The shipped window size, and a plausible narrow resize. */
 const VIEWPORTS = [
@@ -203,18 +209,31 @@ for (const viewport of VIEWPORTS) {
         getComputedStyle(document.documentElement).getPropertyValue('--font-ui'),
       );
 
-      await open(page, 'ja');
-      const japanese = await page.evaluate(() => ({
-        lang: document.documentElement.lang,
-        fontUi: getComputedStyle(document.documentElement).getPropertyValue('--font-ui'),
-      }));
+      /* All three CJK locales, because they are three separate `:lang` rules
+       * and each names a different platform face. A rule that stopped matching
+       * would leave that language on the Latin stack and fall back per
+       * character — which is the defect, and is invisible until someone who
+       * reads the language looks at it. */
+      const expected: ReadonlyArray<readonly [locale: string, face: string]> = [
+        ['ja', 'Yu Gothic UI'],
+        ['ko', 'Malgun Gothic'],
+        ['zh-CN', 'Microsoft YaHei UI'],
+      ];
 
-      expect(japanese.lang, 'html[lang] did not follow the locale').toBe('ja');
-      expect(
-        japanese.fontUi,
-        'the ja font stack did not reach the DOM — the :lang rule is not matching',
-      ).not.toBe(latin);
-      expect(japanese.fontUi).toContain('Yu Gothic UI');
+      for (const [locale, face] of expected) {
+        await open(page, locale);
+        const actual = await page.evaluate(() => ({
+          lang: document.documentElement.lang,
+          fontUi: getComputedStyle(document.documentElement).getPropertyValue('--font-ui'),
+        }));
+
+        expect(actual.lang, `html[lang] did not follow ${locale}`).toBe(locale);
+        expect(
+          actual.fontUi,
+          `the ${locale} font stack did not reach the DOM — its :lang rule is not matching`,
+        ).not.toBe(latin);
+        expect(actual.fontUi, `${locale} is not naming its platform face`).toContain(face);
+      }
     });
 
     test('the page never scrolls horizontally, in any language', async ({ page }) => {

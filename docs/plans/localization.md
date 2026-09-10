@@ -637,6 +637,89 @@ Unchanged in kind — the machine checks ICU, placeholders, tags, verbatim names
 entities and cross-referenced element names; it cannot check that the glossary
 was followed or that a sentence reads naturally.
 
+### Phase 7, wave 3 — ko and zh-CN; every locale in the table now ships
+
+`i18n:status --strict` reports **7532 current keys across seven locales**, zero
+missing, zero stale, zero orphaned. `SHIPPED_FOR_RELEASE` holds all seven and
+the G13 table has a row per locale, so the whole set is now held to English.
+Full suite 1388 passed / 4 skipped, `tsc -b` clean, layout walk 18 checks green.
+
+Terminology was settled first again. Korean and Chinese mostly confirm the
+earlier waves — 기억 / 记忆 for *memory* (메모리 and 内存 are both RAM, which is
+Japanese's argument in two more languages), 입력 영역 / 输入区 for the composer
+against 입력란 / 输入框, 채팅 / 聊天 for the record. **Chinese is the first
+locale to break the *skill* row**, and the reason is script rather than
+meaning: the five earlier locales all write Latin natively, so *Skill* sits in
+a sentence without looking foreign, and in a Chinese label it does. 技能
+survives the "reads as an innate capability" objection because 技能包 and
+SKILL.md carry the package sense around it. The same locale then keeps *Token*
+in Latin on the very next row, because 令牌 is an **auth** token and 词元 is
+academic — 技能 has a correct everyday word and *token* does not.
+
+#### G12 earned its keep on the first run
+
+Adding the two catalogs failed the build immediately, on Chinese:
+
+> `chat.view.status.chatSettingsSaved` points at `chat.composer.chatSettings.ariaLabel`
+> ("聊天设置") but says "设置只为本次聊天保存".
+
+The chip is 聊天设置; the sentence put 设置 before 聊天, so the chip's own name
+never appears in the sentence that sends the user to it. That is the same
+defect that shipped in French, Spanish four times, and English itself before
+the guard existed — caught this time before a line reached the repo, by the
+subsequence matcher wave 2 built and could only test synthetically. Fixed to
+"聊天设置已保存，仅对本次聊天生效".
+
+One test had to be rewritten rather than repointed: `loadMessages` returns
+English for a listed locale whose catalog has not landed, and it asserted that
+using `ko`. Every locale in the table now has a catalog — the correct end state
+— so it derives the untranslated set instead and additionally exercises the
+branch with a code the glob has nothing for, which is what the branch actually
+keys on.
+
+#### D17's Korean footnote, verified — and it was right
+
+The plan flagged the website's Korean font as ~156 KB against ~1.1 MB for
+Japanese and Simplified Chinese and guessed a partial Fontsource slice rather
+than full Hangul. **It is a partial slice.** Rendering each sampled character
+twice — once with the file ahead of a system Korean face, once with the system
+face alone — and comparing bitmaps shows only **305 of 699 sampled Hangul
+syllables (44%)** are actually in `NotoSansKR-Regular.woff2`. U+D7A3 힣, U+B915
+뉕 and the whole conjoining-Jamo block at U+1100 fall back; `cjk.css` declares
+`unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF`, so it
+claims coverage the file does not have.
+
+Two notes on reading that number. Hangul is a closed algorithmic set of 11,172
+syllables that a complete Noto Sans KR covers in full, so anything short of
+~100% is a subset — unlike Han, where the same method scores JP and SC at 29%
+and 34% simply because no Noto Sans covers all 20,000 CJK ideographs. And the
+user-visible symptom is not tofu on most machines but *mixed typefaces*: the
+browser still falls back per character, so common syllables render in Noto Sans
+KR and rarer ones in whatever the system provides. On a machine with no Korean
+font — the case bundling exists to serve — it is tofu.
+
+**This is website work, not app work.** The app bundles no CJK at all (D17) and
+its stacks are validated below. Filed for `conduit-website`: re-slice the Korean
+face at full Hangul coverage, or narrow the declared `unicode-range` to what
+the file actually carries.
+
+#### D17 in the app, now checked for all three CJK locales
+
+The layout walk asserts per locale that `html[lang]` follows the resolved
+locale and that the `:lang`-gated stack reaches the DOM naming its platform
+face — Yu Gothic UI for `ja`, Malgun Gothic for `ko`, Microsoft YaHei UI for
+`zh-CN`. Three separate CSS rules, so one silently failing to match is a real
+regression and now fails a test. Nothing clips under `ko` or `zh-CN` that does
+not already clip under English, at both viewports.
+
+**Unchanged from wave 2: this validates wiring, not glyphs, and it ran on
+Windows/Chrome only.** Whether kanji are drawn with Japanese rather than
+Chinese letterforms depends on the machine's fonts, and macOS and Linux still
+need a human in front of the real build.
+
+**Still outstanding:** native review, now of all seven locales. That is the
+whole remaining gate — the machine's half is complete.
+
 ---
 
 plan builds that, extracts roughly 300 renderer strings and a triaged subset of
@@ -1046,6 +1129,13 @@ bundle the Noto faces and gate them by `unicode-range` exactly as the site does.
 > ~156 KB against ~1.1 MB for Japanese and Simplified Chinese. That gap is too
 > large to be a subsetting artifact and looks like a single Fontsource slice
 > rather than full Hangul coverage. Verify `/ko/` renders completely.
+>
+> **Verified in wave 3, and correct.** Only 305 of 699 sampled Hangul syllables
+> are in `NotoSansKR-Regular.woff2`, while `cjk.css` declares the full
+> `U+AC00-D7AF` block plus both Jamo ranges. Korean visitors get mixed
+> typefaces, and tofu on a machine with no Korean font. Fix belongs in
+> `conduit-website`: re-slice at full coverage, or narrow the declared
+> `unicode-range` to the truth. See the wave-3 progress note above for method.
 
 ### D18 — Tests render under `en` with real catalogs
 

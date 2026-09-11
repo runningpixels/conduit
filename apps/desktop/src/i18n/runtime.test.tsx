@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { useCallback, useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { DEFAULT_BRAND, resetBrand, setBrand } from '../brand';
 import {
@@ -167,6 +168,67 @@ describe('I18nProvider', () => {
   });
 });
 
+describe('switching language never exposes a half-applied locale', () => {
+  /* The provider re-mounts its subtree on `key={locale}` so that formatted text
+   * held in somebody's state recomputes. The catalog for the new locale,
+   * though, arrives from a dynamic `import()` a microtask later. So there was a
+   * window — one commit wide — where children were mounted *as* the new locale
+   * while `messages` was still the old catalog, and everything rendered in the
+   * previous language.
+   *
+   * Render-phase `t(...)` calls recover from that on the next commit. A `t`
+   * captured in a `useCallback` does not: `useT` returns a new function per
+   * `intl`, so a callback whose deps omit `t` keeps whichever catalog was live
+   * when it mounted. App.tsx has 25 such callbacks, which is every toast the
+   * shell raises — "Started a new chat" came back in English from a Spanish UI.
+   *
+   * Fixing 25 dependency arrays would leave the 26th to be written. Fixing the
+   * window means there is no wrong catalog to capture.
+   */
+  function CaptureAtMount() {
+    const t = useT();
+    const [shown, setShown] = useState<string | null>(null);
+    // Deliberately omits `t`, exactly like the call sites in App.tsx.
+    const raise = useCallback(() => setShown(t('onboarding.actions.back')), []);
+    return (
+      <>
+        <button onClick={raise}>raise</button>
+        <span data-testid="captured">{shown ?? ''}</span>
+      </>
+    );
+  }
+
+  function Switcher() {
+    const { setPreference } = useLocale();
+    return <button onClick={() => setPreference('de')}>switch</button>;
+  }
+
+  it('a callback captured at mount speaks the language the user switched to', async () => {
+    render(
+      <I18nProvider initialPreference="en">
+        <Switcher />
+        <Probe id="onboarding.actions.back" />
+        <CaptureAtMount />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId('out')).toHaveTextContent('Back');
+    fireEvent.click(screen.getByText('switch'));
+
+    // The visible UI reaches German.
+    await waitFor(() => expect(screen.getByTestId('out')).toHaveTextContent('Zurück'));
+
+    // So must anything the UI raises from a callback.
+    fireEvent.click(screen.getByText('raise'));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('captured'),
+        'a callback captured the catalog from the half-applied frame',
+      ).toHaveTextContent('Zurück'),
+    );
+  });
+});
+
 describe('loadMessages', () => {
   it('returns English for English without a round trip', async () => {
     await expect(loadMessages('en')).resolves.toBe(EN_MESSAGES);
@@ -282,7 +344,7 @@ describe('changing language at runtime', () => {
     await waitFor(() => expect(document.documentElement.lang).toBe('de'));
   });
 
-  it('refuses to change language while a dev override is pinned', () => {
+  it('refuses to change language while a dev override is pinned', async () => {
     // App reconciles `AppSettings.language` into the provider on boot. Without
     // this guard that reconcile would immediately undo `?locale=en-XA`, and
     // the pseudo-locale would be unreachable — it has no setting to persist to.
@@ -293,7 +355,12 @@ describe('changing language at runtime', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'switch' }));
 
-    expect(screen.getByTestId('loc')).toHaveTextContent('en-XA');
+    /* Awaited rather than read synchronously, because `useLocale().locale` is
+     * the locale being *rendered*: with no `initialMessages` the first frame is
+     * honestly English until the pseudo catalog resolves. Reaching `en-XA` at
+     * all — rather than the `de` the click asked for — is what proves the
+     * override held. */
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('en-XA'));
     expect(screen.getByTestId('overridden')).toHaveTextContent('true');
     expect(readCachedLanguage()).toBe('system');
   });

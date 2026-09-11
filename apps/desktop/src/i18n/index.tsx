@@ -292,7 +292,14 @@ export function translate(intl: IntlShape, id: string, values?: TranslateValues)
 }
 
 interface LocaleControl {
-  /** The locale actually being rendered — always a supported code. */
+  /**
+   * The locale actually being rendered — always a supported code.
+   *
+   * This is the *applied* locale, not the requested one. While a newly chosen
+   * language's catalog is still loading the UI is genuinely still in the old
+   * one, and reporting the new code here would be the same half-applied lie
+   * that froze English into captured callbacks.
+   */
   locale: string;
   /** What the user chose: a code, or `'system'` to follow the OS. */
   preference: string;
@@ -349,12 +356,36 @@ export function I18nProvider({
 
   const locale = useMemo(() => resolveLocale(preference, navigatorLanguages()), [preference]);
 
-  const [messages, setMessages] = useState<Messages>(initialMessages ?? EN_MESSAGES);
+  /* The locale the catalog below actually belongs to, carried *with* it as one
+   * value rather than as two pieces of state that can disagree.
+   *
+   * They used to be separate, and the gap between them was a real bug. The
+   * catalog for a new locale arrives from a dynamic `import()` a microtask
+   * after `locale` changes, so for one commit the subtree was re-mounted as the
+   * new locale — new `key`, new `html[lang]` — while `messages` was still the
+   * previous catalog, and everything rendered in the old language.
+   *
+   * Render-phase `t(...)` recovers on the next commit, so that window looked
+   * harmless. It is not: `useT` returns a fresh function per `intl`, so a `t`
+   * captured in a `useCallback` keeps whichever catalog was live when the
+   * callback was created. App.tsx alone has 25 such callbacks — every toast the
+   * shell raises — and they came back in English from a Spanish UI, for the
+   * lifetime of the mount. Keeping the pair together means there is no wrong
+   * catalog to capture: children stay on the old locale, consistently, until
+   * the new one is ready to apply whole. */
+  const [applied, setApplied] = useState<{ locale: string; messages: Messages }>(() => ({
+    /* Without `initialMessages` the only honest claim is English — saying
+     * otherwise would recreate the very mismatch this state exists to prevent.
+     * `bootstrapI18n` supplies it in the app; tests mostly do not, and get one
+     * consistent English frame before the catalog resolves. */
+    locale: initialMessages ? resolveLocale(initialPreference, navigatorLanguages()) : DEFAULT_LOCALE,
+    messages: initialMessages ?? EN_MESSAGES,
+  }));
 
   useEffect(() => {
     let cancelled = false;
     void loadMessages(locale).then((next) => {
-      if (!cancelled) setMessages(next);
+      if (!cancelled) setApplied({ locale, messages: next });
     });
     return () => {
       cancelled = true;
@@ -377,11 +408,11 @@ export function I18nProvider({
    * is not a language. */
   useEffect(() => {
     const root = document.documentElement;
-    root.lang = locale;
-    root.dir = localeEntry(locale)?.dir ?? 'ltr';
-  }, [locale]);
+    root.lang = applied.locale;
+    root.dir = localeEntry(applied.locale)?.dir ?? 'ltr';
+  }, [applied.locale]);
 
-  const intl = useMemo(() => createAppIntl(locale, messages), [locale, messages]);
+  const intl = useMemo(() => createAppIntl(applied.locale, applied.messages), [applied]);
 
   const setPreference = useCallback(
     (next: string) => {
@@ -400,17 +431,20 @@ export function I18nProvider({
   );
 
   const control = useMemo<LocaleControl>(
-    () => ({ locale, preference, overridden, setPreference }),
-    [locale, preference, overridden, setPreference],
+    () => ({ locale: applied.locale, preference, overridden, setPreference }),
+    [applied.locale, preference, overridden, setPreference],
   );
 
   /* `key` on the provider is deliberate: switching language must re-mount the
    * subtree so that anything holding formatted text in state (a memo, a
    * `useState` initialiser) recomputes instead of showing the old language
-   * until it happens to re-render for another reason. */
+   * until it happens to re-render for another reason.
+   *
+   * Keyed on the *applied* locale, not the requested one, so the re-mount
+   * happens once, with the new catalog already in hand. */
   return (
     <LocaleControlContext.Provider value={control}>
-      <RawIntlProvider value={intl} key={locale}>
+      <RawIntlProvider value={intl} key={applied.locale}>
         {children}
       </RawIntlProvider>
     </LocaleControlContext.Provider>

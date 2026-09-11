@@ -569,18 +569,24 @@ pub async fn ensure_exists(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-/// Resolve the history-rail label: explicit title, else first user prompt, else fallback.
-pub fn resolve_display_title(title: Option<&str>, first_user_prompt: Option<&str>) -> String {
+/// Resolve the history-rail label: explicit title, else first user prompt.
+///
+/// `None` when the chat has neither. The caller decides what to show for that,
+/// because the answer is a translated sentence and this layer has no locale.
+pub fn resolve_display_title(
+    title: Option<&str>,
+    first_user_prompt: Option<&str>,
+) -> Option<String> {
     if let Some(t) = title.map(str::trim).filter(|t| !t.is_empty()) {
-        return truncate_chars(t, DISPLAY_TITLE_MAX_CHARS);
+        return Some(truncate_chars(t, DISPLAY_TITLE_MAX_CHARS));
     }
     if let Some(prompt) = first_user_prompt {
         let normalized = normalize_whitespace(prompt);
         if !normalized.is_empty() {
-            return truncate_chars(&normalized, DISPLAY_TITLE_MAX_CHARS);
+            return Some(truncate_chars(&normalized, DISPLAY_TITLE_MAX_CHARS));
         }
     }
-    "Untitled chat".to_string()
+    None
 }
 
 fn normalize_whitespace(s: &str) -> String {
@@ -879,7 +885,7 @@ mod tests {
     fn resolve_display_title_prefers_explicit_title() {
         assert_eq!(
             resolve_display_title(Some("My chat"), Some("first prompt")),
-            "My chat"
+            Some("My chat".to_string())
         );
     }
 
@@ -887,24 +893,23 @@ mod tests {
     fn resolve_display_title_uses_first_user_prompt_when_untitled() {
         assert_eq!(
             resolve_display_title(None, Some("How do I refactor this module?")),
-            "How do I refactor this module?"
+            Some("How do I refactor this module?".to_string())
         );
     }
 
     #[test]
     fn resolve_display_title_normalizes_and_truncates_prompt() {
         let long = "word ".repeat(30);
-        let resolved = resolve_display_title(None, Some(&long));
+        let resolved = resolve_display_title(None, Some(&long)).expect("a prompt resolves");
         assert!(resolved.ends_with('…'));
         assert!(resolved.chars().count() <= DISPLAY_TITLE_MAX_CHARS + 1);
     }
 
     #[test]
     fn resolve_display_title_falls_back_when_empty() {
-        assert_eq!(resolve_display_title(None, None), "Untitled chat");
-        assert_eq!(
-            resolve_display_title(Some("   "), Some("   ")),
-            "Untitled chat"
-        );
+        // `None`, not a label: naming the empty case is the renderer's job,
+        // because the name is a translated sentence.
+        assert_eq!(resolve_display_title(None, None), None);
+        assert_eq!(resolve_display_title(Some("   "), Some("   ")), None);
     }
 }

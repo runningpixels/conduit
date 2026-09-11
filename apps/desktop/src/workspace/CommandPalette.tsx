@@ -17,7 +17,13 @@ import { useFormatters } from '../i18n/formatters';
 
 export interface CommandPaletteConversation {
   id: string;
-  title: string;
+  /**
+   * The chat's label, absent when it has neither a title nor a first prompt to
+   * take one from. The palette supplies the name for that case below, which is
+   * why this is optional rather than a pre-filled "Untitled chat" — that string
+   * would arrive already in English.
+   */
+  title?: string;
   pinned?: boolean;
   archived?: boolean;
 }
@@ -274,7 +280,7 @@ export function CommandPalette({
       return modelItems.filter((m) => m.label.toLowerCase().includes(q));
     }
     // Default corpus: New chat (empty query) + recent conversations + FTS hits.
-    const untitledChat = t('workspace.commandPalette.untitledChat');
+    const untitledChat = t('chat.title.untitled');
     const chatsGroup = t('workspace.commandPalette.group.chats');
     const convItems: PaletteItem[] = conversations
       .filter((c) => (c.title || untitledChat).toLowerCase().includes(q))

@@ -204,7 +204,10 @@ export default function App() {
   const [toasts, setToasts] = useState<StatusState[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteConversations, setPaletteConversations] = useState<
-    { id: string; title: string; pinned?: boolean; archived?: boolean }[]
+    /* `title` is optional for the same reason `ConversationSummary.displayTitle`
+     * is: a chat with no name and nothing said in it has none, and the palette
+     * names that case itself, in the reader's language. */
+    { id: string; title?: string; pinned?: boolean; archived?: boolean }[]
   >([]);
   const chatViewRef = useRef<ChatViewHandle>(null);
 

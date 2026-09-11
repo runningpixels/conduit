@@ -322,6 +322,10 @@ export function Sidebar({
 
   function renderRow(row: ConversationSummary) {
     const providerId = convoProviders[row.id] ?? 'custom';
+    /* `displayTitle` is absent only when the chat has no title *and* nothing
+     * has been said in it, which is the one case Rust refuses to name: the name
+     * is a sentence, and Rust has no locale. */
+    const label = row.displayTitle ?? t('chat.title.untitled');
     return (
       <div
         key={row.id}
@@ -339,7 +343,7 @@ export function Sidebar({
           type="button"
           data-provider={providerHueId(providerId)}
           aria-current={row.id === activeConversationId ? 'true' : undefined}
-          title={row.displayTitle}
+          title={label}
           onClick={() => onSelectConversation(row.id)}
         >
           <i className="convo-dot" aria-hidden="true" />
@@ -348,14 +352,14 @@ export function Sidebar({
               <PinIcon />
             </span>
           ) : null}
-          <span className="convo-name">{row.displayTitle}</span>
+          <span className="convo-name">{label}</span>
           <span className="convo-meta">{fmt.timeAgoTerse(row.updatedAt)}</span>
         </button>
         {onDeleteConversation && (
           <button
             className="convo-del"
             type="button"
-            aria-label={t('shell.sidebar.row.deleteAriaLabel', { title: row.displayTitle })}
+            aria-label={t('shell.sidebar.row.deleteAriaLabel', { title: label })}
             title={t('shell.sidebar.row.deleteTitle')}
             onClick={(event) => {
               event.stopPropagation();
@@ -619,7 +623,9 @@ export function Sidebar({
           className="menu convo-menu"
           data-open="true"
           role="menu"
-          aria-label={t('shell.sidebar.contextMenu.ariaLabel', { title: contextRow.displayTitle })}
+          aria-label={t('shell.sidebar.contextMenu.ariaLabel', {
+            title: contextRow.displayTitle ?? t('chat.title.untitled'),
+          })}
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {onPinConversation && (

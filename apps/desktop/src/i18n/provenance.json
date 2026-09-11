@@ -1075,7 +1075,8 @@
     "workspace.mainHead.panelToggleLabel": "138ea4ecbd0c2a1d55b67a789298caf2ced1cc25",
     "workspace.mainHead.panelToggleTitle": "4a8da31ceafea424382c39f91f1287abef6b0f41",
     "workspace.mainHead.themeToggleAriaLabel": "df62b27c7038879571943d4de7b2dcba9c49e1d5",
-    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f"
+    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f",
+    "chat.title.untitled": "156e50739d2f0e73dca103a4c3be5c6fcc3d176f"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2153,7 +2154,8 @@
     "workspace.mainHead.panelToggleLabel": "138ea4ecbd0c2a1d55b67a789298caf2ced1cc25",
     "workspace.mainHead.panelToggleTitle": "4a8da31ceafea424382c39f91f1287abef6b0f41",
     "workspace.mainHead.themeToggleAriaLabel": "df62b27c7038879571943d4de7b2dcba9c49e1d5",
-    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f"
+    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f",
+    "chat.title.untitled": "156e50739d2f0e73dca103a4c3be5c6fcc3d176f"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3231,7 +3233,8 @@
     "workspace.mainHead.panelToggleLabel": "138ea4ecbd0c2a1d55b67a789298caf2ced1cc25",
     "workspace.mainHead.panelToggleTitle": "4a8da31ceafea424382c39f91f1287abef6b0f41",
     "workspace.mainHead.themeToggleAriaLabel": "df62b27c7038879571943d4de7b2dcba9c49e1d5",
-    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f"
+    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f",
+    "chat.title.untitled": "156e50739d2f0e73dca103a4c3be5c6fcc3d176f"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4309,7 +4312,8 @@
     "workspace.mainHead.panelToggleLabel": "138ea4ecbd0c2a1d55b67a789298caf2ced1cc25",
     "workspace.mainHead.panelToggleTitle": "4a8da31ceafea424382c39f91f1287abef6b0f41",
     "workspace.mainHead.themeToggleAriaLabel": "df62b27c7038879571943d4de7b2dcba9c49e1d5",
-    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f"
+    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f",
+    "chat.title.untitled": "156e50739d2f0e73dca103a4c3be5c6fcc3d176f"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -5387,7 +5391,8 @@
     "workspace.mainHead.panelToggleLabel": "138ea4ecbd0c2a1d55b67a789298caf2ced1cc25",
     "workspace.mainHead.panelToggleTitle": "4a8da31ceafea424382c39f91f1287abef6b0f41",
     "workspace.mainHead.themeToggleAriaLabel": "df62b27c7038879571943d4de7b2dcba9c49e1d5",
-    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f"
+    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f",
+    "chat.title.untitled": "156e50739d2f0e73dca103a4c3be5c6fcc3d176f"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6465,7 +6470,8 @@
     "workspace.mainHead.panelToggleLabel": "138ea4ecbd0c2a1d55b67a789298caf2ced1cc25",
     "workspace.mainHead.panelToggleTitle": "4a8da31ceafea424382c39f91f1287abef6b0f41",
     "workspace.mainHead.themeToggleAriaLabel": "df62b27c7038879571943d4de7b2dcba9c49e1d5",
-    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f"
+    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f",
+    "chat.title.untitled": "156e50739d2f0e73dca103a4c3be5c6fcc3d176f"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7543,6 +7549,7 @@
     "workspace.mainHead.panelToggleLabel": "138ea4ecbd0c2a1d55b67a789298caf2ced1cc25",
     "workspace.mainHead.panelToggleTitle": "4a8da31ceafea424382c39f91f1287abef6b0f41",
     "workspace.mainHead.themeToggleAriaLabel": "df62b27c7038879571943d4de7b2dcba9c49e1d5",
-    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f"
+    "workspace.mainHead.themeToggleTitle": "9b0eaf14d3bb4c83203cf1e1cfe0c6cd124e1c5f",
+    "chat.title.untitled": "156e50739d2f0e73dca103a4c3be5c6fcc3d176f"
   }
 }

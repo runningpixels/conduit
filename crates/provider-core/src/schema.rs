@@ -229,9 +229,18 @@ pub struct ConversationSummary {
     pub id: String,
     #[ts(optional)]
     pub title: Option<String>,
-    /// Display-ready label for the history rail: explicit title, else the first
-    /// words of the first user prompt, else `"Untitled chat"`.
-    pub display_title: String,
+    /// Label for the history rail: the explicit title, else the first words of
+    /// the first user prompt.
+    ///
+    /// `None` when there is neither — a chat with no title and nothing said in
+    /// it yet. Rust deliberately does **not** substitute "Untitled chat" here:
+    /// that is a sentence shown to a user, and the language it should be in is
+    /// decided in the renderer, which is the same split D9 makes for errors.
+    /// Every other string on this type is either the user's own words or a
+    /// database value, so this was the one field that had an opinion about
+    /// English.
+    #[ts(optional)]
+    pub display_title: Option<String>,
     pub updated_at: String,
     pub message_count: u32,
     #[ts(optional)]

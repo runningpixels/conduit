@@ -4,6 +4,7 @@ import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { Sidebar } from './Sidebar';
 import { conversationGroup } from '../lib/dayGroup';
 import { enTranslate } from '../test/enTranslate';
+import { EN_MESSAGES } from '../i18n';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
 const ctx = { locale: 'en', t: enTranslate };
@@ -114,6 +115,24 @@ describe('Sidebar', () => {
     expect(ollamaRow?.getAttribute('data-provider')).toBe('ollama');
     const fallbackRow = screen.getByText('Old notes').closest('button');
     expect(fallbackRow?.getAttribute('data-provider')).toBe('custom');
+  });
+
+  it('names an untitled chat itself, rather than rendering nothing', () => {
+    /* `displayTitle` is absent when a chat has no title and nothing has been
+     * said in it. Rust used to fill that in as the literal "Untitled chat",
+     * which is a sentence shown to a user and so arrived in English no matter
+     * what language the app was running in — the reason it is `Option` now.
+     *
+     * The name comes from the catalog instead. Asserted through `t` rather
+     * than against the English string so this keeps testing the wiring and not
+     * the wording. */
+    const untitled = { ...row('c9', '', '2026-08-03T09:00:00Z'), displayTitle: undefined };
+    render(<Sidebar {...props} conversations={[untitled]} />);
+
+    const label = EN_MESSAGES['chat.title.untitled'];
+    expect(screen.getByText(label)).toBeTruthy();
+    // And the row is still operable: the delete control names the chat too.
+    expect(screen.getByRole('button', { name: `Delete ${label}` })).toBeTruthy();
   });
 
   it('renders the empty state when there are no conversations', () => {

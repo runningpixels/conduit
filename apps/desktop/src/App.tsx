@@ -167,6 +167,10 @@ export default function App() {
   const tr = useRichT();
   const [paths, setPaths] = useState<AppPaths | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  /* Whether `settings` holds the authoritative Rust read yet, or is still the
+   * `defaultSettings` placeholder. Only the language mirror below needs to
+   * know, and it needs to badly — see the comment there. */
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [status, setStatus] = useState<StatusState | null>(makeStatus(t('app.status.booting'), 'active'));
   const [boundaryOk, setBoundaryOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -388,6 +392,7 @@ export default function App() {
         ]);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
+        setSettingsLoaded(true);
         setOnboarding(onboardingState);
         applyUiPrefs();
         // Reconcile the pre-paint cache (main.tsx) against the authoritative
@@ -962,19 +967,31 @@ export default function App() {
   }, [settings.theme]);
 
   /* The language analogue of the theme effect above, and the reconcile half of
-   * the pre-paint language read in `main.tsx`. `settings` starts as
-   * `defaultSettings` and is replaced by the authoritative Rust value in the
-   * boot effect, so this fires once on boot — correcting the localStorage
-   * mirror if it was stale, absent, or hand-edited — and again on every change
-   * from the Settings picker.
+   * the pre-paint language read in `main.tsx`. It corrects the localStorage
+   * mirror when it is stale, absent or hand-edited, and carries every change
+   * from the Settings picker into the provider.
+   *
+   * **It must not run until `settings` is the authoritative Rust read.** App
+   * sits inside `I18nProvider`, which carries `key={locale}` so that switching
+   * language re-mounts this subtree instead of leaving formatted text frozen in
+   * somebody's `useState`. That means every locale change resets `settings`
+   * back to `defaultSettings` — whose language is `'system'`, a placeholder
+   * nobody chose. Announcing that placeholder resolves to a different locale
+   * than an explicit choice does, which changes the key, which re-mounts App,
+   * which restores the placeholder and announces it again: an unbounded
+   * re-mount loop, paced by the boot IPC, with every piece of content in the
+   * window flickering for as long as the app is open. It needs a stored
+   * language other than `'system'` to bite, so it stayed invisible until the
+   * picker had languages worth choosing. `App.smoke.test.tsx` counts boots.
    *
    * `setPreference` is deliberately inert while a dev locale override is
    * active. Without that, this effect would undo `?locale=en-XA` the instant
    * settings loaded, and the pseudo-locale would be unreachable. */
   const { setPreference } = useLocale();
   useEffect(() => {
+    if (!settingsLoaded) return;
     setPreference(settings.language);
-  }, [settings.language, setPreference]);
+  }, [settingsLoaded, settings.language, setPreference]);
 
   // A brand palette is inline CSS on <html>, which beats every stylesheet
   // rule including [data-theme="light"] — so it has to be re-applied for the

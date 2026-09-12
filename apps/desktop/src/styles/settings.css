@@ -258,11 +258,144 @@
 }
 .onboarding-hint {
   font-size: 12px;
+  /* One very low-contrast wash behind the card so the ground reads as lit
+     rather than as void. Deliberately decorative and deliberately faint: it
+     carries no meaning, nothing sits on it, and Windows High Contrast replaces
+     gradients with a flat colour — which must be a no-op here, and is.
+     `color-mix(... 0%)` rather than `transparent` for the far stop: `transparent`
+     is rgba(0,0,0,0), so interpolating to it in sRGB drags the midpoint toward
+     grey and leaves a visible dirty ring on a warm ground. */
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in srgb, var(--hue) 7%, transparent),
+      color-mix(in srgb, var(--hue) 0%, transparent) 60%
+    ),
+    radial-gradient(
+      90% 70% at 50% 100%,
+      color-mix(in srgb, var(--bg-side) 70%, transparent),
+      color-mix(in srgb, var(--bg-side) 0%, transparent) 70%
+    );
   color: var(--ink-3);
   line-height: 1.5;
   margin: 8px 0 0;
 }
 .onboarding-check {
+/* The two-column variant, on the wizard only. `MigrationRecoveryNotice` shares
+   `.onboarding-card` and has no rail, so the grid is a modifier rather than
+   something baked into the base class. */
+.onboarding-card--split {
+  max-width: 940px;
+  display: grid;
+  /* minmax, never a fixed track: the rail holds five translated step labels and
+     a lede, and German runs long enough that a fixed 280px clips
+     "Erscheinungsbild". The floor is what the longest label needs; the ceiling
+     stops the rail eating the body on a wide window. */
+  grid-template-columns: minmax(232px, 288px) minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.onboarding-rail {
+  background: var(--bg-side);
+  border-right: 1px solid var(--line-soft);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.onboarding-rail h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.onboarding-rail .onboarding-lede {
+  margin: 0;
+  font-size: 12.5px;
+}
+.onboarding-rail-mark {
+  color: var(--hue);
+  width: 22px;
+  height: 22px;
+  margin-bottom: 2px;
+}
+.onboarding-rail-mark svg,
+.onboarding-rail-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+.onboarding-body {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  /* The step bodies vary by ~310px between the review step and the privacy
+     step. Centred in the window, that swing moved the heading, the rail and the
+     buttons on every Continue — the card visibly pumped. A floor sized to the
+     tallest ordinary step holds the frame still; the privacy step still grows
+     past it, and the shell scrolls rather than clipping (see
+     `align-content: safe center` above). */
+  min-height: 420px;
+}
+/* The stepper turns vertical in the rail: a column of five, top to bottom, with
+   the active one marked. Horizontal dots were fine at three steps and became a
+   wrapping double row at five. */
+.onboarding-card--split .onboarding-steps {
+  flex-direction: column;
+  align-items: stretch;
+  display: flex;
+  gap: 2px;
+  margin: 8px 0 0;
+}
+.onboarding-card--split .onboarding-step-dot {
+  justify-content: flex-start;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+}
+.onboarding-card--split .onboarding-step-dot:hover {
+  background: var(--card);
+}
+.onboarding-card--split .onboarding-step-dot.active {
+  background: var(--hue-weak);
+  border-color: transparent;
+  color: var(--hue-text);
+}
+/* Push the actions to the bottom of the body so the primary button sits on one
+   line across every step, however tall that step's content is. */
+.onboarding-card--split .onboarding-actions {
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+/* Narrow windows get the single column this screen used to be: the rail
+   becomes a header band and the stepper goes back to wrapping horizontally.
+   880px is where the body column drops under ~560px, which is the point the
+   appearance grid's label/control pair stops fitting on one row. */
+@media (max-width: 880px) {
+  .onboarding-card--split {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 680px;
+  }
+  .onboarding-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .onboarding-card--split .onboarding-steps {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .onboarding-card--split .onboarding-step-dot {
+    border-color: var(--line);
+    background: var(--card);
+    border-radius: var(--r-pill);
+  }
+  .onboarding-body {
+    min-height: 0;
+  }
+}
   display: flex;
   align-items: center;
   gap: 8px;

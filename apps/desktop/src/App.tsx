@@ -66,6 +66,7 @@ import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
 import { modShortcutHint } from './lib/shortcuts';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
+import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
 import {
   exportConversationDialog,
@@ -164,6 +165,9 @@ async function resolveSourceMessageId(messageId: string): Promise<string> {
 
 export default function App() {
   const t = useT();
+  /* Read once per mount, not per render: it never changes within a page load
+     (see `devRoute.ts`), and `null` in every production build. */
+  const [devRoute] = useState(readDevRoute);
   const tr = useRichT();
   const [paths, setPaths] = useState<AppPaths | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
@@ -1209,7 +1213,12 @@ export default function App() {
       </div>
     );
   }
-  if (onboarding && (!onboarding.onboardingCompleted || !onboarding.hasProviderCredential)) {
+  /* `devRoute` is `null` in every production build (see `devRoute.ts`), so this
+     disjunct is dead code there and the gate below is unchanged. It exists so
+     the layout suite, which runs against a backend-less `dev:web` where
+     `getOnboardingState()` rejects and `onboarding` stays null, can still reach
+     this screen to measure it. */
+  if (devRoute === 'onboarding' || (onboarding && (!onboarding.onboardingCompleted || !onboarding.hasProviderCredential))) {
     return (
       <div className="app" id="app">
         <TitleBar />
@@ -1219,6 +1228,7 @@ export default function App() {
           onStatus={setStatusMessage}
           status={status}
           onComplete={() => void refreshOnboarding()}
+          logoSrc={brandLogo ?? undefined}
         />
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>

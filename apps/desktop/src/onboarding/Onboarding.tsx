@@ -18,6 +18,7 @@ import {
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
 import { localeEntry, useT } from '../i18n';
+import { BrandMark } from '../icons';
 import { useFormatters } from '../i18n/formatters';
 import { useAutoSave } from '../workspace/settings/useAutoSave';
 import { AppearanceStep } from './AppearanceStep';
@@ -56,6 +57,7 @@ export function Onboarding({
   onStatus,
   status,
   onComplete,
+  logoSrc,
 }: {
   settings: AppSettings;
   onSettingsChange: (s: AppSettings) => void;
@@ -64,6 +66,9 @@ export function Onboarding({
   // from every onboarding action are actually visible instead of swallowed.
   status: StatusState | null;
   onComplete: () => void;
+  /** Validated `data:image/...` brand logo URI, or undefined for the built-in
+   *  glyph. Same seam `ArtifactEmptyState` uses; see `brand/logo.ts`. */
+  logoSrc?: string;
 }) {
   const t = useT();
   const [finishing, setFinishing] = useState(false);
@@ -118,28 +123,46 @@ export function Onboarding({
 
   return (
     <div className="onboarding-shell">
-      <div className="info-card onboarding-card">
-        <h2>{t('onboarding.welcome.title')}</h2>
-        <p className="onboarding-lede">{t('onboarding.welcome.lede')}</p>
+      {/* Two columns, and everything in the left one is content that already
+          existed — the heading, the lede, and the step list. That is the whole
+          reason this layout was affordable: a brand panel of the kind the
+          split-screen pattern usually carries would have meant new marketing
+          prose, and new prose here means seven translations and a provenance
+          stamp before the build goes green. Rearranging what is already
+          translated costs nothing and fills the same space.
 
-        <nav className="onboarding-steps" aria-label={t('onboarding.nav.ariaLabel')}>
-          {STEPS.map((s, i) => {
-            const done = i < stepIndex;
-            const active = s.id === step;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                className={`onboarding-step-dot${active ? ' active' : ''}${done ? ' done' : ''}`}
-                aria-current={active ? 'step' : undefined}
-                onClick={() => setStep(s.id)}
-              >
-                {t('onboarding.steps.dotLabel', { index: i + 1, label: t(s.labelId) })}
-              </button>
-            );
-          })}
-        </nav>
+          Below ~880px it collapses back to the single column this screen used
+          to be, with the rail as a header band. */}
+      <div className="info-card onboarding-card onboarding-card--split">
+        <aside className="onboarding-rail">
+          {/* Decorative: the heading directly below already names the product,
+              and BrandMark's logo branch carries alt="" for the same reason. */}
+          <div className="onboarding-rail-mark" aria-hidden="true">
+            <BrandMark src={logoSrc} />
+          </div>
+          <h2>{t('onboarding.welcome.title')}</h2>
+          <p className="onboarding-lede">{t('onboarding.welcome.lede')}</p>
 
+          <nav className="onboarding-steps" aria-label={t('onboarding.nav.ariaLabel')}>
+            {STEPS.map((s, i) => {
+              const done = i < stepIndex;
+              const active = s.id === step;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`onboarding-step-dot${active ? ' active' : ''}${done ? ' done' : ''}`}
+                  aria-current={active ? 'step' : undefined}
+                  onClick={() => setStep(s.id)}
+                >
+                  {t('onboarding.steps.dotLabel', { index: i + 1, label: t(s.labelId) })}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <div className="onboarding-body">
         {step === 'appearance' && (
           <AppearanceStep settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
         )}
@@ -241,6 +264,7 @@ export function Onboarding({
             {status.brief}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

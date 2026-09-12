@@ -7,8 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.0-rc.4] - 2026-09-12
+
 ### Added
 
+- First-run setup now opens by asking for your language, theme, palette and
+  text size, so the rest of it is readable before it explains anything. It also
+  gains a step for the settings the welcome text makes promises about —
+  local-only mode, where API keys are stored, update checks and diagnostics —
+  and ends on a review of what was actually configured.
 - The interface is available in German, Spanish, French, Japanese, Brazilian
   Portuguese, Korean and Simplified Chinese. Pick a language in Settings →
   Appearance, or leave it on System to follow the OS. The choice also sets the
@@ -26,9 +33,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - File sizes read `4.2 kB` rather than `4.2 KB`, and context windows read
   `200K` rather than `200k` — both are the standard forms for the reader's
   locale rather than hardcoded English.
+- Settings panes no longer print their own name twice, and their forms are
+  capped to a readable width instead of stretching a dropdown across the whole
+  sheet to hold the word "Dark".
 
 ### Fixed
 
+- Choosing a cloud provider while local-only mode was on left the app unable to
+  answer anything: because local-only defaults to on and the default provider is
+  a cloud one, a fresh install that followed setup as written failed on its
+  first message with an error naming a setting the user had never seen.
+  Choosing a cloud provider now turns local-only off, and says so.
+- The first-run screen could render with its heading, step list and language
+  picker above the top of the window, with no way to scroll up to them.
+- Errors during first-run setup were silent. Testing a connection with no key
+  saved, or a keychain write that failed, reported nothing at all.
 - The allowed- and blocked-domain boxes showed a literal `&#10;` in their
   placeholder text in German, Spanish and French instead of a line break.
 - Truncated text — folder names, tool-call summaries, the workspace-folder chip

@@ -1,23 +1,33 @@
-import { useState } from 'react';
-import type { AppSettings, MigrationRecoveryInfo, WipeScope } from '../ipc/contracts';
+import { useEffect, useState } from 'react';
+import type {
+  AppSettings,
+  MigrationRecoveryInfo,
+  ProviderDescriptor,
+  WipeScope,
+} from '../ipc/contracts';
 import type { StatusState } from '../chat/statusTypes';
 import {
   acknowledgeMigrationRecovery,
   discardMigrationBackup,
   getOnboardingState,
+  listProviderDescriptors,
   requestLocalDataWipe,
   restartApp,
   updateSettings,
 } from '../ipc/client';
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
-import { useT } from '../i18n';
+import { localeEntry, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+import { AppearanceStep } from './AppearanceStep';
+import { PrivacyStep } from './PrivacyStep';
 
-type OnboardingStep = 'provider' | 'connectors' | 'finish';
+type OnboardingStep = 'appearance' | 'provider' | 'privacy' | 'connectors' | 'finish';
 
 const STEPS: { id: OnboardingStep; labelId: string }[] = [
+  { id: 'appearance', labelId: 'onboarding.steps.appearance' },
   { id: 'provider', labelId: 'onboarding.steps.provider' },
+  { id: 'privacy', labelId: 'onboarding.steps.privacy' },
   { id: 'connectors', labelId: 'onboarding.steps.connectors' },
   { id: 'finish', labelId: 'onboarding.steps.finish' },
 ];
@@ -26,9 +36,19 @@ const STEPS: { id: OnboardingStep; labelId: string }[] = [
  *  modal) shown by `App.tsx` while `onboardingCompleted` is false or no provider
  *  credential is configured. Reuses the shared `ProviderPicker` (provider + BYOK
  *  entry via the OS keychain) and `ConnectorsSection` so it does not duplicate
- *  the Settings screen flows. Steps: provider/BYOK → optional connectors →
- *  diagnostics awareness → "Get started". The hard gate is a configured provider
- *  (chat is useless without one); connectors + diagnostics are optional. */
+ *  the Settings screen flows.
+ *
+ *  Steps: appearance → provider/BYOK → privacy & updates → optional connectors
+ *  → review → "Get started". The hard gate is still a configured provider —
+ *  chat is useless without one — and every other step is skippable.
+ *
+ *  **Appearance leads, and that ordering is load-bearing rather than
+ *  aesthetic.** Switching language re-mounts `<App>` (`I18nProvider` carries
+ *  `key={locale}`), which resets this component's `step` and empties every
+ *  uncommitted field below it. On step one there is nothing yet to lose; two
+ *  steps later it would discard a half-typed API key. `persistSteps.ts` carries
+ *  the rest of that story, including why the language write is awaited while
+ *  every other setting is optimistic. */
 export function Onboarding({
   settings,
   onSettingsChange,
@@ -46,8 +66,23 @@ export function Onboarding({
 }) {
   const t = useT();
   const [finishing, setFinishing] = useState(false);
-  const [step, setStep] = useState<OnboardingStep>('provider');
+  const [step, setStep] = useState<OnboardingStep>('appearance');
   const stepIndex = STEPS.findIndex((s) => s.id === step);
+  /* Only so the review step can name the provider the way the picker labelled
+     it. A failed lookup falls back to the raw id rather than blocking the
+     step — the gate that matters is the keychain probe in `handleFinish`. */
+  const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
+
+  useEffect(() => {
+    if (step !== 'finish') return;
+    void (async () => {
+      try {
+        setProviders(await listProviderDescriptors());
+      } catch {
+        setProviders([]);
+      }
+    })();
+  }, [step]);
 
   async function handleFinish() {
     setFinishing(true);
@@ -103,12 +138,20 @@ export function Onboarding({
           })}
         </nav>
 
+        {step === 'appearance' && (
+          <AppearanceStep settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
+        )}
+
         {step === 'provider' && (
           <section className="onboarding-step-body" aria-label={t('onboarding.provider.ariaLabel')}>
             <h3 className="onboarding-step-title">{t('onboarding.provider.stepTitle')}</h3>
             <ProviderPicker settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
             <p className="onboarding-hint">{t('onboarding.provider.hint')}</p>
           </section>
+        )}
+
+        {step === 'privacy' && (
+          <PrivacyStep settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
         )}
 
         {step === 'connectors' && (
@@ -122,15 +165,42 @@ export function Onboarding({
         {step === 'finish' && (
           <section className="onboarding-step-body" aria-label={t('onboarding.finish.ariaLabel')}>
             <h3 className="onboarding-step-title">{t('onboarding.finish.stepTitle')}</h3>
-            <label className="onboarding-check">
-              <input
-                type="checkbox"
-                checked={settings.diagnosticsEnabled}
-                onChange={(e) => onSettingsChange({ ...settings, diagnosticsEnabled: e.target.checked })}
-              />
-              {t('onboarding.finish.diagnosticsCheckbox')}
-            </label>
-            <p className="onboarding-hint">{t('onboarding.finish.diagnosticsHint')}</p>
+            <p className="onboarding-lede">{t('onboarding.finish.summaryLede')}</p>
+            {/* A review rather than another form. Four steps of choices are more
+                than anyone holds in their head, and the one that silently
+                breaks chat — a cloud provider under local-only mode — is worth
+                showing back before the gate closes. Values are data (a brand
+                name, a model id, a language in its own language), so they are
+                rendered through expressions rather than the catalog. */}
+            <dl className="onboarding-summary">
+              <dt>{t('settings.provider.providerLabel')}</dt>
+              <dd>
+                {providers.find((p) => p.id === settings.activeProvider)?.displayName ??
+                  settings.activeProvider}
+              </dd>
+              <dt>{t('settings.provider.modelLabel')}</dt>
+              <dd>{settings.activeModel}</dd>
+              <dt>{t('settings.appearance.language.label')}</dt>
+              <dd>
+                {settings.language === 'system'
+                  ? t('settings.appearance.language.system')
+                  : (localeEntry(settings.language)?.nativeName ?? settings.language)}
+              </dd>
+              <dt>{t('settings.appearance.theme.label')}</dt>
+              <dd>
+                {settings.theme === 'dark'
+                  ? t('settings.appearance.theme.optionDark')
+                  : settings.theme === 'light'
+                    ? t('settings.appearance.theme.optionLight')
+                    : t('settings.appearance.theme.optionSystem')}
+              </dd>
+              <dt>{t('settings.privacy.localOnlyToggle.label')}</dt>
+              <dd>
+                {settings.localOnly
+                  ? t('onboarding.finish.summaryOn')
+                  : t('onboarding.finish.summaryOff')}
+              </dd>
+            </dl>
           </section>
         )}
 

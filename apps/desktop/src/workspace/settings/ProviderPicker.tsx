@@ -98,10 +98,37 @@ export function ProviderPicker({
         baseUrl: descriptor.defaultBaseUrl,
       };
     }
+
+    /* `local_only` defaults to `true` and `active_provider` defaults to
+     * `anthropic` (`schema.rs`), and `stream_manager.rs` rejects every adapter
+     * that does not report `is_local()` while the flag is on. Left alone, the
+     * documented first run — install, pick Anthropic, paste a key, say hello —
+     * fails on the first message with "Cloud provider 'anthropic' is disabled
+     * while local_only mode is on", naming a setting the user has never seen on
+     * a pane they have never opened.
+     *
+     * Choosing a cloud provider *is* the decision to leave local-only mode, so
+     * clearing the flag here is following the user's intent rather than
+     * overriding it. It is announced through `onStatus` for the same reason it
+     * is done at all: a setting that changes silently is the problem, not the
+     * solution.
+     *
+     * Deliberately one-way. Picking Ollama does not turn local-only back on: a
+     * user who ran a local model once has not thereby asked to have cloud
+     * providers blocked, and that flag reaches further than this dropdown (web
+     * search gating, the status line, the sidebar chip). Turning something off
+     * to unblock the choice in front of you is a different act from turning a
+     * restriction on. */
+    const leavingLocalOnly = settings.localOnly && descriptor?.isLocal === false;
+    if (leavingLocalOnly) {
+      onStatus(t('settings.provider.localOnlyCleared', { provider: descriptor.displayName }));
+    }
+
     onSettingsChange({
       ...settings,
       activeProvider: providerId,
       providerEndpoints: nextEndpoints,
+      localOnly: leavingLocalOnly ? false : settings.localOnly,
     });
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import type { AppSettings, MigrationRecoveryInfo } from '../ipc/contracts';
 import { renderWithIntl } from '../test/renderWithIntl';
 import { MigrationRecoveryNotice, Onboarding } from './Onboarding';
@@ -114,8 +114,21 @@ describe('Onboarding in German', () => {
   it('renders the welcome screen from the de catalog', async () => {
     await renderOnboarding('de');
     expect(screen.getByText(/^Willkommen bei /)).toBeInTheDocument();
-    expect(screen.getByText('Wähle einen Anbieter und bring deinen Schlüssel mit')).toBeInTheDocument();
+    expect(screen.getByText('Sprache und Erscheinungsbild festlegen')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Weiter' })).toBeInTheDocument();
+  });
+
+  it('names every language in its own language, not in the interface language', async () => {
+    await renderOnboarding('de');
+    // The reason the picker is reachable at all from a screen the user may not
+    // be able to read: "Français" is findable in a German UI, "Französisch" is
+    // not findable by someone who only reads French. `nativeName` is the whole
+    // point of the locale table, so pin it here rather than trusting it.
+    const select = screen.getByLabelText('Sprache');
+    expect(select).toHaveDisplayValue('System');
+    for (const native of ['Deutsch', 'Français', '日本語', '简体中文']) {
+      expect(screen.getByRole('option', { name: native })).toBeInTheDocument();
+    }
   });
 
   it('keeps the product name out of the catalog and lets the brand supply it', async () => {
@@ -127,9 +140,11 @@ describe('Onboarding in German', () => {
 
   it('translates the step dots without losing the numbering', async () => {
     await renderOnboarding('de');
-    expect(screen.getByRole('button', { name: '1 · Anbieter' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '2 · Connectors' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '3 · Abschluss' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1 · Erscheinungsbild' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2 · Anbieter' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '3 · Datenschutz' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '4 · Connectors' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '5 · Abschluss' })).toBeInTheDocument();
   });
 
   it('translates aria-labels, not just visible text', async () => {
@@ -137,7 +152,20 @@ describe('Onboarding in German', () => {
     // A screen-reader user in German gets German landmarks. Half-translating
     // this is the failure that never shows up in a screenshot review.
     expect(screen.getByRole('navigation', { name: 'Onboarding-Fortschritt' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Sprache und Erscheinungsbild' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '2 · Anbieter' }));
     expect(screen.getByRole('region', { name: 'Anbieter auswählen' })).toBeInTheDocument();
+  });
+
+  it('translates the privacy step, including the copy reused from Settings', async () => {
+    await renderOnboarding('de');
+    fireEvent.click(screen.getByRole('button', { name: '3 · Datenschutz' }));
+    expect(screen.getByRole('region', { name: 'Datenschutz und Updates' })).toBeInTheDocument();
+    expect(screen.getByText('Was diesen Rechner verlässt')).toBeInTheDocument();
+    // Reused from `settings.privacy.*`, so this is also the check that reuse
+    // did not quietly pull an English string onto a German screen.
+    expect(screen.getByRole('checkbox', { name: 'Nur-lokal-Modus' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Schlüsselbund-Modus')).toBeInTheDocument();
   });
 
   it('still renders English when English is what was asked for', async () => {

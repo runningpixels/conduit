@@ -296,6 +296,64 @@
 }
 .recovery-danger-row {
   display: flex;
+/* A labelled control on a step that is otherwise a column of checkboxes. The
+   step body is already a grid with a gap, so this only has to dress the control
+   itself: there is no generic `select` rule in this stylesheet — every other
+   pane either styles its selects inline or goes through `.appearance-form` — so
+   without this the privacy step would show two raw native dropdowns in the
+   middle of a styled card. */
+.onboarding-field select {
+  width: 100%;
+  max-width: 300px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.onboarding-field select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* `small` is inline, so the margins `.onboarding-hint` carries would be
+   dropped on the floor. These hints are paragraphs that happen to be marked up
+   as fine print. */
+.onboarding-field small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+/* The review step. `grid-template-columns: auto 1fr` keeps the labels in one
+   column and lets a long model id take the rest of the row; it collapses to a
+   single column below 420px, where two columns would leave the value with about
+   ten characters. */
+.onboarding-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.onboarding-summary dt {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.onboarding-summary dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 420px) {
+  .onboarding-summary {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .onboarding-summary dd {
+    margin-bottom: 8px;
+  }
+}
   align-items: flex-start;
   gap: var(--sp-4);
 }

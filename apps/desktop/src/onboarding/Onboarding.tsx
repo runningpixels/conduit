@@ -19,6 +19,7 @@ import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
 import { localeEntry, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+import { useAutoSave } from '../workspace/settings/useAutoSave';
 import { AppearanceStep } from './AppearanceStep';
 import { PrivacyStep } from './PrivacyStep';
 
@@ -72,6 +73,7 @@ export function Onboarding({
      it. A failed lookup falls back to the raw id rather than blocking the
      step — the gate that matters is the keychain probe in `handleFinish`. */
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
+  const saveProviderStep = useAutoSave(onSettingsChange, onStatus);
 
   useEffect(() => {
     if (step !== 'finish') return;
@@ -115,7 +117,7 @@ export function Onboarding({
   }
 
   return (
-    <div className="app onboarding-shell" id="app">
+    <div className="onboarding-shell">
       <div className="info-card onboarding-card">
         <h2>{t('onboarding.welcome.title')}</h2>
         <p className="onboarding-lede">{t('onboarding.welcome.lede')}</p>
@@ -145,7 +147,20 @@ export function Onboarding({
         {step === 'provider' && (
           <section className="onboarding-step-body" aria-label={t('onboarding.provider.ariaLabel')}>
             <h3 className="onboarding-step-title">{t('onboarding.provider.stepTitle')}</h3>
-            <ProviderPicker settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
+            {/* Debounced rather than the steps' un-debounced writer: this is the
+                one step with free-text fields (model id, base URL), and a write
+                per keystroke is not what those want. `useAutoSave` is what the
+                Settings pane gives the same component.
+
+                It has to persist at all, though, and originally did not — the
+                provider step handed App's raw setter straight through, so
+                nothing reached disk until "Get started". That quietly undid the
+                local-only fix: picking a cloud provider cleared the flag in
+                memory, the checkbox on the privacy step agreed, and quitting
+                before the end left `local_only: true` on disk next to a cloud
+                provider — the exact trap the fix exists to close, now with the
+                UI having already told the user it was handled. */}
+            <ProviderPicker settings={settings} onSettingsChange={saveProviderStep} onStatus={onStatus} />
             <p className="onboarding-hint">{t('onboarding.provider.hint')}</p>
           </section>
         )}
@@ -301,7 +316,7 @@ export function MigrationRecoveryNotice({
     });
 
   return (
-    <div className="app onboarding-shell" id="app">
+    <div className="onboarding-shell">
       <div className="info-card onboarding-card">
         <h2>{t('recovery.header.title')}</h2>
         <p className="onboarding-lede">{t('recovery.header.lede')}</p>

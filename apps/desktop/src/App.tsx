@@ -1185,6 +1185,17 @@ export default function App() {
   // Both pre-workspace routes keep the caption row. They bypass the shell
   // otherwise, and on a `decorations: false` window that left the user with no
   // way to move or close it until onboarding was finished.
+  //
+  // They also keep `ToastStack`, for a closely related reason. The effect above
+  // routes every error, warning and success status *exclusively* into `toasts`
+  // and nulls the panel status — so with the stack rendered only in the
+  // workspace return below, these two routes dropped that entire class of
+  // message on the floor. Onboarding renders `status` itself and looks like it
+  // has feedback covered, but `status` is null by the time it reads it. The
+  // visible cost was on the step that matters most: "Test connection" with a
+  // bad key, or a keychain write that failed, reported nothing at all and left
+  // the user clicking a button that appeared to do nothing. `.toast-stack` is
+  // `position: fixed`, so where it sits in the tree does not matter.
   if (onboarding?.migrationRecovery) {
     return (
       <div className="app" id="app">
@@ -1194,6 +1205,7 @@ export default function App() {
           onStatus={setStatusMessage}
           onDismissed={() => void refreshOnboarding()}
         />
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -1208,6 +1220,7 @@ export default function App() {
           status={status}
           onComplete={() => void refreshOnboarding()}
         />
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }

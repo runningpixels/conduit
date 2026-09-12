@@ -194,7 +194,8 @@
    height. */
 .onboarding-shell {
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-content: safe center;
   padding: 24px;
   overflow: auto;
   min-height: 100%;
@@ -236,6 +237,21 @@
   font-size: 14px;
   color: var(--ink-3);
   text-transform: uppercase;
+/* The card is centred in whatever space App's grid gives this route.
+ *
+ * `align-content` rather than `align-items`, and `safe` rather than plain
+ * centring. A centred track whose content is taller than the box overflows it
+ * equally in both directions, and the half that goes past the top edge cannot
+ * be scrolled back to — `overflow: auto` only ever scrolls forward from the
+ * origin. `safe` says "centre until that would clip, then align to start",
+ * which is the behaviour anyone actually wants from a centred dialog: middle of
+ * the window when it fits, scrollable from the top when it does not.
+ *
+ * This route must NOT also carry `.app`. It used to, which meant it inherited
+ * `grid-template-rows: var(--titlebar-h) minmax(0, 1fr)` and dropped the card
+ * into the 32px titlebar track, centred there, with most of it off the top of
+ * the window and the whole second row left empty underneath. App already
+ * renders the caption row and the grid that owns it; this is only the body. */
   letter-spacing: 0.08em;
   margin: 0 0 8px;
   font-weight: 600;

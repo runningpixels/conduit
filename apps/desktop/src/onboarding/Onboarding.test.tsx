@@ -233,6 +233,28 @@ describe('Onboarding (Phase 6 M6.4)', () => {
       expect(onStatus).toHaveBeenCalledWith(expect.stringContaining('OpenAI'));
     });
 
+    it('persists the provider choice instead of holding it until the gate', async () => {
+      /* Found by running the real app. The provider step used to hand App's raw
+       * setter straight through, so nothing it changed reached disk until "Get
+       * started" — which silently undid the local-only fix above. The flag was
+       * cleared in memory, the privacy step's checkbox agreed, and quitting
+       * before the end left `local_only: true` on disk beside a cloud provider:
+       * the original trap, now with the UI having claimed it was handled.
+       *
+       * Debounced (`useAutoSave`, 250ms), because this step has free-text
+       * fields, so this waits rather than asserting synchronously. */
+      renderOnboarding();
+      goToStep(/· Provider/i);
+      const select = await screen.findByDisplayValue('Anthropic');
+      fireEvent.change(select, { target: { value: 'openai' } });
+
+      await waitFor(() =>
+        expect(updateSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ activeProvider: 'openai', localOnly: false }),
+        ),
+      );
+    });
+
     it('leaves local-only mode alone when a local provider is chosen', async () => {
       // One-way. Running a local model once is not a request to start blocking
       // cloud providers, and that flag reaches well beyond this dropdown.

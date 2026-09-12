@@ -54,6 +54,7 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     artifactStyledPreview: true,
     updateChannel: 'stable' as const,
     updateCheckEnabled: true,
+    updatePolicy: 'manual' as const,
     onboardingCompleted: true,
     webSearchEnabled: false,
     webSearch: {

@@ -53,7 +53,9 @@ telemetria.
   passam por renderizadores com escape do React, sem nenhum
   `dangerouslySetInnerHTML` no caminho seguro.
 - **Sem telemetria.** A verificação de atualizações é opcional e envia apenas
-  `Conduit-Updater/<version>`.
+  `Conduit-Updater/<version>`. Por padrão a verificação é manual; a verificação
+  em segundo plano e a instalação ao fechar são opcionais, e o Conduit nunca se
+  reinicia sozinho.
 
 ### Artefatos
 

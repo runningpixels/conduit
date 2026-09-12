@@ -53,7 +53,9 @@ Telemetrie.
   und Markdown laufen durch React-escapte Renderer, ohne
   `dangerouslySetInnerHTML` irgendwo im sicheren Pfad.
 - **Keine Telemetrie.** Update-Prüfungen sind optional und senden lediglich
-  `Conduit-Updater/<version>`.
+  `Conduit-Updater/<version>`. Standardmäßig wird nur manuell gesucht;
+  Hintergrundsuche und Installation beim Beenden sind optional, und Conduit
+  startet sich nie selbst neu.
 
 ### Artefakte
 

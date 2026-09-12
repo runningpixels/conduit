@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, ConversationFolder, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
+import { useUpdateScheduler } from './updates/useUpdateScheduler';
 import { ToastStack } from './workspace/ToastStack';
 import { makeStatus, fromString, STATUS_DISMISS_MS, TOAST_DISMISS_MS, TOAST_STATUS_KINDS } from './chat/statusTypes';
 import {
@@ -120,6 +121,7 @@ const defaultSettings: AppSettings = {
   artifactStyledPreview: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
+  updatePolicy: 'manual',
   onboardingCompleted: false,
   webSearchEnabled: false,
   webSearch: {
@@ -239,6 +241,18 @@ export default function App() {
   const dismissToast = useCallback((timestamp: number) => {
     setToasts((current) => current.filter((t) => t.timestamp !== timestamp));
   }, []);
+
+  // Background update checking. Dormant until settings load, and inert unless
+  // the user opted into `notify` or `automatic` — `manual` (the default, and
+  // what every pre-existing install deserializes to) schedules nothing.
+  // `isBusy` gates on streaming so an automatic stage never competes with a
+  // live conversation.
+  useUpdateScheduler({
+    settings: settingsLoaded ? settings : null,
+    isBusy: () => chatViewRef.current?.isStreaming() ?? false,
+    onStatus: setStatusMessage,
+    t,
+  });
 
   // Auto-dismiss timer for transient status kinds (idle).
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

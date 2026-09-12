@@ -51,7 +51,9 @@ de datos SQLite cifrada. No hay cuenta de Conduit, ni backend, ni telemetría.
   Markdown pasan por renderizadores con escape de React, sin
   `dangerouslySetInnerHTML` en ningún punto de la ruta segura.
 - **Sin telemetría.** La comprobación de actualizaciones es opcional y solo envía
-  `Conduit-Updater/<version>`.
+  `Conduit-Updater/<version>`. Por defecto la comprobación es manual; la
+  comprobación en segundo plano y la instalación al cerrar son opcionales, y
+  Conduit nunca se reinicia solo.
 
 ### Artefactos
 

@@ -5,6 +5,7 @@ import type { LanguageSetting } from "./language_setting";
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
+import type { UpdatePolicy } from "./update_policy";
 import type { WebSearchDefaults } from "./web_search_defaults";
 
 export type SettingsPatch = { activeProvider?: string, activeModel?: string, localOnly?: boolean, diagnosticsEnabled?: boolean, theme?: Theme, language?: LanguageSetting, providerEndpoints?: { [key in string]?: ProviderEndpointConfig }, 
@@ -12,7 +13,7 @@ export type SettingsPatch = { activeProvider?: string, activeModel?: string, loc
  * Replace the artifact remote allowlist. Each entry must be an absolute
  * http(s) URL or the whole update is rejected.
  */
-artifactRemoteAllowlist?: Array<string>, artifactStyledPreview?: boolean, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, onboardingCompleted?: boolean, 
+artifactRemoteAllowlist?: Array<string>, artifactStyledPreview?: boolean, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, updatePolicy?: UpdatePolicy, onboardingCompleted?: boolean, 
 /**
  * Phase 7: master web search toggle. The renderer also enforces UI
  * gating on `local_only` and provider capability.

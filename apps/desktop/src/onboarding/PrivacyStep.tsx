@@ -1,4 +1,4 @@
-import type { AppSettings, RolloutChannel } from '../ipc/contracts';
+import type { AppSettings, RolloutChannel, UpdatePolicy } from '../ipc/contracts';
 import { useRichT, useT } from '../i18n';
 import { usePersistSteps } from './persistSteps';
 
@@ -79,6 +79,26 @@ export function PrivacyStep({
         />
         {t('settings.updates.checkbox.allow')}
       </label>
+      {/* Same dependency as the channel below: both are meaningless while
+          checks are off, so both follow the toggle and disable with it. The
+          default is `manual`, which is the behaviour every existing install
+          already has — the automatic options are something the user reaches
+          for, never something setup quietly leaves switched on. */}
+      <div className="field onboarding-field">
+        <label className="field-label" htmlFor="onboarding-update-policy">
+          {t('settings.updates.policy.label')}
+        </label>
+        <select
+          id="onboarding-update-policy"
+          disabled={!settings.updateCheckEnabled}
+          value={settings.updatePolicy}
+          onChange={(e) => set('updatePolicy', e.target.value as UpdatePolicy)}
+        >
+          <option value="manual">{t('settings.updates.policy.manual')}</option>
+          <option value="notify">{t('settings.updates.policy.notify')}</option>
+          <option value="automatic">{t('settings.updates.policy.automatic')}</option>
+        </select>
+      </div>
       {/* The channel only means anything if checks are allowed at all, so it
           follows the toggle and disables with it rather than sitting beside it
           as an equal choice. */}

@@ -69,10 +69,38 @@ quality gate; expanded there with automated survival/migration checks.
 - [ ] The precheck **refuses** with a user-safe message over a deliberately
       broken store, and the live store is untouched.
 
+### Automatic updates
+
+The `manual` policy is the default and is what the four checks above exercise.
+These cover the two opt-in policies.
+
+- [ ] With **Only when I check** selected (the default), leave the app open past
+      the one-minute startup delay and confirm **no** request reaches the
+      manifest endpoint. This is the claim the README and the onboarding lede
+      both make; it is worth verifying rather than assuming.
+- [ ] With update checks switched **off** and the policy left on an automatic
+      option, the same holds — the master toggle outranks the policy.
+- [ ] **Tell me when an update is available** raises a toast naming the new
+      version, and installing from it still goes through "Download & install".
+- [ ] **Install when I quit** downloads in the background, shows the staged
+      notice in Settings → About → Updates, and does **not** restart the app.
+- [ ] Quitting then applies it: relaunch lands on the new version with
+      conversations, attachments and artifacts intact.
+- [ ] Staging while a conversation is streaming is deferred, not applied
+      mid-stream.
+- [ ] A staged update that is never applied (force-quit instead of quit) leaves
+      the old version working and simply re-stages on the next run.
+- [ ] With no network, a background check fails **silently** — no error toast.
+      "Check now" on the same machine still reports the failure loudly.
+
 ## Local-data survival (in-place upgrade)
 
 - [ ] `settings.json` (incl. `encryptionAtRest`, `onboardingCompleted`,
-      `updateChannel`, `updateCheckEnabled`) survives the upgrade.
+      `updateChannel`, `updateCheckEnabled`, `updatePolicy`) survives the
+      upgrade.
+- [ ] A `settings.json` written **before** `updatePolicy` existed upgrades to
+      `manual` — an existing user is never moved onto a background schedule by
+      installing a new build.
 - [ ] `conduit.sqlite` survives (schema forward-migrates; no recovery triggered).
 - [ ] Attachments + artifacts (content-addressed blobs) survive.
 - [ ] OS keychain credential survives (app re-reads it on relaunch).

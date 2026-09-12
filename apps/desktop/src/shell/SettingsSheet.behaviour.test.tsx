@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings } from '../ipc/contracts';
-import { SettingsSheet } from './SettingsSheet';
+import { SettingsSheet, type SettingsSection } from './SettingsSheet';
 
 /**
  * Behavioural coverage restored from the deleted SettingsScreen.test.tsx:
@@ -22,6 +22,7 @@ vi.mock('../ipc/client', () => ({
     artifactStyledPreview: true,
     updateChannel: 'stable',
     updateCheckEnabled: true,
+    updatePolicy: 'manual' as const,
     onboardingCompleted: true,
   }),
   getDiagnosticsDisclosureAcknowledged: vi.fn().mockResolvedValue(true),
@@ -43,6 +44,8 @@ vi.mock('../ipc/client', () => ({
     dailyTotals: [],
   }),
   checkForUpdate: vi.fn().mockResolvedValue(null),
+  getUpdateStatus: vi.fn().mockResolvedValue({ lastChecked: null, staged: null, automaticSupported: true }),
+  stageUpdate: vi.fn().mockResolvedValue(null),
   downloadAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -62,6 +65,7 @@ const baseSettings: AppSettings = {
   artifactStyledPreview: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
+  updatePolicy: 'manual' as const,
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {
@@ -88,13 +92,16 @@ const baseSettings: AppSettings = {
   memoryEnabled: true,
 };
 
-function renderSheet(overrides: Partial<AppSettings> = {}) {
+function renderSheet(
+  overrides: Partial<AppSettings> = {},
+  section: SettingsSection = 'privacy',
+) {
   const onSettingsChange = vi.fn();
   const onStatus = vi.fn();
   render(
     <SettingsSheet
       open
-      initialSection="privacy"
+      initialSection={section}
       onClose={vi.fn()}
       settings={{ ...baseSettings, ...overrides }}
       onSettingsChange={onSettingsChange}
@@ -121,6 +128,25 @@ describe('SettingsSheet behaviour (restored from SettingsScreen tests)', () => {
     await waitFor(() => expect(updateSettings).toHaveBeenCalled());
     const calledWith = vi.mocked(updateSettings).mock.calls[0][0];
     expect(calledWith.localOnly).toBe(false);
+  });
+
+  it('auto-saves: choosing an update policy calls updateSettings with the new value', async () => {
+    const { updateSettings } = await import('../ipc/client');
+    renderSheet({}, 'about');
+    fireEvent.change(screen.getByLabelText(/automatic updates/i), {
+      target: { value: 'automatic' },
+    });
+    await waitFor(() => expect(updateSettings).toHaveBeenCalled());
+    const calledWith = vi.mocked(updateSettings).mock.calls[0][0];
+    expect(calledWith.updatePolicy).toBe('automatic');
+  });
+
+  it('the update policy is unreachable while update checks are off', () => {
+    // Same relationship the channel select already has to that checkbox: the
+    // policy is meaningless when nothing may touch the network, and a control
+    // that appears live while it cannot act is a lie about what is happening.
+    renderSheet({ updateCheckEnabled: false }, 'about');
+    expect(screen.getByLabelText(/automatic updates/i)).toBeDisabled();
   });
 
   // Diagnostics moved from Advanced into Privacy & data (plan D4). The

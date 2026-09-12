@@ -45,6 +45,7 @@ import type {
   StreamEvent,
   StreamHandle,
   UpdateInfo,
+  UpdateStatus,
   WipeScope,
   Prompt,
   SkillSummary,
@@ -525,6 +526,23 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
 
 export async function downloadAndInstallUpdate(): Promise<void> {
   await invokeCommand('download_and_install_update');
+}
+
+/// Non-networked read: when this machine last completed a check, and whether a
+/// verified payload is already staged for the next quit. The scheduler calls
+/// this before deciding to check, so an app opened twenty times a day still
+/// checks once.
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+  return invokeCommand<UpdateStatus>('get_update_status');
+}
+
+/// The `automatic` policy's install path: re-checks, runs the same migration
+/// precheck as `downloadAndInstallUpdate`, downloads and verifies the payload,
+/// then holds it in memory for the next quit. Does NOT restart, so it is safe
+/// to call while the user is mid-conversation. Returns `null` when checks are
+/// disabled or nothing is available.
+export async function stageUpdate(): Promise<UpdateInfo | null> {
+  return invokeCommand<UpdateInfo | null>('stage_update');
 }
 
 // =============================================================================

@@ -24,6 +24,7 @@ import type {
   ToolCallRecord,
   ToolCallStatus,
   Transport,
+  UpdatePolicy,
 } from '@conduit/config-schema';
 
 export interface AppPaths {
@@ -68,6 +69,18 @@ export interface UpdateInfo {
   version: string;
   date: number | null;
   notes: string | null;
+}
+
+// Mirrors the Rust `updater::UpdateStatus`. Answerable without touching the
+// network: `lastChecked` is Unix seconds of the last completed check (null if
+// this machine has never checked), and `staged` is set once a payload has been
+// downloaded and signature-verified and is waiting for the user to quit.
+export interface UpdateStatus {
+  lastChecked: number | null;
+  staged: UpdateInfo | null;
+  /** False on a Linux `.deb` build, where installing shells out to a `pkexec`
+   *  prompt that cannot be raised silently at quit. */
+  automaticSupported: boolean;
 }
 
 // =============================================================================
@@ -193,6 +206,7 @@ export type {
   ToolCallRecord,
   ToolCallStatus,
   Transport,
+  UpdatePolicy,
 };
 
 /// A discovered connector capability (repo struct; not ts-rs-generated).

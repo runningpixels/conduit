@@ -27,6 +27,7 @@ const settings: AppSettings = {
   artifactStyledPreview: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
+  updatePolicy: 'manual' as const,
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearch: {

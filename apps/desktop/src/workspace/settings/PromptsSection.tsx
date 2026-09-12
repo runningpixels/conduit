@@ -7,6 +7,7 @@ import {
   listPrompts,
   updatePrompt,
 } from '../../ipc/client';
+import { useT, type Translate } from '../../i18n';
 
 interface PromptsSectionProps {
   onStatus: (message: string) => void;
@@ -32,12 +33,12 @@ function parseTags(input: string): string[] {
 }
 
 /** Highlight {{variable}} tokens in prompt body text. */
-function highlightVariables(body: string): React.ReactNode {
+function highlightVariables(body: string, t: Translate): React.ReactNode {
   const parts = body.split(/(\{\{[^}]+\}\})/g);
   return parts.map((part, i) => {
     if (part.startsWith('{{') && part.endsWith('}}')) {
       return (
-        <span key={i} className="variable-token" title={`Variable: ${part.slice(2, -2)}`}>
+        <span key={i} className="variable-token" title={t('settings.prompts.variableTokenTitle', { name: part.slice(2, -2) })}>
           {part}
         </span>
       );
@@ -60,6 +61,7 @@ function previewBody(body: string, maxLen = 120): string {
 }
 
 export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps) {
+  const t = useT();
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
@@ -75,9 +77,9 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
       setPrompts(p);
       setFolders(f);
     } catch (e) {
-      onStatus(`Failed to load prompts: ${String(e)}`);
+      onStatus(t('settings.prompts.status.loadFailed', { error: String(e) }));
     }
-  }, [selectedFolder, onStatus]);
+  }, [selectedFolder, onStatus, t]);
 
   useEffect(() => {
     void refresh();
@@ -85,7 +87,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
 
   const handleSave = useCallback(async () => {
     if (!editing || !editing.title.trim() || !editing.body.trim()) {
-      onStatus('Title and body are required');
+      onStatus(t('settings.prompts.status.titleBodyRequired'));
       return;
     }
     setSaving(true);
@@ -94,33 +96,33 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
       const folder = editing.folder.trim() || undefined;
       if (editing.id) {
         await updatePrompt(editing.id, editing.title.trim(), editing.body.trim(), folder, tags);
-        onStatus('Prompt updated');
+        onStatus(t('settings.prompts.status.updated'));
       } else {
         await createPrompt(editing.title.trim(), editing.body.trim(), folder, tags);
-        onStatus('Prompt created');
+        onStatus(t('settings.prompts.status.created'));
       }
       setEditing(null);
       await refresh();
     } catch (e) {
-      onStatus(`Failed to save prompt: ${String(e)}`);
+      onStatus(t('settings.prompts.status.saveFailed', { error: String(e) }));
     } finally {
       setSaving(false);
     }
-  }, [editing, refresh, onStatus]);
+  }, [editing, refresh, onStatus, t]);
 
   const handleDelete = useCallback(
     async (id: string, title: string) => {
-      if (!confirm(`Delete prompt "${title}"?`)) return;
+      if (!confirm(t('settings.prompts.confirm.delete', { title }))) return;
       try {
         await deletePrompt(id);
-        onStatus('Prompt deleted');
+        onStatus(t('settings.prompts.status.deleted'));
         if (editing?.id === id) setEditing(null);
         await refresh();
       } catch (e) {
-        onStatus(`Failed to delete: ${String(e)}`);
+        onStatus(t('settings.prompts.status.deleteFailed', { error: String(e) }));
       }
     },
-    [editing, refresh, onStatus],
+    [editing, refresh, onStatus, t],
   );
 
   const handleEdit = useCallback((p: Prompt) => {
@@ -144,32 +146,35 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
 
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>Prompts</span>
+      {/* Just the action: SettingsSheet already titles the pane "Prompts".
+          The button used to sit in the section header with `marginLeft: auto`,
+          which did nothing — that header is not a flex row — so it read as a
+          word jammed against a button. */}
+      <div className="settings-section-actions">
         <button
           className="btn primary"
           type="button"
           onClick={handleNew}
-          style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: '12px' }}
+          style={{ padding: '4px 12px', fontSize: '12px' }}
         >
-          + New prompt
+          {t('settings.prompts.actions.newPrompt')}
         </button>
       </div>
 
       {editing && (
         <div className="prompts-editor" style={{ marginBottom: 16, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
           <h4 style={{ margin: '0 0 8px', fontSize: '13px' }}>
-            {editing.id ? 'Edit prompt' : 'New prompt'}
+            {editing.id ? t('settings.prompts.editor.editTitle') : t('settings.prompts.editor.newTitle')}
           </h4>
           <div style={{ display: 'grid', gap: 8 }}>
             <input
-              placeholder="Title"
+              placeholder={t('settings.prompts.editor.titlePlaceholder')}
               value={editing.title}
               onChange={(e) => setEditing({ ...editing, title: e.target.value })}
               style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
             />
             <textarea
-              placeholder="Prompt body — use {{variable}} for variable substitution"
+              placeholder={t('settings.prompts.editor.bodyPlaceholder')}
               value={editing.body}
               onChange={(e) => setEditing({ ...editing, body: e.target.value })}
               rows={6}
@@ -177,7 +182,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
             />
             <div style={{ display: 'flex', gap: 8 }}>
               <input
-                placeholder="Folder (optional)"
+                placeholder={t('settings.prompts.editor.folderPlaceholder')}
                 value={editing.folder}
                 onChange={(e) => setEditing({ ...editing, folder: e.target.value })}
                 list="prompt-folders"
@@ -189,7 +194,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                 ))}
               </datalist>
               <input
-                placeholder="Tags (comma-separated)"
+                placeholder={t('settings.prompts.editor.tagsPlaceholder')}
                 value={editing.tags}
                 onChange={(e) => setEditing({ ...editing, tags: e.target.value })}
                 style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
@@ -197,17 +202,17 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn ghost" type="button" onClick={() => setEditing(null)} disabled={saving}>
-                Cancel
+                {t('common.actions.cancel')}
               </button>
               <button className="btn primary" type="button" onClick={() => void handleSave()} disabled={saving}>
-                {saving ? 'Saving…' : 'Save'}
+                {saving ? t('settings.prompts.editor.saving') : t('common.actions.save')}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
         {/* Folder sidebar */}
         <div className="prompts-folder-sidebar" style={{ borderRadius: 'var(--r-sm)', background: 'var(--card)', padding: 8 }}>
           <button
@@ -216,7 +221,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
             onClick={() => setSelectedFolder(null)}
             aria-pressed={selectedFolder === null}
           >
-            All prompts
+            {t('settings.prompts.folder.all')}
           </button>
           {allFolders.map((f) => (
             <button
@@ -231,7 +236,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
           ))}
           {allFolders.length === 0 && (
             <span style={{ fontSize: '11px', color: 'var(--ink-3)', padding: '6px 8px', display: 'block' }}>
-              No folders
+              {t('settings.prompts.folder.none')}
             </span>
           )}
         </div>
@@ -240,7 +245,9 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
         <div className="prompts-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
           {prompts.length === 0 && (
             <div style={{ padding: 24, textAlign: 'center', fontSize: '13px', color: 'var(--ink-3)' }}>
-              {selectedFolder ? `No prompts in "${selectedFolder}"` : 'No prompts yet. Create your first one!'}
+              {selectedFolder
+                ? t('settings.prompts.list.emptyFolder', { folder: selectedFolder })
+                : t('settings.prompts.list.emptyAll')}
             </div>
           )}
           {prompts.map((p) => (
@@ -275,9 +282,9 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                       e.stopPropagation();
                       onInsertPrompt(p.body);
                     }}
-                    title="Insert prompt into chat"
+                    title={t('settings.prompts.actions.insertTitle')}
                   >
-                    Insert
+                    {t('common.actions.insert')}
                   </button>
                   <button
                     className="btn ghost"
@@ -287,14 +294,14 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                       e.stopPropagation();
                       void handleDelete(p.id, p.title);
                     }}
-                    title="Delete prompt"
+                    title={t('settings.prompts.actions.deleteTitle')}
                   >
-                    Delete
+                    {t('common.actions.delete')}
                   </button>
                 </div>
               </div>
               <div style={{ fontSize: '12px', color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}>
-                {highlightVariables(previewBody(p.body))}
+                {highlightVariables(previewBody(p.body), t)}
               </div>
               {p.tags && p.tags.length > 0 && (
                 <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
@@ -307,7 +314,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
               )}
               {p.variables && p.variables.length > 0 && (
                 <div style={{ fontSize: '10px', color: 'var(--hue)', marginTop: 4 }}>
-                  Variables: {p.variables.join(', ')}
+                  {t('settings.prompts.card.variablesLabel', { variables: p.variables.join(', ') })}
                 </div>
               )}
             </div>

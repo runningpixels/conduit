@@ -1,3 +1,5 @@
+import { useT } from '../i18n';
+
 interface InterruptedBannerProps {
   visible: boolean;
   /** Optional retry action (§9.3) — the turn keeps its content and gains an
@@ -6,16 +8,17 @@ interface InterruptedBannerProps {
 }
 
 export function InterruptedBanner({ visible, onRetry }: InterruptedBannerProps) {
+  const t = useT();
   if (!visible) {
     return null;
   }
   return (
     <div className="Interrupted" role="status">
-      <span className="Interrupted-label">Interrupted</span>
-      <span className="Interrupted-note">Partial output was saved.</span>
+      <span className="Interrupted-label">{t('chat.interrupted.label')}</span>
+      <span className="Interrupted-note">{t('chat.interrupted.note')}</span>
       {onRetry && (
         <button type="button" className="Interrupted-action" onClick={onRetry}>
-          Retry
+          {t('common.actions.retry')}
         </button>
       )}
     </div>

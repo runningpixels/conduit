@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getAttachmentBytes } from '../ipc/client';
 import type { TurnAttachment } from './composerTypes';
+import { useT } from '../i18n';
 
 interface UserTurnAttachmentsProps {
   attachments: TurnAttachment[];
@@ -8,6 +9,7 @@ interface UserTurnAttachmentsProps {
 
 /** Thumbnail strip for image attachments on a user bubble. */
 export function UserTurnAttachments({ attachments }: UserTurnAttachmentsProps) {
+  const t = useT();
   const [urls, setUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -39,18 +41,18 @@ export function UserTurnAttachments({ attachments }: UserTurnAttachmentsProps) {
   if (attachments.length === 0) return null;
 
   return (
-    <div className="turn-attachments" aria-label="Attached images">
+    <div className="turn-attachments" aria-label={t('chat.attachments.ariaLabel')}>
       {attachments.map((att) =>
         urls[att.id] ? (
           <img
             key={att.id}
             className="turn-attachment-thumb"
             src={urls[att.id]}
-            alt={att.fileName ?? 'Attached image'}
+            alt={att.fileName ?? t('chat.attachments.altFallback')}
           />
         ) : (
           <div key={att.id} className="turn-attachment-thumb turn-attachment-placeholder">
-            Image
+            {t('chat.attachments.imagePlaceholder')}
           </div>
         ),
       )}

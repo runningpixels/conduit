@@ -99,7 +99,15 @@ describe('ConnectorsSection registry + remote HTTP', () => {
     render(<ConnectorsSection onStatus={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
     await waitFor(() => {
-      expect(signinRemoteConnector).toHaveBeenCalledWith('remote:acme:1.0.0');
+      // The OAuth callback page renders in the system browser, outside the
+      // webview, so its copy has to travel with the request already translated
+      // (D15). Asserting it here is what stops that silently regressing to
+      // English-in-Rust.
+      expect(signinRemoteConnector).toHaveBeenCalledWith(
+        'remote:acme:1.0.0',
+        expect.stringContaining('You can close this window'),
+        expect.stringContaining('{detail}'),
+      );
     });
   });
 });

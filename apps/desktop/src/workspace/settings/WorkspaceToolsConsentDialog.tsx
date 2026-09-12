@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { appName } from '../../brand';
+import { useRichT, useT } from '../../i18n';
 
 interface WorkspaceToolsConsentDialogProps {
   visible: boolean;
@@ -13,6 +13,8 @@ export function WorkspaceToolsConsentDialog({
   onAllow,
   onDeny,
 }: WorkspaceToolsConsentDialogProps) {
+  const t = useT();
+  const tr = useRichT();
   const [acknowledging, setAcknowledging] = useState(false);
 
   if (!visible) return null;
@@ -22,7 +24,7 @@ export function WorkspaceToolsConsentDialog({
       className="consent-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Workspace tools consent"
+      aria-label={t('settings.workspaceTools.consent.ariaLabel')}
       style={{
         position: 'fixed',
         inset: 0,
@@ -50,20 +52,17 @@ export function WorkspaceToolsConsentDialog({
         }}
       >
         <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
-          Enable workspace file tools?
+          {t('settings.workspaceTools.consent.title')}
         </h2>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
-          The model can read and write files inside the folder you choose — not
-          anywhere else on your machine. Sensitive names (for example{' '}
-          <code>.env</code>, keys, credentials) stay blocked even inside that folder.
+          {tr('settings.workspaceTools.consent.filesHint')}
         </p>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.6 }}>
-          Writes change real files on disk. {appName()} does not run a shell.
-          Secrets found in file contents may be redacted before they appear in chat.
+          {t('settings.workspaceTools.consent.writesHint')}
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn ghost" type="button" disabled={acknowledging} onClick={onDeny}>
-            Not now
+            {t('common.actions.notNow')}
           </button>
           <button
             className="btn primary"
@@ -74,7 +73,7 @@ export function WorkspaceToolsConsentDialog({
               onAllow();
             }}
           >
-            Allow
+            {t('common.actions.allow')}
           </button>
         </div>
       </div>

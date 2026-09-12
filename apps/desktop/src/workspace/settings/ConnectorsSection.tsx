@@ -20,19 +20,20 @@ import {
   type ToolApprovalMemoryRow,
 } from '../../ipc/client';
 import type { RegistryServer } from '../../ipc/contracts';
+import { useT } from '../../i18n';
 
 /** Compact health/support → label mapping for the settings list. */
-function connectorLabel(s: ConnectorRuntimeSnapshot): { tone: 'ok' | 'warn' | 'bad' | 'hold'; label: string } {
-  if (s.grantStatus === 'revoked') return { tone: 'bad', label: 'revoked' };
-  if (s.supportState === 'adminDisabled') return { tone: 'bad', label: 'disabled' };
-  if (s.supportState === 'revoked') return { tone: 'bad', label: 'revoked' };
-  if (s.health === 'authRequired') return { tone: 'warn', label: 'sign in' };
-  if (s.supportState === 'authRequired') return { tone: 'warn', label: 'sign in' };
-  if (s.supportState === 'unsupported') return { tone: 'bad', label: 'unsupported' };
-  if (s.running && s.health === 'healthy') return { tone: 'ok', label: 'live' };
-  if (s.health === 'down') return { tone: 'bad', label: 'down' };
-  if (s.health === 'degraded') return { tone: 'warn', label: 'degraded' };
-  return { tone: 'hold', label: 'stopped' };
+function connectorLabel(s: ConnectorRuntimeSnapshot): { tone: 'ok' | 'warn' | 'bad' | 'hold'; labelId: string } {
+  if (s.grantStatus === 'revoked') return { tone: 'bad', labelId: 'settings.connectors.status.revoked' };
+  if (s.supportState === 'adminDisabled') return { tone: 'bad', labelId: 'settings.connectors.status.disabled' };
+  if (s.supportState === 'revoked') return { tone: 'bad', labelId: 'settings.connectors.status.revoked' };
+  if (s.health === 'authRequired') return { tone: 'warn', labelId: 'settings.connectors.status.signIn' };
+  if (s.supportState === 'authRequired') return { tone: 'warn', labelId: 'settings.connectors.status.signIn' };
+  if (s.supportState === 'unsupported') return { tone: 'bad', labelId: 'settings.connectors.status.unsupported' };
+  if (s.running && s.health === 'healthy') return { tone: 'ok', labelId: 'settings.connectors.status.live' };
+  if (s.health === 'down') return { tone: 'bad', labelId: 'settings.connectors.status.down' };
+  if (s.health === 'degraded') return { tone: 'warn', labelId: 'settings.connectors.status.degraded' };
+  return { tone: 'hold', labelId: 'settings.connectors.status.stopped' };
 }
 
 /** Connectors section: list registered connectors with health + start/stop,
@@ -40,7 +41,18 @@ function connectorLabel(s: ConnectorRuntimeSnapshot): { tone: 'ok' | 'warn' | 'b
  *  streamable-HTTP URL, or add a local stdio connector. Transport config is
  *  untrusted renderer input — add commands validate it server-side before
  *  persisting. Exported so the first-run `Onboarding` can reuse it. */
-export function ConnectorsSection({ onStatus }: { onStatus: (message: string) => void }) {
+/** `showHeader` exists for Onboarding, which renders this section on its own
+ *  full-screen route where the inner "Connectors" header is the only title.
+ *  Inside SettingsSheet the pane heading already says it, so the sheet passes
+ *  false rather than printing the word twice. */
+export function ConnectorsSection({
+  onStatus,
+  showHeader = true,
+}: {
+  onStatus: (message: string) => void;
+  showHeader?: boolean;
+}) {
+  const t = useT();
   const [rows, setRows] = useState<ConnectorRuntimeSnapshot[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, ConnectorCapability[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -97,39 +109,39 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
     try {
       if (s.running) {
         await stopConnector(s.connectorVersionId);
-        onStatus(`Stopped ${s.connectorName}`);
+        onStatus(t('settings.connectors.toggle.stopped', { name: s.connectorName }));
       } else {
         await startConnector(s.connectorVersionId);
-        onStatus(`Started ${s.connectorName}`);
+        onStatus(t('settings.connectors.toggle.started', { name: s.connectorName }));
       }
       refresh();
     } catch (e) {
-      onStatus(`Connector error: ${String(e)}`);
+      onStatus(t('settings.connectors.toggle.error', { error: String(e) }));
     } finally {
       setBusy(null);
     }
   }
 
   async function handleRevoke(s: ConnectorRuntimeSnapshot) {
-    if (!confirm(`Revoke the grant for ${s.connectorName}? The connector will be stopped.`)) return;
+    if (!confirm(t('settings.connectors.revokeConfirm', { name: s.connectorName }))) return;
     try {
       const grants = await listConnectorGrants();
       const g = grants.find((x) => x.connectorVersionId === s.connectorVersionId);
       if (!g) {
-        onStatus('No grant found for that connector');
+        onStatus(t('settings.connectors.noGrantFound'));
         return;
       }
       await revokeConnectorGrant(g.id, s.connectorVersionId);
-      onStatus(`Revoked ${s.connectorName}`);
+      onStatus(t('settings.connectors.revokeSucceeded', { name: s.connectorName }));
       refresh();
     } catch (e) {
-      onStatus(`Revoke failed: ${String(e)}`);
+      onStatus(t('settings.connectors.revokeFailed', { error: String(e) }));
     }
   }
 
   async function handleAdd() {
     if (!name.trim() || !command.trim()) {
-      onStatus('Connector name and command are required');
+      onStatus(t('settings.connectors.addValidation'));
       return;
     }
     const argList = args.split(/\s+/).filter(Boolean);
@@ -146,7 +158,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
         env: envMap,
         consentCopy: consentCopy.trim() || undefined,
       });
-      onStatus(`Added connector ${result.connectorId}`);
+      onStatus(t('settings.connectors.added', { id: result.connectorId }));
       setName('');
       setCommand('');
       setArgs('');
@@ -154,7 +166,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
       setConsentCopy('');
       refresh();
     } catch (e) {
-      onStatus(`Add failed: ${String(e)}`);
+      onStatus(t('settings.connectors.addFailed', { error: String(e) }));
     }
   }
 
@@ -163,10 +175,10 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
     try {
       const next = await discoverConnector(s.connectorVersionId);
       setCapabilities((current) => ({ ...current, [s.connectorVersionId]: next }));
-      onStatus(`Refreshed tools for ${s.connectorName}`);
+      onStatus(t('settings.connectors.refreshedTools', { name: s.connectorName }));
       refresh();
     } catch (e) {
-      onStatus(`Discovery failed: ${String(e)}`);
+      onStatus(t('settings.connectors.discoveryFailed', { error: String(e) }));
     } finally {
       setRefreshingDiscovery(null);
     }
@@ -175,11 +187,17 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
   async function handleSignIn(s: ConnectorRuntimeSnapshot) {
     setBusy(s.connectorVersionId);
     try {
-      await signinRemoteConnector(s.connectorVersionId);
-      onStatus(`Signed in to ${s.connectorName}`);
+      await signinRemoteConnector(
+        s.connectorVersionId,
+        t('settings.connectors.oauth.signedIn'),
+        // `{detail}` is passed through untouched: only Rust, at callback time,
+        // knows what the authorization server said.
+        t('settings.connectors.oauth.signInFailed', { detail: '{detail}' }),
+      );
+      onStatus(t('settings.connectors.signedIn', { name: s.connectorName }));
       refresh();
     } catch (e) {
-      onStatus(`Sign-in failed: ${String(e)}`);
+      onStatus(t('settings.connectors.signInFailed', { error: String(e) }));
     } finally {
       setBusy(null);
     }
@@ -190,9 +208,9 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
     try {
       const hits = await searchMcpRegistry(registryQuery.trim());
       setRegistryHits(hits);
-      onStatus(hits.length === 0 ? 'No remote servers matched that search' : `Found ${hits.length} remote servers`);
+      onStatus(t('settings.connectors.registrySearch.results', { count: hits.length }));
     } catch (e) {
-      onStatus(`Registry search failed: ${String(e)}`);
+      onStatus(t('settings.connectors.registrySearchFailed', { error: String(e) }));
     } finally {
       setRegistryBusy(false);
     }
@@ -200,7 +218,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
 
   async function handleInstallRegistry(hit: RegistryServer) {
     if (!hit.installable || !hit.remoteUrl) {
-      onStatus(hit.reason ?? 'This server needs streamable HTTP');
+      onStatus(hit.reason ?? t('settings.connectors.needsStreamableHttp'));
       return;
     }
     setRegistryBusy(true);
@@ -211,10 +229,10 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
         url: hit.remoteUrl,
         version: hit.version,
       });
-      onStatus(`Added ${result.connectorId}. Start it, or sign in if it requires OAuth.`);
+      onStatus(t('settings.connectors.installedRegistry', { id: result.connectorId }));
       refresh();
     } catch (e) {
-      onStatus(`Install failed: ${String(e)}`);
+      onStatus(t('settings.connectors.installFailed', { error: String(e) }));
     } finally {
       setRegistryBusy(false);
     }
@@ -222,7 +240,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
 
   async function handleAddRemote() {
     if (!remoteName.trim() || !remoteUrl.trim()) {
-      onStatus('Remote connector name and URL are required');
+      onStatus(t('settings.connectors.addRemoteValidation'));
       return;
     }
     try {
@@ -230,41 +248,47 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
         name: remoteName.trim(),
         url: remoteUrl.trim(),
       });
-      onStatus(`Added remote connector ${result.connectorId}`);
+      onStatus(t('settings.connectors.addedRemote', { id: result.connectorId }));
       setRemoteName('');
       setRemoteUrl('');
       refresh();
     } catch (e) {
-      onStatus(`Add remote failed: ${String(e)}`);
+      onStatus(t('settings.connectors.addRemoteFailed', { error: String(e) }));
     }
   }
 
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>Connectors</span>
-      </div>
+      {showHeader && (
+        <div className="settings-section-header">
+          <span>{t('settings.connectors.header')}</span>
+        </div>
+      )}
       <div className="status-item">
         {rows.length === 0 ? (
-          <span style={{ fontSize: '13px' }}>No connectors registered yet. Install from the official registry or add a local stdio connector below.</span>
+          <span style={{ fontSize: '13px' }}>{t('settings.connectors.emptyState')}</span>
         ) : (
           rows.map((s) => {
             const st = connectorLabel(s);
-            const needsSignIn = st.label === 'sign in';
+            const needsSignIn = st.labelId === 'settings.connectors.status.signIn';
             const canToggle = s.grantStatus === 'active' && s.supportState !== 'adminDisabled' && s.supportState !== 'revoked' && !needsSignIn;
             const toolCaps = (capabilities[s.connectorVersionId] ?? []).filter((cap) => cap.kind === 'tool');
+            const toolsText =
+              toolCaps.length > 0
+                ? toolCaps.map((cap) => cap.name).join(', ')
+                : t('settings.connectors.noToolsDiscovered');
             return (
               <div key={s.connectorVersionId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
                 <span style={{ flex: 1 }}>
                   <b>{s.connectorName}</b> <small style={{ color: 'var(--ink-3)' }}>v{s.version} · {s.transport}</small>
                   <small style={{ display: 'block', color: 'var(--ink-3)' }}>
-                    Tools: {toolCaps.length > 0 ? toolCaps.map((cap) => cap.name).join(', ') : 'none discovered'}
+                    {t('settings.connectors.toolsList', { list: toolsText })}
                   </small>
                   {s.lastError && (st.tone === 'bad' || st.tone === 'warn') && (
                     <small style={{ display: 'block', color: 'var(--ink-3)' }}>{s.lastError}</small>
                   )}
                 </span>
-                <span className={`status-pill ${st.tone}`} style={{ fontSize: '11px' }}>{st.label}</span>
+                <span className={`status-pill ${st.tone}`} style={{ fontSize: '11px' }}>{t(st.labelId)}</span>
                 {needsSignIn && (
                   <button
                     className="btn ghost"
@@ -273,7 +297,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                     disabled={busy === s.connectorVersionId}
                     onClick={() => void handleSignIn(s)}
                   >
-                    Sign in
+                    {t('settings.connectors.signInButton')}
                   </button>
                 )}
                 {canToggle && (
@@ -284,7 +308,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                     disabled={busy === s.connectorVersionId}
                     onClick={() => void toggle(s)}
                   >
-                    {s.running ? 'Stop' : 'Start'}
+                    {s.running ? t('settings.connectors.stopButton') : t('settings.connectors.startButton')}
                   </button>
                 )}
                 <button
@@ -294,7 +318,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                   disabled={refreshingDiscovery === s.connectorVersionId || !s.running}
                   onClick={() => void handleRefreshDiscovery(s)}
                 >
-                  Refresh tools
+                  {t('settings.connectors.refreshToolsButton')}
                 </button>
                 <button
                   className="btn ghost"
@@ -302,51 +326,55 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                   style={{ padding: '4px 10px' }}
                   onClick={() => void handleRevoke(s)}
                 >
-                  Revoke
+                  {t('settings.connectors.revokeButton')}
                 </button>
               </div>
             );
           })
         )}
-        <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+        {/* Capped rather than two-up: these fields carry their label in the
+            placeholder, so halving their width truncates the label. At the
+            960px sheet an uncapped input would stretch to ~690px, which reads
+            worse than the narrow one it replaced. */}
+        <div style={{ display: 'grid', gap: 6, marginTop: 8, maxWidth: '34rem' }}>
           <input
-            placeholder="Connector name (e.g. Echo)"
+            placeholder={t('settings.connectors.form.namePlaceholder')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <input
-            placeholder="Command (absolute path, no shell)"
+            placeholder={t('settings.connectors.form.commandPlaceholder')}
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <input
-            placeholder="Arguments (space-separated)"
+            placeholder={t('settings.connectors.form.argsPlaceholder')}
             value={args}
             onChange={(e) => setArgs(e.target.value)}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <textarea
-            placeholder="Env (one KEY=VALUE per line)"
+            placeholder={t('settings.connectors.form.envPlaceholder')}
             value={env}
             onChange={(e) => setEnv(e.target.value)}
             rows={2}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
           />
           <input
-            placeholder="Consent copy shown to users (optional)"
+            placeholder={t('settings.connectors.form.consentPlaceholder')}
             value={consentCopy}
             onChange={(e) => setConsentCopy(e.target.value)}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
-          <button className="btn primary" type="button" onClick={() => void handleAdd()}>Add local connector</button>
+          <button className="btn primary" type="button" onClick={() => void handleAdd()}>{t('settings.connectors.form.addButton')}</button>
         </div>
-        <div style={{ display: 'grid', gap: 6, marginTop: 16 }}>
-          <div className="section-label">Official MCP registry</div>
+        <div style={{ display: 'grid', gap: 6, marginTop: 16, maxWidth: '34rem' }}>
+          <div className="section-label">{t('settings.connectors.registry.heading')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
-              placeholder="Search remote servers"
+              placeholder={t('settings.connectors.registry.searchPlaceholder')}
               value={registryQuery}
               onChange={(e) => setRegistryQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -355,7 +383,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
               style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
             />
             <button className="btn ghost" type="button" disabled={registryBusy} onClick={() => void handleRegistrySearch()}>
-              Search
+              {t('common.actions.search')}
             </button>
           </div>
           {registryHits.map((hit) => (
@@ -374,29 +402,29 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                 disabled={registryBusy || !hit.installable}
                 onClick={() => void handleInstallRegistry(hit)}
               >
-                {hit.installable ? 'Install' : 'Unavailable'}
+                {hit.installable ? t('settings.connectors.installButton') : t('settings.connectors.unavailableButton')}
               </button>
             </div>
           ))}
           <input
-            placeholder="Remote connector name"
+            placeholder={t('settings.connectors.registry.remoteNamePlaceholder')}
             value={remoteName}
             onChange={(e) => setRemoteName(e.target.value)}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
           <input
-            placeholder="Streamable HTTP URL (https://…/mcp)"
+            placeholder={t('settings.connectors.registry.remoteUrlPlaceholder')}
             value={remoteUrl}
             onChange={(e) => setRemoteUrl(e.target.value)}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
           />
-          <button className="btn ghost" type="button" onClick={() => void handleAddRemote()}>Add remote connector</button>
+          <button className="btn ghost" type="button" onClick={() => void handleAddRemote()}>{t('settings.connectors.registry.addRemoteButton')}</button>
         </div>
         <div style={{ marginTop: 16 }}>
-          <div className="section-label" style={{ marginBottom: 8 }}>Remembered tool approvals</div>
+          <div className="section-label" style={{ marginBottom: 8 }}>{t('settings.connectors.approvals.heading')}</div>
           {approvals.length === 0 ? (
             <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-3)' }}>
-              No always-allow or per-chat approvals yet.
+              {t('settings.connectors.approvals.empty')}
             </p>
           ) : (
             approvals.map((row) => {
@@ -417,7 +445,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <b>{tool}</b>
                     {' · '}
-                    {row.scope === 'always' ? 'always' : 'this chat'}
+                    {row.scope === 'always' ? t('settings.connectors.approvals.scopeAlways') : t('settings.connectors.approvals.scopeThisChat')}
                   </span>
                   <button
                     className="btn ghost"
@@ -427,11 +455,11 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
                       void (async () => {
                         await revokeToolApprovalMemory(row.id);
                         refreshApprovals();
-                        onStatus(`Forgot approval for ${tool}`);
+                        onStatus(t('settings.connectors.approvals.forgotStatus', { tool }));
                       })();
                     }}
                   >
-                    Forget
+                    {t('settings.connectors.approvals.forgetButton')}
                   </button>
                 </div>
               );

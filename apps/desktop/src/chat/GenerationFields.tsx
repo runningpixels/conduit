@@ -1,6 +1,6 @@
 import type { GenerationControls } from '@conduit/config-schema';
 import { useRef } from 'react';
-import { appName } from '../brand';
+import { useT } from '../i18n';
 
 export interface GenerationFieldDraft {
   temperature: string;
@@ -33,17 +33,37 @@ export function draftFromControls(
   };
 }
 
+/**
+ * Validate a draft, returning a message *id* rather than a sentence.
+ *
+ * This is a plain function with two component call sites, so it cannot reach
+ * the catalog itself — and returning English would put untranslated prose in
+ * front of a user at exactly the moment something they typed was rejected.
+ * The id travels; the caller renders it with its own `t`. The plan singles
+ * settings validation errors out as one of the three surfaces that get
+ * native-speaker review, which is why they are worth this indirection.
+ */
+/** Mirrors `STOP_SEQUENCE_MAX_COUNT` / `_CHARS` in `src-tauri/src/validation.rs`. */
+const STOP_SEQUENCE_MAX_COUNT = 8;
+const STOP_SEQUENCE_MAX_CHARS = 64;
+
 export function parseGenerationDraft(draft: GenerationFieldDraft): {
   controls: GenerationControls | null;
   userInstructions: string | null;
-  error?: string;
+  errorId?: string;
+  /**
+   * Values the message interpolates. The bounds live here and in
+   * `src-tauri/src/validation.rs`; they must not also live in the catalog,
+   * or a changed constant leaves the sentence quietly claiming the old one.
+   */
+  errorParams?: Record<string, string>;
 } {
   const controls: GenerationControls = {};
   const tempRaw = draft.temperature.trim();
   if (tempRaw) {
     const temperature = Number.parseFloat(tempRaw);
     if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
-      return { controls: null, userInstructions: null, error: 'Temperature must be between 0 and 2.' };
+      return { controls: null, userInstructions: null, errorId: 'error.validation.temperatureRange' };
     }
     controls.temperature = temperature;
   }
@@ -51,7 +71,7 @@ export function parseGenerationDraft(draft: GenerationFieldDraft): {
   if (topRaw) {
     const topP = Number.parseFloat(topRaw);
     if (!Number.isFinite(topP) || topP < 0 || topP > 1) {
-      return { controls: null, userInstructions: null, error: 'Top P must be between 0 and 1.' };
+      return { controls: null, userInstructions: null, errorId: 'error.validation.topPRange' };
     }
     controls.topP = topP;
   }
@@ -59,7 +79,7 @@ export function parseGenerationDraft(draft: GenerationFieldDraft): {
   if (maxRaw) {
     const maxTokens = Number.parseInt(maxRaw, 10);
     if (!Number.isFinite(maxTokens) || maxTokens < 1) {
-      return { controls: null, userInstructions: null, error: 'Max tokens must be greater than 0.' };
+      return { controls: null, userInstructions: null, errorId: 'error.validation.maxTokensRange' };
     }
     controls.maxTokens = maxTokens;
   }
@@ -67,11 +87,21 @@ export function parseGenerationDraft(draft: GenerationFieldDraft): {
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (stopSequences.length > 8) {
-    return { controls: null, userInstructions: null, error: 'At most 8 stop sequences.' };
+  if (stopSequences.length > STOP_SEQUENCE_MAX_COUNT) {
+    return {
+      controls: null,
+      userInstructions: null,
+      errorId: 'error.validation.stopSequenceCount',
+      errorParams: { max: String(STOP_SEQUENCE_MAX_COUNT) },
+    };
   }
-  if (stopSequences.some((s) => s.length > 64)) {
-    return { controls: null, userInstructions: null, error: 'Stop sequences cannot exceed 64 characters.' };
+  if (stopSequences.some((s) => s.length > STOP_SEQUENCE_MAX_CHARS)) {
+    return {
+      controls: null,
+      userInstructions: null,
+      errorId: 'error.validation.stopSequenceLength',
+      errorParams: { max: String(STOP_SEQUENCE_MAX_CHARS) },
+    };
   }
   if (stopSequences.length > 0) controls.stopSequences = stopSequences;
 
@@ -97,6 +127,7 @@ interface GenerationFieldsProps {
 
 /** Shared temperature / top-p / max-tokens / stops / instructions fields. */
 export function GenerationFields({ draft, onChange, onCommit, idPrefix }: GenerationFieldsProps) {
+  const t = useT();
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
@@ -113,73 +144,73 @@ export function GenerationFields({ draft, onChange, onCommit, idPrefix }: Genera
   return (
     <div className="gen-fields">
       <label htmlFor={`${idPrefix}-temp`}>
-        Temperature
+        {t('chat.generation.temperature.label')}
         <input
           id={`${idPrefix}-temp`}
           type="number"
           min={0}
           max={2}
           step={0.1}
-          placeholder="Provider default"
+          placeholder={t('chat.generation.providerDefaultPlaceholder')}
           value={draft.temperature}
           onChange={(e) => patch({ temperature: e.target.value })}
           onBlur={commit}
         />
-        <span className="gen-hint">0–2. Empty uses the provider default.</span>
+        <span className="gen-hint">{t('chat.generation.temperature.hint')}</span>
       </label>
       <label htmlFor={`${idPrefix}-topp`}>
-        Top P
+        {t('chat.generation.topP.label')}
         <input
           id={`${idPrefix}-topp`}
           type="number"
           min={0}
           max={1}
           step={0.05}
-          placeholder="Provider default"
+          placeholder={t('chat.generation.providerDefaultPlaceholder')}
           value={draft.topP}
           onChange={(e) => patch({ topP: e.target.value })}
           onBlur={commit}
         />
-        <span className="gen-hint">0–1. Empty uses the provider default.</span>
+        <span className="gen-hint">{t('chat.generation.topP.hint')}</span>
       </label>
       <label htmlFor={`${idPrefix}-max`}>
-        Max tokens
+        {t('chat.generation.maxTokens.label')}
         <input
           id={`${idPrefix}-max`}
           type="number"
           min={1}
           step={1}
-          placeholder="Provider default"
+          placeholder={t('chat.generation.providerDefaultPlaceholder')}
           value={draft.maxTokens}
           onChange={(e) => patch({ maxTokens: e.target.value })}
           onBlur={commit}
         />
-        <span className="gen-hint">Empty uses the provider default.</span>
+        <span className="gen-hint">{t('chat.generation.maxTokens.hint')}</span>
       </label>
       <label htmlFor={`${idPrefix}-stops`}>
-        Stop sequences
+        {t('chat.generation.stopSequences.label')}
         <textarea
           id={`${idPrefix}-stops`}
           rows={3}
-          placeholder="One per line"
+          placeholder={t('chat.generation.stopSequences.placeholder')}
           value={draft.stopSequences}
           onChange={(e) => patch({ stopSequences: e.target.value })}
           onBlur={commit}
         />
-        <span className="gen-hint">Up to 8 sequences. Generation stops if the model emits one.</span>
+        <span className="gen-hint">{t('chat.generation.stopSequences.hint')}</span>
       </label>
       <label htmlFor={`${idPrefix}-instr`}>
-        User instructions
+        {t('chat.generation.userInstructions.label')}
         <textarea
           id={`${idPrefix}-instr`}
           rows={5}
-          placeholder="Appended to the system prompt. Cannot replace built-in safety or tool rules."
+          placeholder={t('chat.generation.userInstructions.placeholder')}
           value={draft.userInstructions}
           onChange={(e) => patch({ userInstructions: e.target.value })}
           onBlur={commit}
         />
         <span className="gen-hint">
-          Added under a reserved “User instructions” heading after {appName()}’s auto-composed prompt.
+          {t('chat.generation.userInstructions.hint')}
         </span>
       </label>
     </div>

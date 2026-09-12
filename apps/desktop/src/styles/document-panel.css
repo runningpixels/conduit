@@ -385,6 +385,12 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   max-width: 420px;
   margin: 0 auto;
   padding: 24px 12px;
+  /* A centred block whose content cannot shrink overflows both edges at once,
+     and the panel gains a horizontal scrollbar. `min-width: 0` lets the flex
+     item shrink past its content; `overflow-wrap: anywhere` gives a break to
+     content that offers none of its own — a long path, a URL, a model id. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .artifact-empty-icon {
   width: 56px;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { PermissionLevel } from '@conduit/config-schema';
 import type { ToolCallState } from './streamState';
 import { approveConnectorToolCall, denyConnectorToolCall } from '../ipc/client';
 import { splitToolDisplayName } from './connectorTools';
@@ -9,7 +10,9 @@ import {
   summarizeDocumentToolCall,
 } from './agentTools';
 import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
-import { appName } from '../brand';
+import { useRichT, useT } from '../i18n';
+import { documentKindLabel } from '../lib/documentKind';
+import type { Translate } from '../i18n';
 
 interface ToolCallBlockProps {
   toolCall: ToolCallState;
@@ -45,6 +48,23 @@ function callTone(toolCall: ToolCallState): 'ok' | 'fail' | 'run' {
   return 'run';
 }
 
+/** Catalog key for each `PermissionLevel`'s consent-prompt description. */
+const PERMISSION_LEVEL_KEYS: Record<PermissionLevel, string> = {
+  readOnly: 'consent.permission.readOnly',
+  sideEffectful: 'consent.permission.sideEffectful',
+  sensitive: 'consent.permission.sensitive',
+};
+
+/** Compose the consent prompt's expected-effect sentence from the facts Rust
+ *  now sends — the permission level and the tool's own description — instead
+ *  of the English sentence Rust used to compose (D9/D10 item 2). Mirrors the
+ *  former `mcp_runtime::consent::expected_effect`: the level's sentence,
+ *  followed by the description on its own line when non-empty. */
+function expectedEffectText(t: Translate, level: PermissionLevel, description: string): string {
+  const kind = t(PERMISSION_LEVEL_KEYS[level]);
+  return description.trim().length === 0 ? kind : `${kind}\n${description}`;
+}
+
 /** kv rows for the tool's arguments — mono, flat, one level of disclosure. */
 function kvRows(rows: [string, string][]): React.ReactNode {
   return rows.map(([k, v]) => (
@@ -65,6 +85,8 @@ export function ToolCallBlock({
   defaultCollapsed = true,
   conversationId = null,
 }: ToolCallBlockProps) {
+  const t = useT();
+  const tr = useRichT();
   const [resolving, setResolving] = useState(false);
   const [rememberScope, setRememberScope] = useState<'none' | 'conversation' | 'always'>('none');
   // Running calls (or a pending consent gate) start expanded; completed calls
@@ -99,9 +121,9 @@ export function ToolCallBlock({
   const anyFailed = activeCalls.some((c) => callTone(c) === 'fail');
   const running = anyRunning;
   const statusSuffix = anyFailed
-    ? 'failed'
+    ? t('chat.toolCall.status.failed')
     : anyRunning
-      ? 'running…'
+      ? t('chat.toolCall.status.running')
       : '';
 
   const totalMs = activeCalls.reduce((acc, c) => {
@@ -143,7 +165,7 @@ export function ToolCallBlock({
 
   if (group) {
     name = splitToolDisplayName(group.name).tool || group.name;
-    summary = `${group.calls.length} call${group.calls.length > 1 ? 's' : ''}`;
+    summary = t('chat.toolCall.callCount', { count: group.calls.length });
     body = (
       <div className="tool-sub">
         {group.calls.map((c) => (
@@ -151,15 +173,17 @@ export function ToolCallBlock({
             <span className={`t-sub-ok${callTone(c) === 'fail' ? ' fail' : ''}`}>
               {callTone(c) === 'ok' ? '✓' : callTone(c) === 'fail' ? '✕' : '…'}
             </span>
-            <span className="t-sub-label">{callLabel(c)}</span>
+            <span className="t-sub-label" title={callLabel(c)}>{callLabel(c)}</span>
             <span className="t-sub-dur">{formatDuration(c.startedAt, c.endedAt, callTone(c) === 'run')}</span>
           </div>
         ))}
       </div>
     );
   } else if (isDocumentTool && docSummary) {
-    name = 'Documents';
-    summary = `${docSummary.action} · ${docSummary.filename || docSummary.title || docSummary.kind}`;
+    name = t('chat.toolCall.documentsName');
+    summary = `${t('chat.toolCall.document.action', { action: docSummary.action })} · ${
+      docSummary.filename || docSummary.title || documentKindLabel(docSummary.kind, t)
+    }`;
     const rows: [string, string][] = [];
     if (docSummary.title) rows.push(['title', docSummary.title]);
     if (docSummary.filename) rows.push(['file', docSummary.filename]);
@@ -169,20 +193,23 @@ export function ToolCallBlock({
     }
     const redacted = redactDocumentToolArguments(toolCall.arguments ?? {}, toolCall.name);
     const json = JSON.stringify(redacted, null, 2);
-    const docFallback = 'The document was not created or updated.';
-    const docExplained = explainToolError(toolCall.error, docFallback);
+    const docFallback = t('chat.toolCall.document.fallbackError');
+    const docExplained = explainToolError(toolCall.error, docFallback, t);
     resultText =
       status === 'failed' ? (
         <>
-          <b>Couldn&rsquo;t {docSummary.action.toLowerCase()} the document.</b> {docExplained}
+          {tr('chat.toolCall.document.failed', {
+            action: docSummary.action,
+            explained: docExplained,
+          })}
           {toolCall.error && toolCall.error !== docExplained && (
             <div className="tool-raw">{toolCall.error}</div>
           )}
         </>
       ) : status === 'cancelled' ? (
-        <b>Document tool cancelled.</b>
+        <b>{t('chat.toolCall.document.cancelled')}</b>
       ) : (
-        <b>Document updated.</b>
+        <b>{t('chat.toolCall.document.updated')}</b>
       );
     body = (
       <>
@@ -214,16 +241,15 @@ export function ToolCallBlock({
         {toolCall.complete && consent !== 'denied' && (
           <div className={`tool-out${status === 'failed' ? ' tool-out-prose' : ''}`}>
             {status === 'failed' ? (
-              <>
-                <b>Tool call failed.</b>{' '}
-                {explainToolError(toolCall.error, 'The tool returned no result.')}
-              </>
+              tr('chat.toolCall.generic.failed', {
+                explained: explainToolError(toolCall.error, t('chat.toolCall.generic.fallbackError'), t),
+              })
             ) : status === 'cancelled' ? (
-              <b>Tool call cancelled.</b>
+              <b>{t('chat.toolCall.generic.cancelled')}</b>
             ) : (
-              <>
-                <b>Tool call complete.</b> {toolCall.error ? toolCall.error : 'Result stored locally.'}
-              </>
+              tr('chat.toolCall.generic.complete', {
+                detail: toolCall.error ? toolCall.error : t('chat.toolCall.generic.resultStored'),
+              })
             )}
           </div>
         )}
@@ -255,7 +281,9 @@ export function ToolCallBlock({
             5 sources · 1.4s" is what the mockup shows — but they stop being
             three separately-boxed things reporting on one line. */}
         {toolSummary && (
-          <span className={`tool-sum${anyFailed ? ' err' : ''}`}>{toolSummary}</span>
+          <span className={`tool-sum${anyFailed ? ' err' : ''}`} title={toolSummary}>
+            {toolSummary}
+          </span>
         )}
         <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
       </button>
@@ -266,13 +294,17 @@ export function ToolCallBlock({
             {showConsentGate && (
               <div className="consent">
                 <p>
-                  <b>{prompt?.connectorName ?? 'A connector'}</b> wants to run <b>{prompt?.toolName ?? toolCall.name}</b>.
-                  {' '}
-                  {prompt?.expectedEffect ?? 'This writes to an external service.'}
+                  {tr('chat.toolCall.consent.prompt', {
+                    connectorName: prompt?.connectorName ?? t('chat.toolCall.consent.defaultConnectorName'),
+                    toolName: prompt?.toolName ?? toolCall.name,
+                    expectedEffect: prompt
+                      ? expectedEffectText(t, prompt.permissionLevel, prompt.toolDescription)
+                      : t('chat.toolCall.consent.defaultExpectedEffect'),
+                  })}
                 </p>
                 {prompt?.dataSummary && (
                   <p className="data-summary">
-                    <small>Data being sent: {prompt.dataSummary}</small>
+                    <small>{t('chat.toolCall.consent.dataSummary', { dataSummary: prompt.dataSummary })}</small>
                   </p>
                 )}
                 {prompt?.consentCopy && (
@@ -280,10 +312,7 @@ export function ToolCallBlock({
                     <small>{prompt.consentCopy}</small>
                   </p>
                 )}
-                <p>
-                  {appName()} never runs a side-effecting tool without your approval. Tool output is
-                  sandboxed and never re-injected into the prompt.
-                </p>
+                <p>{t('chat.toolCall.consent.safetyNote')}</p>
                 <div className="consent-remember">
                   <label>
                     <input
@@ -294,7 +323,7 @@ export function ToolCallBlock({
                         setRememberScope(e.target.checked ? 'conversation' : 'none')
                       }
                     />
-                    Remember for this chat
+                    {t('chat.toolCall.consent.rememberChat')}
                   </label>
                   <label>
                     <input
@@ -303,7 +332,7 @@ export function ToolCallBlock({
                       disabled={resolving}
                       onChange={(e) => setRememberScope(e.target.checked ? 'always' : 'none')}
                     />
-                    Always allow this tool
+                    {t('chat.toolCall.consent.rememberAlways')}
                   </label>
                 </div>
                 <div className="row">
@@ -313,7 +342,7 @@ export function ToolCallBlock({
                     disabled={resolving}
                     onClick={() => void resolve('approved')}
                   >
-                    Approve and run
+                    {t('chat.toolCall.consent.approveButton')}
                   </button>
                   <button
                     className="btn ghost"
@@ -321,14 +350,14 @@ export function ToolCallBlock({
                     disabled={resolving}
                     onClick={() => void resolve('denied')}
                   >
-                    Deny
+                    {t('chat.toolCall.consent.denyButton')}
                   </button>
                 </div>
               </div>
             )}
             {toolCall.sideEffecting && consent === 'denied' && (
               <div className="tool-out">
-                <b>Denied.</b> The tool call was not executed.
+                {tr('chat.toolCall.deniedNotice')}
               </div>
             )}
           </div>

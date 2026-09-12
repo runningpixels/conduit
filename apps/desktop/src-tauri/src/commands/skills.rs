@@ -76,8 +76,9 @@ pub async fn set_conversation_skills(
 pub async fn import_skill_folder(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    dialog_title: String,
 ) -> Result<Option<SkillSummary>, String> {
-    let Some(src) = pick_folder(&app, "Import skill folder").await? else {
+    let Some(src) = pick_folder(&app, &dialog_title).await? else {
         return Ok(None);
     };
     let dest = ensure_conduit_skills(&state)?;
@@ -88,8 +89,10 @@ pub async fn import_skill_folder(
 pub async fn import_skill_zip(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    dialog_title: String,
+    filter_name: String,
 ) -> Result<Option<SkillSummary>, String> {
-    let Some(src) = pick_zip(&app, "Import skill zip").await? else {
+    let Some(src) = pick_zip(&app, &dialog_title, &filter_name).await? else {
         return Ok(None);
     };
     let dest = ensure_conduit_skills(&state)?;
@@ -102,12 +105,13 @@ pub async fn export_skill_folder(
     state: State<'_, AppState>,
     skill_id: String,
     workspace_root: Option<String>,
+    dialog_title: String,
 ) -> Result<Option<String>, String> {
     let listed = skills::discover_skills(&roots_from_state(&state, workspace_root.as_deref()));
     let summary = find_skill(&listed, &skill_id)
         .cloned()
         .ok_or_else(|| format!("unknown skill {skill_id}"))?;
-    let Some(parent) = pick_folder(&app, "Export skill to folder").await? else {
+    let Some(parent) = pick_folder(&app, &dialog_title).await? else {
         return Ok(None);
     };
     let dest = skills::export_skill_dir(&summary, &parent)?;
@@ -120,13 +124,15 @@ pub async fn export_skill_zip(
     state: State<'_, AppState>,
     skill_id: String,
     workspace_root: Option<String>,
+    dialog_title: String,
+    filter_name: String,
 ) -> Result<Option<String>, String> {
     let listed = skills::discover_skills(&roots_from_state(&state, workspace_root.as_deref()));
     let summary = find_skill(&listed, &skill_id)
         .cloned()
         .ok_or_else(|| format!("unknown skill {skill_id}"))?;
     let suggested = format!("{}.zip", summary.name);
-    let Some(path) = pick_save_zip(&app, "Export skill zip", &suggested).await? else {
+    let Some(path) = pick_save_zip(&app, &dialog_title, &filter_name, &suggested).await? else {
         return Ok(None);
     };
     let dest = skills::export_skill_zip(&summary, &path)?;
@@ -174,12 +180,16 @@ async fn pick_folder(app: &tauri::AppHandle, title: &str) -> Result<Option<PathB
         .transpose()
 }
 
-async fn pick_zip(app: &tauri::AppHandle, title: &str) -> Result<Option<PathBuf>, String> {
+async fn pick_zip(
+    app: &tauri::AppHandle,
+    title: &str,
+    filter_name: &str,
+) -> Result<Option<PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Skill zip", &["zip"])
+        .add_filter(filter_name, &["zip"])
         .set_title(title)
         .pick_file(move |file_path| {
             let _ = tx.send(file_path);
@@ -190,13 +200,14 @@ async fn pick_zip(app: &tauri::AppHandle, title: &str) -> Result<Option<PathBuf>
 async fn pick_save_zip(
     app: &tauri::AppHandle,
     title: &str,
+    filter_name: &str,
     suggested: &str,
 ) -> Result<Option<PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Skill zip", &["zip"])
+        .add_filter(filter_name, &["zip"])
         .set_file_name(suggested)
         .set_title(title)
         .save_file(move |file_path| {

@@ -1,5 +1,6 @@
 import type { AppSettings } from '../../ipc/contracts';
 import type { AgentGuardrails } from '@conduit/config-schema';
+import { useT } from '../../i18n';
 
 interface AgentSectionProps {
   settings: AppSettings;
@@ -22,6 +23,7 @@ function formatMinutes(secs: number): string {
 
 /** Agent loop guardrails: max provider rounds and wall-clock budget per turn. */
 export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps) {
+  const t = useT();
   const agent = settings.agent;
 
   function patchAgent(next: Partial<AgentGuardrails>) {
@@ -35,7 +37,7 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
     const parsed = Number.parseInt(raw, 10);
     if (Number.isNaN(parsed)) return;
     if (parsed < MIN_STEPS || parsed > MAX_STEPS) {
-      onStatus(`Max agent steps must be between ${MIN_STEPS} and ${MAX_STEPS}.`);
+      onStatus(t('settings.agent.status.maxStepsRange', { min: MIN_STEPS, max: MAX_STEPS }));
       return;
     }
     patchAgent({ maxSteps: parsed });
@@ -46,7 +48,10 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
     if (Number.isNaN(parsed)) return;
     if (parsed < MIN_WALL_CLOCK_SECS || parsed > MAX_WALL_CLOCK_SECS) {
       onStatus(
-        `Turn time limit must be between ${MIN_WALL_CLOCK_SECS}s and ${MAX_WALL_CLOCK_SECS}s.`,
+        t('settings.agent.status.wallClockRange', {
+          min: MIN_WALL_CLOCK_SECS,
+          max: MAX_WALL_CLOCK_SECS,
+        }),
       );
       return;
     }
@@ -56,17 +61,15 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>Agent</span>
+        <span>{t('settings.agent.header.title')}</span>
       </div>
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
-        These guardrails cap how long a single chat message can run autonomously
-        when the model uses tools (web search, connectors, artifacts). Each tool
-        call and follow-up counts as one step.
+        {t('settings.agent.intro')}
       </p>
 
       <div className="form-grid">
         <label htmlFor="agent-max-steps" style={{ display: 'grid', gap: 4, fontSize: '13px' }}>
-          Max agent steps
+          {t('settings.agent.maxSteps.label')}
           <input
             id="agent-max-steps"
             type="number"
@@ -78,12 +81,12 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
             style={{ maxWidth: 120 }}
           />
           <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>
-            Provider rounds per message (tool calls + follow-ups). Range: {MIN_STEPS}–{MAX_STEPS}.
+            {t('settings.agent.maxSteps.hint', { min: MIN_STEPS, max: MAX_STEPS })}
           </span>
         </label>
 
         <label htmlFor="agent-wall-clock" style={{ display: 'grid', gap: 4, fontSize: '13px' }}>
-          Turn time limit (seconds)
+          {t('settings.agent.wallClock.label')}
           <input
             id="agent-wall-clock"
             type="number"
@@ -95,8 +98,12 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
             style={{ maxWidth: 120 }}
           />
           <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>
-            {agent.wallClockBudgetSecs}s = {formatMinutes(agent.wallClockBudgetSecs)}. Range:{' '}
-            {MIN_WALL_CLOCK_SECS}s–{formatMinutes(MAX_WALL_CLOCK_SECS)}.
+            {t('settings.agent.wallClock.hint', {
+              secs: agent.wallClockBudgetSecs,
+              formatted: formatMinutes(agent.wallClockBudgetSecs),
+              min: MIN_WALL_CLOCK_SECS,
+              maxFormatted: formatMinutes(MAX_WALL_CLOCK_SECS),
+            })}
           </span>
         </label>
       </div>

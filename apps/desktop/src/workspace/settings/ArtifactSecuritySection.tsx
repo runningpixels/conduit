@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
+import { useT } from '../../i18n';
 
 interface ArtifactSecuritySectionProps {
   settings: AppSettings;
@@ -8,6 +9,7 @@ interface ArtifactSecuritySectionProps {
 
 /** Artifact Security: remote allowlist management for rendered HTML artifacts. */
 export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecuritySectionProps) {
+  const t = useT();
   const [allowlistInput, setAllowlistInput] = useState('');
 
   function handleAdd() {
@@ -31,29 +33,29 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>Artifact Security</span>
+        <span>{t('settings.artifactSecurity.header.title')}</span>
       </div>
       <div className="status-item">
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-          Artifact remote allowlist
+          {t('settings.artifactSecurity.allowlist.label')}
         </span>
         <span style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-          Trusted origins rendered HTML artifacts may load images, fonts, and styles from. Scripts and network API calls (fetch/XHR) are blocked regardless. Empty = artifacts are fully offline.
+          {t('settings.artifactSecurity.allowlist.hint')}
         </span>
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <input
             value={allowlistInput}
             onChange={(e) => setAllowlistInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
-            placeholder="https://fonts.example.com"
+            placeholder={t('settings.artifactSecurity.allowlist.inputPlaceholder')}
             style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
           />
           <button className="btn" type="button" onClick={handleAdd}>
-            Add
+            {t('settings.artifactSecurity.actions.add')}
           </button>
         </div>
         {settings.artifactRemoteAllowlist.length === 0 ? (
-          <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>No origins allowlisted — artifacts are offline.</span>
+          <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{t('settings.artifactSecurity.allowlist.empty')}</span>
         ) : (
           <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'grid', gap: 4 }}>
             {settings.artifactRemoteAllowlist.map((origin) => (
@@ -65,13 +67,13 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
                   style={{ padding: '2px 8px' }}
                   onClick={() => handleRemove(origin)}
                 >
-                  Remove
+                  {t('common.actions.remove')}
                 </button>
               </li>
             ))}
           </ul>
         )}
-        <span style={{ fontSize: '11px', color: 'var(--ink-3)' }}>Invalid origins are rejected by Rust on save.</span>
+        <span style={{ fontSize: '11px', color: 'var(--ink-3)' }}>{t('settings.artifactSecurity.allowlist.validationHint')}</span>
       </div>
     </div>
   );

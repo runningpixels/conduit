@@ -479,11 +479,22 @@ pub async fn export_conversation_dialog(
     conversation_id: String,
     format: ExportFormat,
     include_attachments: Option<bool>,
+    dialog_title: String,
+    filter_name: String,
 ) -> Result<Option<ConversationExportResult>, String> {
+    // Dialog chrome arrives translated from the renderer: the native dialog is
+    // outside the webview, so it cannot reach the catalog itself (D15).
     let include = include_attachments.unwrap_or(false);
     // Fail before the picker when there is nothing to export.
     let prepared = conversation_export::prepare(&state.db, &conversation_id, format).await?;
-    let picked = pick_conversation_save_path(&app, format, &prepared.suggested_filename).await?;
+    let picked = pick_conversation_save_path(
+        &app,
+        format,
+        &dialog_title,
+        &filter_name,
+        &prepared.suggested_filename,
+    )
+    .await?;
     export_conversation_dialog_impl(state.inner(), &conversation_id, format, include, picked).await
 }
 
@@ -517,20 +528,20 @@ pub async fn export_conversation_dialog_impl(
 async fn pick_conversation_save_path(
     app: &tauri::AppHandle,
     format: ExportFormat,
+    dialog_title: &str,
+    filter_name: &str,
     suggested_filename: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let title = match format {
-        ExportFormat::Markdown => "Export conversation as Markdown",
-        ExportFormat::Json => "Export conversation as JSON",
-    };
+    // Title and filter name arrive already translated from the renderer, which
+    // is the only side that knows the active language (D15).
     app.dialog()
         .file()
-        .add_filter(format.dialog_filter_name(), &[format.extension()])
+        .add_filter(filter_name, &[format.extension()])
         .set_file_name(suggested_filename)
-        .set_title(title)
+        .set_title(dialog_title)
         .save_file(move |file_path| {
             let _ = tx.send(file_path);
         });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
 import { pickWorkspaceFolder } from '../../ipc/client';
 import { WorkspaceToolsConsentDialog } from './WorkspaceToolsConsentDialog';
-import { appName } from '../../brand';
+import { useRichT, useT } from '../../i18n';
 
 interface WorkspaceToolsSectionProps {
   settings: AppSettings;
@@ -12,6 +12,8 @@ interface WorkspaceToolsSectionProps {
 
 /** Defaults for workspace file tools. Day-to-day binding is on the composer chip. */
 export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: WorkspaceToolsSectionProps) {
+  const t = useT();
+  const tr = useRichT();
   const [showConsent, setShowConsent] = useState(false);
   const [pendingConsentState, setPendingConsentState] = useState<AppSettings | null>(null);
   const [picking, setPicking] = useState(false);
@@ -25,10 +27,10 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
       const path = await pickWorkspaceFolder();
       if (path == null) return;
       onUpdate({ ...settings, workspaceRoot: path });
-      onStatus(`Default workspace folder set to ${path}`);
+      onStatus(t('settings.workspaceTools.status.folderSet', { path }));
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      onStatus(`Could not pick folder: ${message}`);
+      onStatus(t('settings.workspaceTools.status.pickFailed', { error: message }));
     } finally {
       setPicking(false);
     }
@@ -45,24 +47,22 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
   return (
     <div className="settings-section">
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
-        Bind a folder from the chat bar (“Work in a folder”) for a single conversation.
-        Use this section for a <strong>default folder on new chats</strong>. Sensitive
-        filenames stay blocked; {appName()} does not expose a shell.
+        {tr('settings.workspaceTools.intro')}
       </p>
 
       <div className="form-grid">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn" type="button" disabled={picking} onClick={() => void chooseFolder()}>
-            {root ? 'Change default folder…' : 'Choose default folder…'}
+            {root ? t('settings.workspaceTools.actions.changeFolder') : t('settings.workspaceTools.actions.chooseFolder')}
           </button>
           {root ? (
             <button className="btn ghost" type="button" onClick={clearFolder}>
-              Clear default
+              {t('settings.workspaceTools.actions.clearDefault')}
             </button>
           ) : null}
         </div>
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
-          {root || 'No default folder'}
+          {root || t('settings.workspaceTools.noDefaultFolder')}
         </p>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
@@ -80,11 +80,11 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
               }
             }}
           />
-          Apply default folder to new chats
+          {t('settings.workspaceTools.applyToggle.label')}
         </label>
         {!root && (
           <p style={{ margin: 0, fontSize: '11px', color: 'var(--ink-3)' }}>
-            Choose a default folder before enabling.
+            {t('settings.workspaceTools.chooseBeforeEnabling')}
           </p>
         )}
 

@@ -6,6 +6,7 @@ import {
   GenerationFields,
   parseGenerationDraft,
 } from './GenerationFields';
+import { useT } from '../i18n';
 
 interface ComposerChatSettingsProps {
   open: boolean;
@@ -30,6 +31,7 @@ export function ComposerChatSettings({
   onSave,
   onOpenSettingsDefaults,
 }: ComposerChatSettingsProps) {
+  const t = useT();
   const [draft, setDraft] = useState(() =>
     draftFromControls(
       override.generationControls ?? defaults.generationControls,
@@ -55,8 +57,8 @@ export function ComposerChatSettings({
 
   function save() {
     const parsed = parseGenerationDraft(draft);
-    if (parsed.error) {
-      setError(parsed.error);
+    if (parsed.errorId) {
+      setError(t(parsed.errorId, parsed.errorParams));
       return;
     }
     onSave(parsed.controls, parsed.userInstructions);
@@ -73,11 +75,11 @@ export function ComposerChatSettings({
     <div
       id="composer-chat-settings"
       role="dialog"
-      aria-label="Chat settings"
+      aria-label={t('chat.composerSettings.ariaLabel')}
       className="chat-settings-pop"
     >
       <p className="chat-settings-pop-lead">
-        {hasOverride ? 'Overrides for this chat.' : 'Using Settings defaults. Changes apply to this chat only.'}
+        {hasOverride ? t('chat.composerSettings.overrideLead') : t('chat.composerSettings.defaultLead')}
       </p>
       <GenerationFields draft={draft} onChange={setDraft} idPrefix="chat-gen" />
       {error ? (
@@ -87,13 +89,13 @@ export function ComposerChatSettings({
       ) : null}
       <div className="chat-settings-pop-actions">
         <button className="btn primary" type="button" disabled={streaming} onClick={save}>
-          Save for this chat
+          {t('chat.composerSettings.save')}
         </button>
         <button className="btn ghost" type="button" disabled={streaming} onClick={useDefaults}>
-          Use defaults
+          {t('chat.composerSettings.useDefaults')}
         </button>
         <button className="btn ghost" type="button" onClick={onClose}>
-          Cancel
+          {t('common.actions.cancel')}
         </button>
         {onOpenSettingsDefaults ? (
           <button
@@ -104,7 +106,7 @@ export function ComposerChatSettings({
               onOpenSettingsDefaults();
             }}
           >
-            Defaults in Settings
+            {t('chat.composerSettings.defaultsInSettings')}
           </button>
         ) : null}
       </div>

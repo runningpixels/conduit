@@ -48,6 +48,7 @@ import {
   type PendingArtifact,
 } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
+import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
@@ -65,6 +66,7 @@ import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
 import { modShortcutHint } from './lib/shortcuts';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
+import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
 import {
   exportConversationDialog,
@@ -112,6 +114,7 @@ const defaultSettings: AppSettings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'dark',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
@@ -161,9 +164,18 @@ async function resolveSourceMessageId(messageId: string): Promise<string> {
 }
 
 export default function App() {
+  const t = useT();
+  /* Read once per mount, not per render: it never changes within a page load
+     (see `devRoute.ts`), and `null` in every production build. */
+  const [devRoute] = useState(readDevRoute);
+  const tr = useRichT();
   const [paths, setPaths] = useState<AppPaths | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [status, setStatus] = useState<StatusState | null>(makeStatus('Booting desktop shell', 'active'));
+  /* Whether `settings` holds the authoritative Rust read yet, or is still the
+   * `defaultSettings` placeholder. Only the language mirror below needs to
+   * know, and it needs to badly — see the comment there. */
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [status, setStatus] = useState<StatusState | null>(makeStatus(t('app.status.booting'), 'active'));
   const [boundaryOk, setBoundaryOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
@@ -196,7 +208,10 @@ export default function App() {
   const [toasts, setToasts] = useState<StatusState[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteConversations, setPaletteConversations] = useState<
-    { id: string; title: string; pinned?: boolean; archived?: boolean }[]
+    /* `title` is optional for the same reason `ConversationSummary.displayTitle`
+     * is: a chat with no name and nothing said in it has none, and the palette
+     * names that case itself, in the reader's language. */
+    { id: string; title?: string; pinned?: boolean; archived?: boolean }[]
   >([]);
   const chatViewRef = useRef<ChatViewHandle>(null);
 
@@ -258,7 +273,7 @@ export default function App() {
       if (localStorage.getItem(DOC_PANEL_HINT_KEY) === '1') return;
       localStorage.setItem(DOC_PANEL_HINT_KEY, '1');
       const hint = makeStatus(
-        `Artifact panel hidden. Press ${modShortcutHint('J')} or use the panel button in the top bar to bring it back.`,
+        t('app.status.artifactPanelHidden', { shortcut: modShortcutHint('J') }),
         'success',
       );
       setToasts((current) => [...current.slice(-4), hint]);
@@ -384,6 +399,7 @@ export default function App() {
         ]);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
+        setSettingsLoaded(true);
         setOnboarding(onboardingState);
         applyUiPrefs();
         // Reconcile the pre-paint cache (main.tsx) against the authoritative
@@ -421,7 +437,7 @@ export default function App() {
         }
       } catch (error) {
         setBoundaryOk(false);
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to load desktop state', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.loadDesktopStateFailed'), 'error'));
       }
     })();
   }, [ensureConversation, refreshConversations]);
@@ -446,9 +462,9 @@ export default function App() {
       setActiveConversationId(created.id);
       clearWorkspaceArtifactSelection();
       await refreshConversations();
-      setStatus(makeStatus('Started a new chat', 'success'));
+      setStatus(makeStatus(t('app.status.newChatStarted'), 'success'));
     } catch (error) {
-      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to create chat', 'error'));
+      setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.createChatFailed'), 'error'));
     }
   }, [clearWorkspaceArtifactSelection, refreshConversations]);
 
@@ -491,10 +507,10 @@ export default function App() {
         setActiveConversationId(fork.id);
         clearWorkspaceArtifactSelection();
         await refreshConversations();
-        setStatus(makeStatus('Forked conversation', 'success'));
+        setStatus(makeStatus(t('app.status.conversationForked'), 'success'));
       } catch (error) {
         setStatus(
-          makeStatus(error instanceof Error ? error.message : 'Failed to fork conversation', 'error'),
+          makeStatus(error instanceof Error ? error.message : t('app.status.forkConversationFailed'), 'error'),
         );
       }
     },
@@ -533,9 +549,9 @@ export default function App() {
           clearWorkspaceArtifactSelection();
         }
         await refreshConversations();
-        setStatus(makeStatus('Conversation deleted', 'success'));
+        setStatus(makeStatus(t('app.status.conversationDeleted'), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete conversation', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.deleteConversationFailed'), 'error'));
       }
     },
     [activeConversationId, clearWorkspaceArtifactSelection, refreshConversations],
@@ -553,9 +569,9 @@ export default function App() {
       setConvoProviders({});
       writeConvoProviders({});
       await refreshConversations();
-      setStatus(makeStatus('All conversation history deleted', 'success'));
+      setStatus(makeStatus(t('app.status.allHistoryDeleted'), 'success'));
     } catch (error) {
-      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete history', 'error'));
+      setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.deleteHistoryFailed'), 'error'));
     }
   }, [clearWorkspaceArtifactSelection, refreshConversations]);
 
@@ -568,7 +584,7 @@ export default function App() {
     } catch (error) {
       setArtifacts([]);
       setFileStateMap({});
-      setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to load artifacts', 'error'));
+      setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.loadArtifactsFailed'), 'error'));
       return [];
     }
   }, []);
@@ -594,7 +610,7 @@ export default function App() {
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
         setDocTab('preview');
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to open artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.openArtifactFailed'), 'error'));
       }
     },
     [addOpenArtifactId, expandDocPanel],
@@ -628,7 +644,7 @@ export default function App() {
         await handleOpenArtifact(artifactId);
       }
       setPendingArtifact(null);
-      setStatus(makeStatus('Document updated', 'success'));
+      setStatus(makeStatus(t('app.status.documentUpdated'), 'success'));
     },
     [
       activeConversationId,
@@ -670,9 +686,9 @@ export default function App() {
         }
         const state = await checkArtifactFileState(artifactId);
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
-        setStatus(makeStatus('Saved artifact', 'success'));
+        setStatus(makeStatus(t('app.status.artifactSaved'), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to save artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.saveArtifactFailed'), 'error'));
         throw error;
       }
     },
@@ -683,9 +699,9 @@ export default function App() {
     async (artifactId: string, includeMetadata: boolean) => {
       try {
         const result = await exportArtifact(artifactId, includeMetadata);
-        setStatus(makeStatus(`Exported to ${result.exportedTo}`, 'success'));
+        setStatus(makeStatus(t('app.status.artifactExportedTo', { path: result.exportedTo }), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to export artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.exportArtifactFailed'), 'error'));
       }
     },
     [],
@@ -734,9 +750,9 @@ export default function App() {
         await setArtifactContent(created.id, { kind: 'text', text: candidate.body }, candidate.mimeType);
         await refreshArtifacts(activeConversationId);
         await handleOpenArtifact(created.id);
-        setStatus(makeStatus('Promoted to artifact', 'success'));
+        setStatus(makeStatus(t('app.status.artifactPromoted'), 'success'));
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to promote artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.promoteArtifactFailed'), 'error'));
       }
     },
     [activeConversationId, refreshArtifacts, handleOpenArtifact],
@@ -750,7 +766,7 @@ export default function App() {
           await refreshArtifacts(activeConversationId);
         }
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to rename artifact', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.renameArtifactFailed'), 'error'));
       }
     },
     [activeConversationId, refreshArtifacts],
@@ -770,10 +786,10 @@ export default function App() {
       await setConversationTitle(activeConversationId, title);
       await refreshConversations();
       await refreshActiveConversationSummary(activeConversationId);
-      setStatus(makeStatus('Conversation renamed', 'success'));
+      setStatus(makeStatus(t('app.status.conversationRenamed'), 'success'));
     } catch (error) {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Failed to rename conversation', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.renameConversationFailed'), 'error'),
       );
     }
   }, [activeConversationId, renameValue, refreshConversations, refreshActiveConversationSummary]);
@@ -785,7 +801,7 @@ export default function App() {
         await refreshConversations();
         await refreshActiveConversationSummary(activeConversationId);
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to pin conversation', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.pinConversationFailed'), 'error'));
       }
     },
     [activeConversationId, refreshConversations, refreshActiveConversationSummary],
@@ -799,7 +815,7 @@ export default function App() {
         await refreshActiveConversationSummary(activeConversationId);
       } catch (error) {
         setStatus(
-          makeStatus(error instanceof Error ? error.message : 'Failed to archive conversation', 'error'),
+          makeStatus(error instanceof Error ? error.message : t('app.status.archiveConversationFailed'), 'error'),
         );
       }
     },
@@ -812,7 +828,7 @@ export default function App() {
         await setConversationFolder(id, folderId);
         await refreshConversations();
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to move conversation', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.moveConversationFailed'), 'error'));
       }
     },
     [refreshConversations],
@@ -823,10 +839,10 @@ export default function App() {
       try {
         const folder = await createConversationFolder(name);
         await refreshConversations();
-        setStatus(makeStatus('Folder created', 'success'));
+        setStatus(makeStatus(t('app.status.folderCreated'), 'success'));
         return folder;
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to create folder', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.createFolderFailed'), 'error'));
         return undefined;
       }
     },
@@ -839,7 +855,7 @@ export default function App() {
         await renameConversationFolder(folderId, name);
         await refreshConversations();
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to rename folder', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.renameFolderFailed'), 'error'));
       }
     },
     [refreshConversations],
@@ -851,7 +867,7 @@ export default function App() {
         await deleteConversationFolder(folderId);
         await refreshConversations();
       } catch (error) {
-        setStatus(makeStatus(error instanceof Error ? error.message : 'Failed to delete folder', 'error'));
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.deleteFolderFailed'), 'error'));
       }
     },
     [refreshConversations],
@@ -860,30 +876,30 @@ export default function App() {
   const handleExportDiagnostics = useCallback(async () => {
     try {
       const result = await exportDiagnostics();
-      setStatus(makeStatus(`Diagnostics exported to ${result.exportedTo}`, 'success'));
+      setStatus(makeStatus(t('app.status.diagnosticsExportedTo', { path: result.exportedTo }), 'success'));
     } catch (error) {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Failed to export diagnostics', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.exportDiagnosticsFailed'), 'error'),
       );
     }
   }, []);
 
   const handleCopyConversationAsMarkdown = useCallback(async () => {
     if (!activeConversationId) {
-      setStatus(makeStatus('Nothing to copy', 'warning'));
+      setStatus(makeStatus(t('app.status.nothingToCopy'), 'warning'));
       return;
     }
     try {
       const md = await previewConversationExport(activeConversationId, 'markdown');
       if (!md.trim()) {
-        setStatus(makeStatus('Nothing to copy', 'warning'));
+        setStatus(makeStatus(t('app.status.nothingToCopy'), 'warning'));
         return;
       }
       await navigator.clipboard.writeText(md);
-      setStatus(makeStatus('Conversation copied as Markdown', 'success'));
+      setStatus(makeStatus(t('app.status.conversationCopiedMarkdown'), 'success'));
     } catch (error) {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Failed to copy conversation', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.copyConversationFailed'), 'error'),
       );
     }
   }, [activeConversationId]);
@@ -891,16 +907,23 @@ export default function App() {
   const handleExportConversation = useCallback(
     async (format: 'markdown' | 'json') => {
       if (!activeConversationId) {
-        setStatus(makeStatus('Nothing to export', 'warning'));
+        setStatus(makeStatus(t('app.status.nothingToExport'), 'warning'));
         return;
       }
       try {
-        const result = await exportConversationDialog(activeConversationId, format);
+        const result = await exportConversationDialog(
+          activeConversationId,
+          format,
+          t('chat.export.dialog.title', { format: format === 'json' ? 'JSON' : 'Markdown' }),
+          // The file-type filter names a format, and format names are not
+          // translated (D7).
+          format === 'json' ? 'JSON' : 'Markdown',
+        );
         if (result === null) return;
-        setStatus(makeStatus(`Exported to ${result.exportedTo}`, 'success'));
+        setStatus(makeStatus(t('app.status.artifactExportedTo', { path: result.exportedTo }), 'success'));
       } catch (error) {
         setStatus(
-          makeStatus(error instanceof Error ? error.message : 'Failed to export conversation', 'error'),
+          makeStatus(error instanceof Error ? error.message : t('app.status.exportConversationFailed'), 'error'),
         );
       }
     },
@@ -950,6 +973,33 @@ export default function App() {
     return watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
   }, [settings.theme]);
 
+  /* The language analogue of the theme effect above, and the reconcile half of
+   * the pre-paint language read in `main.tsx`. It corrects the localStorage
+   * mirror when it is stale, absent or hand-edited, and carries every change
+   * from the Settings picker into the provider.
+   *
+   * **It must not run until `settings` is the authoritative Rust read.** App
+   * sits inside `I18nProvider`, which carries `key={locale}` so that switching
+   * language re-mounts this subtree instead of leaving formatted text frozen in
+   * somebody's `useState`. That means every locale change resets `settings`
+   * back to `defaultSettings` — whose language is `'system'`, a placeholder
+   * nobody chose. Announcing that placeholder resolves to a different locale
+   * than an explicit choice does, which changes the key, which re-mounts App,
+   * which restores the placeholder and announces it again: an unbounded
+   * re-mount loop, paced by the boot IPC, with every piece of content in the
+   * window flickering for as long as the app is open. It needs a stored
+   * language other than `'system'` to bite, so it stayed invisible until the
+   * picker had languages worth choosing. `App.smoke.test.tsx` counts boots.
+   *
+   * `setPreference` is deliberately inert while a dev locale override is
+   * active. Without that, this effect would undo `?locale=en-XA` the instant
+   * settings loaded, and the pseudo-locale would be unreachable. */
+  const { setPreference } = useLocale();
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    setPreference(settings.language);
+  }, [settingsLoaded, settings.language, setPreference]);
+
   // A brand palette is inline CSS on <html>, which beats every stylesheet
   // rule including [data-theme="light"] — so it has to be re-applied for the
   // *resolved* theme on every change, not just when AppSettings.theme is
@@ -985,7 +1035,7 @@ export default function App() {
   const handleRevealWorkspace = useCallback(() => {
     void revealArtifactsDir().catch((error) => {
       setStatus(
-        makeStatus(error instanceof Error ? error.message : 'Could not reveal artifacts folder', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.revealArtifactsFolderFailed'), 'error'),
       );
     });
   }, []);
@@ -1038,10 +1088,10 @@ export default function App() {
       }
       setSettings(nextSettings);
       void updateSettingsPersisted(nextSettings);
-      setStatusMessage(makeStatus(`Switched to ${providerDisplayName(next.id)}`, 'success'));
+      setStatusMessage(makeStatus(t('app.status.switchedProvider', { provider: providerDisplayName(next.id) }), 'success'));
     } catch (error) {
       setStatusMessage(
-        makeStatus(error instanceof Error ? error.message : 'Failed to switch provider', 'error'),
+        makeStatus(error instanceof Error ? error.message : t('app.status.switchProviderFailed'), 'error'),
       );
     }
   }, [settings, setStatusMessage]);
@@ -1063,13 +1113,13 @@ export default function App() {
       },
       forkConversationHere: () => {
         void chatViewRef.current?.forkConversationHere().then((ok) => {
-          if (ok) setStatus(makeStatus('Forked conversation', 'success'));
+          if (ok) setStatus(makeStatus(t('app.status.conversationForked'), 'success'));
         });
       },
       copyLastAssistant: () => {
         void chatViewRef.current?.copyLastAssistantMessage().then((ok) => {
-          if (ok) setStatus(makeStatus('Copied last assistant message', 'success'));
-          else setStatus(makeStatus('Nothing to copy', 'warning'));
+          if (ok) setStatus(makeStatus(t('app.status.copiedLastAssistantMessage'), 'success'));
+          else setStatus(makeStatus(t('app.status.nothingToCopy'), 'warning'));
         });
       },
       escape: () => {
@@ -1089,7 +1139,7 @@ export default function App() {
         const active = document.activeElement;
         if (
           active instanceof HTMLTextAreaElement &&
-          active.getAttribute('aria-label') === 'Message the active provider' &&
+          active.getAttribute('aria-label') === t('chat.composer.prompt.ariaLabel') &&
           chatViewRef.current?.isStreaming()
         ) {
           chatViewRef.current.stopStreaming();
@@ -1139,6 +1189,17 @@ export default function App() {
   // Both pre-workspace routes keep the caption row. They bypass the shell
   // otherwise, and on a `decorations: false` window that left the user with no
   // way to move or close it until onboarding was finished.
+  //
+  // They also keep `ToastStack`, for a closely related reason. The effect above
+  // routes every error, warning and success status *exclusively* into `toasts`
+  // and nulls the panel status — so with the stack rendered only in the
+  // workspace return below, these two routes dropped that entire class of
+  // message on the floor. Onboarding renders `status` itself and looks like it
+  // has feedback covered, but `status` is null by the time it reads it. The
+  // visible cost was on the step that matters most: "Test connection" with a
+  // bad key, or a keychain write that failed, reported nothing at all and left
+  // the user clicking a button that appeared to do nothing. `.toast-stack` is
+  // `position: fixed`, so where it sits in the tree does not matter.
   if (onboarding?.migrationRecovery) {
     return (
       <div className="app" id="app">
@@ -1148,10 +1209,16 @@ export default function App() {
           onStatus={setStatusMessage}
           onDismissed={() => void refreshOnboarding()}
         />
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
-  if (onboarding && (!onboarding.onboardingCompleted || !onboarding.hasProviderCredential)) {
+  /* `devRoute` is `null` in every production build (see `devRoute.ts`), so this
+     disjunct is dead code there and the gate below is unchanged. It exists so
+     the layout suite, which runs against a backend-less `dev:web` where
+     `getOnboardingState()` rejects and `onboarding` stays null, can still reach
+     this screen to measure it. */
+  if (devRoute === 'onboarding' || (onboarding && (!onboarding.onboardingCompleted || !onboarding.hasProviderCredential))) {
     return (
       <div className="app" id="app">
         <TitleBar />
@@ -1161,7 +1228,9 @@ export default function App() {
           onStatus={setStatusMessage}
           status={status}
           onComplete={() => void refreshOnboarding()}
+          logoSrc={brandLogo ?? undefined}
         />
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -1178,8 +1247,8 @@ export default function App() {
       <button
         className="sb-reveal"
         type="button"
-        aria-label="Open sidebar"
-        title={`Open sidebar  ${modShortcutHint('\\')}`}
+        aria-label={t('app.sidebar.openAriaLabel')}
+        title={t('app.sidebar.openTitle', { shortcut: modShortcutHint('\\') })}
         onClick={() => toggleSidebar()}
       >
         <SidebarIcon />
@@ -1252,7 +1321,7 @@ export default function App() {
           id="columnResize"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize document column"
+          aria-label={t('app.resizeHandle.ariaLabel')}
           aria-valuenow={ariaValueNow}
           aria-valuemin={ariaValueMin}
           aria-valuemax={ariaValueMax}
@@ -1318,16 +1387,16 @@ export default function App() {
         onToggleWebSearch={() => chatViewRef.current?.toggleWebSearch()}
         onForkConversationHere={() => {
           void chatViewRef.current?.forkConversationHere().then((ok) => {
-            if (ok) setStatus(makeStatus('Forked conversation', 'success'));
+            if (ok) setStatus(makeStatus(t('app.status.conversationForked'), 'success'));
           });
         }}
         onEditLastUserMessage={() => {
           const ok = chatViewRef.current?.editLastUserMessage() ?? false;
-          if (!ok) setStatus(makeStatus('No user message to edit', 'warning'));
+          if (!ok) setStatus(makeStatus(t('app.status.noUserMessageToEdit'), 'warning'));
         }}
         onOpenChatSettings={() => {
           const ok = chatViewRef.current?.openChatSettings() ?? false;
-          if (!ok) setStatus(makeStatus('Chat settings unavailable while streaming', 'warning'));
+          if (!ok) setStatus(makeStatus(t('app.status.chatSettingsUnavailable'), 'warning'));
         }}
         onRenameChat={handleRenameChat}
         onPinChat={() => {
@@ -1372,18 +1441,18 @@ export default function App() {
             className="cu-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Rename chat"
+            aria-label={t('app.renameChat.ariaLabel')}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <h2 className="cu-dialog-title">Rename this chat</h2>
-            <div className="cu-dialog-body">Choose a title for this conversation.</div>
+            <h2 className="cu-dialog-title">{t('app.renameChat.title')}</h2>
+            <div className="cu-dialog-body">{t('app.renameChat.body')}</div>
             <label className="cu-dialog-phrase">
-              <span>Title</span>
+              <span>{t('app.renameChat.fieldLabel')}</span>
               <input
                 autoFocus
                 type="text"
                 value={renameValue}
-                aria-label="Conversation title"
+                aria-label={t('app.renameChat.inputAriaLabel')}
                 autoComplete="off"
                 onChange={(e) => setRenameValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -1399,7 +1468,7 @@ export default function App() {
             </label>
             <div className="cu-dialog-actions">
               <button className="btn ghost" type="button" onClick={() => setRenameDialogOpen(false)}>
-                Cancel
+                {t('common.actions.cancel')}
               </button>
               <button
                 className="btn primary"
@@ -1407,7 +1476,7 @@ export default function App() {
                 disabled={!renameValue.trim()}
                 onClick={() => void commitRenameChat()}
               >
-                Rename
+                {t('common.actions.rename')}
               </button>
             </div>
           </div>
@@ -1418,14 +1487,16 @@ export default function App() {
         open={confirmDeleteId != null}
         // Now that any row can be deleted from the sidebar — not just the open
         // one — the dialog has to say which chat it means.
-        title={
-          confirmDeleteTitle ? `Delete “${confirmDeleteTitle}”?` : 'Delete conversation?'
-        }
+        title={t('app.deleteConversation.title', {
+          hasTitle: confirmDeleteTitle ? 'yes' : 'no',
+          title: confirmDeleteTitle ?? '',
+        })}
         // `delete_with_files` removes artifact files and attachment blobs from
         // disk alongside the rows, so the dialog names both. Attachments shared
         // with another chat are kept — hence "its".
-        description="Its messages, and the artifacts and attachments stored on disk with them, will be deleted."
-        confirmLabel="Delete"
+        description={t('app.deleteConversation.description')}
+        confirmLabel={t('common.actions.delete')}
+        cancelLabel={t('common.actions.cancel')}
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={() => {
           const id = confirmDeleteId;
@@ -1435,14 +1506,21 @@ export default function App() {
       />
       <ConfirmDialog
         open={confirmDeleteAll}
-        title="Delete all conversation history?"
+        title={t('app.deleteAllHistory.title')}
         // Usage history is in the list because `usage_summary` cascades from
         // `conversations` — deleting your chats silently takes your token and
         // cost record with them, which the old "App settings are preserved"
         // line implied was safe. Prompts have no such foreign key and survive.
-        description="Every conversation and message will be deleted, along with the artifacts and attachments stored on disk and your usage history. Settings, API keys, and saved prompts are kept."
-        confirmLabel="Delete all"
-        confirmPhrase="delete all"
+        description={t('app.deleteAllHistory.description')}
+        confirmLabel={t('app.deleteAllHistory.confirmLabel')}
+        cancelLabel={t('common.actions.cancel')}
+        confirmPhrase={t('app.deleteAllHistory.confirmPhrase')}
+        confirmPhraseHint={tr('common.confirm.typePhrase', {
+          phrase: t('app.deleteAllHistory.confirmPhrase'),
+        })}
+        confirmPhraseInputLabel={t('common.confirm.typePhraseLabel', {
+          phrase: t('app.deleteAllHistory.confirmPhrase'),
+        })}
         onCancel={() => setConfirmDeleteAll(false)}
         onConfirm={() => {
           setConfirmDeleteAll(false);

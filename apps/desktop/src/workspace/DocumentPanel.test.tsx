@@ -193,7 +193,7 @@ describe('DocumentPanel V7 chrome', () => {
     expect(screen.queryByRole('menuitem', { name: /reveal/i })).toBeNull();
     // Metadata block: path label + size · modified row.
     expect(screen.getAllByText('(inline payload)').length).toBeGreaterThan(0);
-    expect(screen.getByText(/14 B · modified/)).toBeInTheDocument();
+    expect(screen.getByText(/14 byte · modified/)).toBeInTheDocument();
     // The V6 details column is gone.
     expect(screen.queryByRole('button', { name: 'Hide details' })).not.toBeInTheDocument();
     expect(document.querySelector('.doc-details')).toBeNull();
@@ -210,7 +210,7 @@ describe('DocumentPanel V7 chrome', () => {
     renderPanel({ docTab: 'preview' });
     const foot = screen.getByLabelText('Artifact metadata');
     expect(foot).toHaveTextContent('(inline payload)');
-    expect(foot).toHaveTextContent(/14 B/);
+    expect(foot).toHaveTextContent(/14 byte/);
     expect(foot).toHaveTextContent(/saved/);
   });
 });

@@ -145,14 +145,38 @@ export function Avatar({ role, className, children, ...rest }: AvatarProps) {
   );
 }
 /* ── ConfirmDialog ─────────────────────────────────────────────────────── */
+/**
+ * Every string this dialog renders arrives as a prop.
+ *
+ * That is the rule for this whole package — it holds tokens, primitives and
+ * fonts, and no copy — but it was quietly broken here in three places, which
+ * matters because these are the app's most consequential dialogs. `confirmLabel`
+ * and `cancelLabel` defaulted to the English words, so a caller that omitted
+ * them (six of the seven did) rendered "Cancel" under a German UI. The
+ * type-to-confirm line and its input's accessible name were written inline.
+ *
+ * `confirmLabel` and `cancelLabel` are therefore required now rather than
+ * defaulted: a missing translation should be a compile error, not an English
+ * word that nobody notices until a screenshot comes back from review.
+ */
 export interface ConfirmDialogProps {
   open: boolean;
   title: string;
   description: ReactNode;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  /** When set, the confirm button stays disabled until the user types this phrase. */
+  confirmLabel: string;
+  cancelLabel: string;
+  /**
+   * When set, the confirm button stays disabled until the user types this
+   * phrase. It is compared against what they type, so it must be the same
+   * string the caller shows them in `confirmPhraseHint` — and it should be
+   * translated, or a German user is asked to type an English word to delete
+   * their data.
+   */
   confirmPhrase?: string;
+  /** The "Type X to confirm" line. Required in practice whenever `confirmPhrase` is set. */
+  confirmPhraseHint?: ReactNode;
+  /** Accessible name for the phrase input, since its visible label is the hint above. */
+  confirmPhraseInputLabel?: string;
   /** Destructive actions require an explicit click — Enter never confirms. */
   destructive?: boolean;
   onConfirm: () => void;
@@ -163,9 +187,11 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   confirmPhrase,
+  confirmPhraseHint,
+  confirmPhraseInputLabel,
   destructive = true,
   onConfirm,
   onCancel,
@@ -213,7 +239,13 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  const phraseOk = !confirmPhrase || phrase.trim() === confirmPhrase;
+  /* Compared in NFC. Every phrase used to be ASCII, where `===` was fine;
+   * translated ones are not ("alle loeschen", "reinitialiser"), and a keyboard
+   * or paste source that emits the decomposed form produces a string that
+   * looks identical in the input and fails the comparison, with the button
+   * staying disabled and nothing on screen explaining why. */
+  const phraseOk =
+    !confirmPhrase || phrase.trim().normalize('NFC') === confirmPhrase.normalize('NFC');
   const confirmDisabled = !phraseOk;
 
   return (
@@ -231,13 +263,13 @@ export function ConfirmDialog({
         <div id="cu-dialog-desc" className="cu-dialog-body">{description}</div>
         {confirmPhrase && (
           <label className="cu-dialog-phrase">
-            <span>Type <kbd>{confirmPhrase}</kbd> to confirm</span>
+            <span>{confirmPhraseHint}</span>
             <input
               type="text"
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
               autoComplete="off"
-              aria-label={`Type ${confirmPhrase} to confirm`}
+              aria-label={confirmPhraseInputLabel}
             />
           </label>
         )}

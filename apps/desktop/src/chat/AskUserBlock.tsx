@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { submitAskUser } from '../ipc/client';
+import { useT } from '../i18n';
 
 export interface AskUserFieldView {
   id: string;
@@ -17,6 +18,7 @@ interface AskUserBlockProps {
 
 /** Mid-turn ask_user form (t1-2). Answers are user-authored content. */
 export function AskUserBlock({ toolCallId, title, fields, onDone }: AskUserBlockProps) {
+  const t = useT();
   const [values, setValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const f of fields) init[f.id] = '';
@@ -64,7 +66,7 @@ export function AskUserBlock({ toolCallId, title, fields, onDone }: AskUserBlock
               disabled={busy}
               onChange={(e) => setValues((v) => ({ ...v, [field.id]: e.target.value }))}
             >
-              <option value="">Choose…</option>
+              <option value="">{t('chat.askUser.choosePlaceholder')}</option>
               {field.options.map((opt) => (
                 <option key={opt} value={opt}>
                   {opt}
@@ -84,10 +86,10 @@ export function AskUserBlock({ toolCallId, title, fields, onDone }: AskUserBlock
       {error && <p className="error-text">{error}</p>}
       <div className="row">
         <button className="btn primary" type="button" disabled={busy} onClick={() => void submit()}>
-          Submit
+          {t('chat.askUser.submitButton')}
         </button>
         <button className="btn ghost" type="button" disabled={busy} onClick={() => void dismiss()}>
-          Dismiss
+          {t('common.actions.dismiss')}
         </button>
       </div>
     </div>

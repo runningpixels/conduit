@@ -11,6 +11,8 @@ describe('ConfirmDialog', () => {
         open
         title="Delete?"
         description="This cannot be undone."
+        confirmLabel="Confirm"
+        cancelLabel="Cancel"
         onConfirm={onConfirm}
         onCancel={onCancel}
       />,
@@ -29,6 +31,8 @@ describe('ConfirmDialog', () => {
         open
         title="Delete?"
         description="This cannot be undone."
+        confirmLabel="Confirm"
+        cancelLabel="Cancel"
         onConfirm={onConfirm}
         onCancel={onCancel}
       />,
@@ -46,7 +50,10 @@ describe('ConfirmDialog', () => {
         title="Delete all?"
         description="Wipe history."
         confirmPhrase="delete all"
+        confirmPhraseHint={<>Type <kbd>delete all</kbd> to confirm</>}
+        confirmPhraseInputLabel="Type delete all to confirm"
         confirmLabel="Delete all"
+        cancelLabel="Cancel"
         onConfirm={onConfirm}
         onCancel={vi.fn()}
       />,
@@ -60,5 +67,33 @@ describe('ConfirmDialog', () => {
     expect(confirmBtn).not.toBeDisabled();
     fireEvent.click(confirmBtn);
     expect(onConfirm).toHaveBeenCalled();
+  });
+
+  it('accepts a decomposed accented phrase', () => {
+    // Translated phrases carry accents, and the same word has two Unicode
+    // spellings that render identically. A user whose keyboard or clipboard
+    // emits the decomposed one must not be locked out of deleting their data.
+    const composed = 'alle löschen';
+    render(
+      <ConfirmDialog
+        open
+        title="Alles löschen?"
+        description="Verlauf löschen."
+        confirmPhrase={composed}
+        confirmPhraseHint={<>Tippe <kbd>{composed}</kbd> zum Bestätigen</>}
+        confirmPhraseInputLabel="Bestätigungsphrase"
+        confirmLabel="Alle löschen"
+        cancelLabel="Abbrechen"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    const confirmBtn = screen.getByRole('button', { name: 'Alle löschen' });
+    expect(confirmBtn).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Bestätigungsphrase'), {
+      target: { value: composed.normalize('NFD') },
+    });
+    expect(confirmBtn).not.toBeDisabled();
   });
 });

@@ -419,14 +419,18 @@ impl StreamManager {
             provider_core::CredentialMode::None => None,
             provider_core::CredentialMode::Optional => {
                 if store.has_provider_secret(provider_id) {
-                    Some(store.get_secret(provider_id)?)
+                    // `get_secret` now carries a real `AppError` code (D10 item
+                    // 3); this function's `Result<_, String>` return is out of
+                    // scope for that migration, so fold to the English
+                    // fallback rather than losing the code to `error.unknown`.
+                    Some(store.get_secret(provider_id).map_err(|e| e.fallback)?)
                 } else {
                     None
                 }
             }
             provider_core::CredentialMode::Required => {
                 if store.has_provider_secret(provider_id) {
-                    Some(store.get_secret(provider_id)?)
+                    Some(store.get_secret(provider_id).map_err(|e| e.fallback)?)
                 } else {
                     return Err(format!("No credential stored for provider {provider_id}"));
                 }

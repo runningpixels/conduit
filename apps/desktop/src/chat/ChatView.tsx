@@ -78,6 +78,7 @@ import {
   splitTurnsAtCompaction,
 } from './contextCompact';
 import { dayRuleLabel, sameCalendarDay } from '../lib/dayGroup';
+import { useFormatters, type Formatters } from '../i18n/formatters';
 import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
@@ -123,6 +124,7 @@ import {
 } from './messageQueue';
 import { allowUserBranding } from '../brand/buildFlags';
 import { appName } from '../brand';
+import { useRichT, useT, type Translate } from '../i18n';
 
 export type { ChatTurn } from './conversationHydration';
 export type { DocumentToolActivity } from './agentTools';
@@ -406,6 +408,7 @@ function escapeHtml(s: string): string {
 function deriveAgentPhase(
   state: AssistantStreamState | null,
   pendingCalls: Set<string>,
+  t: Translate,
 ): AssistantStreamState['agentPhase'] | undefined {
   if (!state) return undefined;
 
@@ -421,14 +424,14 @@ function deriveAgentPhase(
   }
   if (pendingCalls.size > 0) {
     return {
-      label: `Running ${pendingCalls.size} tool${pendingCalls.size > 1 ? 's' : ''}…`,
+      label: t('chat.view.agentPhase.runningTools', { count: pendingCalls.size }),
       round: 1,
       subPhase: 'executing_tools',
     };
   }
   if (state.streaming && state.blocks.length === 0 && state.toolCalls.length === 0) {
     return {
-      label: 'Thinking…',
+      label: t('chat.view.agentPhase.thinking'),
       round: 1,
       subPhase: 'thinking',
     };
@@ -439,7 +442,7 @@ function deriveAgentPhase(
     const anyComplete = state.toolCalls.some((tc) => tc.complete);
     if (anyComplete) {
       return {
-        label: 'Reviewing results…',
+        label: t('chat.view.agentPhase.reviewing'),
         round: 1,
         subPhase: 'reviewing',
       };
@@ -448,10 +451,10 @@ function deriveAgentPhase(
   return undefined;
 }
 
-function formatMsgTime(iso: string): string {
+function formatMsgTime(iso: string, fmt: Formatters): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return '';
-  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return fmt.wallClock(ms);
 }
 
 /** Session-scoped map of turn id → { provider, model }.
@@ -491,6 +494,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   },
   ref,
 ) {
+  const t = useT();
+  const tr = useRichT();
+  const fmt = useFormatters();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -576,7 +582,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     });
     setPrompt('');
     const count = listFor(messageQueuesRef.current, conversationId).length;
-    onStatus(makeStatus(`Queued follow-up (${count})`, 'success', 'chat'));
+    onStatus(makeStatus(t('chat.view.status.queuedFollowUp', { count }), 'success', 'chat'));
   }
 
   function removeQueued(id: string) {
@@ -669,7 +675,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       } catch (error) {
         if (!cancelled) {
           onStatusRef.current(
-            error instanceof Error ? error.message : 'Failed to load conversation',
+            error instanceof Error ? error.message : t('chat.view.status.failedToLoadConversation'),
           );
         }
       } finally {
@@ -697,7 +703,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       } catch (error) {
         if (!cancelled) {
           onStatusRef.current(
-            error instanceof Error ? error.message : 'Failed to load skills',
+            error instanceof Error ? error.message : t('chat.view.status.failedToLoadSkills'),
           );
         }
       }
@@ -784,9 +790,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
 
   // Derive agent loop phase from stream state + pending calls.
   useEffect(() => {
-    const phase = deriveAgentPhase(activeStream, pendingRuntimeCallsRef.current);
+    const phase = deriveAgentPhase(activeStream, pendingRuntimeCallsRef.current, t);
     setAgentPhase(phase);
-  }, [activeStream]);
+  }, [activeStream, t]);
 
   async function loadConnectorToolDefinitions(): Promise<ToolDefinition[]> {
     try {
@@ -1004,7 +1010,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           compactionSummary: activeCompaction?.summaryText,
         });
         if ((est / windowTokens) * 100 >= threshold) {
-          onStatus(makeStatus('Compacting context…', 'active', 'chat'));
+          onStatus(makeStatus(t('chat.view.status.compactingContext'), 'active', 'chat'));
           try {
             const row = await compactConversation(conversationId);
             if (row) {
@@ -1012,12 +1018,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               compactionRef.current = row;
               setCompaction(row);
               setShowCompactedOriginals(false);
-              onStatus(makeStatus('Earlier messages summarized', 'success', 'chat'));
+              onStatus(makeStatus(t('chat.view.status.earlierSummarized'), 'success', 'chat'));
             }
           } catch (error) {
             onStatus(
               makeStatus(
-                error instanceof Error ? error.message : 'Context compaction failed',
+                error instanceof Error ? error.message : t('chat.view.status.contextCompactionFailed'),
                 'warning',
                 'chat',
               ),
@@ -1042,8 +1048,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onStatus(
       makeStatus(
         imagesDropped
-          ? 'Images were not sent — this model is text-only. Loading tools…'
-          : 'Loading connector tools',
+          ? t('chat.view.status.imagesNotSent')
+          : t('chat.view.status.loadingConnectorTools'),
         imagesDropped ? 'warning' : 'active',
         'chat',
       ),
@@ -1208,10 +1214,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       // events this polls for will never arrive and it would burn its full 30s
       // deadline with the UI still reading as busy.
       if (!terminalError) {
-        onStatus(makeStatus('Waiting for tool results…', 'active', 'chat'));
+        onStatus(makeStatus(t('chat.view.status.waitingForToolResults'), 'active', 'chat'));
         await waitForPendingRuntimeCalls(request.requestId);
       }
-      onStatus(makeStatus(terminalError ?? 'Stream complete', terminalError ? 'error' : 'success', 'chat'));
+      onStatus(
+        makeStatus(
+          terminalError ?? t('chat.view.status.streamComplete'),
+          terminalError ? 'error' : 'success',
+          'chat',
+        ),
+      );
     } catch (error) {
       console.error('[startChatStream] rejected:', error);
       onStatus(makeStatus(describeInvokeError(error), 'error', 'chat'));
@@ -1273,8 +1285,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               onStatus(
                 makeStatus(
                   detail
-                    ? `Document tool failed — ${detail}`
-                    : 'Document tool failed — retry or ask for a fenced code block (e.g. ```html).',
+                    ? t('chat.view.status.documentToolFailed', { detail })
+                    : t('chat.view.status.documentToolFailedGeneric'),
                   'warning',
                   'chat',
                 ),
@@ -1282,7 +1294,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             } else if (!hasFences) {
               onStatus(
                 makeStatus(
-                  'No artifact content detected — use write_*_document or include a fenced code block (e.g. ```html).',
+                  t('chat.view.status.noArtifactContent'),
                   'warning',
                   'chat',
                 ),
@@ -1340,7 +1352,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     } catch {
       /* ignore */
     }
-    onStatus(makeStatus('Stream cancelled', 'success', 'chat'));
+    onStatus(makeStatus(t('chat.view.status.streamCancelled'), 'success', 'chat'));
     // Cancelled turns do not auto-drain: the user stopped on purpose. Queued
     // follow-ups stay until they send again or hit Send now / remove.
   }
@@ -1439,9 +1451,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         workspaceRoot: path,
         workspaceToolsConsentAcknowledged: true,
       });
-      onStatus(`Working in ${path}`);
+      onStatus(t('chat.view.status.workingInFolder', { path }));
     } catch (error) {
-      onStatus(error instanceof Error ? error.message : 'Could not set workspace folder');
+      onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotSetWorkspaceFolder'));
     }
   }
 
@@ -1457,7 +1469,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       if (path == null) return;
       await bindWorkspaceFolder(path);
     } catch (error) {
-      onStatus(error instanceof Error ? error.message : 'Could not pick folder');
+      onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotPickFolder'));
     } finally {
       setWorkspacePicking(false);
     }
@@ -1468,9 +1480,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     try {
       await setConversationWorkspace(conversationId, null);
       setConversationWorkspaceRoot(null);
-      onStatus('Workspace folder cleared for this chat');
+      onStatus(t('chat.view.status.workspaceFolderCleared'));
     } catch (error) {
-      onStatus(error instanceof Error ? error.message : 'Could not clear workspace folder');
+      onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotClearWorkspaceFolder'));
     }
   }
 
@@ -1489,11 +1501,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       setConversationUserInstructions(updated.userInstructions ?? null);
       onStatus(
         generationControls || userInstructions
-          ? 'Chat settings saved for this conversation'
-          : 'Chat settings reset to defaults',
+          ? t('chat.view.status.chatSettingsSaved')
+          : t('chat.view.status.chatSettingsReset'),
       );
     } catch (error) {
-      onStatus(error instanceof Error ? error.message : 'Could not save chat settings');
+      onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotSaveChatSettings'));
     }
   }
 
@@ -1507,7 +1519,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     try {
       await setConversationSkills(conversationId, unique);
     } catch (error) {
-      onStatus(error instanceof Error ? error.message : 'Could not update skills');
+      onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotUpdateSkills'));
     }
   }
 
@@ -1627,13 +1639,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         model,
         switchedFrom: prev && prev.provider !== provider ? prev.provider : undefined,
         showModelLine: shouldShowModelLine(prev, { provider, model }),
-        time: turn.createdAt ? formatMsgTime(turn.createdAt) : undefined,
+        time: turn.createdAt ? formatMsgTime(turn.createdAt, fmt) : undefined,
       };
       lastProvider = provider;
       lastModel = model;
     }
     return info;
-  }, [turns, convoProviders, conversationId, settings.activeProvider, settings.activeModel]);
+  }, [turns, convoProviders, conversationId, settings.activeProvider, settings.activeModel, fmt]);
 
   // Provider/model of the last committed assistant turn (for the live turn's
   // model line + "switched from …" note).
@@ -1715,7 +1727,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       setEditDraft('');
       if (result.mode === 'forked') {
         onEditForked?.(result.conversation, text);
-        onStatus(makeStatus('Editing on a new branch', 'success', 'chat'));
+        onStatus(makeStatus(t('chat.view.status.editingOnNewBranch'), 'success', 'chat'));
         return;
       }
       const messages = await getConversationMessages(conversationId);
@@ -1731,7 +1743,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     } catch (error) {
       onStatus(
         makeStatus(
-          error instanceof Error ? error.message : 'Failed to prepare message edit',
+          error instanceof Error ? error.message : t('chat.view.status.failedToPrepareMessageEdit'),
           'error',
           'chat',
         ),
@@ -1769,10 +1781,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         (t): t is ChatTurn => t !== null,
       );
       setTurns(nextTurns);
-      onStatus(makeStatus(count > 0 ? 'Removed last response' : 'Nothing to remove', 'success', 'chat'));
+      onStatus(
+        makeStatus(
+          count > 0 ? t('chat.view.status.removedLastResponse') : t('chat.view.status.nothingToRemove'),
+          'success',
+          'chat',
+        ),
+      );
     } catch (error) {
       onStatus(
-        makeStatus(error instanceof Error ? error.message : 'Failed to remove response', 'error', 'chat'),
+        makeStatus(
+          error instanceof Error ? error.message : t('chat.view.status.failedToRemoveResponse'),
+          'error',
+          'chat',
+        ),
       );
     }
   }
@@ -1793,24 +1815,24 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       data-pane="chat"
       data-active={paneActive ? 'true' : 'false'}
       data-empty={threadEmpty ? 'true' : 'false'}
-      aria-label="Chat session"
+      aria-label={t('chat.view.aria.chatSession')}
     >
       <a
         className="skip-link"
         href="#composer-anchor"
-        aria-label="Skip to composer"
+        aria-label={t('chat.view.skipToComposer')}
         onClick={(e) => {
           e.preventDefault();
           composerRef.current?.focusPrompt();
         }}
       >
-        Skip to composer
+        {t('chat.view.skipToComposer')}
       </a>
       <ChatErrorBoundary>
       <div className="thread scroll" ref={threadRef}>
         <div className="thread-inner">
           {threadLoading && (
-            <div className="thread-skeleton" aria-busy="true" aria-label="Loading conversation">
+            <div className="thread-skeleton" aria-busy="true" aria-label={t('chat.view.aria.loadingConversation')}>
               <div className="skel-msg">
                 <div className="skel-av" />
                 <div className="skel-lines">
@@ -1825,21 +1847,24 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             <div className="welcome">
               <h1>
                 <BotGlyph className="brand-mark" aria-hidden="true" />
-                What are we working on?
+                {t('chat.view.welcomeTitle')}
               </h1>
               {!conversationWorkspaceRoot && conversationId ? (
                 <p style={{ marginTop: 12, fontSize: 13, color: 'var(--ink-2)', maxWidth: 360 }}>
-                  Optional:{' '}
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    style={{ padding: '2px 6px', fontSize: 13 }}
-                    disabled={workspacePicking}
-                    onClick={() => void handleWorkspacePick()}
-                  >
-                    work in a folder
-                  </button>{' '}
-                  so the assistant can read and edit files there.
+                  {tr('chat.view.welcomeWorkspaceHint', {
+                    action: (chunks: ReactNode[]) => (
+                      <button
+                        key="workspace-hint-button"
+                        type="button"
+                        className="btn ghost"
+                        style={{ padding: '2px 6px', fontSize: 13 }}
+                        disabled={workspacePicking}
+                        onClick={() => void handleWorkspacePick()}
+                      >
+                        {chunks}
+                      </button>
+                    ),
+                  })}
                 </p>
               ) : null}
             </div>
@@ -1852,9 +1877,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 aria-expanded={showCompactedOriginals}
                 onClick={() => setShowCompactedOriginals((v) => !v)}
               >
-                Earlier messages summarized
+                {t('chat.view.compaction.toggleLabel')}
                 <span className="compaction-toggle-meta">
-                  {showCompactedOriginals ? 'Hide originals' : `Show ${compactedTurns.length}`}
+                  {showCompactedOriginals
+                    ? t('chat.view.compaction.hideOriginals')
+                    : t('chat.view.compaction.showCount', { count: compactedTurns.length })}
                 </span>
               </button>
               {showCompactedOriginals && compaction?.summaryText ? (
@@ -1873,7 +1900,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               prevTurn?.createdAt &&
               !sameCalendarDay(prevTurn.createdAt, turn.createdAt) ? (
                 <div className="day-rule" key={`day-${turn.id}`}>
-                  <span>{dayRuleLabel(turn.createdAt)}</span>
+                  <span>{dayRuleLabel(turn.createdAt, { locale: fmt.locale, t })}</span>
                 </div>
               ) : null;
             // Returned as a flat pair so the rule is a sibling of the turn
@@ -1894,7 +1921,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                         onChange={(e) => setEditDraft(e.target.value)}
                         onKeyDown={handleEditKeyDown}
                         disabled={editBusy}
-                        aria-label="Edit message"
+                        aria-label={t('chat.view.aria.editMessage')}
                         rows={2}
                       />
                       <div className="turn-actions" style={{ opacity: 1, pointerEvents: 'auto' }}>
@@ -1904,7 +1931,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                           disabled={editBusy || !editDraft.trim()}
                           onClick={() => requestSubmitInlineEdit()}
                         >
-                          Send
+                          {t('chat.view.inlineEdit.send')}
                         </button>
                         <button
                           type="button"
@@ -1912,7 +1939,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                           disabled={editBusy}
                           onClick={cancelInlineEdit}
                         >
-                          Cancel
+                          {t('common.actions.cancel')}
                         </button>
                       </div>
                     </div>
@@ -1935,16 +1962,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                           onClick={() => handleEditUserTurn(turn)}
                         >
                           <PencilIcon />
-                          Edit
+                          {t('common.actions.edit')}
                         </button>
                         <button
                           type="button"
                           className="act"
                           onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
-                          title="Fork conversation at this message"
+                          title={t('chat.view.aria.forkAtMessage')}
                         >
                           <ForkIcon />
-                          Fork
+                          {t('common.actions.fork')}
                         </button>
                         <button
                           type="button"
@@ -1952,7 +1979,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                           onClick={() => void handleCopyText(turn.content)}
                         >
                           <CopyIcon />
-                          Copy
+                          {t('common.actions.copy')}
                         </button>
                       </div>
                     </>
@@ -2035,7 +2062,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     onClick={() => void handleCopyText(turn.content)}
                   >
                     <CopyIcon />
-                    Copy
+                    {t('common.actions.copy')}
                   </button>
                   <button
                     type="button"
@@ -2043,7 +2070,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     onClick={() => void handleRemoveLastAssistantTurn()}
                   >
                     <PencilIcon />
-                    Retry
+                    {t('common.actions.retry')}
                   </button>
                   <button
                     type="button"
@@ -2051,7 +2078,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
                   >
                     <ForkIcon />
-                    Fork
+                    {t('common.actions.fork')}
                   </button>
                 </div>
               </article>
@@ -2066,7 +2093,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   if (queuedForConversation.length === 0 || !base) {
                     return queuedForConversation.length > 0
                       ? {
-                          label: `${queuedForConversation.length} queued`,
+                          label: t('chat.view.agentPhase.queuedOnly', {
+                            count: queuedForConversation.length,
+                          }),
                           round: 0,
                           totalRounds: 0,
                           subPhase: 'thinking',
@@ -2075,7 +2104,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   }
                   return {
                     ...base,
-                    label: `${base.label} · ${queuedForConversation.length} queued`,
+                    label: t('chat.view.agentPhase.queuedWithBase', {
+                      base: base.label,
+                      count: queuedForConversation.length,
+                    }),
                   };
                 })(),
               }}
@@ -2096,7 +2128,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           type="button"
           onClick={jumpToBottom}
         >
-          ↓ New messages
+          {t('chat.view.jumpToBottom')}
         </button>
       )}
 
@@ -2136,12 +2168,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   conversationId,
                   text: item.text,
                 });
-                onStatus(makeStatus('Steering…', 'active', 'chat'));
+                onStatus(makeStatus(t('chat.view.status.steering'), 'active', 'chat'));
                 return;
               } catch (error) {
                 onStatus(
                   makeStatus(
-                    error instanceof Error ? error.message : 'Steer failed',
+                    error instanceof Error ? error.message : t('chat.view.status.steerFailed'),
                     'error',
                     'chat',
                   ),
@@ -2206,7 +2238,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               if (path == null) return;
               await bindWorkspaceFolder(path);
             } catch (error) {
-              onStatus(error instanceof Error ? error.message : 'Could not set workspace folder');
+              onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotSetWorkspaceFolder'));
             } finally {
               setWorkspacePicking(false);
             }
@@ -2217,18 +2249,23 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }}
       />
       <ConfirmDialog
+        cancelLabel={t('common.actions.cancel')}
         open={editConfirm != null}
         title={
           editConfirm?.kind === 'fork'
-            ? 'Edit on a new branch?'
-            : 'Replace later replies?'
+            ? t('chat.view.editConfirm.forkTitle')
+            : t('chat.view.editConfirm.replaceTitle')
         }
         description={
           editConfirm?.kind === 'fork'
-            ? 'Later messages stay on the original chat. A new branch will start from the messages before this one, then send your edit.'
-            : 'Later replies on this chat will be removed, then your edited message will be sent again.'
+            ? t('chat.view.editConfirm.forkDescription')
+            : t('chat.view.editConfirm.replaceDescription')
         }
-        confirmLabel={editConfirm?.kind === 'fork' ? 'Edit on new branch' : 'Replace and send'}
+        confirmLabel={
+          editConfirm?.kind === 'fork'
+            ? t('chat.view.editConfirm.forkConfirmLabel')
+            : t('chat.view.editConfirm.replaceConfirmLabel')
+        }
         destructive={editConfirm?.kind === 'tip'}
         onCancel={() => setEditConfirm(null)}
         onConfirm={() => {

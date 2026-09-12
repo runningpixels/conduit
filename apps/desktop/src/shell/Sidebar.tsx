@@ -13,6 +13,8 @@ import { providerHueId } from '../lib/providerIdentity';
 import { organizeConversations } from '../lib/conversationOrganization';
 import { modShortcutHint } from '../lib/shortcuts';
 import { appName } from '../brand';
+import { useRichT, useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 import {
   ArchiveIcon,
   BrandMark,
@@ -65,21 +67,6 @@ interface SidebarProps {
 }
 
 const DRAG_TYPE = 'text/conduit-conversation-id';
-
-/** "2m" relative label, hover-only per §8.2. */
-function relativeFromIso(iso: string): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return iso;
-  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (seconds < 60) return 'now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(then).toLocaleDateString();
-}
 
 function KeyIcon() {
   return (
@@ -140,6 +127,9 @@ export function Sidebar({
   onDeleteFolder,
   logoSrc,
 }: SidebarProps) {
+  const t = useT();
+  const tr = useRichT();
+  const fmt = useFormatters();
   const [menuOpen, setMenuOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -154,7 +144,7 @@ export function Sidebar({
   const contextRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setMenuOpen(false);
-  const organized = organizeConversations(conversations, folders);
+  const organized = organizeConversations(conversations, folders, { locale: fmt.locale, t });
 
   // Outside click + Escape close the workspace menu; focus returns to the chip.
   useEffect(() => {
@@ -231,9 +221,10 @@ export function Sidebar({
     onOpenSettings(section);
   }
 
+  const localOnlyLabel = t('shell.sidebar.footer.localOnly');
   const chipSub = [
-    localOnly ? 'local only' : undefined,
-    providerCount != null ? `${providerCount} key${providerCount === 1 ? '' : 's'}` : undefined,
+    localOnly ? localOnlyLabel : undefined,
+    providerCount != null ? t('shell.sidebar.footer.keyCount', { count: providerCount }) : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -331,6 +322,10 @@ export function Sidebar({
 
   function renderRow(row: ConversationSummary) {
     const providerId = convoProviders[row.id] ?? 'custom';
+    /* `displayTitle` is absent only when the chat has no title *and* nothing
+     * has been said in it, which is the one case Rust refuses to name: the name
+     * is a sentence, and Rust has no locale. */
+    const label = row.displayTitle ?? t('chat.title.untitled');
     return (
       <div
         key={row.id}
@@ -348,24 +343,24 @@ export function Sidebar({
           type="button"
           data-provider={providerHueId(providerId)}
           aria-current={row.id === activeConversationId ? 'true' : undefined}
-          title={row.displayTitle}
+          title={label}
           onClick={() => onSelectConversation(row.id)}
         >
           <i className="convo-dot" aria-hidden="true" />
           {row.pinnedAt && !row.archivedAt ? (
-            <span className="convo-flag" aria-label="Pinned">
+            <span className="convo-flag" aria-label={t('shell.sidebar.groups.pinned')}>
               <PinIcon />
             </span>
           ) : null}
-          <span className="convo-name">{row.displayTitle}</span>
-          <span className="convo-meta">{relativeFromIso(row.updatedAt)}</span>
+          <span className="convo-name">{label}</span>
+          <span className="convo-meta">{fmt.timeAgoTerse(row.updatedAt)}</span>
         </button>
         {onDeleteConversation && (
           <button
             className="convo-del"
             type="button"
-            aria-label={`Delete ${row.displayTitle}`}
-            title="Delete chat"
+            aria-label={t('shell.sidebar.row.deleteAriaLabel', { title: label })}
+            title={t('shell.sidebar.row.deleteTitle')}
             onClick={(event) => {
               event.stopPropagation();
               onDeleteConversation(row.id);
@@ -386,7 +381,7 @@ export function Sidebar({
   const hasList = conversations.length > 0 || folders.length > 0;
 
   return (
-    <aside className="sidebar" aria-label="Conversations">
+    <aside className="sidebar" aria-label={t('shell.sidebar.aria.root')}>
       <div className="sb-head sidebar-inner">
         <span className="mark">
           <BrandMark className="mark-glyph" src={logoSrc} />
@@ -395,23 +390,23 @@ export function Sidebar({
         <button
           className="sb-collapse"
           type="button"
-          aria-label="Collapse sidebar"
-          title={`Collapse sidebar  ${modShortcutHint('\\')}`}
+          aria-label={t('shell.sidebar.head.collapseAriaLabel')}
+          title={t('shell.sidebar.head.collapseTitle', { shortcut: modShortcutHint('\\') })}
           onClick={onCollapse}
         >
           <SidebarIcon />
         </button>
       </div>
 
-      <nav className="sb-nav sidebar-inner" aria-label="Chats">
+      <nav className="sb-nav sidebar-inner" aria-label={t('shell.sidebar.aria.nav')}>
         <button className="sb-item newchat" type="button" onClick={onNewChat}>
           <PlusIcon />
-          New chat
+          {t('shell.sidebar.nav.newChat')}
           <kbd>{modShortcutHint('N')}</kbd>
         </button>
         <button className="sb-item" type="button" onClick={onOpenPalette}>
           <SearchIcon />
-          Search
+          {t('common.actions.search')}
           <kbd>{modShortcutHint('K')}</kbd>
         </button>
       </nav>
@@ -419,13 +414,13 @@ export function Sidebar({
       <div className="sb-list scroll sidebar-inner">
         {!hasList ? (
           <div className="sb-empty">
-            No chats yet. <kbd>{modShortcutHint('N')}</kbd> starts one.
+            {tr('shell.sidebar.empty.noChats', { shortcut: modShortcutHint('N') })}
           </div>
         ) : (
           <>
             {organized.allArchived && (
               <div className="sb-empty">
-                All chats are archived. Open Archived below to restore one.
+                {t('shell.sidebar.empty.allArchived')}
               </div>
             )}
 
@@ -437,7 +432,7 @@ export function Sidebar({
                 onDragLeave={() => setDropTarget((current) => (current === 'pinned' ? null : current))}
                 onDrop={dropOnPinned}
               >
-                <div className="sb-group">Pinned</div>
+                <div className="sb-group">{t('shell.sidebar.groups.pinned')}</div>
                 {organized.pinned.map(renderRow)}
               </div>
             )}
@@ -445,7 +440,7 @@ export function Sidebar({
             {showFolders && (
               <div>
                 <div className="sb-group sb-group-row">
-                  <span>Folders</span>
+                  <span>{t('shell.sidebar.groups.folders')}</span>
                   {onCreateFolder && (
                     <button
                       className="sb-group-action"
@@ -455,7 +450,7 @@ export function Sidebar({
                         setFolderDialog({ mode: 'create' });
                       }}
                     >
-                      New folder
+                      {t('shell.sidebar.groups.newFolder')}
                     </button>
                   )}
                 </div>
@@ -484,30 +479,30 @@ export function Sidebar({
                           }
                         >
                           <FolderIcon />
-                          <span className="sb-folder-name">{folder.name}</span>
+                          <span className="sb-folder-name" title={folder.name}>{folder.name}</span>
                           <span className="sb-folder-count">{rows.length}</span>
                         </button>
                         {onRenameFolder && (
                           <button
                             className="sb-folder-edit"
                             type="button"
-                            aria-label={`Rename ${folder.name}`}
+                            aria-label={t('shell.sidebar.folder.renameAriaLabel', { name: folder.name })}
                             onClick={() => {
                               setFolderName(folder.name);
                               setFolderDialog({ mode: 'rename', folderId: folder.id, name: folder.name });
                             }}
                           >
-                            Rename
+                            {t('common.actions.rename')}
                           </button>
                         )}
                         {onDeleteFolder && (
                           <button
                             className="sb-folder-edit"
                             type="button"
-                            aria-label={`Delete ${folder.name}`}
+                            aria-label={t('shell.sidebar.folder.deleteAriaLabel', { name: folder.name })}
                             onClick={() => onDeleteFolder(folder.id)}
                           >
-                            Delete
+                            {t('common.actions.delete')}
                           </button>
                         )}
                       </div>
@@ -547,7 +542,7 @@ export function Sidebar({
                   aria-expanded={archivedOpen}
                   onClick={() => setArchivedOpen((open) => !open)}
                 >
-                  Archived
+                  {t('shell.sidebar.groups.archived')}
                   <span className="sb-folder-count">{organized.archived.length}</span>
                 </button>
                 {archivedOpen && organized.archived.map(renderRow)}
@@ -558,10 +553,13 @@ export function Sidebar({
       </div>
 
       <div className="sb-foot sidebar-inner">
+        {/* `title` names the bound folder: truncated with no reveal, a reader
+            cannot tell which folder the assistant can reach. */}
         <button
           ref={chipRef}
           className="wschip"
           type="button"
+          title={workspaceLabel ?? undefined}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((current) => !current)}
@@ -570,8 +568,8 @@ export function Sidebar({
             <WorkspaceGlyph />
           </span>
           <span className="wschip-text">
-            <b>{workspaceLabel ?? 'workspace'}</b>
-            <small>{chipSub || 'local only'}</small>
+            <b>{workspaceLabel ?? t('shell.sidebar.footer.workspaceFallback')}</b>
+            <small>{chipSub || localOnlyLabel}</small>
           </span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
             <path d="m7 15 5-5 5 5" />
@@ -583,36 +581,36 @@ export function Sidebar({
           className="menu ws-menu"
           data-open={menuOpen ? 'true' : 'false'}
           role="menu"
-          aria-label="Workspace"
+          aria-label={t('shell.sidebar.menu.ariaLabel')}
           onKeyDown={handleMenuKeyDown}
         >
-          <div className="menu-label">Workspace</div>
-          <MenuItem icon={<FolderIcon />} label="Reveal in Explorer" onClick={() => { closeMenu(); onRevealWorkspace(); }} />
+          <div className="menu-label">{t('shell.sidebar.menu.workspaceHeading')}</div>
+          <MenuItem icon={<FolderIcon />} label={t('shell.sidebar.menu.revealInExplorer')} onClick={() => { closeMenu(); onRevealWorkspace(); }} />
           <div className="menu-sep" />
-          <div className="menu-label">Configure</div>
+          <div className="menu-label">{t('shell.sidebar.menu.configureHeading')}</div>
           <MenuItem
             icon={<KeyIcon />}
-            label="Providers &amp; keys"
+            label={t('shell.sidebar.menu.providersKeys')}
             tail={providerCount != null ? String(providerCount) : undefined}
             onClick={() => openSection('providers')}
           />
           <MenuItem
             icon={<ConnectorsIcon />}
-            label="Connectors"
+            label={t('shell.sidebar.menu.connectors')}
             tail={connectorCount != null ? String(connectorCount) : undefined}
             onClick={() => openSection('connectors')}
           />
-          <MenuItem icon={<LockIcon />} label="Privacy &amp; data" onClick={() => openSection('privacy')} />
-          <MenuItem icon={<SettingsIcon />} label="Settings" kbd={modShortcutHint(',')} onClick={() => openSection('appearance')} />
+          <MenuItem icon={<LockIcon />} label={t('shell.sidebar.menu.privacyData')} onClick={() => openSection('privacy')} />
+          <MenuItem icon={<SettingsIcon />} label={t('shell.sidebar.menu.settings')} kbd={modShortcutHint(',')} onClick={() => openSection('appearance')} />
           <div className="menu-sep" />
           <MenuItem
             icon={<DiagnosticsIcon />}
-            label="Export diagnostics"
+            label={t('shell.sidebar.menu.exportDiagnostics')}
             onClick={() => { closeMenu(); onExportDiagnostics(); }}
           />
           <MenuItem
             icon={<TrashIcon />}
-            label="Delete all chats"
+            label={t('shell.sidebar.menu.deleteAllChats')}
             danger
             onClick={() => { closeMenu(); onDeleteAllHistory(); }}
           />
@@ -625,7 +623,9 @@ export function Sidebar({
           className="menu convo-menu"
           data-open="true"
           role="menu"
-          aria-label={`${contextRow.displayTitle} actions`}
+          aria-label={t('shell.sidebar.contextMenu.ariaLabel', {
+            title: contextRow.displayTitle ?? t('chat.title.untitled'),
+          })}
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {onPinConversation && (
@@ -639,7 +639,7 @@ export function Sidebar({
               }}
             >
               <PinIcon />
-              {contextRow.pinnedAt ? 'Unpin' : 'Pin'}
+              {contextRow.pinnedAt ? t('shell.sidebar.contextMenu.unpin') : t('shell.sidebar.contextMenu.pin')}
             </button>
           )}
           {onArchiveConversation && (
@@ -653,13 +653,13 @@ export function Sidebar({
               }}
             >
               <ArchiveIcon />
-              {contextRow.archivedAt ? 'Restore' : 'Archive'}
+              {contextRow.archivedAt ? t('shell.sidebar.contextMenu.restore') : t('shell.sidebar.contextMenu.archive')}
             </button>
           )}
           {onSetConversationFolder && folders.length > 0 && (
             <>
               <div className="menu-sep" />
-              <div className="menu-label">Move to folder</div>
+              <div className="menu-label">{t('shell.sidebar.contextMenu.moveToFolder')}</div>
               {folders.map((folder) => (
                 <button
                   key={folder.id}
@@ -685,7 +685,7 @@ export function Sidebar({
                     setContextMenu(null);
                   }}
                 >
-                  Remove from folder
+                  {t('shell.sidebar.contextMenu.removeFromFolder')}
                 </button>
               )}
             </>
@@ -702,7 +702,7 @@ export function Sidebar({
               }}
             >
               <PlusIcon />
-              New folder…
+              {t('shell.sidebar.contextMenu.newFolder')}
             </button>
           )}
           {onDeleteConversation && (
@@ -718,7 +718,7 @@ export function Sidebar({
                 }}
               >
                 <TrashIcon />
-                Delete
+                {t('common.actions.delete')}
               </button>
             </>
           )}
@@ -737,24 +737,24 @@ export function Sidebar({
             className="cu-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label={folderDialog.mode === 'create' ? 'New folder' : 'Rename folder'}
+            aria-label={folderDialog.mode === 'create' ? t('shell.sidebar.folderDialog.newTitle') : t('shell.sidebar.folderDialog.renameTitle')}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <h2 className="cu-dialog-title">
-              {folderDialog.mode === 'create' ? 'New folder' : 'Rename folder'}
+              {folderDialog.mode === 'create' ? t('shell.sidebar.folderDialog.newTitle') : t('shell.sidebar.folderDialog.renameTitle')}
             </h2>
             <div className="cu-dialog-body">
               {folderDialog.mode === 'create'
-                ? 'Name a folder to group chats. One level only.'
-                : 'Choose a new name for this folder.'}
+                ? t('shell.sidebar.folderDialog.newBody')
+                : t('shell.sidebar.folderDialog.renameBody')}
             </div>
             <label className="cu-dialog-phrase">
-              <span>Name</span>
+              <span>{t('shell.sidebar.folderDialog.nameLabel')}</span>
               <input
                 autoFocus
                 type="text"
                 value={folderName}
-                aria-label="Folder name"
+                aria-label={t('shell.sidebar.folderDialog.nameAriaLabel')}
                 autoComplete="off"
                 onChange={(event) => setFolderName(event.target.value)}
                 onKeyDown={(event) => {
@@ -770,7 +770,7 @@ export function Sidebar({
             </label>
             <div className="cu-dialog-actions">
               <button className="btn ghost" type="button" onClick={() => setFolderDialog(null)}>
-                Cancel
+                {t('common.actions.cancel')}
               </button>
               <button
                 className="btn primary"
@@ -778,7 +778,7 @@ export function Sidebar({
                 disabled={!folderName.trim()}
                 onClick={() => void commitFolderDialog()}
               >
-                {folderDialog.mode === 'create' ? 'Create' : 'Rename'}
+                {folderDialog.mode === 'create' ? t('shell.sidebar.folderDialog.createButton') : t('common.actions.rename')}
               </button>
             </div>
           </div>

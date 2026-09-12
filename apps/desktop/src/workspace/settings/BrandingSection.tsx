@@ -18,6 +18,7 @@ import { fetchBrandLogo } from '../../brand/logo';
 import { resolveTheme } from '../../theme';
 import { ConfirmDialog } from '@conduit/ui';
 import { BrandMark } from '../../icons';
+import { useT } from '../../i18n';
 
 interface BrandingSectionProps {
   settings: AppSettings;
@@ -93,25 +94,25 @@ const SEED_PALETTE_LIGHT: BrandPalette = {
 const SEED_THEMES: BrandThemes = { dark: SEED_PALETTE_DARK, light: SEED_PALETTE_LIGHT };
 
 /** The 18-key curated surface (plan §2), in the order the editor shows them. */
-const PALETTE_FIELDS: { key: keyof BrandPalette; label: string }[] = [
-  { key: 'bg', label: 'Background' },
-  { key: 'bgSide', label: 'Sidebar background' },
-  { key: 'card', label: 'Card' },
-  { key: 'cardHi', label: 'Card (hover)' },
-  { key: 'line', label: 'Border' },
-  { key: 'lineSoft', label: 'Border (soft)' },
-  { key: 'lineHi', label: 'Border (emphasis)' },
-  { key: 'ink', label: 'Text' },
-  { key: 'ink2', label: 'Text (secondary)' },
-  { key: 'ink3', label: 'Text (tertiary)' },
-  { key: 'hue', label: 'Accent' },
-  { key: 'hueText', label: 'Accent (text)' },
-  { key: 'hueSolid', label: 'Accent (solid fill)' },
-  { key: 'onHue', label: 'Text on accent' },
-  { key: 'ok', label: 'Success' },
-  { key: 'warn', label: 'Warning' },
-  { key: 'err', label: 'Error' },
-  { key: 'link', label: 'Link' },
+const PALETTE_FIELDS: { key: keyof BrandPalette; labelId: string }[] = [
+  { key: 'bg', labelId: 'settings.branding.colours.fields.bg' },
+  { key: 'bgSide', labelId: 'settings.branding.colours.fields.bgSide' },
+  { key: 'card', labelId: 'settings.branding.colours.fields.card' },
+  { key: 'cardHi', labelId: 'settings.branding.colours.fields.cardHi' },
+  { key: 'line', labelId: 'settings.branding.colours.fields.line' },
+  { key: 'lineSoft', labelId: 'settings.branding.colours.fields.lineSoft' },
+  { key: 'lineHi', labelId: 'settings.branding.colours.fields.lineHi' },
+  { key: 'ink', labelId: 'settings.branding.colours.fields.ink' },
+  { key: 'ink2', labelId: 'settings.branding.colours.fields.ink2' },
+  { key: 'ink3', labelId: 'settings.branding.colours.fields.ink3' },
+  { key: 'hue', labelId: 'settings.branding.colours.fields.hue' },
+  { key: 'hueText', labelId: 'settings.branding.colours.fields.hueText' },
+  { key: 'hueSolid', labelId: 'settings.branding.colours.fields.hueSolid' },
+  { key: 'onHue', labelId: 'settings.branding.colours.fields.onHue' },
+  { key: 'ok', labelId: 'settings.branding.colours.fields.ok' },
+  { key: 'warn', labelId: 'settings.branding.colours.fields.warn' },
+  { key: 'err', labelId: 'settings.branding.colours.fields.err' },
+  { key: 'link', labelId: 'settings.branding.colours.fields.link' },
 ];
 
 function describeError(e: unknown): string {
@@ -132,11 +133,14 @@ function deriveThemes(config: BrandConfig | null): BrandThemes {
 
 /** Every out-of-grammar key in one theme's palette, field label included so
  *  the message says which swatch is wrong instead of just "invalid colour". */
-function paletteFieldErrors(palette: BrandPalette): Partial<Record<keyof BrandPalette, string>> {
+function paletteFieldErrors(
+  palette: BrandPalette,
+  t: ReturnType<typeof useT>,
+): Partial<Record<keyof BrandPalette, string>> {
   const errors: Partial<Record<keyof BrandPalette, string>> = {};
-  for (const { key, label } of PALETTE_FIELDS) {
+  for (const { key, labelId } of PALETTE_FIELDS) {
     if (!isValidHexColor(palette[key])) {
-      errors[key] = `${label}: enter a hex colour like #RRGGBB, #RGB, or #RRGGBBAA.`;
+      errors[key] = t('settings.branding.colours.invalidColorError', { label: t(labelId) });
     }
   }
   return errors;
@@ -172,6 +176,7 @@ function fileToBytes(file: File): Promise<number[]> {
  * are validated code with no way for a person to ever reach them.
  */
 export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }: BrandingSectionProps) {
+  const t = useT();
   const enabled = settings.brandingEnabled;
   const resolvedTheme = resolveTheme(settings.theme);
 
@@ -248,8 +253,8 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
     return JSON.stringify({ identity, themes }) !== JSON.stringify(baseline);
   }, [identity, themes, savedConfig]);
 
-  const darkErrors = useMemo(() => paletteFieldErrors(themes.dark), [themes.dark]);
-  const lightErrors = useMemo(() => paletteFieldErrors(themes.light), [themes.light]);
+  const darkErrors = useMemo(() => paletteFieldErrors(themes.dark, t), [themes.dark, t]);
+  const lightErrors = useMemo(() => paletteFieldErrors(themes.light, t), [themes.light, t]);
   const currentErrors = editingTheme === 'dark' ? darkErrors : lightErrors;
   const allValid = Object.keys(darkErrors).length === 0 && Object.keys(lightErrors).length === 0;
 
@@ -310,17 +315,17 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
   function handleCopyToOtherTheme() {
     const other = editingTheme === 'dark' ? 'light' : 'dark';
     setThemes((prev) => ({ ...prev, [other]: { ...prev[editingTheme] } }));
-    onStatus(`Copied the ${editingTheme} palette to ${other}.`);
+    onStatus(t('settings.branding.colours.copiedStatus', { from: editingTheme, to: other }));
   }
 
   async function handleSave() {
     if (!allValid) {
-      setSaveError('Fix the highlighted colour values before saving.');
+      setSaveError(t('settings.branding.errors.fixColors'));
       return;
     }
     const trimmedAppName = identity.appName.trim();
     if (!trimmedAppName) {
-      setSaveError('App name is required.');
+      setSaveError(t('settings.branding.errors.appNameRequired'));
       return;
     }
     setSaveError(null);
@@ -342,11 +347,11 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
       setThemes(deriveThemes(result));
       if (enabled) applyBrand(result, resolvedTheme);
       onBrandChange?.(result, logo);
-      onStatus('Brand saved.');
+      onStatus(t('settings.branding.status.saved'));
     } catch (e) {
       const message = describeError(e);
       setSaveError(message);
-      onStatus(`Save failed: ${message}`);
+      onStatus(t('settings.branding.status.saveFailed', { error: message }));
     } finally {
       setSaving(false);
     }
@@ -359,7 +364,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
     if (savedConfig) applyBrand(savedConfig, resolvedTheme);
     else clearBrand();
     onBrandChange?.(savedConfig, logo);
-    onStatus('Reverted to the last saved brand.');
+    onStatus(t('settings.branding.status.reverted'));
   }
 
   async function uploadLogoFile(file: File) {
@@ -372,7 +377,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
       const uri = await fetchBrandLogo();
       setLogo(uri);
       onBrandChange?.(savedConfig, uri);
-      onStatus('Logo updated.');
+      onStatus(t('settings.branding.status.logoUpdated'));
     } catch (e) {
       // Rust's validation messages (oversized, wrong type, hostile SVG) are
       // written to be actionable — shown verbatim, not swapped for a
@@ -415,7 +420,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
       await clearBrandLogo();
       setLogo(null);
       onBrandChange?.(savedConfig, null);
-      onStatus('Logo removed.');
+      onStatus(t('settings.branding.status.logoRemoved'));
     } catch (e) {
       setLogoError(describeError(e));
     }
@@ -432,7 +437,10 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
     setSaveError(null);
     setImporting(true);
     try {
-      const result = await importBrandFileDialog();
+      const result = await importBrandFileDialog(
+        t('settings.branding.dialog.importTitle'),
+        t('settings.branding.dialog.filterName'),
+      );
       if (result === null) return; // cancelled
       setSavedConfig(result);
       setIdentity(deriveIdentity(result));
@@ -441,11 +449,11 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
       setLogo(uri);
       if (enabled) applyBrand(result, resolvedTheme);
       onBrandChange?.(result, uri);
-      onStatus('Brand imported.');
+      onStatus(t('settings.branding.status.imported'));
     } catch (e) {
       const message = describeError(e);
       setSaveError(message);
-      onStatus(`Import failed: ${message}`);
+      onStatus(t('settings.branding.status.importFailed', { error: message }));
     } finally {
       setImporting(false);
     }
@@ -457,13 +465,16 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
     setSaveError(null);
     setExporting(true);
     try {
-      const result = await exportBrandConfigDialog();
+      const result = await exportBrandConfigDialog(
+        t('settings.branding.dialog.exportTitle'),
+        t('settings.branding.dialog.filterName'),
+      );
       if (result === null) return; // cancelled
-      onStatus('Brand exported.');
+      onStatus(t('settings.branding.status.exported'));
     } catch (e) {
       const message = describeError(e);
       setSaveError(message);
-      onStatus(`Export failed: ${message}`);
+      onStatus(t('settings.branding.status.exportFailed', { error: message }));
     } finally {
       setExporting(false);
     }
@@ -481,11 +492,11 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
       setThemes(deriveThemes(null));
       setLogo(null);
       onBrandChange?.(null, null);
-      onStatus('Brand reset — back to the stock look.');
+      onStatus(t('settings.branding.status.resetDone'));
     } catch (e) {
       const message = describeError(e);
       setSaveError(message);
-      onStatus(`Reset failed: ${message}`);
+      onStatus(t('settings.branding.status.resetFailed', { error: message }));
     } finally {
       setResetting(false);
     }
@@ -494,43 +505,36 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>Branding</span>
+        <span>{t('settings.branding.header')}</span>
       </div>
-      <p className="sheet-sub">
-        Rebrand this install for a demo or a client — name, logo, and the 18 colours the shell reads
-        from. Applies at runtime, one click to undo.
-      </p>
+      <p className="sheet-sub">{t('settings.branding.intro')}</p>
 
       {/* Plan item 9: honesty about Mode B, not fake disabled inputs. */}
-      <p className="branding-note">
-        This can&rsquo;t change the app icon, the installer or executable name, or the bundle
-        identifier — those are set when {appName()} is built, not at runtime. A packaged rebrand
-        (&ldquo;Mode B&rdquo;) changes those too, but it&rsquo;s a separate, build-time process.
-      </p>
+      <p className="branding-note">{t('settings.branding.modeBNote')}</p>
 
       <div className="srow">
         <span className="srow-text">
-          <b>Enable branding</b>
-          <small>Turn off to restore the stock look immediately</small>
+          <b>{t('settings.branding.enableToggle.label')}</b>
+          <small>{t('settings.branding.enableToggle.hint')}</small>
         </span>
         <button
           className="toggle"
           type="button"
           role="switch"
           aria-pressed={enabled}
-          aria-label="Enable branding"
+          aria-label={t('settings.branding.enableToggle.label')}
           onClick={handleToggleEnabled}
         />
       </div>
 
       <fieldset className="branding-fieldset" disabled={!enabled}>
-        <legend className="grp-label">Brand</legend>
+        <legend className="grp-label">{t('settings.branding.brandLegend')}</legend>
 
         {warnings.length > 0 && (
           <div className="brand-warnings" role="status">
-            <div className="grp-label">Advisory — not blocking</div>
+            <div className="grp-label">{t('settings.branding.warnings.heading')}</div>
             <p style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--ink-2)' }}>
-              This is your own install, so nothing here is rejected — worth a look, not a blocker.
+              {t('settings.branding.warnings.body')}
             </p>
             {warnings.map((w, i) => (
               <p className="brand-warning-item" key={`${w.field}-${i}`}>
@@ -541,10 +545,10 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
         )}
 
         <div className="grp">
-          <div className="grp-label">Identity</div>
+          <div className="grp-label">{t('settings.branding.identity.heading')}</div>
           <div className="form-grid">
             <label className="field">
-              <span className="field-label">App name</span>
+              <span className="field-label">{t('settings.branding.identity.appNameLabel')}</span>
               <input
                 className="brand-text-input"
                 type="text"
@@ -554,7 +558,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
               />
             </label>
             <label className="field">
-              <span className="field-label">Display name</span>
+              <span className="field-label">{t('settings.branding.identity.displayNameLabel')}</span>
               <input
                 className="brand-text-input"
                 type="text"
@@ -564,12 +568,14 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
               />
             </label>
             <label className="field">
-              <span className="field-label">Tagline</span>
+              <span className="field-label">{t('settings.branding.identity.taglineLabel')}</span>
               <input
                 className="brand-text-input"
                 type="text"
                 value={identity.tagline}
-                placeholder={`Message ${identity.appName || appName()}…`}
+                placeholder={t('settings.branding.identity.taglinePlaceholder', {
+                  name: identity.appName || appName(),
+                })}
                 onChange={(e) => setIdentity((prev) => ({ ...prev, tagline: e.target.value }))}
               />
             </label>
@@ -577,7 +583,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
         </div>
 
         <div className="grp">
-          <div className="grp-label">Logo</div>
+          <div className="grp-label">{t('settings.branding.logo.heading')}</div>
           <div
             className={`brand-dropzone${logoDropActive ? ' drop-active' : ''}`}
             onDragOver={handleLogoDragOver}
@@ -586,14 +592,14 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
           >
             <div className="brand-dropzone-preview">
               {logo ? (
-                <img src={logo} alt="Brand logo preview" className="brand-logo-img" />
+                <img src={logo} alt={t('settings.branding.logo.previewAlt')} className="brand-logo-img" />
               ) : (
                 <BrandMark className="brand-logo-img" />
               )}
             </div>
             <div className="brand-dropzone-body">
               <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2)' }}>
-                Drop a PNG, WebP, JPEG, or SVG here, or
+                {t('settings.branding.logo.dropHint')}
               </p>
               <input
                 ref={fileInputRef}
@@ -611,10 +617,10 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
                   onClick={() => fileInputRef.current?.click()}
                   disabled={logoUploading}
                 >
-                  {logoUploading ? 'Uploading…' : 'Choose file'}
+                  {logoUploading ? t('settings.branding.logo.uploading') : t('settings.branding.logo.chooseFile')}
                 </button>
                 <button className="btn danger" type="button" disabled={!logo} onClick={() => void handleRemoveLogo()}>
-                  Remove logo
+                  {t('settings.branding.logo.removeButton')}
                 </button>
               </div>
             </div>
@@ -627,15 +633,19 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
         </div>
 
         <div className="grp">
-          <div className="grp-label">Colours</div>
-          <div className="brand-theme-switch" role="group" aria-label="Editing theme">
+          <div className="grp-label">{t('settings.branding.colours.heading')}</div>
+          <div
+            className="brand-theme-switch"
+            role="group"
+            aria-label={t('settings.branding.colours.editingThemeAriaLabel')}
+          >
             <button
               type="button"
               className="brand-theme-btn"
               aria-pressed={editingTheme === 'dark'}
               onClick={() => setEditingTheme('dark')}
             >
-              Dark
+              {t('settings.branding.colours.themeDark')}
             </button>
             <button
               type="button"
@@ -643,20 +653,25 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
               aria-pressed={editingTheme === 'light'}
               onClick={() => setEditingTheme('light')}
             >
-              Light
+              {t('settings.branding.colours.themeLight')}
             </button>
             <button className="btn" type="button" onClick={handleCopyToOtherTheme}>
-              Copy to {editingTheme === 'dark' ? 'light' : 'dark'}
+              {t('settings.branding.colours.copyToButton', {
+                theme: editingTheme === 'dark' ? 'light' : 'dark',
+              })}
             </button>
           </div>
           {editingTheme !== resolvedTheme && (
             <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--ink-3)' }}>
-              Live preview shows your current {resolvedTheme} appearance. Switch Appearance → Theme
-              to {editingTheme} to preview these values directly.
+              {t('settings.branding.colours.previewNote', {
+                resolved: resolvedTheme,
+                editing: editingTheme,
+              })}
             </p>
           )}
           <div className="brand-palette-grid">
-            {PALETTE_FIELDS.map(({ key, label }) => {
+            {PALETTE_FIELDS.map(({ key, labelId }) => {
+              const label = t(labelId);
               const value = themes[editingTheme][key];
               const error = currentErrors[key];
               return (
@@ -670,7 +685,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
                   <div className="brand-swatch-controls">
                     <input
                       type="color"
-                      aria-label={`${label} colour picker`}
+                      aria-label={t('settings.branding.colours.colorPickerAriaLabel', { label })}
                       value={toColorInputValue(value)}
                       onChange={(e) => updatePaletteField(key, e.target.value)}
                     />
@@ -691,13 +706,13 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
 
         {dirty && (
           <div className="brand-dirty-banner">
-            <span>Unsaved changes — previewed live, not yet saved.</span>
+            <span>{t('settings.branding.dirtyBanner.message')}</span>
             <div className="actions">
               <button className="btn primary" type="button" disabled={saving || !allValid} onClick={() => void handleSave()}>
-                {saving ? 'Saving…' : 'Save'}
+                {saving ? t('settings.branding.actions.saving') : t('common.actions.save')}
               </button>
               <button className="btn" type="button" disabled={saving} onClick={handleRevert}>
-                Revert
+                {t('settings.branding.actions.revert')}
               </button>
             </div>
           </div>
@@ -710,26 +725,27 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
         )}
 
         <div className="grp">
-          <div className="grp-label">Import, export &amp; reset</div>
+          <div className="grp-label">{t('settings.branding.importExportReset.heading')}</div>
           <div className="actions">
             <button className="btn" type="button" disabled={importing} onClick={() => void handleImport()}>
-              {importing ? 'Importing…' : 'Import brand.md…'}
+              {importing ? t('settings.branding.actions.importing') : t('settings.branding.actions.import')}
             </button>
             <button className="btn" type="button" disabled={exporting} onClick={() => void handleExport()}>
-              {exporting ? 'Exporting…' : 'Export…'}
+              {exporting ? t('settings.branding.actions.exporting') : t('settings.branding.actions.export')}
             </button>
             <button className="btn danger" type="button" disabled={resetting} onClick={() => setConfirmReset(true)}>
-              {resetting ? 'Resetting…' : 'Reset to stock'}
+              {resetting ? t('settings.branding.actions.resetting') : t('settings.branding.actions.resetToStock')}
             </button>
           </div>
         </div>
       </fieldset>
 
       <ConfirmDialog
+        cancelLabel={t('common.actions.cancel')}
         open={confirmReset}
-        title="Reset branding?"
-        description="Deletes the active brand.md and its logo from disk and restores the stock look. This cannot be undone from the app."
-        confirmLabel="Reset branding"
+        title={t('settings.branding.resetDialog.title')}
+        description={t('settings.branding.resetDialog.description')}
+        confirmLabel={t('settings.branding.resetDialog.confirmLabel')}
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => void handleResetConfirmed()}
       />

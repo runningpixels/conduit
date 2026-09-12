@@ -26,6 +26,7 @@ import { ComposerChatSettings } from './ComposerChatSettings';
 import { ComposerSkills } from './ComposerSkills';
 import type { SkillSummary } from '../ipc/contracts';
 import { previewText, type QueuedMessage } from './messageQueue';
+import { useT } from '../i18n';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -117,6 +118,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   contextTokens = 0,
   compactThresholdPercent,
 }, ref) {
+  const t = useT();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<ComposerModelPickerHandle>(null);
@@ -193,12 +195,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     settings.providerEndpoints,
   );
   const localLabel = localSearchBackendLabel(settings.webSearch.localBackend);
-  const searchOnTitle =
-    searchBackend === 'local' ? `Web search on (${localLabel})` : 'Web search on (provider)';
-  const searchOffTitle = 'Web search off';
+  const searchOnTitle = t(
+    searchBackend === 'local'
+      ? 'chat.composer.webSearch.onTitleLocal'
+      : 'chat.composer.webSearch.onTitleProvider',
+    { backend: localLabel },
+  );
+  const searchOffTitle = t('chat.composer.webSearch.offTitle');
   const searchAria = webSearchOn
-    ? `${searchOnTitle} — click to disable`
-    : 'Web search off — click to enable';
+    ? t(
+        searchBackend === 'local'
+          ? 'chat.composer.webSearch.ariaOnLocal'
+          : 'chat.composer.webSearch.ariaOnProvider',
+        { backend: localLabel },
+      )
+    : t('chat.composer.webSearch.ariaOff');
 
   async function uploadAttachment(file: File) {
     if (!conversationId) return;
@@ -222,7 +233,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ? {
                 ...item,
                 status: 'failed',
-                error: `File exceeds ${formatBytes(ATTACHMENT_INLINE_CAP_BYTES)} limit`,
+                error: t('chat.composer.attachment.exceedsLimit', {
+                  size: formatBytes(ATTACHMENT_INLINE_CAP_BYTES),
+                }),
               }
             : item,
         ),
@@ -235,7 +248,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const attachment = await saveAttachment(conversationId, bytes, mimeType, file.name);
       const note = isForwardableImageMime(mimeType)
         ? undefined
-        : 'Stored — not sent to the model (images only)';
+        : t('chat.composer.attachment.notSentNote');
       setPendingAttachments((current) =>
         current.map((item) =>
           item.localId === localId
@@ -346,9 +359,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   return (
     <div className="composer-wrap">
       {queueCount > 0 && (
-        <div className="composer-queue" aria-label={`${queueCount} queued follow-up${queueCount === 1 ? '' : 's'}`}>
+        <div
+          className="composer-queue"
+          aria-label={t('chat.composer.queue.ariaLabel', { count: queueCount })}
+        >
           <span className="composer-queue-label">
-            {queueCount} queued
+            {t('chat.composer.queue.label', { count: queueCount })}
           </span>
           {queuedMessages.map((item) => (
             <div key={item.id} className="composer-queue-chip" title={item.text}>
@@ -359,14 +375,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   type="button"
                   onClick={() => onSendQueuedNow(item.id)}
                 >
-                  Send now
+                  {t('chat.composer.queue.sendNow')}
                 </button>
               )}
               {onRemoveQueued && (
                 <button
                   className="composer-queue-remove"
                   type="button"
-                  aria-label="Remove queued message"
+                  aria-label={t('chat.composer.queue.removeAriaLabel')}
                   onClick={() => onRemoveQueued(item.id)}
                 >
                   ×
@@ -383,7 +399,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onDrop={handleDrop}
       >
         {pendingAttachments.length > 0 && (
-          <div className="composer-attachments" aria-label="Attached files">
+          <div className="composer-attachments" aria-label={t('chat.composer.attachments.ariaLabel')}>
             {pendingAttachments.map((item) => (
               <div
                 key={item.localId}
@@ -391,7 +407,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 data-status={item.status}
                 title={
                   item.status === 'uploaded'
-                    ? item.error ?? 'Ready to send with your next message'
+                    ? item.error ?? t('chat.composer.attachment.readyTitle')
                     : item.error
                 }
               >
@@ -399,29 +415,29 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <span className="composer-attachment-name">{item.fileName}</span>
                 <span className="composer-attachment-meta">
                   {item.status === 'uploading'
-                    ? 'Uploading…'
+                    ? t('chat.composer.attachment.status.uploading')
                     : item.status === 'failed'
-                      ? 'Failed'
+                      ? t('chat.composer.attachment.status.failed')
                       : item.status === 'uploaded'
                         ? isForwardableImageMime(item.mimeType)
-                          ? 'Ready'
-                          : 'Not sent'
+                          ? t('chat.composer.attachment.status.ready')
+                          : t('chat.composer.attachment.status.notSent')
                         : formatBytes(item.sizeBytes)}
                 </span>
                 {item.status === 'failed' ? (
                   <button
                     className="composer-attachment-action"
                     type="button"
-                    aria-label={`Retry ${item.fileName}`}
+                    aria-label={t('chat.composer.attachment.retryAriaLabel', { fileName: item.fileName })}
                     onClick={() => void retryAttachment(item)}
                   >
-                    Retry
+                    {t('common.actions.retry')}
                   </button>
                 ) : null}
                 <button
                   className="composer-attachment-remove"
                   type="button"
-                  aria-label={`Remove ${item.fileName}`}
+                  aria-label={t('chat.composer.attachment.removeAriaLabel', { fileName: item.fileName })}
                   onClick={() => void removeAttachment(item)}
                 >
                   ×
@@ -430,6 +446,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ))}
           </div>
         )}
+        {/* A brand tagline is the brand's own copy and is shown verbatim.
+            Without one the placeholder is ours, so it comes from the
+            catalog and is translated. */}
         <textarea
           ref={textareaRef}
           className="composer-textarea scroll"
@@ -437,9 +456,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={(event) => void handlePaste(event)}
-          placeholder={brand().tagline}
+          placeholder={brand().tagline ?? t('chat.composer.placeholder')}
           rows={1}
-          aria-label="Message the active provider"
+          aria-label={t('chat.composer.prompt.ariaLabel')}
         />
         <div className="composer-bar">
           <input
@@ -454,8 +473,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <button
             className="cbtn attach-btn"
             type="button"
-            aria-label="Attach image"
-            title={attachDisabled ? 'Start a conversation to attach images' : 'Attach image'}
+            aria-label={t('chat.composer.attach.label')}
+            title={attachDisabled ? t('chat.composer.attach.titleDisabled') : t('chat.composer.attach.label')}
             disabled={attachDisabled}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -481,10 +500,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 type="button"
                 aria-label={
                   workspaceBound
-                    ? `Workspace folder ${workspaceLabel} — click for options`
-                    : 'Work in a folder'
+                    ? t('chat.composer.workspace.ariaBound', { label: workspaceLabel })
+                    : t('chat.composer.workspace.unbound')
                 }
-                title={workspaceBound ? workspaceRoot! : 'Work in a folder'}
+                title={workspaceBound ? workspaceRoot! : t('chat.composer.workspace.unbound')}
                 aria-pressed={workspaceBound}
                 aria-haspopup={workspaceBound ? 'menu' : undefined}
                 aria-expanded={workspaceBound ? workspaceMenuOpen : undefined}
@@ -554,7 +573,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       onWorkspacePick();
                     }}
                   >
-                    Change folder…
+                    {t('chat.composer.workspace.changeFolder')}
                   </button>
                   {onWorkspaceClear ? (
                     <button
@@ -566,7 +585,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                         onWorkspaceClear();
                       }}
                     >
-                      Clear for this chat
+                      {t('chat.composer.workspace.clearForChat')}
                     </button>
                   ) : null}
                   {onOpenSettings ? (
@@ -579,7 +598,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                         onOpenSettings('workspace');
                       }}
                     >
-                      Defaults in Settings
+                      {t('chat.composer.workspace.defaultsInSettings')}
                     </button>
                   ) : null}
                 </div>
@@ -591,8 +610,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <button
                 className={`cbtn${generationControls || userInstructions ? ' armed' : ''}${chatSettingsOpen ? ' armed' : ''}`}
                 type="button"
-                aria-label="Chat settings"
-                title="Chat settings — temperature, instructions"
+                aria-label={t('chat.composer.chatSettings.ariaLabel')}
+                title={t('chat.composer.chatSettings.title')}
                 aria-haspopup="dialog"
                 aria-expanded={chatSettingsOpen}
                 disabled={!conversationId}
@@ -625,8 +644,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <button
                 className={`cbtn${enabledSkillIds.length > 0 ? ' armed' : ''}${skillsOpen ? ' armed' : ''}`}
                 type="button"
-                aria-label="Skills for this chat"
-                title="Skills — enable SKILL.md packages for this chat"
+                aria-label={t('chat.composer.skills.ariaLabel')}
+                title={t('chat.composer.skills.title')}
                 aria-haspopup="dialog"
                 aria-expanded={skillsOpen}
                 disabled={!conversationId}
@@ -664,8 +683,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <button
                   className="send queue"
                   type="button"
-                  aria-label="Queue follow-up"
-                  title="Queue follow-up (sends when this turn ends)"
+                  aria-label={t('chat.composer.queueSend.ariaLabel')}
+                  title={t('chat.composer.queueSend.title')}
                   onClick={sendWithAttachments}
                 >
                   <SendIcon />
@@ -674,8 +693,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <button
                 className="send stop"
                 type="button"
-                aria-label="Stop generating"
-                title="Stop generating"
+                aria-label={t('chat.composer.stop.label')}
+                title={t('chat.composer.stop.label')}
                 onClick={onStop}
               >
                 <StopIcon />
@@ -685,8 +704,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <button
               className="send"
               type="button"
-              aria-label="Send message"
-              title="Send message"
+              aria-label={t('chat.composer.send.label')}
+              title={t('chat.composer.send.label')}
               onClick={sendWithAttachments}
               disabled={!canSend}
             >

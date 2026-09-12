@@ -13,6 +13,7 @@ use std::{
 // C1: `AppSettings`, `SettingsPatch`, `ProviderEndpointConfig`, and `Theme` are
 // defined in `provider_core::schema` and codegen'd into `@conduit/config-schema`.
 // This module owns their *behavior* (validation, persistence), not their shape.
+use provider_core::schema::AppError;
 pub use provider_core::schema::{AppSettings, SettingsPatch};
 
 #[derive(Clone)]
@@ -69,7 +70,7 @@ impl AppState {
     /// Initialize paths, settings, HTTP client, and the SQLite pool (running
     /// migrations + the startup integrity check). Async because pool init and
     /// migrations are async; `main.rs` drives it via `tauri::async_runtime`.
-    pub async fn load(app_name: &str) -> Result<Self, String> {
+    pub async fn load(app_name: &str) -> Result<Self, AppError> {
         let paths = resolve(app_name)?;
         Self::load_with_paths(paths, app_name).await
     }
@@ -79,7 +80,7 @@ impl AppState {
     /// survival) point this at a tempdir so an in-place upgrade can be
     /// simulated hermetically. `#[doc(hidden)]` because it exists for tests.
     #[doc(hidden)]
-    pub async fn load_with_paths(paths: AppPaths, app_name: &str) -> Result<Self, String> {
+    pub async fn load_with_paths(paths: AppPaths, app_name: &str) -> Result<Self, AppError> {
         // Deferred deletes run here, before anything opens the database or
         // reads settings: this is the only point in the process where the files
         // are guaranteed closed. No-op unless the user asked for a wipe and the
@@ -171,10 +172,14 @@ impl AppState {
                     })
                     .map_err(|e| {
                         let brand_name = crate::brand::app_name();
-                        format!(
-                        "{brand_name} cannot unlock your local data: the OS keychain is unavailable \
-                         ({e:?}). Re-enroll your key or restore from backup."
-                    )
+                        AppError::new(
+                            "error.keychain.unavailable",
+                            format!(
+                                "{brand_name} cannot unlock your local data: the OS keychain is \
+                                 unavailable ({e:?}). Re-enroll your key or restore from backup."
+                            ),
+                        )
+                        .with("detail", format!("{e:?}"))
                     })?
             }
         };
@@ -249,7 +254,7 @@ impl AppState {
         })
     }
 
-    pub fn update_settings(&self, patch: SettingsPatch) -> Result<AppSettings, String> {
+    pub fn update_settings(&self, patch: SettingsPatch) -> Result<AppSettings, AppError> {
         let mut settings = self
             .settings
             .lock()
@@ -259,7 +264,7 @@ impl AppState {
         if let Some(value) = patch.active_provider {
             let trimmed = value.trim();
             if trimmed.is_empty() {
-                return Err("Provider ID cannot be empty".to_string());
+                return Err("Provider ID cannot be empty".into());
             }
             settings.active_provider = trimmed.to_string();
         }
@@ -268,7 +273,7 @@ impl AppState {
         if let Some(value) = patch.active_model {
             let trimmed = value.trim();
             if trimmed.is_empty() {
-                return Err("Model ID cannot be empty".to_string());
+                return Err("Model ID cannot be empty".into());
             }
             settings.active_model = trimmed.to_string();
         }
@@ -286,6 +291,12 @@ impl AppState {
             settings.theme = value;
         }
 
+        // `LanguageSetting` is an enum, so serde rejects invalid values at
+        // deserialization; here we only need to apply it.
+        if let Some(value) = patch.language {
+            settings.language = value;
+        }
+
         if let Some(value) = patch.provider_endpoints {
             for (provider_id, config) in value {
                 if let Some(base_url) = &config.base_url {
@@ -296,7 +307,8 @@ impl AppState {
                     {
                         return Err(format!(
               "Invalid base URL for {provider_id}: must start with http:// or https://"
-            ));
+            )
+                        .into());
                     }
                 }
                 settings.provider_endpoints.insert(provider_id, config);
@@ -391,7 +403,7 @@ impl AppState {
         if let Some(value) = patch.generation_controls {
             match value {
                 Some(controls) => {
-                    crate::validation::validate_generation_controls(&controls)?;
+                    crate::validation::validate_generation_controls_coded(&controls)?;
                     settings.generation_controls =
                         if crate::validation::generation_controls_is_empty(&controls) {
                             None
@@ -409,7 +421,7 @@ impl AppState {
                     if trimmed.is_empty() {
                         settings.user_instructions = None;
                     } else {
-                        crate::validation::validate_user_instructions(&trimmed)?;
+                        crate::validation::validate_user_instructions_coded(&trimmed)?;
                         settings.user_instructions = Some(trimmed);
                     }
                 }

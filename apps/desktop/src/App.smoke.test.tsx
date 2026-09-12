@@ -13,9 +13,11 @@
  * test — if it fails, nothing else in the suite is worth reading yet.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import type { AppSettings } from '@conduit/config-schema';
+import { I18nProvider } from './i18n';
+import deMessages from './i18n/messages/de.json';
 
 const settings: AppSettings = {
   activeProvider: 'anthropic',
@@ -23,6 +25,7 @@ const settings: AppSettings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'dark',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
@@ -137,6 +140,11 @@ const IPC_EXPORTS = [
   'exportBrandConfig',
 ] as const;
 
+afterEach(() => {
+  // Shared across tests by reference: the IPC mock reads it at call time.
+  settings.language = 'system';
+});
+
 vi.mock('./ipc/client', () => {
   const mod: Record<string, unknown> = {};
   for (const name of IPC_EXPORTS) {
@@ -169,5 +177,55 @@ describe('App shell', () => {
       expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument(),
     );
     expect(screen.queryByText(/something went wrong/i)).toBeNull();
+  });
+
+  /* The boot loop, which shipped as a blank-looking bug: every piece of content
+   * in the window re-mounting several times a second, for as long as the app
+   * was open.
+   *
+   * App lives inside `I18nProvider`, which carries `key={locale}` so that a
+   * language change re-mounts the subtree rather than leaving formatted text
+   * frozen in somebody's `useState`. App also mirrors `AppSettings.language`
+   * back into the provider. Both are correct; together they were not, because
+   * App's `settings` starts as `defaultSettings`, whose language is `'system'`
+   * — a placeholder, not a value the user chose. So every mount announced
+   * `'system'`, which resolves somewhere other than an explicit choice, which
+   * changed the key, which re-mounted App, which reset `settings` to the
+   * placeholder and announced `'system'` again. Round and round at the speed of
+   * the boot IPC.
+   *
+   * It needed a stored language that is not `'system'`, so it stayed invisible
+   * for as long as the picker had nothing worth choosing, and appeared the day
+   * the catalogs landed.
+   *
+   * Counted through `getSettings` rather than by watching the DOM: the boot
+   * effect calls it exactly once per mount, so the call count *is* the mount
+   * count, and it cannot be satisfied by a test that merely restates the fix.
+   */
+  it('boots once when a language is stored, instead of re-mounting forever', async () => {
+    settings.language = 'de';
+    const { getSettings } = await import('./ipc/client');
+    vi.mocked(getSettings).mockClear();
+
+    const { default: App } = await import('./App');
+    render(
+      <I18nProvider initialPreference="de" initialMessages={deMessages as Record<string, string>}>
+        <App />
+      </I18nProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('Nachricht an Conduit…')).toBeInTheDocument(),
+    );
+    // Long enough for many round trips if the key were flapping.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    /* One boot is the settled case. Two is the legitimate ceiling: a stale
+     * localStorage mirror resolves to a different locale than Rust reports,
+     * which re-mounts once, on purpose, and then agrees with itself. */
+    expect(
+      vi.mocked(getSettings).mock.calls.length,
+      'App re-mounted — the locale key is flapping',
+    ).toBeLessThanOrEqual(2);
   });
 });

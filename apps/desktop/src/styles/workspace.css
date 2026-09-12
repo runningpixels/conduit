@@ -350,12 +350,21 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 .convo-row:focus-within .convo-del { opacity: 1; pointer-events: auto; }
 .convo-del:hover { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
 .convo-del:focus-visible { opacity: 1; pointer-events: auto; }
-/* Give the trash room so it never lands on top of the title, and hide the
-   relative timestamp while hovering — they occupy the same corner. */
-.convo-row:hover .convo-name,
-.convo-row:focus-within .convo-name { padding-right: 22px; }
-.convo-row:hover .convo-meta,
-.convo-row:focus-within .convo-meta { opacity: 0; }
+/* Give the trash room. It is absolutely positioned over the row's right edge
+   (`right: 6px`, 22px wide, so it covers the last 28px), and both the title and
+   the timestamp live inside `.convo` — so the space has to be reserved on the
+   button itself. Padding only `.convo-name` left the timestamp where it was,
+   pinned to the right edge and directly under the trash.
+
+   The previous attempt tried to hide the timestamp on hover instead. It never
+   ran once: `.convo:hover .convo-meta { opacity: 1 }` below is the same
+   specificity — two classes — and comes later, so it won every time. The result
+   was a 16px overlap in every language, which English hid by having a
+   three-character word for "now" and Spanish did not ("ahora" sat under the
+   trash). Hiding it would also have made the timestamp unreachable: the only
+   thing that reveals it is the same hover that reveals the trash. */
+.convo-row:hover .convo,
+.convo-row:focus-within .convo { padding-right: 34px; }
 .convo-meta {
   font-family: var(--font-mono);
   font-size: 10.5px;

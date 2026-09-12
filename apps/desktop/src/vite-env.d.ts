@@ -55,3 +55,13 @@ declare module 'node:child_process' {
 }
 // Minimal process surface for tests that resolve repo paths from the cwd.
 declare const process: { cwd(): string };
+// Vite's own `import.meta` additions, declared by hand rather than by
+// referencing `vite/client`, for the same reason the `node:*` shims above are
+// hand-written: this file states exactly what the app uses and nothing else,
+// and vite/client's `*.css` declaration would collide with the shorthand one
+// at the top. `env.DEV` gates the i18n dev warning; `glob` loads the message
+// catalogs in `src/i18n/`.
+interface ImportMeta {
+  readonly env: { readonly DEV: boolean; readonly PROD: boolean };
+  glob<T>(pattern: string): Record<string, () => Promise<T>>;
+}

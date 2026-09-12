@@ -1,6 +1,92 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use ts_rs::TS;
+
+// =============================================================================
+// Errors that cross the IPC boundary
+// =============================================================================
+
+/// An error a user will read, carried as a code the renderer can translate.
+///
+/// Rust does not translate. Standing up a second catalog here — `fluent`,
+/// `rust-i18n`, its own locale plumbing and its own drift problem — would mean
+/// two sources of truth for the same seven languages. Instead the code travels
+/// and the renderer formats it against the catalog it already has (D9).
+///
+/// `fallback` is always populated with English. It is what the user sees when
+/// the renderer meets a code it does not know: a build where Rust is newer
+/// than the catalog degrades to an English sentence rather than to
+/// `error.validation.temperatureRange` rendered raw into a dialog.
+///
+/// The `From<String>` impl below is what makes the migration survivable. Every
+/// one of the ~137 existing `Err("…".to_string())` sites keeps compiling and
+/// keeps behaving exactly as it does today, landing on `error.unknown` with
+/// its original text as the fallback. Commands move to `AppError` file by
+/// file, and only the triaged subset (D10) is given a real code — the rest are
+/// internal invariants that mean "a bug", and translating those helps nobody.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_error.ts"
+)]
+pub struct AppError {
+    /// A catalog key, e.g. `error.validation.temperatureRange`.
+    pub code: String,
+    /// Values the message interpolates. `BTreeMap` so the order is stable and
+    /// two identical errors serialize identically, which keeps tests honest.
+    pub params: BTreeMap<String, String>,
+    /// English, always. Rendered verbatim if `code` is unknown to the catalog.
+    pub fallback: String,
+}
+
+/// The code every unconverted error lands on.
+pub const ERROR_UNKNOWN: &str = "error.unknown";
+
+impl AppError {
+    /// A coded error. `fallback` must be the English sentence, because it is
+    /// what a renderer that does not know this code will show.
+    pub fn new(code: &str, fallback: impl Into<String>) -> Self {
+        AppError {
+            code: code.to_string(),
+            params: BTreeMap::new(),
+            fallback: fallback.into(),
+        }
+    }
+
+    /// Add an interpolation value. Chainable:
+    /// `AppError::new(…, …).with("max", "8")`.
+    pub fn with(mut self, key: &str, value: impl Into<String>) -> Self {
+        self.params.insert(key.to_string(), value.into());
+        self
+    }
+}
+
+impl From<String> for AppError {
+    fn from(message: String) -> Self {
+        AppError {
+            code: ERROR_UNKNOWN.to_string(),
+            params: BTreeMap::new(),
+            fallback: message,
+        }
+    }
+}
+
+impl From<&str> for AppError {
+    fn from(message: &str) -> Self {
+        AppError::from(message.to_string())
+    }
+}
+
+impl std::fmt::Display for AppError {
+    /// The English text. Rust-side logging and any `.to_string()` that still
+    /// expects a plain message keep working unchanged.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.fallback)
+    }
+}
+
+impl std::error::Error for AppError {}
 
 // =============================================================================
 // Message and Content Types
@@ -143,9 +229,18 @@ pub struct ConversationSummary {
     pub id: String,
     #[ts(optional)]
     pub title: Option<String>,
-    /// Display-ready label for the history rail: explicit title, else the first
-    /// words of the first user prompt, else `"Untitled chat"`.
-    pub display_title: String,
+    /// Label for the history rail: the explicit title, else the first words of
+    /// the first user prompt.
+    ///
+    /// `None` when there is neither — a chat with no title and nothing said in
+    /// it yet. Rust deliberately does **not** substitute "Untitled chat" here:
+    /// that is a sentence shown to a user, and the language it should be in is
+    /// decided in the renderer, which is the same split D9 makes for errors.
+    /// Every other string on this type is either the user's own words or a
+    /// database value, so this was the one field that had an opinion about
+    /// English.
+    #[ts(optional)]
+    pub display_title: Option<String>,
     pub updated_at: String,
     pub message_count: u32,
     #[ts(optional)]
@@ -1433,8 +1528,9 @@ pub enum ConsentDecision {
 
 /// The payload rendered in a tool-consent prompt. Carried by
 /// `ConnectorRuntimeEvent::ConsentRequested`. All tenant-authored text
-/// (`consent_copy`) and connector output (`arguments`, `data_summary`) is
-/// untrusted display data — redacted before it reaches the renderer.
+/// (`consent_copy`) and connector output (`arguments`, `data_summary`,
+/// `tool_description`) is untrusted display data — redacted before it
+/// reaches the renderer.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -1448,7 +1544,14 @@ pub struct ConsentPrompt {
     pub tool_name: String,
     #[ts(type = "Record<string, unknown>")]
     pub arguments: serde_json::Value,
-    pub expected_effect: String,
+    /// Declared permission level. The renderer looks up
+    /// `consent.permission.<level>` and appends `tool_description` (when
+    /// non-empty) to compose the expected-effect text — Rust sends the facts,
+    /// not the composed English sentence.
+    pub permission_level: PermissionLevel,
+    /// The tool's own description, as declared by the connector. Untrusted
+    /// display data — redacted/truncated upstream like `arguments`.
+    pub tool_description: String,
     pub data_summary: String,
     #[ts(optional)]
     pub consent_copy: Option<String>,
@@ -1540,6 +1643,40 @@ pub enum Theme {
     Light,
 }
 
+/// `System` is the default: the interface follows the OS by reading the
+/// webview's `navigator.language` rather than assuming English, and a fresh
+/// install should not need a trip to Settings before it looks right. This is
+/// one setting, not two — it drives both the language the interface renders
+/// in and the language the model is asked to reply in (D12 of the
+/// localization plan), because a UI in German that replies in English reads
+/// as broken, not as a feature. The region-qualified variants are spelled the
+/// way BCP 47 spells them (`pt-BR`, `zh-CN`), not the way `camelCase` would
+/// spell them, because the renderer matches this value against the same
+/// locale table the marketing site uses, and that table is keyed by the BCP
+/// 47 tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/language_setting.ts"
+)]
+pub enum LanguageSetting {
+    #[default]
+    System,
+    En,
+    De,
+    Es,
+    Fr,
+    Ja,
+    Ko,
+    #[serde(rename = "pt-BR")]
+    #[ts(rename = "pt-BR")]
+    PtBr,
+    #[serde(rename = "zh-CN")]
+    #[ts(rename = "zh-CN")]
+    ZhCn,
+}
+
 /// Where provider secrets are stored (V9 design spec §2.6).
 ///
 /// `Os` is the default and the only mode with real OS-level protection: the
@@ -1588,6 +1725,13 @@ pub struct AppSettings {
     pub local_only: bool,
     pub diagnostics_enabled: bool,
     pub theme: Theme,
+    /// Phase 1 of the localization plan: `"system"` (default) follows the OS
+    /// via the webview's `navigator.language`; any other value pins both the
+    /// interface language and the language the model replies in (D12).
+    /// Existing settings files predate this field, so it must default rather
+    /// than fail to deserialize.
+    #[serde(default)]
+    pub language: LanguageSetting,
     #[serde(default)]
     pub provider_endpoints: HashMap<String, ProviderEndpointConfig>,
     /// Phase 5: origins a rendered HTML/JS artifact may load passive resources
@@ -1702,6 +1846,7 @@ impl Default for AppSettings {
             local_only: true,
             diagnostics_enabled: true,
             theme: Theme::Dark,
+            language: LanguageSetting::System,
             provider_endpoints: HashMap::new(),
             artifact_remote_allowlist: Vec::new(),
             artifact_styled_preview: true,
@@ -1743,6 +1888,8 @@ pub struct SettingsPatch {
     pub diagnostics_enabled: Option<bool>,
     #[ts(optional)]
     pub theme: Option<Theme>,
+    #[ts(optional)]
+    pub language: Option<LanguageSetting>,
     #[ts(optional)]
     pub provider_endpoints: Option<HashMap<String, ProviderEndpointConfig>>,
     /// Replace the artifact remote allowlist. Each entry must be an absolute
@@ -1836,4 +1983,46 @@ pub struct CredentialSummary {
     pub provider_id: String,
     pub credential_ref: String,
     pub stored_in_keychain: bool,
+}
+
+#[cfg(test)]
+mod language_setting_tests {
+    use super::*;
+
+    #[test]
+    fn default_is_system() {
+        assert_eq!(LanguageSetting::default(), LanguageSetting::System);
+    }
+
+    #[test]
+    fn pt_br_round_trips_as_bcp47_tag() {
+        let json = serde_json::to_string(&LanguageSetting::PtBr).expect("serialize");
+        assert_eq!(json, "\"pt-BR\"");
+        let back: LanguageSetting = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, LanguageSetting::PtBr);
+    }
+
+    #[test]
+    fn zh_cn_round_trips_as_bcp47_tag() {
+        let json = serde_json::to_string(&LanguageSetting::ZhCn).expect("serialize");
+        assert_eq!(json, "\"zh-CN\"");
+        let back: LanguageSetting = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, LanguageSetting::ZhCn);
+    }
+
+    #[test]
+    fn settings_json_without_language_key_defaults_to_system() {
+        // The real-world upgrade path: a `settings.json` written before this
+        // field existed has no `language` key at all, and must still
+        // deserialize — the whole point of `#[serde(default)]` here.
+        let json = r#"{
+            "activeProvider": "anthropic",
+            "activeModel": "claude-sonnet-4",
+            "localOnly": true,
+            "diagnosticsEnabled": true,
+            "theme": "dark"
+        }"#;
+        let settings: AppSettings = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(settings.language, LanguageSetting::System);
+    }
 }

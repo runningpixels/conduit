@@ -6,7 +6,7 @@ use crate::{
     local_data::{self, WipeScope},
     state::{AppSettings, AppState, SettingsPatch},
 };
-use provider_core::schema::CredentialRequest;
+use provider_core::schema::{AppError, CredentialRequest};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -29,7 +29,7 @@ pub struct AppPathsPayload {
 }
 
 #[tauri::command]
-pub fn get_app_paths(state: State<'_, AppState>) -> Result<AppPathsPayload, String> {
+pub fn get_app_paths(state: State<'_, AppState>) -> Result<AppPathsPayload, AppError> {
     let paths = &state.paths;
     Ok(AppPathsPayload {
         root: paths.root.to_string_lossy().to_string(),
@@ -49,15 +49,15 @@ pub fn get_app_paths(state: State<'_, AppState>) -> Result<AppPathsPayload, Stri
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
-    state.settings()
+pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError> {
+    Ok(state.settings()?)
 }
 
 #[tauri::command]
 pub fn update_settings(
     state: State<'_, AppState>,
     patch: SettingsPatch,
-) -> Result<AppSettings, String> {
+) -> Result<AppSettings, AppError> {
     state.update_settings(patch)
 }
 
@@ -65,7 +65,7 @@ pub fn update_settings(
 /// (renderer never gets `dialog:default`). Returns the absolute path, or
 /// `null` when the user cancels.
 #[tauri::command]
-pub async fn pick_workspace_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+pub async fn pick_workspace_folder(app: tauri::AppHandle) -> Result<Option<String>, AppError> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -85,7 +85,9 @@ pub async fn pick_workspace_folder(app: tauri::AppHandle) -> Result<Option<Strin
             file_path
                 .into_path()
                 .map(|p| p.to_string_lossy().to_string())
-                .map_err(|err| format!("failed to resolve the picked folder path: {err}"))
+                .map_err(|err| {
+                    AppError::from(format!("failed to resolve the picked folder path: {err}"))
+                })
         })
         .transpose()
 }
@@ -118,7 +120,7 @@ pub struct OnboardingState {
 }
 
 #[tauri::command]
-pub fn get_onboarding_state(state: State<'_, AppState>) -> Result<OnboardingState, String> {
+pub fn get_onboarding_state(state: State<'_, AppState>) -> Result<OnboardingState, AppError> {
     let settings = state.settings()?;
     Ok(OnboardingState {
         onboarding_completed: settings.onboarding_completed,
@@ -142,7 +144,7 @@ pub fn get_onboarding_state(state: State<'_, AppState>) -> Result<OnboardingStat
 /// failed is not consent to delete the only copy of the user's data. Use
 /// [`discard_migration_backup`] for that.
 #[tauri::command]
-pub fn acknowledge_migration_recovery(state: State<'_, AppState>) -> Result<(), String> {
+pub fn acknowledge_migration_recovery(state: State<'_, AppState>) -> Result<(), AppError> {
     state.clear_migration_recovery();
     local_data::clear_failure_marker(&state.paths.database);
     Ok(())
@@ -171,7 +173,7 @@ impl From<local_data::RemovalReport> for RemovalReportPayload {
 #[tauri::command]
 pub fn discard_migration_backup(
     state: State<'_, AppState>,
-) -> Result<RemovalReportPayload, String> {
+) -> Result<RemovalReportPayload, AppError> {
     let report = local_data::discard_backups(&state.paths.database);
     state.clear_migration_recovery();
     Ok(report.into())
@@ -201,7 +203,7 @@ pub struct PendingWipeResult {
 pub fn request_local_data_wipe(
     state: State<'_, AppState>,
     scope: String,
-) -> Result<PendingWipeResult, String> {
+) -> Result<PendingWipeResult, AppError> {
     let scope = WipeScope::parse(&scope)?;
     let estimated_bytes = local_data::backup_bytes(&state.paths.database)
         + std::fs::metadata(&state.paths.database)
@@ -216,7 +218,7 @@ pub fn request_local_data_wipe(
 
 /// Abandon a scheduled wipe (the user backed out of the restart).
 #[tauri::command]
-pub fn cancel_local_data_wipe(state: State<'_, AppState>) -> Result<(), String> {
+pub fn cancel_local_data_wipe(state: State<'_, AppState>) -> Result<(), AppError> {
     local_data::cancel_pending_wipe(&state.paths);
     Ok(())
 }
@@ -229,7 +231,7 @@ pub fn cancel_local_data_wipe(state: State<'_, AppState>) -> Result<(), String> 
 /// wipe. `request_restart` routes through `RunEvent::ExitRequested` so the
 /// connector-shutdown backstop in `main.rs` still runs.
 #[tauri::command]
-pub fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
+pub fn restart_app(app: tauri::AppHandle) -> Result<(), AppError> {
     app.request_restart();
     Ok(())
 }
@@ -242,7 +244,7 @@ pub fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
 pub fn save_provider_credential(
     state: State<'_, AppState>,
     request: CredentialRequest,
-) -> Result<CredentialSummary, String> {
+) -> Result<CredentialSummary, AppError> {
     let store = state.credential_store();
     let summary = store.save_provider_secret(&request.provider_id, &request.secret)?;
     Ok(summary)
@@ -252,7 +254,7 @@ pub fn save_provider_credential(
 pub fn load_provider_credential_reference(
     state: State<'_, AppState>,
     provider_id: String,
-) -> Result<CredentialSummary, String> {
+) -> Result<CredentialSummary, AppError> {
     let store = state.credential_store();
     Ok(CredentialSummary {
         provider_id: provider_id.clone(),
@@ -310,21 +312,23 @@ pub fn list_provider_descriptors() -> Vec<ProviderDescriptorPayload> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn export_diagnostics(state: State<'_, AppState>) -> Result<DiagnosticsExport, String> {
+pub fn export_diagnostics(state: State<'_, AppState>) -> Result<DiagnosticsExport, AppError> {
     let settings = state.settings()?;
-    diagnostics::export(&state.paths, &settings)
+    Ok(diagnostics::export(&state.paths, &settings)?)
 }
 
 /// Phase 6 M6.5: read the one-time diagnostics-export disclosure flag.
 #[tauri::command]
-pub fn get_diagnostics_disclosure_acknowledged(state: State<'_, AppState>) -> Result<bool, String> {
+pub fn get_diagnostics_disclosure_acknowledged(
+    state: State<'_, AppState>,
+) -> Result<bool, AppError> {
     Ok(state.diagnostics_disclosure_acknowledged())
 }
 
 /// Phase 6 M6.5: persist the one-time diagnostics-export disclosure acknowledgement.
 #[tauri::command]
-pub fn acknowledge_diagnostics_disclosure(state: State<'_, AppState>) -> Result<(), String> {
-    state.acknowledge_diagnostics_disclosure()
+pub fn acknowledge_diagnostics_disclosure(state: State<'_, AppState>) -> Result<(), AppError> {
+    Ok(state.acknowledge_diagnostics_disclosure()?)
 }
 
 // ---------------------------------------------------------------------------
@@ -334,11 +338,11 @@ pub fn acknowledge_diagnostics_disclosure(state: State<'_, AppState>) -> Result<
 /// Reveal the app's **exports** directory in the OS file manager.
 #[tauri::command]
 #[allow(deprecated)]
-pub fn reveal_path(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+pub fn reveal_path(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
     use tauri_plugin_shell::ShellExt;
     app.shell()
         .open(state.paths.exports.to_string_lossy(), None)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string().into())
 }
 
 /// Reveal the artifacts workspace directory in the OS file manager.
@@ -347,7 +351,7 @@ pub fn reveal_path(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<
 pub fn reveal_artifacts_dir(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     use tauri_plugin_shell::ShellExt;
     let dir = &state.paths.artifacts;
     if !dir.exists() {
@@ -355,7 +359,7 @@ pub fn reveal_artifacts_dir(
     }
     app.shell()
         .open(dir.to_string_lossy(), None)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string().into())
 }
 
 /// Open a validated http(s) URL in the system browser.
@@ -366,11 +370,13 @@ pub fn reveal_artifacts_dir(
 /// `plugin:shell|open` directly.
 #[tauri::command]
 #[allow(deprecated)]
-pub fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+pub fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), AppError> {
     use tauri_plugin_shell::ShellExt;
     let validated = crate::validation::validate_external_open_url(&url)
         .ok_or_else(|| "Invalid or unsupported external URL".to_string())?;
-    app.shell().open(validated, None).map_err(|e| e.to_string())
+    app.shell()
+        .open(validated, None)
+        .map_err(|e| e.to_string().into())
 }
 
 // ---------------------------------------------------------------------------
@@ -385,17 +391,25 @@ pub struct ResetDatabaseResult {
 
 /// Phase 7 / M-WebSearch: reset the local database.
 #[tauri::command]
-pub fn reset_local_database(state: State<'_, AppState>) -> Result<ResetDatabaseResult, String> {
+pub fn reset_local_database(state: State<'_, AppState>) -> Result<ResetDatabaseResult, AppError> {
     let db_path = &state.paths.database;
     if !db_path.exists() {
-        return Err("No local database found to reset.".to_string());
+        return Err("No local database found to reset.".into());
     }
     let unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
     let backup_path = std::path::PathBuf::from(format!("{}.reset-{unix}.bak", db_path.display()));
-    std::fs::copy(db_path, &backup_path).map_err(|e| format!("Failed to back up database: {e}"))?;
+    // D9: the OS error travels as a param, not spliced into the sentence, so
+    // the sentence itself is translatable.
+    std::fs::copy(db_path, &backup_path).map_err(|e| {
+        AppError::new(
+            "error.settings.backupFailed",
+            format!("Could not back up the database: {e}"),
+        )
+        .with("detail", e.to_string())
+    })?;
     // Delete the live DB and WAL/SHM sidecars so the next startup creates a
     // clean store. Silently ignore missing sidecars.
     let _ = std::fs::remove_file(db_path);

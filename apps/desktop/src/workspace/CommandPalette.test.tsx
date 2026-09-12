@@ -134,7 +134,7 @@ describe('CommandPalette prefix modes', () => {
     renderPalette();
     type('>');
     expect(screen.getByRole('option', { name: /New chat/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Fork conversation here/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Fork chat here/ })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Delete this chat/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Triage notes' })).not.toBeInTheDocument();
   });
@@ -142,7 +142,7 @@ describe('CommandPalette prefix modes', () => {
   it('>chat settings runs onOpenChatSettings', () => {
     const props = renderPalette();
     type('>chat settings');
-    fireEvent.click(screen.getByRole('option', { name: /Chat settings for this conversation/ }));
+    fireEvent.click(screen.getByRole('option', { name: /Chat settings/ }));
     expect(props.onOpenChatSettings).toHaveBeenCalledTimes(1);
     expect(props.onClose).toHaveBeenCalled();
   });
@@ -150,9 +150,9 @@ describe('CommandPalette prefix modes', () => {
   it('>export surfaces export commands and Markdown runs onExportConversationMarkdown', () => {
     const props = renderPalette();
     type('>export');
-    expect(screen.getByRole('option', { name: /Export conversation as Markdown/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Export conversation as JSON/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: /Export conversation as Markdown/ }));
+    expect(screen.getByRole('option', { name: /Export chat as Markdown/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Export chat as JSON/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Export chat as Markdown/ }));
     expect(props.onExportConversationMarkdown).toHaveBeenCalledTimes(1);
     expect(props.onClose).toHaveBeenCalled();
   });
@@ -184,7 +184,7 @@ describe('CommandPalette prefix modes', () => {
     renderPalette();
     type('@');
     expect(screen.getByRole('option', { name: /triage-notes.md/ })).toBeInTheDocument();
-    expect(screen.getByText('8.2 KB')).toBeInTheDocument();
+    expect(screen.getByText('8.2 kB')).toBeInTheDocument();
   });
 
   it('/ lists models grouped by provider with price or local tails', async () => {

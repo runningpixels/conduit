@@ -17,4 +17,6 @@
 
 export const GENERATED_APP_NAME = "Conduit";
 export const GENERATED_DISPLAY_NAME = "Conduit";
-export const GENERATED_TAGLINE = "Message Conduit…";
+// `null` means "this build has no brand tagline of its own", so the composer
+// placeholder comes from the message catalog and is translated.
+export const GENERATED_TAGLINE: string | null = null;

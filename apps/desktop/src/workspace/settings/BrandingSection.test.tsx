@@ -53,6 +53,7 @@ const baseSettings: AppSettings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'dark',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,

@@ -340,6 +340,14 @@ describe('no dead rules', () => {
  * offline with identical metrics on every OS. That is one `url()` away from
  * being undone by someone "just adding a webfont", and the failure is invisible
  * in development, where the network is always there.
+ *
+ * What this guard is about is the *network*, not the font list. Adding a
+ * system face to the end of a stack — `"Hiragino Sans"`, `"Malgun Gothic"` —
+ * fetches nothing and is expressly allowed; the bundled faces carry no CJK
+ * coverage at all, so ja/ko/zh-CN need exactly that in wave 2 (D17 of
+ * `docs/plans/localization.md`). The rule is that Latin text never depends on
+ * a network fetch, and a local fallback for a script we do not bundle does not
+ * touch it.
  */
 describe('bundled fonts', () => {
   const tokens = readFileSync(join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'), 'utf8');

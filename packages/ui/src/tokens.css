@@ -326,6 +326,53 @@
   --cu-tap: var(--tap);
 }
 
+/* ───────────────────────── CJK font fallback (D17) ─────────────────────────
+ *
+ * Geist has no CJK coverage, and neither does any face in the stack above, so
+ * Japanese, Chinese and Korean reach the browser's per-character fallback.
+ * Left to itself that picks *a* font with the glyph, which is where the
+ * classic bug lives: Han characters are unified across the three languages at
+ * the code-point level but drawn differently, so a Japanese UI on a machine
+ * that also carries a Chinese font can render kanji in Chinese letterforms.
+ * The text is legible and subtly wrong, in a way an English-speaking reviewer
+ * will never catch.
+ *
+ * Two things prevent it. `I18nProvider` sets `html[lang]`, which lets the
+ * fallback engine break the tie; and these stacks name the platform face
+ * explicitly rather than trusting it to guess well.
+ *
+ * Geist stays first in each. Latin text and digits are common inside CJK UI
+ * copy, and the CJK faces below draw them at proportions that do not match the
+ * rest of the app. Keeping Geist ahead means each script is drawn by the face
+ * chosen for it, which is exactly what the fallback chain is for. */
+html[lang^="ja"] {
+  --font-ui: "Geist", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "Yu Gothic UI", "Hiragino Sans",
+    "Noto Sans JP", Meiryo, monospace;
+  --font-serif: "Source Serif 4", "Yu Mincho", YuMincho, "Hiragino Mincho ProN",
+    "Noto Serif JP", Charter, Georgia, ui-serif, serif;
+}
+html[lang^="ko"] {
+  --font-ui: "Geist", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+    ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "Malgun Gothic", "Apple SD Gothic Neo",
+    "Noto Sans KR", monospace;
+  --font-serif: "Source Serif 4", Batang, AppleMyungjo, "Noto Serif KR",
+    Charter, Georgia, ui-serif, serif;
+}
+/* Simplified only. `zh-TW` and `zh-HK` are Traditional — a different
+ * translation this app does not ship, and `resolveLocale` deliberately does
+ * not serve them this catalog, so they never carry this attribute. */
+html[lang^="zh-CN"] {
+  --font-ui: "Geist", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "Microsoft YaHei UI", "PingFang SC",
+    "Noto Sans SC", monospace;
+  --font-serif: "Source Serif 4", SimSun, "Songti SC", "Noto Serif SC",
+    "Source Han Serif SC", Charter, Georgia, ui-serif, serif;
+}
+
 /* Light maps to bone/paper (spec §5). In light mode the worst-contrast surface
  * is the *darkest* one — --bg-side — which is what the status/ink values below
  * are solved against. */

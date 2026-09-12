@@ -54,7 +54,17 @@
     "longDescription": "Conduit is a local-first desktop AI assistant: your conversations, attachments, and artifacts stay on your machine, with optional connectors and a single-payload artifact model. No background telemetry; updates are opt-in and integrity-verified.",
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "languages": [
+          "English",
+          "German",
+          "Spanish",
+          "French",
+          "Japanese",
+          "Korean",
+          "PortugueseBR",
+          "SimpChinese"
+        ]
       }
     },
     "macOS": {

@@ -1,6 +1,6 @@
 /**
  * SettingsSheet — the settings surface (V9 §2.6). A summoned overlay (⌘,), not
- * a navigation destination: 186px nav + scrolling main.
+ * a navigation destination: 200px nav + scrolling main.
  *
  * V9 dissolves Advanced. Settings-backed sections auto-save (useAutoSave);
  * renderer-only prefs (palette, provider colour, reduce motion, show reasoning,
@@ -49,9 +49,9 @@ import {
   writeExpandedStatus,
 } from './uiPrefs';
 import { useFocusTrap } from './useFocusTrap';
-import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
 import { modKey } from '../lib/shortcuts';
+import { useRichT, useT } from '../i18n';
 import {
   ChatIcon,
   ConnectorsIcon,
@@ -103,19 +103,19 @@ interface SettingsSheetProps {
   onBrandChange?: (config: BrandConfig | null, logo: string | null) => void;
 }
 
-const NAV_ITEMS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
-  { id: 'providers', label: 'Providers & keys', icon: <KeyNavIcon /> },
-  { id: 'chat', label: 'Chat defaults', icon: <ChatIcon /> },
-  { id: 'web-search', label: 'Web search', icon: <SearchIcon /> },
-  { id: 'workspace', label: 'Workspace', icon: <FolderIcon /> },
-  { id: 'connectors', label: 'Connectors', icon: <ConnectorsIcon /> },
-  { id: 'prompts', label: 'Prompts', icon: <ListNavIcon /> },
-  { id: 'skills', label: 'Skills', icon: <SkillNavIcon /> },
-  { id: 'memory', label: 'Memory', icon: <MemoryNavIcon /> },
-  { id: 'appearance', label: 'Appearance', icon: <SunNavIcon /> },
-  { id: 'branding', label: 'Branding', icon: <BrandingNavIcon /> },
-  { id: 'privacy', label: 'Privacy & data', icon: <LockIcon /> },
-  { id: 'about', label: 'About', icon: <InfoIcon /> },
+const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode }[] = [
+  { id: 'providers', labelId: 'shell.settingsSheet.nav.providers', icon: <KeyNavIcon /> },
+  { id: 'chat', labelId: 'shell.settingsSheet.nav.chat', icon: <ChatIcon /> },
+  { id: 'web-search', labelId: 'shell.settingsSheet.nav.web-search', icon: <SearchIcon /> },
+  { id: 'workspace', labelId: 'shell.settingsSheet.nav.workspace', icon: <FolderIcon /> },
+  { id: 'connectors', labelId: 'shell.settingsSheet.nav.connectors', icon: <ConnectorsIcon /> },
+  { id: 'prompts', labelId: 'shell.settingsSheet.nav.prompts', icon: <ListNavIcon /> },
+  { id: 'skills', labelId: 'shell.settingsSheet.nav.skills', icon: <SkillNavIcon /> },
+  { id: 'memory', labelId: 'shell.settingsSheet.nav.memory', icon: <MemoryNavIcon /> },
+  { id: 'appearance', labelId: 'shell.settingsSheet.nav.appearance', icon: <SunNavIcon /> },
+  { id: 'branding', labelId: 'shell.settingsSheet.nav.branding', icon: <BrandingNavIcon /> },
+  { id: 'privacy', labelId: 'shell.settingsSheet.nav.privacy', icon: <LockIcon /> },
+  { id: 'about', labelId: 'shell.settingsSheet.nav.about', icon: <InfoIcon /> },
 ];
 
 function KeyNavIcon() {
@@ -199,6 +199,8 @@ export function SettingsSheet({
   onInsertPrompt,
   onBrandChange,
 }: SettingsSheetProps) {
+  const t = useT();
+  const tr = useRichT();
   const [section, setSection] = useState<SettingsSection>(initialSection ?? 'providers');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const save = useAutoSave(onSettingsChange, onStatus);
@@ -266,9 +268,9 @@ export function SettingsSheet({
 
   return (
     <div className="scrim" data-open="true" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={sheetRef} className="sheet" role="dialog" aria-label="Settings" aria-modal="true">
-        <nav ref={navRef} className="sheet-nav scroll" aria-label="Settings sections">
-          <div className="sheet-nav-title">Settings</div>
+      <div ref={sheetRef} className="sheet" role="dialog" aria-label={t('shell.settingsSheet.ariaLabel')} aria-modal="true">
+        <nav ref={navRef} className="sheet-nav scroll" aria-label={t('shell.settingsSheet.nav.ariaLabel')}>
+          <div className="sheet-nav-title">{t('shell.settingsSheet.nav.title')}</div>
           {NAV_ITEMS.filter((item) => item.id !== 'branding' || allowUserBranding).map((item) => (
             <button
               key={item.id}
@@ -277,7 +279,7 @@ export function SettingsSheet({
               onClick={() => setSection(item.id)}
             >
               {item.icon}
-              {item.label}
+              {t(item.labelId)}
             </button>
           ))}
         </nav>
@@ -285,9 +287,9 @@ export function SettingsSheet({
         <div className="sheet-main scroll">
           {section === 'providers' && (
             <div ref={pickerRef}>
-              <h2 className="sheet-h">Providers &amp; keys</h2>
+              <h2 className="sheet-h">{t('shell.settingsSheet.providers.heading')}</h2>
               <p className="sheet-sub">
-                Keys are stored in the OS keychain and never written to disk. {appName()} talks to each provider directly.
+                {t('shell.settingsSheet.providers.intro')}
               </p>
               <ProviderPicker settings={settings} onSettingsChange={save} onStatus={onStatus} />
               <div style={{ marginTop: 16 }}>
@@ -298,7 +300,7 @@ export function SettingsSheet({
                     pickerRef.current?.querySelector<HTMLElement>('select, input, button')?.focus();
                   }}
                 >
-                  Add a provider
+                  {t('shell.settingsSheet.providers.addButton')}
                 </button>
               </div>
             </div>
@@ -306,18 +308,18 @@ export function SettingsSheet({
 
           {section === 'chat' && (
             <>
-              <h2 className="sheet-h">Chat defaults</h2>
-              <p className="sheet-sub">Applied to new chats. Any chat can override these from the composer.</p>
+              <h2 className="sheet-h">{t('shell.settingsSheet.chat.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.chat.intro')}</p>
               <div className="grp">
-                <div className="grp-label">Defaults</div>
+                <div className="grp-label">{t('shell.settingsSheet.chat.defaultsGroupLabel')}</div>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Default model</b>
-                    <small>Used when a chat starts</small>
+                    <b>{t('shell.settingsSheet.chat.defaultModel.label')}</b>
+                    <small>{t('shell.settingsSheet.chat.defaultModel.help')}</small>
                   </span>
                   <select
                     className="sel"
-                    aria-label="Default model"
+                    aria-label={t('shell.settingsSheet.chat.defaultModel.label')}
                     value={settings.activeModel}
                     onChange={(e) => save({ ...settings, activeModel: e.target.value })}
                   >
@@ -334,11 +336,11 @@ export function SettingsSheet({
                 </div>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Always show reasoning</b>
-                    <small>Keep thinking blocks expanded (off = always collapsed)</small>
+                    <b>{t('shell.settingsSheet.chat.alwaysShowReasoning.label')}</b>
+                    <small>{t('shell.settingsSheet.chat.alwaysShowReasoning.help')}</small>
                   </span>
                   <Toggle
-                    label="Always show reasoning"
+                    label={t('shell.settingsSheet.chat.alwaysShowReasoning.label')}
                     pressed={showReasoning === 'on'}
                     onChange={() => {
                       const next = showReasoning === 'on' ? 'off' : 'on';
@@ -349,12 +351,12 @@ export function SettingsSheet({
                 </div>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Send with</b>
-                    <small>Choose how a message is sent</small>
+                    <b>{t('shell.settingsSheet.chat.sendWith.label')}</b>
+                    <small>{t('shell.settingsSheet.chat.sendWith.help')}</small>
                   </span>
                   <select
                     className="sel"
-                    aria-label="Send with"
+                    aria-label={t('shell.settingsSheet.chat.sendWith.label')}
                     value={sendWith}
                     onChange={(e) => {
                       const next = e.target.value as 'enter' | 'cmd-enter';
@@ -362,17 +364,19 @@ export function SettingsSheet({
                       writeSendWith(next);
                     }}
                   >
-                    <option value="enter">Enter</option>
-                    <option value="cmd-enter">{modKey()} + Enter</option>
+                    <option value="enter">{t('shell.settingsSheet.chat.sendWith.enterOption')}</option>
+                    <option value="cmd-enter">
+                      {t('shell.settingsSheet.chat.sendWith.cmdEnterOption', { modKey: modKey() })}
+                    </option>
                   </select>
                 </div>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Auto-compact context</b>
-                    <small>Summarize older turns when the chat nears the model window</small>
+                    <b>{t('shell.settingsSheet.chat.autoCompact.label')}</b>
+                    <small>{t('shell.settingsSheet.chat.autoCompact.help')}</small>
                   </span>
                   <Toggle
-                    label="Auto-compact context"
+                    label={t('shell.settingsSheet.chat.autoCompact.label')}
                     pressed={settings.contextCompactEnabled}
                     onChange={() =>
                       save({
@@ -385,12 +389,16 @@ export function SettingsSheet({
                 {settings.contextCompactEnabled && (
                   <div className="srow">
                     <span className="srow-text">
-                      <b>Compact threshold</b>
-                      <small>{settings.contextCompactThresholdPercent}% of context window</small>
+                      <b>{t('shell.settingsSheet.chat.compactThreshold.label')}</b>
+                      <small>
+                        {t('shell.settingsSheet.chat.compactThreshold.value', {
+                          percent: settings.contextCompactThresholdPercent,
+                        })}
+                      </small>
                     </span>
                     <select
                       className="sel"
-                      aria-label="Compact threshold"
+                      aria-label={t('shell.settingsSheet.chat.compactThreshold.label')}
                       value={settings.contextCompactThresholdPercent}
                       onChange={(e) =>
                         save({
@@ -401,7 +409,7 @@ export function SettingsSheet({
                     >
                       {[85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95].map((n) => (
                         <option key={n} value={n}>
-                          {n}%
+                          {t('shell.settingsSheet.chat.compactThreshold.optionPercent', { percent: n })}
                         </option>
                       ))}
                     </select>
@@ -415,10 +423,9 @@ export function SettingsSheet({
 
           {section === 'web-search' && (
             <>
-              <h2 className="sheet-h">Web search</h2>
+              <h2 className="sheet-h">{t('shell.settingsSheet.webSearch.heading')}</h2>
               <p className="sheet-sub">
-                When enabled, the model can look things up on the internet during a conversation.
-                Local-only mode under Privacy &amp; data turns this off.
+                {t('shell.settingsSheet.webSearch.intro')}
               </p>
               <WebSearchSection settings={settings} onUpdate={save} onStatus={onStatus} />
             </>
@@ -426,9 +433,9 @@ export function SettingsSheet({
 
           {section === 'workspace' && (
             <>
-              <h2 className="sheet-h">Workspace</h2>
+              <h2 className="sheet-h">{t('shell.settingsSheet.workspace.heading')}</h2>
               <p className="sheet-sub">
-                Default folder for new chats. Bind a different folder from the chat bar for a single conversation.
+                {t('shell.settingsSheet.workspace.intro')}
               </p>
               <WorkspaceToolsSection settings={settings} onUpdate={save} onStatus={onStatus} />
             </>
@@ -436,12 +443,16 @@ export function SettingsSheet({
 
           {section === 'connectors' && (
             <>
-              <h2 className="sheet-h">Connectors</h2>
-              <p className="sheet-sub">Grants live with the workspace. Every run asks for consent before a connector acts.</p>
-              <ConnectorsSection onStatus={onStatus} />
+              <h2 className="sheet-h">{t('shell.settingsSheet.connectors.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.connectors.intro')}</p>
+              <ConnectorsSection onStatus={onStatus} showHeader={false} />
               <div style={{ marginTop: 16 }}>
-                <button className="btn primary" type="button" onClick={() => onStatus('Connector setup opens in this section')}>
-                  Connect a service
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => onStatus(t('shell.settingsSheet.connectors.setupToast'))}
+                >
+                  {t('shell.settingsSheet.connectors.connectButton')}
                 </button>
               </div>
             </>
@@ -449,18 +460,17 @@ export function SettingsSheet({
 
           {section === 'prompts' && (
             <>
-              <h2 className="sheet-h">Prompts</h2>
-              <p className="sheet-sub">Saved prompts you can insert into the composer.</p>
+              <h2 className="sheet-h">{t('shell.settingsSheet.prompts.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.prompts.intro')}</p>
               <PromptsSection onStatus={onStatus} onInsertPrompt={onInsertPrompt ?? (() => {})} />
             </>
           )}
 
           {section === 'skills' && (
             <>
-              <h2 className="sheet-h">Skills</h2>
+              <h2 className="sheet-h">{t('shell.settingsSheet.skills.heading')}</h2>
               <p className="sheet-sub">
-                SKILL.md packages from the {appName()} folder, <code>~/.claude/skills</code>, and{' '}
-                <code>~/.agents/skills</code>. Enable them per chat from the composer.
+                {tr('shell.settingsSheet.skills.intro')}
               </p>
               <SkillsSection onStatus={onStatus} workspaceRoot={settings.workspaceRoot} />
             </>
@@ -468,9 +478,9 @@ export function SettingsSheet({
 
           {section === 'memory' && (
             <>
-              <h2 className="sheet-h">Memory</h2>
+              <h2 className="sheet-h">{t('shell.settingsSheet.memory.heading')}</h2>
               <p className="sheet-sub">
-                Facts you save are injected into every chat (budgeted). Proposed facts wait here until you confirm them.
+                {t('shell.settingsSheet.memory.intro')}
               </p>
               <MemorySection settings={settings} onUpdate={save} onStatus={onStatus} />
             </>
@@ -478,20 +488,19 @@ export function SettingsSheet({
 
           {section === 'appearance' && (
             <>
-              <h2 className="sheet-h">Appearance</h2>
+              <h2 className="sheet-h">{t('shell.settingsSheet.appearance.heading')}</h2>
               <p className="sheet-sub">
-                Chrome stays neutral so colour reads as information. Orange Charcoal spends
-                that colour on one accent; the Terra palette spends it on provider identity.
+                {t('shell.settingsSheet.appearance.intro')}
               </p>
               <AppearanceSection settings={settings} onUpdate={save} />
               <div className="grp" style={{ marginTop: 20 }}>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Provider colour</b>
-                    <small>Tint the app with the active provider's identity</small>
+                    <b>{t('shell.settingsSheet.appearance.providerColour.label')}</b>
+                    <small>{t('shell.settingsSheet.appearance.providerColour.help')}</small>
                   </span>
                   <Toggle
-                    label="Provider colour"
+                    label={t('shell.settingsSheet.appearance.providerColour.label')}
                     pressed={providerColour === 'on'}
                     onChange={() => {
                       const next = providerColour === 'on' ? 'off' : 'on';
@@ -502,11 +511,11 @@ export function SettingsSheet({
                 </div>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Reduce motion</b>
-                    <small>Drop transitions and the streaming caret</small>
+                    <b>{t('shell.settingsSheet.appearance.reduceMotion.label')}</b>
+                    <small>{t('shell.settingsSheet.appearance.reduceMotion.help')}</small>
                   </span>
                   <Toggle
-                    label="Reduce motion"
+                    label={t('shell.settingsSheet.appearance.reduceMotion.label')}
                     pressed={reduceMotion === 'on'}
                     onChange={() => {
                       const next = reduceMotion === 'on' ? 'off' : 'on';
@@ -519,11 +528,11 @@ export function SettingsSheet({
                     same line re-inflated, no layout change. */}
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Expanded status line</b>
-                    <small>Show key, context and spend under the composer instead of on click</small>
+                    <b>{t('shell.settingsSheet.appearance.expandedStatus.label')}</b>
+                    <small>{t('shell.settingsSheet.appearance.expandedStatus.help')}</small>
                   </span>
                   <Toggle
-                    label="Expanded status line"
+                    label={t('shell.settingsSheet.appearance.expandedStatus.label')}
                     pressed={expandedStatus === 'on'}
                     onChange={() => {
                       const next = expandedStatus === 'on' ? 'off' : 'on';
@@ -551,8 +560,8 @@ export function SettingsSheet({
 
           {section === 'privacy' && (
             <>
-              <h2 className="sheet-h">Privacy &amp; data</h2>
-              <p className="sheet-sub">Conversations, artifacts, and the search index live on this machine only.</p>
+              <h2 className="sheet-h">{t('shell.settingsSheet.privacy.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.privacy.intro')}</p>
               <PrivacyDataSection
                 settings={settings}
                 onUpdate={save}
@@ -565,14 +574,14 @@ export function SettingsSheet({
                 <ArtifactSecuritySection settings={settings} onUpdate={save} />
               </div>
               <div className="grp" style={{ marginTop: 24 }}>
-                <div className="grp-label">Document export</div>
+                <div className="grp-label">{t('shell.settingsSheet.privacy.documentExportGroupLabel')}</div>
                 <div className="srow">
                   <span className="srow-text">
-                    <b>Include metadata on export</b>
-                    <small>Write a metadata sidecar when saving a copy of an artifact</small>
+                    <b>{t('shell.settingsSheet.privacy.includeMetadata.label')}</b>
+                    <small>{t('shell.settingsSheet.privacy.includeMetadata.help')}</small>
                   </span>
                   <Toggle
-                    label="Include metadata on export"
+                    label={t('shell.settingsSheet.privacy.includeMetadata.label')}
                     pressed={exportMetadata === 'on'}
                     onChange={() => {
                       const next = exportMetadata === 'on' ? 'off' : 'on';
@@ -590,8 +599,8 @@ export function SettingsSheet({
 
           {section === 'about' && (
             <>
-              <h2 className="sheet-h">About</h2>
-              <p className="sheet-sub">Usage, updates, and where {appName()} keeps its files on this machine.</p>
+              <h2 className="sheet-h">{t('shell.settingsSheet.about.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.about.intro')}</p>
               <div style={{ marginBottom: 24 }}>
                 <UsageSection />
               </div>
@@ -604,7 +613,7 @@ export function SettingsSheet({
 
           <div className="sheet-footnote">
             <SettingsIcon />
-            Settings save automatically
+            {t('shell.settingsSheet.footnote')}
           </div>
         </div>
       </div>

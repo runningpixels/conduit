@@ -12,19 +12,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Artifact, ArtifactKind, FileState } from '../ipc/contracts';
 import { exportArtifact, getArtifactContentBytes, revealPath } from '../ipc/client';
-import { formatSize, inlineArtifactText } from '../artifacts/format';
+import { inlineArtifactText } from '../artifacts/format';
 import { readExportMetadata } from '../shell/uiPrefs';
 import { Menu } from '../workspace/Menu';
 import { CopyIcon, DownloadIcon, FilePlainIcon, MoreIcon } from '../icons';
+import { useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
+import { documentKindLabel } from '../lib/documentKind';
 
-const KIND_LABEL: Record<ArtifactKind, string> = {
-  markdown: 'Markdown',
-  text: 'Text',
-  code: 'Code',
-  json: 'JSON',
-  html: 'HTML',
-};
-
+// Artifact kind names — format identifiers, not prose, so they are not passed
+// through `t()` (D7 treats `Markdown`/`JSON`/`HTML` this way already; `Code`
+// and `Text` ride along for consistency with the same map elsewhere).
 const STATE_DOT_CLASS: Record<FileState, string> = {
   ok: 'dot ok',
   modified: 'dot warn',
@@ -32,11 +30,11 @@ const STATE_DOT_CLASS: Record<FileState, string> = {
   noFileContent: 'dot hold',
 };
 
-const STATE_TITLE: Record<FileState, string> = {
-  ok: 'File in sync',
-  modified: 'Modified on disk',
-  missing: 'File missing',
-  noFileContent: 'Stored inline — no file on disk',
+const STATE_TITLE_ID: Record<FileState, string> = {
+  ok: 'chat.artifactCard.state.ok',
+  modified: 'chat.artifactCard.state.modified',
+  missing: 'chat.artifactCard.state.missing',
+  noFileContent: 'chat.artifactCard.state.noFileContent',
 };
 
 interface ArtifactResultCardProps {
@@ -49,16 +47,18 @@ interface ArtifactResultCardProps {
 
 /** Full-width result card for an artifact produced by this message. */
 export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: ArtifactResultCardProps) {
+  const t = useT();
+  const fmt = useFormatters();
   const [menuOpen, setMenuOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const title = artifact.title ?? 'Untitled artifact';
-  const kindLabel = KIND_LABEL[artifact.kind] ?? artifact.kind;
+  const title = artifact.title ?? t('chat.artifactCard.untitled');
+  const kindLabel = documentKindLabel(artifact.kind, t);
   // '' rather than the panel's em dash: an unknown size should drop out of the
   // subtitle entirely, not render as a placeholder next to the kind.
-  const size = formatSize(artifact.sizeBytes, '');
+  const size = fmt.size(artifact.sizeBytes, '');
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -82,9 +82,9 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
         text = new TextDecoder().decode(Uint8Array.from(bytes));
       }
       await navigator.clipboard.writeText(text);
-      onStatus?.('Copied artifact contents');
+      onStatus?.(t('chat.artifactCard.copied'));
     } catch (e) {
-      onStatus?.(e instanceof Error ? e.message : 'Could not copy artifact contents');
+      onStatus?.(e instanceof Error ? e.message : t('chat.artifactCard.copyFailed'));
     }
   }
 
@@ -99,7 +99,7 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
     setExporting(true);
     try {
       const result = await exportArtifact(artifact.id, readExportMetadata() === 'on');
-      onStatus?.(`Exported to ${result.exportedTo}`);
+      onStatus?.(t('chat.artifactCard.exportedTo', { path: result.exportedTo }));
       setMenuOpen(false);
       // The file is written at this point. A file manager that refuses to open
       // must not make a successful export look like a failure.
@@ -109,7 +109,7 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
         /* export succeeded; revealing is a convenience */
       }
     } catch (e) {
-      onStatus?.(e instanceof Error ? e.message : 'Could not export artifact');
+      onStatus?.(e instanceof Error ? e.message : t('chat.artifactCard.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -124,7 +124,7 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
         <div className="artifact-card-title">
           <span className="artifact-card-name" title={title}>{title}</span>
           {fileState && (
-            <span className={STATE_DOT_CLASS[fileState]} title={STATE_TITLE[fileState]} />
+            <span className={STATE_DOT_CLASS[fileState]} title={t(STATE_TITLE_ID[fileState])} />
           )}
         </div>
         <div className="artifact-card-meta">{size ? `${kindLabel} · ${size}` : kindLabel}</div>
@@ -132,17 +132,17 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
       <button
         type="button"
         className="btn artifact-card-open"
-        title={`Open ${title} in the artifact panel`}
+        title={t('chat.artifactCard.openTitle', { title })}
         onClick={() => onOpen(artifact.id)}
       >
-        Open
+        {t('common.actions.open')}
       </button>
       <div className="artifact-card-overflow" ref={menuRef}>
         <button
           ref={menuTriggerRef}
           type="button"
           className="icon-btn"
-          aria-label={`More actions for ${title}`}
+          aria-label={t('chat.artifactCard.moreActionsLabel', { title })}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           onClick={() => setMenuOpen((open) => !open)}
@@ -154,11 +154,11 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
           onClose={() => setMenuOpen(false)}
           triggerRef={menuTriggerRef}
           className="menu artifact-card-menu"
-          label="Artifact actions"
+          label={t('chat.artifactCard.menuLabel')}
         >
           <button className="menu-item" type="button" role="menuitem" onClick={() => void handleCopy()}>
             <CopyIcon />
-            Copy contents
+            {t('chat.artifactCard.copyContents')}
           </button>
           <button
             className="menu-item"
@@ -168,7 +168,7 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
             onClick={() => void handleExport()}
           >
             <DownloadIcon />
-            {exporting ? 'Exporting…' : 'Save a copy…'}
+            {exporting ? t('chat.artifactCard.exporting') : t('chat.artifactCard.saveCopy')}
           </button>
         </Menu>
       </div>

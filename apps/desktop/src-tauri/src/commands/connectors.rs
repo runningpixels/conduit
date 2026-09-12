@@ -559,11 +559,20 @@ pub async fn signin_remote_connector(
     state: State<'_, AppState>,
     runtime: State<'_, ConnectorRuntimeManager>,
     connector_version_id: String,
+    signed_in_message: String,
+    sign_in_failed_message: String,
 ) -> Result<(), String> {
+    // The callback page renders in the system browser, so its copy arrives
+    // translated from the renderer (D15).
+    let page = crate::mcp_oauth::OAuthPageCopy {
+        signed_in: signed_in_message,
+        sign_in_failed: sign_in_failed_message,
+    };
     signin_remote_connector_inner(
         state.inner(),
         runtime.inner(),
         &connector_version_id,
+        &page,
         |url| {
             use tauri_plugin_shell::ShellExt;
             let validated = crate::validation::validate_external_open_url(url)
@@ -578,6 +587,7 @@ pub async fn signin_remote_connector_inner(
     state: &AppState,
     runtime: &ConnectorRuntimeManager,
     connector_version_id: &str,
+    page: &crate::mcp_oauth::OAuthPageCopy,
     open_browser: impl FnOnce(&str) -> Result<(), String>,
 ) -> Result<(), String> {
     let version = connectors::get_version(&state.db, connector_version_id)
@@ -608,7 +618,7 @@ pub async fn signin_remote_connector_inner(
     };
 
     let token =
-        crate::mcp_oauth::authorize_connector(url, www_authenticate.as_deref(), open_browser)
+        crate::mcp_oauth::authorize_connector(url, www_authenticate.as_deref(), open_browser, page)
             .await?;
     let cred_ref = crate::mcp_oauth::persist_token(state, connector_version_id, &token)?;
     let mut grants = connectors::list_grants_for_version(&state.db, connector_version_id)

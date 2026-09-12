@@ -5,6 +5,7 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { CopyIcon, CheckIcon } from '../../icons';
 import { mermaidScaleFactor, readMermaidScale, type MermaidScalePref } from '../../shell/uiPrefs';
+import { useT } from '../../i18n';
 
 export interface MermaidBlockProps {
   source: string;
@@ -64,6 +65,7 @@ function svgToBlobUrl(svg: string): string {
 }
 
 export function MermaidBlock({ source, fallback, onReady }: MermaidBlockProps) {
+  const t = useT();
   const reactId = useId().replace(/:/g, '');
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -180,7 +182,7 @@ export function MermaidBlock({ source, fallback, onReady }: MermaidBlockProps) {
   if (failed) {
     return (
       <div className="md-mermaid">
-        <span className="md-render-error" role="note">Couldn’t render diagram</span>
+        <span className="md-render-error" role="note">{t('artifacts.mermaid.renderError')}</span>
         {sourceFallback}
       </div>
     );
@@ -202,18 +204,19 @@ export function MermaidBlock({ source, fallback, onReady }: MermaidBlockProps) {
   return (
     <figure className="md-mermaid">
       <div className="md-mermaid-toolbar">
+        {/* i18n-exempt: the diagram language identifier, not prose */}
         <span className="md-mermaid-label">mermaid</span>
         <button
           type="button"
           className="icon-btn md-mermaid-copy"
-          aria-label={copied ? 'Copied' : 'Copy source'}
-          title={copied ? 'Copied' : 'Copy source'}
+          aria-label={copied ? t('artifacts.mermaid.copied') : t('artifacts.mermaid.copySource')}
+          title={copied ? t('artifacts.mermaid.copied') : t('artifacts.mermaid.copySource')}
           onClick={() => void handleCopy()}
         >
           {copied ? <CheckIcon /> : <CopyIcon />}
         </button>
       </div>
-      <img className="md-mermaid-img" src={url} alt="Mermaid diagram" />
+      <img className="md-mermaid-img" src={url} alt={t('artifacts.mermaid.imageAlt')} />
     </figure>
   );
 }

@@ -7,7 +7,6 @@ import type {
 } from '@conduit/config-schema';
 import type { WebSearchDefaults } from '@conduit/config-schema';
 import { WebSearchConsentDialog } from './WebSearchConsentDialog';
-import { appName } from '../../brand';
 import {
   SEARCH_CREDENTIAL_IDS,
   localSearchBackendLabel,
@@ -18,6 +17,7 @@ import {
   loadProviderCredentialReference,
   saveProviderCredential,
 } from '../../ipc/client';
+import { useRichT, useT } from '../../i18n';
 
 interface WebSearchSectionProps {
   settings: AppSettings;
@@ -25,49 +25,62 @@ interface WebSearchSectionProps {
   onStatus: (message: string) => void;
 }
 
-const MODE_OPTIONS: { value: WebSearchMode; label: string; help: string }[] = [
+const MODE_OPTIONS: { value: WebSearchMode; labelId: string; helpId: string }[] = [
   {
     value: 'auto',
-    label: 'Auto',
-    help: 'Provider-hosted when available (OpenAI, Gemini, Anthropic); otherwise the local backend below.',
+    labelId: 'settings.webSearch.mode.auto.label',
+    helpId: 'settings.webSearch.mode.auto.help',
   },
   {
     value: 'hosted',
-    label: 'Provider',
-    help: 'Always use the model provider’s hosted search. Unsupported endpoints show “Web search unavailable”.',
+    labelId: 'settings.webSearch.mode.hosted.label',
+    helpId: 'settings.webSearch.mode.hosted.help',
   },
   {
     value: 'local',
-    label: 'Local',
-    help: 'Always use the local search backend from this machine. Queries are not sent to the model provider.',
+    labelId: 'settings.webSearch.mode.local.label',
+    helpId: 'settings.webSearch.mode.local.help',
   },
 ];
 
-const LOCAL_BACKEND_OPTIONS: { value: LocalSearchBackend; label: string; help: string }[] = [
+const LOCAL_BACKEND_OPTIONS: { value: LocalSearchBackend; labelId: string; helpId: string }[] = [
   {
     value: 'duckduckgo',
-    label: 'DuckDuckGo Instant Answer',
-    help: 'No API key. Encyclopedic snippets — not a live web crawl.',
+    labelId: 'settings.webSearch.localBackend.duckduckgo.label',
+    helpId: 'settings.webSearch.localBackend.duckduckgo.help',
   },
   {
     value: 'tavily',
-    label: 'Tavily',
-    help: 'BYOK. Paid search API with live results.',
+    labelId: 'settings.webSearch.localBackend.tavily.label',
+    helpId: 'settings.webSearch.localBackend.tavily.help',
   },
   {
     value: 'brave',
-    label: 'Brave Search',
-    help: 'BYOK. Brave Search API.',
+    labelId: 'settings.webSearch.localBackend.brave.label',
+    helpId: 'settings.webSearch.localBackend.brave.help',
   },
   {
     value: 'searxng',
-    label: 'SearXNG',
-    help: 'Self-hosted metasearch. Requires an instance URL; optional API key.',
+    labelId: 'settings.webSearch.localBackend.searxng.label',
+    helpId: 'settings.webSearch.localBackend.searxng.help',
   },
 ];
 
+const CONTEXT_SIZE_LABEL_IDS: Record<'low' | 'medium' | 'high', string> = {
+  low: 'settings.webSearch.contextSize.low',
+  medium: 'settings.webSearch.contextSize.medium',
+  high: 'settings.webSearch.contextSize.high',
+};
+
+const TOKEN_BUDGET_LABEL_IDS: Record<'default' | 'unlimited', string> = {
+  default: 'settings.webSearch.tokenBudget.default',
+  unlimited: 'settings.webSearch.tokenBudget.unlimited',
+};
+
 /** Web Search settings: master toggle, search source, hosted knobs, consent. */
 export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSectionProps) {
+  const t = useT();
+  const tr = useRichT();
   const ws = settings.webSearch;
   const disabled = settings.localOnly;
   const [showConsent, setShowConsent] = useState(false);
@@ -83,6 +96,10 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
   // Hosted-only knobs (context size, domains, …) only apply when the turn
   // would actually use provider-hosted search.
   const hostedKnobsDisabled = resolvedBackend === 'local';
+  const searchTypeLabel =
+    resolvedBackend === 'hosted'
+      ? t('settings.webSearch.searchType.hosted')
+      : t('settings.webSearch.searchType.local', { backend: localSearchBackendLabel(localBackend) });
 
   function patchDefaults(next: Partial<WebSearchDefaults>) {
     onUpdate({
@@ -100,7 +117,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
     if (entries.length > 100) {
-      onStatus(`Domain list exceeds 100 entries (provider cap). Please remove ${entries.length - 100} entries.`);
+      onStatus(t('settings.webSearch.domainListTooLong', { count: entries.length - 100 }));
       return;
     }
     patchDefaults({ [field]: entries });
@@ -109,15 +126,12 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
   return (
     <div className="settings-section">
       <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
-        Use <strong>Search source</strong> to choose provider-hosted search or {appName()}’s
-        local backend (DuckDuckGo, Tavily, Brave, or SearXNG). Provider-hosted search
-        may incur provider cost. The chat-bar search icon turns search on for the
-        conversation until you turn it off.
+        {tr('settings.webSearch.intro')}
       </p>
 
       {disabled && (
         <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--warn)' }}>
-          Web search is unavailable in local-only mode. Disable local-only mode to enable web search.
+          {t('settings.webSearch.localOnlyWarning')}
         </p>
       )}
 
@@ -138,7 +152,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
               }
             }}
           />
-          Enable web search
+          {t('settings.webSearch.enableToggle.label')}
         </label>
         <WebSearchConsentDialog
           visible={showConsent}
@@ -169,7 +183,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
           {/* Search source */}
           <div>
             <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-              Search source
+              {t('settings.webSearch.sourceHeading')}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
               {MODE_OPTIONS.map((opt) => (
@@ -182,29 +196,26 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                     style={{ marginTop: 3 }}
                   />
                   <span>
-                    <strong>{opt.label}</strong>
+                    <strong>{t(opt.labelId)}</strong>
                     <span style={{ display: 'block', fontSize: '11px', color: 'var(--ink-3)', marginTop: 2 }}>
-                      {opt.help}
+                      {t(opt.helpId)}
                     </span>
                   </span>
                 </label>
               ))}
             </div>
             <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-              Current provider ({settings.activeProvider}): would use{' '}
-              <strong>
-                {resolvedBackend === 'hosted'
-                  ? 'provider-hosted'
-                  : `${localSearchBackendLabel(localBackend)} (local)`}
-              </strong>{' '}
-              search.
+              {tr('settings.webSearch.currentProviderSummary', {
+                provider: settings.activeProvider,
+                searchType: searchTypeLabel,
+              })}
             </p>
           </div>
 
           {/* Local backend picker — used whenever a turn resolves to local. */}
           <div>
             <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-              Local search backend
+              {t('settings.webSearch.localBackendHeading')}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
               {LOCAL_BACKEND_OPTIONS.map((opt) => (
@@ -217,9 +228,9 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                     style={{ marginTop: 3 }}
                   />
                   <span>
-                    <strong>{opt.label}</strong>
+                    <strong>{t(opt.labelId)}</strong>
                     <span style={{ display: 'block', fontSize: '11px', color: 'var(--ink-3)', marginTop: 2 }}>
-                      {opt.help}
+                      {t(opt.helpId)}
                     </span>
                   </span>
                 </label>
@@ -242,7 +253,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
             {localBackend === 'searxng' && (
               <>
                 <label className="field" style={{ display: 'grid', gap: 4, marginTop: 10 }}>
-                  <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>SearXNG base URL</span>
+                  <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{t('settings.webSearch.searxngBaseUrlLabel')}</span>
                   <input
                     type="url"
                     value={ws.searxngBaseUrl ?? ''}
@@ -251,13 +262,13 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                         searxngBaseUrl: e.target.value.trim() || undefined,
                       })
                     }
-                    placeholder="https://searx.example"
+                    placeholder={t('settings.webSearch.searxngBaseUrlPlaceholder')}
                     style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
                   />
                 </label>
                 <SearchBackendKeyField
                   providerId={SEARCH_CREDENTIAL_IDS.searxng}
-                  label="SearXNG (optional)"
+                  label={t('settings.webSearch.searxngCredentialLabel')}
                   onStatus={onStatus}
                 />
               </>
@@ -278,14 +289,14 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
           >
             {hostedKnobsDisabled && (
               <p style={{ margin: 0, fontSize: '11px', color: 'var(--ink-3)' }}>
-                Provider search options apply only when the search source resolves to provider-hosted.
+                {t('settings.webSearch.hostedOnlyNotice')}
               </p>
             )}
 
             {/* Search context size */}
             <div>
               <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                Search context size
+                {t('settings.webSearch.contextSize.heading')}
               </span>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 {(['low', 'medium', 'high'] as const).map((size) => (
@@ -296,12 +307,12 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                       checked={ws.searchContextSize === size}
                       onChange={() => patchDefaults({ searchContextSize: size })}
                     />
-                    {size.charAt(0).toUpperCase() + size.slice(1)}
+                    {t(CONTEXT_SIZE_LABEL_IDS[size])}
                   </label>
                 ))}
               </div>
               <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-                How much search-result context the model sees. Low = simple lookups; High = research-heavy queries.
+                {t('settings.webSearch.contextSize.help')}
               </p>
             </div>
 
@@ -312,16 +323,16 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 checked={ws.externalWebAccess}
                 onChange={(e) => patchDefaults({ externalWebAccess: e.target.checked })}
               />
-              Live internet access
+              {t('settings.webSearch.externalWebAccess.label')}
             </label>
             <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-              Unchecked = cache-only / offline mode. Provider ignores this for some models.
+              {t('settings.webSearch.externalWebAccess.help')}
             </p>
 
             {/* Returned-token budget */}
             <div>
               <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                Returned-token budget
+                {t('settings.webSearch.tokenBudget.heading')}
               </span>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 {(['default', 'unlimited'] as const).map((budget) => (
@@ -332,24 +343,24 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                       checked={ws.returnTokenBudget === budget}
                       onChange={() => patchDefaults({ returnTokenBudget: budget })}
                     />
-                    {budget.charAt(0).toUpperCase() + budget.slice(1)}
+                    {t(TOKEN_BUDGET_LABEL_IDS[budget])}
                   </label>
                 ))}
               </div>
               <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-                Unlimited removes the returned-token cap for long research runs. GPT-5+ reasoning models only.
+                {t('settings.webSearch.tokenBudget.help')}
               </p>
             </div>
 
             {/* Allowed domains */}
             <div>
               <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                Allowed domains
+                {t('settings.webSearch.allowedDomains.heading')}
               </span>
               <textarea
                 value={ws.allowedDomains.join('\n')}
                 onChange={(e) => handleDomainListChange('allowedDomains', e.target.value)}
-                placeholder="pubmed.ncbi.nlm.nih.gov&#10;www.cdc.gov"
+                placeholder={t('settings.webSearch.allowedDomains.placeholder')}
                 rows={3}
                 style={{
                   width: '100%',
@@ -360,19 +371,19 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 }}
               />
               <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-                One bare domain per line (no http(s) prefix). Max 100 entries. Leave empty for unfiltered search.
+                {t('settings.webSearch.allowedDomains.help')}
               </p>
             </div>
 
             {/* Blocked domains */}
             <div>
               <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                Blocked domains
+                {t('settings.webSearch.blockedDomains.heading')}
               </span>
               <textarea
                 value={ws.blockedDomains.join('\n')}
                 onChange={(e) => handleDomainListChange('blockedDomains', e.target.value)}
-                placeholder="reddit.com&#10;quora.com"
+                placeholder={t('settings.webSearch.blockedDomains.placeholder')}
                 rows={3}
                 style={{
                   width: '100%',
@@ -383,14 +394,14 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 }}
               />
               <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-                One bare domain per line. Max 100 entries.
+                {t('settings.webSearch.blockedDomains.help')}
               </p>
             </div>
 
             {/* User location */}
             <div>
               <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                Approximate user location
+                {t('settings.webSearch.userLocation.heading')}
               </span>
               <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                 <input
@@ -405,7 +416,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                         : undefined,
                     });
                   }}
-                  placeholder="GB"
+                  placeholder={t('settings.webSearch.userLocation.countryPlaceholder')}
                   maxLength={2}
                   style={{ width: '4em', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
                 />
@@ -417,12 +428,12 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                     if (!ws.userLocation) return;
                     patchDefaults({ userLocation: { ...ws.userLocation, city } });
                   }}
-                  placeholder="London (optional)"
+                  placeholder={t('settings.webSearch.userLocation.cityPlaceholder')}
                   style={{ flex: 1, minWidth: '8em', fontSize: '12px' }}
                 />
               </div>
               <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-                ISO 3166-1 alpha-2 country code. Used to localize search results. Approximate — not stored server-side by {appName()}.
+                {t('settings.webSearch.userLocation.help')}
               </p>
             </div>
 
@@ -433,10 +444,10 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 checked={ws.includeSources}
                 onChange={(e) => patchDefaults({ includeSources: e.target.checked })}
               />
-              Show source list in search results
+              {t('settings.webSearch.includeSources.label')}
             </label>
             <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
-              When on, the provider returns the raw source list alongside citations. May increase response size.
+              {t('settings.webSearch.includeSources.help')}
             </p>
           </fieldset>
         </fieldset>
@@ -454,6 +465,7 @@ function SearchBackendKeyField({
   label: string;
   onStatus: (message: string) => void;
 }) {
+  const t = useT();
   const [secret, setSecret] = useState('');
   const [summary, setSummary] = useState<CredentialSummary | null>(null);
   const [busy, setBusy] = useState(false);
@@ -470,9 +482,9 @@ function SearchBackendKeyField({
       const next = await saveProviderCredential({ providerId, secret });
       setSummary(next);
       setSecret('');
-      onStatus(`${label} API key stored in keychain`);
+      onStatus(t('settings.webSearch.credentialField.saved', { label }));
     } catch (e) {
-      onStatus(`Save ${label} key failed: ${String(e)}`);
+      onStatus(t('settings.webSearch.credentialField.saveFailed', { label, error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -481,12 +493,12 @@ function SearchBackendKeyField({
   return (
     <div className="form-grid" style={{ marginTop: 10 }}>
       <label className="field" style={{ display: 'grid', gap: 4 }}>
-        <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{label} API key</span>
+        <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{t('settings.webSearch.credentialField.label', { label })}</span>
         <input
           type="password"
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
-          placeholder="Stored only through Rust"
+          placeholder={t('settings.webSearch.credentialField.placeholder')}
           style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
         />
       </label>
@@ -496,14 +508,14 @@ function SearchBackendKeyField({
         disabled={busy || !secret}
         onClick={() => void handleSave()}
       >
-        Save {label} key
+        {t('settings.webSearch.credentialField.saveButton', { label })}
       </button>
       <div className="status-item">
-        <span>Credential reference</span>
+        <span>{t('settings.webSearch.credentialField.referenceLabel')}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
           {summary?.storedInKeychain || summary?.credentialRef
             ? summary.credentialRef
-            : 'No key stored yet'}
+            : t('settings.webSearch.credentialField.noKeyStored')}
         </span>
       </div>
     </div>

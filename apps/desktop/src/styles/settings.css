@@ -1,5 +1,5 @@
 /* ── Settings sheet (V7 overlay; spec §8.9) ────────────────────────────── */
-/* A summoned modal, not a navigation destination: 186px nav + scroll main.
+/* A summoned modal, not a navigation destination: 200px nav + scroll main.
    Auto-save on change; no Save button, no dirty state. */
 .scrim {
   position: fixed;
@@ -21,15 +21,15 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(.985);
-  width: min(760px, 94vw);
-  height: min(560px, 86vh);
+  width: min(960px, 92vw);
+  height: min(720px, 88vh);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--lift);
   overflow: hidden;
   display: grid;
-  grid-template-columns: 186px minmax(0, 1fr);
+  grid-template-columns: 200px minmax(0, 1fr);
   transition: transform .17s cubic-bezier(.22, .61, .24, 1);
 }
 .scrim[data-open="true"] .sheet { transform: translate(-50%, -50%); }
@@ -56,9 +56,9 @@
 .sheet-nav button:hover { background: var(--card); color: var(--ink); }
 .sheet-nav button[aria-current="true"] { background: var(--card); color: var(--ink); font-weight: 500; }
 .sheet-nav svg { width: 14px; height: 14px; flex: 0 0 auto; }
-.sheet-main { padding: var(--sp-5); overflow: auto; min-height: 0; }
+.sheet-main { padding: var(--sp-6); overflow: auto; min-height: 0; }
 .sheet-h { font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
-.sheet-sub { font-size: 12.5px; color: var(--ink-3); margin: 0 0 var(--sp-5); line-height: 1.5; }
+.sheet-sub { font-size: 12.5px; color: var(--ink-3); margin: 0 0 var(--sp-5); line-height: 1.5; max-width: 68ch; }
 .grp { margin-bottom: var(--sp-5); }
 .grp-label {
   font-size: 10.5px;
@@ -147,7 +147,10 @@
 .sheet-footnote svg { width: 13px; height: 13px; }
 
 .settings-section {
-  max-width: 720px;
+  /* At the 960px sheet the content column runs ~696px, so this never binds
+     today — it is the guard that keeps a section readable if the sheet ever
+     grows past the app reading measure. */
+  max-width: var(--measure);
 }
 .settings-section-header {
   font-size: 15px;
@@ -163,45 +166,235 @@
 .settings-section + .settings-section {
   margin-top: 24px;
 }
+/* A row of section-level actions where a section has no header to hang them
+   off. Flex, so a second button can join without another wrapper. */
+.settings-section-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
 
 /* ── Appearance form (inside settings) ─────────────────────────────────── */
-.appearance-form { display: grid; gap: 12px; }
-.appearance-form .field { display: grid; gap: 6px; }
-.appearance-form .field-label {
-  color: var(--ink-3);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
+/* Label left, control right — the .srow idiom Chat defaults uses. These were
+   label-above/full-width-select, which at the 960px sheet meant a 690px-wide
+   dropdown holding the word "Dark", and made the two panes look unrelated.
+   The markup is untouched: `.field` is still label + select (+ optional hint),
+   the grid just places them. */
+.appearance-form { display: grid; }
+.appearance-form .field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 300px);
+  column-gap: var(--sp-4);
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
+.appearance-form .field > select { grid-column: 2; grid-row: 1; }
+/* The hint (only the language field has one) sits under its own label rather
+   than under the control, so the right column stays a clean stack. */
+.appearance-form .field > small {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+.appearance-form .field-label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  /* Undo the generic .field-label treatment further down: as a left-hand row
+     label these read as names, not as the group captions that idiom is for. */
+  text-transform: none;
+  letter-spacing: normal;
+}
+/* Appearance opts out of the .form-grid measure cap — its fields are rows that
+   want the whole column, not a stack of centred controls. */
+.form-grid.appearance-form { max-width: none; }
 .appearance-form select {
   width: 100%;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--ink);
-  padding: 10px 12px;
+  padding: 6px 10px;
+  font-size: 12.5px;
 }
 .appearance-form .check-row {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
+.appearance-form > :last-child { border-bottom: 0; }
 
 /* ── Onboarding (full-screen route) ────────────────────────────────────── */
 /* Fills the second `.app` row rather than the viewport: the caption row takes
    the first, so a 100vh minimum would overflow the shell by exactly its
    height. */
+/* The card is centred in whatever space App's grid gives this route.
+ *
+ * `align-content` rather than `align-items`, and `safe` rather than plain
+ * centring. A centred track whose content is taller than the box overflows it
+ * equally in both directions, and the half that goes past the top edge cannot
+ * be scrolled back to — `overflow: auto` only ever scrolls forward from the
+ * origin. `safe` says "centre until that would clip, then align to start",
+ * which is the behaviour anyone actually wants from a centred dialog: middle of
+ * the window when it fits, scrollable from the top when it does not.
+ *
+ * This route must NOT also carry `.app`. It used to, which meant it inherited
+ * `grid-template-rows: var(--titlebar-h) minmax(0, 1fr)` and dropped the card
+ * into the 32px titlebar track, centred there, with most of it off the top of
+ * the window and the whole second row left empty underneath. App already
+ * renders the caption row and the grid that owns it; this is only the body. */
 .onboarding-shell {
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-content: safe center;
   padding: 24px;
   overflow: auto;
   min-height: 100%;
+  /* One very low-contrast wash behind the card so the ground reads as lit
+     rather than as void. Deliberately decorative and deliberately faint: it
+     carries no meaning, nothing sits on it, and Windows High Contrast replaces
+     gradients with a flat colour — which must be a no-op here, and is.
+     `color-mix(... 0%)` rather than `transparent` for the far stop: `transparent`
+     is rgba(0,0,0,0), so interpolating to it in sRGB drags the midpoint toward
+     grey and leaves a visible dirty ring on a warm ground. */
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in srgb, var(--hue) 7%, transparent),
+      color-mix(in srgb, var(--hue) 0%, transparent) 60%
+    ),
+    radial-gradient(
+      90% 70% at 50% 100%,
+      color-mix(in srgb, var(--bg-side) 70%, transparent),
+      color-mix(in srgb, var(--bg-side) 0%, transparent) 70%
+    );
 }
 .onboarding-card {
   max-width: 680px;
   width: 100%;
+}
+/* The two-column variant, on the wizard only. `MigrationRecoveryNotice` shares
+   `.onboarding-card` and has no rail, so the grid is a modifier rather than
+   something baked into the base class. */
+.onboarding-card--split {
+  max-width: 940px;
+  display: grid;
+  /* minmax, never a fixed track: the rail holds five translated step labels and
+     a lede, and German runs long enough that a fixed 280px clips
+     "Erscheinungsbild". The floor is what the longest label needs; the ceiling
+     stops the rail eating the body on a wide window. */
+  grid-template-columns: minmax(232px, 288px) minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.onboarding-rail {
+  background: var(--bg-side);
+  border-right: 1px solid var(--line-soft);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.onboarding-rail h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.onboarding-rail .onboarding-lede {
+  margin: 0;
+  font-size: 12.5px;
+}
+.onboarding-rail-mark {
+  color: var(--hue);
+  width: 22px;
+  height: 22px;
+  margin-bottom: 2px;
+}
+.onboarding-rail-mark svg,
+.onboarding-rail-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+.onboarding-body {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  /* The step bodies vary by ~310px between the review step and the privacy
+     step. Centred in the window, that swing moved the heading, the rail and the
+     buttons on every Continue — the card visibly pumped. A floor sized to the
+     tallest ordinary step holds the frame still; the privacy step still grows
+     past it, and the shell scrolls rather than clipping (see
+     `align-content: safe center` above). */
+  min-height: 420px;
+}
+/* The stepper turns vertical in the rail: a column of five, top to bottom, with
+   the active one marked. Horizontal dots were fine at three steps and became a
+   wrapping double row at five. */
+.onboarding-card--split .onboarding-steps {
+  flex-direction: column;
+  align-items: stretch;
+  display: flex;
+  gap: 2px;
+  margin: 8px 0 0;
+}
+.onboarding-card--split .onboarding-step-dot {
+  justify-content: flex-start;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+}
+.onboarding-card--split .onboarding-step-dot:hover {
+  background: var(--card);
+}
+.onboarding-card--split .onboarding-step-dot.active {
+  background: var(--hue-weak);
+  border-color: transparent;
+  color: var(--hue-text);
+}
+/* Push the actions to the bottom of the body so the primary button sits on one
+   line across every step, however tall that step's content is. */
+.onboarding-card--split .onboarding-actions {
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+/* Narrow windows get the single column this screen used to be: the rail
+   becomes a header band and the stepper goes back to wrapping horizontally.
+   880px is where the body column drops under ~560px, which is the point the
+   appearance grid's label/control pair stops fitting on one row. */
+@media (max-width: 880px) {
+  .onboarding-card--split {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 680px;
+  }
+  .onboarding-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .onboarding-card--split .onboarding-steps {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .onboarding-card--split .onboarding-step-dot {
+    border-color: var(--line);
+    background: var(--card);
+    border-radius: var(--r-pill);
+  }
+  .onboarding-body {
+    min-height: 0;
+  }
 }
 .onboarding-lede {
   color: var(--ink-2);
@@ -251,6 +444,64 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
+}
+/* A labelled control on a step that is otherwise a column of checkboxes. The
+   step body is already a grid with a gap, so this only has to dress the control
+   itself: there is no generic `select` rule in this stylesheet — every other
+   pane either styles its selects inline or goes through `.appearance-form` — so
+   without this the privacy step would show two raw native dropdowns in the
+   middle of a styled card. */
+.onboarding-field select {
+  width: 100%;
+  max-width: 300px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.onboarding-field select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* `small` is inline, so the margins `.onboarding-hint` carries would be
+   dropped on the floor. These hints are paragraphs that happen to be marked up
+   as fine print. */
+.onboarding-field small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+/* The review step. `grid-template-columns: auto 1fr` keeps the labels in one
+   column and lets a long model id take the rest of the row; it collapses to a
+   single column below 420px, where two columns would leave the value with about
+   ten characters. */
+.onboarding-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.onboarding-summary dt {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.onboarding-summary dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 420px) {
+  .onboarding-summary {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .onboarding-summary dd {
+    margin-bottom: 8px;
+  }
 }
 .onboarding-actions {
   display: flex;
@@ -444,7 +695,10 @@
  * removed at the call sites so tokens stay the single source of truth (§4.1).
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-.form-grid { display: grid; gap: 12px; }
+/* Capped, not full-bleed. At the 960px sheet an uncapped field stack put a
+   690px-wide select behind the word "Dark"; the cap keeps a control the size of
+   the value it holds. Appearance overrides this — see .form-grid.appearance-form. */
+.form-grid { display: grid; gap: 12px; max-width: 34rem; }
 
 .gen-fields {
   display: grid;
@@ -458,7 +712,7 @@
 .gen-fields input,
 .gen-fields textarea {
   width: 100%;
-  max-width: 28rem;
+  max-width: 34rem;
   font: inherit;
   font-size: 13px;
   padding: 6px 8px;

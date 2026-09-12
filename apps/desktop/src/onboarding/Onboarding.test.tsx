@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings } from '../ipc/contracts';
 import { Onboarding } from './Onboarding';
@@ -42,7 +42,7 @@ vi.mock('../ipc/client', () => ({
   revokeToolApprovalMemory: vi.fn().mockResolvedValue(true),
 }));
 
-import { getOnboardingState, updateSettings } from '../ipc/client';
+import { getOnboardingState, listProviderDescriptors, updateSettings } from '../ipc/client';
 
 const baseSettings: AppSettings = {
   activeProvider: 'anthropic',
@@ -50,6 +50,7 @@ const baseSettings: AppSettings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'system',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
@@ -101,27 +102,55 @@ function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> =
   return { onSettingsChange, onStatus, onComplete };
 }
 
+/** The dot nav is clickable, so a step is reachable in one jump rather than a
+ *  run of Continues that has to be re-counted every time a step is added. */
+function goToStep(name: RegExp) {
+  fireEvent.click(screen.getByRole('button', { name }));
+}
+
 function goToFinishStep() {
-  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  goToStep(/· Finish/i);
 }
 
 describe('Onboarding (Phase 6 M6.4)', () => {
-  it('renders welcome, provider step, and progress dots', () => {
+  /* The steps now write through on change, so `updateSettings` is called during
+     ordinary interaction rather than only at the gate. Reset it per test: a
+     `mockImplementation` left standing from the ordering test below would
+     otherwise decide what a later test sees. The default returns the patch
+     merged into the baseline, which is what Rust does. */
+  beforeEach(() => {
+    vi.mocked(updateSettings).mockReset();
+    vi.mocked(updateSettings).mockImplementation(
+      async (patch) => ({ ...baseSettings, ...patch }) as AppSettings,
+    );
+    vi.mocked(getOnboardingState).mockReset();
+    vi.mocked(getOnboardingState).mockResolvedValue({
+      onboardingCompleted: false,
+      hasProviderCredential: true,
+      migrationRecovery: null,
+    });
+  });
+
+  it('renders welcome, appearance step, and progress dots', () => {
     renderOnboarding();
     expect(screen.getByText('Welcome to Conduit')).toBeInTheDocument();
-    expect(screen.getByText('Choose a provider and bring your key')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /1 · Provider/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /2 · Connectors/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /3 · Finish/i })).toBeInTheDocument();
+    // Appearance leads: a user who cannot read the interface cannot act on any
+    // later step, and the language switch re-mounts App, which is free here and
+    // destructive once the key field below has something in it.
+    expect(screen.getByText('Set your language and look')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /1 · Appearance/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /2 · Provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /3 · Privacy/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /4 · Connectors/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /5 · Finish/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Get started' })).not.toBeInTheDocument();
   });
 
-  it('shows the diagnostics disclosure copy on the finish step', () => {
+  it('shows the diagnostics disclosure copy on the privacy step', () => {
     renderOnboarding();
-    goToFinishStep();
-    const copy = screen.getAllByText(/never secrets, base URLs, allowlists, or conversation content/i);
+    goToStep(/· Privacy/i);
+    const copy = screen.getAllByText(/never secrets, base URLs, allowlists, or chat content/i);
     expect(copy).toHaveLength(1);
   });
 
@@ -164,9 +193,163 @@ describe('Onboarding (Phase 6 M6.4)', () => {
 
   it('toggling diagnostics updates settings', () => {
     const { onSettingsChange } = renderOnboarding({ settings: { ...baseSettings, diagnosticsEnabled: false } });
-    goToFinishStep();
+    goToStep(/· Privacy/i);
     const checkbox = screen.getByRole('checkbox', { name: /Enable diagnostics export/i });
     fireEvent.click(checkbox);
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ diagnosticsEnabled: true }));
+  });
+
+  it('persists a privacy toggle immediately rather than waiting for the finish gate', async () => {
+    // Four steps of choices are a lot to lose. Every step that edits settings
+    // directly writes through on change, so quitting mid-setup keeps what was
+    // already decided — and so the language re-mount below cannot roll one back.
+    const { onSettingsChange } = renderOnboarding();
+    goToStep(/· Privacy/i);
+    fireEvent.click(screen.getByRole('checkbox', { name: /Local-only mode/i }));
+    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ localOnly: false }));
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ localOnly: false })),
+    );
+  });
+
+  describe('the provider step', () => {
+    it('clears local-only mode when a cloud provider is chosen', async () => {
+      /* `local_only` defaults to true and `active_provider` to `anthropic`, and
+       * `stream_manager.rs` rejects every adapter that is not local while the
+       * flag is on — so the documented first run used to end at "Cloud provider
+       * 'anthropic' is disabled while local_only mode is on", naming a setting
+       * the user had never seen. Choosing a cloud provider is the decision to
+       * leave local-only mode; this makes that explicit instead of fatal. */
+      const { onSettingsChange, onStatus } = renderOnboarding();
+      goToStep(/· Provider/i);
+      const select = await screen.findByDisplayValue('Anthropic');
+      fireEvent.change(select, { target: { value: 'openai' } });
+
+      expect(onSettingsChange).toHaveBeenCalledWith(
+        expect.objectContaining({ activeProvider: 'openai', localOnly: false }),
+      );
+      // Announced, not silent: a setting that changes behind the user is the
+      // problem this fixes, not the mechanism it uses.
+      expect(onStatus).toHaveBeenCalledWith(expect.stringContaining('OpenAI'));
+    });
+
+    it('persists the provider choice instead of holding it until the gate', async () => {
+      /* Found by running the real app. The provider step used to hand App's raw
+       * setter straight through, so nothing it changed reached disk until "Get
+       * started" — which silently undid the local-only fix above. The flag was
+       * cleared in memory, the privacy step's checkbox agreed, and quitting
+       * before the end left `local_only: true` on disk beside a cloud provider:
+       * the original trap, now with the UI having claimed it was handled.
+       *
+       * Debounced (`useAutoSave`, 250ms), because this step has free-text
+       * fields, so this waits rather than asserting synchronously. */
+      renderOnboarding();
+      goToStep(/· Provider/i);
+      const select = await screen.findByDisplayValue('Anthropic');
+      fireEvent.change(select, { target: { value: 'openai' } });
+
+      await waitFor(() =>
+        expect(updateSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ activeProvider: 'openai', localOnly: false }),
+        ),
+      );
+    });
+
+    it('leaves local-only mode alone when a local provider is chosen', async () => {
+      // One-way. Running a local model once is not a request to start blocking
+      // cloud providers, and that flag reaches well beyond this dropdown.
+      const { onSettingsChange, onStatus } = renderOnboarding();
+      goToStep(/· Provider/i);
+      const select = await screen.findByDisplayValue('Anthropic');
+      fireEvent.change(select, { target: { value: 'ollama' } });
+
+      expect(onSettingsChange).toHaveBeenCalledWith(
+        expect.objectContaining({ activeProvider: 'ollama', localOnly: true }),
+      );
+      expect(onStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the appearance step', () => {
+    it('offers only locales with a catalog behind them, named in their own language', () => {
+      renderOnboarding();
+      expect(screen.getByRole('option', { name: 'Deutsch' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: '日本語' })).toBeInTheDocument();
+      // The pseudo-locale is generated for layout QA and is never offered.
+      expect(screen.queryByRole('option', { name: /Pseudo/i })).not.toBeInTheDocument();
+    });
+
+    it('writes the language to Rust BEFORE announcing it to the provider', async () => {
+      /* The regression this file exists to prevent.
+       *
+       * `I18nProvider` carries `key={locale}`, so announcing a language
+       * re-mounts <App>: settings reset to the placeholder and the boot IPC
+       * re-runs, after which App reconciles by calling `setPreference` with
+       * whatever Rust returned. Announce first and Rust still holds the old
+       * value, so the reconcile reverts the choice — and since that flip changes
+       * the key again, it can repeat. The write has to land first.
+       *
+       * Asserted as an ordering, not as "both happened", because both happening
+       * in the wrong order is exactly the bug. */
+      const order: string[] = [];
+      vi.mocked(updateSettings).mockImplementation(async (patch) => {
+        order.push('write');
+        return { ...baseSettings, ...patch };
+      });
+      const onSettingsChange = vi.fn(() => {
+        order.push('announce');
+      });
+
+      renderOnboarding({ onSettingsChange });
+      fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'de' } });
+
+      await waitFor(() => expect(order).toContain('announce'));
+      expect(order).toEqual(['write', 'announce']);
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ language: 'de' }));
+    });
+
+    it('leaves the language alone when the write fails', async () => {
+      // Announcing a language Rust rejected would re-mount into a locale that
+      // does not survive the next boot — the same revert, reached the other way.
+      vi.mocked(updateSettings).mockRejectedValueOnce(new Error('disk full'));
+      const { onSettingsChange, onStatus } = renderOnboarding();
+
+      fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'fr' } });
+
+      await waitFor(() => expect(onStatus).toHaveBeenCalledWith(expect.stringContaining('save')));
+      expect(onSettingsChange).not.toHaveBeenCalled();
+    });
+
+    it('applies the theme optimistically, without waiting for the write', () => {
+      // The opposite order, and correct here: theme repaints through App's
+      // effect and re-mounts nothing, so making the user wait on IPC to see a
+      // colour change would be latency for its own sake.
+      const { onSettingsChange } = renderOnboarding();
+      fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'light' } });
+      expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
+    });
+  });
+
+  describe('the review step', () => {
+    it('shows back what was actually configured', async () => {
+      renderOnboarding({
+        settings: { ...baseSettings, language: 'ja', theme: 'light', localOnly: false },
+      });
+      goToFinishStep();
+
+      // The provider by its label, not its id: "Anthropic", never "anthropic".
+      expect(await screen.findByText('Anthropic')).toBeInTheDocument();
+      expect(screen.getByText('claude-sonnet-4')).toBeInTheDocument();
+      expect(screen.getByText('日本語')).toBeInTheDocument();
+      expect(screen.getByText('Light')).toBeInTheDocument();
+      expect(screen.getByText('Off')).toBeInTheDocument();
+    });
+
+    it('falls back to the provider id when descriptors cannot be listed', async () => {
+      vi.mocked(listProviderDescriptors).mockRejectedValueOnce(new Error('offline'));
+      renderOnboarding({ settings: { ...baseSettings, activeProvider: 'openai_compat' } });
+      goToFinishStep();
+      expect(await screen.findByText('openai_compat')).toBeInTheDocument();
+    });
   });
 });

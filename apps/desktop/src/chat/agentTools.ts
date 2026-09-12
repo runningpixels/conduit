@@ -4,6 +4,8 @@ import type { AssistantStreamState, ToolCallState } from './streamState';
 import type { DocumentTurnIntent } from './documentTurnIntent';
 import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
+import type { Translate } from '../i18n';
+import { documentKindLabel } from '../lib/documentKind';
 
 const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
@@ -609,26 +611,30 @@ const CONTENT_FIELD_BY_TOOL: Record<string, string> = {
   edit_text_document: 'updated_text',
 };
 
+/* Ids, not display words. These reach the UI through `documentKindLabel` and
+ * an ICU `select`; a word here would be English in every locale. */
 const KIND_BY_TOOL: Record<string, string> = {
-  write_html_document: 'HTML',
-  edit_html_document: 'HTML',
-  write_markdown_document: 'Markdown',
-  edit_markdown_document: 'Markdown',
-  write_text_document: 'Text',
-  edit_text_document: 'Text',
+  write_html_document: 'html',
+  edit_html_document: 'html',
+  write_markdown_document: 'markdown',
+  edit_markdown_document: 'markdown',
+  write_text_document: 'text',
+  edit_text_document: 'text',
 };
 
 const ACTION_BY_TOOL: Record<string, string> = {
-  write_html_document: 'Create',
-  edit_html_document: 'Edit',
-  write_markdown_document: 'Create',
-  edit_markdown_document: 'Edit',
-  write_text_document: 'Create',
-  edit_text_document: 'Edit',
+  write_html_document: 'create',
+  edit_html_document: 'edit',
+  write_markdown_document: 'create',
+  edit_markdown_document: 'edit',
+  write_text_document: 'create',
+  edit_text_document: 'edit',
 };
 
 export interface DocumentToolSummary {
+  /** `create` | `edit` | `document`. An id — translate before showing it. */
   action: string;
+  /** `html` | `markdown` | `text` | `document`. An id, likewise. */
   kind: string;
   title?: string;
   filename?: string;
@@ -647,8 +653,8 @@ export function summarizeDocumentToolCall(toolCall: ToolCallState): DocumentTool
   const title = typeof args.title === 'string' ? args.title : undefined;
   const filename = typeof args.filename === 'string' ? args.filename : undefined;
   return {
-    action: ACTION_BY_TOOL[toolCall.name] ?? 'Document',
-    kind: KIND_BY_TOOL[toolCall.name] ?? 'Document',
+    action: ACTION_BY_TOOL[toolCall.name] ?? 'document',
+    kind: KIND_BY_TOOL[toolCall.name] ?? 'document',
     title,
     filename,
     lineCount,
@@ -657,14 +663,6 @@ export function summarizeDocumentToolCall(toolCall: ToolCallState): DocumentTool
 }
 
 /// Artifact `kind` as it appears in backend error strings → display word.
-const KIND_WORD: Record<string, string> = {
-  markdown: 'Markdown',
-  html: 'HTML',
-  code: 'Code',
-  json: 'JSON',
-  text: 'Text',
-};
-
 /// `ensure_kind` in `src-tauri/src/agent_tools.rs` — the only tool error whose
 /// wording maps to something a reader can act on.
 const KIND_MISMATCH = /^artifact '[^']+' is '([^']+)' not '([^']+)'$/;
@@ -677,13 +675,13 @@ const KIND_MISMATCH = /^artifact '[^']+' is '([^']+)' not '([^']+)'$/;
  * sentence that says what happened and what to do; everything else falls back
  * to the original text. Callers keep the raw string available either way.
  */
-export function explainToolError(error: string | undefined, fallback: string): string {
+export function explainToolError(error: string | undefined, fallback: string, t: Translate): string {
   if (!error) return fallback;
   const mismatch = KIND_MISMATCH.exec(error.trim());
   if (mismatch) {
-    const actual = KIND_WORD[mismatch[1]] ?? mismatch[1];
-    const expected = KIND_WORD[mismatch[2]] ?? mismatch[2];
-    return `This document is ${actual} and a document's format is fixed once it is created. Ask for a new ${expected} document instead of converting this one.`;
+    const actual = documentKindLabel(mismatch[1], t);
+    const expected = documentKindLabel(mismatch[2], t);
+    return t('chat.toolError.kindMismatch', { actual, expected });
   }
   return error;
 }

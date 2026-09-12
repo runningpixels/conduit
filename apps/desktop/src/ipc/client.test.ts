@@ -131,22 +131,28 @@ describe('artifact + attachment IPC wrappers', () => {
 
   it('exportConversationDialog calls export_conversation_dialog with camelCase args', async () => {
     invoke.mockResolvedValue({ exportedTo: '/o.json', bytesWritten: 42 });
-    const res = await exportConversationDialog('c1', 'json', true);
+    // The dialog's own chrome rides along as arguments: the OS draws it
+    // outside the webview, so the renderer has to hand it over translated.
+    const res = await exportConversationDialog('c1', 'json', 'Export as JSON', 'JSON', true);
     expect(invoke).toHaveBeenCalledWith('export_conversation_dialog', {
       conversationId: 'c1',
       format: 'json',
       includeAttachments: true,
+      dialogTitle: 'Export as JSON',
+      filterName: 'JSON',
     });
     expect(res).toEqual({ exportedTo: '/o.json', bytesWritten: 42 });
   });
 
   it('exportConversationDialog defaults includeAttachments to false', async () => {
     invoke.mockResolvedValue(null);
-    const res = await exportConversationDialog('c1', 'markdown');
+    const res = await exportConversationDialog('c1', 'markdown', 'Export as Markdown', 'Markdown');
     expect(invoke).toHaveBeenCalledWith('export_conversation_dialog', {
       conversationId: 'c1',
       format: 'markdown',
       includeAttachments: false,
+      dialogTitle: 'Export as Markdown',
+      filterName: 'Markdown',
     });
     expect(res).toBeNull();
   });
@@ -248,9 +254,13 @@ describe('artifact + attachment IPC wrappers', () => {
     });
 
     invoke.mockResolvedValue(undefined);
-    await signinRemoteConnector('remote:x:1');
+    // The callback page's copy travels with the request: it renders in the
+    // system browser, where the catalog cannot reach.
+    await signinRemoteConnector('remote:x:1', 'Signed in.', 'Failed: {detail}');
     expect(invoke).toHaveBeenCalledWith('signin_remote_connector', {
       connectorVersionId: 'remote:x:1',
+      signedInMessage: 'Signed in.',
+      signInFailedMessage: 'Failed: {detail}',
     });
   });
 

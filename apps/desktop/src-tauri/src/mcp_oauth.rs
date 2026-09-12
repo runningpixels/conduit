@@ -150,11 +150,46 @@ pub fn persist_token(
     )
 }
 
+/// The two sentences the OAuth callback page shows, already translated.
+///
+/// This page is served by a loopback listener and rendered in the user's
+/// **system browser** — outside the webview, and so out of reach of the
+/// message catalog. Rather than give Rust a second catalog for two strings,
+/// the renderer (which starts the sign-in and knows the language) hands them
+/// down (D15).
+///
+/// `sign_in_failed` carries a literal `{detail}` where the authorization
+/// server's own error text belongs. The renderer cannot know that text, so it
+/// passes the placeholder through untouched and this module substitutes it.
+/// The alternative — a translated prefix that Rust concatenates a detail onto
+/// — would put the sentence back together in Rust, in an order no translator
+/// could change.
+#[derive(Debug, Clone)]
+pub struct OAuthPageCopy {
+    pub signed_in: String,
+    pub sign_in_failed: String,
+}
+
+impl OAuthPageCopy {
+    /// English, for callers with no renderer behind them (tests, and the
+    /// `signin_remote_connector_inner` unit path).
+    pub fn english() -> Self {
+        OAuthPageCopy {
+            signed_in: format!(
+                "Signed in. You can close this window and return to {}.",
+                crate::brand::app_name()
+            ),
+            sign_in_failed: "Sign-in failed: {detail}".to_string(),
+        }
+    }
+}
+
 /// Run CIMD + PKCE against the MCP server's authorization server.
 pub async fn authorize_connector(
     mcp_url: &str,
     www_authenticate: Option<&str>,
     open_browser: impl FnOnce(&str) -> Result<(), String>,
+    page: &OAuthPageCopy,
 ) -> Result<StoredToken, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
@@ -192,7 +227,7 @@ pub async fn authorize_connector(
         }
     }
     open_browser(auth.as_str())?;
-    let code = wait_for_callback(listener, &state).await?;
+    let code = wait_for_callback(listener, &state, page).await?;
     exchange_code(
         &client,
         &as_meta.token_endpoint,
@@ -214,7 +249,11 @@ async fn bind_loopback() -> Result<(TcpListener, String), String> {
     Err("could not bind a loopback OAuth callback port (19876–19885 are busy)".to_string())
 }
 
-async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Result<String, String> {
+async fn wait_for_callback(
+    listener: TcpListener,
+    expected_state: &str,
+    page: &OAuthPageCopy,
+) -> Result<String, String> {
     let accepted = timeout(AUTH_WAIT, listener.accept())
         .await
         .map_err(|_| "timed out waiting for the OAuth sign-in to finish".to_string())?
@@ -235,19 +274,14 @@ async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Resul
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
     let body = if pairs.contains_key("error") {
-        format!(
-            "Sign-in failed: {}",
-            pairs
-                .get("error_description")
-                .or_else(|| pairs.get("error"))
-                .map(|s| s.as_str())
-                .unwrap_or("authorization error")
-        )
+        let detail = pairs
+            .get("error_description")
+            .or_else(|| pairs.get("error"))
+            .map(|s| s.as_str())
+            .unwrap_or("authorization error");
+        page.sign_in_failed.replace("{detail}", detail)
     } else {
-        format!(
-            "Signed in. You can close this window and return to {}.",
-            crate::brand::app_name()
-        )
+        page.signed_in.clone()
     };
     let html = format!("<!doctype html><html><body><p>{body}</p></body></html>");
     let resp = format!(

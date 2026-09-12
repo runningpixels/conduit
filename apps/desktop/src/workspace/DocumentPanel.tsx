@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { BrandConfig } from '@conduit/config-schema';
-import type { Artifact, ArtifactContent, ArtifactKind, FileState } from '../ipc/contracts';
+import type { Artifact, ArtifactContent, FileState } from '../ipc/contracts';
 import {
   getArtifactContentBytes,
   openExternalUrl,
@@ -14,7 +14,7 @@ import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
-import { formatSize, inlineArtifactText, timeAgo } from '../artifacts/format';
+import { inlineArtifactText } from '../artifacts/format';
 import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
 import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
@@ -24,16 +24,11 @@ import type { PendingArtifact } from '../artifacts/pendingArtifact';
 import { applyBrand, applyBrandTheme, clearBrand } from '../brand/applyBrand';
 import { allowUserBranding } from '../brand/buildFlags';
 import { ConfirmDialog } from '@conduit/ui';
+import { useRichT, useT } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
+import { documentKindLabel } from '../lib/documentKind';
 
 type DocTab = 'preview' | 'source';
-
-const KIND_LABEL: Record<ArtifactKind, string> = {
-  markdown: 'Markdown',
-  text: 'Text',
-  code: 'Code',
-  json: 'JSON',
-  html: 'HTML',
-};
 
 /// Whether to show a sync/state dot for this artifact.
 function showStateDot(state: FileState, hasFilePayload: boolean): boolean {
@@ -128,19 +123,28 @@ function ArtifactPendingState({
   collapseShortcutHint?: string;
   onDismissPending?: () => void;
 }) {
-  const kindLabel = KIND_LABEL[pending.kind] ?? pending.kind;
-  const title = pending.title?.trim() || `${kindLabel} document`;
-  const action = pending.mode === 'edit' ? 'Updating' : 'Generating';
+  const t = useT();
+  const kindLabel = documentKindLabel(pending.kind, t);
+  const title = pending.title?.trim() || t('workspace.documentPanel.pending.title', { kind: kindLabel });
+  const isEdit = pending.mode === 'edit';
+  const actionLabel = isEdit
+    ? t('workspace.documentPanel.pending.actionUpdating')
+    : t('workspace.documentPanel.pending.actionGenerating');
   // A turn that died mid-write leaves this panel as the only surface still
   // claiming to be working. `failed` stops the shimmer and says what happened
   // instead of vanishing, which would read as the document quietly succeeding
   // somewhere else.
   const failed = pending.status === 'failed';
+  const statusText = failed
+    ? t('workspace.documentPanel.pending.statusFailed')
+    : isEdit
+      ? t('workspace.documentPanel.pending.statusUpdating')
+      : t('workspace.documentPanel.pending.statusGenerating');
 
   return (
     <section
       className="doc-panel doc-panel-pending"
-      aria-label="Document panel"
+      aria-label={t('workspace.documentPanel.ariaLabel')}
       {...(failed ? {} : { 'aria-busy': true as const })}
     >
       <div className="doc-toolbar">
@@ -148,7 +152,7 @@ function ArtifactPendingState({
           <div className="ficon"><FilePlainIcon /></div>
           <div className="doc-title">
             <b title={title}>{title}</b>
-            <small>{kindLabel} · {failed ? 'failed' : `${action.toLowerCase()}…`}</small>
+            <small>{kindLabel} · {statusText}</small>
           </div>
         </div>
         <span className="doc-toolbar-spacer" />
@@ -157,12 +161,12 @@ function ArtifactPendingState({
             <button
               className="icon-btn"
               type="button"
-              aria-label="Hide artifact panel"
+              aria-label={t('workspace.documentPanel.hidePanelAriaLabel')}
               aria-pressed={false}
               title={
                 collapseShortcutHint
-                  ? `Hide artifact panel (${collapseShortcutHint})`
-                  : 'Hide artifact panel'
+                  ? t('workspace.documentPanel.hidePanelTitleWithShortcut', { shortcut: collapseShortcutHint })
+                  : t('workspace.documentPanel.hidePanelAriaLabel')
               }
               onClick={onCollapsePanel}
             >
@@ -175,12 +179,16 @@ function ArtifactPendingState({
         {failed ? (
           <div className="artifact-pending failed" role="alert">
             <p className="artifact-pending-copy">
-              {action === 'Updating' ? 'Update' : 'Generation'} failed —{' '}
-              {pending.error?.trim() || 'the turn ended before the document was written.'}
+              {t('workspace.documentPanel.pending.failed', {
+                noun: isEdit
+                  ? t('workspace.documentPanel.pending.nounUpdate')
+                  : t('workspace.documentPanel.pending.nounGeneration'),
+                detail: pending.error?.trim() || t('workspace.documentPanel.pending.failedDefaultDetail'),
+              })}
             </p>
             {onDismissPending && (
               <button type="button" className="btn" onClick={onDismissPending}>
-                Dismiss
+                {t('common.actions.dismiss')}
               </button>
             )}
           </div>
@@ -188,7 +196,7 @@ function ArtifactPendingState({
           <div className="artifact-pending">
             <div className="artifact-skeleton" aria-hidden="true" />
             <p className="artifact-pending-copy">
-              {action} {kindLabel.toLowerCase()} document…
+              {t('workspace.documentPanel.pending.body', { action: actionLabel, kind: pending.kind })}
             </p>
           </div>
         )}
@@ -221,6 +229,9 @@ export function DocumentPanel({
   onBrandApplied,
   brandingEnabled = false,
 }: DocumentPanelProps) {
+  const t = useT();
+  const tr = useRichT();
+  const fmt = useFormatters();
   const [copied, setCopied] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabValue, setEditingTabValue] = useState('');
@@ -393,7 +404,7 @@ export function DocumentPanel({
     if (!brandCandidate) return;
     applyBrandTheme(brandCandidate.config, effectiveTheme);
     setBrandPreviewing(true);
-    onStatus?.('Previewing this theme — not saved.');
+    onStatus?.(t('workspace.documentPanel.toast.previewingTheme'));
   }
 
   /** The way back out of a preview: restore whatever was actually active
@@ -406,7 +417,7 @@ export function DocumentPanel({
       clearBrand();
     }
     setBrandPreviewing(false);
-    onStatus?.('Stopped previewing.');
+    onStatus?.(t('workspace.documentPanel.toast.stoppedPreviewing'));
   }
 
   /** Apply: persist through the same `set_brand_config` path Settings' brand
@@ -424,11 +435,11 @@ export function DocumentPanel({
       onBrandApplied?.(result);
       setBrandPreviewing(false);
       setConfirmApplyBrand(false);
-      onStatus?.('Brand applied.');
+      onStatus?.(t('workspace.documentPanel.toast.brandApplied'));
     } catch (e) {
       const message = e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
       setBrandApplyError(message);
-      onStatus?.(`Apply failed: ${message}`);
+      onStatus?.(t('workspace.documentPanel.toast.applyFailed', { error: message }));
     } finally {
       setApplyingBrand(false);
     }
@@ -538,8 +549,8 @@ export function DocumentPanel({
     return <ArtifactEmptyState logoSrc={logoSrc} />;
   }
 
-  const name = artifact.title ?? 'Untitled artifact';
-  const kindLabel = KIND_LABEL[artifact.kind] ?? artifact.kind;
+  const name = artifact.title ?? t('workspace.documentPanel.untitledArtifact');
+  const kindLabel = documentKindLabel(artifact.kind, t);
 
   async function handleCopy() {
     if (!raw) return;
@@ -607,11 +618,15 @@ export function DocumentPanel({
     }
   }
 
-  const artifactPath = artifact.contentPath ?? '(inline payload)';
-  const metaModified = timeAgo(artifact.updatedAt ?? artifact.createdAt);
-  const metaSize = formatSize(artifact.sizeBytes);
+  const artifactPath = artifact.contentPath ?? t('workspace.documentPanel.inlinePayloadFallback');
+  const metaModified = fmt.timeAgo(artifact.updatedAt ?? artifact.createdAt);
+  const metaSize = fmt.size(artifact.sizeBytes);
   const metaVersion = versionLabel(artifact);
-  const footMeta = [metaSize, ...(metaVersion ? [metaVersion] : []), `saved ${metaModified}`].join(' · ');
+  const footMeta = [
+    metaSize,
+    ...(metaVersion ? [metaVersion] : []),
+    t('workspace.documentPanel.savedAt', { modified: metaModified }),
+  ].join(' · ');
 
   function beginRename(id: string, currentTitle: string) {
     setEditingTabId(id);
@@ -633,7 +648,7 @@ export function DocumentPanel({
   return (
     <section
       className="doc-panel"
-      aria-label="Document panel"
+      aria-label={t('workspace.documentPanel.ariaLabel')}
       data-doc-tab={docTab}
       data-file-state={activeFileState}
       data-multi-open={multiOpen ? 'true' : 'false'}
@@ -667,8 +682,8 @@ export function DocumentPanel({
                     <button
                       className="icon-btn tab-rename"
                       type="button"
-                      aria-label={`Rename ${name}`}
-                      title="Rename"
+                      aria-label={t('workspace.documentPanel.renameAriaLabel', { name })}
+                      title={t('common.actions.rename')}
                       onClick={() => beginRename(artifact.id, name)}
                     >
                       <PencilIcon />
@@ -678,8 +693,8 @@ export function DocumentPanel({
                     <button
                       className="icon-btn tab-close"
                       type="button"
-                      aria-label={`Close ${name}`}
-                      title="Close"
+                      aria-label={t('workspace.documentPanel.closeAriaLabel', { name })}
+                      title={t('common.actions.close')}
                       onClick={() => onCloseTab(artifact.id)}
                     >
                       &times;
@@ -696,10 +711,10 @@ export function DocumentPanel({
             </div>
           </div>
         ) : (
-          <div className="artifact-tabs" aria-label="Open artifacts">
+          <div className="artifact-tabs" aria-label={t('workspace.documentPanel.openArtifactsAriaLabel')}>
             {openArtifacts.map((a) => {
               const state = fileStateMap[a.id] ?? 'noFileContent';
-              const tabTitle = a.title ?? 'Untitled artifact';
+              const tabTitle = a.title ?? t('workspace.documentPanel.untitledArtifact');
               const isActive = a.id === artifact.id;
               return (
                 <div
@@ -744,8 +759,8 @@ export function DocumentPanel({
                     <button
                       className="tab-rename"
                       type="button"
-                      aria-label={`Rename ${tabTitle}`}
-                      title="Rename"
+                      aria-label={t('workspace.documentPanel.renameAriaLabel', { name: tabTitle })}
+                      title={t('common.actions.rename')}
                       onClick={() => beginRename(a.id, tabTitle)}
                     >
                       <PencilIcon />
@@ -755,7 +770,7 @@ export function DocumentPanel({
                     <button
                       className="tab-close"
                       type="button"
-                      aria-label={`Close ${tabTitle}`}
+                      aria-label={t('workspace.documentPanel.closeAriaLabel', { name: tabTitle })}
                       onClick={() => onCloseTab(a.id)}
                     >
                       &times;
@@ -769,7 +784,7 @@ export function DocumentPanel({
 
         <span className="doc-toolbar-spacer" />
 
-        <div className="doc-view-toggle" role="tablist" aria-label="View mode">
+        <div className="doc-view-toggle" role="tablist" aria-label={t('workspace.documentPanel.viewModeAriaLabel')}>
           <button
             className={`doc-view-btn${docTab === 'preview' ? ' active' : ''}`}
             type="button"
@@ -777,7 +792,7 @@ export function DocumentPanel({
             aria-selected={docTab === 'preview'}
             onClick={() => onSelectTab('preview')}
           >
-            Preview
+            {t('workspace.documentPanel.tab.preview')}
           </button>
           <button
             className={`doc-view-btn${docTab === 'source' ? ' active' : ''}`}
@@ -786,7 +801,7 @@ export function DocumentPanel({
             aria-selected={docTab === 'source'}
             onClick={() => onSelectTab('source')}
           >
-            Source
+            {t('workspace.documentPanel.tab.source')}
           </button>
         </div>
 
@@ -796,7 +811,7 @@ export function DocumentPanel({
               ref={menuTriggerRef}
               className="icon-btn"
               type="button"
-              aria-label="More actions"
+              aria-label={t('workspace.documentPanel.moreActionsAriaLabel')}
               aria-expanded={menuOpen}
               aria-haspopup="menu"
               onClick={() => setMenuOpen((open) => !open)}
@@ -808,11 +823,11 @@ export function DocumentPanel({
               onClose={() => setMenuOpen(false)}
               triggerRef={menuTriggerRef}
               className="menu doc-more-menu"
-              label="Artifact actions"
+              label={t('workspace.documentPanel.actionsMenuLabel')}
             >
               <button className="menu-item" type="button" role="menuitem" disabled={!raw} onClick={() => void handleCopy()}>
                 <CopyIcon />
-                {copied ? 'Copied' : 'Copy contents'}
+                {copied ? t('workspace.documentPanel.menu.copied') : t('workspace.documentPanel.menu.copyContents')}
               </button>
               <button
                 className="menu-item"
@@ -822,7 +837,7 @@ export function DocumentPanel({
                 onClick={() => void handleExport()}
               >
                 <DownloadIcon />
-                {exporting ? 'Exporting…' : 'Save a copy…'}
+                {exporting ? t('workspace.documentPanel.menu.exporting') : t('workspace.documentPanel.menu.saveCopy')}
               </button>
               {onCloseTab && (
                 <button
@@ -835,13 +850,13 @@ export function DocumentPanel({
                   }}
                 >
                   <ChevronRight />
-                  Close
+                  {t('common.actions.close')}
                 </button>
               )}
               <div className="menu-sep" role="separator" />
               <div className="menu-label" title={artifactPath}>{artifactPath}</div>
               <div className="doc-meta-row">
-                {metaSize} · modified {metaModified}
+                {t('workspace.documentPanel.menu.metaLine', { size: metaSize, modified: metaModified })}
                 {metaVersion ? <span className="tail">{metaVersion}</span> : null}
               </div>
             </Menu>
@@ -850,9 +865,9 @@ export function DocumentPanel({
             <button
               className="icon-btn"
               type="button"
-              aria-label="Hide artifact panel"
+              aria-label={t('workspace.documentPanel.hidePanelAriaLabel')}
               aria-pressed={false}
-              title={`Hide artifact panel (${collapseHint})`}
+              title={t('workspace.documentPanel.hidePanelTitleWithShortcut', { shortcut: collapseHint })}
               onClick={onCollapsePanel}
             >
               <ChevronRight />
@@ -865,40 +880,32 @@ export function DocumentPanel({
         <DocumentPanelErrorBoundary>
         {pendingArtifact?.mode === 'edit' && (
           <div className="doc-banner hold" role="status">
-            <strong>Updating document…</strong> The assistant is revising this artifact.
+            {tr('workspace.documentPanel.banner.updating')}
           </div>
         )}
         {activeFileState === 'modified' && !dismissedModified && (
           <div className="doc-banner warn">
-            <strong>Modified on disk.</strong> Review before continuing.
+            {tr('workspace.documentPanel.banner.modifiedOnDisk')}
             <div className="row">
               <button className="btn ghost" type="button" disabled={saving} onClick={() => void handleUseDisk()}>
-                Use disk
+                {t('workspace.documentPanel.banner.useDisk')}
               </button>
               <button className="btn ghost" type="button" onClick={() => setDismissedModified(true)}>
-                Keep current
+                {t('workspace.documentPanel.banner.keepCurrent')}
               </button>
             </div>
           </div>
         )}
         {activeFileState === 'missing' && (
           <div className="doc-banner bad">
-            <strong>File missing.</strong> The payload is no longer at its indexed path.
+            {tr('workspace.documentPanel.banner.fileMissing')}
           </div>
         )}
         {brandEligible && (
-          <div className="doc-banner hold" role="status" aria-label="Brand theme actions">
-            {brandPreviewing ? (
-              <>
-                <strong>Previewing this theme.</strong> Colours are applied locally and not saved —
-                leaving preview restores your current look.
-              </>
-            ) : (
-              <>
-                <strong>This document defines a brand theme.</strong> Preview it locally, or apply it
-                to replace your saved brand.
-              </>
-            )}
+          <div className="doc-banner hold" role="status" aria-label={t('workspace.documentPanel.brandBanner.ariaLabel')}>
+            {brandPreviewing
+              ? tr('workspace.documentPanel.brandBanner.previewing')
+              : tr('workspace.documentPanel.brandBanner.detected')}
             {brandApplyError && (
               <p className="brand-error" role="alert">
                 {brandApplyError}
@@ -907,11 +914,11 @@ export function DocumentPanel({
             <div className="row">
               {brandPreviewing ? (
                 <button className="btn ghost" type="button" onClick={handleStopBrandPreview}>
-                  Stop previewing
+                  {t('workspace.documentPanel.brandBanner.stopPreviewing')}
                 </button>
               ) : (
                 <button className="btn ghost" type="button" onClick={handleBrandPreview}>
-                  Preview
+                  {t('workspace.documentPanel.brandBanner.previewButton')}
                 </button>
               )}
               <button
@@ -920,7 +927,9 @@ export function DocumentPanel({
                 disabled={applyingBrand}
                 onClick={() => setConfirmApplyBrand(true)}
               >
-                {applyingBrand ? 'Applying…' : 'Apply…'}
+                {applyingBrand
+                  ? t('workspace.documentPanel.brandBanner.applying')
+                  : t('workspace.documentPanel.brandBanner.applyButton')}
               </button>
             </div>
           </div>
@@ -936,14 +945,14 @@ export function DocumentPanel({
               if (isFilePayload && loadFailed) {
                 return (
                   <DocPlaceholder>
-                    Payload too large to preview or could not be read. Export or open details.
+                    {t('workspace.documentPanel.preview.payloadTooLarge')}
                   </DocPlaceholder>
                 );
               }
               const { Preview } = selectRenderer(effectiveArtifact);
               const props = buildPreviewProps(effectiveArtifact, allowlist, styledPreview);
               if (!Preview || !props) {
-                return <DocPlaceholder>No content yet.</DocPlaceholder>;
+                return <DocPlaceholder>{t('workspace.documentPanel.preview.noContent')}</DocPlaceholder>;
               }
               return (
                 <Preview
@@ -956,18 +965,22 @@ export function DocumentPanel({
 
           <div className="doc-pane" data-doc-pane="source">
             {isFilePayload && loadedText == null && !loadFailed ? (
-              <DocPlaceholder>Loading…</DocPlaceholder>
+              <DocPlaceholder>{t('common.status.loading')}</DocPlaceholder>
             ) : isFilePayload && loadFailed ? (
               <DocPlaceholder>
-                Payload too large to edit inline or could not be read. Export or open details.
+                {t('workspace.documentPanel.source.payloadTooLarge')}
               </DocPlaceholder>
             ) : !sourceText && !dirty ? (
-              <DocPlaceholder>No source to show.</DocPlaceholder>
+              <DocPlaceholder>{t('workspace.documentPanel.source.noSource')}</DocPlaceholder>
             ) : (
               <div className="source-edit">
                 <div className="source-edit-bar">
                   <span className="source-edit-hint">
-                    {dirty ? 'Unsaved changes' : savedSource ? 'Saved' : ''}
+                    {dirty
+                      ? t('workspace.documentPanel.source.unsavedChanges')
+                      : savedSource
+                        ? t('workspace.documentPanel.source.saved')
+                        : ''}
                   </span>
                   <button
                     className="btn primary"
@@ -975,7 +988,11 @@ export function DocumentPanel({
                     disabled={!dirty || saving}
                     onClick={() => void handleSaveSource()}
                   >
-                    {saving ? 'Saving…' : savedSource ? 'Saved' : 'Save'}
+                    {saving
+                      ? t('workspace.documentPanel.source.saving')
+                      : savedSource
+                        ? t('workspace.documentPanel.source.saved')
+                        : t('common.actions.save')}
                   </button>
                 </div>
                 <textarea
@@ -983,7 +1000,7 @@ export function DocumentPanel({
                   value={draft}
                   spellCheck={false}
                   onChange={(e) => setDraft(e.target.value)}
-                  aria-label={`Edit ${kindLabel} source`}
+                  aria-label={t('workspace.documentPanel.source.editAriaLabel', { kind: kindLabel })}
                 />
               </div>
             )}
@@ -993,7 +1010,7 @@ export function DocumentPanel({
         </DocumentPanelErrorBoundary>
       </div>
 
-      <div className="panel-foot" aria-label="Artifact metadata">
+      <div className="panel-foot" aria-label={t('workspace.documentPanel.metadataAriaLabel')}>
         <span className="foot-path" title={artifactPath}>{artifactPath}</span>
         <span className="spacer" aria-hidden="true" />
         <span className="foot-meta mono">{footMeta}</span>
@@ -1006,10 +1023,11 @@ export function DocumentPanel({
       />
 
       <ConfirmDialog
+        cancelLabel={t('common.actions.cancel')}
         open={confirmApplyBrand}
-        title="Apply this brand?"
-        description="Replaces your saved brand.md with this theme and applies it immediately. Your previous brand can be restored by applying an earlier theme again, but this action itself cannot be undone from here."
-        confirmLabel="Apply brand"
+        title={t('workspace.documentPanel.confirmApply.title')}
+        description={t('workspace.documentPanel.confirmApply.description')}
+        confirmLabel={t('workspace.documentPanel.confirmApply.confirmLabel')}
         onCancel={() => setConfirmApplyBrand(false)}
         onConfirm={() => void handleApplyBrandConfirmed()}
       />

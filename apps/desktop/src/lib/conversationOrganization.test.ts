@@ -4,8 +4,10 @@ import {
   organizeConversations,
   organizationBadge,
 } from './conversationOrganization';
+import { enTranslate } from '../test/enTranslate';
 
 const NOW = new Date('2026-09-02T12:00:00Z');
+const ctx = { locale: 'en', t: enTranslate };
 
 function row(
   id: string,
@@ -37,6 +39,7 @@ describe('organizeConversations', () => {
         }),
       ],
       [],
+      ctx,
       NOW,
     );
     expect(organized.pinned.map((r) => r.id)).toEqual(['pin']);
@@ -55,6 +58,7 @@ describe('organizeConversations', () => {
         row('b', 'Live', '2026-09-02T08:00:00Z'),
       ],
       [work],
+      ctx,
       NOW,
     );
     expect(organized.archived.map((r) => r.id)).toEqual(['a']);
@@ -67,6 +71,7 @@ describe('organizeConversations', () => {
     const organized = organizeConversations(
       [row('c', 'Client notes', '2026-09-02T10:00:00Z', { folderId: 'f-work', folderName: 'Work' })],
       [personal, work],
+      ctx,
       NOW,
     );
     expect(organized.folders.map((s) => s.folder.name)).toEqual(['Personal', 'Work']);
@@ -79,6 +84,7 @@ describe('organizeConversations', () => {
     const organized = organizeConversations(
       [row('a', 'Gone', '2026-09-02T10:00:00Z', { archivedAt: '2026-09-02T11:00:00Z' })],
       [],
+      ctx,
       NOW,
     );
     expect(organized.allArchived).toBe(true);

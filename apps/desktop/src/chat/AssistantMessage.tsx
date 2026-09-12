@@ -21,6 +21,7 @@ import { isWebSearchToolCall } from './SearchCallBlock';
 import { UsageSummary } from './UsageSummary';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { providerHueId } from '../lib/providerIdentity';
+import { useT } from '../i18n';
 
 interface AssistantMessageProps {
   state: AssistantStreamState;
@@ -268,6 +269,7 @@ export function AssistantMessage({
   isLast = true,
   conversationId = null,
 }: AssistantMessageProps) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const text = state.blocks
     .filter((b) => b.blockKind !== 'thinking' && b.blockKind !== 'reasoning')
@@ -425,7 +427,15 @@ export function AssistantMessage({
     >
       {/* P5.2 — visually-hidden live region announcing stream completion */}
       <span className="sr-only" role="status" aria-live="polite">
-        {state.streaming ? 'Response in progress.' : state.error ? 'Response finished with an error.' : state.interrupted ? 'Response stopped.' : text.trim() ? 'Response complete.' : ''}
+        {state.streaming
+          ? t('chat.assistant.status.inProgress')
+          : state.error
+            ? t('chat.assistant.status.error')
+            : state.interrupted
+              ? t('chat.assistant.status.stopped')
+              : text.trim()
+                ? t('chat.assistant.status.complete')
+                : ''}
       </span>
 
       {showModelLine && (
@@ -441,7 +451,7 @@ export function AssistantMessage({
         <div className="turn-meta">
           <span className="msg-meta">
             <span className="live-dot" aria-hidden="true" />
-            {elapsed}s · {tokenCount} tok
+            {t('chat.assistant.liveMeta', { elapsed, tokenCount })}
           </span>
         </div>
       )}
@@ -484,60 +494,60 @@ export function AssistantMessage({
           <button
             type="button"
             className="act"
-            aria-label={copied ? 'Copied' : 'Copy message'}
-            title={copied ? 'Copied' : 'Copy message'}
+            aria-label={copied ? t('chat.assistant.actions.copiedLabel') : t('chat.assistant.actions.copyLabel')}
+            title={copied ? t('chat.assistant.actions.copiedLabel') : t('chat.assistant.actions.copyLabel')}
             onClick={onCopy}
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
-            Copy
+            {t('common.actions.copy')}
           </button>
         ) : (
           <button
             type="button"
             className="act"
-            aria-label={copied ? 'Copied' : 'Copy message'}
-            title={copied ? 'Copied' : 'Copy message'}
+            aria-label={copied ? t('chat.assistant.actions.copiedLabel') : t('chat.assistant.actions.copyLabel')}
+            title={copied ? t('chat.assistant.actions.copiedLabel') : t('chat.assistant.actions.copyLabel')}
             onClick={() => void handleCopy()}
             disabled={!text}
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
-            Copy
+            {t('common.actions.copy')}
           </button>
         )}
         {showActions && onRetry && (
           <button
             type="button"
             className="act"
-            aria-label="Retry"
-            title="Retry this response"
+            aria-label={t('common.actions.retry')}
+            title={t('chat.assistant.actions.retryTitle')}
             onClick={onRetry}
           >
             <PencilIcon />
-            Retry
+            {t('common.actions.retry')}
           </button>
         )}
         {onFork && (
           <button
             type="button"
             className="act"
-            aria-label="Fork conversation at this message"
-            title="Fork conversation at this message"
+            aria-label={t('chat.assistant.actions.forkLabel')}
+            title={t('chat.assistant.actions.forkLabel')}
             onClick={onFork}
           >
             <ForkIcon />
-            Fork
+            {t('common.actions.fork')}
           </button>
         )}
         {showActions && onDelete && (
           <button
             type="button"
             className="act"
-            aria-label="Delete"
-            title="Delete this response"
+            aria-label={t('common.actions.delete')}
+            title={t('chat.assistant.actions.deleteTitle')}
             onClick={onDelete}
           >
             <TrashIcon />
-            Delete
+            {t('common.actions.delete')}
           </button>
         )}
         <UsageSummary usage={state.usage} searchCost={state.searchCost} />

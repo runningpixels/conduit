@@ -7,6 +7,7 @@
  */
 import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { conversationGroup } from './dayGroup';
+import { collator, type FormatContext } from '../i18n/formatters';
 
 export interface FolderSection {
   folder: ConversationFolder;
@@ -50,11 +51,12 @@ function byUpdatedDesc(a: ConversationSummary, b: ConversationSummary): number {
 
 function groupRecent(
   rows: ConversationSummary[],
+  ctx: FormatContext,
   now: Date,
 ): [string, ConversationSummary[]][] {
   const buckets = new Map<string, ConversationSummary[]>();
   for (const row of rows) {
-    const group = conversationGroup(row.updatedAt, now);
+    const group = conversationGroup(row.updatedAt, ctx, now);
     const list = buckets.get(group) ?? [];
     list.push(row);
     buckets.set(group, list);
@@ -65,6 +67,7 @@ function groupRecent(
 export function organizeConversations(
   rows: ConversationSummary[],
   folders: ConversationFolder[],
+  ctx: FormatContext,
   now: Date = new Date(),
 ): OrganizedHistory {
   const archived: ConversationSummary[] = [];
@@ -96,8 +99,9 @@ export function organizeConversations(
     return pin !== 0 ? pin : byUpdatedDesc(a, b);
   });
 
+  const cmp = collator(ctx.locale);
   const folderSections = [...folders]
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .sort((a, b) => cmp.compare(a.name, b.name))
     .map((folder) => ({ folder, rows: byFolder.get(folder.id) ?? [] }));
 
   const visibleInFolders = folderSections.reduce((n, section) => n + section.rows.length, 0);
@@ -107,7 +111,7 @@ export function organizeConversations(
   return {
     pinned,
     folders: folderSections,
-    recentGroups: groupRecent(recent, now),
+    recentGroups: groupRecent(recent, ctx, now),
     archived,
     total: rows.length,
     allArchived,

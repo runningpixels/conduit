@@ -58,3 +58,8 @@ packages/ui/src/fonts/brand-serif.woff2
 # tauri.conf.json.brand-backup is deleted again by --reset.
 apps/desktop/branding.build.json
 apps/desktop/src-tauri/tauri.conf.json.brand-backup
+
+# Playwright's own output. The layout check (`pnpm test:layout`, opt-in) writes
+# a run report and failure context here; neither belongs in the repo.
+apps/desktop/test-results/
+apps/desktop/playwright-report/

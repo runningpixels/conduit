@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { StatusState } from '../chat/statusTypes';
+import { useT } from '../i18n';
 
 export interface ToastStackProps {
   toasts: StatusState[];
@@ -10,6 +11,7 @@ export interface ToastStackProps {
  *  V6 P2.6: toasts animate in on mount (CSS) and animate out via a short
  *  leaving phase before removal (this component owns the exit choreography). */
 export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
+  const t = useT();
   const [leaving, setLeaving] = useState<Set<number>>(new Set());
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -51,7 +53,7 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
           <button
             className="toast-dismiss"
             type="button"
-            aria-label="Dismiss"
+            aria-label={t('common.actions.dismiss')}
             onClick={() => requestDismiss(toast.timestamp)}
           >
             ×

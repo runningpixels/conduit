@@ -1,5 +1,6 @@
 import { MoonIcon, PanelIcon, SunIcon } from '../icons';
 import { modShortcutHint } from '../lib/shortcuts';
+import { useT } from '../i18n';
 
 interface MainHeadProps {
   /** Current chat's name. Undefined before a conversation is selected. */
@@ -38,23 +39,22 @@ export function MainHead({
   onTogglePanel,
   hiddenArtifactCount = 0,
 }: MainHeadProps) {
+  const t = useT();
   const panelHint = modShortcutHint('J');
-  const panelLabel = hiddenArtifactCount
-    ? `Show context panel (${hiddenArtifactCount} artifact${hiddenArtifactCount === 1 ? '' : 's'})`
-    : 'Toggle context panel';
+  const panelLabel = t('workspace.mainHead.panelToggleLabel', { count: hiddenArtifactCount });
 
   return (
     <header className="main-head">
       <span className="main-title" title={title}>
-        {title ?? 'New chat'}
+        {title ?? t('workspace.mainHead.newChatTitle')}
       </span>
 
       <div className="head-actions">
         <button
           className="iconbtn"
           type="button"
-          aria-label="Toggle light and dark mode"
-          title="Toggle theme"
+          aria-label={t('workspace.mainHead.themeToggleAriaLabel')}
+          title={t('workspace.mainHead.themeToggleTitle')}
           onClick={onToggleTheme}
         >
           {effectiveTheme === 'light' ? <SunIcon /> : <MoonIcon />}
@@ -64,7 +64,7 @@ export function MainHead({
           type="button"
           aria-pressed={panelOpen}
           aria-label={panelLabel}
-          title={`${panelLabel}  ${panelHint}`}
+          title={t('workspace.mainHead.panelToggleTitle', { count: hiddenArtifactCount, shortcut: panelHint })}
           onClick={onTogglePanel}
         >
           <PanelIcon />

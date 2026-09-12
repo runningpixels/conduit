@@ -59,9 +59,10 @@ export interface ToolCallState {
    *  `ConnectorRuntimeEvent::consentRequested`; `approved`/`denied` by the
    *  user's decision (which the runtime confirms via `toolCallFinished`). */
   consent?: 'pending' | 'approved' | 'denied';
-  /** The redacted consent prompt payload (connector name, tool name, expected
-   *  effect, redacted args summary, tenant `consentCopy`). Untrusted display
-   *  data — rendered, never executed. */
+  /** The redacted consent prompt payload (connector name, tool name,
+   *  permission level + tool description the renderer composes the expected
+   *  effect from, redacted args summary, tenant `consentCopy`). Untrusted
+   *  display data — rendered, never executed. */
   consentPrompt?: ConsentPrompt;
   /** Terminal status from `ConnectorRuntimeEvent::toolCallFinished`. */
   status?: ToolCallStatus;

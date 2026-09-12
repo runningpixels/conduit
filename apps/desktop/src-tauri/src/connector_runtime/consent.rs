@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use mcp_runtime::{
-    consent::{classify, expected_effect, ConsentKind},
+    consent::{classify, ConsentKind},
     protocol::{McpTool, PermissionLevel},
     redact, McpError,
 };
@@ -80,7 +80,6 @@ pub fn build_prompt_with_def(
 ) -> ConsentPrompt {
     let level = tool.permission_level.unwrap_or(PermissionLevel::ReadOnly);
     let decision = classify(tool);
-    let expected = expected_effect(level, &tool.description);
     // Redact the arguments before they cross to the renderer. Truncate so a
     // huge payload can't flood the prompt.
     let redacted = redact::redact_value(arguments);
@@ -90,7 +89,9 @@ pub fn build_prompt_with_def(
         summary.push('…');
     }
     // `decision.required` is Prompt here (caller only builds a prompt when
-    // consent is required); `expected` already carries the level wording.
+    // consent is required). The renderer composes the expected-effect text
+    // from `permission_level` + `tool_description` (D9/D10 item 2) — Rust
+    // does not translate, so it sends the facts, not an English sentence.
     let _ = decision;
     ConsentPrompt {
         tool_call_id: tool_call_id.to_string(),
@@ -98,7 +99,8 @@ pub fn build_prompt_with_def(
         connector_name: connector_name.to_string(),
         tool_name: tool.name.clone(),
         arguments: redacted,
-        expected_effect: expected,
+        permission_level: level,
+        tool_description: tool.description.clone(),
         data_summary: summary,
         consent_copy: consent_copy.map(|s| s.to_string()),
     }
@@ -251,7 +253,7 @@ mod tests {
         assert_eq!(prompt.consent_copy.as_deref(), Some("Be careful"));
         assert!(prompt.data_summary.contains("[redacted]"));
         assert!(!prompt.data_summary.contains("sekrit"));
-        assert!(prompt.expected_effect.contains("Side-effectful"));
+        assert_eq!(prompt.permission_level, PermissionLevel::SideEffectful);
     }
 
     #[test]

@@ -80,7 +80,7 @@ describe('AssistantArtifactStrip', () => {
 
     expect(screen.getByText('Demo')).toBeInTheDocument();
     // The kind + size subtitle is what makes the card self-describing.
-    expect(screen.getByText('HTML · 10 B')).toBeInTheDocument();
+    expect(screen.getByText('HTML · 10 byte')).toBeInTheDocument();
   });
 
   it('opens the artifact from the stated primary action', () => {

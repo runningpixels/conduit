@@ -21,6 +21,7 @@ const settings: AppSettings = {
   localOnly: true,
   diagnosticsEnabled: true,
   theme: 'system',
+  language: 'system',
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
@@ -82,7 +83,7 @@ describe('StatusLine — the sentence', () => {
     const line = screen.getByTitle('Chat details');
     expect(line).toHaveTextContent('claude-sonnet-4');
     // The ratio, not the raw count — the count is the popover's job.
-    expect(line).toHaveTextContent('2% of 200k');
+    expect(line).toHaveTextContent('2% of 200K');
     expect(line).toHaveTextContent('$0.0144');
     expect(line).toHaveTextContent('local only');
     expect(line.querySelector('.ctx-meter')).toBeTruthy();
@@ -96,9 +97,9 @@ describe('StatusLine — the sentence', () => {
         usage={{ inputTokens: 2800n, outputTokens: 400n }}
       />,
     );
-    expect(screen.getByTitle('Chat details')).toHaveTextContent('2% of 200k');
+    expect(screen.getByTitle('Chat details')).toHaveTextContent('2% of 200K');
     openDetails();
-    expect(screen.getByText(/Context 4,000 of 200k/)).toBeInTheDocument();
+    expect(screen.getByText(/Context 4,000 of 200K/)).toBeInTheDocument();
   });
 
   it('warns when fill reaches the compact threshold', () => {
@@ -111,7 +112,7 @@ describe('StatusLine — the sentence', () => {
     );
     const line = screen.getByTitle('Chat details');
     expect(line).toHaveAttribute('data-context-warn', 'true');
-    expect(line).toHaveTextContent('90% of 200k');
+    expect(line).toHaveTextContent('90% of 200K');
   });
 
   it('degrades to a raw token count for unknown models', () => {
@@ -189,7 +190,7 @@ describe('StatusLine — the detail popover', () => {
     // query matches twice.
     const details = within(screen.getByRole('menu'));
     expect(details.getByText('keychain://conduit/anthropic')).toBeInTheDocument();
-    expect(details.getByText(/Context 3,200 of 200k/)).toBeInTheDocument();
+    expect(details.getByText(/Context 3,200 of 200K/)).toBeInTheDocument();
     expect(details.getByText('Spend this chat')).toBeInTheDocument();
     expect(details.getByText('$0.0144')).toBeInTheDocument();
   });
@@ -271,7 +272,7 @@ describe('StatusLine — the detail popover', () => {
   it.each([
     ['model', /claude-sonnet-4/],
     ['key location', /keychain:\/\/conduit\/anthropic/],
-    ['context use', /Context 3,200 of 200k/],
+    ['context use', /Context 3,200 of 200K/],
     ['spend', /Spend this chat/],
     ['network posture', /Local only/],
   ])('still reports %s within one click', (_fact, pattern) => {
@@ -304,8 +305,8 @@ describe('StatusLine — the detail popover', () => {
     // The key location and the raw count join the line instead of waiting in
     // the popover; the ratio-only form is gone.
     expect(line).toHaveTextContent('keychain://conduit/anthropic');
-    expect(line).toHaveTextContent('3,200 of 200k');
-    expect(line).not.toHaveTextContent('2% of 200k');
+    expect(line).toHaveTextContent('3,200 of 200K');
+    expect(line).not.toHaveTextContent('2% of 200K');
     localStorage.removeItem('conduit:v9-expanded-status');
   });
 
@@ -318,7 +319,7 @@ describe('StatusLine — the detail popover', () => {
       />,
     );
     const line = screen.getByTitle('Chat details');
-    expect(line).toHaveTextContent('2% of 200k');
+    expect(line).toHaveTextContent('2% of 200K');
     expect(line).not.toHaveTextContent('keychain://conduit/anthropic');
   });
 

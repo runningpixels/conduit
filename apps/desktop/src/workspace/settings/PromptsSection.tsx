@@ -146,13 +146,16 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
 
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>{t('settings.prompts.header.title')}</span>
+      {/* Just the action: SettingsSheet already titles the pane "Prompts".
+          The button used to sit in the section header with `marginLeft: auto`,
+          which did nothing — that header is not a flex row — so it read as a
+          word jammed against a button. */}
+      <div className="settings-section-actions">
         <button
           className="btn primary"
           type="button"
           onClick={handleNew}
-          style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: '12px' }}
+          style={{ padding: '4px 12px', fontSize: '12px' }}
         >
           {t('settings.prompts.actions.newPrompt')}
         </button>
@@ -209,7 +212,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
         {/* Folder sidebar */}
         <div className="prompts-folder-sidebar" style={{ borderRadius: 'var(--r-sm)', background: 'var(--card)', padding: 8 }}>
           <button

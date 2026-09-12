@@ -27,11 +27,12 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
     applyUiReadability(fontSize, density);
   }, [fontSize, density]);
 
+  /* No section header: SettingsSheet already renders "Appearance" as the pane
+     heading, and a second copy of the same word cost a row at the top of the
+     pane and read as a stutter. Connectors, Prompts and Privacy & data dropped
+     theirs for the same reason. */
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>{t('settings.appearance.header')}</span>
-      </div>
       <div className="form-grid appearance-form">
         {/* Language leads the section. It is not a look, so it sits oddly under
             "Appearance" — but it is the first thing someone reading the UI in a

@@ -1,6 +1,6 @@
 /**
  * SettingsSheet — the settings surface (V9 §2.6). A summoned overlay (⌘,), not
- * a navigation destination: 186px nav + scrolling main.
+ * a navigation destination: 200px nav + scrolling main.
  *
  * V9 dissolves Advanced. Settings-backed sections auto-save (useAutoSave);
  * renderer-only prefs (palette, provider colour, reduce motion, show reasoning,
@@ -445,7 +445,7 @@ export function SettingsSheet({
             <>
               <h2 className="sheet-h">{t('shell.settingsSheet.connectors.heading')}</h2>
               <p className="sheet-sub">{t('shell.settingsSheet.connectors.intro')}</p>
-              <ConnectorsSection onStatus={onStatus} />
+              <ConnectorsSection onStatus={onStatus} showHeader={false} />
               <div style={{ marginTop: 16 }}>
                 <button
                   className="btn primary"

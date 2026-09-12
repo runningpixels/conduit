@@ -41,7 +41,17 @@ function connectorLabel(s: ConnectorRuntimeSnapshot): { tone: 'ok' | 'warn' | 'b
  *  streamable-HTTP URL, or add a local stdio connector. Transport config is
  *  untrusted renderer input — add commands validate it server-side before
  *  persisting. Exported so the first-run `Onboarding` can reuse it. */
-export function ConnectorsSection({ onStatus }: { onStatus: (message: string) => void }) {
+/** `showHeader` exists for Onboarding, which renders this section on its own
+ *  full-screen route where the inner "Connectors" header is the only title.
+ *  Inside SettingsSheet the pane heading already says it, so the sheet passes
+ *  false rather than printing the word twice. */
+export function ConnectorsSection({
+  onStatus,
+  showHeader = true,
+}: {
+  onStatus: (message: string) => void;
+  showHeader?: boolean;
+}) {
   const t = useT();
   const [rows, setRows] = useState<ConnectorRuntimeSnapshot[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, ConnectorCapability[]>>({});
@@ -249,9 +259,11 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
 
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>{t('settings.connectors.header')}</span>
-      </div>
+      {showHeader && (
+        <div className="settings-section-header">
+          <span>{t('settings.connectors.header')}</span>
+        </div>
+      )}
       <div className="status-item">
         {rows.length === 0 ? (
           <span style={{ fontSize: '13px' }}>{t('settings.connectors.emptyState')}</span>
@@ -320,7 +332,11 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
             );
           })
         )}
-        <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+        {/* Capped rather than two-up: these fields carry their label in the
+            placeholder, so halving their width truncates the label. At the
+            960px sheet an uncapped input would stretch to ~690px, which reads
+            worse than the narrow one it replaced. */}
+        <div style={{ display: 'grid', gap: 6, marginTop: 8, maxWidth: '34rem' }}>
           <input
             placeholder={t('settings.connectors.form.namePlaceholder')}
             value={name}
@@ -354,7 +370,7 @@ export function ConnectorsSection({ onStatus }: { onStatus: (message: string) =>
           />
           <button className="btn primary" type="button" onClick={() => void handleAdd()}>{t('settings.connectors.form.addButton')}</button>
         </div>
-        <div style={{ display: 'grid', gap: 6, marginTop: 16 }}>
+        <div style={{ display: 'grid', gap: 6, marginTop: 16, maxWidth: '34rem' }}>
           <div className="section-label">{t('settings.connectors.registry.heading')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input

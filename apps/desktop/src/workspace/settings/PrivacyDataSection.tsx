@@ -75,10 +75,6 @@ export function PrivacyDataSection({
 
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>{t('settings.privacy.header')}</span>
-      </div>
-
       <div className="status-item trust-health" style={{ marginBottom: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
         <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           {t('settings.privacy.trustConnection.heading')}

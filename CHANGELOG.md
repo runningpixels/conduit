@@ -7,6 +7,76 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Themes go beyond colour. A theme now sets the type, corner radii, borders,
+  elevation and motion as well as the palette, and one Theme picker in
+  Settings → Appearance (and in first-run setup) chooses it. Six new themes
+  join the three existing palettes: Amber Terminal, Green Phosphor, Amber
+  Paper, Graphite, Editorial and High Contrast (AAA contrast).
+- Your own themes: a `.theme.md` file in the app's `themes` folder extends a
+  built-in theme with your colours. Theme files take hex colours and a fixed
+  set of structural choices only — no CSS, no URLs. Settings → Appearance can
+  create an example file to start from.
+- A Reading font setting picks the face for assistant replies — sans, serif or
+  whatever the theme uses.
+- Optional automatic updates. Settings → About gains an Automatic updates
+  choice: only when you check (the default, unchanged), tell me when an update
+  is available — checked shortly after launch and then daily — or install when
+  you quit, which also downloads and verifies the update in the background. Nothing is checked while a reply is streaming,
+  and turning update checks off still means no network request at all.
+  Automatic is not offered for the Linux `.deb`, which would need a password
+  prompt after the window has closed.
+- The sidebar can be resized by dragging its edge, from the keyboard, or reset
+  with a double-click; dragging it small enough closes it.
+- A settings button in the title strip opens Settings on the section you were
+  last on, and its menu jumps straight to Providers, Chat defaults, Connectors,
+  Appearance, Privacy, diagnostics export and About.
+- Search in Settings: type a setting's name and the section list narrows to
+  where it lives, and opening a result scrolls to and highlights it.
+- A keyboard shortcuts sheet (`Ctrl+/`, `⌘/` on macOS) lists every shortcut.
+  Three of them — Fork, Copy last message and Switch provider — were not
+  written down anywhere before.
+- Every conversation in the sidebar has a ⋯ menu, reachable from the keyboard
+  with Shift+F10 or the context-menu key, and conversations can be renamed
+  from it or by double-clicking. Renaming used to work only on the open chat.
+- The artifact panel can be expanded (`Ctrl+Shift+E`) to take everything but a
+  narrow chat column, and restored to the exact layout you had. Its width is no
+  longer capped at 560px, so HTML artifacts stop rendering at phone width.
+
+### Changed
+
+- Settings sections are grouped under Models, Assistant and App.
+- A chat with no artifacts opens without the empty artifact panel; the panel
+  opens once there is something to show. A panel you closed stays closed.
+- Markdown and text artifacts are set at a readable line length in a wide
+  panel, with tables allowed to run wider.
+- The window title names the open conversation, so the taskbar and Alt-Tab can
+  tell windows apart.
+- The Settings gear, `Ctrl+,`, the command palette and the sidebar menu all
+  open the same section. The sidebar's Settings item used to open Appearance
+  while its own `Ctrl+,` hint opened Providers.
+- The command palette has an entry for every Settings section.
+
+### Fixed
+
+- On a narrow window the sidebar and artifact panel were hidden and their
+  toggles did nothing, so no conversation or artifact could be reached with a
+  mouse. They now open as overlays over the chat.
+- Closing Settings within a quarter of a second of changing something could
+  lose the change, and a late save could overwrite the language chosen during
+  first-run setup.
+- Dragging the artifact panel's edge trailed the pointer, and its arrow keys
+  moved the separator the wrong way.
+- A collapsed sidebar animated shut on every launch.
+- Menus behave the same everywhere: they take focus, respond to arrow keys,
+  close on Escape and stay on-screen. The composer's folder menu could not be
+  closed with Escape.
+- Buttons inside a hidden sidebar or panel could still be reached with Tab.
+- Switching chats briefly showed the previous chat's artifact count on the
+  panel button.
+- Artifact tab names were cut to nothing at every panel width.
+
 ## [0.1.0-rc.4] - 2026-09-12
 
 ### Added

@@ -86,6 +86,14 @@ const ALLOWED: { file: string; cls: string; reason: string }[] = [
       'translated label, and a tooltip repeating it tells the reader nothing ' +
       'they cannot already see.',
   },
+  {
+    file: 'src/shell/StatusLine.tsx',
+    cls: 'menu-label',
+    reason:
+      'The same kind of menu section heading ("This chat"). It used to pass only ' +
+      'by accident — the hand-rolled wrapper div carried an aria-label, which ' +
+      'the container check matched — and stopped once the popover became a Menu.',
+  },
 ];
 
 interface Finding {

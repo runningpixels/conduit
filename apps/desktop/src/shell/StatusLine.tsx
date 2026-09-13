@@ -13,7 +13,7 @@
  * meter sits beside the %; warn styling when fill ≥ compact threshold.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
 import { providerDisplayName } from '../lib/providerIdentity';
 import {
@@ -25,6 +25,7 @@ import { readExpandedStatus } from './uiPrefs';
 import { ContextIcon, LockIcon, ModelIcon, ShieldIcon, SpendIcon } from '../icons';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+import { Menu } from '../workspace/Menu';
 
 export type CredentialMode = 'none' | 'optional' | 'required' | 'loading';
 
@@ -61,32 +62,9 @@ export function StatusLine({
   const fmt = useFormatters();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
+  // `Menu` closes on Escape or an outside press and hands focus back to the line.
   const close = () => setOpen(false);
-
-  // Outside click + Escape close the popover; focus returns to the line.
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      close();
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        close();
-        triggerRef.current?.focus();
-      }
-    }
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
 
   const tokens = Math.max(0, contextTokens);
   const contextWindow = getContextWindow(settings.activeModel);
@@ -184,83 +162,88 @@ export function StatusLine({
         </span>
       </button>
 
-      {open && (
-        <div ref={menuRef} className="menu status-menu" data-open="true" role="menu" aria-label={t('shell.statusLine.chatDetails')}>
-          <div className="menu-label">{t('shell.statusLine.menu.thisChatHeading')}</div>
+      <Menu
+        open={open}
+        onClose={close}
+        triggerRef={triggerRef}
+        className="menu status-menu"
+        label={t('shell.statusLine.chatDetails')}
+        dismissOnOutsidePress
+      >
+        <div className="menu-label">{t('shell.statusLine.menu.thisChatHeading')}</div>
 
-          <button
-            type="button"
-            className="menu-item"
-            role="menuitem"
-            onClick={() => {
-              close();
-              modelMenuOpen();
-            }}
-          >
-            <ModelIcon />
-            {providerDisplayName(settings.activeProvider)} / {settings.activeModel}
-            <span className="tail">{t('shell.statusLine.menu.change')}</span>
-          </button>
+        <button
+          type="button"
+          className="menu-item"
+          role="menuitem"
+          onClick={() => {
+            close();
+            modelMenuOpen();
+          }}
+        >
+          <ModelIcon />
+          {providerDisplayName(settings.activeProvider)} / {settings.activeModel}
+          <span className="tail">{t('shell.statusLine.menu.change')}</span>
+        </button>
 
-          {keyResolved &&
-            (onOpenSettings ? (
-              <button
-                type="button"
-                className={`menu-item${keyMissing ? ' warn' : ''}`}
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onOpenSettings('providers');
-                }}
-              >
-                <LockIcon />
-                {keyLabel}
-                <span className="tail">{keyMissing ? t('shell.statusLine.menu.setUp') : t('shell.statusLine.menu.verified')}</span>
-              </button>
-            ) : (
-              <span className={`menu-item${keyMissing ? ' warn' : ''}`}>
-                <LockIcon />
-                {keyLabel}
-              </span>
-            ))}
-
-          <span className={`menu-item${nearLimit ? ' warn' : ''}`}>
-            <ContextIcon />
-            {t('shell.statusLine.menu.contextRow', { full: contextFull })}
-            {percent != null && <span className="tail">{percent}%</span>}
-          </span>
-
-          {spendLabel != null && (
-            <span className="menu-item">
-              <SpendIcon />
-              {t('shell.statusLine.menu.spendThisChat')}
-              <span className="tail">{spendLabel}</span>
-            </span>
-          )}
-
-          <div className="menu-sep" />
-
-          {onOpenSettings ? (
+        {keyResolved &&
+          (onOpenSettings ? (
             <button
               type="button"
-              className={`menu-item${settings.localOnly ? ' local' : ''}`}
+              className={`menu-item${keyMissing ? ' warn' : ''}`}
               role="menuitem"
               onClick={() => {
                 close();
-                onOpenSettings('privacy');
+                onOpenSettings('providers');
               }}
             >
-              <ShieldIcon />
-              {settings.localOnly ? t('shell.statusLine.menu.localOnlyDetail') : t('shell.statusLine.menu.online')}
+              <LockIcon />
+              {keyLabel}
+              <span className="tail">{keyMissing ? t('shell.statusLine.menu.setUp') : t('shell.statusLine.menu.verified')}</span>
             </button>
           ) : (
-            <span className={`menu-item${settings.localOnly ? ' local' : ''}`}>
-              <ShieldIcon />
-              {settings.localOnly ? t('shell.statusLine.menu.localOnlyDetail') : t('shell.statusLine.menu.online')}
+            <span className={`menu-item${keyMissing ? ' warn' : ''}`}>
+              <LockIcon />
+              {keyLabel}
             </span>
-          )}
-        </div>
-      )}
+          ))}
+
+        <span className={`menu-item${nearLimit ? ' warn' : ''}`}>
+          <ContextIcon />
+          {t('shell.statusLine.menu.contextRow', { full: contextFull })}
+          {percent != null && <span className="tail">{percent}%</span>}
+        </span>
+
+        {spendLabel != null && (
+          <span className="menu-item">
+            <SpendIcon />
+            {t('shell.statusLine.menu.spendThisChat')}
+            <span className="tail">{spendLabel}</span>
+          </span>
+        )}
+
+        <div className="menu-sep" />
+
+        {onOpenSettings ? (
+          <button
+            type="button"
+            className={`menu-item${settings.localOnly ? ' local' : ''}`}
+            role="menuitem"
+            onClick={() => {
+              close();
+              onOpenSettings('privacy');
+            }}
+          >
+            <ShieldIcon />
+            {settings.localOnly ? t('shell.statusLine.menu.localOnlyDetail') : t('shell.statusLine.menu.online')}
+          </button>
+        ) : (
+          <span className={`menu-item${settings.localOnly ? ' local' : ''}`}>
+            <ShieldIcon />
+            {settings.localOnly ? t('shell.statusLine.menu.localOnlyDetail') : t('shell.statusLine.menu.online')}
+          </span>
+        )}
+      </Menu>
     </div>
   );
 }

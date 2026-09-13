@@ -877,27 +877,40 @@ export default function App() {
     [activeConversationId, refreshArtifacts],
   );
 
-  // V7 ⌘K — rename this chat (inline dialog, preserved capability).
-  const handleRenameChat = useCallback(() => {
-    setRenameValue(activeConversationSummary?.displayTitle ?? '');
-    setRenameDialogOpen(true);
-  }, [activeConversationSummary]);
+  // Rename a chat (inline dialog). The palette renames the open chat; the
+  // sidebar's row menu and a double-click rename whichever row it was.
+  const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+  const handleRenameChat = useCallback(
+    (conversationId?: string) => {
+      const targetId = conversationId ?? activeConversationId;
+      if (!targetId) return;
+      const title =
+        targetId === activeConversationId
+          ? activeConversationSummary?.displayTitle
+          : conversations.find((row) => row.id === targetId)?.displayTitle;
+      setRenameTargetId(targetId);
+      setRenameValue(title ?? '');
+      setRenameDialogOpen(true);
+    },
+    [activeConversationId, activeConversationSummary, conversations],
+  );
 
   const commitRenameChat = useCallback(async () => {
     const title = renameValue.trim();
     setRenameDialogOpen(false);
-    if (!title || !activeConversationId) return;
+    const targetId = renameTargetId;
+    if (!title || !targetId) return;
     try {
-      await setConversationTitle(activeConversationId, title);
+      await setConversationTitle(targetId, title);
       await refreshConversations();
-      await refreshActiveConversationSummary(activeConversationId);
+      if (targetId === activeConversationId) await refreshActiveConversationSummary(targetId);
       setStatus(makeStatus(t('app.status.conversationRenamed'), 'success'));
     } catch (error) {
       setStatus(
         makeStatus(error instanceof Error ? error.message : t('app.status.renameConversationFailed'), 'error'),
       );
     }
-  }, [activeConversationId, renameValue, refreshConversations, refreshActiveConversationSummary]);
+  }, [activeConversationId, renameTargetId, renameValue, refreshConversations, refreshActiveConversationSummary]);
 
   const handlePinConversation = useCallback(
     async (id: string, pinned: boolean) => {
@@ -1388,6 +1401,7 @@ export default function App() {
           onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
           onExportDiagnostics={() => void handleExportDiagnostics()}
           onDeleteConversation={handleDeleteConversation}
+          onRenameConversation={handleRenameChat}
           onDeleteAllHistory={handleDeleteAllHistory}
           onPinConversation={(id, pinned) => void handlePinConversation(id, pinned)}
           onArchiveConversation={(id, archived) => void handleArchiveConversation(id, archived)}
@@ -1545,7 +1559,7 @@ export default function App() {
           const ok = chatViewRef.current?.openChatSettings() ?? false;
           if (!ok) setStatus(makeStatus(t('app.status.chatSettingsUnavailable'), 'warning'));
         }}
-        onRenameChat={handleRenameChat}
+        onRenameChat={() => handleRenameChat()}
         onPinChat={() => {
           if (activeConversationId) {
             void handlePinConversation(activeConversationId, !activeConversationSummary?.pinnedAt);

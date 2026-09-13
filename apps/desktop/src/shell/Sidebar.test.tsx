@@ -381,4 +381,73 @@ describe('Sidebar', () => {
       void rowEl;
     });
   });
+
+  /**
+   * A row's actions menu used to open on right-click only, with no focus and no
+   * arrow keys — out of reach of the keyboard entirely, and hidden from anyone
+   * who does not think to right-click. Rename lived only in the palette, and only
+   * for the open chat.
+   */
+  describe('row actions', () => {
+    it('opens from the ⋯ button, focused on its first item', () => {
+      render(<Sidebar {...props} onPinConversation={vi.fn()} onRenameConversation={vi.fn()} />);
+      const more = screen.getByRole('button', { name: 'More actions for API overview' });
+      expect(more).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(more);
+      const menu = screen.getByRole('menu', { name: /API overview/ });
+      expect(more).toHaveAttribute('aria-expanded', 'true');
+      expect(document.activeElement).toBe(menu.querySelector('[role="menuitem"]'));
+    });
+
+    it.each([
+      ['the ContextMenu key', { key: 'ContextMenu' }],
+      ['Shift+F10', { key: 'F10', shiftKey: true }],
+    ])('opens from the keyboard with %s', (_name, init) => {
+      render(<Sidebar {...props} onPinConversation={vi.fn()} />);
+      const rowButton = screen.getByText('Triage notes').closest('button')!;
+      fireEvent.keyDown(rowButton, init);
+      expect(screen.getByRole('menu', { name: /Triage notes/ })).toBeInTheDocument();
+    });
+
+    it('moves through its items with the arrow keys and closes on Escape, back to the ⋯ button', () => {
+      render(<Sidebar {...props} onPinConversation={vi.fn()} onArchiveConversation={vi.fn()} />);
+      const more = screen.getByRole('button', { name: 'More actions for Triage notes' });
+      fireEvent.click(more);
+      const items = screen.getAllByRole('menuitem');
+      fireEvent.keyDown(items[0], { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(items[1]);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(document.activeElement).toBe(more);
+    });
+
+    it('closes on a press outside', () => {
+      render(<Sidebar {...props} onPinConversation={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for Triage notes' }));
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('renames the row it was opened on, which need not be the open chat', () => {
+      const onRenameConversation = vi.fn();
+      render(<Sidebar {...props} onRenameConversation={onRenameConversation} />);
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for API overview' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+      expect(onRenameConversation).toHaveBeenCalledWith('c2');
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('renames on a double-click of the row', () => {
+      const onRenameConversation = vi.fn();
+      render(<Sidebar {...props} onRenameConversation={onRenameConversation} />);
+      fireEvent.doubleClick(screen.getByText('JSON schema review').closest('button')!);
+      expect(onRenameConversation).toHaveBeenCalledWith('c3');
+    });
+
+    it('offers no Rename when renaming is not wired', () => {
+      render(<Sidebar {...props} onPinConversation={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for Triage notes' }));
+      expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+    });
+  });
 });

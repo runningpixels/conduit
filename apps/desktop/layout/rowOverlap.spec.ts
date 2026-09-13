@@ -24,6 +24,9 @@ import { expect, test } from '@playwright/test';
  * 16px overlap, in every language. English hid it by having a three-character
  * word for "now"; Spanish did not, and "ahora" rendered with a trash can
  * through it.
+ *
+ * The row now carries a ⋯ actions button left of the trash, so the control the
+ * timestamp must clear is whichever of the two is further left.
  */
 
 const CSS = readFileSync(
@@ -59,13 +62,13 @@ function stamps(locale: string): string[] {
   ];
 }
 
-/* The narrowest the sidebar gets before the shell collapses it, so the row is
+/* The sidebar's minimum width (useLayout.ts SIDEBAR_MIN), so the row is
  * measured where it is tightest. */
-const SIDEBAR_WIDTH = 260;
+const SIDEBAR_WIDTH = 220;
 
 test.describe('sidebar row', () => {
   for (const locale of LOCALES) {
-    test(`the timestamp clears the delete button under ${locale}`, async ({ page }) => {
+    test(`the timestamp clears the row's buttons under ${locale}`, async ({ page }) => {
       await page.setContent(
         `<!doctype html><html lang="${locale}"><style>
            body { margin: 0; width: ${SIDEBAR_WIDTH}px; }
@@ -76,6 +79,7 @@ test.describe('sidebar row', () => {
              <span class="convo-name">A conversation title long enough to need the ellipsis</span>
              <span class="convo-meta" id="meta"></span>
            </button>
+           <button class="convo-more" id="more" type="button">M</button>
            <button class="convo-del" id="del" type="button">T</button>
          </div></html>`,
       );
@@ -88,17 +92,17 @@ test.describe('sidebar row', () => {
           const meta = document.getElementById('meta') as HTMLElement;
           meta.textContent = value;
           const m = meta.getBoundingClientRect();
-          const d = (document.getElementById('del') as HTMLElement).getBoundingClientRect();
+          const d = (document.getElementById('more') as HTMLElement).getBoundingClientRect();
           /* An invisible timestamp cannot collide with anything, so only a
            * painted one is a finding — that is also what keeps this honest if
            * somebody decides to hide it on hover after all. */
           return getComputedStyle(meta).opacity === '0' ? 0 : Math.round(m.right - d.left);
         }, stamp);
 
-        if (overlap > 0) overlaps.push(`"${stamp}" overlaps the delete button by ${overlap}px`);
+        if (overlap > 0) overlaps.push(`"${stamp}" overlaps the row's buttons by ${overlap}px`);
       }
 
-      expect(overlaps, `${locale} timestamps colliding with the delete button`).toEqual([]);
+      expect(overlaps, `${locale} timestamps colliding with the row's buttons`).toEqual([]);
     });
   }
 });

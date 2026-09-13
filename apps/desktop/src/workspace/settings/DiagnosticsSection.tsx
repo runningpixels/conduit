@@ -77,7 +77,7 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
         <span>{t('settings.diagnostics.header.title')}</span>
       </div>
       <div className="status-item">
-        <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--ink-2)' }}>
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
           {t('settings.diagnostics.intro')}
         </p>
         <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -91,7 +91,7 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
             {t('settings.diagnostics.actions.export')}
           </button>
           {!settings.diagnosticsEnabled && (
-            <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{t('settings.diagnostics.disabledHint')}</span>
+            <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>{t('settings.diagnostics.disabledHint')}</span>
           )}
           {diagnostics && (
             <button className="btn" type="button" onClick={() => void handleRevealExports()}>
@@ -101,9 +101,9 @@ export function DiagnosticsSection({ settings, onStatus }: DiagnosticsSectionPro
         </div>
         {diagnostics && (
           <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-            <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>{t('settings.diagnostics.exportedToLabel')}</span>
-            <code style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', wordBreak: 'break-all' }}>{diagnostics.exportedTo}</code>
-            <pre className="code-block" style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
+            <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)' }}>{t('settings.diagnostics.exportedToLabel')}</span>
+            <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)', wordBreak: 'break-all' }}>{diagnostics.exportedTo}</code>
+            <pre className="code-block" style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-lg)' }}>
               {prettyJson(diagnostics)}
             </pre>
           </div>

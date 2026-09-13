@@ -57,7 +57,7 @@ export function GenerationControlsSection({
       <div className="settings-section-header">
         <span>{t('settings.generationControls.header.title')}</span>
       </div>
-      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
+      <p style={{ marginBottom: 12, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
         {t('settings.generationControls.intro')}
       </p>
       <GenerationFields

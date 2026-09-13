@@ -17,16 +17,16 @@ export function AboutSection({ paths }: AboutSectionProps) {
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
         <div className="status-item">
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.about.appRoot.label')}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', wordBreak: 'break-all' }}>{paths.root}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.about.appRoot.label')}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)', wordBreak: 'break-all' }}>{paths.root}</span>
         </div>
         <div className="status-item">
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.about.settingsFile.label')}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', wordBreak: 'break-all' }}>{paths.settingsFile}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.about.settingsFile.label')}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)', wordBreak: 'break-all' }}>{paths.settingsFile}</span>
         </div>
         <div className="status-item">
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.about.database.label')}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', wordBreak: 'break-all' }}>{paths.database}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.about.database.label')}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)', wordBreak: 'break-all' }}>{paths.database}</span>
         </div>
       </div>
     </div>

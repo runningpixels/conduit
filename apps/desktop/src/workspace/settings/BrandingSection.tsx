@@ -533,7 +533,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
         {warnings.length > 0 && (
           <div className="brand-warnings" role="status">
             <div className="grp-label">{t('settings.branding.warnings.heading')}</div>
-            <p style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--ink-2)' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
               {t('settings.branding.warnings.body')}
             </p>
             {warnings.map((w, i) => (
@@ -598,7 +598,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
               )}
             </div>
             <div className="brand-dropzone-body">
-              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2)' }}>
+              <p style={{ margin: 0, fontSize: 'var(--fs-2xl)', color: 'var(--ink-2)' }}>
                 {t('settings.branding.logo.dropHint')}
               </p>
               <input
@@ -662,7 +662,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
             </button>
           </div>
           {editingTheme !== resolvedTheme && (
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--ink-3)' }}>
+            <p style={{ margin: '8px 0 0', fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>
               {t('settings.branding.colours.previewNote', {
                 resolved: resolvedTheme,
                 editing: editingTheme,

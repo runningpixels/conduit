@@ -83,7 +83,7 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
             background: 'var(--card)',
             color: 'var(--ink)',
             padding: '8px 10px',
-            fontSize: 13,
+            fontSize: 'var(--fs-3xl)',
             resize: 'vertical',
           }}
         />
@@ -160,7 +160,7 @@ export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionPro
       ) : null}
 
       {active.length === 0 && pending.length === 0 ? (
-        <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>{t('settings.memory.empty.hint')}</p>
+        <p style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>{t('settings.memory.empty.hint')}</p>
       ) : (
         <ul className="skill-list">
           {active.map((item) => (

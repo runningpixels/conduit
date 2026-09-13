@@ -6,7 +6,10 @@ import type { SVGProps } from 'react';
 
 type IconProps = SVGProps<SVGSVGElement>;
 
-function Svg({ children, ...rest }: IconProps & { children: React.ReactNode }) {
+/* `cu-icon` lets a look retarget stroke geometry through --icon-stroke /
+ * --icon-cap / --icon-join (tokens.css). The CSS matches only the default
+ * attribute values, so an icon a caller gives its own strokeWidth keeps it. */
+function Svg({ children, className, ...rest }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -17,6 +20,7 @@ function Svg({ children, ...rest }: IconProps & { children: React.ReactNode }) {
       strokeLinejoin="round"
       aria-hidden="true"
       {...rest}
+      className={className ? `cu-icon ${className}` : 'cu-icon'}
     >
       {children}
     </svg>

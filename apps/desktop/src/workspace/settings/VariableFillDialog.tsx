@@ -57,18 +57,18 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
           padding: 20,
           maxWidth: 420,
           width: '90%',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          boxShadow: 'var(--shadow-modal-strong)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ margin: '0 0 4px', fontSize: '14px' }}>{t('settings.variableFill.title')}</h3>
-        <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--ink-2)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 'var(--fs-5xl)' }}>{t('settings.variableFill.title')}</h3>
+        <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
           {t('settings.variableFill.promptLabel')} <strong>{prompt.title}</strong>
         </p>
 
         <div style={{ display: 'grid', gap: 10 }}>
           {variables.map((varName) => (
-            <label key={varName} style={{ display: 'grid', gap: 3, fontSize: '12px' }}>
+            <label key={varName} style={{ display: 'grid', gap: 3, fontSize: 'var(--fs-xl)' }}>
               <span style={{ fontWeight: 500 }}>{varName}</span>
               <input
                 autoFocus={varName === variables[0]}

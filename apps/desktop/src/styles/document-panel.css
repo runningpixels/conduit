@@ -1,3 +1,12 @@
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look (html[data-look]) may retarget them. */
+:root {
+  --shadow-tab-active: 0 1px 2px rgba(0, 0, 0, .15);
+  --fs-doc-h1: 21px;
+  --r-empty-icon: 18px;
+  /* Geometry only: the rule's colour reads --hue at the element. */
+  --tab-active-rule-w: 1px;
+}
+
 /* ── Document panel (V9 §4) ─────────────────────────────────────────────────
  * An inset rounded card rather than a flush column. The gap and the radius are
  * what stop it reading as a second application docked beside the thread: it is
@@ -34,7 +43,7 @@ html[data-panel="closed"] .doc-panel {
 }
 .doc-placeholder {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-3xl);
   color: var(--ink-2);
   text-align: center;
 }
@@ -59,7 +68,7 @@ html[data-panel="closed"] .doc-panel {
 .doc-title { min-width: 0; line-height: 1.25; }
 .doc-title b {
   display: block;
-  font: 600 12.5px/1.2 var(--font-mono);
+  font: 600 var(--fs-2xl)/1.2 var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -68,13 +77,13 @@ html[data-panel="closed"] .doc-panel {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   color: var(--ink-3);
 }
 .tab-state.inline {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--r-round);
   background: var(--ok);
 }
 .tab-state.inline.warn { background: var(--warn); }
@@ -93,18 +102,18 @@ html[data-panel="closed"] .doc-panel {
 }
 .doc-view-btn {
   padding: 3px 10px;
-  font: 500 11.5px/1 var(--font-ui);
+  font: 500 var(--fs-lg)/1 var(--font-ui);
   color: var(--ink-3);
   background: transparent;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--r-xs);
   transition: var(--tap);
 }
 .doc-view-btn:hover { color: var(--ink); }
 .doc-view-btn.active {
   color: var(--ink);
   background: var(--card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
+  box-shadow: var(--shadow-tab-active);
 }
 html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filter: brightness(1.25); }
 .doc-overflow { position: relative; }
@@ -115,7 +124,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   gap: 9px;
   padding: 6px 9px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   color: var(--ink-3);
   cursor: default;
 }
@@ -130,7 +139,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   padding: 8px var(--sp-3);
   border-top: 1px solid var(--line-soft);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   color: var(--ink-3);
 }
 .panel-foot .foot-path {
@@ -179,10 +188,10 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--r-4);
   background: transparent;
   color: var(--ink-3);
-  font-size: 16px;
+  font-size: var(--fs-8xl);
   line-height: 1;
   flex: none;
   opacity: 0;
@@ -214,7 +223,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   border-radius: var(--r-sm);
   background: var(--card);
   color: var(--ink-2);
-  font: 500 11.5px/1 var(--font-mono);
+  font: 500 var(--fs-lg)/1 var(--font-mono);
   transition: var(--tap);
 }
 .artifact-file-tab:hover { color: var(--ink); background: var(--card); border-color: var(--line); }
@@ -223,7 +232,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   background: var(--card);
   border-color: var(--hue);
   border-bottom-color: var(--hue);
-  box-shadow: 0 -1px 0 0 var(--hue) inset;
+  box-shadow: 0 calc(-1 * var(--tab-active-rule-w)) 0 0 var(--hue) inset;
   font-weight: 600;
 }
 .artifact-file-tab .tab-select {
@@ -240,7 +249,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 }
 .artifact-file-tab svg { width: 14px; height: 14px; color: var(--hue); flex: none; }
 .artifact-file-tab .tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact-file-tab .tab-state { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--ok); }
+.artifact-file-tab .tab-state { width: 6px; height: 6px; border-radius: var(--r-round); flex: none; background: var(--ok); }
 .artifact-file-tab .tab-state.warn { background: var(--warn); }
 .artifact-file-tab .tab-state.bad { background: var(--err); }
 .artifact-file-tab .tab-rename,
@@ -250,7 +259,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--r-4);
   background: transparent;
   color: var(--ink-3);
   padding: 0;
@@ -283,7 +292,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   margin: 0 0 14px;
   padding: 10px 11px;
   border-radius: var(--r-sm);
-  font-size: 12px;
+  font-size: var(--fs-xl);
   line-height: 1.45;
 }
 .doc-banner.warn {
@@ -362,7 +371,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   border-radius: var(--r-sm);
   padding: 16px 18px;
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: var(--fs-4xl);
   line-height: 1.6;
   overflow: auto;
 }
@@ -370,7 +379,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 /* M3: Source-tab editor + banner action rows */
 .source-edit { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 240px; }
 .source-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.source-edit-hint { font: 500 11px/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.source-edit-hint { font: 500 var(--fs-md)/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
 .source-textarea {
   flex: 1;
   width: 100%;
@@ -379,28 +388,28 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   border-radius: var(--r-sm);
   background: var(--bg);
   color: var(--ink);
-  font: 500 12.5px/1.55 var(--font-mono);
+  font: 500 var(--fs-2xl)/1.55 var(--font-mono);
   padding: 10px 12px;
   white-space: pre-wrap;
   overflow: auto;
 }
 .source-textarea:focus { outline: none; border-color: var(--line-hi); }
 .doc-banner .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-.doc { font-size: 14px; line-height: 1.68; color: var(--ink); max-width: 860px; }
+.doc { font-size: var(--fs-5xl); line-height: 1.68; color: var(--ink); max-width: 860px; }
 /* The only serif in the product (V9 §6). An artifact is a *document*, and the
    reading-document register is the one place a second face earns its keep;
    §10.2 flags it as the first thing to cut if it reads as drift. */
-.doc h1 { font: 600 21px/1.3 var(--font-serif); letter-spacing: -.01em; margin: 0 0 6px; }
-.doc .sub { color: var(--ink-3); font-size: 12px; margin: 0 0 18px; font-family: var(--font-mono); }
-.doc h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); margin: 20px 0 8px; }
+.doc h1 { font: 600 var(--fs-doc-h1)/1.3 var(--font-serif); letter-spacing: -.01em; margin: 0 0 6px; }
+.doc .sub { color: var(--ink-3); font-size: var(--fs-xl); margin: 0 0 18px; font-family: var(--font-mono); }
+.doc h2 { font-size: var(--fs-xl); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); margin: 20px 0 8px; }
 .doc p { margin: 0 0 11px; color: var(--ink-2); }
 .doc ul { margin: 0 0 11px; padding-left: 0; list-style: none; }
 .doc li { position: relative; padding: 7px 0 7px 22px; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
 .doc li:last-child { border-bottom: 0; }
-.doc li::before { content: ""; position: absolute; left: 4px; top: 13px; width: 5px; height: 5px; border-radius: 50%; background: var(--hue); }
+.doc li::before { content: ""; position: absolute; left: 4px; top: 13px; width: 5px; height: 5px; border-radius: var(--r-round); background: var(--hue); }
 .doc li b { font-weight: 600; }
 .doc li .tag {
-  font: 500 10px/1 var(--font-mono);
+  font: 500 var(--fs-xs)/1 var(--font-mono);
   color: var(--warn);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
   border-radius: var(--r-pill);
@@ -427,7 +436,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .artifact-empty-icon {
   width: 56px;
   height: 56px;
-  border-radius: 18px;
+  border-radius: var(--r-empty-icon);
   display: grid;
   place-items: center;
   margin-bottom: 16px;
@@ -438,13 +447,13 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .artifact-empty-icon svg { width: 30px; height: 30px; }
 .artifact-empty-title {
   margin: 0 0 8px;
-  font-size: 20px;
+  font-size: var(--fs-10xl);
   font-weight: 600;
   letter-spacing: -.02em;
 }
 .artifact-empty-copy {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-4xl);
   line-height: 1.5;
   color: var(--ink-2);
 }
@@ -475,7 +484,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 }
 .artifact-pending-copy {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-3xl);
   color: var(--ink-2);
 }
 /* Failed generation: no skeleton, no shimmer — the panel stops implying work
@@ -508,7 +517,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   margin-bottom: 10px;
 }
 .lang-chip {
-  font: 600 10px/1 var(--font-mono);
+  font: 600 var(--fs-xs)/1 var(--font-mono);
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--ink-2);
@@ -536,7 +545,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 /* ── JSON tree ─────────────────────────────────────────────────────────── */
 .artifact-json {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-xl);
   line-height: 1.6;
 }
 .json-line { white-space: pre-wrap; word-break: break-word; }
@@ -544,7 +553,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .json-summary {
   cursor: pointer;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: var(--fs-md);
   list-style: none;
   user-select: none;
   -webkit-user-select: none;
@@ -597,7 +606,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   width: 100%;
   margin: 0 0 13px;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: var(--fs-2xl);
   /* Wide tables scroll their own container rather than the page (spec §4.2). */
   display: block;
   overflow-x: auto;
@@ -635,14 +644,14 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 }
 .doc-error-boundary-detail {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-2xl);
   line-height: 1.55;
   color: var(--ink-2);
 }
 .doc-error-boundary-message {
   display: block;
   margin-top: 6px;
-  font: 500 11.5px/1.5 var(--font-mono);
+  font: 500 var(--fs-lg)/1.5 var(--font-mono);
   color: var(--err);
   word-break: break-word;
 }

@@ -266,7 +266,7 @@ export function ConnectorsSection({
       )}
       <div className="status-item">
         {rows.length === 0 ? (
-          <span style={{ fontSize: '13px' }}>{t('settings.connectors.emptyState')}</span>
+          <span style={{ fontSize: 'var(--fs-3xl)' }}>{t('settings.connectors.emptyState')}</span>
         ) : (
           rows.map((s) => {
             const st = connectorLabel(s);
@@ -278,7 +278,7 @@ export function ConnectorsSection({
                 ? toolCaps.map((cap) => cap.name).join(', ')
                 : t('settings.connectors.noToolsDiscovered');
             return (
-              <div key={s.connectorVersionId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+              <div key={s.connectorVersionId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
                 <span style={{ flex: 1 }}>
                   <b>{s.connectorName}</b> <small style={{ color: 'var(--ink-3)' }}>v{s.version} · {s.transport}</small>
                   <small style={{ display: 'block', color: 'var(--ink-3)' }}>
@@ -288,7 +288,7 @@ export function ConnectorsSection({
                     <small style={{ display: 'block', color: 'var(--ink-3)' }}>{s.lastError}</small>
                   )}
                 </span>
-                <span className={`status-pill ${st.tone}`} style={{ fontSize: '11px' }}>{t(st.labelId)}</span>
+                <span className={`status-pill ${st.tone}`} style={{ fontSize: 'var(--fs-md)' }}>{t(st.labelId)}</span>
                 {needsSignIn && (
                   <button
                     className="btn ghost"
@@ -360,7 +360,7 @@ export function ConnectorsSection({
             value={env}
             onChange={(e) => setEnv(e.target.value)}
             rows={2}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}
           />
           <input
             placeholder={t('settings.connectors.form.consentPlaceholder')}
@@ -387,7 +387,7 @@ export function ConnectorsSection({
             </button>
           </div>
           {registryHits.map((hit) => (
-            <div key={`${hit.name}:${hit.version}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+            <div key={`${hit.name}:${hit.version}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <b>{hit.title || hit.name}</b>
                 <small style={{ display: 'block', color: 'var(--ink-3)' }}>
@@ -423,7 +423,7 @@ export function ConnectorsSection({
         <div style={{ marginTop: 16 }}>
           <div className="section-label" style={{ marginBottom: 8 }}>{t('settings.connectors.approvals.heading')}</div>
           {approvals.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-3)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--fs-2xl)', color: 'var(--ink-3)' }}>
               {t('settings.connectors.approvals.empty')}
             </p>
           ) : (
@@ -439,7 +439,7 @@ export function ConnectorsSection({
                     alignItems: 'center',
                     gap: 8,
                     marginBottom: 6,
-                    fontSize: 12.5,
+                    fontSize: 'var(--fs-2xl)',
                   }}
                 >
                   <span style={{ flex: 1, minWidth: 0 }}>

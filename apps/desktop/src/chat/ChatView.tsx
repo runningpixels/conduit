@@ -1850,14 +1850,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 {t('chat.view.welcomeTitle')}
               </h1>
               {!conversationWorkspaceRoot && conversationId ? (
-                <p style={{ marginTop: 12, fontSize: 13, color: 'var(--ink-2)', maxWidth: 360 }}>
+                <p style={{ marginTop: 12, fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', maxWidth: 360 }}>
                   {tr('chat.view.welcomeWorkspaceHint', {
                     action: (chunks: ReactNode[]) => (
                       <button
                         key="workspace-hint-button"
                         type="button"
                         className="btn ghost"
-                        style={{ padding: '2px 6px', fontSize: 13 }}
+                        style={{ padding: '2px 6px', fontSize: 'var(--fs-3xl)' }}
                         disabled={workspacePicking}
                         onClick={() => void handleWorkspacePick()}
                       >

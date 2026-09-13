@@ -513,7 +513,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
-                      fontSize: 11,
+                      fontSize: 'var(--fs-md)',
                       marginLeft: 4,
                     }}
                   >
@@ -532,7 +532,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <p
                   style={{
                     margin: 0,
-                    fontSize: 11,
+                    fontSize: 'var(--fs-md)',
                     color: 'var(--ink-3)',
                     fontFamily: 'var(--font-mono)',
                     wordBreak: 'break-all',

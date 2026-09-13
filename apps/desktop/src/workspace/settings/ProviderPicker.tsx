@@ -192,7 +192,7 @@ export function ProviderPicker({
   return (
     <div className="form-grid">
       <label className="field">
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.providerLabel')}</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.providerLabel')}</span>
         <select
           value={settings.activeProvider}
           onChange={(e) => handleProviderChange(e.target.value)}
@@ -212,11 +212,11 @@ export function ProviderPicker({
           )}
         </select>
         {activeDescriptor?.description ? (
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>{activeDescriptor.description}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)' }}>{activeDescriptor.description}</span>
         ) : null}
       </label>
       <label className="field">
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.modelLabel')}</span>
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.modelLabel')}</span>
         {models.length > 0 ? (
           <select
             value={settings.activeModel}
@@ -237,7 +237,7 @@ export function ProviderPicker({
       </label>
       {activeDescriptor?.showBaseUrlField && (
         <label className="field">
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.baseUrlLabel')}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.baseUrlLabel')}</span>
           <input
             value={providerBaseUrl}
             onChange={(e) => updateProviderBaseUrl(e.target.value)}
@@ -248,7 +248,7 @@ export function ProviderPicker({
       )}
       {activeDescriptor?.credentialMode !== 'none' && (
         <label className="field">
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.secretLabel')}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.secretLabel')}</span>
           <input
             type="password"
             value={providerSecret}
@@ -264,8 +264,8 @@ export function ProviderPicker({
         <button className="btn" type="button" disabled={busy} onClick={() => void handleValidateProvider()}>{t('settings.provider.testConnectionButton')}</button>
       </div>
       <div className="status-item">
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.credentialReferenceLabel')}</span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.provider.credentialReferenceLabel')}</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}>
           {credentialSummary?.storedInKeychain
             ? t('settings.provider.credentialRefActive', { ref: credentialSummary.credentialRef })
             : activeDescriptor?.credentialMode === 'none'

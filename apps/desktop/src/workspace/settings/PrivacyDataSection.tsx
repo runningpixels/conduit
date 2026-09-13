@@ -76,17 +76,17 @@ export function PrivacyDataSection({
   return (
     <div className="settings-section">
       <div className="status-item trust-health" style={{ marginBottom: 16, display: 'grid', gap: 8, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           {t('settings.privacy.trustConnection.heading')}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span className={`health ${trust.health}`} aria-hidden="true" />
-          <strong style={{ fontSize: '13px' }}>{t(trust.labelId)}</strong>
+          <strong style={{ fontSize: 'var(--fs-3xl)' }}>{t(trust.labelId)}</strong>
         </div>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {t(trust.detailId)}
         </p>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.55 }}>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.55 }}>
           <li>{t('settings.privacy.trust.boundaryLine', { status: boundaryOk ? 'online' : 'unreachable' })}</li>
           <li>{t('settings.privacy.trust.apiKeyLine', { status: hasCredential ? 'stored' : 'notStored' })}</li>
           <li>{t('settings.privacy.trust.localOnlyLine', { status: settings.localOnly ? 'on' : 'off' })}</li>
@@ -94,7 +94,7 @@ export function PrivacyDataSection({
       </div>
 
       <div className="form-grid">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
           <input
             type="checkbox"
             checked={settings.localOnly}
@@ -102,7 +102,7 @@ export function PrivacyDataSection({
           />
           {t('settings.privacy.localOnlyToggle.label')}
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
           <input
             type="checkbox"
             checked={settings.diagnosticsEnabled}
@@ -110,7 +110,7 @@ export function PrivacyDataSection({
           />
           {t('settings.privacy.diagnosticsToggle.label')}
         </label>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {t('settings.privacy.diagnosticsHint')}
         </p>
       </div>
@@ -121,10 +121,10 @@ export function PrivacyDataSection({
           re-encrypting a secret into a different store is a decision about
           where it lives, and a settings dropdown is not consent for it. */}
       <div className="status-item" style={{ marginTop: 16 }}>
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           {t('settings.privacy.keychainMode.heading')}
         </span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
           <select
             className="sel"
             value={settings.keychainMode}
@@ -137,7 +137,7 @@ export function PrivacyDataSection({
           </select>
           {t('settings.privacy.keychainMode.label')}
         </label>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {settings.keychainMode === 'file' ? (
             <>
               {tr('settings.privacy.keychainMode.fileBody', {
@@ -151,8 +151,8 @@ export function PrivacyDataSection({
       </div>
 
       <div className="status-item" style={{ marginTop: 16 }}>
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.privacy.localData.heading')}</span>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.privacy.localData.heading')}</span>
+        <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {t('settings.privacy.localData.hint')}
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -162,8 +162,8 @@ export function PrivacyDataSection({
         </div>
         {lastBackupPath && (
           <div style={{ display: 'grid', gap: 4 }}>
-            <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>{t('settings.privacy.localData.lastBackupLabel')}</span>
-            <code style={{ fontSize: '11px', wordBreak: 'break-all' }}>{lastBackupPath}</code>
+            <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)' }}>{t('settings.privacy.localData.lastBackupLabel')}</span>
+            <code style={{ fontSize: 'var(--fs-md)', wordBreak: 'break-all' }}>{lastBackupPath}</code>
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 /* ════════════════════════════════════════════════════════════════════════
    Conduit — workspace shell (spec §4). A 32px caption row across the top of
-   the window, then three columns beneath it: sidebar (280) | thread
+   the window, then three columns beneath it: sidebar (280, resizable) | thread
    (minmax(0,1fr)) | artifact panel (420), with a 46px title strip *inside*
    the centre column. Collapse is a column-width animation driven by
    --sidebar-w / --panel-w, not a mount/unmount. The height chain is
@@ -158,6 +158,8 @@ kbd {
 
 /* ── Body grid: sidebar | thread | context panel ───────────────────────── */
 .body {
+  /* Positioned so .sidebar-resize can straddle the sidebar's border. */
+  position: relative;
   display: grid;
   min-height: 0;
   overflow: hidden;
@@ -171,6 +173,14 @@ html[data-sidebar="closed"] .body { --sidebar-w: 0px; }
 html[data-panel="closed"] .body { --panel-w: 0px; }
 html[data-panel="closed"] .resize-handle { visibility: hidden; }
 
+/* While a column is dragged the track must follow the pointer, not ease towards
+   it: the .22s collapse transition above would otherwise run on every
+   pointermove and trail the cursor by a fifth of a second. */
+html[data-resizing] .body,
+html[data-resizing] .sidebar-resize { transition: none; }
+html[data-resizing],
+html[data-resizing] * { cursor: col-resize !important; user-select: none; }
+
 /* ── Sidebar — conversations only ──────────────────────────────────────── */
 .sidebar {
   min-width: 0;
@@ -182,7 +192,7 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
   /* head · nav · list · foot — the nav row is V9's (New chat + Search). */
   grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
-.sidebar-inner { width: var(--sidebar-w); min-width: 280px; }
+.sidebar-inner { width: var(--sidebar-open-w); min-width: var(--sidebar-min); }
 
 /* The head used to reserve 28px of top padding on macOS, where
    tauri.macos.conf.json keeps `decorations` with titleBarStyle Overlay and the
@@ -514,7 +524,9 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   transition: opacity .13s ease, transform .13s cubic-bezier(.22, .61, .24, 1);
 }
 .menu[data-open="true"] { opacity: 1; transform: none; pointer-events: auto; }
-.ws-menu { left: 8px; right: 8px; bottom: 52px; }
+/* Sized by its insets, not .menu's 216px floor: at the sidebar's 220px minimum
+   that floor overhangs the column, which clips it (.sidebar is overflow:hidden). */
+.ws-menu { left: 8px; right: 8px; bottom: 52px; min-width: 0; }
 /* Carries the artifact path in the panel's ⋯ menu. Ellipsised rather than
  * wrapped, matching `.panel-foot .foot-path` — the element already has a
  * `title` with the full path, so truncation loses nothing. */
@@ -584,7 +596,8 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   align-self: stretch;
   min-height: 0;
 }
-.resize-handle::after {
+.resize-handle::after,
+.sidebar-resize::after {
   content: "";
   width: 2px;
   height: 100%;
@@ -592,10 +605,36 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   transition: background var(--tap), box-shadow var(--tap);
 }
 .resize-handle:hover::after,
-.resize-handle.dragging::after {
+.resize-handle.dragging::after,
+.sidebar-resize:hover::after,
+.sidebar-resize:focus-visible::after,
+.sidebar-resize.dragging::after {
   background: var(--hue);
   box-shadow: 0 0 18px -4px var(--hue);
 }
+
+/* The sidebar's sash. Not a grid track like .resize-handle: a 12px track here
+   would shift the thread and change the column proportions, so it is an 8px
+   hit zone laid over the sidebar's border instead — 4px either side of it,
+   which keeps it off the conversation list's scrollbar. */
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-w) - 4px);
+  width: 8px;
+  z-index: 25;
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+  touch-action: none;
+  outline: none;
+  transition: left .22s cubic-bezier(.22, .61, .24, 1);
+}
+/* A short delay before the line lights, so crossing the border on the way to
+   the thread does not flash it. */
+.sidebar-resize:hover::after { transition-delay: .15s; }
+html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden; }
 
 /* The 28px full-height `.doc-panel-expand-tab` rail that used to sit here is
    gone: the title strip already carries a context-panel toggle on the same
@@ -644,7 +683,8 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   /* Force-collapse both side columns; ⌘\ / ⌘J overlay them instead of
      insetting (spec §4.3) — the overlay behaviour is a follow-up affordance. */
   .body { --sidebar-w: 0px !important; --panel-w: 0px !important; }
-  .resize-handle { display: none; }
+  .resize-handle,
+  .sidebar-resize { display: none; }
 }
 @media (max-width: 720px) {
   /* out of scope per spec §2 */

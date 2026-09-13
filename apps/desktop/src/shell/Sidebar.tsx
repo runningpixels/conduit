@@ -381,7 +381,7 @@ export function Sidebar({
   const hasList = conversations.length > 0 || folders.length > 0;
 
   return (
-    <aside className="sidebar" aria-label={t('shell.sidebar.aria.root')}>
+    <aside className="sidebar" id="sidebar" aria-label={t('shell.sidebar.aria.root')}>
       <div className="sb-head sidebar-inner">
         <span className="mark">
           <BrandMark className="mark-glyph" src={logoSrc} />

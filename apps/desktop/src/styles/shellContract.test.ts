@@ -20,6 +20,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { NARROW_BREAKPOINT, PANEL_BREAKPOINT } from '../workspace/useLayout';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const srcRoot = join(here, '..');
@@ -174,6 +175,52 @@ describe('collapsed sidebar', () => {
     expect(openingTagFor('sb-reveal'), 'nothing renders .sb-reveal').not.toBeNull();
     expect(allCss.replace(/\/\*[\s\S]*?\*\//g, '')).toMatch(
       /html\[data-sidebar="closed"\]\s+\.sb-reveal\s*\{[^}]*display\s*:\s*grid/,
+    );
+  });
+});
+
+/**
+ * Column resizing is split across useLayout.ts (clamps, persistence, when the
+ * handles are live) and workspace.css (when the columns and handles are
+ * hidden). Neither side can see the other, and they had already drifted: the
+ * panel's resize switched off at 820px while the stylesheet hid its handle at
+ * 1100px and collapsed both columns at 900px.
+ */
+describe('column resize', () => {
+  const css = allCss.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it.each([
+    ['NARROW_BREAKPOINT', NARROW_BREAKPOINT],
+    ['PANEL_BREAKPOINT', PANEL_BREAKPOINT],
+  ])('%s matches a media query in the stylesheet', (_name, px) => {
+    expect(css).toContain(`@media (max-width: ${px}px)`);
+  });
+
+  it('declares no other shell breakpoint the hook does not know about', () => {
+    const shellCss = readFileSync(join(srcRoot, 'styles', 'workspace.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const declared = Array.from(shellCss.matchAll(/@media \(max-width: (\d+)px\)/g)).map((m) => Number(m[1]));
+    // 720px is an explicit out-of-scope placeholder (spec §2) with no rules in it.
+    const unknown = declared.filter((px) => ![NARROW_BREAKPOINT, PANEL_BREAKPOINT, 720].includes(px));
+    expect(unknown).toEqual([]);
+  });
+
+  // The grid's collapse transition would otherwise ease every pointermove and
+  // leave the column trailing the cursor.
+  it('turns the column transition off while a column is dragged', () => {
+    expect(css).toMatch(/html\[data-resizing\]\s+\.body[^{]*\{[^}]*transition:\s*none/);
+  });
+
+  it('renders the sidebar sash as a keyboard-reachable separator, outside the drag region', () => {
+    const found = openingTagFor('sidebar-resize');
+    expect(found, 'nothing renders .sidebar-resize').not.toBeNull();
+    expect(found!.tag).toContain('role="separator"');
+    expect(found!.tag).toContain('tabIndex={0}');
+    expect(found!.tag).not.toContain('data-tauri-drag-region');
+  });
+
+  it('hides the sidebar sash with the column, but not mid-drag', () => {
+    expect(css).toMatch(
+      /html\[data-sidebar="closed"\]\s+\.sidebar-resize:not\(\.dragging\)\s*\{[^}]*visibility:\s*hidden/,
     );
   });
 });

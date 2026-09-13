@@ -1,6 +1,7 @@
 /*
  * V7 workspace layout interactions:
- *  - panel-resize: pointer drag of --panel-w persisted to localStorage
+ *  - column-resize: pointer/keyboard drag of --sidebar-open-w and --panel-w,
+ *    persisted to localStorage
  *  - sidebar-collapse: [data-sidebar] on <html> (open|closed)
  *  - panel-collapse: [data-panel] on <html> (open|closed)
  *
@@ -8,7 +9,7 @@
  * columns are driven by `--sidebar-w` / `--panel-w` and the html attributes
  * zero them out (conduit-v7-design-spec §4.1).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 const LAYOUT_KEY = 'conduit:v5-layout';
 const SIDEBAR_KEY = 'conduit:v5-sidebar';
@@ -17,123 +18,343 @@ const DOC_PANEL_KEY = 'conduit:v5-doc-panel';
 type SidebarMode = 'open' | 'closed';
 type PanelMode = 'open' | 'closed';
 
-const PANEL_MIN = 280;
-const PANEL_MAX = 560;
-const PANEL_STEP = 10;
+/*
+ * Breakpoints. These mirror the media queries in workspace.css, and
+ * shellContract.test.ts reads both sides so they cannot drift apart again:
+ * the panel's resize used to switch off at 820px while the stylesheet hid its
+ * handle at 1100px and collapsed both columns at 900px.
+ */
+/** At or below this width both side columns are force-collapsed. */
+export const NARROW_BREAKPOINT = 900;
+/** At or below this width the document panel is hidden. */
+export const PANEL_BREAKPOINT = 1100;
 
-function readStoredPanelWidth(): number | null {
+export const SIDEBAR_MIN = 220;
+export const SIDEBAR_MAX = 480;
+export const SIDEBAR_DEFAULT = 280;
+
+export const PANEL_MIN = 280;
+export const PANEL_MAX = 560;
+export const PANEL_DEFAULT = 420;
+
+/**
+ * The width the thread keeps when a side column is dragged or the window
+ * shrinks. Before the sidebar could move, the panel clamp assumed a fixed
+ * 320px for everything else, which let the thread fall to ~250px at 1101px.
+ */
+export const THREAD_MIN = 420;
+
+/** The document panel's handle is a fixed grid track (workspace.css `.body`). */
+const PANEL_HANDLE_W = 12;
+const STEP = 10;
+const STEP_LARGE = 50;
+
+/** Fired on `window` after `reflowColumns` so hooks can resync their widths. */
+const REFLOW_EVENT = 'conduit:layout-reflow';
+
+type ColumnId = 'sidebar' | 'panel';
+
+interface ColumnSpec {
+  cssVar: string;
+  field: 'sidebarW' | 'panelW';
+  min: number;
+  max: number;
+  fallback: number;
+  collapseAttr: 'data-sidebar' | 'data-panel';
+  hiddenAtOrBelow: number;
+}
+
+const COLUMNS: Record<ColumnId, ColumnSpec> = {
+  sidebar: {
+    cssVar: '--sidebar-open-w',
+    field: 'sidebarW',
+    min: SIDEBAR_MIN,
+    max: SIDEBAR_MAX,
+    fallback: SIDEBAR_DEFAULT,
+    collapseAttr: 'data-sidebar',
+    hiddenAtOrBelow: NARROW_BREAKPOINT,
+  },
+  panel: {
+    cssVar: '--panel-w',
+    field: 'panelW',
+    min: PANEL_MIN,
+    max: PANEL_MAX,
+    fallback: PANEL_DEFAULT,
+    collapseAttr: 'data-panel',
+    hiddenAtOrBelow: PANEL_BREAKPOINT,
+  },
+};
+
+type StoredLayout = { sidebarW?: number; panelW?: number };
+
+function readStoredLayout(): StoredLayout {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { panelW?: number };
-    return typeof parsed.panelW === 'number' ? parsed.panelW : null;
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as StoredLayout;
+    const out: StoredLayout = {};
+    if (typeof parsed.sidebarW === 'number' && Number.isFinite(parsed.sidebarW)) out.sidebarW = parsed.sidebarW;
+    if (typeof parsed.panelW === 'number' && Number.isFinite(parsed.panelW)) out.panelW = parsed.panelW;
+    return out;
   } catch {
-    return null;
+    return {};
   }
 }
 
-function writeStoredPanelWidth(px: number) {
+/** Merges into the stored object: writing one column must not drop the other's width. */
+function writeStoredLayout(patch: StoredLayout) {
   try {
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ panelW: px }));
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...readStoredLayout(), ...patch }));
   } catch {
     /* storage may be unavailable; fail silently */
   }
 }
 
-function panelMax(): number {
-  return Math.max(PANEL_MIN, Math.min(PANEL_MAX, window.innerWidth - 320));
+function clamp(px: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, px));
 }
 
-function setPanelVar(px: number): number {
-  const max = panelMax();
-  const clamped = Math.max(PANEL_MIN, Math.min(max, px));
-  document.documentElement.style.setProperty('--panel-w', `${clamped}px`);
-  return clamped;
+/** The width the user last chose, within the column's own bounds. */
+function preferredWidth(id: ColumnId): number {
+  const spec = COLUMNS[id];
+  const stored = readStoredLayout()[spec.field];
+  return stored === undefined ? spec.fallback : clamp(stored, spec.min, spec.max);
 }
 
-function widthToPercent(px: number): number {
-  const max = panelMax();
-  if (max <= PANEL_MIN) return 0;
-  return Math.round(((px - PANEL_MIN) / (max - PANEL_MIN)) * 100);
+function isShown(id: ColumnId): boolean {
+  const spec = COLUMNS[id];
+  return (
+    document.documentElement.getAttribute(spec.collapseAttr) !== 'closed' &&
+    window.innerWidth > spec.hiddenAtOrBelow
+  );
 }
 
-/** Document-panel column resize: drag of --panel-w persisted to localStorage.
- *  Disabled below 820px (breakpoint §4.3 force-collapses both side columns). */
-export function useColumnResize() {
+/** The open width currently applied to the column (its CSS variable). */
+function appliedWidth(id: ColumnId): number {
+  const px = parseFloat(document.documentElement.style.getPropertyValue(COLUMNS[id].cssVar));
+  return Number.isFinite(px) ? px : preferredWidth(id);
+}
+
+/** Upper bound for a column: its own max, less whatever the thread and the other column need. */
+function maxWidth(id: ColumnId): number {
+  const spec = COLUMNS[id];
+  const other: ColumnId = id === 'sidebar' ? 'panel' : 'sidebar';
+  const otherPx = isShown(other) ? appliedWidth(other) : 0;
+  const room = window.innerWidth - PANEL_HANDLE_W - THREAD_MIN - otherPx;
+  return Math.max(spec.min, Math.min(spec.max, room));
+}
+
+function setWidthVar(id: ColumnId, px: number) {
+  document.documentElement.style.setProperty(COLUMNS[id].cssVar, `${px}px`);
+}
+
+function applyWidth(id: ColumnId, px: number): number {
+  const next = Math.round(clamp(px, COLUMNS[id].min, maxWidth(id)));
+  setWidthVar(id, next);
+  return next;
+}
+
+/**
+ * Re-applies both preferred widths against the current window and collapse
+ * state. When the two do not fit, the panel yields first (down to its min),
+ * then the sidebar: the panel is the column that disappears outright at
+ * PANEL_BREAKPOINT, so it is the one already expected to give way.
+ *
+ * Preferences are never overwritten here, so a window that grows back
+ * restores the widths the user chose. A column mid-drag keeps its live width
+ * instead: snapping the sidebar open again reflows, and must not yank it back
+ * to the stored width under the pointer.
+ */
+export function reflowColumns(): void {
+  if (typeof window === 'undefined') return;
+  const dragged = document.documentElement.getAttribute('data-resizing');
+  const wanted = (id: ColumnId) => (dragged === id ? appliedWidth(id) : preferredWidth(id));
+  setWidthVar('sidebar', wanted('sidebar'));
+  applyWidth('panel', wanted('panel'));
+  applyWidth('sidebar', wanted('sidebar'));
+  window.dispatchEvent(new Event(REFLOW_EVENT));
+}
+
+function widthToPercent(px: number, min: number, max: number): number {
+  if (max <= min) return 0;
+  return Math.round(((px - min) / (max - min)) * 100);
+}
+
+interface CollapseControls {
+  open: () => void;
+  close: () => void;
+}
+
+interface ResizableColumnOptions {
+  /** When given, dragging below half the min width snaps the column shut. */
+  collapse?: CollapseControls;
+}
+
+function useResizableColumn(id: ColumnId, options: ResizableColumnOptions = {}) {
+  const spec = COLUMNS[id];
+  const [widthPx, setWidthPx] = useState(() =>
+    typeof window === 'undefined' ? spec.fallback : preferredWidth(id),
+  );
   const [dragging, setDragging] = useState(false);
-  const [panelWidthPx, setPanelWidthPx] = useState(() => {
-    if (typeof window === 'undefined') return PANEL_MIN;
-    return readStoredPanelWidth() ?? PANEL_MIN;
-  });
+  const collapseRef = useRef(options.collapse);
+  collapseRef.current = options.collapse;
 
-  const applyWidth = useCallback((px: number, persist: boolean) => {
-    const next = setPanelVar(px);
-    setPanelWidthPx(next);
-    if (persist) writeStoredPanelWidth(next);
-    return next;
-  }, []);
+  const resizeDisabled = useCallback(() => window.innerWidth <= spec.hiddenAtOrBelow, [spec]);
 
-  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (window.matchMedia('(max-width: 820px)').matches) return;
-    e.preventDefault();
-    const handle = e.currentTarget;
-    handle.setPointerCapture(e.pointerId);
-    handle.classList.add('dragging');
-    setDragging(true);
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
+  const commit = useCallback(
+    (px: number, persist: boolean) => {
+      const next = applyWidth(id, px);
+      setWidthPx(next);
+      if (persist) writeStoredLayout({ [spec.field]: next });
+      return next;
+    },
+    [id, spec],
+  );
 
-    const onMove = (ev: PointerEvent) => {
-      applyWidth(window.innerWidth - ev.clientX, false);
+  /** The column's width if its edge sat under the pointer. */
+  const pointerToWidth = useCallback(
+    (clientX: number) => (id === 'sidebar' ? clientX : window.innerWidth - clientX),
+    [id],
+  );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0 || resizeDisabled()) return;
+      e.preventDefault();
+      const handle = e.currentTarget;
+      const pointerId = e.pointerId;
+      handle.setPointerCapture?.(pointerId);
+      handle.classList.add('dragging');
+      setDragging(true);
+      const root = document.documentElement;
+      root.setAttribute('data-resizing', id);
+
+      // Where inside the handle it was grabbed, so the column does not jump by
+      // that offset on the first move.
+      const startWidth = appliedWidth(id);
+      const grabOffset = startWidth - pointerToWidth(e.clientX);
+      let last = startWidth;
+      let moved = false;
+      let snapped = false;
+
+      const onMove = (ev: PointerEvent) => {
+        moved = true;
+        const raw = pointerToWidth(ev.clientX) + grabOffset;
+        const collapse = collapseRef.current;
+        if (collapse && raw < spec.min / 2) {
+          if (!snapped) {
+            snapped = true;
+            collapse.close();
+          }
+          return;
+        }
+        if (snapped) {
+          snapped = false;
+          collapse?.open();
+        }
+        last = commit(raw, false);
+      };
+      const onUp = () => {
+        if (snapped) {
+          // Snapping shut is a collapse, not a resize: the pointer passed
+          // through the min width on its way out, and reopening should not
+          // land there. Put back the width the gesture started from.
+          commit(startWidth, false);
+        } else if (moved) {
+          commit(last, true);
+        }
+        // A press without a move persists nothing, so a click on the sash
+        // cannot freeze a viewport-clamped width in as the preference.
+        if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId);
+        handle.classList.remove('dragging');
+        setDragging(false);
+        root.removeAttribute('data-resizing');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    },
+    [commit, id, pointerToWidth, resizeDisabled, spec],
+  );
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (resizeDisabled()) return;
+      const step = e.shiftKey ? STEP_LARGE : STEP;
+      const current = appliedWidth(id);
+      // Arrows move the separator (WAI-ARIA window splitter), so which one
+      // widens the column depends on the side of the window it is anchored to.
+      const grow = id === 'sidebar' ? 'ArrowRight' : 'ArrowLeft';
+      const shrink = id === 'sidebar' ? 'ArrowLeft' : 'ArrowRight';
+      let next: number | null = null;
+      if (e.key === grow) next = current + step;
+      else if (e.key === shrink) next = current - step;
+      else if (e.key === 'Home') next = spec.min;
+      else if (e.key === 'End') next = maxWidth(id);
+      if (next == null) return;
+      e.preventDefault();
+      commit(next, true);
+    },
+    [commit, id, resizeDisabled, spec],
+  );
+
+  /** Double-clicking a sash resets it — the Windows and VS Code convention. */
+  const onDoubleClick = useCallback(() => {
+    if (resizeDisabled()) return;
+    commit(spec.fallback, true);
+  }, [commit, resizeDisabled, spec]);
+
+  // Layout effect, so persisted widths land before the first paint. The resize
+  // listener is rAF-throttled; reflow is idempotent, so two hooks each keeping
+  // one costs nothing meaningful.
+  useLayoutEffect(() => {
+    const sync = () => setWidthPx(appliedWidth(id));
+    window.addEventListener(REFLOW_EVENT, sync);
+    reflowColumns();
+
+    let frame = 0;
+    const onResize = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(reflowColumns);
     };
-    const onUp = (ev: PointerEvent) => {
-      applyWidth(window.innerWidth - ev.clientX, true);
-      handle.releasePointerCapture(e.pointerId);
-      handle.classList.remove('dragging');
-      setDragging(false);
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
+    window.addEventListener('resize', onResize);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener(REFLOW_EVENT, sync);
     };
+  }, [id]);
 
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  }, [applyWidth]);
-
-  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (window.matchMedia('(max-width: 820px)').matches) return;
-    const max = panelMax();
-    let next: number | null = null;
-    if (e.key === 'ArrowLeft') next = panelWidthPx - PANEL_STEP;
-    else if (e.key === 'ArrowRight') next = panelWidthPx + PANEL_STEP;
-    else if (e.key === 'Home') next = PANEL_MIN;
-    else if (e.key === 'End') next = max;
-    if (next == null) return;
-    e.preventDefault();
-    applyWidth(next, true);
-  }, [applyWidth, panelWidthPx]);
-
-  // Restore persisted width on mount.
-  useEffect(() => {
-    const saved = readStoredPanelWidth();
-    if (saved !== null) applyWidth(saved, false);
-  }, [applyWidth]);
-
-  const max = typeof window !== 'undefined' ? panelMax() : PANEL_MIN;
+  const max = typeof window !== 'undefined' ? maxWidth(id) : spec.max;
   return {
     onPointerDown,
     onKeyDown,
+    onDoubleClick,
     dragging,
-    panelWidthPx,
-    ariaValueNow: widthToPercent(panelWidthPx),
+    widthPx,
+    ariaValueNow: widthToPercent(widthPx, spec.min, max),
     ariaValueMin: 0,
     ariaValueMax: 100,
-    panelMin: PANEL_MIN,
-    panelMax: max,
+    min: spec.min,
+    max,
   };
+}
+
+/** Document-panel column resize: drag of --panel-w persisted to localStorage.
+ *  Disabled at or below PANEL_BREAKPOINT, where the panel is hidden (§4.3). */
+export function useColumnResize() {
+  return useResizableColumn('panel');
+}
+
+/** Sidebar column resize: drag of --sidebar-open-w persisted to localStorage.
+ *  Dragging below half its min width snaps it shut. Disabled at or below
+ *  NARROW_BREAKPOINT, where the sidebar is force-collapsed (§4.3). */
+export function useSidebarResize(collapse: CollapseControls) {
+  return useResizableColumn('sidebar', { collapse });
 }
 
 function readStoredSidebar(): SidebarMode {
@@ -157,9 +378,13 @@ function writeStoredSidebar(mode: SidebarMode) {
 export function useSidebarCollapse() {
   const [mode, setMode] = useState<SidebarMode>(readStoredSidebar);
 
-  useEffect(() => {
+  // Layout effect: a persisted "closed" must be on <html> before the first
+  // paint, or the column visibly animates shut on every launch.
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-sidebar', mode);
     writeStoredSidebar(mode);
+    // Opening or closing one column changes how much room the other may take.
+    reflowColumns();
   }, [mode]);
 
   const open = useCallback(() => setMode('open'), []);
@@ -193,9 +418,10 @@ function writeStoredDocPanel(mode: PanelMode) {
 export function useDocPanelCollapse() {
   const [mode, setMode] = useState<PanelMode>(readStoredDocPanel);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-panel', mode);
     writeStoredDocPanel(mode);
+    reflowColumns();
   }, [mode]);
 
   const collapse = useCallback(() => setMode('closed'), []);
@@ -206,6 +432,16 @@ export function useDocPanelCollapse() {
   const collapsed = mode === 'closed';
 
   return { collapsed, collapse, expand, toggle };
+}
+
+/** @internal test seam */
+export function __readStoredLayoutForTest(): StoredLayout {
+  return readStoredLayout();
+}
+
+/** @internal test seam */
+export function __writeStoredLayoutForTest(patch: StoredLayout): void {
+  writeStoredLayout(patch);
 }
 
 /** @internal test seam */

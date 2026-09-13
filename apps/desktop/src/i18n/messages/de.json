@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "Größe der Dokumentspalte ändern",
   "app.sidebar.openAriaLabel": "Seitenleiste öffnen",
   "app.sidebar.openTitle": "Seitenleiste öffnen  {shortcut}",
+  "app.sidebarResizeHandle.ariaLabel": "Größe der Seitenleiste ändern",
   "app.status.allHistoryDeleted": "Gesamter Chatverlauf gelöscht",
   "app.status.archiveConversationFailed": "Chat konnte nicht archiviert werden",
   "app.status.artifactExportedTo": "Exportiert nach {path}",

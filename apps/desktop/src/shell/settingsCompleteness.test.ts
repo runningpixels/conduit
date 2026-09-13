@@ -123,6 +123,18 @@ describe('settings sections', () => {
   it('lists no nav item outside the union', () => {
     expect(navIds().filter((id) => !union.includes(id))).toEqual([]);
   });
+
+  /**
+   * The palette is where "every capability removed from persistent chrome
+   * lives", and typing a section's name is how people find it. Five sections —
+   * Chat defaults, Prompts, Appearance, Branding, Privacy & data — had no
+   * command at all, so a new section without one is the likely next miss.
+   */
+  it('gives every id a command palette entry', () => {
+    const palette = stripComments(readFileSync(join(srcRoot, 'workspace', 'CommandPalette.tsx'), 'utf8'));
+    const routed = new Set(Array.from(palette.matchAll(/onOpenSettings\('([a-z-]+)'\)/g)).map((m) => m[1]));
+    expect(union.filter((id) => !routed.has(id))).toEqual([]);
+  });
 });
 
 /**

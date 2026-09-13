@@ -12,6 +12,7 @@ import { formatModelPriceLabel } from '../lib/costTable';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
+import { allowUserBranding } from '../brand/buildFlags';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 
@@ -205,11 +206,19 @@ export function CommandPalette({
       { id: 'cmd-toggle-web', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleWebSearch'), tail: modShiftShortcutHint('W'), run: () => { onToggleWebSearch(); close(); } },
       { id: 'cmd-settings', group, kind: 'cmd', label: t('workspace.commandPalette.command.openSettings'), tail: modShortcutHint(','), run: () => { onOpenSettings(); close(); } },
       { id: 'cmd-providers', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageProviders'), run: () => { onOpenSettings('providers'); close(); } },
+      { id: 'cmd-chat-defaults', group, kind: 'cmd', label: t('workspace.commandPalette.command.chatDefaults'), run: () => { onOpenSettings('chat'); close(); } },
       { id: 'cmd-web-search', group, kind: 'cmd', label: t('workspace.commandPalette.command.webSearchSettings'), run: () => { onOpenSettings('web-search'); close(); } },
       { id: 'cmd-workspace', group, kind: 'cmd', label: t('workspace.commandPalette.command.workspaceDefaults'), run: () => { onOpenSettings('workspace'); close(); } },
       { id: 'cmd-connectors', group, kind: 'cmd', label: t('workspace.commandPalette.command.connectService'), run: () => { onOpenSettings('connectors'); close(); } },
+      { id: 'cmd-prompts', group, kind: 'cmd', label: t('workspace.commandPalette.command.prompts'), run: () => { onOpenSettings('prompts'); close(); } },
       { id: 'cmd-skills', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageSkills'), run: () => { onOpenSettings('skills'); close(); } },
       { id: 'cmd-memory', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageMemory'), run: () => { onOpenSettings('memory'); close(); } },
+      { id: 'cmd-appearance', group, kind: 'cmd', label: t('workspace.commandPalette.command.appearance'), run: () => { onOpenSettings('appearance'); close(); } },
+      // Gated like its nav item: a build without user branding renders no pane for it.
+      ...(allowUserBranding
+        ? [{ id: 'cmd-branding', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.branding'), run: () => { onOpenSettings('branding'); close(); } }]
+        : []),
+      { id: 'cmd-privacy', group, kind: 'cmd', label: t('workspace.commandPalette.command.privacyData'), run: () => { onOpenSettings('privacy'); close(); } },
       { id: 'cmd-about', group, kind: 'cmd', label: t('workspace.commandPalette.command.about'), run: () => { onOpenSettings('about'); close(); } },
       { id: 'cmd-rename', group, kind: 'cmd', label: t('workspace.commandPalette.command.renameChat'), run: () => { onRenameChat(); close(); } },
       { id: 'cmd-pin', group, kind: 'cmd', label: activePinned ? t('workspace.commandPalette.command.unpinChat') : t('workspace.commandPalette.command.pinChat'), run: () => { onPinChat?.(); close(); } },

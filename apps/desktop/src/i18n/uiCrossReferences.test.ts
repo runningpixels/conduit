@@ -104,6 +104,23 @@ const CROSS_REFERENCES: ReadonlyArray<{ prose: string; names: string }> = [
   { prose: 'chat.composer.workspace.defaultsInSettings', names: 'shell.settingsSheet.nav.title' },
   { prose: 'onboarding.connectors.hint', names: 'shell.settingsSheet.nav.title' },
   { prose: 'onboarding.finish.diagnosticsHint', names: 'shell.settingsSheet.nav.title' },
+
+  /* The title strip's settings button and its menu, and the palette commands
+   * for each section: every one names the sheet or a section of it, so each
+   * must keep the name the sheet's nav gives it. */
+  { prose: 'workspace.mainHead.settingsButton.ariaLabel', names: 'shell.settingsSheet.nav.title' },
+  { prose: 'workspace.mainHead.settingsMenu.openSettings', names: 'shell.settingsSheet.nav.title' },
+  { prose: 'workspace.mainHead.settingsMenu.providers', names: 'shell.settingsSheet.nav.providers' },
+  { prose: 'workspace.mainHead.settingsMenu.chat', names: 'shell.settingsSheet.nav.chat' },
+  { prose: 'workspace.mainHead.settingsMenu.connectors', names: 'shell.settingsSheet.nav.connectors' },
+  { prose: 'workspace.mainHead.settingsMenu.appearance', names: 'shell.settingsSheet.nav.appearance' },
+  { prose: 'workspace.mainHead.settingsMenu.privacy', names: 'shell.settingsSheet.nav.privacy' },
+  { prose: 'workspace.mainHead.settingsMenu.about', names: 'shell.settingsSheet.nav.about' },
+  { prose: 'workspace.commandPalette.command.chatDefaults', names: 'shell.settingsSheet.nav.chat' },
+  { prose: 'workspace.commandPalette.command.prompts', names: 'shell.settingsSheet.nav.prompts' },
+  { prose: 'workspace.commandPalette.command.appearance', names: 'shell.settingsSheet.nav.appearance' },
+  { prose: 'workspace.commandPalette.command.branding', names: 'shell.settingsSheet.nav.branding' },
+  { prose: 'workspace.commandPalette.command.privacyData', names: 'shell.settingsSheet.nav.privacy' },
 ];
 
 /**

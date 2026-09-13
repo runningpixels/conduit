@@ -1,6 +1,6 @@
 # UI improvements — resizable sidebar, top-bar settings, and follow-ups
 
-Status: **PR 1 implemented** (sidebar resize); PRs 2–6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
+Status: **PR 1** (sidebar resize, #42) and **PR 2** (top-bar settings) implemented; PRs 3–6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
 
 Two asks from dogfooding, plus what a pass over the running shell turned up:
 
@@ -197,11 +197,15 @@ Connectors                        2
 Appearance
 Privacy & data
 ─────────────
-Keyboard shortcuts            Ctrl+/     (new, Part 3)
 Export diagnostics
-Check for updates
-About Conduit
+About
 ```
+
+*As built:* the menu has no **Keyboard shortcuts** item, because that sheet does not exist until
+PR 5, and a dead item is worse than no item. It also has no separate **Check for updates**:
+updates live in the About section, so that row would duplicate About. Section labels are copied
+from the settings nav in every locale and registered in G12 (`uiCrossReferences.test.ts`), so
+the menu and the sheet cannot name a section differently.
 
 **Why `MainHead` and not the 32px caption row.**
 
@@ -229,8 +233,9 @@ About Conduit
   `appearance`, `branding` (when enabled), and `privacy`. Extend `settingsCompleteness.test.ts`
   (guard G6) so that **every** `SettingsSection` needs a palette command, which keeps new sections
   from drifting.
-- **Leave the sidebar chip alone**, apart from renaming its *Configure* group to *Settings* for
-  consistency. Existing muscle memory keeps working.
+- **Leave the sidebar chip alone**, so existing muscle memory keeps working. *As built:* the
+  *Configure* heading is not renamed. Renaming it to *Settings* would put a "Settings" heading
+  directly above a "Settings" item.
 - **i18n.** Add `workspace.mainHead.settingsButton{AriaLabel,Title}`,
   `workspace.mainHead.settingsMenu.*`, `workspace.mainHead.newChat*`, and
   `workspace.mainHead.search*`. `uiCrossReferences.test.ts` (G12/G13) ties any prose naming

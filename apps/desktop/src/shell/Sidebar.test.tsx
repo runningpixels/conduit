@@ -149,6 +149,16 @@ describe('Sidebar', () => {
     expect(props.onOpenSettings).toHaveBeenCalledWith('providers');
   });
 
+  // The item carries the Ctrl+, hint, so it must go where Ctrl+, goes: it used
+  // to hard-code Appearance while the hotkey opened Providers.
+  it('opens settings from the Settings item without naming a section', () => {
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /workspace/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Settings/ }));
+    expect(props.onOpenSettings).toHaveBeenCalledOnce();
+    expect(props.onOpenSettings.mock.lastCall?.[0]).toBeUndefined();
+  });
+
   it('reveal in Explorer calls onRevealWorkspace', () => {
     render(<Sidebar {...props} />);
     fireEvent.click(screen.getByRole('button', { name: /workspace/i }));

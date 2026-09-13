@@ -51,10 +51,24 @@
   text-overflow: ellipsis;
   padding-left: 4px;
 }
-/* With the sidebar collapsed the floating reveal button takes the strip's left
-   end, so the title steps aside for it. */
-html[data-sidebar="closed"] .main-title { padding-left: 44px; }
 .head-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+
+/* The sidebar's own actions — reopen, New chat, Search — stand in at the strip's
+   left end while the sidebar is collapsed, so collapsing it strands none of
+   them behind a hotkey. A normal flex row rather than the `position: fixed`
+   reveal button it replaced, which floated over this strip and made the title
+   pad itself out of the way. */
+.head-nav { display: none; align-items: center; gap: 2px; }
+html[data-sidebar="closed"] .head-nav { display: flex; }
+
+/* Settings split-button: the gear opens the sheet, the chevron lists sections.
+   Anchored to its own group so the menu drops from under the chevron. */
+.head-settings { position: relative; display: flex; align-items: center; }
+.head-settings-open { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.head-settings-menu { width: 16px; border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+.head-settings-menu svg { width: 11px; height: 11px; }
+.head-settings-menu[aria-expanded="true"] { color: var(--ink); background: var(--card); }
+.head-settings-list { top: 34px; right: 0; }
 
 /* ── Caption row (frameless shell) ─────────────────────────────────────── */
 /* The window's own strip: drag region plus the control cluster, no app content.
@@ -260,31 +274,6 @@ html[data-palette="orange-charcoal"] .sb-item.newchat svg,
 html[data-palette="orange-dark"] .sb-item.newchat svg { color: currentColor; }
 html[data-palette="orange-charcoal"] .sb-item.newchat:hover,
 html[data-palette="orange-dark"] .sb-item.newchat:hover { background: var(--card-hi); color: var(--ink); }
-
-/* ── Sidebar reveal — the way back from a collapsed sidebar ────────────── */
-/* Without it a collapsed sidebar is reachable only by hotkey, so the collapse
-   becomes a dead end. Offset below the caption row rather than into it: the
-   bar is window chrome and holds no app affordances, so the button floats over
-   the title strip instead — which is why `.main-title` steps aside for it. */
-.sb-reveal {
-  position: fixed;
-  top: calc(var(--titlebar-h) + 8px);
-  left: 12px;
-  z-index: 30;
-  width: 34px;
-  height: 34px;
-  display: none;
-  place-items: center;
-  border-radius: var(--r-sm);
-  color: var(--ink-3);
-  background: var(--card);
-  border: 1px solid var(--line);
-  box-shadow: var(--soft-lift);
-  transition: color var(--tap), border-color var(--tap);
-}
-.sb-reveal svg { width: 17px; height: 17px; }
-.sb-reveal:hover { color: var(--ink); border-color: var(--line-hi); }
-html[data-sidebar="closed"] .sb-reveal { display: grid; }
 
 .sb-list { min-height: 0; padding: 0 var(--sp-2) var(--sp-3); overflow-y: auto; }
 .sb-empty {

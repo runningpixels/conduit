@@ -85,6 +85,8 @@ export type SettingsSection =
 interface SettingsSheetProps {
   open: boolean;
   initialSection?: SettingsSection;
+  /** Reports the section on screen, so the app can reopen the sheet there. */
+  onSectionChange?: (section: SettingsSection) => void;
   onClose: () => void;
   settings: AppSettings;
   onSettingsChange: (s: AppSettings) => void;
@@ -188,6 +190,7 @@ function Toggle({ pressed, onChange, label }: { pressed: boolean; onChange: () =
 export function SettingsSheet({
   open,
   initialSection,
+  onSectionChange,
   onClose,
   settings,
   onSettingsChange,
@@ -230,6 +233,10 @@ export function SettingsSheet({
       lastFocusRef.current?.focus();
     };
   }, [open, initialSection]);
+
+  useEffect(() => {
+    if (open) onSectionChange?.(section);
+  }, [open, section, onSectionChange]);
 
   // Load the default-model list when the chat section is visible.
   useEffect(() => {

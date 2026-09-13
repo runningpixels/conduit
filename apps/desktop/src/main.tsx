@@ -5,6 +5,8 @@ import './styles.css';
 import App from './App';
 import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
 import '@conduit/ui/looks/terminal.css';
+import '@conduit/ui/looks/editorial.css';
+import '@conduit/ui/looks/contrast.css';
 import { applyLook, applyPalette, applyReadingFont, readLook, readPalette, readReadingFont } from './shell/uiPrefs';
 import { applyCachedBrand } from './brand/applyBrand';
 import { resolveTheme } from './theme';

@@ -17,10 +17,20 @@
  * look preset does not need to cross the IPC boundary.
  */
 
-export const LOOK_IDS = ['soft', 'terminal'] as const;
+export const LOOK_IDS = ['soft', 'terminal', 'editorial', 'contrast'] as const;
 export type LookId = (typeof LOOK_IDS)[number];
 
-export const PALETTE_IDS = ['terra', 'orange-charcoal', 'orange-dark', 'amber'] as const;
+export const PALETTE_IDS = [
+  'terra',
+  'orange-charcoal',
+  'orange-dark',
+  'amber',
+  'phosphor',
+  'paper',
+  'graphite',
+  'newsprint',
+  'contrast',
+] as const;
 export type PaletteId = (typeof PALETTE_IDS)[number];
 
 export type Mode = 'dark' | 'light';
@@ -96,6 +106,56 @@ export const THEMES: readonly ThemeManifest[] = [
       license: 'MIT',
     },
   },
+  {
+    id: 'green-phosphor',
+    i18nKey: 'greenPhosphor',
+    look: 'terminal',
+    palette: 'phosphor',
+    modes: ['dark'],
+    swatches: ['#020803', '#09140b', '#b6f7c4', '#39ff6a'],
+    mermaid: 'tokens',
+    iframe: 'tokens',
+  },
+  {
+    id: 'amber-paper',
+    i18nKey: 'amberPaper',
+    look: 'terminal',
+    palette: 'paper',
+    modes: ['light'],
+    swatches: ['#f4efe3', '#fbf8f0', '#1b1812', '#8a4d00'],
+    mermaid: 'tokens',
+    iframe: 'tokens',
+  },
+  {
+    id: 'graphite',
+    i18nKey: 'graphite',
+    look: 'soft',
+    palette: 'graphite',
+    modes: ['dark', 'light'],
+    swatches: ['#1c1c1e', '#252527', '#ededee', '#d4d4d8'],
+    mermaid: 'tokens',
+    iframe: 'tokens',
+  },
+  {
+    id: 'editorial',
+    i18nKey: 'editorial',
+    look: 'editorial',
+    palette: 'newsprint',
+    modes: ['light', 'dark'],
+    swatches: ['#f6f3ee', '#fbfaf7', '#1f1c19', '#a3222b'],
+    mermaid: 'tokens',
+    iframe: 'tokens',
+  },
+  {
+    id: 'high-contrast',
+    i18nKey: 'highContrast',
+    look: 'contrast',
+    palette: 'contrast',
+    modes: ['dark', 'light'],
+    swatches: ['#000000', '#0a0a0a', '#ffffff', '#ffd400'],
+    mermaid: 'tokens',
+    iframe: 'tokens',
+  },
 ];
 
 export const DEFAULT_THEME_ID = 'conduit-orange-charcoal';
@@ -121,12 +181,15 @@ export function themeForPair(look: LookId, palette: PaletteId): ThemeManifest | 
 }
 
 /**
- * Modes a look × palette pairing can render. A palette that ships only a dark
- * block (amber) cannot render light no matter which look carries it, so the
- * pairing's modes are the palette's. Palettes no manifest names default to both.
+ * Modes a look × palette pairing can render. A palette designed for one mode
+ * (amber and phosphor are dark, paper is light) cannot render the other no
+ * matter which look carries it, so a pairing's modes are the union of the
+ * modes its palette's manifests declare. Palettes no manifest names default
+ * to both.
  */
 export function modesForPalette(palette: PaletteId): readonly Mode[] {
   const named = THEMES.filter((t) => t.palette === palette);
   if (named.length === 0) return ['dark', 'light'];
-  return named.some((t) => t.modes.includes('light')) ? ['dark', 'light'] : ['dark'];
+  const union = (['dark', 'light'] as const).filter((m) => named.some((t) => t.modes.includes(m)));
+  return union;
 }

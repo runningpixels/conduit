@@ -42,7 +42,9 @@ export function AppearanceStep({
   /* The language write is awaited, so the select has a real in-flight window.
      Disabling it stops a second choice from queueing a second re-mount. */
   const [switchingLanguage, setSwitchingLanguage] = useState(false);
-  const modeForced = !useSupportedModes().includes('light');
+  const supported = useSupportedModes();
+  const modeForced = supported.length < 2;
+  const modeForcedTo = supported[0];
 
   /* Density is not offered here, but `applyUiReadability` takes both, so the
      stored value is read and passed straight back through unchanged. */
@@ -116,7 +118,7 @@ export function AppearanceStep({
             <option value="light">{t('settings.appearance.theme.optionLight')}</option>
           </select>
           {modeForced && (
-            <small id="onboarding-mode-hint">{t('settings.appearance.theme.hintDarkOnly')}</small>
+            <small id="onboarding-mode-hint">{t(modeForcedTo === 'dark' ? 'settings.appearance.theme.hintDarkOnly' : 'settings.appearance.theme.hintLightOnly')}</small>
           )}
         </div>
 

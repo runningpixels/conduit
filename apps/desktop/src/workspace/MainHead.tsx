@@ -184,7 +184,11 @@ export function MainHead({
           className="iconbtn"
           type="button"
           aria-label={t('workspace.mainHead.themeToggleAriaLabel')}
-          title={modeLocked ? t('settings.appearance.themes.darkOnlyLabel') : t('workspace.mainHead.themeToggleTitle')}
+          title={
+            modeLocked
+              ? t(effectiveTheme === 'dark' ? 'settings.appearance.themes.darkOnlyLabel' : 'settings.appearance.themes.lightOnlyLabel')
+              : t('workspace.mainHead.themeToggleTitle')
+          }
           disabled={modeLocked}
           onClick={onToggleTheme}
         >

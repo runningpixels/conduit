@@ -97,10 +97,13 @@ describe('modesForPalette', () => {
   });
 
   it('matches the union of modes across every manifest naming a given palette', () => {
+    // Not every named palette's manifests include a dark mode (`paper` is
+    // light-only), so the expectation is the true union over dark/light —
+    // never dark-by-default just because a manifest names light too.
     for (const id of PALETTE_IDS) {
       const named = THEMES.filter((t) => t.palette === id);
       if (named.length === 0) continue;
-      const expected = named.some((t) => t.modes.includes('light')) ? ['dark', 'light'] : ['dark'];
+      const expected = (['dark', 'light'] as const).filter((m) => named.some((t) => t.modes.includes(m)));
       expect(modesForPalette(id)).toEqual(expected);
     }
   });
@@ -120,10 +123,9 @@ describe('themeForPair', () => {
   });
 
   it('returns undefined for a pair no manifest names', () => {
-    // Every current PALETTE_ID is named against `soft` (the only LOOK_ID), so
-    // there is no unnamed pair among the real ids — cross a real palette with
-    // a look id no LOOK_ID actually is, which is exactly "no manifest names
-    // this pair" from themeForPair's point of view.
+    // Cross a real palette with a look id no LOOK_ID actually is, which is
+    // exactly "no manifest names this pair" from themeForPair's point of
+    // view — true regardless of how many real look × palette pairs exist.
     expect(themeForPair('not-a-real-look' as never, PALETTE_IDS[0])).toBeUndefined();
   });
 });

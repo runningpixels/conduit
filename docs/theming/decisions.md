@@ -63,3 +63,16 @@ actually decided and why. Newest phase last.
 | P3.9 | Single-mode themes disable the Mode control in Settings and onboarding and the header toggle (App `modeLocked`), with a "dark only" hint. | A toggle that silently does nothing reads as a bug. |
 | P3.10 | OpenTerminal credit went into the hand-maintained `NOTICE` ("Design credits — adapted, no code copied", MIT text). | THIRD-PARTY-NOTICES.md is cargo-about generated (Rust crates only). |
 | P3.11 | The visual matrix is generated from `THEMES × modes`; soft themes keep palette-only snapshot names. | Every future theme is snapshotted without editing the spec; existing baselines stay valid. |
+
+## Phase 4 — more themes
+
+| # | Decision | Why |
+|---|---|---|
+| P4.1 | Shipped five themes: **Green Phosphor** (terminal × phosphor, dark), **Amber Paper** (terminal × paper, light), **Graphite** (soft × graphite), **Editorial** (new `editorial` look × newsprint), **High Contrast** (new `contrast` look × contrast palette, AAA). | Covers every axis: new palettes on an existing look, a single-light-mode theme, and two genuinely structural looks (reading-first and accessibility-first), so "design themes" is proven beyond colour swaps. |
+| P4.2 | **Glass** (Tauri window vibrancy/mica) deferred. | Needs `transparent` windows and window-effect permissions per OS, is untestable in `dev:web`/the visual suite, and carries per-platform performance risk. Revisit as its own change. |
+| P4.3 | Single-mode palettes may be **light-only**; `modesForPalette` returns the union of manifest modes; tokenContrast checks a light-only palette on the light stack. Every Mode UI (Settings, onboarding, header toggle, theme badges) speaks "dark only" / "light only". | Amber Paper is the light companion S4 promised without making Amber Terminal two-mode. |
+| P4.4 | `contrast` palette is held to **AAA (7:1)** for text tokens and ≥3:1 for `--line`; the `contrast` look adds 2px boundaries, 3px focus, +1px type, underlined links, no colour-only state, solid caret, `forced-colors` support. | An accessibility theme that only meets the product's baseline AA would not earn its name. |
+| P4.5 | The "High Contrast" theme **name is localised** (OS accessibility term per locale); every other theme name stays English. | Users look for the OS term in their own language; recorded in i18n/glossary.md. |
+| P4.6 | Editorial overlays keep a soft lift tinted by `--shadow-color`, not `--ink`. | Ink is light in dark mode; an ink-tinted shadow read as a glow (caught in Chrome review). |
+| P4.7 | **Fixed a Phase 0 test bug**: the visual suite's light-mode pin read `document.documentElement` before it existed, threw, and never pinned — every "light" snapshot was actually dark. Light baselines were regenerated. Light mode was re-verified pixel-exact: Phase 0 → Phase 3 in a worktree (only intended Settings/onboarding changes), Phase 3 → Phase 4 in the main checkout (same). | Honest record: the Phase 1 "pixel-exact" claim originally covered dark mode only. Phase 1 changed structure, not colour, and the later cross-check confirms no light regression. |
+| P4.8 | docs/theming/README.md is the authoring guide (model, contracts, specificity, how to add a palette/look/theme). | New themes should not need this session's context. |

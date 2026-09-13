@@ -1,0 +1,314 @@
+/* ───────────────────────── Look: contrast ──────────────────────────────────
+ * The structural half of High Contrast (docs/theming/decisions.md, design
+ * brief for theming Phase 4): an accessibility-first look for low vision or
+ * bright environments. Pairs with the `contrast` palette (pure black/white,
+ * a yellow or blue accent, visible grey borders) but must read correctly
+ * under any palette — colour belongs to the palette axis, not this one.
+ *
+ * Register: every boundary is drawn, not implied by a fill; focus is a thick
+ * accent outline, never a glow; nothing moves; nothing blurs; status is never
+ * colour alone.
+ *
+ * Rules for this sheet (lookContract.test.ts enforces them):
+ *   - every selector is scoped under html[data-look="contrast"];
+ *   - no colour literals and no colour tokens declared — colour belongs to the
+ *     palette, so this look renders under any palette (Advanced mixing);
+ *   - no url(), @import or @font-face.
+ *
+ * `html[data-look]` is (0,1,1): it outranks :root and the per-sheet role-token
+ * blocks, and ties the palette and CJK-locale blocks, which it follows in
+ * source order (main.tsx imports it after tokens.css). */
+
+html[data-look="contrast"] {
+  /* ── Type: the whole scale steps up one size, and nothing renders below
+   * 11px. UI face stays sans (--face-sans) — unlike Amber Terminal this look
+   * does not retarget --font-ui/--font-serif/--font-prose; the accent is
+   * legibility and boundaries, not a register change. */
+  --fs-xs: 11px;
+  --fs-sm: 11.5px;
+  --fs-md: 12px;
+  --fs-lg: 12.5px;
+  --fs-xl: 13px;
+  --fs-2xl: 13.5px;
+  --fs-3xl: 14px;
+  --fs-4xl: 14.5px;
+  --fs-5xl: 15px;
+  --fs-6xl: 15.5px;
+  --fs-8xl: 17px;
+  --fs-9xl: 19px;
+  --fs-10xl: 21px;
+  --fs-7xl: 26px;
+  --fs-display: 26px;
+  --fs-hero: 33px;
+  /* The two micro-label steps (9 / 9.5px) sit below the 11px floor; there is
+   * no smaller floor to hit, so both land on it rather than keeping their
+   * relative order. */
+  --fs-3xs: 11px;
+  --fs-2xs: 11px;
+  /* Off-scale role tokens (chat/settings/workspace/document-panel.css)
+   * step up with the rest of the scale. */
+  --fs-bubble: 16px;
+  --fs-prose: 16.5px;
+  --fs-prose-serif: 17.5px;
+  --fs-prose-h2: 20px;
+  --fs-remove-glyph: 16px;
+  --fs-sheet-heading: 16px;
+  --fs-pal-input: 16px;
+  --fs-rail-title: 18px;
+  --fs-wordmark: 16px;
+  --fs-doc-h1: 22px;
+  --leading-prose: 1.7;
+
+  /* ── Shape: moderate radii, not square — this is a legibility look, not a
+   * register change. --r-pill is untouched (toggles keep their pill shape). */
+  --r-xs: 2px;
+  --r-sm: 4px;
+  --r: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+
+  /* ── Elevation: no translucency, blur or soft shadows. Transparent
+   * zero-offset shadows rather than `none` so composed lists
+   * (`var(--soft-lift), 0 0 0 …`) stay valid (decisions.md P3.5). */
+  --lift: 0 0 transparent;
+  --soft-lift: 0 0 transparent;
+  --shadow: 0 0 transparent;
+  --elevation-1: 0 0 transparent;
+  --elevation-2: 0 0 transparent;
+  --elevation-3: 0 0 transparent;
+  --glow: 0 0 transparent;
+  --shadow-modal: 0 0 transparent;
+  --shadow-modal-strong: 0 0 transparent;
+  --shadow-settings-pop: 0 0 transparent;
+  --shadow-tab-active: 0 0 transparent;
+  --shadow-composer-focus-spread: 0px;
+  --shadow-search-hit-spread: 0px;
+  --shadow-handle-glow-blur: 0px;
+  --shadow-handle-glow-spread: 0px;
+  --glass-blur: 0px;
+  --glass-bg: var(--card);
+
+  /* ── Motion: minimal, like Amber Terminal. ── */
+  --tap: 0s;
+  --cu-tap: 0s;
+  --dur-menu: 0s;
+  --dur-scrim: 0s;
+  --dur-panel-slide: 0s;
+  --dur-provider-rule: 0s;
+  --dur-tool-expand: 0s;
+  --dur-collapse: 0s;
+  --dur-search-hit: 0s;
+  --dur-resize-hover: 0s;
+  --duration-instant: 0ms;
+  --duration-fast: 0ms;
+  --duration-normal: 0ms;
+  --duration-slow: 0ms;
+
+  /* ── Focus: unmistakable. Ring colour stays --ring-color (already
+   * var(--hue), theme-agnostic — see tokens.css :root). ── */
+  --ring-width: 3px;
+  --ring-offset: 2px;
+
+  /* ── Icons: a heavier stroke reads better at low vision. ── */
+  --icon-stroke: 2;
+
+  /* ── Scrollbars: wide, solid, no fading track. ── */
+  --scrollbar-size: 14px;
+  --scrollbar-inset: 2px;
+  --scrollbar-thumb: var(--ink-3);
+  --scrollbar-thumb-hover: var(--ink);
+
+  /* ── No meaning by colour alone: the active document tab's underline
+   * (.artifact-file-tab.active, document-panel.css) triples in width. ── */
+  --tab-active-rule-w: 3px;
+}
+
+/* ── Label register: heavier weight, no colour or case change ───────────── */
+/* `.section-label` / `.field-label` already read --label-weight (600 by
+ * default); the rest hard-code a lighter weight in their owning sheet, so
+ * they are listed here instead of via a token. */
+html[data-look="contrast"] :is(
+  .field-label,
+  .grp-label,
+  .sheet-nav-group,
+  .composer-queue-label,
+  .menu-label,
+  .pal-group,
+  .shortcuts-group-title,
+  .sb-group
+) {
+  font-weight: 600;
+}
+
+/* ── Boundaries: form controls and buttons always show their edge ───────── */
+/* `.btn`/`.cu-chip`/`.search-box input`/`.info-card`/`.av-role.you`/
+ * `.cu-dialog*` already border at --space-1 (2px); the rest hard-code 1px in
+ * their owning sheet. `.icon-btn` normally has a transparent border (it is a
+ * borderless ghost button) — an accessibility look gives every control an
+ * edge, so it gets a real one. */
+html[data-look="contrast"] :is(
+  .sheet-search,
+  .sel,
+  .ask-user-field input,
+  .ask-user-field select,
+  .toggle,
+  .suggested-prompt-chip,
+  .theme-card
+) {
+  border-width: 2px;
+}
+html[data-look="contrast"] :is(.icon-btn, .iconbtn, .sb-collapse) {
+  border: 2px solid var(--line);
+}
+html[data-look="contrast"] :is(.icon-btn, .iconbtn, .sb-collapse):hover {
+  border-color: var(--line-hi);
+}
+/* Hard-coded 2px outlines that don't read --ring-width. */
+html[data-look="contrast"] :is(.sheet-search, .theme-card):focus-visible {
+  outline-width: 3px;
+}
+
+/* ── Composer: a thick frame, and an outline on focus instead of a glow ─── */
+html[data-look="contrast"] .composer {
+  border-width: 2px;
+}
+html[data-look="contrast"] .composer:focus-within {
+  border-color: var(--hue);
+  outline: 3px solid var(--hue);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* ── Chat turns: a bordered bubble, a solid (non-blinking) caret ────────── */
+html[data-look="contrast"] .bubble {
+  border-width: 2px;
+}
+/* The caret keeps streaming (it still mounts/unmounts) — it just stops
+ * flashing, so it reads as "still writing" rather than as noise. */
+html[data-look="contrast"] .streaming {
+  animation: none;
+}
+
+/* ── Tool / think / code blocks: a visible frame, not a hairline ────────── */
+html[data-look="contrast"] :is(
+  .tool,
+  .think,
+  .inline-code-block,
+  .inline-artifact-source,
+  .chat-prose .md-pre,
+  .artifact-card,
+  .ask-user
+) {
+  border-width: 2px;
+  border-color: var(--line);
+}
+html[data-look="contrast"] .artifact-card:hover {
+  border-color: var(--line-hi);
+}
+
+/* ── Chrome: sidebar edge and main head bottom become real boundaries ───── */
+html[data-look="contrast"] aside.sidebar {
+  border-right: 2px solid var(--line);
+}
+html[data-look="contrast"] .main-head {
+  border-bottom: 2px solid var(--line);
+}
+
+/* ── Overlays: menu, palette, sheet, dialog, toast all frame at 2px ─────── */
+html[data-look="contrast"] :is(.menu, .palette, .sheet, .cu-dialog, .toast) {
+  border-width: 2px;
+}
+
+/* ── Document panel: a real frame; the active tab's edge, not just its fill */
+html[data-look="contrast"] .doc-panel {
+  border-width: 0 0 0 2px;
+}
+html[data-look="contrast"] .artifact-file-tab {
+  border-width: 2px;
+  border-color: var(--line);
+}
+
+/* ── No meaning by colour alone: selection is a shape, not just a wash ──── */
+/* The active sidebar conversation and the selected palette item get a solid
+ * surface plus a 3px accent bar and bold text; a fill alone is invisible
+ * under `provider-colour: off` or to a colour-blind reader. */
+html[data-look="contrast"] .convo[aria-current="true"] {
+  background: var(--card-hi);
+  box-shadow: inset 3px 0 0 var(--hue);
+  font-weight: 700;
+}
+html[data-look="contrast"] .pal-item[data-sel="true"] {
+  background: var(--card-hi);
+  box-shadow: inset 3px 0 0 var(--hue);
+  font-weight: 700;
+}
+/* The doc-view segmented control has no left edge to bar (it is two inline
+ * cells, not a list row), so it only needs the solid surface — dark mode
+ * already got this via a theme-scoped rule; this look wants it unconditionally. */
+html[data-look="contrast"] .doc-view-btn.active {
+  background: var(--card-hi);
+}
+
+/* Status pills: colour plus a currentColor border, so "ok/warn/bad" survives
+ * without colour (same composable trick as Amber Terminal). */
+html[data-look="contrast"] :is(.pill, .status-pill) {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+/* Links: always underlined, thick enough to read as a rule rather than a
+ * hairline under the text. */
+html[data-look="contrast"] :is(.chat-prose a:not(.source), .bubble a) {
+  text-decoration-thickness: 2px;
+}
+
+/* ── Forced colours (Windows High Contrast, `forced-colors: active`) ─────
+ * The OS palette overrides every author colour anyway; these rules just make
+ * sure boundaries and focus keep their meaning once it does. System colour
+ * keywords (CanvasText, Highlight, …) are not literal colours in the CSS
+ * Color 4 sense — lookContract.test.ts's named-colour list is the sRGB
+ * keyword set, not the system-colour set, so they pass its check unchanged. */
+@media (forced-colors: active) {
+  html[data-look="contrast"] :is(
+    .btn,
+    .icon-btn,
+    .iconbtn,
+    .sb-collapse,
+    .cu-chip,
+    .search-box input,
+    .sheet-search,
+    .sel,
+    .toggle,
+    .composer,
+    .bubble,
+    .tool,
+    .think,
+    .inline-code-block,
+    .artifact-card,
+    .ask-user,
+    aside.sidebar,
+    .main-head,
+    .menu,
+    .palette,
+    .sheet,
+    .cu-dialog,
+    .toast,
+    .doc-panel,
+    .artifact-file-tab,
+    .suggested-prompt-chip,
+    .theme-card,
+    .info-card,
+    .av-role.you
+  ) {
+    border-color: CanvasText;
+  }
+  html[data-look="contrast"] :focus-visible {
+    outline-color: Highlight;
+  }
+  html[data-look="contrast"] .composer:focus-within {
+    outline-color: Highlight;
+  }
+  html[data-look="contrast"] :is(.chat-prose a:not(.source), .bubble a) {
+    color: LinkText;
+  }
+}

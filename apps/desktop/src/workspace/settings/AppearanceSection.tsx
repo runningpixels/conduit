@@ -35,6 +35,11 @@ const PALETTE_OPTION_KEYS: Record<PaletteId, string> = {
   'orange-dark': 'settings.appearance.palette.optionOrangeDark',
   terra: 'settings.appearance.palette.optionTerra',
   amber: 'settings.appearance.palette.optionAmber',
+  phosphor: 'settings.appearance.palette.optionPhosphor',
+  paper: 'settings.appearance.palette.optionPaper',
+  graphite: 'settings.appearance.palette.optionGraphite',
+  newsprint: 'settings.appearance.palette.optionNewsprint',
+  contrast: 'settings.appearance.palette.optionContrast',
 };
 
 interface AppearanceSectionProps {
@@ -79,7 +84,8 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
   /* A dark-only theme forces dark without touching the saved `AppSettings.theme`
      (registry.ts) — so the mode select is disabled and explains why, rather
      than silently discarding whatever the user had chosen. */
-  const modeForced = !modes.includes('light');
+  const modeForced = modes.length < 2;
+  const modeForcedTo = modes[0];
 
   /* No section header: SettingsSheet already renders "Appearance" as the pane
      heading, and a second copy of the same word cost a row at the top of the
@@ -152,7 +158,7 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
             <option value="light">{t('settings.appearance.theme.optionLight')}</option>
           </select>
           {modeForced && (
-            <small id="mode-select-hint">{t('settings.appearance.theme.hintDarkOnly')}</small>
+            <small id="mode-select-hint">{t(modeForcedTo === 'dark' ? 'settings.appearance.theme.hintDarkOnly' : 'settings.appearance.theme.hintLightOnly')}</small>
           )}
         </div>
         {/* Overrides the assistant prose face regardless of theme (uiPrefs.ts) —

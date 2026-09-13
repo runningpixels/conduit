@@ -233,6 +233,35 @@ is a common house style, but this app's copy mixes in Latin names constantly
 (*OpenAI*, *SKILL.md*, *{appName}*), so a thin space around them is kept for
 legibility, matching what the Japanese column does.
 
+## Theming Phase 4: "High Contrast" is a name that translates
+
+Every theme, look and palette name up to this point is a coined product
+name — Amber Terminal, Terra, Orange Charcoal, Soft, Phosphor, Newsprint —
+and every one of them stays English in all eight locales, the same way
+`do-not-translate.txt` protects a vendor name: `settings.appearance.look.options.soft`
+is literally `"Soft"` in `de.json`, `ja.json` and `zh-CN.json` alike, and the
+five Phase 4 names (Green Phosphor, Amber Paper, Graphite, Editorial, and the
+bare palette nouns Phosphor/Paper/Graphite/Newsprint/Contrast that appear
+before the em dash in the palette options) follow the same rule.
+
+`settings.appearance.themes.highContrast.name` and
+`settings.appearance.look.options.contrast` are the one deliberate exception,
+in both of the keys that say it. "High Contrast" is not a coined name the way
+"Terra" or "Amber Terminal" are — it is the accessibility mode every major OS
+already ships, and a user reaches for it by the term their own platform uses:
+*Hoher Kontrast* (Windows/macOS German), *Contraste élevé* (French),
+*Contraste alto* (Spanish and, separately decided, Brazilian Portuguese uses
+*Alto contraste*), *ハイコントラスト* (Japanese), *고대비* (Korean), *高对比度*
+(Simplified Chinese). Keeping it English the way `Soft`/`Terminal`/`Editorial`
+are kept would hide the theme from exactly the search a screen-reader or
+low-vision user runs in their own language. Both keys use the same localized
+term per locale so the Advanced look select and the theme picker never
+disagree about what to call it. The palette-name half of
+`settings.appearance.palette.optionContrast` (`"Contrast"`, before the em
+dash) is not part of this exception — it follows the ordinary palette-name
+rule, like `Phosphor` and `Newsprint` beside it — only the full accessibility
+phrase is localized.
+
 ## What the machine checks, and what it cannot
 
 `catalogs.test.ts` enforces the mechanical half: ICU parses, placeholders and

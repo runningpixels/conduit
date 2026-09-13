@@ -189,6 +189,14 @@ function paletteLightSelector(id: string): string {
  * to redeclare every colour the dark one does, and why the coverage test below
  * exists.
  *
+ * A palette whose `modesForPalette` is `['light']` only (e.g. `paper`) is the
+ * exception: it never meets dark (resolveTheme() forces light), so its base
+ * `html[data-palette="…"]` block *is* the light values — there is no separate
+ * `[data-theme="light"]` compound block to layer on top of it, and none is
+ * required. Its stack is still resolved on top of `[data-theme="light"]` so a
+ * token the palette leaves undeclared falls through to the light theme
+ * default rather than the dark one.
+ *
  * Registry-driven (Phase 2): built from `PALETTE_IDS` × `modesForPalette`, so a
  * new palette (and its tokens.css block(s)) is covered the moment it lands in
  * the registry, with no edit here.
@@ -203,6 +211,11 @@ for (const id of PALETTE_IDS) {
   }
   const dark = paletteSelector(id);
   const light = paletteLightSelector(id);
+  const lightOnly = modes.length === 1 && modes[0] === 'light';
+  if (lightOnly) {
+    THEMES[`${id} light`] = [':root', '[data-theme="light"]', dark];
+    continue;
+  }
   THEMES[`${id} dark`] = [':root', dark];
   if (modes.includes('light')) {
     THEMES[`${id} light`] = [':root', '[data-theme="light"]', dark, light];
@@ -366,10 +379,16 @@ describe.each(PINNED_PALETTES)('%s palette hue (pinned via [data-provider])', (i
     expect(vars, `${pinSelector(id)} does not map --hue/--hue-text/--hue-solid to var(--private) tokens`).not.toBeNull();
   });
 
-  const modes: Array<readonly [mode: 'dark' | 'light', sel: string, layers: readonly string[]]> = [
-    ['dark', dark, THEMES[`${id} dark`]],
-  ];
-  if (modesForPalette(id).includes('light')) {
+  const paletteModes = modesForPalette(id);
+  const lightOnly = paletteModes.length === 1 && paletteModes[0] === 'light';
+  // A light-only palette (e.g. `paper`) has no dark block at all — its base
+  // selector already holds the light values (see the THEMES-building comment
+  // near the top of this file) — so its only entry probes the base selector
+  // under the `THEMES['<id> light']` stack, not a separate compound block.
+  const modes: Array<readonly [mode: 'dark' | 'light', sel: string, layers: readonly string[]]> = lightOnly
+    ? [['light', dark, THEMES[`${id} light`]]]
+    : [['dark', dark, THEMES[`${id} dark`]]];
+  if (!lightOnly && paletteModes.includes('light')) {
     modes.push(['light', light, THEMES[`${id} light`]]);
   }
 
@@ -414,10 +433,12 @@ describe.each(PINNED_PALETTES)('%s palette hue (pinned via [data-provider])', (i
  * assertion above still green because they resolve the stack correctly.
  *
  * So the coverage itself is the assertion. Registry-driven: runs for every
- * non-terra palette that `modesForPalette` says supports light.
+ * non-terra palette that supports BOTH modes — a light-only palette (e.g.
+ * `paper`) has no separate dark block for its light block to cover, so this
+ * check does not apply to it (see the THEMES-building comment above).
  */
 const LIGHT_CAPABLE_PALETTES = PALETTE_IDS.filter(
-  (id) => id !== 'terra' && modesForPalette(id).includes('light'),
+  (id) => id !== 'terra' && modesForPalette(id).includes('light') && modesForPalette(id).includes('dark'),
 );
 
 describe.each(LIGHT_CAPABLE_PALETTES)('%s palette: light covers dark', (id) => {
@@ -444,18 +465,97 @@ describe('palette block coverage (registry vs. tokens.css)', () => {
   });
 
   it.each(PALETTE_IDS.filter((id) => id !== 'terra'))(
-    '%s has a light block iff its registry modes include light',
+    '%s has a light block iff its registry modes are exactly [dark, light]',
     (id) => {
-      const supportsLight = modesForPalette(id).includes('light');
+      const modes = modesForPalette(id);
+      const needsCompoundLightBlock = modes.includes('light') && modes.includes('dark');
       const hasLightBlock = hasSelector(paletteLightSelector(id));
-      if (supportsLight) {
-        expect(hasLightBlock, `${id} supports light but has no ${paletteLightSelector(id)} block`).toBe(
+      if (needsCompoundLightBlock) {
+        expect(hasLightBlock, `${id} supports both modes but has no ${paletteLightSelector(id)} block`).toBe(
           true,
         );
       }
-      // Dark-only palettes are not required to omit a light block (one would
-      // simply be unused); they are only required not to *need* one, which
-      // the `if` above already covers by asserting nothing in that case.
+      // Dark-only and light-only palettes are not required to omit a compound
+      // light block (one would simply be unused); a light-only palette's base
+      // block already *is* the light values (see the THEMES-building comment
+      // above), so it needs no separate `[data-theme="light"]` block at all.
     },
   );
+});
+
+/**
+ * WCAG AAA (enhanced) minimum for normal text. The `contrast` palette ("High
+ * Contrast") targets this floor explicitly for every ink/status/link/code
+ * token on every surface — a stricter bar than the AA the rest of the suite
+ * enforces, so it gets its own threshold and its own describe rather than
+ * weakening the shared one above.
+ */
+const AAA = 7;
+
+describe.each(
+  (['dark', 'light'] as const).filter((m) => modesForPalette('contrast').includes(m)),
+)('contrast palette (%s): AAA (7:1) for ink/status/link/code', (mode) => {
+  const layers = THEMES[`contrast ${mode}`];
+  const surfaces = Object.fromEntries(SURFACES.map((s) => [s, resolve(layers, s)]));
+  const tokens = [...INKS, 'ok', 'warn', 'err', 'link', 'code'] as const;
+
+  it.each(tokens.flatMap((t) => SURFACES.map((s) => [t, s] as const)))(
+    '--%s on --%s clears AAA',
+    (token, surface) => {
+      expect(contrast(resolve(layers, token), surfaces[surface])).toBeGreaterThanOrEqual(AAA);
+    },
+  );
+});
+
+/**
+ * The contrast palette also targets >=3:1 (the non-text floor) for --line
+ * against every surface, so borders stay visible under the contrast look's
+ * heavier-border treatment — ordinary palettes only need --line to be
+ * present, not measurably visible.
+ */
+describe.each(
+  (['dark', 'light'] as const).filter((m) => modesForPalette('contrast').includes(m)),
+)('contrast palette (%s): --line clears 3:1 on every surface', (mode) => {
+  const layers = THEMES[`contrast ${mode}`];
+  const surfaces = Object.fromEntries(SURFACES.map((s) => [s, resolve(layers, s)]));
+
+  it.each(SURFACES)('--line on --%s', (surface) => {
+    expect(contrast(resolve(layers, 'line'), surfaces[surface])).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+});
+
+/**
+ * --hue-solid always carries --on-hue on top of it (the send button glyph,
+ * `.btn.primary`'s label), so this must clear AA for every palette in every
+ * mode it renders — not just the palettes already covered by the two
+ * describes above ("provider hue: solid fill role" for terra's per-provider
+ * hue, and the pinned-hue describe for palettes that pin --hue/--hue-solid to
+ * private var() tokens).
+ *
+ * Every non-terra palette here pins its hue (tokens.css's
+ * `[data-provider]` rule), so `PINNED_PALETTES` — computed above from
+ * tokens.css itself, not hardcoded — already equals every non-terra
+ * `PALETTE_IDS` entry, and its per-mode "clears AA on the pinned hue-solid"
+ * test already re-checks this for each of them. This block is the explicit,
+ * registry-wide assertion that no non-terra palette has silently fallen out
+ * of that coverage (e.g. by declaring --hue directly instead of pinning it),
+ * which would make the check above pass vacuously by never running for it.
+ */
+describe('--hue-solid vs --on-hue clears AA for every palette/mode (registry-wide)', () => {
+  const nonTerraPalettes = PALETTE_IDS.filter((id) => id !== 'terra');
+
+  it('every non-terra palette pins --hue via [data-provider] (or is reported here, not silently skipped)', () => {
+    const unpinned = nonTerraPalettes.filter((id) => !PINNED_PALETTES.includes(id));
+    expect(
+      unpinned,
+      'these palettes declare no [data-provider] pin rule, so their --hue-solid vs --on-hue pairing is ' +
+        'unchecked — either add the pin (see amber/orange-charcoal) or add bespoke coverage for them here',
+    ).toEqual([]);
+  });
+
+  // terra itself is covered by "provider hue: solid fill role" above, across
+  // both themes and all four providers.
+  it('terra is covered by the provider hue describes above', () => {
+    expect(THEME_PROVIDERS.length).toBeGreaterThan(0);
+  });
 });

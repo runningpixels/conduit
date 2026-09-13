@@ -138,12 +138,28 @@ function installFixedClock(page: Page): Promise<void> {
  */
 async function pinTheme(page: Page, mode: 'dark' | 'light'): Promise<void> {
   await page.addInitScript((m) => {
-    const root = document.documentElement;
-    const apply = () => {
-      if (root.getAttribute('data-theme') !== m) root.setAttribute('data-theme', m);
+    /* Init scripts can run before the parser has created <html>, when
+     * `document.documentElement` is still null. The first version of this
+     * pin read it eagerly, threw, and silently never pinned — every "light"
+     * snapshot rendered dark until theming Phase 4 caught it. Wait for the
+     * root element instead; the observer callback is a microtask during
+     * parsing, so it still lands before any module script runs. */
+    const install = (root: HTMLElement) => {
+      const apply = () => {
+        if (root.getAttribute('data-theme') !== m) root.setAttribute('data-theme', m);
+      };
+      apply();
+      new MutationObserver(apply).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
     };
-    apply();
-    new MutationObserver(apply).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    if (document.documentElement) {
+      install(document.documentElement);
+    } else {
+      new MutationObserver((_, observer) => {
+        if (!document.documentElement) return;
+        observer.disconnect();
+        install(document.documentElement);
+      }).observe(document, { childList: true });
+    }
   }, mode);
 }
 

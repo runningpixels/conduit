@@ -79,7 +79,10 @@ export function ThemePicker({ variant = 'settings' }: ThemePickerProps) {
         {THEMES.map((theme, index) => {
           const checked = theme.id === themeId;
           const [ground, surface, ink, accent] = theme.swatches;
-          const darkOnly = !theme.modes.includes('light');
+          const singleModeLabel =
+            theme.modes.length === 1
+              ? t(theme.modes[0] === 'dark' ? 'settings.appearance.themes.darkOnlyLabel' : 'settings.appearance.themes.lightOnlyLabel')
+              : null;
           return (
             <button
               key={theme.id}
@@ -100,11 +103,7 @@ export function ThemePicker({ variant = 'settings' }: ThemePickerProps) {
               <span className="theme-card-body">
                 <span className="theme-card-name">
                   {t(`settings.appearance.themes.${theme.i18nKey}.name`)}
-                  {darkOnly && (
-                    <span className="theme-card-badge">
-                      {t('settings.appearance.themes.darkOnlyLabel')}
-                    </span>
-                  )}
+                  {singleModeLabel && <span className="theme-card-badge">{singleModeLabel}</span>}
                 </span>
                 <span className="theme-card-description">
                   {t(`settings.appearance.themes.${theme.i18nKey}.description`)}

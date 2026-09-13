@@ -14,10 +14,15 @@ describe('ThemePicker', () => {
 
   /** The card's accessible name for each shipped manifest, by i18n key. */
   const CARD_NAME: Record<string, RegExp> = {
-    orangeCharcoal: /Orange Charcoal/,
-    orangeDark: /Orange-Dark/,
-    terra: /Terra/,
-    amberTerminal: /Amber Terminal/,
+    orangeCharcoal: /^Orange Charcoal/,
+    orangeDark: /^Orange-Dark/,
+    terra: /^Terra/,
+    amberTerminal: /^Amber Terminal/,
+    greenPhosphor: /^Green Phosphor/,
+    amberPaper: /^Amber Paper/,
+    graphite: /^Graphite/,
+    editorial: /^Editorial/,
+    highContrast: /^High Contrast/,
   };
 
   it('renders one radio per manifest, in a labelled radiogroup', () => {
@@ -133,16 +138,15 @@ describe('ThemePicker', () => {
     });
   });
 
-  it('shows a "dark only" badge only on a theme whose modes lack light', () => {
+  it('badges single-mode themes with the one mode they render', () => {
     render(<ThemePicker />);
     for (const theme of THEMES) {
       const card = screen.getByRole('radio', { name: CARD_NAME[theme.i18nKey] });
-      const badge = within(card).queryByText('Dark only');
-      if (theme.modes.includes('light')) {
-        expect(badge).not.toBeInTheDocument();
-      } else {
-        expect(badge).toBeInTheDocument();
-      }
+      const dark = within(card).queryByText('Dark only');
+      const light = within(card).queryByText('Light only');
+      const only = theme.modes.length === 1 ? theme.modes[0] : null;
+      expect(Boolean(dark)).toBe(only === 'dark');
+      expect(Boolean(light)).toBe(only === 'light');
     }
   });
 });

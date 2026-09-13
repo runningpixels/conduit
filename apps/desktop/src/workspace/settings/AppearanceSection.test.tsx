@@ -16,6 +16,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { AppSettings } from '../../ipc/contracts';
 import { AppearanceSection } from './AppearanceSection';
+import { THEMES } from '../../themes/registry';
 import { PSEUDO_LOCALE, SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES } from '../../i18n';
 
 /** `<details>` starts closed; the Advanced fields (Look, Palette) live inside it. */
@@ -59,7 +60,7 @@ describe('theme picker', () => {
   it('renders a labelled radiogroup with a card per manifest', () => {
     renderSection();
     const group = screen.getByRole('radiogroup', { name: 'Theme' });
-    expect(within(group).getAllByRole('radio')).toHaveLength(4);
+    expect(within(group).getAllByRole('radio')).toHaveLength(THEMES.length);
     expect(within(group).getByRole('radio', { name: /Orange Charcoal/ })).toHaveAttribute(
       'aria-checked',
       'true',

@@ -245,7 +245,37 @@ export default function App() {
   const panelResize = useColumnResize();
   const { open: openSidebar, close: closeSidebar, toggle: toggleSidebar } = useSidebarCollapse();
   const sidebarResize = useSidebarResize({ open: openSidebar, close: closeSidebar });
-  const { collapsed: docPanelCollapsed, collapse: collapseDocPanel, expand: expandDocPanel, toggle: toggleDocPanel } = useDocPanelCollapse();
+  // The artifact panel opens for a chat that has something to put in it. A new
+  // chat, or one that never produced an artifact, used to open onto a 420px
+  // "Artifacts live here" card — about a third of the window, empty. Now the
+  // panel stays shut there until an artifact is promoted, a document tool
+  // starts one, or the user opens it anyway; the saved open/closed preference
+  // is untouched and applies as soon as there is content.
+  //
+  // `artifacts` outlives a chat switch until the next list arrives, so the list
+  // records whose it is, and the decision only moves once the open chat's list
+  // has loaded — two chats that both have artifacts must not flicker the panel
+  // shut and open again between them.
+  const [artifactsConversationId, setArtifactsConversationId] = useState<string | null>(null);
+  const [emptyPanelRequested, setEmptyPanelRequested] = useState(false);
+  const [panelHasContent, setPanelHasContent] = useState(false);
+  const chatArtifacts = artifactsConversationId === activeConversationId ? artifacts : [];
+  useEffect(() => {
+    const listSettled = activeConversationId == null || artifactsConversationId === activeConversationId;
+    if (!listSettled && pendingArtifact == null && activeArtifact == null) return;
+    setPanelHasContent(chatArtifacts.length > 0 || pendingArtifact != null || activeArtifact != null);
+  }, [activeConversationId, artifactsConversationId, chatArtifacts.length, pendingArtifact, activeArtifact]);
+  useEffect(() => {
+    setEmptyPanelRequested(false);
+  }, [activeConversationId]);
+  const panelSuppressed = !panelHasContent && !emptyPanelRequested;
+
+  const {
+    collapsed: docPanelCollapsed,
+    collapse: collapseDocPanel,
+    expand: expandDocPanel,
+    toggle: toggleDocPanel,
+  } = useDocPanelCollapse({ suppressed: panelSuppressed });
 
   // Where the window has no room for a side column, its toggles show it as an
   // overlay instead of flipping a collapse state that changes nothing there.
@@ -264,12 +294,19 @@ export default function App() {
   }, [sidebarOverlay.narrow, toggleSidebar, hidePanelOverlay, toggleSidebarOverlay]);
   const toggleDocPanelView = useCallback(() => {
     if (!panelOverlay.narrow) {
+      if (panelSuppressed) {
+        // Shut only because the chat is empty: opening it is a request to see
+        // the empty panel, which holds for this chat.
+        setEmptyPanelRequested(true);
+        expandDocPanel();
+        return;
+      }
       toggleDocPanel();
       return;
     }
     hideSidebarOverlay();
     togglePanelOverlay();
-  }, [panelOverlay.narrow, toggleDocPanel, hideSidebarOverlay, togglePanelOverlay]);
+  }, [panelOverlay.narrow, panelSuppressed, expandDocPanel, toggleDocPanel, hideSidebarOverlay, togglePanelOverlay]);
   /** Bring the panel into view for something the user asked to see. */
   const showDocPanel = useCallback(() => {
     if (!panelOverlay.narrow) {
@@ -687,10 +724,12 @@ export default function App() {
     try {
       const { artifacts: listed, fileStateMap: nextMap } = await refreshArtifactList(conversationId);
       setArtifacts(listed);
+      setArtifactsConversationId(conversationId);
       setFileStateMap(nextMap);
       return listed;
     } catch (error) {
       setArtifacts([]);
+      setArtifactsConversationId(conversationId);
       setFileStateMap({});
       setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.loadArtifactsFailed'), 'error'));
       return [];
@@ -1146,16 +1185,17 @@ export default function App() {
   });
   // Shown on the topbar toggle while the panel is hidden — the count is what
   // replaces the old edge rail as the "there is something in there" signal.
-  const hiddenArtifactCount = panelVisible ? 0 : artifacts.length;
+  const hiddenArtifactCount = panelVisible ? 0 : chatArtifacts.length;
+
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
 
   // Where the sheet was when it last closed. Opening it without naming a
   // section — the gear, Ctrl+, or the palette's "Open settings" — returns
   // there, so the one-click paths agree on a destination instead of each
   // hard-coding its own (the workspace menu's "Settings" used to open
   // Appearance while its own Ctrl+, hint opened Providers).
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
-  const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const lastSettingsSectionRef = useRef<SettingsSection>('providers');
   const openSettings = useCallback((section?: SettingsSection) => {
     setSettingsSection(section ?? lastSettingsSectionRef.current);

@@ -148,6 +148,8 @@ test.describe('the document panel below its breakpoint', () => {
     await page.setViewportSize(WIDE);
     await expect.poll(() => overlayAttr(page, 'panel')).toBeNull();
     await expect(page.locator('.overlay-scrim')).toBeHidden();
-    await expect(page.locator('.body > .doc-panel')).toBeVisible();
+    // Whether the column then shows is the desktop rule's business: an empty
+    // chat keeps it shut (panelOnDemand.spec.ts).
+    await expect(page.locator('html')).toHaveAttribute('data-panel', /open|closed/);
   });
 });

@@ -364,3 +364,34 @@ describe('useColumnOverlay', () => {
     expect(result.current.collapse.collapsed).toBe(true);
   });
 });
+
+describe('useDocPanelCollapse while suppressed', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-panel');
+  });
+
+  it('shuts the panel without rewriting the saved preference', () => {
+    const { result, rerender } = renderHook(({ suppressed }) => useDocPanelCollapse({ suppressed }), {
+      initialProps: { suppressed: true },
+    });
+    expect(result.current.collapsed).toBe(true);
+    expect(document.documentElement.getAttribute('data-panel')).toBe('closed');
+    expect(__readStoredDocPanelForTest()).toBe('open');
+
+    // Content arrives: the saved preference applies again.
+    rerender({ suppressed: false });
+    expect(result.current.collapsed).toBe(false);
+    expect(document.documentElement.getAttribute('data-panel')).toBe('open');
+  });
+
+  it('keeps a saved "closed" closed once content arrives', () => {
+    __writeStoredDocPanelForTest('closed');
+    const { result, rerender } = renderHook(({ suppressed }) => useDocPanelCollapse({ suppressed }), {
+      initialProps: { suppressed: true },
+    });
+    rerender({ suppressed: false });
+    expect(result.current.collapsed).toBe(true);
+    expect(__readStoredDocPanelForTest()).toBe('closed');
+  });
+});

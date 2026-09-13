@@ -462,22 +462,36 @@ function writeStoredDocPanel(mode: PanelMode) {
   }
 }
 
+interface DocPanelCollapseOptions {
+  /**
+   * Keep the panel shut without touching the saved preference — used while the
+   * open chat has nothing to show in it, so a new chat does not spend a third
+   * of the window on an empty state.
+   */
+  suppressed?: boolean;
+}
+
 /** Document panel column collapse: toggles [data-panel="open"|"closed"] on <html>, persisted. */
-export function useDocPanelCollapse() {
+export function useDocPanelCollapse({ suppressed = false }: DocPanelCollapseOptions = {}) {
   const [mode, setMode] = useState<PanelMode>(readStoredDocPanel);
+  const shown = mode === 'open' && !suppressed;
 
   useLayoutEffect(() => {
-    document.documentElement.setAttribute('data-panel', mode);
     writeStoredDocPanel(mode);
-    reflowColumns();
   }, [mode]);
+
+  useLayoutEffect(() => {
+    document.documentElement.setAttribute('data-panel', shown ? 'open' : 'closed');
+    reflowColumns();
+  }, [shown]);
 
   const collapse = useCallback(() => setMode('closed'), []);
   const expand = useCallback(() => setMode('open'), []);
   const toggle = useCallback(() => {
     setMode((current) => (current === 'open' ? 'closed' : 'open'));
   }, []);
-  const collapsed = mode === 'closed';
+  /** Whether the panel is shut, for whatever reason. */
+  const collapsed = !shown;
 
   return { collapsed, collapse, expand, toggle };
 }

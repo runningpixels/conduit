@@ -47,3 +47,19 @@ actually decided and why. Newest phase last.
 | P2.4 | Mermaid and the HTML-artifact iframe get a per-manifest `native` \| `tokens` switch; the three existing themes stay `native`. Token-driven rendering lands with the first theme that needs it (Phase 3). | Keeps the existing looks pixel-stable; nothing would exercise `tokens` until Amber Terminal exists. |
 | P2.5 | The old "Theme" select became **Mode** and "Theme" now names the picker, in every locale (the existing per-locale word moved with the concept). | Theme = look + palette is the user-facing concept; dark/light is a mode of it. |
 | P2.6 | Tauri window `setBackgroundColor` per theme was **not** added. | It needs a new window capability permission (ADR-008 keeps that surface minimal) to fix a resize-edge flash only visible on the black theme. Revisit if the flash proves noticeable. |
+
+## Phase 3 — Amber Terminal
+
+| # | Decision | Why |
+|---|---|---|
+| P3.1 | Palette `amber` lives in tokens.css; look `terminal` in `packages/ui/src/looks/terminal.css`, imported by main.tsx after tokens.css. | Keeps tokenContrast a single-file parser; the look sheet wins ties with palette and CJK-locale blocks by source order. |
+| P3.2 | Three AA deltas from OpenTerminal's values: `--ink-3` #808080 → #878787, an added middle ink #a6a6a6, `--on-hue` black (white on amber is 2.14:1). OpenTerminal has no warn/link colours; its chart series supply them. | Conduit's contrast floor is test-enforced on every surface. |
+| P3.3 | **No font-token refactor.** `--font-ui/--font-mono/--font-serif` stay the brand-overridable roles (brand_emit.rs writes them). `--face-sans/--face-serif` restate the stacks in `:root` and each CJK block so the Reading font can reach the originals under a look that repoints the roles. | Renaming the roles would break Mode B brand emission and G8 guards for no user-visible gain. |
+| P3.4 | Reading font rules use `html:root[data-reading-font]` (0,2,1) in chat.css. | Must beat both look and palette (0,1,1) regardless of sheet order. |
+| P3.5 | Elevation is flattened with `0 0 transparent`, not `none`. | Several rules compose shadows (`var(--soft-lift), 0 0 0 …`); `none` inside a list invalidates the whole declaration. |
+| P3.6 | Turn role labels are a `data-role-label` attribute (localised by React) rendered via `attr()` only under the terminal look. | No English in CSS `content`; zero DOM or visual change for other looks. |
+| P3.7 | Value flash = remount a `.value-flash` span when a status-line figure changes (skipping first mount); the keyframes exist only in the terminal sheet. | No per-theme JS branch; reduced-motion already collapses animation durations globally. |
+| P3.8 | Mermaid (`theme: 'base'` + themeVariables) and the artifact iframe stylesheet are built from `getComputedStyle` tokens **validated as strict hex / a conservative font-stack grammar**; any failure falls back to native. Soft themes stay `native`. | Values are interpolated into a config and a srcdoc stylesheet — same never-string-build-unvalidated-CSS rule as applyBrand.ts. |
+| P3.9 | Single-mode themes disable the Mode control in Settings and onboarding and the header toggle (App `modeLocked`), with a "dark only" hint. | A toggle that silently does nothing reads as a bug. |
+| P3.10 | OpenTerminal credit went into the hand-maintained `NOTICE` ("Design credits — adapted, no code copied", MIT text). | THIRD-PARTY-NOTICES.md is cargo-about generated (Rust crates only). |
+| P3.11 | The visual matrix is generated from `THEMES × modes`; soft themes keep palette-only snapshot names. | Every future theme is snapshotted without editing the spec; existing baselines stay valid. |

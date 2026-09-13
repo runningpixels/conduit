@@ -17,10 +17,10 @@
  * look preset does not need to cross the IPC boundary.
  */
 
-export const LOOK_IDS = ['soft'] as const;
+export const LOOK_IDS = ['soft', 'terminal'] as const;
 export type LookId = (typeof LOOK_IDS)[number];
 
-export const PALETTE_IDS = ['terra', 'orange-charcoal', 'orange-dark'] as const;
+export const PALETTE_IDS = ['terra', 'orange-charcoal', 'orange-dark', 'amber'] as const;
 export type PaletteId = (typeof PALETTE_IDS)[number];
 
 export type Mode = 'dark' | 'light';
@@ -80,6 +80,21 @@ export const THEMES: readonly ThemeManifest[] = [
     swatches: ['#262624', '#30302e', '#eceae2', '#c4c2ba'],
     mermaid: 'native',
     iframe: 'native',
+  },
+  {
+    id: 'amber-terminal',
+    i18nKey: 'amberTerminal',
+    look: 'terminal',
+    palette: 'amber',
+    modes: ['dark'],
+    swatches: ['#000000', '#111111', '#d9d9d9', '#ff9900'],
+    mermaid: 'tokens',
+    iframe: 'tokens',
+    inspiredBy: {
+      name: 'OpenTerminal',
+      url: 'https://github.com/ErTasselli/OpenTerminal',
+      license: 'MIT',
+    },
   },
 ];
 

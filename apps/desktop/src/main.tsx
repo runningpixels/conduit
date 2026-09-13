@@ -4,7 +4,8 @@ import '@conduit/ui/tokens.css';
 import './styles.css';
 import App from './App';
 import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
-import { applyLook, applyPalette, readLook, readPalette } from './shell/uiPrefs';
+import '@conduit/ui/looks/terminal.css';
+import { applyLook, applyPalette, applyReadingFont, readLook, readPalette, readReadingFont } from './shell/uiPrefs';
 import { applyCachedBrand } from './brand/applyBrand';
 import { resolveTheme } from './theme';
 import { I18nProvider, bootstrapI18n } from './i18n';
@@ -20,6 +21,7 @@ applyPalette(readPalette());
 /* The look moves structure (type, radii, borders) as much as the palette moves
  * colour, so it is applied pre-paint for the same reason. */
 applyLook(readLook());
+applyReadingFont(readReadingFont());
 /* Same reasoning, for a white-label brand: `get_brand_config` is IPC too, so
  * replay the last-known-good config from localStorage synchronously here, and
  * let App's boot effect reconcile against the authoritative Rust read once it

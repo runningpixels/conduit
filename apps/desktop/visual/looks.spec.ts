@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { THEMES } from '../src/themes/registry';
 
 /**
  * Visual baselines for the theming project (Phase 0 — `docs/theming/decisions.md`
@@ -21,7 +22,7 @@ import { expect, test, type Page } from '@playwright/test';
  *  so setting it via `addInitScript` (which runs before any page script) is
  *  enough to pin the palette for the whole test. */
 const PALETTE_KEY = 'conduit:v9-palette';
-const PALETTES = ['terra', 'orange-charcoal', 'orange-dark'] as const;
+const LOOK_KEY = 'conduit:v10-look';
 const MODES = ['dark', 'light'] as const;
 
 /** Mirrors `SECTION_IDS` in `src/dev/Gallery.tsx`. Not imported from there —
@@ -152,16 +153,17 @@ async function pinTheme(page: Page, mode: 'dark' | 'light'): Promise<void> {
  * app's own `resolveTheme('system')` / `prefers-reduced-motion` CSS both key
  * off, before any navigation.
  */
-async function preparePage(page: Page, palette: string, mode: 'dark' | 'light') {
+async function preparePage(page: Page, palette: string, mode: 'dark' | 'light', look: string) {
   await page.addInitScript(
-    ([key, value]) => {
+    ([paletteKey, paletteValue, lookKey, lookValue]) => {
       try {
-        window.localStorage.setItem(key, value);
+        window.localStorage.setItem(paletteKey, paletteValue);
+        window.localStorage.setItem(lookKey, lookValue);
       } catch {
         /* storage may be unavailable in some contexts; the app degrades fine */
       }
     },
-    [PALETTE_KEY, palette] as const,
+    [PALETTE_KEY, palette, LOOK_KEY, look] as const,
   );
   await pinTheme(page, mode);
   await installFixedClock(page);
@@ -253,11 +255,23 @@ async function settle(page: Page, { mermaid = false }: { mermaid?: boolean } = {
   await page.waitForTimeout(100);
 }
 
-for (const palette of PALETTES) {
-  for (const mode of MODES) {
+/* One describe per registered theme x each mode it renders. Soft-look themes
+ * keep the palette-only snapshot names the suite started with, so their
+ * baselines survive the registry refactor; other looks prefix the look. */
+const MATRIX = THEMES.flatMap((theme) =>
+  MODES.filter((mode) => theme.modes.includes(mode)).map((mode) => ({
+    look: theme.look,
+    palette: theme.palette,
+    mode,
+    name: theme.look === 'soft' ? theme.palette : `${theme.look}-${theme.palette}`,
+  })),
+);
+
+for (const { look, palette: themePalette, mode, name: palette } of MATRIX) {
+  {
     test.describe(`${palette} / ${mode}`, () => {
       test.beforeEach(async ({ page }) => {
-        await preparePage(page, palette, mode);
+        await preparePage(page, themePalette, mode, look);
       });
 
       for (const section of SECTIONS) {

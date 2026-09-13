@@ -14,6 +14,14 @@
   --shadow-composer-focus-spread: 3px;
 }
 
+/* Reading font (Appearance; uiPrefs.ts `data-reading-font`). Overrides the
+ * prose face whatever the look or palette chose, so `:root` is doubled to
+ * outrank html[data-look] and html[data-palette] (both (0,1,1)) without
+ * depending on stylesheet order. `theme` declares nothing. --face-* are the
+ * original stacks, locale-aware (tokens.css), untouched by any look. */
+html:root[data-reading-font="sans"] { --font-prose: var(--face-sans); }
+html:root[data-reading-font="serif"] { --font-prose: var(--face-serif); }
+
 /* ── Chat thread ───────────────────────────────────────────────────────── */
 /* `overflow-x: hidden` is load-bearing, not tidiness: a computed `visible` next
  * to a non-`visible` value becomes `auto`, so leaving it off made the thread a

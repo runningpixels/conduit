@@ -59,7 +59,7 @@ import { deriveConnectionState } from './lib/connectionState';
 import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
-import { applyUiPrefs, THEME_CHANGED_EVENT } from './shell/uiPrefs';
+import { applyUiPrefs, supportedModes, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
   useColumnOverlay,
   useColumnResize,
@@ -1177,13 +1177,18 @@ export default function App() {
   }, [activeConversationId]);
 
   const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>(() => resolveTheme(settings.theme));
+  /* A single-mode theme (Amber Terminal is dark-only) has nothing to toggle. */
+  const [modeLocked, setModeLocked] = useState(() => supportedModes().length < 2);
   useEffect(() => {
     const eff = applyTheme(settings.theme);
     setEffectiveTheme(eff);
     const stopWatching = watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
     /* A theme change can narrow the renderable modes (a dark-only palette), so
      * the effective mode is re-resolved whenever the look or palette moves. */
-    const onThemeChanged = () => setEffectiveTheme(applyTheme(settings.theme));
+    const onThemeChanged = () => {
+      setEffectiveTheme(applyTheme(settings.theme));
+      setModeLocked(supportedModes().length < 2);
+    };
     window.addEventListener(THEME_CHANGED_EVENT, onThemeChanged);
     return () => {
       stopWatching();
@@ -1409,6 +1414,7 @@ export default function App() {
   useHotkeys(hotkeyHandlers);
 
   const handleToggleTheme = useCallback(() => {
+    if (supportedModes().length < 2) return;
     setSettings((current) => {
       const next: AppSettings = {
         ...current,
@@ -1562,6 +1568,7 @@ export default function App() {
             title={activeConversationSummary?.displayTitle}
             effectiveTheme={effectiveTheme}
             onToggleTheme={handleToggleTheme}
+            modeLocked={modeLocked}
             panelOpen={panelVisible}
             onTogglePanel={toggleDocPanelView}
             hiddenArtifactCount={hiddenArtifactCount}

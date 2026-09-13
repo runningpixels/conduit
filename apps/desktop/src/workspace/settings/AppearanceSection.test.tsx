@@ -59,7 +59,7 @@ describe('theme picker', () => {
   it('renders a labelled radiogroup with a card per manifest', () => {
     renderSection();
     const group = screen.getByRole('radiogroup', { name: 'Theme' });
-    expect(within(group).getAllByRole('radio')).toHaveLength(3);
+    expect(within(group).getAllByRole('radio')).toHaveLength(4);
     expect(within(group).getByRole('radio', { name: /Orange Charcoal/ })).toHaveAttribute(
       'aria-checked',
       'true',
@@ -167,6 +167,35 @@ describe('appearance advanced (look x palette)', () => {
     const select = screen.getByLabelText('Palette');
     expect(select).toBeDisabled();
     expect(screen.getByText('Your brand sets the colours.')).toBeInTheDocument();
+  });
+});
+
+describe('reading font select', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-reading-font');
+  });
+
+  it('defaults to theme and offers theme / sans / serif', () => {
+    renderSection();
+    const select = screen.getByLabelText('Reading font') as HTMLSelectElement;
+    expect(select.value).toBe('theme');
+    expect(screen.getByRole('option', { name: 'Theme default' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sans' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Serif' })).toBeInTheDocument();
+  });
+
+  it('persists the choice and applies it to the document', () => {
+    renderSection();
+    fireEvent.change(screen.getByLabelText('Reading font'), { target: { value: 'serif' } });
+    expect(localStorage.getItem('conduit:v10-reading-font')).toBe('serif');
+    expect(document.documentElement.getAttribute('data-reading-font')).toBe('serif');
+  });
+
+  it('does not write the reading font into AppSettings', () => {
+    const { onUpdate } = renderSection();
+    fireEvent.change(screen.getByLabelText('Reading font'), { target: { value: 'sans' } });
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 });
 

@@ -1164,7 +1164,18 @@
     "workspace.shortcuts.group.general": "9239ee2cda84eca4c3440e2a7b50148af67da3d4",
     "workspace.shortcuts.group.layout": "972ad8d8a50397ba8c02433ed8f048eeb4074b85",
     "workspace.shortcuts.title": "266695479a949eec44dea9db4e15fba00163f04e",
-    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07"
+    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07",
+    "chat.turn.roleLabel.assistant": "8010d1f4d0696ce16febddf3dda682cb3e5060c3",
+    "chat.turn.roleLabel.user": "905cb326c779f0123e079bf8ccb223176a3cf32d",
+    "settings.appearance.look.options.terminal": "a1f52cdcb3f2bf91aa12082618f306714fbe6324",
+    "settings.appearance.palette.optionAmber": "a847daf492b6aae62a116cf6d99088718740bd5f",
+    "settings.appearance.readingFont.hint": "2e11333921d2070c4f044997aeb5bb10b28d9678",
+    "settings.appearance.readingFont.label": "957269515aee0abd642e6c840efdedc01c159985",
+    "settings.appearance.readingFont.optionSans": "c1ccf83eea101ddafb5de4e3dea5f3693ae473c0",
+    "settings.appearance.readingFont.optionSerif": "a5c78a86fab1c02cd981c23b8bad5dad3e7438e3",
+    "settings.appearance.readingFont.optionTheme": "a9909770cb9f9e2d6e9f8508139887badc2f3997",
+    "settings.appearance.themes.amberTerminal.description": "6c3c4088d62edb049b48272a7fa2e794b527450c",
+    "settings.appearance.themes.amberTerminal.name": "90f1a260b2438cb7b1bed917bcdff54239a9efda"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2331,7 +2342,18 @@
     "workspace.shortcuts.group.general": "9239ee2cda84eca4c3440e2a7b50148af67da3d4",
     "workspace.shortcuts.group.layout": "972ad8d8a50397ba8c02433ed8f048eeb4074b85",
     "workspace.shortcuts.title": "266695479a949eec44dea9db4e15fba00163f04e",
-    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07"
+    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07",
+    "chat.turn.roleLabel.assistant": "8010d1f4d0696ce16febddf3dda682cb3e5060c3",
+    "chat.turn.roleLabel.user": "905cb326c779f0123e079bf8ccb223176a3cf32d",
+    "settings.appearance.look.options.terminal": "a1f52cdcb3f2bf91aa12082618f306714fbe6324",
+    "settings.appearance.palette.optionAmber": "a847daf492b6aae62a116cf6d99088718740bd5f",
+    "settings.appearance.readingFont.hint": "2e11333921d2070c4f044997aeb5bb10b28d9678",
+    "settings.appearance.readingFont.label": "957269515aee0abd642e6c840efdedc01c159985",
+    "settings.appearance.readingFont.optionSans": "c1ccf83eea101ddafb5de4e3dea5f3693ae473c0",
+    "settings.appearance.readingFont.optionSerif": "a5c78a86fab1c02cd981c23b8bad5dad3e7438e3",
+    "settings.appearance.readingFont.optionTheme": "a9909770cb9f9e2d6e9f8508139887badc2f3997",
+    "settings.appearance.themes.amberTerminal.description": "6c3c4088d62edb049b48272a7fa2e794b527450c",
+    "settings.appearance.themes.amberTerminal.name": "90f1a260b2438cb7b1bed917bcdff54239a9efda"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3498,7 +3520,18 @@
     "workspace.shortcuts.group.general": "9239ee2cda84eca4c3440e2a7b50148af67da3d4",
     "workspace.shortcuts.group.layout": "972ad8d8a50397ba8c02433ed8f048eeb4074b85",
     "workspace.shortcuts.title": "266695479a949eec44dea9db4e15fba00163f04e",
-    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07"
+    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07",
+    "chat.turn.roleLabel.assistant": "8010d1f4d0696ce16febddf3dda682cb3e5060c3",
+    "chat.turn.roleLabel.user": "905cb326c779f0123e079bf8ccb223176a3cf32d",
+    "settings.appearance.look.options.terminal": "a1f52cdcb3f2bf91aa12082618f306714fbe6324",
+    "settings.appearance.palette.optionAmber": "a847daf492b6aae62a116cf6d99088718740bd5f",
+    "settings.appearance.readingFont.hint": "2e11333921d2070c4f044997aeb5bb10b28d9678",
+    "settings.appearance.readingFont.label": "957269515aee0abd642e6c840efdedc01c159985",
+    "settings.appearance.readingFont.optionSans": "c1ccf83eea101ddafb5de4e3dea5f3693ae473c0",
+    "settings.appearance.readingFont.optionSerif": "a5c78a86fab1c02cd981c23b8bad5dad3e7438e3",
+    "settings.appearance.readingFont.optionTheme": "a9909770cb9f9e2d6e9f8508139887badc2f3997",
+    "settings.appearance.themes.amberTerminal.description": "6c3c4088d62edb049b48272a7fa2e794b527450c",
+    "settings.appearance.themes.amberTerminal.name": "90f1a260b2438cb7b1bed917bcdff54239a9efda"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4665,7 +4698,18 @@
     "workspace.shortcuts.group.general": "9239ee2cda84eca4c3440e2a7b50148af67da3d4",
     "workspace.shortcuts.group.layout": "972ad8d8a50397ba8c02433ed8f048eeb4074b85",
     "workspace.shortcuts.title": "266695479a949eec44dea9db4e15fba00163f04e",
-    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07"
+    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07",
+    "chat.turn.roleLabel.assistant": "8010d1f4d0696ce16febddf3dda682cb3e5060c3",
+    "chat.turn.roleLabel.user": "905cb326c779f0123e079bf8ccb223176a3cf32d",
+    "settings.appearance.look.options.terminal": "a1f52cdcb3f2bf91aa12082618f306714fbe6324",
+    "settings.appearance.palette.optionAmber": "a847daf492b6aae62a116cf6d99088718740bd5f",
+    "settings.appearance.readingFont.hint": "2e11333921d2070c4f044997aeb5bb10b28d9678",
+    "settings.appearance.readingFont.label": "957269515aee0abd642e6c840efdedc01c159985",
+    "settings.appearance.readingFont.optionSans": "c1ccf83eea101ddafb5de4e3dea5f3693ae473c0",
+    "settings.appearance.readingFont.optionSerif": "a5c78a86fab1c02cd981c23b8bad5dad3e7438e3",
+    "settings.appearance.readingFont.optionTheme": "a9909770cb9f9e2d6e9f8508139887badc2f3997",
+    "settings.appearance.themes.amberTerminal.description": "6c3c4088d62edb049b48272a7fa2e794b527450c",
+    "settings.appearance.themes.amberTerminal.name": "90f1a260b2438cb7b1bed917bcdff54239a9efda"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -5832,7 +5876,18 @@
     "workspace.shortcuts.group.general": "9239ee2cda84eca4c3440e2a7b50148af67da3d4",
     "workspace.shortcuts.group.layout": "972ad8d8a50397ba8c02433ed8f048eeb4074b85",
     "workspace.shortcuts.title": "266695479a949eec44dea9db4e15fba00163f04e",
-    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07"
+    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07",
+    "chat.turn.roleLabel.assistant": "8010d1f4d0696ce16febddf3dda682cb3e5060c3",
+    "chat.turn.roleLabel.user": "905cb326c779f0123e079bf8ccb223176a3cf32d",
+    "settings.appearance.look.options.terminal": "a1f52cdcb3f2bf91aa12082618f306714fbe6324",
+    "settings.appearance.palette.optionAmber": "a847daf492b6aae62a116cf6d99088718740bd5f",
+    "settings.appearance.readingFont.hint": "2e11333921d2070c4f044997aeb5bb10b28d9678",
+    "settings.appearance.readingFont.label": "957269515aee0abd642e6c840efdedc01c159985",
+    "settings.appearance.readingFont.optionSans": "c1ccf83eea101ddafb5de4e3dea5f3693ae473c0",
+    "settings.appearance.readingFont.optionSerif": "a5c78a86fab1c02cd981c23b8bad5dad3e7438e3",
+    "settings.appearance.readingFont.optionTheme": "a9909770cb9f9e2d6e9f8508139887badc2f3997",
+    "settings.appearance.themes.amberTerminal.description": "6c3c4088d62edb049b48272a7fa2e794b527450c",
+    "settings.appearance.themes.amberTerminal.name": "90f1a260b2438cb7b1bed917bcdff54239a9efda"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6999,7 +7054,18 @@
     "workspace.shortcuts.group.general": "9239ee2cda84eca4c3440e2a7b50148af67da3d4",
     "workspace.shortcuts.group.layout": "972ad8d8a50397ba8c02433ed8f048eeb4074b85",
     "workspace.shortcuts.title": "266695479a949eec44dea9db4e15fba00163f04e",
-    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07"
+    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07",
+    "chat.turn.roleLabel.assistant": "8010d1f4d0696ce16febddf3dda682cb3e5060c3",
+    "chat.turn.roleLabel.user": "905cb326c779f0123e079bf8ccb223176a3cf32d",
+    "settings.appearance.look.options.terminal": "a1f52cdcb3f2bf91aa12082618f306714fbe6324",
+    "settings.appearance.palette.optionAmber": "a847daf492b6aae62a116cf6d99088718740bd5f",
+    "settings.appearance.readingFont.hint": "2e11333921d2070c4f044997aeb5bb10b28d9678",
+    "settings.appearance.readingFont.label": "957269515aee0abd642e6c840efdedc01c159985",
+    "settings.appearance.readingFont.optionSans": "c1ccf83eea101ddafb5de4e3dea5f3693ae473c0",
+    "settings.appearance.readingFont.optionSerif": "a5c78a86fab1c02cd981c23b8bad5dad3e7438e3",
+    "settings.appearance.readingFont.optionTheme": "a9909770cb9f9e2d6e9f8508139887badc2f3997",
+    "settings.appearance.themes.amberTerminal.description": "6c3c4088d62edb049b48272a7fa2e794b527450c",
+    "settings.appearance.themes.amberTerminal.name": "90f1a260b2438cb7b1bed917bcdff54239a9efda"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8166,6 +8232,17 @@
     "workspace.shortcuts.group.general": "9239ee2cda84eca4c3440e2a7b50148af67da3d4",
     "workspace.shortcuts.group.layout": "972ad8d8a50397ba8c02433ed8f048eeb4074b85",
     "workspace.shortcuts.title": "266695479a949eec44dea9db4e15fba00163f04e",
-    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07"
+    "settings.appearance.themes.darkOnlyLabel": "83157cf90f0c3d78cd5a6de33d759676f451ff07",
+    "chat.turn.roleLabel.assistant": "8010d1f4d0696ce16febddf3dda682cb3e5060c3",
+    "chat.turn.roleLabel.user": "905cb326c779f0123e079bf8ccb223176a3cf32d",
+    "settings.appearance.look.options.terminal": "a1f52cdcb3f2bf91aa12082618f306714fbe6324",
+    "settings.appearance.palette.optionAmber": "a847daf492b6aae62a116cf6d99088718740bd5f",
+    "settings.appearance.readingFont.hint": "2e11333921d2070c4f044997aeb5bb10b28d9678",
+    "settings.appearance.readingFont.label": "957269515aee0abd642e6c840efdedc01c159985",
+    "settings.appearance.readingFont.optionSans": "c1ccf83eea101ddafb5de4e3dea5f3693ae473c0",
+    "settings.appearance.readingFont.optionSerif": "a5c78a86fab1c02cd981c23b8bad5dad3e7438e3",
+    "settings.appearance.readingFont.optionTheme": "a9909770cb9f9e2d6e9f8508139887badc2f3997",
+    "settings.appearance.themes.amberTerminal.description": "6c3c4088d62edb049b48272a7fa2e794b527450c",
+    "settings.appearance.themes.amberTerminal.name": "90f1a260b2438cb7b1bed917bcdff54239a9efda"
   }
 }

@@ -77,7 +77,7 @@ describe('the settings search index', () => {
    * a reader would actually type, not only by the catalog key it happens to
    * live under.
    */
-  it.each(['theme', 'look', 'palette', 'dark only'])(
+  it.each(['theme', 'look', 'palette', 'dark only', 'reading font'])(
     'finds the appearance section for "%s"',
     (query) => {
       expect([...searchSettings(query, tEn, SECTIONS).keys()]).toContain('appearance');

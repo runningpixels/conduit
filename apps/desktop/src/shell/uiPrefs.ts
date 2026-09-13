@@ -187,6 +187,28 @@ export function supportedModes(): readonly Mode[] {
   return modesForPalette(readPalette());
 }
 
+/* ── Reading font ────────────────────────────────────────────────────────
+ * Overrides the face of assistant prose (--font-prose) regardless of theme.
+ * `theme` defers to whatever the look and palette chose — which for the
+ * terminal look is mono, and for long answers some people want out of that.
+ * Applied as `html[data-reading-font]` (chat.css). */
+
+const READING_FONT_KEY = 'conduit:v10-reading-font';
+export type ReadingFontPref = 'theme' | 'sans' | 'serif';
+
+export function readReadingFont(): ReadingFontPref {
+  return readPref(READING_FONT_KEY, ['theme', 'sans', 'serif'], 'theme');
+}
+
+export function writeReadingFont(value: ReadingFontPref): void {
+  writePref(READING_FONT_KEY, value);
+  applyReadingFont(value);
+}
+
+export function applyReadingFont(value: ReadingFontPref): void {
+  document.documentElement.setAttribute('data-reading-font', value);
+}
+
 /* ── Provider colour ──────────────────────────────────────────────────── */
 
 export function readProviderColour(): ProviderColourPref {
@@ -312,6 +334,7 @@ export function applyUiPrefs(): void {
    * whether the Rust-side brand still exists, then re-applies the brand if it
    * does — so a cached brand that has since been removed is cleared here. */
   applyPalette(readPalette());
+  applyReadingFont(readReadingFont());
   applyProviderColour(readProviderColour());
   applyReduceMotion(readReduceMotion());
   applyExpandedStatus(readExpandedStatus());

@@ -42,6 +42,25 @@ interface Block {
   decls: string;
 }
 
+/** Split a selector list on commas outside parentheses (`:is(a, b)` stays whole). */
+function splitTopLevel(header: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of header) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
 function stripComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
@@ -73,7 +92,7 @@ function parseBlocks(css: string): Block[] {
           // @keyframes, …) are deliberately not walked into.
         } else {
           blocks.push({
-            selectors: header.split(',').map((s) => s.trim().replace(/\s+/g, ' ')),
+            selectors: splitTopLevel(header).map((s) => s.trim().replace(/\s+/g, ' ')),
             decls: inner,
           });
         }
@@ -165,10 +184,30 @@ if (!LIGHT_BLOCK) {
  * only in `:root` plus the palettes' own `[data-provider]` pin rules — never
  * in `[data-theme="light"]` itself.
  */
-const COLOUR_TOKENS = new Set<string>([
-  ...customPropNames(LIGHT_BLOCK.decls),
-  ...PALETTE_BLOCKS.flatMap((b) => customPropNames(b.decls)),
+/**
+ * Declared per mode or per palette, but structural in kind, so a look may
+ * retarget them. Elevation composites carry a colour only as shadow tint (the
+ * light block restates them to lighten that tint; a look flattens them away),
+ * and `--font-prose` is the reading face, which palettes and looks may both
+ * pick — a look's sheet loads after tokens.css, so the look wins the tie.
+ */
+const LOOK_RETARGETABLE = new Set([
+  '--lift',
+  '--soft-lift',
+  '--shadow',
+  '--glow',
+  '--elevation-1',
+  '--elevation-2',
+  '--elevation-3',
+  '--font-prose',
 ]);
+
+const COLOUR_TOKENS = new Set<string>(
+  [
+    ...customPropNames(LIGHT_BLOCK.decls),
+    ...PALETTE_BLOCKS.flatMap((b) => customPropNames(b.decls)),
+  ].filter((p) => !LOOK_RETARGETABLE.has(p)),
+);
 
 /**
  * A property is private to `paletteId` iff every block anywhere in tokens.css

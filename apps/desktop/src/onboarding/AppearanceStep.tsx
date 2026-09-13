@@ -3,6 +3,7 @@ import type { AppSettings } from '../ipc/contracts';
 import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../i18n';
 import { applyUiReadability, readUiDensity, readUiFontSize, type UiFontSize } from '../workspace/readability';
 import { ThemePicker } from '../workspace/settings/ThemePicker';
+import { useSupportedModes } from '../themes/useSupportedModes';
 import { usePersistSteps } from './persistSteps';
 
 /**
@@ -41,6 +42,7 @@ export function AppearanceStep({
   /* The language write is awaited, so the select has a real in-flight window.
      Disabling it stops a second choice from queueing a second re-mount. */
   const [switchingLanguage, setSwitchingLanguage] = useState(false);
+  const modeForced = !useSupportedModes().includes('light');
 
   /* Density is not offered here, but `applyUiReadability` takes both, so the
      stored value is read and passed straight back through unchanged. */
@@ -96,9 +98,16 @@ export function AppearanceStep({
           </small>
         </div>
 
-        <label className="field">
-          <span className="field-label">{t('settings.appearance.theme.label')}</span>
+        {/* A dark-only theme forces dark without touching the saved mode, so the
+            select is disabled and says why — same treatment as AppearanceSection. */}
+        <div className="field">
+          <label className="field-label" htmlFor="onboarding-mode">
+            {t('settings.appearance.theme.label')}
+          </label>
           <select
+            id="onboarding-mode"
+            aria-describedby={modeForced ? 'onboarding-mode-hint' : undefined}
+            disabled={modeForced}
             value={settings.theme}
             onChange={(e) => set('theme', e.target.value as AppSettings['theme'])}
           >
@@ -106,7 +115,10 @@ export function AppearanceStep({
             <option value="dark">{t('settings.appearance.theme.optionDark')}</option>
             <option value="light">{t('settings.appearance.theme.optionLight')}</option>
           </select>
-        </label>
+          {modeForced && (
+            <small id="onboarding-mode-hint">{t('settings.appearance.theme.hintDarkOnly')}</small>
+          )}
+        </div>
 
         {/* The theme (look x palette) is a renderer-only presentation pref: it
             lives in localStorage and on <html>, deliberately outside

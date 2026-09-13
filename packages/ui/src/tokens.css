@@ -106,6 +106,11 @@
    * follows as the fallback. The calm V9 is after comes from temperature and
    * type size (§2.4), not from the face. */
   --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* --face-sans / --face-serif restate the UI and serif stacks (here and in
+   * each CJK block below) so a look may point --font-ui / --font-serif at
+   * another face while the Reading font preference can still reach the
+   * originals. cssContract.test.ts asserts each pair stays identical. */
+  --face-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   /* The product's one serif: artifact document titles (§6), and assistant prose
    * under the Orange Charcoal palette.
@@ -119,6 +124,7 @@
    * different colour and texture, differing per platform. One face, bundled,
    * with the old stack demoted to fallback. */
   --font-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
   /* The reading surface: assistant prose. Defaults to the UI face, so the
    * terra palette renders exactly as it did; Orange Charcoal points it at
    * --font-serif rather than restating the stack, which is what keeps "one
@@ -397,17 +403,25 @@
 html[lang^="ja"] {
   --font-ui: "Geist", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
     "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
+  --face-sans: "Geist", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Yu Gothic UI", "Hiragino Sans",
     "Noto Sans JP", Meiryo, monospace;
   --font-serif: "Source Serif 4", "Yu Mincho", YuMincho, "Hiragino Mincho ProN",
+    "Noto Serif JP", Charter, Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", "Yu Mincho", YuMincho, "Hiragino Mincho ProN",
     "Noto Serif JP", Charter, Georgia, ui-serif, serif;
 }
 html[lang^="ko"] {
   --font-ui: "Geist", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
     ui-sans-serif, system-ui, sans-serif;
+  --face-sans: "Geist", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+    ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Malgun Gothic", "Apple SD Gothic Neo",
     "Noto Sans KR", monospace;
   --font-serif: "Source Serif 4", Batang, AppleMyungjo, "Noto Serif KR",
+    Charter, Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", Batang, AppleMyungjo, "Noto Serif KR",
     Charter, Georgia, ui-serif, serif;
 }
 /* Simplified only. `zh-TW` and `zh-HK` are Traditional — a different
@@ -416,9 +430,13 @@ html[lang^="ko"] {
 html[lang^="zh-CN"] {
   --font-ui: "Geist", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
     "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --face-sans: "Geist", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Microsoft YaHei UI", "PingFang SC",
     "Noto Sans SC", monospace;
   --font-serif: "Source Serif 4", SimSun, "Songti SC", "Noto Serif SC",
+    "Source Han Serif SC", Charter, Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", SimSun, "Songti SC", "Noto Serif SC",
     "Source Han Serif SC", Charter, Georgia, ui-serif, serif;
 }
 
@@ -629,6 +647,61 @@ html[data-palette="orange-dark"] [data-provider] {
   --hue-weak-solid: var(--od-hue-weak-solid);
 }
 
+/* ── Palette preset: Amber (renderer-only; html[data-palette]) — dark only ──
+   The colour half of the Amber Terminal theme, adapted from OpenTerminal
+   (github.com/ErTasselli/OpenTerminal, MIT; see THIRD-PARTY-NOTICES): true
+   black ground, near-black panels, one hot amber accent, binary green/red
+   status. Its structural half is the terminal look (looks/terminal.css).
+
+   Dark only (themes/registry.ts declares modes: ['dark'], and resolveTheme()
+   never lets it meet [data-theme="light"]), so there is no light block and no
+   specificity trap to cover. Deltas from the source, each for AA on the worst
+   surface (--card-hi): --ink-3 lifts #808080 → #878787 (4.41 → 4.9:1), a
+   third ink step (#a6a6a6) is added because Conduit's ramp has three, and
+   --on-hue is black — white on #ff9900 is 2.14:1, black is 9.8:1.
+   OpenTerminal has no warn or link colour; its chart series supply them. */
+html[data-palette="amber"] {
+  --bg: #000000;
+  --bg-side: #0a0a0a;
+  --card: #111111;
+  --card-hi: #1a1a1a;
+  --line: #262626;
+  --line-soft: #161616;
+  --line-hi: #3a3a3a;
+  --ink: #d9d9d9;
+  --ink-2: #a6a6a6;
+  --ink-3: #878787;
+  --shade: rgba(0,0,0,.72);
+  --shadow-color: rgba(0,0,0,.72);
+  --ok: #00c853;
+  --warn: #ffd966;
+  --err: #ff3d3d;
+  --code: #ffb347;
+  --link: #4fc3f7;
+  --on-hue: #000000;
+  --syn-keyword: #4fc3f7;
+  --syn-string: #00c853;
+  --syn-number: #ffd966;
+  --syn-tag: #c98ad6;
+  --syn-property: #80cbc4;
+  --syn-const: #ff8a65;
+  --am-hue: #ff9900;
+  --am-hue-text: #ff9900;
+  --am-hue-solid: #ff9900;
+  --am-hue-weak-solid: rgba(255, 153, 0, .14);
+  /* The dimmed accent: command-palette frame, scrollbar hover, drag rules.
+     Graphics only (4.16:1 on --card-hi clears the 3:1 non-text floor). */
+  --hue-dim: #b36b00;
+}
+html[data-palette="amber"][data-provider],
+html[data-palette="amber"] [data-provider] {
+  --hue: var(--am-hue);
+  --hue-text: var(--am-hue-text);
+  --hue-solid: var(--am-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--am-hue) 14%, transparent);
+  --hue-weak-solid: var(--am-hue-weak-solid);
+}
+
 /* ── Brand override neutralizes provider hue on descendants ─────────────────
    White-label plan §5-6: a brand replaces provider identity everywhere, not
    just at the root. `[data-provider="..."]` above matches ANY element
@@ -706,6 +779,8 @@ html[data-palette="brand"] [data-provider] {
   html[data-palette="orange-charcoal"] [data-provider] { --hue-weak: var(--oc-hue-weak-solid); }
   html[data-palette="orange-dark"][data-provider],
   html[data-palette="orange-dark"] [data-provider] { --hue-weak: var(--od-hue-weak-solid); }
+  html[data-palette="amber"][data-provider],
+  html[data-palette="amber"] [data-provider] { --hue-weak: var(--am-hue-weak-solid); }
   /* Theme-neutral gray for the off state when color-mix() is unavailable. */
   html[data-provider-colour="off"] [data-provider] { --hue-weak: rgba(128, 128, 128, .16); }
 }

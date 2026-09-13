@@ -1,0 +1,332 @@
+/* ───────────────────────── Look: terminal ─────────────────────────────────
+ * The structural half of the Amber Terminal theme (docs/theming/README.md),
+ * after OpenTerminal's market-terminal register (github.com/ErTasselli/
+ * OpenTerminal, MIT): one monospace face, square corners, no shadow or blur,
+ * hairline-framed panels with UPPERCASE accent titles, dense type and instant
+ * hovers that answer with a border rather than a fill.
+ *
+ * Rules for this sheet (lookContract.test.ts enforces them):
+ *   - every selector is scoped under html[data-look="terminal"];
+ *   - no colour literals and no colour tokens declared — colour belongs to the
+ *     palette, so this look renders under any palette (Advanced mixing);
+ *   - no url(), @import or @font-face.
+ *
+ * `html[data-look]` is (0,1,1): it outranks :root and the per-sheet role-token
+ * blocks, and ties the palette and CJK-locale blocks, which it follows in
+ * source order (main.tsx imports it after tokens.css). */
+
+html[data-look="terminal"] {
+  /* ── Type: one face for every register ── */
+  --font-ui: var(--font-mono);
+  --font-serif: var(--font-mono);
+  --font-prose: var(--font-mono);
+  --font-label: var(--font-mono);
+  --label-weight: 700;
+  /* Mono sets wide; the scale steps down so a line holds as much as before. */
+  --fs-4xl: 12.5px;
+  --fs-5xl: 13px;
+  --fs-6xl: 13px;
+  --fs-8xl: 14px;
+  --fs-9xl: 15px;
+  --fs-10xl: 16px;
+  --fs-display: 20px;
+  --fs-hero: 24px;
+  --fs-bubble: 13px;
+  --fs-prose: 13px;
+  --fs-prose-serif: 13px;
+  --fs-prose-h2: 15px;
+  --fs-doc-h1: 16px;
+  --fs-sheet-heading: 13px;
+  --fs-pal-input: 13px;
+  --fs-rail-title: 14px;
+  --fs-wordmark: 12.5px;
+  --fs-remove-glyph: 13px;
+  --leading-prose: 1.55;
+
+  /* ── Shape: square everything except status dots ── */
+  --r-1: 0;
+  --r-2: 0;
+  --r-3: 0;
+  --r-4: 0;
+  --r-xs: 0;
+  --r-sm: 0;
+  --r: 0;
+  --r-lg: 0;
+  --r-xl: 0;
+  --r-pill: 0;
+  --r-bubble-accent: 0;
+  --r-empty-icon: 0;
+
+  /* ── Elevation: none. Transparent zero-offset shadows rather than `none`
+   * so composed lists (`var(--soft-lift), 0 0 0 …`) stay valid. ── */
+  --lift: 0 0 transparent;
+  --soft-lift: 0 0 transparent;
+  --shadow: 0 0 transparent;
+  --elevation-1: 0 0 transparent;
+  --elevation-2: 0 0 transparent;
+  --elevation-3: 0 0 transparent;
+  --glow: 0 0 transparent;
+  --shadow-modal: 0 0 transparent;
+  --shadow-modal-strong: 0 0 transparent;
+  --shadow-settings-pop: 0 0 transparent;
+  --shadow-tab-active: 0 0 transparent;
+  --shadow-composer-focus-spread: 0px;
+  --shadow-handle-glow-blur: 0px;
+  --shadow-handle-glow-spread: 0px;
+  --glass-blur: 0px;
+  --glass-bg: var(--card);
+
+  /* ── Motion: hovers and panels are instant ── */
+  --tap: 0s;
+  --cu-tap: 0s;
+  --dur-menu: 0s;
+  --dur-scrim: 0s;
+  --dur-panel-slide: 0s;
+  --dur-provider-rule: 0s;
+  --dur-tool-expand: 0s;
+  --dur-collapse: 0s;
+  --duration-instant: 0ms;
+  --duration-fast: 0ms;
+  --duration-normal: 0ms;
+  --duration-slow: 0ms;
+
+  /* ── Focus: a 1px accent frame flush with the element ── */
+  --ring-width: 1px;
+  --ring-offset: 0px;
+
+  /* ── Icons: square-ended strokes ── */
+  --icon-stroke: 1.5;
+  --icon-cap: square;
+  --icon-join: miter;
+
+  /* ── Scrollbars: thin square bars that light up on hover ── */
+  --scrollbar-size: 8px;
+  --scrollbar-inset: 0px;
+  --scrollbar-radius: 0;
+  --scrollbar-thumb: var(--line-hi);
+  --scrollbar-thumb-hover: var(--hue-dim, var(--hue));
+}
+
+/* ── Label register: uppercase, bold, tracked, in the accent ────────────── */
+html[data-look="terminal"] .section-label,
+html[data-look="terminal"] .sb-group,
+html[data-look="terminal"] .sb-group-row,
+html[data-look="terminal"] .inline-code-block-lang,
+html[data-look="terminal"] .field-label,
+html[data-look="terminal"] .doc-title b {
+  color: var(--hue-text);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+html[data-look="terminal"] .main-title,
+html[data-look="terminal"] .sheet-h,
+html[data-look="terminal"] .settings-section-header,
+html[data-look="terminal"] .cu-dialog-title {
+  color: var(--hue-text);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+html[data-look="terminal"] .chat-prose th,
+html[data-look="terminal"] .md-table th {
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+html[data-look="terminal"] .chat-prose td,
+html[data-look="terminal"] .md-table td {
+  font-variant-numeric: tabular-nums;
+}
+html[data-look="terminal"] .chat-prose :is(h1, h2, h3, h4) {
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+/* ── Chrome: title strips framed like panel headers ─────────────────────── */
+html[data-look="terminal"] .titlebar {
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+html[data-look="terminal"] .mark b {
+  color: var(--hue-text);
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+html[data-look="terminal"] aside.sidebar {
+  border-right: 1px solid var(--line);
+}
+html[data-look="terminal"] .main-head {
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+html[data-look="terminal"] .sb-foot {
+  border-top-color: var(--line);
+}
+
+/* Sidebar rows: flat, with an accent rule marking the open conversation. */
+html[data-look="terminal"] .sb-item:hover,
+html[data-look="terminal"] .convo:hover {
+  background: var(--card-hi);
+}
+html[data-look="terminal"] .convo[aria-current="true"] {
+  background: var(--hue-weak);
+  box-shadow: inset 2px 0 0 var(--hue);
+}
+
+/* ── Controls: hairline boxes; hover and focus answer with the accent ───── */
+/* Form controls do not inherit the page face by default (the base reset only
+ * covers button and textarea); in a one-face look they must. */
+html[data-look="terminal"] :is(input, select, option) {
+  font-family: inherit;
+}
+html[data-look="terminal"] :is(.btn, .cu-chip, .search-box input, .info-card, .av-role.you) {
+  border-width: 1px;
+}
+html[data-look="terminal"] .btn:hover:not(:disabled) {
+  border-color: var(--hue);
+  color: var(--hue-text);
+}
+html[data-look="terminal"] .btn.primary {
+  color: var(--on-hue);
+}
+html[data-look="terminal"] .btn.primary:hover:not(:disabled) {
+  color: var(--on-hue);
+  filter: none;
+}
+html[data-look="terminal"] .icon-btn:hover,
+html[data-look="terminal"] .act:hover {
+  background: transparent;
+  color: var(--hue-text);
+}
+html[data-look="terminal"] :is(input, select, textarea):focus,
+html[data-look="terminal"] .search-box input:focus,
+html[data-look="terminal"] .cu-dialog-phrase input:focus {
+  border-color: var(--hue);
+}
+/* Dots stay round (--r-round), but a switch knob in a square track is a cell. */
+html[data-look="terminal"] .toggle::after {
+  border-radius: 0;
+}
+html[data-look="terminal"] .pill,
+html[data-look="terminal"] .status-pill {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* ── Composer: a framed input panel with an accent edge on focus ────────── */
+html[data-look="terminal"] .composer {
+  background: var(--bg-side);
+}
+html[data-look="terminal"] .composer:focus-within {
+  border-color: var(--hue);
+  box-shadow: none;
+}
+html[data-look="terminal"] .composer textarea::placeholder {
+  color: var(--ink-3);
+}
+
+/* ── Chat turns: a log, not a conversation of bubbles ──────────────────── */
+html[data-look="terminal"] .turn.user {
+  align-items: stretch;
+}
+html[data-look="terminal"] .bubble {
+  max-width: none;
+  background: var(--bg-side);
+  border-color: var(--line);
+}
+/* Role header strip. The label is localised and set by React
+ * (`data-role-label`); CSS only decides whether and how it shows. */
+html[data-look="terminal"] .turn[data-role-label]::before {
+  content: attr(data-role-label);
+  display: block;
+  margin-bottom: 6px;
+  color: var(--hue-text);
+  font: 700 var(--fs-xs)/1 var(--font-label);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+html[data-look="terminal"] .turn.user[data-role-label]::before {
+  color: var(--ink-3);
+}
+html[data-look="terminal"] .turn.assistant {
+  border-left-color: var(--hue);
+}
+html[data-look="terminal"] .turn-model {
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* Streaming caret: a solid block cell that blinks hard, like a tty cursor. */
+html[data-look="terminal"] .streaming {
+  width: .62em;
+  height: 1.15em;
+  vertical-align: text-bottom;
+}
+
+/* Code, tools, cards: framed panels whose header strip is the label bar. */
+html[data-look="terminal"] .inline-code-block {
+  background: var(--bg);
+  border-color: var(--line);
+}
+html[data-look="terminal"] .inline-code-block-head {
+  background: var(--card);
+  border-bottom-color: var(--line);
+}
+html[data-look="terminal"] :is(.tool, .think, .artifact-card, .ask-user) {
+  border-color: var(--line);
+}
+html[data-look="terminal"] .ask-user {
+  border-color: var(--hue-dim, var(--hue));
+}
+html[data-look="terminal"] .suggested-prompt-chip:hover {
+  border-color: var(--hue);
+  color: var(--hue-text);
+}
+
+/* ── Document panel: flush and framed, not an inset floating card ─────── */
+html[data-look="terminal"] .doc-panel {
+  margin: 0;
+  border-width: 0 0 0 1px;
+}
+html[data-look="terminal"] .doc-toolbar {
+  background: var(--card);
+  border-bottom-color: var(--line);
+}
+html[data-look="terminal"] .doc-view-btn.active {
+  background: var(--hue-weak);
+  color: var(--hue-text);
+}
+
+/* ── Overlays: no blur; the command palette wears the dim accent frame ── */
+html[data-look="terminal"] :is(.scrim, .palette-scrim) {
+  backdrop-filter: none;
+}
+html[data-look="terminal"] .palette {
+  border-color: var(--hue-dim, var(--line-hi));
+}
+html[data-look="terminal"] .pal-item[data-sel="true"] {
+  background: var(--hue-weak);
+  box-shadow: inset 2px 0 0 var(--hue);
+}
+html[data-look="terminal"] .menu-item:hover {
+  background: var(--card-hi);
+}
+/* Not .toast: its border carries the kind (ok / warn / error). */
+html[data-look="terminal"] :is(.sheet, .cu-dialog, .menu) {
+  border-color: var(--line-hi);
+}
+html[data-look="terminal"] .sheet-nav {
+  border-right-color: var(--line);
+}
+
+/* ── Live values: a white flash when a figure changes (status line) ───── */
+html[data-look="terminal"] .value-flash {
+  animation: terminal-value-flash .45s ease-out;
+}
+@keyframes terminal-value-flash {
+  from { background: color-mix(in srgb, var(--ink) 85%, transparent); color: var(--bg); }
+  to { background: transparent; }
+}

@@ -36,6 +36,12 @@ import {
   ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE,
   parseArtifactExternalLinkMessage,
 } from './externalUrl';
+import {
+  activeRendererTheming,
+  readResolvedTokens,
+  useThemeRevision,
+  type ResolvedTokens,
+} from '../themes/resolvedTokens';
 import { useT } from '../i18n';
 
 export type ArtifactColorScheme = 'light' | 'dark';
@@ -92,6 +98,55 @@ const STYLED_STYLE_DARK = [
   'ul,ol{padding-left:1.4em}',
 ].join('\n');
 
+/**
+ * Token-built equivalent of RESET_STYLE + STYLED_STYLE_LIGHT/DARK, for when
+ * `activeRendererTheming('iframe') === 'tokens'` (themes/resolvedTokens.ts):
+ * a look × palette this srcdoc's hardcoded light/dark literals were never
+ * written for (currently Amber Terminal) gets its preview coloured to match
+ * instead of falling back to a fixed light/dark pair that may clash with it.
+ *
+ * Every value here already passed `resolvedTokens.ts`'s strict hex / font
+ * grammar before reaching this function — nothing here re-validates, because
+ * nothing here accepts anything else. Literal token values are embedded
+ * directly rather than as `var(--font-ui)` references: this stylesheet lives
+ * inside the sandboxed `srcdoc` document, which never shares custom
+ * properties (or the bundled Geist files) with the app's own document, so a
+ * `var()` reference here would silently and permanently resolve to nothing
+ * but its fallback. Embedding the resolved stack directly (Geist included)
+ * is harmless even though the iframe cannot load that face: an unavailable
+ * font in a `font-family` list is normal browser fallback, not an error, so
+ * it simply skips to the next name in the same stack.
+ *
+ * Returns `undefined` — the caller's cue to keep the existing literals —
+ * if any token this needs is missing or failed validation.
+ */
+function buildTokensArtifactStyle(tokens: ResolvedTokens): { reset: string; styled: string } | undefined {
+  const required = [tokens.bg, tokens.ink, tokens.link, tokens.card, tokens.line, tokens.fontUi, tokens.fontMono];
+  if (required.some((v) => v === undefined)) return undefined;
+
+  const scrollbarThumb = tokens.lineHi ?? (tokens.line as string);
+
+  const reset = [
+    'html,body{margin:0;padding:0;color:inherit;background:transparent;font:inherit}',
+    'img{max-width:100%}',
+    `html{scrollbar-width:thin;scrollbar-color:${scrollbarThumb} transparent}`,
+  ].join('\n');
+
+  const styled = [
+    `body{font:14px/1.65 ${tokens.fontUi};color:${tokens.ink}}`,
+    'h1,h2,h3{margin-top:1.4em;margin-bottom:.4em;font-weight:600}',
+    'p{margin:.6em 0}',
+    `pre,code{font-family:${tokens.fontMono};background:${tokens.card};padding:2px 6px;border-radius:4px}`,
+    'pre{padding:12px 14px;overflow:auto}',
+    'table{border-collapse:collapse}',
+    `th,td{border:1px solid ${tokens.line};padding:6px 10px;text-align:left}`,
+    `a{color:${tokens.link}}`,
+    'ul,ol{padding-left:1.4em}',
+  ].join('\n');
+
+  return { reset, styled };
+}
+
 /// Trusted click interceptor (Conduit-owned, not model content). Captures
 /// http(s) anchor clicks and posts them to the parent. In-page `#` anchors are
 /// left alone. Not a Tauri bridge — no `__TAURI__`, no IPC inside the frame.
@@ -109,20 +164,26 @@ export const ARTIFACT_LINK_INTERCEPTOR_SCRIPT =
 
 /// Assemble the full srcdoc: doctype + our CSP meta (FIRST in head) + reset
 /// style + (optional styled baseline) + link interceptor + body with the model
-/// HTML. Pure — exported for unit testing.
+/// HTML. Pure — exported for unit testing. `tokens`, when given, replaces the
+/// reset/styled literals with `buildTokensArtifactStyle`'s output (falling
+/// back to the existing light/dark literals if it can't fully build one);
+/// omitted, this is byte-for-byte what it always was.
 export function assembleArtifactDoc(
   html: string,
   allowlist: string[],
   styledPreview = true,
   colorScheme: ArtifactColorScheme = 'light',
+  tokens?: ResolvedTokens,
 ): string {
   const csp = buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP;
-  const styled = colorScheme === 'dark' ? STYLED_STYLE_DARK : STYLED_STYLE_LIGHT;
+  const tokensStyle = tokens && buildTokensArtifactStyle(tokens);
+  const reset = tokensStyle?.reset ?? RESET_STYLE;
+  const styled = tokensStyle?.styled ?? (colorScheme === 'dark' ? STYLED_STYLE_DARK : STYLED_STYLE_LIGHT);
   const extra = styledPreview ? `<style>${styled}</style>` : '';
   return (
     `<!doctype html><html data-theme="${colorScheme}"><head>` +
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
-    `<style>${RESET_STYLE}</style>` +
+    `<style>${reset}</style>` +
     extra +
     `<script>${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}</script>` +
     `</head><body>${html}</body></html>`
@@ -137,9 +198,21 @@ export function HtmlArtifactRenderer({
   onExternalLink,
 }: HtmlArtifactRendererProps) {
   const t = useT();
+  const themingKind = activeRendererTheming('iframe');
+  // Neither the srcdoc's colours nor its own data-theme depend on React
+  // props for a tokens-themed artifact, so nothing else forces a re-render
+  // when the palette changes underneath it — this is that trigger.
+  const themeRevision = useThemeRevision();
   const srcdoc = useMemo(
-    () => assembleArtifactDoc(html, allowlist, styledPreview, colorScheme),
-    [html, allowlist, styledPreview, colorScheme],
+    () =>
+      assembleArtifactDoc(
+        html,
+        allowlist,
+        styledPreview,
+        colorScheme,
+        themingKind === 'tokens' ? readResolvedTokens() : undefined,
+      ),
+    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision],
   );
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);

@@ -37,7 +37,10 @@ const rel = (f: string) => relative(repoRoot, f).replace(/\\/g, '/');
  * `path: property: value` (whitespace-collapsed) so a moved line stays allowed
  * but a changed value does not.
  */
-const ALLOWED: Record<string, string> = {};
+const ALLOWED: Record<string, string> = {
+  'apps/desktop/src/artifacts/markdown/MermaidBlock.tsx: fontSize: 12px':
+    'Mermaid themeVariables: the diagram is rasterised into a standalone blob image, where CSS variables never resolve.',
+};
 
 /** Blank comments and keyframes blocks out, keeping newlines so line numbers survive. */
 function blank(text: string, re: RegExp): string {

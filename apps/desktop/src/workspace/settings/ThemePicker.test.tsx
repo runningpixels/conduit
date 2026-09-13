@@ -17,6 +17,7 @@ describe('ThemePicker', () => {
     orangeCharcoal: /Orange Charcoal/,
     orangeDark: /Orange-Dark/,
     terra: /Terra/,
+    amberTerminal: /Amber Terminal/,
   };
 
   it('renders one radio per manifest, in a labelled radiogroup', () => {

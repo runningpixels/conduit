@@ -12,18 +12,30 @@ import {
   readLook,
   readMermaidScale,
   readPalette,
+  readReadingFont,
   supportedModes,
   writeLook,
   writeMermaidScale,
   writePalette,
+  writeReadingFont,
   THEME_CHANGED_EVENT,
   type LookPref,
   type MermaidScalePref,
   type PalettePref,
+  type ReadingFontPref,
 } from '../../shell/uiPrefs';
-import { LOOK_IDS, type Mode } from '../../themes/registry';
+import { LOOK_IDS, PALETTE_IDS, type Mode, type PaletteId } from '../../themes/registry';
 import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../../i18n';
 import { ThemePicker } from './ThemePicker';
+
+/* A Record, so adding a palette to PALETTE_IDS without a label fails tsc
+ * instead of silently leaving it out of the Advanced select. */
+const PALETTE_OPTION_KEYS: Record<PaletteId, string> = {
+  'orange-charcoal': 'settings.appearance.palette.optionOrangeCharcoal',
+  'orange-dark': 'settings.appearance.palette.optionOrangeDark',
+  terra: 'settings.appearance.palette.optionTerra',
+  amber: 'settings.appearance.palette.optionAmber',
+};
 
 interface AppearanceSectionProps {
   settings: AppSettings;
@@ -39,6 +51,7 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
   const [palette, setPalette] = useState<PalettePref>(() => readPalette());
   const [modes, setModes] = useState<readonly Mode[]>(() => supportedModes());
   const [mermaidScale, setMermaidScale] = useState<MermaidScalePref>(() => readMermaidScale());
+  const [readingFont, setReadingFont] = useState<ReadingFontPref>(() => readReadingFont());
   /* Computed per render rather than held in state: SettingsSheet mounts only
    * the active section, so visiting Branding and coming back remounts this —
    * the only moment the answer can change. */
@@ -142,6 +155,28 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
             <small id="mode-select-hint">{t('settings.appearance.theme.hintDarkOnly')}</small>
           )}
         </div>
+        {/* Overrides the assistant prose face regardless of theme (uiPrefs.ts) —
+            useful on the terminal look, whose default face is mono. */}
+        <div className="field">
+          <label className="field-label" htmlFor="reading-font-select">
+            {t('settings.appearance.readingFont.label')}
+          </label>
+          <select
+            id="reading-font-select"
+            aria-describedby="reading-font-hint"
+            value={readingFont}
+            onChange={(e) => {
+              const next = e.target.value as ReadingFontPref;
+              setReadingFont(next);
+              writeReadingFont(next);
+            }}
+          >
+            <option value="theme">{t('settings.appearance.readingFont.optionTheme')}</option>
+            <option value="sans">{t('settings.appearance.readingFont.optionSans')}</option>
+            <option value="serif">{t('settings.appearance.readingFont.optionSerif')}</option>
+          </select>
+          <small id="reading-font-hint">{t('settings.appearance.readingFont.hint')}</small>
+        </div>
         {/* Look and palette can be mixed independently of the named themes above
             (registry.ts) — kept behind a disclosure because most people never
             need to, and the picker above already covers the common case. */}
@@ -180,9 +215,11 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
                   writePalette(next);
                 }}
               >
-                <option value="orange-charcoal">{t('settings.appearance.palette.optionOrangeCharcoal')}</option>
-                <option value="orange-dark">{t('settings.appearance.palette.optionOrangeDark')}</option>
-                <option value="terra">{t('settings.appearance.palette.optionTerra')}</option>
+                {PALETTE_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {t(PALETTE_OPTION_KEYS[id])}
+                  </option>
+                ))}
               </select>
               {brandActive && (
                 <small id="advanced-palette-hint">{t('settings.appearance.palette.hintBrand')}</small>

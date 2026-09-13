@@ -1911,7 +1911,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             if (turn.role === 'user') {
               const isEditing = editingTurnId === turn.id;
               return withDay(
-                <article key={turn.id} className="turn user" data-message-id={turn.id}>
+                <article
+                  key={turn.id}
+                  className="turn user"
+                  data-message-id={turn.id}
+                  data-role-label={t('chat.turn.roleLabel.user')}
+                >
                   {isEditing ? (
                     <div className="bubble bubble-editing">
                       <textarea
@@ -2021,6 +2026,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 className="turn assistant"
                 data-provider={providerHueId(provider)}
                 data-message-id={turn.id}
+                data-role-label={t('chat.turn.roleLabel.assistant')}
               >
                 {info?.showModelLine && (
                   <TurnModelLine

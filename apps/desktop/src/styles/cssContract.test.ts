@@ -39,6 +39,12 @@ const cssFiles = [
   // without this, every gallery-only class would be an unconditional orphan.
   ...walk(join(srcRoot, 'dev')).filter((f) => f.endsWith('.css')),
   join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'),
+  // Look sheets (theming Phase 2+, docs/theming/README.md) restyle the same
+  // component classes tokens.css and styles/*.css already declare — without
+  // them here, a class only ever styled from a look sheet (`.value-flash`,
+  // the terminal look's live-value flash) would read as an unstyled orphan,
+  // and a class a look sheet stops using would never register as dead.
+  ...walk(join(repoRoot, 'packages', 'ui', 'src', 'looks')).filter((f) => f.endsWith('.css')),
 ];
 
 /**

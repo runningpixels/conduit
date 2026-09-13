@@ -125,19 +125,19 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
 
   return (
     <div className="settings-section">
-      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
+      <p style={{ marginBottom: 12, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
         {tr('settings.webSearch.intro')}
       </p>
 
       {disabled && (
-        <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--warn)' }}>
+        <p style={{ marginBottom: 12, fontSize: 'var(--fs-xl)', color: 'var(--warn)' }}>
           {t('settings.webSearch.localOnlyWarning')}
         </p>
       )}
 
       <div className="form-grid">
         {/* Master toggle — intercept with consent dialog on first enable */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
           <input
             type="checkbox"
             checked={settings.webSearchEnabled}
@@ -182,12 +182,12 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
         >
           {/* Search source */}
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               {t('settings.webSearch.sourceHeading')}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
               {MODE_OPTIONS.map((opt) => (
-                <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '13px' }}>
+                <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 'var(--fs-3xl)' }}>
                   <input
                     type="radio"
                     name="webSearchMode"
@@ -197,14 +197,14 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                   />
                   <span>
                     <strong>{t(opt.labelId)}</strong>
-                    <span style={{ display: 'block', fontSize: '11px', color: 'var(--ink-3)', marginTop: 2 }}>
+                    <span style={{ display: 'block', fontSize: 'var(--fs-md)', color: 'var(--ink-3)', marginTop: 2 }}>
                       {t(opt.helpId)}
                     </span>
                   </span>
                 </label>
               ))}
             </div>
-            <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+            <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
               {tr('settings.webSearch.currentProviderSummary', {
                 provider: settings.activeProvider,
                 searchType: searchTypeLabel,
@@ -214,12 +214,12 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
 
           {/* Local backend picker — used whenever a turn resolves to local. */}
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               {t('settings.webSearch.localBackendHeading')}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
               {LOCAL_BACKEND_OPTIONS.map((opt) => (
-                <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '13px' }}>
+                <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 'var(--fs-3xl)' }}>
                   <input
                     type="radio"
                     name="localSearchBackend"
@@ -229,7 +229,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                   />
                   <span>
                     <strong>{t(opt.labelId)}</strong>
-                    <span style={{ display: 'block', fontSize: '11px', color: 'var(--ink-3)', marginTop: 2 }}>
+                    <span style={{ display: 'block', fontSize: 'var(--fs-md)', color: 'var(--ink-3)', marginTop: 2 }}>
                       {t(opt.helpId)}
                     </span>
                   </span>
@@ -253,7 +253,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
             {localBackend === 'searxng' && (
               <>
                 <label className="field" style={{ display: 'grid', gap: 4, marginTop: 10 }}>
-                  <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{t('settings.webSearch.searxngBaseUrlLabel')}</span>
+                  <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>{t('settings.webSearch.searxngBaseUrlLabel')}</span>
                   <input
                     type="url"
                     value={ws.searxngBaseUrl ?? ''}
@@ -263,7 +263,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                       })
                     }
                     placeholder={t('settings.webSearch.searxngBaseUrlPlaceholder')}
-                    style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}
                   />
                 </label>
                 <SearchBackendKeyField
@@ -288,19 +288,19 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
             }}
           >
             {hostedKnobsDisabled && (
-              <p style={{ margin: 0, fontSize: '11px', color: 'var(--ink-3)' }}>
+              <p style={{ margin: 0, fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
                 {t('settings.webSearch.hostedOnlyNotice')}
               </p>
             )}
 
             {/* Search context size */}
             <div>
-              <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
                 {t('settings.webSearch.contextSize.heading')}
               </span>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 {(['low', 'medium', 'high'] as const).map((size) => (
-                  <label key={size} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '13px' }}>
+                  <label key={size} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-3xl)' }}>
                     <input
                       type="radio"
                       name="searchContextSize"
@@ -311,13 +311,13 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                   </label>
                 ))}
               </div>
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
                 {t('settings.webSearch.contextSize.help')}
               </p>
             </div>
 
             {/* External web access */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
               <input
                 type="checkbox"
                 checked={ws.externalWebAccess}
@@ -325,18 +325,18 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
               />
               {t('settings.webSearch.externalWebAccess.label')}
             </label>
-            <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+            <p style={{ margin: '-8px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
               {t('settings.webSearch.externalWebAccess.help')}
             </p>
 
             {/* Returned-token budget */}
             <div>
-              <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
                 {t('settings.webSearch.tokenBudget.heading')}
               </span>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 {(['default', 'unlimited'] as const).map((budget) => (
-                  <label key={budget} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '13px' }}>
+                  <label key={budget} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-3xl)' }}>
                     <input
                       type="radio"
                       name="returnTokenBudget"
@@ -347,14 +347,14 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                   </label>
                 ))}
               </div>
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
                 {t('settings.webSearch.tokenBudget.help')}
               </p>
             </div>
 
             {/* Allowed domains */}
             <div>
-              <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
                 {t('settings.webSearch.allowedDomains.heading')}
               </span>
               <textarea
@@ -365,19 +365,19 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 style={{
                   width: '100%',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
+                  fontSize: 'var(--fs-xl)',
                   marginTop: 4,
                   resize: 'vertical',
                 }}
               />
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
                 {t('settings.webSearch.allowedDomains.help')}
               </p>
             </div>
 
             {/* Blocked domains */}
             <div>
-              <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
                 {t('settings.webSearch.blockedDomains.heading')}
               </span>
               <textarea
@@ -388,19 +388,19 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 style={{
                   width: '100%',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
+                  fontSize: 'var(--fs-xl)',
                   marginTop: 4,
                   resize: 'vertical',
                 }}
               />
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
                 {t('settings.webSearch.blockedDomains.help')}
               </p>
             </div>
 
             {/* User location */}
             <div>
-              <span style={{ fontSize: '12px', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
                 {t('settings.webSearch.userLocation.heading')}
               </span>
               <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
@@ -418,7 +418,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                   }}
                   placeholder={t('settings.webSearch.userLocation.countryPlaceholder')}
                   maxLength={2}
-                  style={{ width: '4em', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+                  style={{ width: '4em', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}
                 />
                 <input
                   type="text"
@@ -429,16 +429,16 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                     patchDefaults({ userLocation: { ...ws.userLocation, city } });
                   }}
                   placeholder={t('settings.webSearch.userLocation.cityPlaceholder')}
-                  style={{ flex: 1, minWidth: '8em', fontSize: '12px' }}
+                  style={{ flex: 1, minWidth: '8em', fontSize: 'var(--fs-xl)' }}
                 />
               </div>
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
                 {t('settings.webSearch.userLocation.help')}
               </p>
             </div>
 
             {/* Include sources */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
               <input
                 type="checkbox"
                 checked={ws.includeSources}
@@ -446,7 +446,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
               />
               {t('settings.webSearch.includeSources.label')}
             </label>
-            <p style={{ margin: '-8px 0 0', fontSize: '11px', color: 'var(--ink-3)' }}>
+            <p style={{ margin: '-8px 0 0', fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
               {t('settings.webSearch.includeSources.help')}
             </p>
           </fieldset>
@@ -493,13 +493,13 @@ function SearchBackendKeyField({
   return (
     <div className="form-grid" style={{ marginTop: 10 }}>
       <label className="field" style={{ display: 'grid', gap: 4 }}>
-        <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{t('settings.webSearch.credentialField.label', { label })}</span>
+        <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>{t('settings.webSearch.credentialField.label', { label })}</span>
         <input
           type="password"
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
           placeholder={t('settings.webSearch.credentialField.placeholder')}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}
         />
       </label>
       <button
@@ -512,7 +512,7 @@ function SearchBackendKeyField({
       </button>
       <div className="status-item">
         <span>{t('settings.webSearch.credentialField.referenceLabel')}</span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}>
           {summary?.storedInKeychain || summary?.credentialRef
             ? summary.credentialRef
             : t('settings.webSearch.credentialField.noKeyStored')}

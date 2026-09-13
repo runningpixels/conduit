@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, ConversationFolder, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
@@ -23,6 +23,7 @@ import {
   listConnectorGrants,
   listProviderDescriptors,
   listProviderModels,
+  listUserThemes,
   revealArtifactsDir,
   searchMessages,
   setArtifactContent,
@@ -52,6 +53,7 @@ import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
 import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
+import { applyCachedUserTheme, reconcileUserThemes } from './themes/userThemes';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -59,7 +61,7 @@ import { deriveConnectionState } from './lib/connectionState';
 import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
-import { applyUiPrefs } from './shell/uiPrefs';
+import { applyUiPrefs, supportedModes, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
   useColumnOverlay,
   useColumnResize,
@@ -85,6 +87,12 @@ import {
   previewConversationExport,
   setConversationTitle,
 } from './ipc/client';
+
+/* Dev-only (`?route=gallery`, see `devRoute.ts`): the theming project's
+ * component gallery. Lazy so its fixtures and every component it renders
+ * standalone (`dev/Gallery.tsx`) ship as a separate chunk that a production
+ * build — where `devRoute` is always `null` — never fetches. */
+const LazyGallery = import.meta.env.DEV ? lazy(() => import('./dev/Gallery')) : null;
 
 const DOC_PANEL_HINT_KEY = 'conduit:v5-doc-panel-hint-seen';
 const CONVO_PROVIDERS_KEY = 'conduit:v7-convo-providers';
@@ -555,13 +563,18 @@ export default function App() {
         // not-yet-registered `get_brand_logo` command degrades to `null`
         // rather than failing this whole Promise.all, same as every other
         // brand-optional load here.
-        const [loadedPaths, loadedSettings, onboardingState, loadedBrand, loadedLogo] = await Promise.all([
-          getAppPaths(),
-          getSettings(),
-          getOnboardingState(),
-          getBrandConfig(),
-          fetchBrandLogo(),
-        ]);
+        const [loadedPaths, loadedSettings, onboardingState, loadedBrand, loadedLogo, userThemeEntries] =
+          await Promise.all([
+            getAppPaths(),
+            getSettings(),
+            getOnboardingState(),
+            getBrandConfig(),
+            fetchBrandLogo(),
+            // Theming Phase 5: `dev:web` has no backend, so this rejects there —
+            // degrade to "no user themes" rather than failing the whole boot,
+            // same as `fetchBrandLogo`'s own never-rejects wrapper above.
+            listUserThemes().catch(() => []),
+          ]);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
         setSettingsLoaded(true);
@@ -583,6 +596,15 @@ export default function App() {
           setBrandLogo(null);
         }
         setBrandConfig(loadedBrand);
+        // Theming Phase 5 — reconcile the persisted user-theme selection
+        // against the authoritative file list, ordered after the brand
+        // reconcile above so `isBrandActive()` (which reads `data-palette`)
+        // reflects Rust's answer rather than the pre-paint replay's guess.
+        const userThemeOutcome = reconcileUserThemes(
+          userThemeEntries,
+          resolveTheme(loadedSettings.theme),
+          t,
+        );
         void listProviderDescriptors()
           .then(setProviders)
           .catch(() => setProviders([]));
@@ -599,6 +621,19 @@ export default function App() {
         } else {
           setBoundaryOk(true);
           setStatus(null);
+        }
+        // Theming Phase 5: after the null above, not before it — a toast set
+        // earlier in this effect would just be clobbered by that
+        // unconditional clear.
+        if (userThemeOutcome.cleared) {
+          setStatus(
+            makeStatus(
+              t('settings.appearance.userThemes.toastCleared', {
+                fileName: userThemeOutcome.fileName ?? '',
+              }),
+              'error',
+            ),
+          );
         }
       } catch (error) {
         setBoundaryOk(false);
@@ -1171,10 +1206,23 @@ export default function App() {
   }, [activeConversationId]);
 
   const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>(() => resolveTheme(settings.theme));
+  /* A single-mode theme (Amber Terminal is dark-only) has nothing to toggle. */
+  const [modeLocked, setModeLocked] = useState(() => supportedModes().length < 2);
   useEffect(() => {
     const eff = applyTheme(settings.theme);
     setEffectiveTheme(eff);
-    return watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
+    const stopWatching = watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
+    /* A theme change can narrow the renderable modes (a dark-only palette), so
+     * the effective mode is re-resolved whenever the look or palette moves. */
+    const onThemeChanged = () => {
+      setEffectiveTheme(applyTheme(settings.theme));
+      setModeLocked(supportedModes().length < 2);
+    };
+    window.addEventListener(THEME_CHANGED_EVENT, onThemeChanged);
+    return () => {
+      stopWatching();
+      window.removeEventListener(THEME_CHANGED_EVENT, onThemeChanged);
+    };
   }, [settings.theme]);
 
   /* The language analogue of the theme effect above, and the reconcile half of
@@ -1213,6 +1261,15 @@ export default function App() {
   useEffect(() => {
     if (brandConfig) applyBrandTheme(brandConfig, effectiveTheme);
   }, [brandConfig, effectiveTheme]);
+
+  // Theming Phase 5 — same reasoning as the brand effect above: a user
+  // theme's palette override is also inline CSS on <html>, so it has to be
+  // re-applied for the resolved theme on every mode flip, not just when the
+  // theme picker changes it. A no-op when no user theme is selected
+  // (`applyCachedUserTheme` reads its own storage and returns `null`).
+  useEffect(() => {
+    applyCachedUserTheme(effectiveTheme);
+  }, [effectiveTheme]);
 
   // V7 — the active provider's identity tints the app (spec §5.4).
   useEffect(() => {
@@ -1395,6 +1452,7 @@ export default function App() {
   useHotkeys(hotkeyHandlers);
 
   const handleToggleTheme = useCallback(() => {
+    if (supportedModes().length < 2) return;
     setSettings((current) => {
       const next: AppSettings = {
         ...current,
@@ -1433,6 +1491,18 @@ export default function App() {
   // bad key, or a keychain write that failed, reported nothing at all and left
   // the user clicking a button that appeared to do nothing. `.toast-stack` is
   // `position: fixed`, so where it sits in the tree does not matter.
+  /* Dev-only: a whole different page, so it bypasses onboarding/boot state
+   * entirely rather than threading through every check below. `devRoute` is
+   * `null` in every production build (see `devRoute.ts`), so this branch is
+   * unreachable there. */
+  if (devRoute === 'gallery' && LazyGallery) {
+    return (
+      <Suspense fallback={null}>
+        <LazyGallery />
+      </Suspense>
+    );
+  }
+
   if (onboarding?.migrationRecovery) {
     return (
       <div className="app" id="app">
@@ -1536,6 +1606,7 @@ export default function App() {
             title={activeConversationSummary?.displayTitle}
             effectiveTheme={effectiveTheme}
             onToggleTheme={handleToggleTheme}
+            modeLocked={modeLocked}
             panelOpen={panelVisible}
             onTogglePanel={toggleDocPanelView}
             hiddenArtifactCount={hiddenArtifactCount}

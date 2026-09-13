@@ -38,7 +38,7 @@ export function UsageSection() {
         <div className="settings-section-header">
           <span>{t('settings.usage.header')}</span>
         </div>
-        <p style={{ fontSize: '13px', color: 'var(--ink-2)', padding: '12px 0' }}>
+        <p style={{ fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', padding: '12px 0' }}>
           {t('settings.usage.empty')}
         </p>
       </div>
@@ -56,7 +56,7 @@ export function UsageSection() {
           value={period}
           onChange={(e) => setPeriod(e.target.value as UsagePeriod)}
           style={{
-            fontSize: '13px',
+            fontSize: 'var(--fs-3xl)',
             padding: '4px 8px',
             borderRadius: 'var(--r-sm)',
             border: '1px solid var(--line)',
@@ -88,8 +88,8 @@ export function UsageSection() {
             background: 'var(--card)',
           }}
         >
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatCents(data.totalCostCents)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>{t('settings.usage.stats.totalCost')}</div>
+          <div style={{ fontSize: 'var(--fs-10xl)', fontWeight: 700 }}>{formatCents(data.totalCostCents)}</div>
+          <div style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-2)' }}>{t('settings.usage.stats.totalCost')}</div>
         </div>
         <div
           style={{
@@ -100,8 +100,8 @@ export function UsageSection() {
             background: 'var(--card)',
           }}
         >
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatTokens(data.totalInputTokens)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>{t('settings.usage.stats.inputTokens')}</div>
+          <div style={{ fontSize: 'var(--fs-10xl)', fontWeight: 700 }}>{formatTokens(data.totalInputTokens)}</div>
+          <div style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-2)' }}>{t('settings.usage.stats.inputTokens')}</div>
         </div>
         <div
           style={{
@@ -112,8 +112,8 @@ export function UsageSection() {
             background: 'var(--card)',
           }}
         >
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>{formatTokens(data.totalOutputTokens)}</div>
-          <div style={{ fontSize: '11px', color: 'var(--ink-2)' }}>{t('settings.usage.stats.outputTokens')}</div>
+          <div style={{ fontSize: 'var(--fs-10xl)', fontWeight: 700 }}>{formatTokens(data.totalOutputTokens)}</div>
+          <div style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-2)' }}>{t('settings.usage.stats.outputTokens')}</div>
         </div>
       </div>
 
@@ -121,7 +121,7 @@ export function UsageSection() {
         <table
           style={{
             width: '100%',
-            fontSize: '13px',
+            fontSize: 'var(--fs-3xl)',
             borderCollapse: 'collapse',
             marginBottom: 12,
           }}
@@ -184,11 +184,11 @@ export function UsageSection() {
                   maxWidth: 32,
                   minHeight: 2,
                   background: 'var(--hue)',
-                  borderRadius: '2px 2px 0 0',
+                  borderRadius: 'var(--r-2) var(--r-2) 0 0',
                   height: `${Math.max((day.costCents / maxCost) * 100, 2)}%`,
                 }}
               />
-              <span style={{ fontSize: '9px', color: 'var(--ink-3)', marginTop: 2 }}>
+              <span style={{ fontSize: 'var(--fs-3xs)', color: 'var(--ink-3)', marginTop: 2 }}>
                 {day.date.slice(5)}
               </span>
             </div>
@@ -196,7 +196,7 @@ export function UsageSection() {
         </div>
       )}
 
-      <p style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: 8 }}>
+      <p style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)', marginTop: 8 }}>
         {t('settings.usage.footer')}
       </p>
     </div>

@@ -1,8 +1,21 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { HtmlArtifactRenderer, assembleArtifactDoc } from './HtmlArtifactRenderer';
 import { OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import { ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE } from './externalUrl';
+import type { ResolvedTokens } from '../themes/resolvedTokens';
+
+// Defaults reproduce this file's pre-Phase-3 world (native theming), so every
+// existing test below is unaffected; only the dedicated "tokens theming"
+// describe block overrides these.
+const mockActiveRendererTheming = vi.fn((_kind: 'mermaid' | 'iframe'): 'native' | 'tokens' => 'native');
+const mockReadResolvedTokens = vi.fn((): ResolvedTokens => ({}));
+
+vi.mock('../themes/resolvedTokens', () => ({
+  activeRendererTheming: (kind: 'mermaid' | 'iframe') => mockActiveRendererTheming(kind),
+  readResolvedTokens: () => mockReadResolvedTokens(),
+  useThemeRevision: () => 0,
+}));
 
 /// Structural assertions only — jsdom does NOT enforce the iframe sandbox or
 /// CSP. Behavioral enforcement (script actually blocked from network/parent) is
@@ -40,6 +53,11 @@ describe('assembleArtifactDoc', () => {
 });
 
 describe('HtmlArtifactRenderer', () => {
+  beforeEach(() => {
+    mockActiveRendererTheming.mockReset().mockReturnValue('native');
+    mockReadResolvedTokens.mockReset().mockReturnValue({});
+  });
+
   it('renders an iframe with sandbox="allow-scripts" and no escalation flags', () => {
     const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} />);
     const frame = container.querySelector('iframe');
@@ -94,6 +112,81 @@ describe('HtmlArtifactRenderer', () => {
       }),
     );
     expect(onExternalLink).not.toHaveBeenCalled();
+  });
+});
+
+describe('assembleArtifactDoc — tokens theming', () => {
+  const FULL_TOKENS: ResolvedTokens = {
+    bg: '#000000',
+    card: '#111111',
+    line: '#262626',
+    lineHi: '#3a3a3a',
+    ink: '#d9d9d9',
+    link: '#4fc3f7',
+    fontUi: '"Geist Mono", ui-monospace, monospace',
+    fontMono: '"Geist Mono", ui-monospace, monospace',
+  };
+
+  it('builds the srcdoc stylesheet from resolved tokens when given a full token set', () => {
+    const doc = assembleArtifactDoc('<p>x</p>', [], true, 'dark', FULL_TOKENS);
+    expect(doc).toContain('color:#d9d9d9');
+    expect(doc).toContain('background:#111111');
+    expect(doc).toContain('border:1px solid #262626');
+    expect(doc).toContain('color:#4fc3f7');
+    expect(doc).toContain('"Geist Mono", ui-monospace, monospace');
+    expect(doc).toContain('scrollbar-color:#3a3a3a transparent');
+    // The fixed light/dark literals never appear once tokens win.
+    expect(doc).not.toContain('#e9ebed');
+    expect(doc).not.toContain('#5eead4');
+    expect(doc).not.toContain('#191c1f');
+  });
+
+  it('keeps the exact existing light/dark literals when no tokens are given', () => {
+    const native = assembleArtifactDoc('<p>x</p>', [], true, 'dark');
+    const withUndefinedTokens = assembleArtifactDoc('<p>x</p>', [], true, 'dark', undefined);
+    expect(native).toBe(withUndefinedTokens);
+    expect(native).toContain('#e9ebed');
+    expect(native).toContain('rgba(145,141,136,.45)');
+  });
+
+  it('falls back to the existing literals when a required token is missing', () => {
+    const incomplete: ResolvedTokens = { ...FULL_TOKENS, card: undefined };
+    const doc = assembleArtifactDoc('<p>x</p>', [], true, 'dark', incomplete);
+    const native = assembleArtifactDoc('<p>x</p>', [], true, 'dark');
+    expect(doc).toBe(native);
+  });
+});
+
+describe('HtmlArtifactRenderer — tokens theming', () => {
+  const FULL_TOKENS: ResolvedTokens = {
+    bg: '#000000',
+    card: '#111111',
+    line: '#262626',
+    lineHi: '#3a3a3a',
+    ink: '#d9d9d9',
+    link: '#4fc3f7',
+    fontUi: '"Geist Mono", ui-monospace, monospace',
+    fontMono: '"Geist Mono", ui-monospace, monospace',
+  };
+
+  it('renders a token-built srcdoc when activeRendererTheming reports tokens', () => {
+    mockActiveRendererTheming.mockReset().mockReturnValue('tokens');
+    mockReadResolvedTokens.mockReset().mockReturnValue(FULL_TOKENS);
+    const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} />);
+    const srcdoc = frame(container)?.getAttribute('srcdoc') ?? '';
+    expect(srcdoc).toContain('color:#d9d9d9');
+    expect(srcdoc).toContain('background:#111111');
+    expect(srcdoc).not.toContain('#e9ebed');
+  });
+
+  it('keeps the untouched CSP/sandbox attributes under tokens theming', () => {
+    mockActiveRendererTheming.mockReset().mockReturnValue('tokens');
+    mockReadResolvedTokens.mockReset().mockReturnValue(FULL_TOKENS);
+    const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} />);
+    const el = frame(container);
+    expect(el?.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(el?.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(el?.getAttribute('srcdoc') ?? '').toContain('Content-Security-Policy');
   });
 });
 

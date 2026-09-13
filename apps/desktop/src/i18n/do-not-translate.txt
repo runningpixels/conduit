@@ -56,3 +56,8 @@ PNG
 SVG
 JPEG
 WebP
+
+# Theming: the project a look is credited to adapting from (registry.ts
+# `inspiredBy`, terminal.css's header comment, the Amber Terminal theme
+# description, THIRD-PARTY-NOTICES).
+OpenTerminal

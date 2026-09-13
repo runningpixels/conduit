@@ -46,7 +46,7 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
 
   return (
     <div className="settings-section">
-      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
+      <p style={{ marginBottom: 12, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
         {tr('settings.workspaceTools.intro')}
       </p>
 
@@ -61,11 +61,11 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
             </button>
           ) : null}
         </div>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
+        <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
           {root || t('settings.workspaceTools.noDefaultFolder')}
         </p>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
           <input
             type="checkbox"
             checked={enabled}
@@ -83,7 +83,7 @@ export function WorkspaceToolsSection({ settings, onUpdate, onStatus }: Workspac
           {t('settings.workspaceTools.applyToggle.label')}
         </label>
         {!root && (
-          <p style={{ margin: 0, fontSize: '11px', color: 'var(--ink-3)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
             {t('settings.workspaceTools.chooseBeforeEnabling')}
           </p>
         )}

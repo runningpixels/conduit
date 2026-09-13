@@ -1,21 +1,29 @@
 /**
- * The Palette select.
+ * The Theme picker, the Mode select, and the Advanced (look x palette) disclosure.
  *
  * `SettingsSheet.test.tsx` mocks this whole component out, so the Appearance
  * controls that live *inside* it have no coverage from there — only the toggles
  * rendered directly by the sheet do. This file is where a control added here
  * gets asserted.
  *
- * The palette is renderer-only (localStorage + `html[data-palette]`), so the
- * assertions are on the storage key and the document attribute rather than on
- * an `onUpdate` callback, which is what the AppSettings-backed rows use.
+ * Look and palette are renderer-only (localStorage + `html[data-look]` /
+ * `html[data-palette]`), so the assertions on them are on the storage key and
+ * the document attribute rather than on an `onUpdate` callback, which is what
+ * the AppSettings-backed rows (Language, Mode) use.
  */
 
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { AppSettings } from '../../ipc/contracts';
 import { AppearanceSection } from './AppearanceSection';
+import { THEMES } from '../../themes/registry';
 import { PSEUDO_LOCALE, SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES } from '../../i18n';
+
+/** `<details>` starts closed; the Advanced fields (Look, Palette) live inside it. */
+function openAdvanced() {
+  const details = screen.getByText('Advanced').closest('details');
+  if (details && !details.open) details.open = true;
+}
 
 const settings = {
   activeProvider: 'anthropic',
@@ -42,48 +50,153 @@ function renderSection() {
   return { onUpdate };
 }
 
-describe('palette select', () => {
+describe('theme picker', () => {
   beforeEach(() => {
     localStorage.clear();
+    document.documentElement.removeAttribute('data-look');
     document.documentElement.removeAttribute('data-palette');
   });
 
-  it('defaults to the Orange Charcoal palette and offers all three', () => {
+  it('renders a labelled radiogroup with a card per manifest', () => {
     renderSection();
-    const select = screen.getByLabelText('Palette') as HTMLSelectElement;
-    expect(select.value).toBe('orange-charcoal');
-    expect(screen.getByRole('option', { name: /Orange Charcoal/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Orange-Dark/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Terra/ })).toBeInTheDocument();
+    const group = screen.getByRole('radiogroup', { name: 'Theme' });
+    expect(within(group).getAllByRole('radio')).toHaveLength(THEMES.length);
+    expect(within(group).getByRole('radio', { name: /Orange Charcoal/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
   });
 
-  it('persists the choice and applies it to the document', () => {
+  it('selecting a card writes look + palette and does not touch AppSettings', () => {
+    const { onUpdate } = renderSection();
+    fireEvent.click(screen.getByRole('radio', { name: /Terra/ }));
+    expect(localStorage.getItem('conduit:v9-palette')).toBe('terra');
+    expect(localStorage.getItem('conduit:v10-look')).toBe('soft');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('leaves the mode select independent of the theme picker', () => {
+    const { onUpdate } = renderSection();
+    fireEvent.click(screen.getByRole('radio', { name: /Terra/ }));
+    fireEvent.change(screen.getByLabelText('Mode'), { target: { value: 'light' } });
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
+  });
+});
+
+describe('mode select', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-look');
+    document.documentElement.removeAttribute('data-palette');
+  });
+
+  it('is enabled for the default theme, which supports both modes', () => {
     renderSection();
+    expect(screen.getByLabelText('Mode')).not.toBeDisabled();
+  });
+
+  describe('when the active theme supports only dark', () => {
+    afterEach(() => {
+      vi.doUnmock('../../shell/uiPrefs');
+      vi.resetModules();
+    });
+
+    it('is disabled and shows a hint, without touching AppSettings.theme', async () => {
+      vi.resetModules();
+      vi.doMock('../../shell/uiPrefs', async () => {
+        const actual =
+          await vi.importActual<typeof import('../../shell/uiPrefs')>('../../shell/uiPrefs');
+        return { ...actual, supportedModes: () => ['dark'] as const };
+      });
+      const { AppearanceSection: MockedAppearanceSection } = await import('./AppearanceSection');
+      const onUpdate = vi.fn();
+      render(<MockedAppearanceSection settings={settings} onUpdate={onUpdate} />);
+
+      const select = screen.getByLabelText('Mode');
+      expect(select).toBeDisabled();
+      expect(screen.getByText('This theme is dark-only.')).toBeInTheDocument();
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('appearance advanced (look x palette)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-look');
+    document.documentElement.removeAttribute('data-palette');
+  });
+
+  it('starts closed', () => {
+    renderSection();
+    const details = screen.getByText('Advanced').closest('details');
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute('open');
+  });
+
+  it('offers a Look select that writes localStorage and the document attribute', () => {
+    renderSection();
+    openAdvanced();
+    const select = screen.getByLabelText('Look') as HTMLSelectElement;
+    expect(select.value).toBe('soft');
+    fireEvent.change(select, { target: { value: 'soft' } });
+    expect(localStorage.getItem('conduit:v10-look')).toBe('soft');
+    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
+  });
+
+  it('offers a Palette select that persists the choice and applies it to the document', () => {
+    renderSection();
+    openAdvanced();
     fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'terra' } });
     expect(localStorage.getItem('conduit:v9-palette')).toBe('terra');
     expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
-    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'orange-dark' } });
-    expect(localStorage.getItem('conduit:v9-palette')).toBe('orange-dark');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
   });
 
-  /**
-   * The palette is a look, not a theme: the two axes are orthogonal and the
-   * select must not touch AppSettings, which is where `theme` lives and which
-   * crosses the IPC boundary into a Rust enum.
-   */
-  it('does not write the palette into AppSettings', () => {
+  it('does not write the palette select into AppSettings', () => {
     const { onUpdate } = renderSection();
+    openAdvanced();
     fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'terra' } });
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
-  it('leaves the theme select independent of the palette', () => {
+  it('disables the Palette select and shows a hint while a brand owns the palette', () => {
+    document.documentElement.setAttribute('data-palette', 'brand');
+    renderSection();
+    openAdvanced();
+    const select = screen.getByLabelText('Palette');
+    expect(select).toBeDisabled();
+    expect(screen.getByText('Your brand sets the colours.')).toBeInTheDocument();
+  });
+});
+
+describe('reading font select', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-reading-font');
+  });
+
+  it('defaults to theme and offers theme / sans / serif', () => {
+    renderSection();
+    const select = screen.getByLabelText('Reading font') as HTMLSelectElement;
+    expect(select.value).toBe('theme');
+    expect(screen.getByRole('option', { name: 'Theme default' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sans' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Serif' })).toBeInTheDocument();
+  });
+
+  it('persists the choice and applies it to the document', () => {
+    renderSection();
+    fireEvent.change(screen.getByLabelText('Reading font'), { target: { value: 'serif' } });
+    expect(localStorage.getItem('conduit:v10-reading-font')).toBe('serif');
+    expect(document.documentElement.getAttribute('data-reading-font')).toBe('serif');
+  });
+
+  it('does not write the reading font into AppSettings', () => {
     const { onUpdate } = renderSection();
-    fireEvent.change(screen.getByLabelText('Palette'), { target: { value: 'terra' } });
-    fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'light' } });
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
-    expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
+    fireEvent.change(screen.getByLabelText('Reading font'), { target: { value: 'sans' } });
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -129,7 +242,7 @@ describe('language select', () => {
     const select = screen.getByLabelText('Language');
     expect(select).toBeInTheDocument();
 
-    // Scoped to this select: "System" is also a Theme option, and the two
+    // Scoped to this select: "System" is also a Mode option, and the two
     // must not be confused for one another.
     const options = within(select);
     expect(options.getByRole('option', { name: 'System' })).toBeInTheDocument();

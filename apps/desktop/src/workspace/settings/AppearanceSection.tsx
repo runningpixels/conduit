@@ -7,25 +7,87 @@ import {
   type UiDensity,
   type UiFontSize,
 } from '../readability';
-import { readPalette, writePalette, type PalettePref, readMermaidScale, writeMermaidScale, type MermaidScalePref } from '../../shell/uiPrefs';
+import {
+  isBrandActive,
+  readLook,
+  readMermaidScale,
+  readPalette,
+  readReadingFont,
+  supportedModes,
+  writeLook,
+  writeMermaidScale,
+  writePalette,
+  writeReadingFont,
+  THEME_CHANGED_EVENT,
+  type LookPref,
+  type MermaidScalePref,
+  type PalettePref,
+  type ReadingFontPref,
+} from '../../shell/uiPrefs';
+import { LOOK_IDS, PALETTE_IDS, type Mode, type PaletteId } from '../../themes/registry';
 import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../../i18n';
+import { ThemePicker } from './ThemePicker';
+import { applyCachedUserTheme, clearUserThemeSelection } from '../../themes/userThemes';
+import { resolveTheme } from '../../theme';
+
+/* A Record, so adding a palette to PALETTE_IDS without a label fails tsc
+ * instead of silently leaving it out of the Advanced select. */
+const PALETTE_OPTION_KEYS: Record<PaletteId, string> = {
+  'orange-charcoal': 'settings.appearance.palette.optionOrangeCharcoal',
+  'orange-dark': 'settings.appearance.palette.optionOrangeDark',
+  terra: 'settings.appearance.palette.optionTerra',
+  amber: 'settings.appearance.palette.optionAmber',
+  phosphor: 'settings.appearance.palette.optionPhosphor',
+  paper: 'settings.appearance.palette.optionPaper',
+  graphite: 'settings.appearance.palette.optionGraphite',
+  newsprint: 'settings.appearance.palette.optionNewsprint',
+  contrast: 'settings.appearance.palette.optionContrast',
+};
 
 interface AppearanceSectionProps {
   settings: AppSettings;
   onUpdate: (next: AppSettings) => void;
 }
 
-/** Appearance settings: palette, theme, readability, diagram size, and artifact styled preview. */
+/** Appearance settings: theme, readability, diagram size, and artifact styled preview. */
 export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps) {
   const t = useT();
   const [fontSize, setFontSize] = useState<UiFontSize>(() => readUiFontSize());
   const [density, setDensity] = useState<UiDensity>(() => readUiDensity());
+  const [look, setLook] = useState<LookPref>(() => readLook());
   const [palette, setPalette] = useState<PalettePref>(() => readPalette());
+  const [modes, setModes] = useState<readonly Mode[]>(() => supportedModes());
   const [mermaidScale, setMermaidScale] = useState<MermaidScalePref>(() => readMermaidScale());
+  const [readingFont, setReadingFont] = useState<ReadingFontPref>(() => readReadingFont());
+  /* Computed per render rather than held in state: SettingsSheet mounts only
+   * the active section, so visiting Branding and coming back remounts this —
+   * the only moment the answer can change. */
+  const brandActive = isBrandActive();
 
   useEffect(() => {
     applyUiReadability(fontSize, density);
   }, [fontSize, density]);
+
+  /* ThemePicker (and the Advanced look/palette selects below) can change
+     which modes the active theme supports without this component
+     remounting, so the Mode select's disabled state and Advanced's own
+     selects have to re-read on every `THEME_CHANGED_EVENT` rather than only
+     on mount. */
+  useEffect(() => {
+    const onThemeChanged = () => {
+      setLook(readLook());
+      setPalette(readPalette());
+      setModes(supportedModes());
+    };
+    window.addEventListener(THEME_CHANGED_EVENT, onThemeChanged);
+    return () => window.removeEventListener(THEME_CHANGED_EVENT, onThemeChanged);
+  }, []);
+
+  /* A dark-only theme forces dark without touching the saved `AppSettings.theme`
+     (registry.ts) — so the mode select is disabled and explains why, rather
+     than silently discarding whatever the user had chosen. */
+  const modeForced = modes.length < 2;
+  const modeForcedTo = modes[0];
 
   /* No section header: SettingsSheet already renders "Appearance" as the pane
      heading, and a second copy of the same word cost a row at the top of the
@@ -76,26 +138,20 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
               discover that the reply language moved with the interface. */}
           <small id="language-hint">{t('settings.appearance.language.hint')}</small>
         </div>
-        {/* Palette comes before Theme: it is the coarser choice, and Theme reads
-            as "light or dark *of the palette above*". Both run in both modes. */}
-        <label className="field">
-          <span className="field-label">{t('settings.appearance.palette.label')}</span>
+        {/* Theme (look x palette) replaces the old standalone Palette select. */}
+        <ThemePicker />
+        {/* A `div` + `htmlFor`, not the wrapping `<label>` the fields below use,
+            for the same reason as Language: the hint would otherwise join the
+            select's accessible name. Only rendered when there is a hint to
+            join, so the common case keeps the plain relationship. */}
+        <div className="field">
+          <label className="field-label" htmlFor="mode-select">
+            {t('settings.appearance.theme.label')}
+          </label>
           <select
-            value={palette}
-            onChange={(e) => {
-              const next = e.target.value as PalettePref;
-              setPalette(next);
-              writePalette(next);
-            }}
-          >
-            <option value="orange-charcoal">{t('settings.appearance.palette.optionOrangeCharcoal')}</option>
-            <option value="orange-dark">{t('settings.appearance.palette.optionOrangeDark')}</option>
-            <option value="terra">{t('settings.appearance.palette.optionTerra')}</option>
-          </select>
-        </label>
-        <label className="field">
-          <span className="field-label">{t('settings.appearance.theme.label')}</span>
-          <select
+            id="mode-select"
+            aria-describedby={modeForced ? 'mode-select-hint' : undefined}
+            disabled={modeForced}
             value={settings.theme}
             onChange={(e) => onUpdate({ ...settings, theme: e.target.value as AppSettings['theme'] })}
           >
@@ -103,7 +159,94 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
             <option value="dark">{t('settings.appearance.theme.optionDark')}</option>
             <option value="light">{t('settings.appearance.theme.optionLight')}</option>
           </select>
-        </label>
+          {modeForced && (
+            <small id="mode-select-hint">{t(modeForcedTo === 'dark' ? 'settings.appearance.theme.hintDarkOnly' : 'settings.appearance.theme.hintLightOnly')}</small>
+          )}
+        </div>
+        {/* Overrides the assistant prose face regardless of theme (uiPrefs.ts) —
+            useful on the terminal look, whose default face is mono. */}
+        <div className="field">
+          <label className="field-label" htmlFor="reading-font-select">
+            {t('settings.appearance.readingFont.label')}
+          </label>
+          <select
+            id="reading-font-select"
+            aria-describedby="reading-font-hint"
+            value={readingFont}
+            onChange={(e) => {
+              const next = e.target.value as ReadingFontPref;
+              setReadingFont(next);
+              writeReadingFont(next);
+              // Theming Phase 5: a user theme's `readingFont` structural
+              // choice only takes effect while this preference is 'theme'
+              // (userThemes.ts's applyStructure) — re-apply so flipping the
+              // preference either way takes hold immediately rather than on
+              // the next mode change.
+              applyCachedUserTheme(resolveTheme(settings.theme));
+            }}
+          >
+            <option value="theme">{t('settings.appearance.readingFont.optionTheme')}</option>
+            <option value="sans">{t('settings.appearance.readingFont.optionSans')}</option>
+            <option value="serif">{t('settings.appearance.readingFont.optionSerif')}</option>
+          </select>
+          <small id="reading-font-hint">{t('settings.appearance.readingFont.hint')}</small>
+        </div>
+        {/* Look and palette can be mixed independently of the named themes above
+            (registry.ts) — kept behind a disclosure because most people never
+            need to, and the picker above already covers the common case. */}
+        <details className="appearance-advanced">
+          <summary>{t('settings.appearance.advanced.summary')}</summary>
+          <div className="appearance-advanced-body">
+            <label className="field">
+              <span className="field-label">{t('settings.appearance.look.label')}</span>
+              <select
+                value={look}
+                onChange={(e) => {
+                  const next = e.target.value as LookPref;
+                  setLook(next);
+                  // Theming Phase 5: an explicit look/palette edit here turns
+                  // the pairing into built-in/custom (docs/theming/README.md)
+                  // — a selected user theme is retired the same way switching
+                  // to a built-in theme card is.
+                  clearUserThemeSelection();
+                  writeLook(next);
+                }}
+              >
+                {LOOK_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {t(`settings.appearance.look.options.${id}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="field">
+              <label className="field-label" htmlFor="advanced-palette-select">
+                {t('settings.appearance.palette.label')}
+              </label>
+              <select
+                id="advanced-palette-select"
+                aria-describedby={brandActive ? 'advanced-palette-hint' : undefined}
+                disabled={brandActive}
+                value={palette}
+                onChange={(e) => {
+                  const next = e.target.value as PalettePref;
+                  setPalette(next);
+                  clearUserThemeSelection();
+                  writePalette(next);
+                }}
+              >
+                {PALETTE_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {t(PALETTE_OPTION_KEYS[id])}
+                  </option>
+                ))}
+              </select>
+              {brandActive && (
+                <small id="advanced-palette-hint">{t('settings.appearance.palette.hintBrand')}</small>
+              )}
+            </div>
+          </div>
+        </details>
         <label className="field">
           <span className="field-label">{t('settings.appearance.fontSize.label')}</span>
           <select

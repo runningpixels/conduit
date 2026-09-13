@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, waitFor, fireEvent } from '@testing-library/react';
 import { MermaidBlock, sizeSvgFromViewBox } from './MermaidBlock';
+import { writeLook } from '../../shell/uiPrefs';
+import type { ResolvedTokens } from '../../themes/resolvedTokens';
 
 const NEWLINE = String.fromCharCode(10);
 
@@ -14,6 +16,19 @@ vi.mock('mermaid', () => ({
     initialize,
     render: (id: string, text: string) => renderFn(id, text),
   },
+}));
+
+// Defaults reproduce this file's pre-Phase-3 world (no theme registered, so
+// `activeRendererTheming` falls through to native) so every existing test
+// below is unaffected; only the dedicated "tokens theming" describe block
+// overrides these.
+const mockActiveRendererTheming = vi.fn((_kind: 'mermaid' | 'iframe'): 'native' | 'tokens' => 'native');
+const mockReadResolvedTokens = vi.fn((): ResolvedTokens => ({}));
+
+vi.mock('../../themes/resolvedTokens', () => ({
+  activeRendererTheming: (kind: 'mermaid' | 'iframe') => mockActiveRendererTheming(kind),
+  readResolvedTokens: () => mockReadResolvedTokens(),
+  useThemeRevision: () => 0,
 }));
 
 describe('sizeSvgFromViewBox', () => {
@@ -62,6 +77,8 @@ describe('MermaidBlock', () => {
     renderFn.mockImplementation(async (_id: string, _text: string) => ({
       svg: '<svg xmlns="http://www.w3.org/2000/svg" data-testid="mermaid-svg"></svg>',
     }));
+    mockActiveRendererTheming.mockReset().mockReturnValue('native');
+    mockReadResolvedTokens.mockReset().mockReturnValue({});
   });
 
   it('renders the diagram as a blob image, not inline SVG markup', async () => {
@@ -171,5 +188,70 @@ describe('MermaidBlock', () => {
     await waitFor(() => expect(container.querySelector('img.md-mermaid-img')).not.toBeNull());
     fireEvent.click(container.querySelector('.md-mermaid-copy')!);
     expect(writeText).toHaveBeenCalledWith('flowchart TD\nA-->B');
+  });
+});
+
+describe('MermaidBlock — tokens theming', () => {
+  const FULL_TOKENS: ResolvedTokens = {
+    bg: '#000000',
+    bgSide: '#0a0a0a',
+    card: '#111111',
+    cardHi: '#1a1a1a',
+    line: '#262626',
+    lineHi: '#3a3a3a',
+    ink: '#d9d9d9',
+    ink2: '#a6a6a6',
+    ink3: '#878787',
+    fontUi: '"Geist Mono", ui-monospace, monospace',
+    fontMono: '"Geist Mono", ui-monospace, monospace',
+  };
+
+  beforeEach(() => {
+    renderFn.mockClear();
+    initialize.mockClear();
+    renderFn.mockImplementation(async (_id: string, _text: string) => ({
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" data-testid="mermaid-svg"></svg>',
+    }));
+    writeLook('terminal');
+  });
+
+  it('initializes with theme "base" and themeVariables when tokens theming is active', async () => {
+    mockActiveRendererTheming.mockReset().mockReturnValue('tokens');
+    mockReadResolvedTokens.mockReset().mockReturnValue(FULL_TOKENS);
+    const { container } = render(<MermaidBlock source={'flowchart TD\nA-->B'} />);
+    await waitFor(() => expect(container.querySelector('img.md-mermaid-img')).not.toBeNull());
+    expect(initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        theme: 'base',
+        themeVariables: expect.objectContaining({
+          background: '#000000',
+          primaryColor: '#111111',
+          primaryTextColor: '#d9d9d9',
+          primaryBorderColor: '#3a3a3a',
+          lineColor: '#878787',
+          secondaryColor: '#1a1a1a',
+          tertiaryColor: '#0a0a0a',
+          clusterBkg: '#0a0a0a',
+          clusterBorder: '#262626',
+          edgeLabelBackground: '#000000',
+          fontFamily: '"Geist Mono", ui-monospace, monospace',
+          fontSize: '12px',
+        }),
+      }),
+    );
+    // Never the native init shape once tokens theming wins.
+    expect(initialize).not.toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
+    expect(initialize).not.toHaveBeenCalledWith(expect.objectContaining({ theme: 'default' }));
+  });
+
+  it('falls back to native when a required token is missing', async () => {
+    mockActiveRendererTheming.mockReset().mockReturnValue('tokens');
+    mockReadResolvedTokens.mockReset().mockReturnValue({ ...FULL_TOKENS, card: undefined });
+    const { container } = render(<MermaidBlock source={'flowchart TD\nA-->B'} />);
+    await waitFor(() => expect(container.querySelector('img.md-mermaid-img')).not.toBeNull());
+    expect(initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ startOnLoad: false, securityLevel: 'strict' }),
+    );
+    expect(initialize).not.toHaveBeenCalledWith(expect.objectContaining({ theme: 'base' }));
   });
 });

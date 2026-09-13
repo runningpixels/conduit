@@ -1,0 +1,158 @@
+/**
+ * Layout for `?route=gallery` (`Gallery.tsx`). Dev-only, never shipped — see
+ * that file's module comment.
+ *
+ * Uses only existing tokens (`packages/ui/src/tokens.css`); this file adds no
+ * new custom properties of its own, since the whole point of the gallery is
+ * to show what the *existing* token set already renders, across palettes and
+ * modes, ahead of the theming refactor.
+ */
+
+.gallery {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: var(--space-24) var(--space-24) var(--space-32);
+  background: var(--bg);
+  color: var(--ink);
+  font: var(--fs-4xl)/1.5 var(--font-ui);
+}
+
+.gallery-header {
+  margin-bottom: var(--space-24);
+  padding-bottom: var(--space-14);
+  border-bottom: 1px solid var(--line);
+}
+
+.gallery-h1 {
+  margin: 0 0 var(--space-6);
+  font-size: var(--fs-7xl);
+  font-weight: 600;
+}
+
+.gallery-intro {
+  margin: 0;
+  max-width: 640px;
+  color: var(--ink-2);
+}
+
+.gallery-intro code {
+  font-family: var(--font-mono);
+  background: var(--card);
+  border-radius: var(--r-xs);
+  padding: 0 var(--space-4);
+}
+
+.gallery-section {
+  margin-bottom: var(--space-32);
+  padding-top: var(--space-24);
+  border-top: 1px solid var(--line-soft);
+}
+
+.gallery-section:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.gallery-h2 {
+  margin: 0 0 var(--space-14);
+  font-size: var(--fs-9xl);
+  font-weight: 600;
+}
+
+.gallery-h3 {
+  margin: var(--space-20) 0 var(--space-10);
+  font-size: var(--fs-5xl);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.gallery-h3:first-child {
+  margin-top: 0;
+}
+
+.gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-10);
+  margin-bottom: var(--space-14);
+}
+
+.gallery-row-wrap {
+  align-items: flex-start;
+}
+
+.gallery-form-row {
+  align-items: flex-end;
+}
+
+/**
+ * Bounds a demo of an otherwise-`position: fixed`/`position: absolute`
+ * overlay (a scrim, a menu, a model picker) to a fixed-height box instead of
+ * the whole page: `contain: layout` makes this element the containing block
+ * for those descendants, exactly as an ancestor with a CSS transform or
+ * filter would in the real app. `position: relative` covers the plain
+ * `position: absolute` case (`.menu`) on its own; `contain` is what is needed
+ * for `position: fixed` (`.scrim`, `.cu-dialog-backdrop`, `.toast-stack`).
+ */
+.gallery-frame {
+  position: relative;
+  contain: layout;
+  overflow: hidden;
+  margin-bottom: var(--space-14);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-side);
+}
+
+.gallery-thread {
+  max-width: 760px;
+  margin-bottom: var(--space-14);
+  padding: var(--space-14);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-side);
+}
+
+.gallery-textarea {
+  width: 100%;
+  max-width: 420px;
+}
+
+.gallery-menu-trigger {
+  margin: var(--space-14);
+}
+
+.gallery-doc-demo {
+  flex: 1 1 420px;
+  min-width: 320px;
+}
+
+/* Named `-caption-` rather than `-titlebar-`: `shellContract.test.ts` finds
+ * the real `.titlebar` element by searching every `className` for the *word*
+ * `titlebar`, and `gallery-titlebar-demo` matched that search first (word
+ * boundaries land on the hyphens either side), hijacking the guard's target
+ * away from `shell/TitleBar.tsx`. */
+.gallery-caption-demo {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  margin-bottom: var(--space-14);
+}
+
+/* The composer's model picker anchors `position: absolute` off its own
+ * wrapper (`.composer-wrap > .composer`); this keeps that anchor a
+ * positioned box even though the gallery renders `ComposerModelPicker`
+ * without the rest of `Composer` around it. */
+.gallery-composer-anchor {
+  position: relative;
+}
+
+.settings-demo {
+  max-width: 560px;
+  margin-bottom: var(--space-14);
+  padding: var(--space-14);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-side);
+}

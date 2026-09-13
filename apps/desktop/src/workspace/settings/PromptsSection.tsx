@@ -155,7 +155,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
           className="btn primary"
           type="button"
           onClick={handleNew}
-          style={{ padding: '4px 12px', fontSize: '12px' }}
+          style={{ padding: '4px 12px', fontSize: 'var(--fs-xl)' }}
         >
           {t('settings.prompts.actions.newPrompt')}
         </button>
@@ -163,7 +163,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
 
       {editing && (
         <div className="prompts-editor" style={{ marginBottom: 16, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: '13px' }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: 'var(--fs-3xl)' }}>
             {editing.id ? t('settings.prompts.editor.editTitle') : t('settings.prompts.editor.newTitle')}
           </h4>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -178,7 +178,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
               value={editing.body}
               onChange={(e) => setEditing({ ...editing, body: e.target.value })}
               rows={6}
-              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px', resize: 'vertical' }}
+              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)', resize: 'vertical' }}
             />
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -235,7 +235,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
             </button>
           ))}
           {allFolders.length === 0 && (
-            <span style={{ fontSize: '11px', color: 'var(--ink-3)', padding: '6px 8px', display: 'block' }}>
+            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)', padding: '6px 8px', display: 'block' }}>
               {t('settings.prompts.folder.none')}
             </span>
           )}
@@ -244,7 +244,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
         {/* Prompt list */}
         <div className="prompts-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
           {prompts.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', fontSize: '13px', color: 'var(--ink-3)' }}>
+            <div style={{ padding: 24, textAlign: 'center', fontSize: 'var(--fs-3xl)', color: 'var(--ink-3)' }}>
               {selectedFolder
                 ? t('settings.prompts.list.emptyFolder', { folder: selectedFolder })
                 : t('settings.prompts.list.emptyAll')}
@@ -266,9 +266,9 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <strong style={{ fontSize: '13px' }}>{p.title}</strong>
+                  <strong style={{ fontSize: 'var(--fs-3xl)' }}>{p.title}</strong>
                   {p.folder && (
-                    <span style={{ fontSize: '11px', color: 'var(--ink-3)', marginLeft: 8 }}>
+                    <span style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)', marginLeft: 8 }}>
                       {p.folder}
                     </span>
                   )}
@@ -277,7 +277,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                   <button
                     className="btn ghost"
                     type="button"
-                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                    style={{ padding: '2px 8px', fontSize: 'var(--fs-md)' }}
                     onClick={(e) => {
                       e.stopPropagation();
                       onInsertPrompt(p.body);
@@ -289,7 +289,7 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                   <button
                     className="btn ghost"
                     type="button"
-                    style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--error)' }}
+                    style={{ padding: '2px 8px', fontSize: 'var(--fs-md)', color: 'var(--error)' }}
                     onClick={(e) => {
                       e.stopPropagation();
                       void handleDelete(p.id, p.title);
@@ -300,20 +300,20 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                   </button>
                 </div>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}>
+              <div style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}>
                 {highlightVariables(previewBody(p.body), t)}
               </div>
               {p.tags && p.tags.length > 0 && (
                 <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                   {p.tags.map((tag) => (
-                    <span key={tag} className="prompt-tag" style={{ fontSize: '10px', padding: '1px 6px', borderRadius: 'var(--r-sm)', background: 'var(--card-hi)', color: 'var(--ink-3)' }}>
+                    <span key={tag} className="prompt-tag" style={{ fontSize: 'var(--fs-xs)', padding: '1px 6px', borderRadius: 'var(--r-sm)', background: 'var(--card-hi)', color: 'var(--ink-3)' }}>
                       {tag}
                     </span>
                   ))}
                 </div>
               )}
               {p.variables && p.variables.length > 0 && (
-                <div style={{ fontSize: '10px', color: 'var(--hue)', marginTop: 4 }}>
+                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--hue)', marginTop: 4 }}>
                   {t('settings.prompts.card.variablesLabel', { variables: p.variables.join(', ') })}
                 </div>
               )}

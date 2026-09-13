@@ -70,7 +70,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
       </div>
       <div className="status-item">
         <label className="field" style={{ display: 'grid', gap: 6 }}>
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.updates.channel.label')}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.updates.channel.label')}</span>
           <select
             value={settings.updateChannel}
             onChange={(e) => onUpdate({ ...settings, updateChannel: e.target.value as RolloutChannel })}
@@ -80,7 +80,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
             <option value="beta">{t('settings.updates.channel.beta')}</option>
           </select>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-3xl)' }}>
           <input
             type="checkbox"
             checked={settings.updateCheckEnabled}
@@ -92,7 +92,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
             follows the toggle and disables with it — the same relationship the
             channel select already has to that checkbox. */}
         <label className="field" style={{ display: 'grid', gap: 6 }}>
-          <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.updates.policy.label')}</span>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.updates.policy.label')}</span>
           <select
             value={settings.updatePolicy}
             disabled={!settings.updateCheckEnabled}
@@ -111,7 +111,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
             ) : null}
           </select>
         </label>
-        <span style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {t('settings.updates.disclosure.body')}
         </span>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
@@ -137,22 +137,22 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
           )}
         </div>
         {update && (
-          <div style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
             <b>{t('settings.updates.available.notice', { version: update.version })}</b>
             {update.notes && (
-              <pre className="code-block" style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: '11.5px' }}>
+              <pre className="code-block" style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-lg)' }}>
                 {update.notes}
               </pre>
             )}
           </div>
         )}
         {remote?.staged && (
-          <span style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+          <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
             {t('settings.updates.staged.notice', { version: remote.staged.version })}
           </span>
         )}
         {!update && !checking && settings.updateCheckEnabled && (
-          <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>
+          <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>
             {remote && remote.lastChecked !== null
               ? t('settings.updates.lastChecked', {
                   when: new Date(remote.lastChecked * 1000).toLocaleString(),
@@ -161,7 +161,7 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
           </span>
         )}
         {error && (
-          <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>{error}</span>
+          <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>{error}</span>
         )}
       </div>
     </div>

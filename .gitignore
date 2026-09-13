@@ -63,3 +63,8 @@ apps/desktop/src-tauri/tauri.conf.json.brand-backup
 # a run report and failure context here; neither belongs in the repo.
 apps/desktop/test-results/
 apps/desktop/playwright-report/
+
+# Visual snapshot baselines (`pnpm test:visual`, opt-in, theming Phase 0).
+# Local-only: font rasterisation differs per OS, so a baseline made on one
+# machine is not a valid comparison on another.
+apps/desktop/visual/__screenshots__/

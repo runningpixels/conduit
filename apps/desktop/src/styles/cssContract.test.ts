@@ -34,7 +34,17 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const cssFiles = [
   ...walk(join(srcRoot, 'styles')).filter((f) => f.endsWith('.css')),
+  // `dev/gallery.css` (the `?route=gallery` layout sheet) is dev-only, but the
+  // orphan/dead-rule guards below scan every `.tsx` in `srcRoot` regardless —
+  // without this, every gallery-only class would be an unconditional orphan.
+  ...walk(join(srcRoot, 'dev')).filter((f) => f.endsWith('.css')),
   join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'),
+  // Look sheets (theming Phase 2+, docs/theming/README.md) restyle the same
+  // component classes tokens.css and styles/*.css already declare — without
+  // them here, a class only ever styled from a look sheet (`.value-flash`,
+  // the terminal look's live-value flash) would read as an unstyled orphan,
+  // and a class a look sheet stops using would never register as dead.
+  ...walk(join(repoRoot, 'packages', 'ui', 'src', 'looks')).filter((f) => f.endsWith('.css')),
 ];
 
 /**
@@ -304,6 +314,10 @@ const NOT_IN_MARKUP: Record<string, string> = {
   'kind-error': 'built from a template literal in ToastStack.tsx',
   'kind-success': 'built from a template literal in ToastStack.tsx',
   'kind-warning': 'built from a template literal in ToastStack.tsx',
+  // Composed as `theme-picker--${variant}` in ThemePicker.tsx; the `settings`
+  // variant has no rule of its own (the base `.theme-picker` covers it), so
+  // only the `onboarding` override needs registering here.
+  'theme-picker--onboarding': 'built from a template literal in ThemePicker.tsx',
 };
 
 describe('no dead rules', () => {
@@ -451,5 +465,19 @@ describe('no orphan classes', () => {
     for (const cls of Object.keys(STYLED_BY_ANCESTOR)) {
       expect(used.has(cls), `${cls} is allowlisted but no longer used`).toBe(true);
     }
+  });
+});
+
+/**
+ * Comment balance. The dev server and every test here read CSS leniently, but
+ * the production minifier (lightningcss, `pnpm build:web` / `tauri build`)
+ * rejects a stray `*\/` outright — a broken section-header comment once passed
+ * vitest, the visual suite and review, and failed only in CI's Tauri build.
+ */
+describe('stylesheet comments are balanced', () => {
+  it.each(cssFiles.map((f) => [relative(repoRoot, f).split('\\').join('/'), f]))('%s', (_name, file) => {
+    const stripped = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(stripped.includes('*/'), 'a "*/" outside any comment').toBe(false);
+    expect(stripped.includes('/*'), 'an unterminated "/*" comment').toBe(false);
   });
 });

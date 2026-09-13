@@ -20,9 +20,11 @@ use provider_core::schema::{
     MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel,
     ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
     ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
-    SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
-    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation,
-    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
+    SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ThemeCorners, ThemeFace,
+    ThemeIconStroke, ThemeLabels, ThemeMotion, ThemeShadows, ToolCallRecord, ToolCallStatus,
+    ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, UserTheme,
+    UserThemeEntry, UserThemePalettes, UserThemeStructure, WebSearchDefaults, WebSearchFilters,
+    WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -86,6 +88,20 @@ fn main() {
     BrandUpdater::export().expect("export BrandUpdater");
     BrandRuntime::export().expect("export BrandRuntime");
     BrandConfig::export().expect("export BrandConfig");
+
+    // User theme files (theming Phase 5)
+    ThemeCorners::export().expect("export ThemeCorners");
+    ThemeFace::export().expect("export ThemeFace");
+    ThemeLabels::export().expect("export ThemeLabels");
+    ThemeShadows::export().expect("export ThemeShadows");
+    ThemeMotion::export().expect("export ThemeMotion");
+    ThemeIconStroke::export().expect("export ThemeIconStroke");
+    UserThemeStructure::export().expect("export UserThemeStructure");
+    UserThemePalettes::export().expect("export UserThemePalettes");
+    UserTheme::export().expect("export UserTheme");
+    UserThemeEntry::export().expect("export UserThemeEntry");
+
+    // Connectors
     Transport::export().expect("export Transport");
     ConnectorDefinition::export().expect("export ConnectorDefinition");
     RolloutChannel::export().expect("export RolloutChannel");

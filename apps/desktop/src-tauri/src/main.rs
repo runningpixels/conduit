@@ -65,6 +65,11 @@ fn main() {
             save_brand_logo,
             get_brand_logo,
             clear_brand_logo,
+            // Theming Phase 5: user theme files (`<id>.theme.md` under
+            // AppPaths::themes) -- see docs/theming/user-themes.md.
+            list_user_themes,
+            reveal_themes_dir,
+            create_example_user_theme,
             save_provider_credential,
             load_provider_credential_reference,
             list_provider_descriptors,

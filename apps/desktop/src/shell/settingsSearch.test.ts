@@ -71,6 +71,19 @@ describe('the settings search index', () => {
     expect([...searchSettings('DENSITY', tEn, SECTIONS).keys()]).toEqual(['appearance']);
   });
 
+  /**
+   * Theming Phase 2 added the theme picker, the look/palette Advanced
+   * disclosure, and a "dark only" badge — each has to be findable by the word
+   * a reader would actually type, not only by the catalog key it happens to
+   * live under.
+   */
+  it.each(['theme', 'look', 'palette', 'dark only', 'reading font'])(
+    'finds the appearance section for "%s"',
+    (query) => {
+      expect([...searchSettings(query, tEn, SECTIONS).keys()]).toContain('appearance');
+    },
+  );
+
   it('searches the reader’s language', () => {
     const tDe = translator('de', deMessages as Record<string, string>);
     expect([...searchSettings('erscheinungsbild', tDe, SECTIONS).keys()]).toContain('appearance');

@@ -1,0 +1,245 @@
+/* ───────────────────────── Look: editorial ─────────────────────────────────
+ * A long-form reading experience — a well-set magazine or book, not a chat
+ * console. Pairs with the `newsprint` palette (warm paper / deep ink, one
+ * editorial-red accent) but is written to work under any palette: it never
+ * declares a colour, only structure.
+ *
+ * The register split is by typeface, not by boxes: UI chrome stays sans,
+ * assistant prose and headings move to the serif, labels become small caps,
+ * code stays mono. Hierarchy inside a turn comes from rules (hairlines,
+ * pull-quote edges, underlines) rather than from cards and fills — tool,
+ * think and artifact cards drop their frame for a top+bottom hairline, the
+ * assistant's coloured margin rule goes away entirely, and the user turn
+ * becomes right-aligned italic serif with no bubble.
+ *
+ * Rules for this sheet (lookContract.test.ts enforces them):
+ *   - every selector is scoped under html[data-look="editorial"];
+ *   - no colour literals and no colour tokens declared — colour belongs to the
+ *     palette, so this look renders under any palette (Advanced mixing);
+ *   - no url(), @import or @font-face.
+ *
+ * `html[data-look]` is (0,1,1): it outranks :root and the per-sheet role-token
+ * blocks, and ties the palette and CJK-locale blocks, which it follows in
+ * source order (main.tsx imports it after tokens.css). */
+
+html[data-look="editorial"] {
+  /* ── Type: sans chrome, serif reading register ──────────────────────────
+   * --font-prose is the one register readers actually read at length, so it
+   * is the axis this look spends most of its budget on. --font-ui/--font-serif
+   * restate the roles rather than changing them, so nothing here relies on a
+   * default that a future brand or CJK block might repoint independently.
+   *
+   * The Appearance "Reading font" override lives at html:root[data-reading-
+   * font] (0,2,1) in chat.css — already above this look's (0,1,1), so a user
+   * who has chosen sans/serif reading text keeps it; this look never fights
+   * that rule, it only sets what a user hasn't overridden. */
+  --font-ui: var(--face-sans);
+  --font-serif: var(--face-serif);
+  --font-prose: var(--face-serif);
+  --font-label: var(--face-sans);
+  --label-case: none;
+
+  /* ── Reading measure and rhythm ──────────────────────────────────────────
+   * A narrower column (.thread-inner, the composer, the status line and the
+   * suggested-prompt row all cap at --measure) and one size up from the
+   * default 15.5px, closer to a printed body-text size. --fs-prose-h2 is
+   * chat.css's own role token; --fs-8xl is the shared scale step .chat-prose
+   * h3 reads (it also nudges the doc tab's close glyph and a few dialog
+   * titles that borrow the same step — accepted, as terminal.css already
+   * does for the steps it retargets). */
+  --measure: 40rem;
+  --fs-prose: 17px;
+  --fs-prose-serif: 17px;
+  --fs-prose-h2: 22px;
+  --fs-8xl: 18px;
+  --leading-prose: 1.75;
+
+  /* ── Shape: small radii, hairline borders ────────────────────────────────
+   * Everything a page's corners and rules would be: barely rounded, one
+   * pixel wide. --r-round (dots, the toggle knob) is left alone — a look that
+   * squares every corner still keeps a dot a dot unless it says otherwise,
+   * and this one doesn't. */
+  --r-xs: 2px;
+  --r-sm: 2px;
+  --r: 3px;
+  --r-lg: 4px;
+  --r-xl: 4px;
+  --r-pill: 2px;
+  --r-bubble-accent: 0;
+
+  /* ── Elevation: quiet inline chrome, a soft lift kept for overlays ──────
+   * Cards and the composer carry no shadow of their own — a hairline already
+   * says where they end. Overlays (dialogs, menus, the command palette,
+   * toasts) still need to read as above the page, so --lift stays, tinted by
+   * the mode's --shadow-color. Not --ink: on a dark palette ink is light, and
+   * a light "shadow" reads as a glow. */
+  --soft-lift: 0 0 transparent;
+  --elevation-1: var(--soft-lift);
+  --elevation-2: var(--soft-lift);
+  --elevation-3: var(--soft-lift);
+  --lift: 0 1px 3px color-mix(in srgb, var(--shadow-color) 45%, transparent),
+    0 10px 24px -10px var(--shadow-color);
+
+  /* ── Motion: untouched. The default timings already read as calm; a
+   * reading surface needs no faster or slower hovers than any other look. ── */
+
+  /* ── Icons: a lighter line to match the type ── */
+  --icon-stroke: 1.4;
+}
+
+/* ── Label register: small caps, not shouting caps ───────────────────────
+ * --label-case only reaches .section-label (the one primitive that reads the
+ * token); the sidebar group header and the settings field label hard-code
+ * `text-transform: uppercase` of their own, so it is repeated here directly
+ * rather than trusted to the token alone. `.inline-code-block-lang` is
+ * deliberately not in this list — it names a code fence's language, which
+ * stays in the mono/code register (§ code stays mono), not the sans one. */
+html[data-look="editorial"] .section-label,
+html[data-look="editorial"] .sb-group,
+html[data-look="editorial"] .sb-group-row,
+html[data-look="editorial"] .field-label {
+  text-transform: none;
+  font-variant-caps: all-small-caps;
+  letter-spacing: .06em;
+}
+/* Appearance's field rows reuse `.field-label` as a plain row name ("Theme",
+ * "Reading font"), not a group caption — settings.css already undoes the
+ * generic uppercase treatment there for the same reason. Small caps would
+ * silently win over that exception (both compound selectors, this one
+ * narrower), so it is undone here too. */
+html[data-look="editorial"] .appearance-form .field-label {
+  font-variant-caps: normal;
+  letter-spacing: normal;
+}
+
+/* ── Chrome: quiet — a serif title, an underline for the active tab ─────── */
+html[data-look="editorial"] .main-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+}
+/* Active conversation: accent text + a thin rule, no fill. */
+html[data-look="editorial"] .convo[aria-current="true"] {
+  background: transparent;
+  color: var(--hue-text);
+  box-shadow: inset 2px 0 0 var(--hue);
+}
+/* Doc-view toggle (chat / preview / source) as underlined text. */
+html[data-look="editorial"] .doc-view-btn.active {
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  color: var(--hue-text);
+  text-decoration: underline;
+  text-decoration-color: var(--hue);
+  text-underline-offset: 3px;
+}
+/* Artifact file tabs: no box, an underline on the open one. */
+html[data-look="editorial"] .artifact-file-tab {
+  background: transparent;
+  border-color: transparent;
+}
+html[data-look="editorial"] .artifact-file-tab:hover {
+  background: transparent;
+  border-color: transparent;
+}
+html[data-look="editorial"] .artifact-file-tab.active {
+  background: transparent;
+  border-color: transparent;
+  border-bottom: 1px solid var(--hue);
+  box-shadow: none;
+  color: var(--hue-text);
+}
+
+/* ── Controls: true hairlines, chips as small-caps text ──────────────────
+ * These five primitives carry their border through --space-1, which defaults
+ * to 2px — thin, but not the hairline the rest of this look promises. */
+html[data-look="editorial"] :is(.btn, .cu-chip, .search-box input, .info-card, .av-role.you) {
+  border-width: 1px;
+}
+/* currentColor picks up whatever state colour the pill/status text already
+ * carries (ok/warn/bad), so the outline needs no colour of its own. */
+html[data-look="editorial"] :is(.pill, .status-pill) {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+html[data-look="editorial"] .cu-chip {
+  background: transparent;
+  border-color: var(--line);
+  font-variant-caps: all-small-caps;
+  letter-spacing: .04em;
+}
+
+/* ── Turns: a log of prose, not a conversation of bubbles ────────────────
+ * Assistant: the coloured margin rule was the shape's one piece of chrome;
+ * a reading surface doesn't need it — the serif face alone is the register. */
+html[data-look="editorial"] .turn.assistant {
+  border-left: none;
+  padding-left: 0;
+}
+/* Turns get more air than the default log spacing. */
+html[data-look="editorial"] .turn {
+  margin-bottom: calc(var(--sp-6) + var(--sp-4));
+}
+/* User: right-aligned italic serif, no filled bubble — a thin accent rule on
+ * the outer (right) edge stands in for the fill, and the smaller italic size
+ * keeps it legible as the second voice next to assistant prose. */
+html[data-look="editorial"] .bubble {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--hue);
+  border-radius: 0;
+  padding: 2px 16px 2px 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--fs-5xl);
+  line-height: 1.5;
+  color: var(--ink-2);
+  text-align: right;
+}
+
+/* ── Hierarchy by rule, not by box ─────────────────────────────────────────
+ * Tool, think, artifact and ask-user cards lose their frame and fill; a
+ * top+bottom hairline is enough to separate them from the prose around them.
+ * Inline code keeps its quiet card (small radius from the token above) —
+ * it is a machine fact, not part of the reading register, and stays boxed. */
+html[data-look="editorial"] :is(.tool, .think, .artifact-card, .ask-user) {
+  background: transparent;
+  border-width: 1px 0;
+  border-color: var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+/* Blockquote as a pull quote: serif italic, an accent rule instead of a fill. */
+html[data-look="editorial"] .chat-prose blockquote {
+  background: transparent;
+  border-left: 2px solid var(--hue);
+  border-radius: 0;
+  padding: 4px 0 4px 16px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--ink-2);
+}
+/* Tables read by their rules, not a zebra fill or a grid box; the header
+ * takes the same small-caps register as every other label in this look. */
+html[data-look="editorial"] .chat-prose tbody tr:nth-child(even) {
+  background: transparent;
+}
+html[data-look="editorial"] .chat-prose th,
+html[data-look="editorial"] .chat-prose td {
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+}
+html[data-look="editorial"] .chat-prose th {
+  font-family: var(--font-label);
+  font-variant-caps: all-small-caps;
+  letter-spacing: .04em;
+}
+/* Applies --leading-prose (no existing rule reads it as a var — .prose sets
+ * a literal line-height — so the token alone would be silently inert here). */
+html[data-look="editorial"] .prose {
+  line-height: var(--leading-prose);
+}
+/* More air between paragraphs than the default log rhythm. */
+html[data-look="editorial"] .prose p {
+  margin: 0 0 var(--sp-5);
+}

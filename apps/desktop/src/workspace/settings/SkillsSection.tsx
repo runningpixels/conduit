@@ -109,7 +109,7 @@ export function SkillsSection({ onStatus, workspaceRoot }: SkillsSectionProps) {
         </button>
       </div>
       {skills.length === 0 ? (
-        <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>{tr('settings.skills.empty.hint')}</p>
+        <p style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>{tr('settings.skills.empty.hint')}</p>
       ) : (
         <ul className="skill-list">
           {skills.map((skill) => (

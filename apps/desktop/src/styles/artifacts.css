@@ -1,11 +1,18 @@
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look
+ * (html[data-look]) may retarget them. */
+:root {
+  --shadow-health-live: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
+  --shadow-health-warn: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent);
+}
+
 /* ── Health dot (connector / trust status) ─────────────────────────────── */
 .health {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: var(--r-round);
   background: var(--ink-3);
   flex: none;
 }
-.health.live { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
-.health.warn { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
+.health.live { background: var(--ok); box-shadow: var(--shadow-health-live); }
+.health.warn { background: var(--warn); box-shadow: var(--shadow-health-warn); }
 .health.off { opacity: .55; }

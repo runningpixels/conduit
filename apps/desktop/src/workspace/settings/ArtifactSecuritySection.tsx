@@ -36,10 +36,10 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
         <span>{t('settings.artifactSecurity.header.title')}</span>
       </div>
       <div className="status-item">
-        <span style={{ color: 'var(--ink-3)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           {t('settings.artifactSecurity.allowlist.label')}
         </span>
-        <span style={{ fontSize: '12px', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
           {t('settings.artifactSecurity.allowlist.hint')}
         </span>
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -48,18 +48,18 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
             onChange={(e) => setAllowlistInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
             placeholder={t('settings.artifactSecurity.allowlist.inputPlaceholder')}
-            style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+            style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}
           />
           <button className="btn" type="button" onClick={handleAdd}>
             {t('settings.artifactSecurity.actions.add')}
           </button>
         </div>
         {settings.artifactRemoteAllowlist.length === 0 ? (
-          <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{t('settings.artifactSecurity.allowlist.empty')}</span>
+          <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>{t('settings.artifactSecurity.allowlist.empty')}</span>
         ) : (
           <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'grid', gap: 4 }}>
             {settings.artifactRemoteAllowlist.map((origin) => (
-              <li key={origin} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+              <li key={origin} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-xl)', fontFamily: 'var(--font-mono)' }}>
                 <span style={{ flex: 1, wordBreak: 'break-all' }}>{origin}</span>
                 <button
                   className="btn ghost"
@@ -73,7 +73,7 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
             ))}
           </ul>
         )}
-        <span style={{ fontSize: '11px', color: 'var(--ink-3)' }}>{t('settings.artifactSecurity.allowlist.validationHint')}</span>
+        <span style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>{t('settings.artifactSecurity.allowlist.validationHint')}</span>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ describe('the dev route override', () => {
   it('recognises the routes it knows', () => {
     expect(readDevRoute('?route=onboarding')).toBe('onboarding');
     expect(readDevRoute('?route=artifacts')).toBe('artifacts');
+    expect(readDevRoute('?route=gallery')).toBe('gallery');
   });
 
   it('is null when unset', () => {
@@ -32,6 +33,12 @@ describe('the dev route override', () => {
     for (const q of ['?route=onboarding&locale=de', '?locale=de&route=onboarding']) {
       expect(readDevRoute(q)).toBe('onboarding');
     }
+  });
+
+  it('is unaffected by the gallery-only &section= parameter', () => {
+    // `section` narrows the gallery to one `data-gallery-section`; it is read
+    // separately (`Gallery.tsx`), not by this function.
+    expect(readDevRoute('?route=gallery&section=chat')).toBe('gallery');
   });
 
   it('is read from a search string, which never carries the fragment', () => {

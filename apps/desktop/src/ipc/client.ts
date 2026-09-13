@@ -55,6 +55,7 @@ import type {
   SearchResult,
   UsagePeriod,
   UsageSummaryResponse,
+  UserThemeEntry,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -137,6 +138,34 @@ export async function getBrandWarnings(): Promise<BrandWarning[]> {
  */
 export async function clearBrandConfig(): Promise<void> {
   return invokeCommand<void>('clear_brand_config');
+}
+
+/**
+ * Theming Phase 5 (user theme files, docs/theming/decisions.md S7) — every
+ * `<appDataLocal>/themes/*.theme.md` file, parsed and validated Rust-side.
+ * Invalid files come back listed with their `error`, not omitted, so the
+ * picker can tell the author what to fix (`themes/userThemes.ts`).
+ *
+ * `dev:web` has no backend, so this rejects there; every call site must
+ * degrade to "no user themes" rather than throw.
+ */
+export async function listUserThemes(): Promise<UserThemeEntry[]> {
+  return invokeCommand<UserThemeEntry[]>('list_user_themes');
+}
+
+/** Open the user themes folder in the OS file manager, creating it first if
+ *  it does not exist yet (mirrors `revealSkillsDir`'s Rust-side behaviour). */
+export async function revealThemesDir(): Promise<void> {
+  await invokeCommand('reveal_themes_dir');
+}
+
+/**
+ * Write a starter `<id>.theme.md` into the themes folder and return its id
+ * (the file stem, no extension) — a `list_user_themes` id, and a
+ * `themes/userThemes.ts` `USER_THEME_PREFIX`-prefixed value once selected.
+ */
+export async function createExampleUserTheme(): Promise<string> {
+  return invokeCommand<string>('create_example_user_theme');
 }
 
 /**

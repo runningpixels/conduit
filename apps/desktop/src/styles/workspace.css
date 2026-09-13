@@ -1,3 +1,14 @@
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look (html[data-look]) may retarget them. */
+:root {
+  --fs-wordmark: 15px;
+  --dur-collapse: .22s;
+  --dur-menu: .13s;
+  --dur-resize-hover: .15s;
+  /* Geometry only: the glow's colour reads --hue at the element. */
+  --shadow-handle-glow-blur: 18px;
+  --shadow-handle-glow-spread: -4px;
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    Conduit — workspace shell (spec §4). A 32px caption row across the top of
    the window, then three columns beneath it: sidebar (280, resizable) | thread
@@ -26,7 +37,7 @@
 
 .mark { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .mark-glyph { width: 18px; height: 18px; color: var(--hue); transition: color var(--tap); }
-.mark b { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.mark b { font-size: var(--fs-wordmark); font-weight: 600; letter-spacing: -.01em; }
 
 /* ── Title strip (spec §2.1) ───────────────────────────────────────────── */
 /* 46px inside the centre column: the chat's name and the two toggles.
@@ -43,7 +54,7 @@
   padding: 0 var(--sp-3);
 }
 .main-title {
-  font-size: 13.5px;
+  font-size: var(--fs-4xl);
   font-weight: 500;
   color: var(--ink-3);
   white-space: nowrap;
@@ -122,11 +133,11 @@ html[data-sidebar="closed"] .head-nav { display: flex; }
 
 kbd {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   line-height: 1;
   padding: 3px 5px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--r-4);
   background: var(--card);
   color: var(--ink-3);
 }
@@ -165,7 +176,7 @@ kbd {
   border: 1px solid var(--bg-side);
   background: var(--hue);
   color: var(--bg);
-  font: 600 9px/1 var(--font-mono);
+  font: 600 var(--fs-3xs)/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
@@ -177,7 +188,7 @@ kbd {
 .shortcuts-group { margin-top: var(--sp-4); }
 .shortcuts-group-title {
   margin: 0 0 4px;
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -193,7 +204,7 @@ kbd {
   border-top: 1px solid var(--line-soft);
 }
 .shortcuts-row:first-child { border-top: 0; }
-.shortcuts-row dt { font-size: 13px; color: var(--ink-2); min-width: 0; }
+.shortcuts-row dt { font-size: var(--fs-3xl); color: var(--ink-2); min-width: 0; }
 .shortcuts-row dd { margin: 0; flex: none; }
 
 /* ── Body grid: sidebar | thread | context panel ───────────────────────── */
@@ -207,7 +218,7 @@ kbd {
      content height pushes the composer below the fold (spec §4.1) */
   grid-template-rows: minmax(0, 1fr);
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr) 12px var(--panel-w);
-  transition: grid-template-columns .22s cubic-bezier(.22, .61, .24, 1);
+  transition: grid-template-columns var(--dur-collapse) var(--ease-tap);
 }
 html[data-sidebar="closed"] .body { --sidebar-w: 0px; }
 html[data-panel="closed"] .body { --panel-w: 0px; }
@@ -229,7 +240,7 @@ html[data-panel="closed"] .resize-handle { visibility: hidden; }
 html[data-sidebar="closed"]:not([data-sidebar-overlay]) .body > .sidebar,
 html[data-panel="closed"]:not([data-panel-overlay]) .body > .doc-panel {
   visibility: hidden;
-  transition: visibility 0s linear .22s;
+  transition: visibility 0s linear var(--dur-collapse);
 }
 
 /* While a column is dragged the track must follow the pointer, not ease towards
@@ -296,7 +307,7 @@ html[data-resizing] * { cursor: col-resize !important; user-select: none; }
   gap: 10px;
   padding: 8px 10px;
   border-radius: var(--r-sm);
-  font-size: 14px;
+  font-size: var(--fs-5xl);
   color: var(--ink-2);
   text-align: left;
   transition: background var(--tap), color var(--tap);
@@ -323,13 +334,13 @@ html[data-palette="orange-dark"] .sb-item.newchat:hover { background: var(--card
 .sb-list { min-height: 0; padding: 0 var(--sp-2) var(--sp-3); overflow-y: auto; }
 .sb-empty {
   padding: var(--sp-4) 10px;
-  font-size: 12.5px;
+  font-size: var(--fs-2xl);
   color: var(--ink-3);
   line-height: 1.6;
 }
 .sb-group {
   padding: var(--sp-4) 10px 5px;
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   letter-spacing: .07em;
   text-transform: uppercase;
@@ -344,7 +355,7 @@ html[data-palette="orange-dark"] .sb-item.newchat:hover { background: var(--card
   border-radius: var(--r-sm);
   text-align: left;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-3xl);
   transition: background var(--tap), color var(--tap);
 }
 .convo:hover { background: var(--card); color: var(--ink); }
@@ -352,7 +363,7 @@ html[data-palette="orange-dark"] .sb-item.newchat:hover { background: var(--card
 .convo-dot {
   width: 5px;
   height: 5px;
-  border-radius: 50%;
+  border-radius: var(--r-round);
   background: var(--hue);
   flex: 0 0 auto;
   opacity: .85;
@@ -367,7 +378,7 @@ html[data-palette="orange-dark"] .convo-dot { display: none; }
 /* With the dot gone the row loses its left anchor, so it takes a little more
    size and roundness to hold the line — which is also how the reference reads. */
 html[data-palette="orange-charcoal"] .convo,
-html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 10px; font-size: 13.5px; }
+html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 10px; font-size: var(--fs-4xl); }
 .convo-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The row wraps the select button and the delete button so the two can sit
    side by side without nesting one inside the other. */
@@ -422,7 +433,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 .convo-row:has(.convo-del):focus-within .convo { padding-right: 58px; }
 .convo-meta {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   color: var(--ink-3);
   opacity: 0;
   transition: opacity var(--tap);
@@ -443,7 +454,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 }
 .sb-group-action,
 .sb-folder-edit {
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -491,11 +502,11 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--fs-3xl);
 }
 .sb-folder-count {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-sm);
   color: var(--ink-3);
 }
 .convo-menu {
@@ -520,7 +531,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 .wschip-glyph {
   width: 20px;
   height: 20px;
-  border-radius: 5px;
+  border-radius: var(--r-xs);
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -531,7 +542,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 .wschip-text { flex: 1 1 auto; min-width: 0; }
 .wschip-text b {
   display: block;
-  font-size: 12.5px;
+  font-size: var(--fs-2xl);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -540,7 +551,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 .wschip-text small {
   display: block;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--ink-3);
 }
 .wschip > svg { width: 13px; height: 13px; color: var(--ink-3); flex: 0 0 auto; }
@@ -566,7 +577,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   opacity: 0;
   transform: translateY(4px) scale(.985);
   pointer-events: none;
-  transition: opacity .13s ease, transform .13s cubic-bezier(.22, .61, .24, 1);
+  transition: opacity var(--dur-menu) ease, transform var(--dur-menu) var(--ease-tap);
 }
 .menu[data-open="true"] { opacity: 1; transform: none; pointer-events: auto; }
 /* Sized by its insets, not .menu's 216px floor: at the sidebar's 220px minimum
@@ -577,7 +588,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
  * `title` with the full path, so truncation loses nothing. */
 .menu-label {
   padding: 7px 9px 4px;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   letter-spacing: .07em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -593,7 +604,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   padding: 6px 9px;
   border-radius: var(--r-sm);
   text-align: left;
-  font-size: 13px;
+  font-size: var(--fs-3xl);
   color: var(--ink-2);
   transition: background var(--tap), color var(--tap);
 }
@@ -605,9 +616,9 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 }
 .menu-item svg { width: 14px; height: 14px; flex: 0 0 auto; }
 .menu-item kbd { margin-left: auto; }
-.menu-item .tail { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); }
+.menu-item .tail { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink-3); }
 .menu-sep { height: 1px; background: var(--line-soft); margin: 5px 3px; }
-.pdot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.pdot { width: 8px; height: 8px; border-radius: var(--r-round); flex: 0 0 auto; }
 
 /* ── Centre column — the thread is the application ─────────────────────── */
 /* Two rows now: the 46px title strip, then the thread. The strip lives inside
@@ -655,7 +666,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 .sidebar-resize:focus-visible::after,
 .sidebar-resize.dragging::after {
   background: var(--hue);
-  box-shadow: 0 0 18px -4px var(--hue);
+  box-shadow: 0 0 var(--shadow-handle-glow-blur) var(--shadow-handle-glow-spread) var(--hue);
 }
 
 /* The sidebar's sash. Not a grid track like .resize-handle: a 12px track here
@@ -674,11 +685,11 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   justify-content: center;
   touch-action: none;
   outline: none;
-  transition: left .22s cubic-bezier(.22, .61, .24, 1);
+  transition: left var(--dur-collapse) var(--ease-tap);
 }
 /* A short delay before the line lights, so crossing the border on the way to
    the thread does not flash it. */
-.sidebar-resize:hover::after { transition-delay: .15s; }
+.sidebar-resize:hover::after { transition-delay: var(--dur-resize-hover); }
 html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden; }
 
 /* The 28px full-height `.doc-panel-expand-tab` rail that used to sit here is
@@ -732,7 +743,7 @@ html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden;
 html[data-panel-expanded] .body { --sidebar-w: 0px; }
 html[data-panel-expanded] .body > .sidebar {
   visibility: hidden;
-  transition: visibility 0s linear .22s;
+  transition: visibility 0s linear var(--dur-collapse);
 }
 html[data-panel-expanded] .sidebar-resize { display: none; }
 html[data-panel-expanded] .head-nav { display: flex; }

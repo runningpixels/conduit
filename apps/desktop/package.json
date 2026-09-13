@@ -10,7 +10,8 @@
     "build": "tauri build",
     "check": "tsc -b",
     "test": "vitest run",
-    "test:layout": "playwright test"
+    "test:layout": "playwright test",
+    "test:visual": "playwright test -c playwright.visual.config.ts"
   },
   "dependencies": {
     "@conduit/config-schema": "workspace:*",

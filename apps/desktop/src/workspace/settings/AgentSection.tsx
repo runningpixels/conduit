@@ -63,12 +63,12 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
       <div className="settings-section-header">
         <span>{t('settings.agent.header.title')}</span>
       </div>
-      <p style={{ marginBottom: 12, fontSize: '12px', color: 'var(--ink-2)' }}>
+      <p style={{ marginBottom: 12, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
         {t('settings.agent.intro')}
       </p>
 
       <div className="form-grid">
-        <label htmlFor="agent-max-steps" style={{ display: 'grid', gap: 4, fontSize: '13px' }}>
+        <label htmlFor="agent-max-steps" style={{ display: 'grid', gap: 4, fontSize: 'var(--fs-3xl)' }}>
           {t('settings.agent.maxSteps.label')}
           <input
             id="agent-max-steps"
@@ -80,12 +80,12 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
             onChange={(e) => handleMaxStepsChange(e.target.value)}
             style={{ maxWidth: 120 }}
           />
-          <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>
+          <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
             {t('settings.agent.maxSteps.hint', { min: MIN_STEPS, max: MAX_STEPS })}
           </span>
         </label>
 
-        <label htmlFor="agent-wall-clock" style={{ display: 'grid', gap: 4, fontSize: '13px' }}>
+        <label htmlFor="agent-wall-clock" style={{ display: 'grid', gap: 4, fontSize: 'var(--fs-3xl)' }}>
           {t('settings.agent.wallClock.label')}
           <input
             id="agent-wall-clock"
@@ -97,7 +97,7 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
             onChange={(e) => handleWallClockChange(e.target.value)}
             style={{ maxWidth: 120 }}
           />
-          <span style={{ fontSize: '12px', color: 'var(--ink-2)' }}>
+          <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
             {t('settings.agent.wallClock.hint', {
               secs: agent.wallClockBudgetSecs,
               formatted: formatMinutes(agent.wallClockBudgetSecs),

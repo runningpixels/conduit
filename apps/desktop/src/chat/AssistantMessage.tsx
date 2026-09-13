@@ -423,6 +423,7 @@ export function AssistantMessage({
     <article
       className={`turn assistant${state.streaming ? ' active' : ''}`}
       data-provider={providerHueId(provider)}
+      data-role-label={t('chat.turn.roleLabel.assistant')}
       {...(messageId ? { 'data-message-id': messageId } : {})}
     >
       {/* P5.2 — visually-hidden live region announcing stream completion */}

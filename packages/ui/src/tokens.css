@@ -106,6 +106,11 @@
    * follows as the fallback. The calm V9 is after comes from temperature and
    * type size (§2.4), not from the face. */
   --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* --face-sans / --face-serif restate the UI and serif stacks (here and in
+   * each CJK block below) so a look may point --font-ui / --font-serif at
+   * another face while the Reading font preference can still reach the
+   * originals. cssContract.test.ts asserts each pair stays identical. */
+  --face-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   /* The product's one serif: artifact document titles (§6), and assistant prose
    * under the Orange Charcoal palette.
@@ -119,6 +124,7 @@
    * different colour and texture, differing per platform. One face, bundled,
    * with the old stack demoted to fallback. */
   --font-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
   /* The reading surface: assistant prose. Defaults to the UI face, so the
    * terra palette renders exactly as it did; Orange Charcoal points it at
    * --font-serif rather than restating the stack, which is what keeps "one
@@ -331,6 +337,48 @@
   --cu-icon-sm: 17px;
   --cu-icon-md: 18px;
   --cu-tap: var(--tap);
+
+  /* ── Look axis: structural tokens (docs/theming/README.md) ──────────────
+   * Everything a look (`html[data-look]`) is allowed to retarget. The values
+   * here reproduce the default "soft" look exactly; a look block overrides
+   * them and never declares a colour (colour belongs to palettes, so the two
+   * axes cannot collide — lookContract.test.ts enforces the split).
+   *
+   * Two extra steps below the type scale, for the few 9–9.5px micro labels
+   * that previously spelled their size out. */
+  --fs-3xs: 9px;
+  --fs-2xs: 9.5px;
+  /* Small radii that sat below --r-xs as literals (inline code, marks,
+   * progress bars, kbd). Numbered by value, unlike the space scale. */
+  --r-1: 1px;
+  --r-2: 2px;
+  --r-3: 3px;
+  --r-4: 4px;
+  /* Circles: status dots, toggle knobs, spinners. A look that squares every
+   * corner still keeps a dot a dot unless it retargets this too. */
+  --r-round: 50%;
+  /* Icon stroke geometry. Read by `.cu-icon` (icons.tsx's Svg wrapper) only
+   * where an icon kept the default attributes. */
+  --icon-stroke: 1.7;
+  --icon-cap: round;
+  --icon-join: round;
+  /* Label register: the uppercase mono micro-heading (`.section-label`). */
+  --font-label: var(--font-mono);
+  --label-case: uppercase;
+  --label-weight: 600;
+  /* Scrollbar geometry and ink (the `.scroll` utility). */
+  --scrollbar-thumb: color-mix(in srgb, var(--ink-3) 45%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--ink-2) 55%, transparent);
+  --scrollbar-size: 10px;
+  --scrollbar-inset: 3px;
+  --scrollbar-radius: var(--r-pill);
+  /* Motion curve shared by the tap transition and every panel slide. */
+  --ease-tap: cubic-bezier(.22, .61, .24, 1);
+  /* The consent / variable-fill dialogs' own drop shadow (they predate
+   * .cu-dialog and style themselves inline). Deliberately mode-agnostic, as
+   * the inline literals were. */
+  --shadow-modal: 0 8px 32px rgba(0,0,0,.25);
+  --shadow-modal-strong: 0 8px 32px rgba(0,0,0,.3);
 }
 
 /* ───────────────────────── CJK font fallback (D17) ─────────────────────────
@@ -355,17 +403,25 @@
 html[lang^="ja"] {
   --font-ui: "Geist", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
     "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
+  --face-sans: "Geist", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Yu Gothic UI", "Hiragino Sans",
     "Noto Sans JP", Meiryo, monospace;
   --font-serif: "Source Serif 4", "Yu Mincho", YuMincho, "Hiragino Mincho ProN",
+    "Noto Serif JP", Charter, Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", "Yu Mincho", YuMincho, "Hiragino Mincho ProN",
     "Noto Serif JP", Charter, Georgia, ui-serif, serif;
 }
 html[lang^="ko"] {
   --font-ui: "Geist", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
     ui-sans-serif, system-ui, sans-serif;
+  --face-sans: "Geist", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+    ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Malgun Gothic", "Apple SD Gothic Neo",
     "Noto Sans KR", monospace;
   --font-serif: "Source Serif 4", Batang, AppleMyungjo, "Noto Serif KR",
+    Charter, Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", Batang, AppleMyungjo, "Noto Serif KR",
     Charter, Georgia, ui-serif, serif;
 }
 /* Simplified only. `zh-TW` and `zh-HK` are Traditional — a different
@@ -374,9 +430,13 @@ html[lang^="ko"] {
 html[lang^="zh-CN"] {
   --font-ui: "Geist", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
     "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --face-sans: "Geist", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Microsoft YaHei UI", "PingFang SC",
     "Noto Sans SC", monospace;
   --font-serif: "Source Serif 4", SimSun, "Songti SC", "Noto Serif SC",
+    "Source Han Serif SC", Charter, Georgia, ui-serif, serif;
+  --face-serif: "Source Serif 4", SimSun, "Songti SC", "Noto Serif SC",
     "Source Han Serif SC", Charter, Georgia, ui-serif, serif;
 }
 
@@ -587,6 +647,390 @@ html[data-palette="orange-dark"] [data-provider] {
   --hue-weak-solid: var(--od-hue-weak-solid);
 }
 
+/* ── Palette preset: Amber (renderer-only; html[data-palette]) — dark only ──
+   The colour half of the Amber Terminal theme, adapted from OpenTerminal
+   (github.com/ErTasselli/OpenTerminal, MIT; see THIRD-PARTY-NOTICES): true
+   black ground, near-black panels, one hot amber accent, binary green/red
+   status. Its structural half is the terminal look (looks/terminal.css).
+
+   Dark only (themes/registry.ts declares modes: ['dark'], and resolveTheme()
+   never lets it meet [data-theme="light"]), so there is no light block and no
+   specificity trap to cover. Deltas from the source, each for AA on the worst
+   surface (--card-hi): --ink-3 lifts #808080 → #878787 (4.41 → 4.9:1), a
+   third ink step (#a6a6a6) is added because Conduit's ramp has three, and
+   --on-hue is black — white on #ff9900 is 2.14:1, black is 9.8:1.
+   OpenTerminal has no warn or link colour; its chart series supply them. */
+html[data-palette="amber"] {
+  --bg: #000000;
+  --bg-side: #0a0a0a;
+  --card: #111111;
+  --card-hi: #1a1a1a;
+  --line: #262626;
+  --line-soft: #161616;
+  --line-hi: #3a3a3a;
+  --ink: #d9d9d9;
+  --ink-2: #a6a6a6;
+  --ink-3: #878787;
+  --shade: rgba(0,0,0,.72);
+  --shadow-color: rgba(0,0,0,.72);
+  --ok: #00c853;
+  --warn: #ffd966;
+  --err: #ff3d3d;
+  --code: #ffb347;
+  --link: #4fc3f7;
+  --on-hue: #000000;
+  --syn-keyword: #4fc3f7;
+  --syn-string: #00c853;
+  --syn-number: #ffd966;
+  --syn-tag: #c98ad6;
+  --syn-property: #80cbc4;
+  --syn-const: #ff8a65;
+  --am-hue: #ff9900;
+  --am-hue-text: #ff9900;
+  --am-hue-solid: #ff9900;
+  --am-hue-weak-solid: rgba(255, 153, 0, .14);
+  /* The dimmed accent: command-palette frame, scrollbar hover, drag rules.
+     Graphics only (4.16:1 on --card-hi clears the 3:1 non-text floor). */
+  --hue-dim: #b36b00;
+}
+html[data-palette="amber"][data-provider],
+html[data-palette="amber"] [data-provider] {
+  --hue: var(--am-hue);
+  --hue-text: var(--am-hue-text);
+  --hue-solid: var(--am-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--am-hue) 14%, transparent);
+  --hue-weak-solid: var(--am-hue-weak-solid);
+}
+
+/* ── Palette preset: Phosphor (renderer-only; html[data-palette]) — dark only ──
+   "Green Phosphor": a P1 CRT green-on-black register for the terminal look —
+   true black ground, near-black panels, one hot phosphor-green accent;
+   status colours stay close to what a CRT could actually draw (green/amber/
+   red). Dark only (registry: modes: ['dark']) for the same reason amber is:
+   resolveTheme() never lets it meet [data-theme="light"], so there is no
+   light block and no specificity trap to cover (see the amber comment above
+   for the general shape of that trap).
+
+   AA nudge: --ink-2 darkens #7fdc95 → #77da8e (same hue/saturation, lightness
+   only) — the ink ramp's three steps must stay a perceptible jump apart
+   (tokenContrast.test.ts's "keeps three distinct steps" needs >1.4:1 between
+   consecutive steps), and #7fdc95 measured 1.36:1 against --ink, just under
+   that floor. */
+html[data-palette="phosphor"] {
+  --bg: #020803;
+  --bg-side: #050d06;
+  --card: #09140b;
+  --card-hi: #0f1d12;
+  --line: #173020;
+  --line-soft: #0f2216;
+  --line-hi: #24442e;
+  --ink: #b6f7c4;
+  --ink-2: #77da8e;
+  --ink-3: #5cb672;
+  --shade: rgba(0,0,0,.72);
+  --shadow-color: rgba(0,0,0,.72);
+  --ok: #39ff6a;
+  --warn: #e8ff6a;
+  --err: #ff6b5e;
+  --code: #d6ff8f;
+  --link: #7ee8ff;
+  --on-hue: #000000;
+  --syn-keyword: #7ee8ff;
+  --syn-string: #d6ff8f;
+  --syn-number: #e8ff6a;
+  --syn-tag: #9fffd0;
+  --syn-property: #a8f0b8;
+  --syn-const: #ffb86b;
+  --ph-hue: #39ff6a;
+  --ph-hue-text: #39ff6a;
+  --ph-hue-solid: #39ff6a;
+  --ph-hue-weak-solid: rgba(57, 255, 106, .14);
+  /* Dimmed accent for graphics-only chrome (command-palette frame, scrollbar
+     hover, drag rules) — mirrors amber's --hue-dim. */
+  --hue-dim: #1f8f3c;
+}
+html[data-palette="phosphor"][data-provider],
+html[data-palette="phosphor"] [data-provider] {
+  --hue: var(--ph-hue);
+  --hue-text: var(--ph-hue-text);
+  --hue-solid: var(--ph-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--ph-hue) 14%, transparent);
+  --hue-weak-solid: var(--ph-hue-weak-solid);
+}
+
+/* ── Palette preset: Paper (renderer-only; html[data-palette]) — light only ──
+   "Amber Paper": the light companion promised for Amber Terminal (S4/P3.1) —
+   a printout-on-warm-paper register for the same terminal look. Written as
+   the base `html[data-palette="paper"]` block, not a `[data-theme="light"]`
+   compound: registry.ts declares `modes: ['light']`, and resolveTheme() never
+   lets a light-only theme meet dark, so this block *is* the palette's only
+   surface — there is no dark sibling to redeclare over, unlike Orange
+   Charcoal's specificity trap above (that trap exists only because that
+   palette has both modes).
+
+   Terminal flattens elevation to `0 0 transparent` (P3.5), so no
+   --lift/--soft-lift retuning is needed here. */
+html[data-palette="paper"] {
+  --bg: #f4efe3;
+  --bg-side: #ebe4d3;
+  --card: #fbf8f0;
+  --card-hi: #efe8d8;
+  --line: #d6ccb6;
+  --line-soft: #e3dbc8;
+  --line-hi: #bfb298;
+  --ink: #1b1812;
+  --ink-2: #4a4336;
+  --ink-3: #6a604f;
+  --shade: rgba(40,32,20,.35);
+  --ok: #1e6b34;
+  --warn: #7a5200;
+  --err: #a8261d;
+  --code: #7a4400;
+  --link: #1a5a9e;
+  --on-hue: #ffffff;
+  --syn-keyword: #1a5a9e;
+  --syn-string: #1e6b34;
+  --syn-number: #7a5200;
+  --syn-tag: #7b3a8a;
+  --syn-property: #2a6070;
+  --syn-const: #a8261d;
+  --pp-hue: #8a4d00;
+  --pp-hue-text: #8a4d00;
+  --pp-hue-solid: #8a4d00;
+  --pp-hue-weak-solid: rgba(138, 77, 0, .14);
+  --hue-dim: #a8712a;
+}
+html[data-palette="paper"][data-provider],
+html[data-palette="paper"] [data-provider] {
+  --hue: var(--pp-hue);
+  --hue-text: var(--pp-hue-text);
+  --hue-solid: var(--pp-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--pp-hue) 14%, transparent);
+  --hue-weak-solid: var(--pp-hue-weak-solid);
+}
+
+/* ── Palette preset: Graphite (renderer-only; html[data-palette]) — soft look ──
+   A monochrome register: provider identity is suspended in favour of one
+   neutral accent, the same move Orange Charcoal makes above (see its comment
+   for the specificity trap this palette inherits too: this selector is
+   (0,1,1) and outranks [data-theme="light"] (0,1,0), so the light block below
+   redeclares every colour this one declares; tokenContrast.test.ts's coverage
+   check asserts it).
+
+   Status colours (--ok/--warn/--err) are not respecified — they fall through
+   to :root / [data-theme="light"], exactly as Orange Charcoal leaves them on
+   Terra. */
+html[data-palette="graphite"] {
+  --bg: #1c1c1e;
+  --bg-side: #161618;
+  --card: #252527;
+  --card-hi: #2e2e31;
+  --line: #333336;
+  --line-soft: #2a2a2d;
+  --line-hi: #444448;
+  --ink: #ededee;
+  --ink-2: #bdbdc1;
+  --ink-3: #9a9aa0;
+  --code: #cfd8e3;
+  --link: #b4c6ef;
+  --on-hue: #ffffff;
+  --syn-keyword: #8fb3d9;
+  --syn-string: #9ecb9e;
+  --syn-number: #d9c08f;
+  --syn-tag: #c9a0c9;
+  --syn-property: #93c5c5;
+  --syn-const: #d99a9a;
+  --gr-hue: #d4d4d8;
+  --gr-hue-text: #d4d4d8;
+  --gr-hue-solid: #5a5a60;
+  --gr-hue-weak-solid: rgba(212, 212, 216, .14);
+}
+html[data-palette="graphite"][data-theme="light"] {
+  --bg: #f7f7f8;
+  --bg-side: #eeeef0;
+  --card: #ffffff;
+  --card-hi: #f2f2f4;
+  --line: #dedee2;
+  --line-soft: #e8e8eb;
+  --line-hi: #c9c9ce;
+  --ink: #1d1d1f;
+  --ink-2: #4a4a50;
+  --ink-3: #6b6b72;
+  --code: #3d4b5c;
+  --link: #2b5797;
+  --on-hue: #ffffff;
+  /* Nudged from #8f6a1f (same hue/saturation, darkened): the pick measured
+     4.27:1 on --bg-side, under AA. */
+  --syn-keyword: #2f5f8f;
+  --syn-string: #2f7a4a;
+  --syn-number: #8a661e;
+  --syn-tag: #7a4a7a;
+  --syn-property: #2f6b6b;
+  --syn-const: #9a3a3a;
+  --gr-hue: #3a3a40;
+  --gr-hue-text: #3a3a40;
+  --gr-hue-solid: #3a3a40;
+  --gr-hue-weak-solid: rgba(58, 58, 64, .14);
+}
+html[data-palette="graphite"][data-provider],
+html[data-palette="graphite"] [data-provider] {
+  --hue: var(--gr-hue);
+  --hue-text: var(--gr-hue-text);
+  --hue-solid: var(--gr-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--gr-hue) 14%, transparent);
+  --hue-weak-solid: var(--gr-hue-weak-solid);
+}
+
+/* ── Palette preset: Newsprint (renderer-only; html[data-palette]) — editorial look ──
+   Ink on paper with one editorial red, paired with the editorial look. Unlike
+   Orange Charcoal/Graphite, status colours ARE respecified per mode: the warm
+   paper/ink surfaces need their own AA floor, not Terra's blue-black one.
+   Same specificity trap as every two-mode palette above: this selector is
+   (0,1,1) and outranks [data-theme="light"] (0,1,0), so the light block below
+   redeclares every colour this one declares.
+
+   AA nudge: --syn-string darkens #3f7d3f → #3c773c (same hue/saturation) in
+   the light block — the first pick measured 4.19:1 on --bg-side, under AA. */
+html[data-palette="newsprint"] {
+  --bg: #141311;
+  --bg-side: #0f0e0c;
+  --card: #1d1b18;
+  --card-hi: #262420;
+  --line: #34312c;
+  --line-soft: #282622;
+  --line-hi: #46423b;
+  --ink: #ece7de;
+  --ink-2: #c4bdb1;
+  --ink-3: #a39c90;
+  --ok: #7fc28c;
+  --warn: #e3b35c;
+  --err: #f08a80;
+  --code: #e0b48a;
+  --link: #9fb6e0;
+  --on-hue: #ffffff;
+  --syn-keyword: #9fb6e0;
+  --syn-string: #8fcf8f;
+  --syn-number: #e3b35c;
+  --syn-tag: #c98ad6;
+  --syn-property: #7fc2c2;
+  --syn-const: #e07a7a;
+  --nw-hue: #e0707a;
+  --nw-hue-text: #e98891;
+  --nw-hue-solid: #b43c47;
+  --nw-hue-weak-solid: rgba(224, 112, 122, .14);
+}
+html[data-palette="newsprint"][data-theme="light"] {
+  --bg: #f6f3ee;
+  --bg-side: #efebe4;
+  --card: #fbfaf7;
+  --card-hi: #f1ede6;
+  --line: #ddd6cb;
+  --line-soft: #e8e2d8;
+  --line-hi: #c7bfb2;
+  --ink: #1f1c19;
+  --ink-2: #4c4640;
+  --ink-3: #6d665e;
+  --ok: #2f6b3a;
+  --warn: #8a5a00;
+  --err: #b3261e;
+  --code: #7a3e1d;
+  --link: #2a4f86;
+  --on-hue: #ffffff;
+  --syn-keyword: #2a4f86;
+  --syn-string: #3c773c;
+  --syn-number: #8a5a00;
+  --syn-tag: #7a3a6a;
+  --syn-property: #1d6b7a;
+  --syn-const: #a3222b;
+  --nw-hue: #a3222b;
+  --nw-hue-text: #a3222b;
+  --nw-hue-solid: #a3222b;
+  --nw-hue-weak-solid: rgba(163, 34, 43, .14);
+}
+html[data-palette="newsprint"][data-provider],
+html[data-palette="newsprint"] [data-provider] {
+  --hue: var(--nw-hue);
+  --hue-text: var(--nw-hue-text);
+  --hue-solid: var(--nw-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--nw-hue) 14%, transparent);
+  --hue-weak-solid: var(--nw-hue-weak-solid);
+}
+
+/* ── Palette preset: High Contrast (renderer-only; html[data-palette]) — contrast look ──
+   "High Contrast": target AAA (7:1) for every ink/status/link/code token
+   against every surface, and >=3:1 for --line against every surface so
+   borders stay visible under the contrast look's heavier borders. Same
+   specificity trap as every two-mode palette above.
+
+   AA nudges (all darkened, same hue/saturation, to clear AAA in light mode
+   against --card-hi #f0f0f0, the worst surface): --ok #006b1f → #005e1b,
+   --warn #7a4b00 → #734700, --err #b00020 → #a5001e. Dark mode and every
+   other light-mode token clear AAA at the values given without a nudge. */
+html[data-palette="contrast"] {
+  --bg: #000000;
+  --bg-side: #000000;
+  --card: #0a0a0a;
+  --card-hi: #1a1a1a;
+  --line: #8a8a8a;
+  --line-soft: #6b6b6b;
+  --line-hi: #ffffff;
+  --ink: #ffffff;
+  --ink-2: #d0d0d0;
+  --ink-3: #a8a8a8;
+  --ok: #5cff8a;
+  --warn: #ffb000;
+  --err: #ff8080;
+  --code: #9ee7ff;
+  --link: #8cc8ff;
+  --on-hue: #000000;
+  --syn-keyword: #8cc8ff;
+  --syn-string: #5cff8a;
+  --syn-number: #ffb000;
+  --syn-tag: #ffb0e0;
+  --syn-property: #9ee7ff;
+  --syn-const: #ff8080;
+  --hc-hue: #ffd400;
+  --hc-hue-text: #ffd400;
+  --hc-hue-solid: #ffd400;
+  --hc-hue-weak-solid: rgba(255, 212, 0, .14);
+}
+html[data-palette="contrast"][data-theme="light"] {
+  --bg: #ffffff;
+  --bg-side: #ffffff;
+  --card: #ffffff;
+  --card-hi: #f0f0f0;
+  --line: #595959;
+  --line-soft: #767676;
+  --line-hi: #000000;
+  --ink: #000000;
+  --ink-2: #2e2e2e;
+  --ink-3: #4d4d4d;
+  --ok: #005e1b;
+  --warn: #734700;
+  --err: #a5001e;
+  --code: #5b2a86;
+  --link: #0038b8;
+  --on-hue: #ffffff;
+  --syn-keyword: #0038b8;
+  --syn-string: #005e1b;
+  --syn-number: #734700;
+  --syn-tag: #8a1a8a;
+  --syn-property: #5b2a86;
+  --syn-const: #a5001e;
+  --hc-hue: #0038b8;
+  --hc-hue-text: #0038b8;
+  --hc-hue-solid: #0038b8;
+  --hc-hue-weak-solid: rgba(0, 56, 184, .14);
+}
+html[data-palette="contrast"][data-provider],
+html[data-palette="contrast"] [data-provider] {
+  --hue: var(--hc-hue);
+  --hue-text: var(--hc-hue-text);
+  --hue-solid: var(--hc-hue-solid);
+  --hue-weak: color-mix(in srgb, var(--hc-hue) 14%, transparent);
+  --hue-weak-solid: var(--hc-hue-weak-solid);
+}
+
 /* ── Brand override neutralizes provider hue on descendants ─────────────────
    White-label plan §5-6: a brand replaces provider identity everywhere, not
    just at the root. `[data-provider="..."]` above matches ANY element
@@ -646,6 +1090,52 @@ html[data-palette="brand"] [data-provider] {
   --hue-weak: inherit;
 }
 
+/* Theming Phase 5 (user theme files, decisions.md S7) — the same mechanism as
+   the brand rule immediately above, reused for a user theme's inline palette
+   override (apps/desktop/src/themes/userThemes.ts, applyUserTheme). Unlike a
+   brand, a user theme does NOT repoint data-palette to a sentinel value: it
+   keeps data-palette set to whichever base theme it extends (e.g.
+   "orange-charcoal"), because everything it does not override should still
+   read that base palette's own CSS block. So `data-user-palette` is a second,
+   independent attribute this module sets (with no value, purely a marker)
+   only when it actually applied an inline colour override for the current
+   mode -- never when the file has no `palette` table.
+
+   That independence is exactly why this rule has to be positioned carefully.
+   `html[data-palette="orange-charcoal"] [data-provider]` (and its seven
+   siblings above, one per named palette) match a [data-provider] descendant
+   here exactly as they do for the built-in theme, at the SAME specificity
+   (0,2,1) as this rule -- so without this rule coming after them in source
+   order, a user theme overriding --hue would still lose to the base
+   palette's own pinned var(--xx-hue) on every provider-tinted element below
+   <html>, for the identical reason the brand rule above exists. Placed here,
+   directly after the brand rule — and so after every per-palette pin, which
+   all live earlier in this file — this rule wins that tie.
+
+   It must still lose to provider-colour-off (tokens.css, below): that rule is
+   also (0,2,1)/(0,2,0) and comes AFTER this one in source order on purpose,
+   so "off" stays "off" regardless of which palette mechanism -- built-in,
+   brand, or user theme -- set --hue on <html>. */
+html[data-user-palette] [data-provider] {
+  --hue: inherit;
+  --hue-text: inherit;
+  --hue-solid: inherit;
+  --hue-weak: inherit;
+}
+
+/* Theming Phase 5 — a user theme's `labels: small-caps` (userThemes.ts's
+   structure table) sets `--label-case: none` (a text-transform of `none`
+   would fight small-caps, which is a font feature, not a case transform) and
+   this attribute, consumed here rather than through a token: there is no
+   `font-variant-caps` custom property in the look/palette retargetable set
+   (docs/theming/README.md), and adding one for a single value used by one
+   structural choice was not worth widening that table. Scoped to the three
+   classes that read `--label-case` today. */
+html[data-user-labels="small-caps"] :is(.section-label, .sb-group, .sb-group-row) {
+  font-variant-caps: all-small-caps;
+  text-transform: none;
+}
+
 /* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
 @supports not (color: color-mix(in srgb, red 10%, transparent)) {
   [data-provider="anthropic"] { --hue-weak: rgba(217, 119, 87, .14); }
@@ -664,6 +1154,18 @@ html[data-palette="brand"] [data-provider] {
   html[data-palette="orange-charcoal"] [data-provider] { --hue-weak: var(--oc-hue-weak-solid); }
   html[data-palette="orange-dark"][data-provider],
   html[data-palette="orange-dark"] [data-provider] { --hue-weak: var(--od-hue-weak-solid); }
+  html[data-palette="amber"][data-provider],
+  html[data-palette="amber"] [data-provider] { --hue-weak: var(--am-hue-weak-solid); }
+  html[data-palette="phosphor"][data-provider],
+  html[data-palette="phosphor"] [data-provider] { --hue-weak: var(--ph-hue-weak-solid); }
+  html[data-palette="paper"][data-provider],
+  html[data-palette="paper"] [data-provider] { --hue-weak: var(--pp-hue-weak-solid); }
+  html[data-palette="graphite"][data-provider],
+  html[data-palette="graphite"] [data-provider] { --hue-weak: var(--gr-hue-weak-solid); }
+  html[data-palette="newsprint"][data-provider],
+  html[data-palette="newsprint"] [data-provider] { --hue-weak: var(--nw-hue-weak-solid); }
+  html[data-palette="contrast"][data-provider],
+  html[data-palette="contrast"] [data-provider] { --hue-weak: var(--hc-hue-weak-solid); }
   /* Theme-neutral gray for the off state when color-mix() is unavailable. */
   html[data-provider-colour="off"] [data-provider] { --hue-weak: rgba(128, 128, 128, .16); }
 }
@@ -761,7 +1263,7 @@ textarea:focus-visible { outline: none; border-color: var(--line-hi); }
  * grey gutter. */
 .scroll {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--ink-3) 45%, transparent) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 /* Fallback for engines without standard scrollbar properties. Chromium >= 121
  * takes the standard path above and ignores these entirely, so they are inert
@@ -773,18 +1275,24 @@ textarea:focus-visible { outline: none; border-color: var(--line-hi); }
  * tokens for the literals, but that scale is indexed by position rather than
  * value (`--space-3` is 5px, not 3px), which asked for 10px of border inside an
  * 8px box. Nobody noticed because the block never ran. */
-.scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
 .scroll::-webkit-scrollbar-track { background: transparent; }
 .scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ink-3) 45%, transparent);
-  border-radius: var(--r-pill);
-  border: 3px solid transparent;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
+  border: var(--scrollbar-inset) solid transparent;
   background-clip: content-box;
 }
 .scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ink-2) 55%, transparent);
+  background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
 }
+
+/* Icon stroke geometry (icons.tsx `Svg`). Attribute-qualified so it only
+ * replaces the wrapper's defaults, never a strokeWidth a caller chose. */
+.cu-icon[stroke-width="1.7"] { stroke-width: var(--icon-stroke); }
+.cu-icon[stroke-linecap="round"] { stroke-linecap: var(--icon-cap); }
+.cu-icon[stroke-linejoin="round"] { stroke-linejoin: var(--icon-join); }
 
 /* ───────────────────────── Primitives (token + scale driven) ────────────
  * These are v5's shared component classes, extracted here so React primitives
@@ -922,9 +1430,9 @@ textarea:focus-visible { outline: none; border-color: var(--line-hi); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font: 600 var(--fs-sm)/1 var(--font-mono);
+  font: var(--label-weight) var(--fs-sm)/1 var(--font-label);
   letter-spacing: .07em;
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   color: var(--ink-3);
   margin: var(--space-8) 0;
 }

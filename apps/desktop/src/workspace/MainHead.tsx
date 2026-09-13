@@ -25,6 +25,8 @@ interface MainHeadProps {
   title?: string;
   effectiveTheme: 'dark' | 'light';
   onToggleTheme: () => void;
+  /** The active theme renders a single mode, so the toggle is disabled. */
+  modeLocked?: boolean;
   panelOpen: boolean;
   onTogglePanel: () => void;
   /**
@@ -88,6 +90,7 @@ export function MainHead({
   title,
   effectiveTheme,
   onToggleTheme,
+  modeLocked = false,
   panelOpen,
   onTogglePanel,
   hiddenArtifactCount = 0,
@@ -181,7 +184,12 @@ export function MainHead({
           className="iconbtn"
           type="button"
           aria-label={t('workspace.mainHead.themeToggleAriaLabel')}
-          title={t('workspace.mainHead.themeToggleTitle')}
+          title={
+            modeLocked
+              ? t(effectiveTheme === 'dark' ? 'settings.appearance.themes.darkOnlyLabel' : 'settings.appearance.themes.lightOnlyLabel')
+              : t('workspace.mainHead.themeToggleTitle')
+          }
+          disabled={modeLocked}
           onClick={onToggleTheme}
         >
           {effectiveTheme === 'light' ? <SunIcon /> : <MoonIcon />}

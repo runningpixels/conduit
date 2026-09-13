@@ -1,6 +1,6 @@
 # UI improvements — resizable sidebar, top-bar settings, and follow-ups
 
-Status: **PRs 1–6** implemented (#42–#46, and panel-on-demand); P3 items remain design-first · Branch: `feat/ui-improvements` · Drafted 2026-09-13
+Status: **PRs 1–7** implemented (#42–#47, and settings search). P3-a (unified title bar) is deferred and needs a design decision; P3-c turned out to exist already · Branch: `feat/ui-improvements` · Drafted 2026-09-13
 
 Two asks from dogfooding, plus what a pass over the running shell turned up:
 
@@ -362,9 +362,26 @@ navigation markup only, with no settings changes.
 from each section's labels through their i18n keys, so it works in every locale. It filters the
 nav, opens the section, and scrolls to and highlights the matching row.
 
+*As built (PR 7):*
+- **Index.** `shell/settingsSearch.ts` indexes names only (labels, headings, section titles),
+  not help text, and folds case, accents and full-width characters.
+- **Results.** Each nav result lists the names that matched. Enter opens the first result, and
+  Escape clears the query without closing the sheet.
+- **Guard.** A test fails if a `settings.*` catalog area has no section, so a new area can't
+  silently be left out of search.
+
 **c. Density and text size.** Add `html[data-density="compact|comfortable"]` (row heights,
 paddings) and a chat text-size step that is separate from app zoom. Both are renderer-only prefs
 in `uiPrefs.ts`, next to palette and mermaid scale, and cheap given the token system.
+
+*Correction:* this already exists. Appearance has **UI font size** and **Density**
+(`readUiFontSize` / `readUiDensity`, applied as `--fs-scale` and `html[data-density]`). The survey
+behind this plan missed it. With settings search in place, both are now found by typing
+"density" or "font".
+
+**Where P3-a stands:** not started. It revises the V9 spec, rewrites the `shellContract`
+drag-region rules, and needs the traffic-light inset verified on a real Mac. The plan called it
+design-first, and none of those can be settled from the Windows dev machine.
 
 ---
 

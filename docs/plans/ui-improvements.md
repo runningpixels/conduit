@@ -1,6 +1,6 @@
 # UI improvements — resizable sidebar, top-bar settings, and follow-ups
 
-Status: **PRs 1–5** implemented (#42–#45, and shortcuts / window title / grouped nav); PR 6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
+Status: **PRs 1–6** implemented (#42–#46, and panel-on-demand); P3 items remain design-first · Branch: `feat/ui-improvements` · Drafted 2026-09-13
 
 Two asks from dogfooding, plus what a pass over the running shell turned up:
 
@@ -320,7 +320,18 @@ state, about 30% of a 1440px window.
   on the first promote.
 - An explicit user toggle still wins and is saved.
 - The existing `panel-toggle-badge` count keeps the panel discoverable.
-- *This changes current behaviour, so it needs sign-off.*
+- *This changes current behaviour, so it needs sign-off.* (Approved: "go with your recommendations".)
+
+*As built (PR 6):*
+- **Suppression, not a new preference.** `useDocPanelCollapse({ suppressed })` shuts the column
+  without rewriting the saved open/closed preference, so a user who closed the panel keeps it
+  closed and everyone else sees it open the moment there is content.
+- **What counts as content.** A chat has content once it has artifacts, a pending document tool,
+  or an open artifact. Opening the empty panel from its toggle holds for that chat.
+- **Chat switching.** `artifacts` used to outlive a chat switch (a new chat reported the previous
+  chat's count), so the list now records which chat it belongs to. The show/hide decision only
+  changes once the open chat's list has loaded, so switching between two chats that both have
+  artifacts doesn't flicker the panel.
 
 **f. Grouped settings navigation.** The 12 sections sit in one flat list. Group them under small
 headings: **Models** (Providers, Chat defaults, Web search), **Workspace** (Workspace, Connectors,

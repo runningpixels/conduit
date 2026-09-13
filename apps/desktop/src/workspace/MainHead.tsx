@@ -33,8 +33,11 @@ interface MainHeadProps {
    * omit) whenever the panel is open, since the count is visible in it.
    */
   hiddenArtifactCount?: number;
-  /** Reopen the sidebar. Shown only while it is collapsed (CSS, `.head-nav`). */
+  /** Show the sidebar: reopen the column, or on a narrow window toggle its
+   *  overlay. The row is visible only when the column is not (CSS, `.head-nav`). */
   onToggleSidebar: () => void;
+  /** The sidebar is showing as an overlay (narrow windows). */
+  sidebarOverlayOpen?: boolean;
   onNewChat: () => void;
   /** Open the ⌘K palette, the sidebar's Search row's job. */
   onOpenPalette: () => void;
@@ -78,6 +81,7 @@ export function MainHead({
   onTogglePanel,
   hiddenArtifactCount = 0,
   onToggleSidebar,
+  sidebarOverlayOpen = false,
   onNewChat,
   onOpenPalette,
   onOpenSettings,
@@ -141,6 +145,8 @@ export function MainHead({
           className="iconbtn"
           type="button"
           aria-label={t('app.sidebar.openAriaLabel')}
+          aria-expanded={sidebarOverlayOpen}
+          aria-controls="sidebar"
           title={t('app.sidebar.openTitle', { shortcut: modShortcutHint('\\') })}
           onClick={onToggleSidebar}
         >

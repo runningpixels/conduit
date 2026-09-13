@@ -10,6 +10,7 @@ import {
   SIDEBAR_MIN,
   THREAD_MIN,
   reflowColumns,
+  useColumnOverlay,
   useColumnResize,
   useDocPanelCollapse,
   useSidebarCollapse,
@@ -121,21 +122,21 @@ describe('column resize', () => {
     root.removeAttribute('data-panel');
     root.removeAttribute('data-resizing');
     root.style.removeProperty('--sidebar-open-w');
-    root.style.removeProperty('--panel-w');
+    root.style.removeProperty('--panel-open-w');
     setViewportWidth(1600);
   });
 
   it('applies the defaults when nothing is stored', () => {
     renderLayout();
     expect(cssPx('--sidebar-open-w')).toBe(SIDEBAR_DEFAULT);
-    expect(cssPx('--panel-w')).toBe(PANEL_DEFAULT);
+    expect(cssPx('--panel-open-w')).toBe(PANEL_DEFAULT);
   });
 
   it('restores persisted widths on mount', () => {
     __writeStoredLayoutForTest({ sidebarW: 320, panelW: 500 });
     const { result } = renderLayout();
     expect(cssPx('--sidebar-open-w')).toBe(320);
-    expect(cssPx('--panel-w')).toBe(500);
+    expect(cssPx('--panel-open-w')).toBe(500);
     expect(result.current.sidebarResize.widthPx).toBe(320);
   });
 
@@ -145,33 +146,33 @@ describe('column resize', () => {
     renderLayout();
     const room = 1200 - 12 - THREAD_MIN;
     expect(cssPx('--sidebar-open-w')).toBe(SIDEBAR_MAX);
-    expect(cssPx('--panel-w')).toBe(room - SIDEBAR_MAX);
+    expect(cssPx('--panel-open-w')).toBe(room - SIDEBAR_MAX);
     // The preference is left alone, so a wider window gives it back.
     expect(__readStoredLayoutForTest()).toEqual({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
     setViewportWidth(1600);
     act(() => reflowColumns());
-    expect(cssPx('--panel-w')).toBe(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBe(PANEL_MAX);
   });
 
   it('re-clamps on window resize', async () => {
     __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
     renderLayout();
-    expect(cssPx('--panel-w')).toBe(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBe(PANEL_MAX);
     setViewportWidth(1200);
     await act(async () => {
       window.dispatchEvent(new Event('resize'));
       await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
     });
-    expect(cssPx('--panel-w')).toBe(1200 - 12 - THREAD_MIN - SIDEBAR_MAX);
+    expect(cssPx('--panel-open-w')).toBe(1200 - 12 - THREAD_MIN - SIDEBAR_MAX);
   });
 
   it("gives a collapsed column's room back to the other one", () => {
     setViewportWidth(1200);
     __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
     const { result } = renderLayout();
-    expect(cssPx('--panel-w')).toBeLessThan(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBeLessThan(PANEL_MAX);
     act(() => result.current.sidebar.close());
-    expect(cssPx('--panel-w')).toBe(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBe(PANEL_MAX);
   });
 
   it('moves the sidebar separator with the arrow keys and clamps to its bounds', () => {
@@ -192,7 +193,7 @@ describe('column resize', () => {
   it('widens the panel with ArrowLeft, since its separator sits on its left edge', () => {
     const { result } = renderLayout();
     act(() => result.current.panelResize.onKeyDown(key('ArrowLeft')));
-    expect(cssPx('--panel-w')).toBe(PANEL_DEFAULT + 10);
+    expect(cssPx('--panel-open-w')).toBe(PANEL_DEFAULT + 10);
   });
 
   it('persists one column without dropping the other', () => {
@@ -291,10 +292,75 @@ describe('column resize', () => {
       __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
       const { result } = renderLayout();
       // The panel is viewport-clamped below its preference here.
-      expect(cssPx('--panel-w')).toBeLessThan(PANEL_MAX);
-      startDrag(result.current.panelResize.onPointerDown, 1200 - cssPx('--panel-w'));
+      expect(cssPx('--panel-open-w')).toBeLessThan(PANEL_MAX);
+      startDrag(result.current.panelResize.onPointerDown, 1200 - cssPx('--panel-open-w'));
       release();
       expect(__readStoredLayoutForTest()).toEqual({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
     });
+  });
+});
+
+/* ── Narrow-window overlays ───────────────────────────────────────────── */
+
+describe('useColumnOverlay', () => {
+  beforeEach(() => {
+    document.documentElement.removeAttribute('data-sidebar-overlay');
+    document.documentElement.removeAttribute('data-panel-overlay');
+  });
+
+  it('does nothing where the column fits as a column', () => {
+    setViewportWidth(NARROW_BREAKPOINT + 1);
+    const { result } = renderHook(() => useColumnOverlay('sidebar'));
+    act(() => result.current.show());
+    expect(result.current.narrow).toBe(false);
+    expect(result.current.open).toBe(false);
+    expect(document.documentElement.hasAttribute('data-sidebar-overlay')).toBe(false);
+  });
+
+  it('opens and closes on a narrow window, as an attribute on <html>', () => {
+    setViewportWidth(NARROW_BREAKPOINT);
+    const { result } = renderHook(() => useColumnOverlay('sidebar'));
+    expect(result.current.narrow).toBe(true);
+    act(() => result.current.toggle());
+    expect(result.current.open).toBe(true);
+    expect(document.documentElement.getAttribute('data-sidebar-overlay')).toBe('open');
+    act(() => result.current.hide());
+    expect(document.documentElement.hasAttribute('data-sidebar-overlay')).toBe(false);
+  });
+
+  it('uses each column’s own breakpoint', () => {
+    setViewportWidth(PANEL_BREAKPOINT);
+    const sidebar = renderHook(() => useColumnOverlay('sidebar'));
+    const panel = renderHook(() => useColumnOverlay('panel'));
+    expect(sidebar.result.current.narrow).toBe(false);
+    expect(panel.result.current.narrow).toBe(true);
+  });
+
+  it('drops the overlay when the window widens past the breakpoint', () => {
+    setViewportWidth(PANEL_BREAKPOINT);
+    const { result } = renderHook(() => useColumnOverlay('panel'));
+    act(() => result.current.show());
+    expect(document.documentElement.getAttribute('data-panel-overlay')).toBe('open');
+    act(() => {
+      setViewportWidth(1440);
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(result.current.open).toBe(false);
+    expect(document.documentElement.hasAttribute('data-panel-overlay')).toBe(false);
+    // Narrowing again does not resurrect a request the window cancelled.
+    act(() => {
+      setViewportWidth(PANEL_BREAKPOINT);
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(result.current.open).toBe(false);
+  });
+
+  it('leaves the saved collapse preference alone', () => {
+    setViewportWidth(NARROW_BREAKPOINT);
+    __writeStoredSidebarForTest('closed');
+    const { result } = renderHook(() => ({ overlay: useColumnOverlay('sidebar'), collapse: useSidebarCollapse() }));
+    act(() => result.current.overlay.show());
+    expect(__readStoredSidebarForTest()).toBe('closed');
+    expect(result.current.collapse.collapsed).toBe(true);
   });
 });

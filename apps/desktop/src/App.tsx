@@ -61,7 +61,7 @@ import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { applyUiPrefs } from './shell/uiPrefs';
-import { useColumnResize, useDocPanelCollapse, useSidebarCollapse } from './workspace/useLayout';
+import { useColumnResize, useDocPanelCollapse, useSidebarCollapse, useSidebarResize } from './workspace/useLayout';
 import { useHotkeys } from './workspace/useHotkeys';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
@@ -217,9 +217,9 @@ export default function App() {
   >([]);
   const chatViewRef = useRef<ChatViewHandle>(null);
 
-  const { onPointerDown, onKeyDown: onResizeKeyDown, ariaValueNow, ariaValueMin, ariaValueMax } =
-    useColumnResize();
-  const { toggle: toggleSidebar } = useSidebarCollapse();
+  const panelResize = useColumnResize();
+  const { open: openSidebar, close: closeSidebar, toggle: toggleSidebar } = useSidebarCollapse();
+  const sidebarResize = useSidebarResize({ open: openSidebar, close: closeSidebar });
   const { collapsed: docPanelCollapsed, collapse: collapseDocPanel, expand: expandDocPanel, toggle: toggleDocPanel } = useDocPanelCollapse();
   // Rich status: accepts either a string (legacy) or a StatusState object.
   const setStatusMessage = useCallback((message: string | StatusState) => {
@@ -1296,6 +1296,24 @@ export default function App() {
           logoSrc={brandLogo ?? undefined}
         />
 
+        {/* The sidebar's sash, laid over its border rather than given a grid
+            track (see .sidebar-resize in workspace.css). */}
+        <div
+          className="sidebar-resize"
+          id="sidebarResize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-controls="sidebar"
+          aria-label={t('app.sidebarResizeHandle.ariaLabel')}
+          aria-valuenow={sidebarResize.ariaValueNow}
+          aria-valuemin={sidebarResize.ariaValueMin}
+          aria-valuemax={sidebarResize.ariaValueMax}
+          tabIndex={0}
+          onPointerDown={sidebarResize.onPointerDown}
+          onKeyDown={sidebarResize.onKeyDown}
+          onDoubleClick={sidebarResize.onDoubleClick}
+        />
+
         {/* The full-height "Artifacts" rail that used to live here was a second
             affordance for the title strip's own panel toggle. It is gone; the
             toggle carries the artifact count so the panel stays discoverable. */}
@@ -1336,12 +1354,13 @@ export default function App() {
           role="separator"
           aria-orientation="vertical"
           aria-label={t('app.resizeHandle.ariaLabel')}
-          aria-valuenow={ariaValueNow}
-          aria-valuemin={ariaValueMin}
-          aria-valuemax={ariaValueMax}
+          aria-valuenow={panelResize.ariaValueNow}
+          aria-valuemin={panelResize.ariaValueMin}
+          aria-valuemax={panelResize.ariaValueMax}
           tabIndex={0}
-          onPointerDown={onPointerDown}
-          onKeyDown={onResizeKeyDown}
+          onPointerDown={panelResize.onPointerDown}
+          onKeyDown={panelResize.onKeyDown}
+          onDoubleClick={panelResize.onDoubleClick}
         />
 
         <DocumentPanel

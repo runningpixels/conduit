@@ -105,19 +105,28 @@ interface SettingsSheetProps {
   onBrandChange?: (config: BrandConfig | null, logo: string | null) => void;
 }
 
-const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode }[] = [
-  { id: 'providers', labelId: 'shell.settingsSheet.nav.providers', icon: <KeyNavIcon /> },
-  { id: 'chat', labelId: 'shell.settingsSheet.nav.chat', icon: <ChatIcon /> },
-  { id: 'web-search', labelId: 'shell.settingsSheet.nav.web-search', icon: <SearchIcon /> },
-  { id: 'workspace', labelId: 'shell.settingsSheet.nav.workspace', icon: <FolderIcon /> },
-  { id: 'connectors', labelId: 'shell.settingsSheet.nav.connectors', icon: <ConnectorsIcon /> },
-  { id: 'prompts', labelId: 'shell.settingsSheet.nav.prompts', icon: <ListNavIcon /> },
-  { id: 'skills', labelId: 'shell.settingsSheet.nav.skills', icon: <SkillNavIcon /> },
-  { id: 'memory', labelId: 'shell.settingsSheet.nav.memory', icon: <MemoryNavIcon /> },
-  { id: 'appearance', labelId: 'shell.settingsSheet.nav.appearance', icon: <SunNavIcon /> },
-  { id: 'branding', labelId: 'shell.settingsSheet.nav.branding', icon: <BrandingNavIcon /> },
-  { id: 'privacy', labelId: 'shell.settingsSheet.nav.privacy', icon: <LockIcon /> },
-  { id: 'about', labelId: 'shell.settingsSheet.nav.about', icon: <InfoIcon /> },
+type NavGroup = 'models' | 'assistant' | 'app';
+
+/** Nav headings, in order. Each item below names the group it sits under. */
+const NAV_GROUPS: { id: NavGroup; labelId: string }[] = [
+  { id: 'models', labelId: 'shell.settingsSheet.nav.group.models' },
+  { id: 'assistant', labelId: 'shell.settingsSheet.nav.group.assistant' },
+  { id: 'app', labelId: 'shell.settingsSheet.nav.group.app' },
+];
+
+const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode; group: NavGroup }[] = [
+  { id: 'providers', labelId: 'shell.settingsSheet.nav.providers', icon: <KeyNavIcon />, group: 'models' },
+  { id: 'chat', labelId: 'shell.settingsSheet.nav.chat', icon: <ChatIcon />, group: 'models' },
+  { id: 'web-search', labelId: 'shell.settingsSheet.nav.web-search', icon: <SearchIcon />, group: 'models' },
+  { id: 'workspace', labelId: 'shell.settingsSheet.nav.workspace', icon: <FolderIcon />, group: 'assistant' },
+  { id: 'connectors', labelId: 'shell.settingsSheet.nav.connectors', icon: <ConnectorsIcon />, group: 'assistant' },
+  { id: 'prompts', labelId: 'shell.settingsSheet.nav.prompts', icon: <ListNavIcon />, group: 'assistant' },
+  { id: 'skills', labelId: 'shell.settingsSheet.nav.skills', icon: <SkillNavIcon />, group: 'assistant' },
+  { id: 'memory', labelId: 'shell.settingsSheet.nav.memory', icon: <MemoryNavIcon />, group: 'assistant' },
+  { id: 'appearance', labelId: 'shell.settingsSheet.nav.appearance', icon: <SunNavIcon />, group: 'app' },
+  { id: 'branding', labelId: 'shell.settingsSheet.nav.branding', icon: <BrandingNavIcon />, group: 'app' },
+  { id: 'privacy', labelId: 'shell.settingsSheet.nav.privacy', icon: <LockIcon />, group: 'app' },
+  { id: 'about', labelId: 'shell.settingsSheet.nav.about', icon: <InfoIcon />, group: 'app' },
 ];
 
 function KeyNavIcon() {
@@ -278,16 +287,23 @@ export function SettingsSheet({
       <div ref={sheetRef} className="sheet" role="dialog" aria-label={t('shell.settingsSheet.ariaLabel')} aria-modal="true">
         <nav ref={navRef} className="sheet-nav scroll" aria-label={t('shell.settingsSheet.nav.ariaLabel')}>
           <div className="sheet-nav-title">{t('shell.settingsSheet.nav.title')}</div>
-          {NAV_ITEMS.filter((item) => item.id !== 'branding' || allowUserBranding).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-current={section === item.id ? 'true' : undefined}
-              onClick={() => setSection(item.id)}
-            >
-              {item.icon}
-              {t(item.labelId)}
-            </button>
+          {NAV_GROUPS.map((group) => (
+            <div key={group.id} role="group" aria-label={t(group.labelId)}>
+              <div className="sheet-nav-group" aria-hidden="true">{t(group.labelId)}</div>
+              {NAV_ITEMS.filter((item) => item.group === group.id)
+                .filter((item) => item.id !== 'branding' || allowUserBranding)
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={section === item.id ? 'true' : undefined}
+                    onClick={() => setSection(item.id)}
+                  >
+                    {item.icon}
+                    {t(item.labelId)}
+                  </button>
+                ))}
+            </div>
           ))}
         </nav>
 

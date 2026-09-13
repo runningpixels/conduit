@@ -170,6 +170,32 @@ kbd {
   pointer-events: none;
 }
 
+/* ── Keyboard shortcuts sheet (Mod+/) ──────────────────────────────────── */
+.shortcuts-sheet { width: min(480px, 100%); max-height: calc(100vh - 96px); overflow-y: auto; }
+.shortcuts-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.shortcuts-head .cu-dialog-title { margin: 0; }
+.shortcuts-group { margin-top: var(--sp-4); }
+.shortcuts-group-title {
+  margin: 0 0 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.shortcuts-list { margin: 0; display: grid; }
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: 6px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.shortcuts-row:first-child { border-top: 0; }
+.shortcuts-row dt { font-size: 13px; color: var(--ink-2); min-width: 0; }
+.shortcuts-row dd { margin: 0; flex: none; }
+
 /* ── Body grid: sidebar | thread | context panel ───────────────────────── */
 .body {
   /* Positioned so .sidebar-resize can straddle the sidebar's border. */

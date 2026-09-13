@@ -36,6 +36,8 @@ interface CommandPaletteProps {
   /** Open the settings sheet, optionally at a section ('providers' | …). */
   onOpenSettings: (section?: string) => void;
   onToggleTheme: () => void;
+  /** Open the keyboard shortcuts sheet. */
+  onOpenShortcuts?: () => void;
   onToggleDocPanel: () => void;
   onToggleSidebar: () => void;
   onToggleWebSearch: () => void;
@@ -125,6 +127,7 @@ export function CommandPalette({
   onNewChat,
   onOpenSettings,
   onToggleTheme,
+  onOpenShortcuts,
   onToggleDocPanel,
   onToggleSidebar,
   onToggleWebSearch,
@@ -230,13 +233,16 @@ export function CommandPalette({
       { id: 'cmd-delete', group, kind: 'cmd', label: t('workspace.commandPalette.command.deleteChat'), run: () => { onDeleteChat(); close(); } },
       { id: 'cmd-delete-all', group, kind: 'cmd', label: t('workspace.commandPalette.command.deleteAllChats'), tail: '⌫', run: () => { onDeleteAllHistory(); close(); } },
       { id: 'cmd-theme', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleTheme'), run: () => { onToggleTheme(); close(); } },
+      ...(onOpenShortcuts
+        ? [{ id: 'cmd-shortcuts', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.keyboardShortcuts'), tail: modShortcutHint('/'), run: () => { onOpenShortcuts(); close(); } }]
+        : []),
     ];
   }, [
     t, onClose, onNewChat, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
-    onDeleteChat, onDeleteAllHistory, onToggleTheme,
+    onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts,
   ]);
 
   const modelItems = useMemo((): PaletteItem[] => {

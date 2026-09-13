@@ -41,6 +41,17 @@
   overflow-y: auto;
 }
 .sheet-nav-title { padding: 4px 10px var(--sp-3); font-size: 14px; font-weight: 600; }
+/* Twelve sections read as one undifferentiated column; three headings give the
+   eye somewhere to land. Same register as the sidebar's day groups. */
+.sheet-nav-group {
+  padding: var(--sp-3) 10px 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sheet-nav-title + .sheet-nav-group { padding-top: 0; }
 .sheet-nav button {
   width: 100%;
   display: flex;

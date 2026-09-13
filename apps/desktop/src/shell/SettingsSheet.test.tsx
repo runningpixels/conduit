@@ -161,6 +161,15 @@ describe('SettingsSheet', () => {
     expect(screen.getByTestId('workspace-section')).toBeTruthy();
   });
 
+  it('groups the nav under Models, Assistant and App', () => {
+    renderSheet();
+    const group = (name: string) =>
+      Array.from(screen.getByRole('group', { name }).querySelectorAll('button')).map((b) => b.textContent);
+    expect(group('Models')).toEqual(['Providers & keys', 'Chat defaults', 'Web search']);
+    expect(group('Assistant')).toEqual(['Workspace', 'Connectors', 'Prompts', 'Skills', 'Memory']);
+    expect(group('App')).toEqual(expect.arrayContaining(['Appearance', 'Privacy & data', 'About']));
+  });
+
   it('reports the section on screen, on open and on every change', () => {
     const onSectionChange = vi.fn();
     render(

@@ -14,6 +14,7 @@ function renderHead(props: Partial<Parameters<typeof MainHead>[0]> = {}) {
       onOpenPalette={vi.fn()}
       onOpenSettings={vi.fn()}
       onExportDiagnostics={vi.fn()}
+      onOpenShortcuts={vi.fn()}
       {...props}
     />,
   );
@@ -123,6 +124,7 @@ describe('settings split-button', () => {
       'Connectors',
       'Appearance',
       'Privacy & data',
+      'Keyboard shortcutsCtrl+/',
       'Export diagnostics',
       'About',
     ]);
@@ -153,6 +155,14 @@ describe('settings split-button', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export diagnostics' }));
     expect(onExportDiagnostics).toHaveBeenCalledOnce();
     expect(onOpenSettings).not.toHaveBeenCalled();
+  });
+
+  it('opens the keyboard shortcuts sheet', () => {
+    const onOpenShortcuts = vi.fn();
+    renderHead({ onOpenShortcuts });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Keyboard shortcuts/ }));
+    expect(onOpenShortcuts).toHaveBeenCalledOnce();
   });
 
   it('shows provider and connector counts', () => {
@@ -215,6 +225,7 @@ describe('collapsed-sidebar actions', () => {
         onOpenPalette={vi.fn()}
         onOpenSettings={vi.fn()}
         onExportDiagnostics={vi.fn()}
+        onOpenShortcuts={vi.fn()}
         sidebarOverlayOpen
       />,
     );

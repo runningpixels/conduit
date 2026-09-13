@@ -48,7 +48,8 @@ encryption at rest. There is no Conduit account, no backend, and no telemetry.
   no Tauri bridge. Text, code, JSON and Markdown render through React-escaped
   renderers with no `dangerouslySetInnerHTML` anywhere in the safe path.
 - **No telemetry.** Update checks are opt-in and send only
-  `Conduit-Updater/<version>`.
+  `Conduit-Updater/<version>`. Checking is manual by default; background
+  checking and install-on-quit are opt-in, and Conduit never restarts itself.
 
 
 ### Artifacts

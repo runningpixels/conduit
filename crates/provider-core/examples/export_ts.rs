@@ -21,7 +21,7 @@ use provider_core::schema::{
     ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
     ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
     SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
-    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UserLocation,
+    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation,
     WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
@@ -107,6 +107,7 @@ fn main() {
     Theme::export().expect("export Theme");
     LanguageSetting::export().expect("export LanguageSetting");
     KeychainMode::export().expect("export KeychainMode");
+    UpdatePolicy::export().expect("export UpdatePolicy");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
     AgentGuardrails::export().expect("export AgentGuardrails");
     AppError::export()

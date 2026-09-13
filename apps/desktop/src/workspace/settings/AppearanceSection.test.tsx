@@ -29,6 +29,7 @@ const settings = {
   artifactStyledPreview: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
+  updatePolicy: 'manual',
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearchConsentAcknowledged: false,

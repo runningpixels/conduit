@@ -44,6 +44,7 @@ fn main() {
         .manage(state)
         .manage(StreamManager::new())
         .manage(ConnectorRuntimeManager::new())
+        .manage(StagedUpdate::new())
         .invoke_handler(tauri::generate_handler![
             get_app_paths,
             get_settings,
@@ -133,6 +134,9 @@ fn main() {
             // Phase 6: updater trust-promise gate.
             check_for_update,
             download_and_install_update,
+            // Automatic updates: non-networked status read + stage-for-quit.
+            get_update_status,
+            stage_update,
             // Phase 6 M6.5: diagnostics export disclosure + reveal-in-folder.
             get_diagnostics_disclosure_acknowledged,
             acknowledge_diagnostics_disclosure,
@@ -200,6 +204,11 @@ fn main() {
             if let Some(mgr) = handle.try_state::<ConnectorRuntimeManager>() {
                 tauri::async_runtime::block_on(mgr.shutdown_all());
             }
+            // Strictly last: on Windows this spawns the installer and calls
+            // `std::process::exit(0)`, so nothing sequenced after it runs. It
+            // must not pre-empt the connector shutdown above, or child
+            // processes outlive the app.
+            install_staged_update(handle);
         }
     });
 }

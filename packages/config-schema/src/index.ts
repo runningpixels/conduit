@@ -78,6 +78,7 @@ export type { BrandConfig } from './generated/brand_config';
 export type { Transport } from './generated/transport';
 export type { ConnectorDefinition } from './generated/connector_definition';
 export type { RolloutChannel } from './generated/rollout_channel';
+export type { UpdatePolicy } from './generated/update_policy';
 export type { SupportState } from './generated/support_state';
 export type { ConnectorVersion } from './generated/connector_version';
 export type { GrantScope } from './generated/grant_scope';

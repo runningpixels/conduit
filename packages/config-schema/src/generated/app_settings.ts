@@ -6,6 +6,7 @@ import type { LanguageSetting } from "./language_setting";
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
+import type { UpdatePolicy } from "./update_policy";
 import type { WebSearchDefaults } from "./web_search_defaults";
 
 export type AppSettings = { activeProvider: string, activeModel: string, localOnly: boolean, diagnosticsEnabled: boolean, theme: Theme, 
@@ -38,11 +39,18 @@ artifactStyledPreview: boolean,
  */
 updateChannel: RolloutChannel, 
 /**
- * Phase 6: whether the app may check for updates. Defaults `true` but is a
- * checkbox — updates are never automatic; "Check now" is explicit and
- * `installMode: passive` requires user confirmation before applying.
+ * Phase 6: whether the app may check for updates at all. Defaults `true`
+ * but is a checkbox, and it is the hard off-switch: while it is `false`,
+ * neither "Check now" nor the background scheduler makes a request.
  */
 updateCheckEnabled: boolean, 
+/**
+ * Whether the app checks — and installs — on its own, and how far it goes
+ * when it does. Defaults to [`UpdatePolicy::Manual`], which is the
+ * pre-existing behaviour: nothing happens without a button press. Only
+ * meaningful while `update_check_enabled` is true.
+ */
+updatePolicy: UpdatePolicy, 
 /**
  * Phase 6: first-run onboarding completion flag. `false` until the user
  * finishes the BYOK gate; `App.tsx` renders `<Onboarding>` instead of the

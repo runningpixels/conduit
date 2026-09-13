@@ -348,6 +348,13 @@ impl AppState {
         if let Some(value) = patch.update_check_enabled {
             settings.update_check_enabled = value;
         }
+        // `update_policy` is applied independently of `update_check_enabled`:
+        // the two are orthogonal, and clobbering a remembered policy when the
+        // master toggle goes off would silently reset the user's choice the
+        // moment they toggled checks back on.
+        if let Some(value) = patch.update_policy {
+            settings.update_policy = value;
+        }
         if let Some(value) = patch.onboarding_completed {
             settings.onboarding_completed = value;
         }

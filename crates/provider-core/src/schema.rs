@@ -1700,6 +1700,35 @@ pub enum KeychainMode {
     File,
 }
 
+/// How the app acts on updates *on its own*.
+///
+/// Orthogonal to [`AppSettings::update_check_enabled`], which remains the hard
+/// off-switch: when that is `false` nothing here runs and no request leaves the
+/// machine, whatever this is set to. This only decides what happens when checks
+/// are permitted at all.
+///
+/// Defaults to [`UpdatePolicy::Manual`] — today's behaviour — and that default
+/// is also the upgrade path. There is no settings migration runner, so a
+/// `settings.json` written before this field existed deserializes to `Manual`
+/// and nobody is silently moved onto a background network schedule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/update_policy.ts"
+)]
+pub enum UpdatePolicy {
+    /// Only the explicit "Check now" button reaches the network.
+    #[default]
+    Manual,
+    /// Check on a schedule and surface a toast when something is found.
+    /// Installing stays a deliberate click.
+    Notify,
+    /// Check on a schedule, verify and stage the payload, then apply it the
+    /// next time the user quits. Never restarts the app out from under them.
+    Automatic,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -1751,11 +1780,17 @@ pub struct AppSettings {
     /// Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.
     #[serde(default)]
     pub update_channel: RolloutChannel,
-    /// Phase 6: whether the app may check for updates. Defaults `true` but is a
-    /// checkbox — updates are never automatic; "Check now" is explicit and
-    /// `installMode: passive` requires user confirmation before applying.
+    /// Phase 6: whether the app may check for updates at all. Defaults `true`
+    /// but is a checkbox, and it is the hard off-switch: while it is `false`,
+    /// neither "Check now" nor the background scheduler makes a request.
     #[serde(default = "default_true")]
     pub update_check_enabled: bool,
+    /// Whether the app checks — and installs — on its own, and how far it goes
+    /// when it does. Defaults to [`UpdatePolicy::Manual`], which is the
+    /// pre-existing behaviour: nothing happens without a button press. Only
+    /// meaningful while `update_check_enabled` is true.
+    #[serde(default)]
+    pub update_policy: UpdatePolicy,
     /// Phase 6: first-run onboarding completion flag. `false` until the user
     /// finishes the BYOK gate; `App.tsx` renders `<Onboarding>` instead of the
     /// workspace while false (and while no provider credential is configured).
@@ -1852,6 +1887,7 @@ impl Default for AppSettings {
             artifact_styled_preview: true,
             update_channel: RolloutChannel::Stable,
             update_check_enabled: true,
+            update_policy: UpdatePolicy::Manual,
             onboarding_completed: false,
             web_search_enabled: false,
             web_search: WebSearchDefaults::default(),
@@ -1902,6 +1938,8 @@ pub struct SettingsPatch {
     pub update_channel: Option<RolloutChannel>,
     #[ts(optional)]
     pub update_check_enabled: Option<bool>,
+    #[ts(optional)]
+    pub update_policy: Option<UpdatePolicy>,
     #[ts(optional)]
     pub onboarding_completed: Option<bool>,
     /// Phase 7: master web search toggle. The renderer also enforces UI
@@ -2024,5 +2062,70 @@ mod language_setting_tests {
         }"#;
         let settings: AppSettings = serde_json::from_str(json).expect("deserialize");
         assert_eq!(settings.language, LanguageSetting::System);
+    }
+}
+
+#[cfg(test)]
+mod update_policy_tests {
+    use super::*;
+
+    #[test]
+    fn default_is_manual() {
+        assert_eq!(UpdatePolicy::default(), UpdatePolicy::Manual);
+        assert_eq!(AppSettings::default().update_policy, UpdatePolicy::Manual);
+    }
+
+    #[test]
+    fn settings_json_without_update_policy_defaults_to_manual() {
+        // The upgrade path that matters: every `settings.json` written before
+        // this field existed belongs to a user who was promised updates are
+        // never automatic. `#[serde(default)]` is the only thing standing
+        // between them and a background network schedule they did not choose —
+        // there is no settings migration runner to catch this elsewhere.
+        let json = r#"{
+            "activeProvider": "anthropic",
+            "activeModel": "claude-sonnet-4",
+            "localOnly": true,
+            "diagnosticsEnabled": true,
+            "theme": "dark",
+            "updateCheckEnabled": true
+        }"#;
+        let settings: AppSettings = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(settings.update_policy, UpdatePolicy::Manual);
+        assert!(settings.update_check_enabled);
+    }
+
+    #[test]
+    fn policy_round_trips_as_camel_case() {
+        for (policy, expected) in [
+            (UpdatePolicy::Manual, "\"manual\""),
+            (UpdatePolicy::Notify, "\"notify\""),
+            (UpdatePolicy::Automatic, "\"automatic\""),
+        ] {
+            let json = serde_json::to_string(&policy).expect("serialize");
+            assert_eq!(json, expected);
+            let back: UpdatePolicy = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(back, policy);
+        }
+    }
+
+    #[test]
+    fn policy_is_independent_of_the_master_toggle() {
+        // A remembered `Automatic` with checks switched off must stay
+        // `Automatic` on disk. The scheduler reads both and refuses to run;
+        // the setting itself is not what enforces that, so it is not what
+        // should be reset.
+        let json = r#"{
+            "activeProvider": "anthropic",
+            "activeModel": "claude-sonnet-4",
+            "localOnly": true,
+            "diagnosticsEnabled": true,
+            "theme": "dark",
+            "updateCheckEnabled": false,
+            "updatePolicy": "automatic"
+        }"#;
+        let settings: AppSettings = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(settings.update_policy, UpdatePolicy::Automatic);
+        assert!(!settings.update_check_enabled);
     }
 }

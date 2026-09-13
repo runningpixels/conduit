@@ -52,7 +52,9 @@ SQLite chiffrée. Il n'y a ni compte Conduit, ni backend, ni télémétrie.
   JSON et le Markdown passent par des moteurs de rendu échappés par React, sans
   aucun `dangerouslySetInnerHTML` sur le chemin sûr.
 - **Aucune télémétrie.** La recherche de mises à jour est facultative et
-  n'envoie que `Conduit-Updater/<version>`.
+  n'envoie que `Conduit-Updater/<version>`. Par défaut la recherche est
+  manuelle ; la recherche en arrière-plan et l'installation à la fermeture sont
+  facultatives, et Conduit ne redémarre jamais de lui-même.
 
 ### Artefacts
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, ConversationFolder, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
@@ -85,6 +85,12 @@ import {
   previewConversationExport,
   setConversationTitle,
 } from './ipc/client';
+
+/* Dev-only (`?route=gallery`, see `devRoute.ts`): the theming project's
+ * component gallery. Lazy so its fixtures and every component it renders
+ * standalone (`dev/Gallery.tsx`) ship as a separate chunk that a production
+ * build — where `devRoute` is always `null` — never fetches. */
+const LazyGallery = lazy(() => import('./dev/Gallery'));
 
 const DOC_PANEL_HINT_KEY = 'conduit:v5-doc-panel-hint-seen';
 const CONVO_PROVIDERS_KEY = 'conduit:v7-convo-providers';
@@ -1433,6 +1439,18 @@ export default function App() {
   // bad key, or a keychain write that failed, reported nothing at all and left
   // the user clicking a button that appeared to do nothing. `.toast-stack` is
   // `position: fixed`, so where it sits in the tree does not matter.
+  /* Dev-only: a whole different page, so it bypasses onboarding/boot state
+   * entirely rather than threading through every check below. `devRoute` is
+   * `null` in every production build (see `devRoute.ts`), so this branch is
+   * unreachable there. */
+  if (devRoute === 'gallery') {
+    return (
+      <Suspense fallback={null}>
+        <LazyGallery />
+      </Suspense>
+    );
+  }
+
   if (onboarding?.migrationRecovery) {
     return (
       <div className="app" id="app">

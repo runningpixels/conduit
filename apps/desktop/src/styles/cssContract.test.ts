@@ -34,6 +34,10 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const cssFiles = [
   ...walk(join(srcRoot, 'styles')).filter((f) => f.endsWith('.css')),
+  // `dev/gallery.css` (the `?route=gallery` layout sheet) is dev-only, but the
+  // orphan/dead-rule guards below scan every `.tsx` in `srcRoot` regardless —
+  // without this, every gallery-only class would be an unconditional orphan.
+  ...walk(join(srcRoot, 'dev')).filter((f) => f.endsWith('.css')),
   join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'),
 ];
 

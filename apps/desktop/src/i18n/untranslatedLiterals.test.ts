@@ -85,6 +85,12 @@ const sourceFiles = walkFiles(srcRoot)
   // `src/i18n/` is the catalog layer itself; `src/test/` is test scaffolding.
   .filter((f) => !f.startsWith('src/i18n/') && !f.startsWith('src/test/'))
   .filter((f) => !f.startsWith('src/scripts/'))
+  // `src/dev/` is dev-only tooling in the same sense `src/scripts/` is: reached
+  // only behind `import.meta.env.DEV` (`devRoute.ts`), dead code in a
+  // production build, and never a translated surface — the theming project's
+  // `?route=gallery` page (`dev/Gallery.tsx`, `dev/galleryFixtures.ts`) is
+  // demo copy for developers taking screenshots, not user-facing prose.
+  .filter((f) => !f.startsWith('src/dev/'))
   .sort();
 
 /**

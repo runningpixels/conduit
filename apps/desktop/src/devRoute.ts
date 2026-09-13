@@ -24,11 +24,15 @@
  *   ?route=artifacts     open the workspace with sample artifacts in the panel
  *                        (`dev/artifactFixtures.ts`) — dev:web has no backend,
  *                        so without it the panel only ever shows its empty state
+ *   ?route=gallery       render every UI surface on one page (`dev/Gallery.tsx`),
+ *                        for the theming project's visual snapshot suite.
+ *                        `&section=<name>` narrows it to one `data-gallery-section`
+ *                        for a focused screenshot.
  */
 
-export type DevRoute = 'onboarding' | 'artifacts' | null;
+export type DevRoute = 'onboarding' | 'artifacts' | 'gallery' | null;
 
-const KNOWN: readonly string[] = ['onboarding', 'artifacts'];
+const KNOWN: readonly string[] = ['onboarding', 'artifacts', 'gallery'];
 
 export function readDevRoute(search?: string): DevRoute {
   if (!import.meta.env.DEV) return null;

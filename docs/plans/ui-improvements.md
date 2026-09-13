@@ -1,6 +1,6 @@
 # UI improvements — resizable sidebar, top-bar settings, and follow-ups
 
-Status: **PRs 1–4** implemented (#42, #43, #44, and row actions / menus); PRs 5–6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
+Status: **PRs 1–5** implemented (#42–#45, and shortcuts / window title / grouped nav); PR 6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
 
 Two asks from dogfooding, plus what a pass over the running shell turned up:
 
@@ -326,6 +326,15 @@ state, about 30% of a 1440px window.
 headings: **Models** (Providers, Chat defaults, Web search), **Workspace** (Workspace, Connectors,
 Prompts, Skills, Memory), and **App** (Appearance, Branding, Privacy & data, About). This is
 navigation markup only, with no settings changes.
+
+*As built (PR 5):*
+- **Registry.** `HOTKEYS` in `useHotkeys.ts` is the one table: the key handler matches against
+  it and the sheet renders it, and a test fails if a chord is matched anywhere else.
+- **`Ctrl+/` with Shift.** The binding accepts Shift, because `/` is Shift+7 on German keyboards.
+- **Window title.** It needed `core:window:allow-set-title`, a core window permission inside
+  ADR-008's `core:*` surface.
+- **Nav headings.** They are *Models / Assistant / App*. A *Workspace* heading would have sat
+  directly above a *Workspace* item.
 
 ### P3: larger, design-first
 

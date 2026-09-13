@@ -38,3 +38,8 @@ export function modShortcutHint(key: string): string {
 export function modShiftShortcutHint(key: string): string {
   return isMacPlatform() ? `⌘⇧${key}` : `Ctrl+Shift+${key}`;
 }
+
+/** The Escape keycap as a hint: `esc` on macOS, as its keyboards print it; `Esc` else. */
+export function escapeKeyHint(): string {
+  return isMacPlatform() ? 'esc' : 'Esc';
+}

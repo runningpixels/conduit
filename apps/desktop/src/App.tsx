@@ -69,6 +69,8 @@ import {
 } from './workspace/useLayout';
 import { useFocusTrap } from './shell/useFocusTrap';
 import { useHotkeys } from './workspace/useHotkeys';
+import { ShortcutsSheet } from './workspace/ShortcutsSheet';
+import { useWindowTitle } from './shell/useWindowTitle';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
 import { modShortcutHint } from './lib/shortcuts';
@@ -218,6 +220,7 @@ export default function App() {
   const [docTab, setDocTab] = useState<'preview' | 'source'>('preview');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeConversationSummary, setActiveConversationSummary] = useState<ConversationSummary | null>(null);
+  useWindowTitle(activeConversationSummary?.displayTitle);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationFolders, setConversationFolders] = useState<ConversationFolder[]>([]);
   const [convoProviders, setConvoProviders] = useState<Record<string, string>>(readConvoProviders);
@@ -1150,6 +1153,9 @@ export default function App() {
   // there, so the one-click paths agree on a destination instead of each
   // hard-coding its own (the workspace menu's "Settings" used to open
   // Appearance while its own Ctrl+, hint opened Providers).
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const lastSettingsSectionRef = useRef<SettingsSection>('providers');
   const openSettings = useCallback((section?: SettingsSection) => {
     setSettingsSection(section ?? lastSettingsSectionRef.current);
@@ -1229,6 +1235,7 @@ export default function App() {
         void handleNewChat();
       },
       settings: () => openSettings(),
+      shortcuts: () => setShortcutsOpen((open) => !open),
       toggleSidebar: () => toggleSidebarView(),
       toggleDocPanel: () => toggleDocPanelView(),
       historySearch: () => openPalette(),
@@ -1250,6 +1257,10 @@ export default function App() {
         });
       },
       escape: (event: KeyboardEvent) => {
+        if (shortcutsOpen) {
+          setShortcutsOpen(false);
+          return;
+        }
         if (paletteOpen) {
           setPaletteOpen(false);
           return;
@@ -1287,6 +1298,7 @@ export default function App() {
       openSettings,
       paletteOpen,
       settingsOpen,
+      shortcutsOpen,
       toggleDocPanelView,
       toggleSidebarView,
       sidebarOverlay.open,
@@ -1447,6 +1459,7 @@ export default function App() {
             onOpenPalette={openPalette}
             onOpenSettings={openSettings}
             onExportDiagnostics={() => void handleExportDiagnostics()}
+            onOpenShortcuts={openShortcuts}
             providerCount={providers.length > 0 ? providers.length : undefined}
             connectorCount={connectorCount}
           />
@@ -1513,6 +1526,8 @@ export default function App() {
         />
       </div>
 
+      <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
+
       {/* Closes whichever side column is showing as an overlay (workspace.css). */}
       <div className="overlay-scrim" aria-hidden="true" onClick={closeOverlays} />
 
@@ -1543,6 +1558,7 @@ export default function App() {
         onNewChat={() => void handleNewChat()}
         onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
         onToggleTheme={handleToggleTheme}
+        onOpenShortcuts={openShortcuts}
         onToggleDocPanel={toggleDocPanelView}
         onToggleSidebar={toggleSidebarView}
         onToggleWebSearch={() => chatViewRef.current?.toggleWebSearch()}

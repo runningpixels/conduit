@@ -1,6 +1,6 @@
 # UI improvements — resizable sidebar, top-bar settings, and follow-ups
 
-Status: **PR 1** (sidebar resize, #42) and **PR 2** (top-bar settings) implemented; PRs 3–6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
+Status: **PR 1** (#42), **PR 2** (#43) and **PR 3** (narrow-window overlays) implemented; PRs 4–6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
 
 Two asks from dogfooding, plus what a pass over the running shell turned up:
 
@@ -264,6 +264,22 @@ scrim click, or selecting a chat. Track overlay state separately from `data-side
 (`data-sidebar-overlay="open"`) so the saved desktop preference is untouched. This is the
 follow-up the `workspace.css:644` comment already names. Do the same for the doc panel with
 `Ctrl+J`.
+
+*As built:*
+- **Breakpoints.** `useColumnOverlay` handles the sidebar at ≤900px and the panel at ≤1100px.
+  The panel had the same dead end between 900 and 1100px.
+- **One overlay at a time.**
+- **What opens the panel overlay.** Opening an artifact opens it; a document tool firing
+  mid-stream does not, since it only sets the desktop preference, so nothing drops over a thread
+  being read.
+- **Grid placement.** The four grid columns are placed explicitly, because a `position: fixed`
+  column would otherwise let auto-placement slide the thread into a 0px track.
+- **Focus.** Focus moves into the overlay, falling back to the container when it has no controls
+  (the empty artifact panel).
+- **Tab order.** A collapsed or force-hidden column is now `visibility: hidden`. Before this, its
+  zero-width content stayed in the Tab order.
+- **`--panel-open-w`.** The panel moved to an `--panel-open-w` / `--panel-w` split like the
+  sidebar's, which also fixes panel content reflowing during its collapse animation.
 
 **b. Sidebar row actions (B6).**
 - Add a **⋯ button** on hover and focus for each conversation row. It opens the same menu as

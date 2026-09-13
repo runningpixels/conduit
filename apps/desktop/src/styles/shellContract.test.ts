@@ -233,6 +233,51 @@ describe('column resize', () => {
 });
 
 /**
+ * Narrow windows. Both side columns are force-collapsed below their
+ * breakpoints, and before overlays existed that made every conversation and
+ * every artifact unreachable by pointer: the toggles flipped an attribute the
+ * forced collapse then ignored.
+ */
+describe('side columns on a narrow window', () => {
+  const css = allCss.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // An overlay is position: fixed, which takes it out of the grid; with
+  // auto-placement the thread would slide into the sidebar's 0px track.
+  it.each([
+    ['sidebar', 1],
+    ['center', 2],
+    ['resize-handle', 3],
+    ['doc-panel', 4],
+  ])('places .%s in its grid column explicitly', (cls, column) => {
+    expect(css).toMatch(new RegExp(`\\.body\\s*>\\s*\\.${cls}\\s*\\{[^}]*grid-column:\\s*${column}\\b`));
+  });
+
+  it.each(['sidebar', 'panel'])('shows the %s as a fixed overlay while its attribute is set', (id) => {
+    const target = id === 'sidebar' ? 'sidebar' : 'doc-panel';
+    expect(css).toMatch(
+      new RegExp(`html\\[data-${id}-overlay="open"\\]\\s+\\.body\\s*>\\s*\\.${target}\\s*\\{[^}]*position:\\s*fixed`),
+    );
+    expect(css).toMatch(new RegExp(`html\\[data-${id}-overlay="open"\\]\\s+\\.overlay-scrim`));
+  });
+
+  it('renders the scrim that closes an overlay', () => {
+    expect(openingTagFor('overlay-scrim')?.tag).toContain('onClick=');
+  });
+
+  it("keeps the sidebar's actions in the title strip below the narrow breakpoint", () => {
+    expect(css).toMatch(
+      new RegExp(`@media \\(max-width: ${NARROW_BREAKPOINT}px\\)\\s*\\{[\\s\\S]*?\\.head-nav\\s*\\{[^}]*display:\\s*flex`),
+    );
+  });
+
+  // A zero-width track clips its content without taking it out of the tab order.
+  it('takes a collapsed column out of the tab order', () => {
+    expect(css).toMatch(/html\[data-sidebar="closed"\]:not\(\[data-sidebar-overlay\]\)\s+\.body\s*>\s*\.sidebar/);
+    expect(css).toMatch(/html\[data-panel="closed"\]:not\(\[data-panel-overlay\]\)\s+\.body\s*>\s*\.doc-panel/);
+  });
+});
+
+/**
  * The caption row has to be a real, non-zero row of the `.app` grid.
  *
  * This is what replaced the previous arrangement, where the cluster floated

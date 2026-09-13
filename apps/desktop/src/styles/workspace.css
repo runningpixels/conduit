@@ -187,6 +187,25 @@ html[data-sidebar="closed"] .body { --sidebar-w: 0px; }
 html[data-panel="closed"] .body { --panel-w: 0px; }
 html[data-panel="closed"] .resize-handle { visibility: hidden; }
 
+/* Every column is placed explicitly. Auto-placement would be enough while all
+   four stay in flow, but a side column shown as an overlay (below) is
+   position: fixed, which takes it out of the grid — and the rest would slide
+   one track left, putting the thread into the sidebar's zero-width track. */
+.body > .sidebar { grid-column: 1; grid-row: 1; }
+.body > .center { grid-column: 2; grid-row: 1; }
+.body > .resize-handle { grid-column: 3; grid-row: 1; }
+.body > .doc-panel { grid-column: 4; grid-row: 1; }
+
+/* A collapsed column is a zero-width track, which clips its content to nothing
+   but leaves every button in it in the tab order — keyboard focus walked into a
+   sidebar nobody could see. Hidden once the collapse animation has run (the
+   delay), and visible again at once on opening (no delay in the open state). */
+html[data-sidebar="closed"]:not([data-sidebar-overlay]) .body > .sidebar,
+html[data-panel="closed"]:not([data-panel-overlay]) .body > .doc-panel {
+  visibility: hidden;
+  transition: visibility 0s linear .22s;
+}
+
 /* While a column is dragged the track must follow the pointer, not ease towards
    it: the .22s collapse transition above would otherwise run on every
    pointermove and trail the cursor by a fifth of a second. */
@@ -635,12 +654,12 @@ html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden;
 /* Children carry a min-width equal to their open width so content does not
    reflow during the collapse animation (spec §4.1); the item itself stays
    min-width:0 so the grid track can collapse fully.
-   Derived from --panel-w rather than pinned at a literal, because V9 makes the
+   Derived from --panel-open-w rather than pinned at a literal, because V9 makes the
    panel an inset card: its 10px right margin and 2px of border come out of the
    track, and a literal equal to the full track width would overflow the card by
    exactly that much. The column is user-resizable, so the arithmetic has to
    follow it. */
-.doc-panel > * { min-width: calc(var(--panel-w) - 12px); }
+.doc-panel > * { min-width: calc(var(--panel-open-w) - 12px); }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
 @keyframes ping {
@@ -659,6 +678,62 @@ html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden;
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes overlay-in-left {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes overlay-in-right {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Side columns as overlays (narrow windows) ─────────────────────────── */
+/* Where the window has no room for a side column it is force-collapsed (the
+   breakpoints below), and ⌘\ / ⌘J — or the title strip's buttons — show it
+   over the thread instead of beside it. useColumnOverlay puts the attributes on
+   <html> only while an overlay is both requested and applicable, so these rules
+   need no media query of their own and cannot disagree with the hook about
+   where the breakpoint is.
+
+   Both start under the caption row, which stays the window's drag region and
+   keeps its controls reachable, as does the scrim that closes them. */
+.overlay-scrim {
+  display: none;
+  position: fixed;
+  inset: var(--titlebar-h) 0 0 0;
+  z-index: 65;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  animation: pane-in var(--duration-normal) var(--ease-emphasized) both;
+}
+html[data-sidebar-overlay="open"] .overlay-scrim,
+html[data-panel-overlay="open"] .overlay-scrim { display: block; }
+
+html[data-sidebar-overlay="open"] .body > .sidebar {
+  position: fixed;
+  top: var(--titlebar-h);
+  bottom: 0;
+  left: 0;
+  width: min(var(--sidebar-open-w), calc(100vw - 48px));
+  z-index: 70;
+  box-shadow: var(--lift);
+  animation: overlay-in-left var(--duration-normal) var(--ease-emphasized) both;
+}
+
+/* The inset card keeps its margins and border as an overlay, including when
+   the desktop preference is "closed" (document-panel.css strips both there so a
+   zero-width track leaves no sliver). */
+html[data-panel-overlay="open"] .body > .doc-panel {
+  position: fixed;
+  top: var(--titlebar-h);
+  bottom: 0;
+  right: 0;
+  width: min(var(--panel-open-w), calc(100vw - 48px));
+  margin: 10px;
+  border-width: 1px;
+  z-index: 70;
+  box-shadow: var(--lift);
+  animation: overlay-in-right var(--duration-normal) var(--ease-emphasized) both;
+}
 
 /* ── Breakpoints (V9 §4, §8) ───────────────────────────────────────────── */
 /* V9 hides the artifact panel below 1100px rather than narrowing it at 1180.
@@ -667,13 +742,18 @@ html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden;
 @media (max-width: 1100px) {
   html[data-panel="open"] .body { --panel-w: 0px; }
   .resize-handle { visibility: hidden; }
+  html:not([data-panel-overlay]) .body > .doc-panel { visibility: hidden; }
 }
 @media (max-width: 900px) {
   /* Force-collapse both side columns; ⌘\ / ⌘J overlay them instead of
-     insetting (spec §4.3) — the overlay behaviour is a follow-up affordance. */
+     insetting (spec §4.3, and the overlay rules above). */
   .body { --sidebar-w: 0px !important; --panel-w: 0px !important; }
   .resize-handle,
   .sidebar-resize { display: none; }
+  /* The sidebar is never a column here, whatever its saved state, so its
+     actions always stand in at the title strip's left end. */
+  .head-nav { display: flex; }
+  html:not([data-sidebar-overlay]) .body > .sidebar { visibility: hidden; }
 }
 @media (max-width: 720px) {
   /* out of scope per spec §2 */

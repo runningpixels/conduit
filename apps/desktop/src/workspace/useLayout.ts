@@ -1,6 +1,6 @@
 /*
  * V7 workspace layout interactions:
- *  - column-resize: pointer/keyboard drag of --sidebar-open-w and --panel-w,
+ *  - column-resize: pointer/keyboard drag of --sidebar-open-w and --panel-open-w,
  *    persisted to localStorage
  *  - sidebar-collapse: [data-sidebar] on <html> (open|closed)
  *  - panel-collapse: [data-panel] on <html> (open|closed)
@@ -75,7 +75,7 @@ const COLUMNS: Record<ColumnId, ColumnSpec> = {
     hiddenAtOrBelow: NARROW_BREAKPOINT,
   },
   panel: {
-    cssVar: '--panel-w',
+    cssVar: '--panel-open-w',
     field: 'panelW',
     min: PANEL_MIN,
     max: PANEL_MAX,
@@ -344,7 +344,7 @@ function useResizableColumn(id: ColumnId, options: ResizableColumnOptions = {}) 
   };
 }
 
-/** Document-panel column resize: drag of --panel-w persisted to localStorage.
+/** Document-panel column resize: drag of --panel-open-w persisted to localStorage.
  *  Disabled at or below PANEL_BREAKPOINT, where the panel is hidden (§4.3). */
 export function useColumnResize() {
   return useResizableColumn('panel');
@@ -355,6 +355,54 @@ export function useColumnResize() {
  *  NARROW_BREAKPOINT, where the sidebar is force-collapsed (§4.3). */
 export function useSidebarResize(collapse: CollapseControls) {
   return useResizableColumn('sidebar', { collapse });
+}
+
+/** Whether the window is at or below `px` wide, tracked across resizes. */
+export function useViewportAtMost(px: number): boolean {
+  const [atMost, setAtMost] = useState(() => typeof window !== 'undefined' && window.innerWidth <= px);
+  useLayoutEffect(() => {
+    const update = () => setAtMost(window.innerWidth <= px);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [px]);
+  return atMost;
+}
+
+/**
+ * A side column presented as an overlay, where the window has no room for it
+ * as a column: the sidebar at or below NARROW_BREAKPOINT, the document panel at
+ * or below PANEL_BREAKPOINT. Both are force-collapsed there, so without this the
+ * collapse toggles flip an attribute that changes nothing and the column's
+ * content — every conversation, every artifact — is out of reach.
+ *
+ * Deliberately separate from the collapse state: that is the saved desktop
+ * preference, and opening an overlay on a narrow window must not rewrite it.
+ * `[data-sidebar-overlay]` / `[data-panel-overlay]` exist on <html> only while
+ * the overlay is both requested and applicable, and a window that widens past
+ * the breakpoint drops the request.
+ */
+export function useColumnOverlay(id: ColumnId) {
+  const spec = COLUMNS[id];
+  const narrow = useViewportAtMost(spec.hiddenAtOrBelow);
+  const [requested, setRequested] = useState(false);
+  const open = narrow && requested;
+
+  useLayoutEffect(() => {
+    const attr = `data-${id}-overlay`;
+    if (open) document.documentElement.setAttribute(attr, 'open');
+    else document.documentElement.removeAttribute(attr);
+  }, [id, open]);
+
+  useLayoutEffect(() => {
+    if (!narrow) setRequested(false);
+  }, [narrow]);
+
+  const show = useCallback(() => setRequested(true), []);
+  const hide = useCallback(() => setRequested(false), []);
+  const toggle = useCallback(() => setRequested((current) => !current), []);
+
+  return { narrow, open, show, hide, toggle };
 }
 
 function readStoredSidebar(): SidebarMode {

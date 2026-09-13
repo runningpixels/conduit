@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, ConversationFolder, ConversationSummary, FileState, OnboardingState, ProviderDescriptor, SearchResult } from './ipc/contracts';
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
@@ -60,7 +60,14 @@ import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { applyUiPrefs } from './shell/uiPrefs';
-import { useColumnResize, useDocPanelCollapse, useSidebarCollapse, useSidebarResize } from './workspace/useLayout';
+import {
+  useColumnOverlay,
+  useColumnResize,
+  useDocPanelCollapse,
+  useSidebarCollapse,
+  useSidebarResize,
+} from './workspace/useLayout';
+import { useFocusTrap } from './shell/useFocusTrap';
 import { useHotkeys } from './workspace/useHotkeys';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
@@ -164,6 +171,22 @@ async function resolveSourceMessageId(messageId: string): Promise<string> {
   return messageId;
 }
 
+/**
+ * Moves focus into an overlay: its first control, or the overlay itself when it
+ * has none (the artifact panel's empty state). Without the fallback, focus
+ * would stay on the button that opened it, outside the trap.
+ */
+function focusInto(root: HTMLElement | null) {
+  if (!root) return;
+  const first = root.querySelector<HTMLElement>('button:not([disabled]), [href], input, textarea, select, [tabindex="0"]');
+  if (first) {
+    first.focus();
+    return;
+  }
+  if (!root.hasAttribute('tabindex')) root.setAttribute('tabindex', '-1');
+  root.focus();
+}
+
 export default function App() {
   const t = useT();
   /* Read once per mount, not per render: it never changes within a page load
@@ -220,6 +243,64 @@ export default function App() {
   const { open: openSidebar, close: closeSidebar, toggle: toggleSidebar } = useSidebarCollapse();
   const sidebarResize = useSidebarResize({ open: openSidebar, close: closeSidebar });
   const { collapsed: docPanelCollapsed, collapse: collapseDocPanel, expand: expandDocPanel, toggle: toggleDocPanel } = useDocPanelCollapse();
+
+  // Where the window has no room for a side column, its toggles show it as an
+  // overlay instead of flipping a collapse state that changes nothing there.
+  // Only one overlay at a time: opening either closes the other.
+  const sidebarOverlay = useColumnOverlay('sidebar');
+  const panelOverlay = useColumnOverlay('panel');
+  const { hide: hideSidebarOverlay, toggle: toggleSidebarOverlay } = sidebarOverlay;
+  const { hide: hidePanelOverlay, show: showPanelOverlay, toggle: togglePanelOverlay } = panelOverlay;
+  const toggleSidebarView = useCallback(() => {
+    if (!sidebarOverlay.narrow) {
+      toggleSidebar();
+      return;
+    }
+    hidePanelOverlay();
+    toggleSidebarOverlay();
+  }, [sidebarOverlay.narrow, toggleSidebar, hidePanelOverlay, toggleSidebarOverlay]);
+  const toggleDocPanelView = useCallback(() => {
+    if (!panelOverlay.narrow) {
+      toggleDocPanel();
+      return;
+    }
+    hideSidebarOverlay();
+    togglePanelOverlay();
+  }, [panelOverlay.narrow, toggleDocPanel, hideSidebarOverlay, togglePanelOverlay]);
+  /** Bring the panel into view for something the user asked to see. */
+  const showDocPanel = useCallback(() => {
+    if (!panelOverlay.narrow) {
+      expandDocPanel();
+      return;
+    }
+    hideSidebarOverlay();
+    showPanelOverlay();
+  }, [panelOverlay.narrow, expandDocPanel, hideSidebarOverlay, showPanelOverlay]);
+  const closeOverlays = useCallback(() => {
+    hideSidebarOverlay();
+    hidePanelOverlay();
+  }, [hideSidebarOverlay, hidePanelOverlay]);
+  const panelVisible = panelOverlay.narrow ? panelOverlay.open : !docPanelCollapsed;
+
+  // An overlay is modal in effect — the scrim takes the pointer — so it takes
+  // the keyboard too: focus moves in, Tab stays in, and closing hands focus
+  // back to whatever opened it (useFocusTrap restores it). The elements are
+  // looked up rather than ref-forwarded, since both components render their
+  // own root and the panel swaps between two.
+  const sidebarElRef = useRef<HTMLElement | null>(null);
+  const panelElRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    sidebarElRef.current = document.getElementById('sidebar');
+    panelElRef.current = document.querySelector<HTMLElement>('.body > .doc-panel');
+  });
+  useFocusTrap(sidebarElRef, sidebarOverlay.open);
+  useFocusTrap(panelElRef, panelOverlay.open);
+  useEffect(() => {
+    if (sidebarOverlay.open) focusInto(sidebarElRef.current);
+  }, [sidebarOverlay.open]);
+  useEffect(() => {
+    if (panelOverlay.open) focusInto(panelElRef.current);
+  }, [panelOverlay.open]);
   // Rich status: accepts either a string (legacy) or a StatusState object.
   const setStatusMessage = useCallback((message: string | StatusState) => {
     const state = typeof message === 'string' ? fromString(message) : message;
@@ -281,6 +362,12 @@ export default function App() {
   }, [toasts, dismissToast]);
 
   const handleCollapseDocPanel = useCallback(() => {
+    if (panelOverlay.narrow) {
+      // The panel's own hide button, inside the overlay: dismiss, and leave
+      // the desktop preference as it was.
+      hidePanelOverlay();
+      return;
+    }
     collapseDocPanel();
     try {
       if (localStorage.getItem(DOC_PANEL_HINT_KEY) === '1') return;
@@ -293,7 +380,7 @@ export default function App() {
     } catch {
       /* ignore storage failures */
     }
-  }, [collapseDocPanel]);
+  }, [collapseDocPanel, panelOverlay.narrow, hidePanelOverlay]);
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -327,6 +414,11 @@ export default function App() {
   useEffect(() => {
     void refreshActiveConversationSummary(activeConversationId);
   }, [activeConversationId, refreshActiveConversationSummary]);
+
+  // Picking a chat from anywhere (the palette included) is done with the list.
+  useEffect(() => {
+    hideSidebarOverlay();
+  }, [activeConversationId, hideSidebarOverlay]);
 
   // Best-effort active connector count for the sidebar workspace menu tail.
   useEffect(() => {
@@ -616,7 +708,7 @@ export default function App() {
       try {
         const got = await getArtifact(artifactId);
         if (!got) return;
-        expandDocPanel();
+        showDocPanel();
         addOpenArtifactId(artifactId);
         setActiveArtifact(got);
         const state = await checkArtifactFileState(artifactId);
@@ -626,7 +718,7 @@ export default function App() {
         setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.openArtifactFailed'), 'error'));
       }
     },
-    [addOpenArtifactId, expandDocPanel],
+    [addOpenArtifactId, showDocPanel],
   );
 
   const handleChatTurnComplete = useCallback(
@@ -727,7 +819,7 @@ export default function App() {
     if (!activeArtifact.contentPath) return;
     const tick = () => {
       if (document.visibilityState !== 'visible') return;
-      if (docPanelCollapsed) return;
+      if (!panelVisible) return;
       void (async () => {
         try {
           const state = await checkArtifactFileState(activeArtifact.id);
@@ -747,7 +839,7 @@ export default function App() {
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [activeArtifact, docPanelCollapsed]);
+  }, [activeArtifact, panelVisible]);
 
   const handlePromoteArtifact = useCallback(
     async (messageId: string, candidate: ArtifactCandidate) => {
@@ -1038,7 +1130,7 @@ export default function App() {
   });
   // Shown on the topbar toggle while the panel is hidden — the count is what
   // replaces the old edge rail as the "there is something in there" signal.
-  const hiddenArtifactCount = docPanelCollapsed ? artifacts.length : 0;
+  const hiddenArtifactCount = panelVisible ? 0 : artifacts.length;
 
   // Where the sheet was when it last closed. Opening it without naming a
   // section — the gear, Ctrl+, or the palette's "Open settings" — returns
@@ -1124,8 +1216,8 @@ export default function App() {
         void handleNewChat();
       },
       settings: () => openSettings(),
-      toggleSidebar: () => toggleSidebar(),
-      toggleDocPanel: () => toggleDocPanel(),
+      toggleSidebar: () => toggleSidebarView(),
+      toggleDocPanel: () => toggleDocPanelView(),
       historySearch: () => openPalette(),
       cycleProvider: () => {
         void handleCycleProvider();
@@ -1144,7 +1236,7 @@ export default function App() {
           else setStatus(makeStatus(t('app.status.nothingToCopy'), 'warning'));
         });
       },
-      escape: () => {
+      escape: (event: KeyboardEvent) => {
         if (paletteOpen) {
           setPaletteOpen(false);
           return;
@@ -1156,6 +1248,11 @@ export default function App() {
         if (confirmDeleteId != null || confirmDeleteAll) {
           setConfirmDeleteId(null);
           setConfirmDeleteAll(false);
+          return;
+        }
+        if (sidebarOverlay.open || panelOverlay.open) {
+          // A menu or dialog inside the overlay claims its own Escape first.
+          if (!event.defaultPrevented) closeOverlays();
           return;
         }
         const active = document.activeElement;
@@ -1177,8 +1274,11 @@ export default function App() {
       openSettings,
       paletteOpen,
       settingsOpen,
-      toggleDocPanel,
-      toggleSidebar,
+      toggleDocPanelView,
+      toggleSidebarView,
+      sidebarOverlay.open,
+      panelOverlay.open,
+      closeOverlays,
     ],
   );
   useHotkeys(hotkeyHandlers);
@@ -1274,10 +1374,16 @@ export default function App() {
           localOnly={settings.localOnly}
           providerCount={providers.length > 0 ? providers.length : undefined}
           connectorCount={connectorCount}
-          onSelectConversation={handleSelectConversation}
-          onNewChat={() => void handleNewChat()}
+          onSelectConversation={(id) => {
+            hideSidebarOverlay();
+            handleSelectConversation(id);
+          }}
+          onNewChat={() => {
+            hideSidebarOverlay();
+            void handleNewChat();
+          }}
           onOpenPalette={openPalette}
-          onCollapse={() => toggleSidebar()}
+          onCollapse={toggleSidebarView}
           onRevealWorkspace={handleRevealWorkspace}
           onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
           onExportDiagnostics={() => void handleExportDiagnostics()}
@@ -1318,10 +1424,11 @@ export default function App() {
             title={activeConversationSummary?.displayTitle}
             effectiveTheme={effectiveTheme}
             onToggleTheme={handleToggleTheme}
-            panelOpen={!docPanelCollapsed}
-            onTogglePanel={toggleDocPanel}
+            panelOpen={panelVisible}
+            onTogglePanel={toggleDocPanelView}
             hiddenArtifactCount={hiddenArtifactCount}
-            onToggleSidebar={toggleSidebar}
+            sidebarOverlayOpen={sidebarOverlay.open}
+            onToggleSidebar={toggleSidebarView}
             onNewChat={() => void handleNewChat()}
             onOpenPalette={openPalette}
             onOpenSettings={openSettings}
@@ -1392,6 +1499,9 @@ export default function App() {
         />
       </div>
 
+      {/* Closes whichever side column is showing as an overlay (workspace.css). */}
+      <div className="overlay-scrim" aria-hidden="true" onClick={closeOverlays} />
+
       <SettingsSheet
         open={settingsOpen}
         initialSection={settingsSection}
@@ -1419,8 +1529,8 @@ export default function App() {
         onNewChat={() => void handleNewChat()}
         onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
         onToggleTheme={handleToggleTheme}
-        onToggleDocPanel={toggleDocPanel}
-        onToggleSidebar={toggleSidebar}
+        onToggleDocPanel={toggleDocPanelView}
+        onToggleSidebar={toggleSidebarView}
         onToggleWebSearch={() => chatViewRef.current?.toggleWebSearch()}
         onForkConversationHere={() => {
           void chatViewRef.current?.forkConversationHere().then((ok) => {

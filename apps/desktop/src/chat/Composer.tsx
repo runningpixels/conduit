@@ -27,6 +27,7 @@ import { ComposerSkills } from './ComposerSkills';
 import type { SkillSummary } from '../ipc/contracts';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
+import { Menu } from '../workspace/Menu';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -173,19 +174,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setChatSettingsOpen(false);
   }, [conversationId]);
 
-  useEffect(() => {
-    if (!workspaceMenuOpen) return;
-    function onDocMouseDown(event: MouseEvent) {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (workspaceBtnRef.current?.contains(target)) return;
-      const menu = document.getElementById('composer-workspace-menu');
-      if (menu?.contains(target)) return;
-      setWorkspaceMenuOpen(false);
-    }
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [workspaceMenuOpen]);
+  const closeWorkspaceMenu = () => setWorkspaceMenuOpen(false);
 
   const workspaceBound = Boolean(workspaceRoot?.trim());
   const workspaceLabel = workspaceBound ? workspaceFolderLabel(workspaceRoot!) : null;
@@ -532,77 +521,64 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   </span>
                 ) : null}
               </button>
-              {workspaceMenuOpen && workspaceBound ? (
-                <div
-                  id="composer-workspace-menu"
-                  role="menu"
+              <Menu
+                open={workspaceMenuOpen && workspaceBound}
+                onClose={closeWorkspaceMenu}
+                triggerRef={workspaceBtnRef}
+                className="menu composer-workspace-menu"
+                label={t('chat.composer.workspace.ariaBound', { label: workspaceLabel ?? '' })}
+                dismissOnOutsidePress
+              >
+                <p
                   style={{
-                    position: 'absolute',
-                    bottom: 'calc(100% + 6px)',
-                    left: 0,
-                    zIndex: 40,
-                    minWidth: 220,
-                    maxWidth: 320,
-                    padding: 8,
-                    borderRadius: 'var(--r-md, 8px)',
-                    background: 'var(--card)',
-                    border: '1px solid var(--line)',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                    display: 'grid',
-                    gap: 6,
+                    margin: 0,
+                    fontSize: 11,
+                    color: 'var(--ink-3)',
+                    fontFamily: 'var(--font-mono)',
+                    wordBreak: 'break-all',
+                  }}
+                  title={workspaceRoot!}
+                >
+                  {workspaceRoot}
+                </p>
+                <button
+                  className="btn"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setWorkspaceMenuOpen(false);
+                    onWorkspacePick();
                   }}
                 >
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 11,
-                      color: 'var(--ink-3)',
-                      fontFamily: 'var(--font-mono)',
-                      wordBreak: 'break-all',
-                    }}
-                    title={workspaceRoot!}
-                  >
-                    {workspaceRoot}
-                  </p>
+                  {t('chat.composer.workspace.changeFolder')}
+                </button>
+                {onWorkspaceClear ? (
                   <button
-                    className="btn"
+                    className="btn ghost"
                     type="button"
                     role="menuitem"
                     onClick={() => {
                       setWorkspaceMenuOpen(false);
-                      onWorkspacePick();
+                      onWorkspaceClear();
                     }}
                   >
-                    {t('chat.composer.workspace.changeFolder')}
+                    {t('chat.composer.workspace.clearForChat')}
                   </button>
-                  {onWorkspaceClear ? (
-                    <button
-                      className="btn ghost"
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setWorkspaceMenuOpen(false);
-                        onWorkspaceClear();
-                      }}
-                    >
-                      {t('chat.composer.workspace.clearForChat')}
-                    </button>
-                  ) : null}
-                  {onOpenSettings ? (
-                    <button
-                      className="btn ghost"
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setWorkspaceMenuOpen(false);
-                        onOpenSettings('workspace');
-                      }}
-                    >
-                      {t('chat.composer.workspace.defaultsInSettings')}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+                ) : null}
+                {onOpenSettings ? (
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setWorkspaceMenuOpen(false);
+                      onOpenSettings('workspace');
+                    }}
+                  >
+                    {t('chat.composer.workspace.defaultsInSettings')}
+                  </button>
+                ) : null}
+              </Menu>
             </span>
           )}
           {onSaveChatSettings && !streaming && (

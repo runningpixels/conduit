@@ -944,6 +944,18 @@ html[data-palette="orange-dark"] .prose { font-size: 16.5px; line-height: 1.7; }
  * once, in one place. */
 .spacer { flex: 1 1 auto; }
 .composer-model-picker { position: relative; min-width: 0; }
+/* The composer's folder menu opens upward from its chip. It was inline-styled
+   with its own shadow and radius; as a `Menu` it takes the shared menu surface
+   and keeps only its placement and the column layout of its path and actions. */
+.composer-workspace-menu {
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
 
 /* Composer bar buttons. Renamed from `.tool-btn`, which collided conceptually
  * with the `.tool-*` namespace of the tool-call card — these are composer

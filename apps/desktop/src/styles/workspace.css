@@ -350,6 +350,7 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 /* Delete is destructive and every row has one, so it stays out of sight until
    the row is hovered or something inside it takes focus — `:focus-within`
    is what keeps it reachable by keyboard, where hover never fires. */
+.convo-more,
 .convo-del {
   position: absolute;
   right: 6px;
@@ -363,11 +364,18 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
   pointer-events: none;
   transition: opacity var(--tap), background var(--tap), color var(--tap);
 }
+.convo-more svg,
 .convo-del svg { width: 14px; height: 14px; }
-.convo-row:hover .convo-del,
-.convo-row:focus-within .convo-del { opacity: 1; pointer-events: auto; }
+.convo-row:hover :is(.convo-more, .convo-del),
+.convo-row:focus-within :is(.convo-more, .convo-del) { opacity: 1; pointer-events: auto; }
 .convo-del:hover { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
 .convo-del:focus-visible { opacity: 1; pointer-events: auto; }
+/* ⋯ opens the row's actions menu — the same menu as right-click — for anyone
+   not using a mouse's second button. It sits left of the trash when the row has
+   one, and stays lit while its menu is open. */
+.convo-row:has(.convo-del) .convo-more { right: 30px; }
+.convo-more:hover { background: var(--card-hi); color: var(--ink); }
+.convo-more[aria-expanded="true"] { opacity: 1; pointer-events: auto; color: var(--ink); background: var(--card-hi); }
 /* Give the trash room. It is absolutely positioned over the row's right edge
    (`right: 6px`, 22px wide, so it covers the last 28px), and both the title and
    the timestamp live inside `.convo` — so the space has to be reserved on the
@@ -383,6 +391,9 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
    thing that reveals it is the same hover that reveals the trash. */
 .convo-row:hover .convo,
 .convo-row:focus-within .convo { padding-right: 34px; }
+/* ⋯ and trash together cover the last 52px. */
+.convo-row:has(.convo-del):hover .convo,
+.convo-row:has(.convo-del):focus-within .convo { padding-right: 58px; }
 .convo-meta {
   font-family: var(--font-mono);
   font-size: 10.5px;

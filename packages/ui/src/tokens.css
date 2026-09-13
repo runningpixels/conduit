@@ -147,7 +147,9 @@
   --sidebar-open-w: 280px;
   --sidebar-min: 220px;
   --sidebar-w: var(--sidebar-open-w);
-  --panel-w: 420px;
+  /* The same split for the document panel: open width, and the track that reads it. */
+  --panel-open-w: 420px;
+  --panel-w: var(--panel-open-w);
   --measure: 46rem;
   /* The window's caption row (.titlebar). Windows 11 metrics: 32px tall, with
    * 46px-wide control hit targets inside it. Also the strip macOS draws its

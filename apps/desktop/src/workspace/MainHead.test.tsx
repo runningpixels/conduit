@@ -198,4 +198,26 @@ describe('collapsed-sidebar actions', () => {
     fireEvent.click(screen.getByRole('button', { name: label }));
     expect(fn).toHaveBeenCalledOnce();
   });
+
+  it('reports whether the sidebar overlay is showing', () => {
+    const { rerender } = renderHead({ sidebarOverlayOpen: false });
+    const toggle = screen.getByRole('button', { name: 'Open sidebar' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', 'sidebar');
+    rerender(
+      <MainHead
+        effectiveTheme="dark"
+        onToggleTheme={vi.fn()}
+        panelOpen={false}
+        onTogglePanel={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        onNewChat={vi.fn()}
+        onOpenPalette={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onExportDiagnostics={vi.fn()}
+        sidebarOverlayOpen
+      />,
+    );
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
 });

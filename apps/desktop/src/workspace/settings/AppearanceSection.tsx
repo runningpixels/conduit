@@ -27,6 +27,8 @@ import {
 import { LOOK_IDS, PALETTE_IDS, type Mode, type PaletteId } from '../../themes/registry';
 import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../../i18n';
 import { ThemePicker } from './ThemePicker';
+import { applyCachedUserTheme, clearUserThemeSelection } from '../../themes/userThemes';
+import { resolveTheme } from '../../theme';
 
 /* A Record, so adding a palette to PALETTE_IDS without a label fails tsc
  * instead of silently leaving it out of the Advanced select. */
@@ -175,6 +177,12 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
               const next = e.target.value as ReadingFontPref;
               setReadingFont(next);
               writeReadingFont(next);
+              // Theming Phase 5: a user theme's `readingFont` structural
+              // choice only takes effect while this preference is 'theme'
+              // (userThemes.ts's applyStructure) — re-apply so flipping the
+              // preference either way takes hold immediately rather than on
+              // the next mode change.
+              applyCachedUserTheme(resolveTheme(settings.theme));
             }}
           >
             <option value="theme">{t('settings.appearance.readingFont.optionTheme')}</option>
@@ -196,6 +204,11 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
                 onChange={(e) => {
                   const next = e.target.value as LookPref;
                   setLook(next);
+                  // Theming Phase 5: an explicit look/palette edit here turns
+                  // the pairing into built-in/custom (docs/theming/README.md)
+                  // — a selected user theme is retired the same way switching
+                  // to a built-in theme card is.
+                  clearUserThemeSelection();
                   writeLook(next);
                 }}
               >
@@ -218,6 +231,7 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
                 onChange={(e) => {
                   const next = e.target.value as PalettePref;
                   setPalette(next);
+                  clearUserThemeSelection();
                   writePalette(next);
                 }}
               >

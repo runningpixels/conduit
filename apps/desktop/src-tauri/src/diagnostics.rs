@@ -141,6 +141,7 @@ mod tests {
             connectors: root.join("connectors"),
             exports: root.join("exports"),
             branding: root.join("branding"),
+            themes: root.join("themes"),
         };
         let settings = AppSettings::default();
 
@@ -185,6 +186,7 @@ mod tests {
             connectors: root.join("connectors"),
             exports: root.join("exports"),
             branding: root.join("branding"),
+            themes: root.join("themes"),
         }
     }
 

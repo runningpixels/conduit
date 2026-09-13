@@ -1090,6 +1090,52 @@ html[data-palette="brand"] [data-provider] {
   --hue-weak: inherit;
 }
 
+/* Theming Phase 5 (user theme files, decisions.md S7) — the same mechanism as
+   the brand rule immediately above, reused for a user theme's inline palette
+   override (apps/desktop/src/themes/userThemes.ts, applyUserTheme). Unlike a
+   brand, a user theme does NOT repoint data-palette to a sentinel value: it
+   keeps data-palette set to whichever base theme it extends (e.g.
+   "orange-charcoal"), because everything it does not override should still
+   read that base palette's own CSS block. So `data-user-palette` is a second,
+   independent attribute this module sets (with no value, purely a marker)
+   only when it actually applied an inline colour override for the current
+   mode -- never when the file has no `palette` table.
+
+   That independence is exactly why this rule has to be positioned carefully.
+   `html[data-palette="orange-charcoal"] [data-provider]` (and its seven
+   siblings above, one per named palette) match a [data-provider] descendant
+   here exactly as they do for the built-in theme, at the SAME specificity
+   (0,2,1) as this rule -- so without this rule coming after them in source
+   order, a user theme overriding --hue would still lose to the base
+   palette's own pinned var(--xx-hue) on every provider-tinted element below
+   <html>, for the identical reason the brand rule above exists. Placed here,
+   directly after the brand rule — and so after every per-palette pin, which
+   all live earlier in this file — this rule wins that tie.
+
+   It must still lose to provider-colour-off (tokens.css, below): that rule is
+   also (0,2,1)/(0,2,0) and comes AFTER this one in source order on purpose,
+   so "off" stays "off" regardless of which palette mechanism -- built-in,
+   brand, or user theme -- set --hue on <html>. */
+html[data-user-palette] [data-provider] {
+  --hue: inherit;
+  --hue-text: inherit;
+  --hue-solid: inherit;
+  --hue-weak: inherit;
+}
+
+/* Theming Phase 5 — a user theme's `labels: small-caps` (userThemes.ts's
+   structure table) sets `--label-case: none` (a text-transform of `none`
+   would fight small-caps, which is a font feature, not a case transform) and
+   this attribute, consumed here rather than through a token: there is no
+   `font-variant-caps` custom property in the look/palette retargetable set
+   (docs/theming/README.md), and adding one for a single value used by one
+   structural choice was not worth widening that table. Scoped to the three
+   classes that read `--label-case` today. */
+html[data-user-labels="small-caps"] :is(.section-label, .sb-group, .sb-group-row) {
+  font-variant-caps: all-small-caps;
+  text-transform: none;
+}
+
 /* Older WebView2 / WebKitGTK without color-mix(): swap in the precomputed rgba */
 @supports not (color: color-mix(in srgb, red 10%, transparent)) {
   [data-provider="anthropic"] { --hue-weak: rgba(217, 119, 87, .14); }

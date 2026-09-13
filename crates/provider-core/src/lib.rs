@@ -12,6 +12,7 @@ pub mod normalize;
 pub mod retry;
 pub mod schema;
 pub mod transport;
+pub mod user_theme;
 pub mod vision;
 
 pub use adapter::{get_adapter, AdapterContext, ModelInfo, ProviderAdapter};

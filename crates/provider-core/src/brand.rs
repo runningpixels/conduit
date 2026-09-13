@@ -110,7 +110,15 @@ pub enum BrandError {
 /// rejoin, so the body can be sliced out of the original string verbatim
 /// (preserving whatever line endings it already had) instead of being
 /// reconstructed from parts that may have been normalized along the way.
-fn split_frontmatter(source: &str) -> Result<(&str, Option<String>), BrandError> {
+///
+/// `file_label` names the file in the "not terminated" message only --
+/// `crate::user_theme::parse_user_theme` reuses this exact splitter for
+/// `*.theme.md` files, which are not `brand.md`, so the message cannot
+/// hardcode that name.
+pub(crate) fn split_frontmatter<'a>(
+    source: &'a str,
+    file_label: &str,
+) -> Result<(&'a str, Option<String>), BrandError> {
     // A BOM is common on Windows-authored files and is not part of the `+++`
     // delimiter; strip it before anything else so the very first line still
     // matches exactly.
@@ -131,11 +139,10 @@ fn split_frontmatter(source: &str) -> Result<(&str, Option<String>), BrandError>
 
     loop {
         let line = lines.next().ok_or_else(|| {
-            BrandError::Toml(
-                "brand.md frontmatter is not terminated -- expected a line containing exactly \
-                 +++ before the document ends"
-                    .to_string(),
-            )
+            BrandError::Toml(format!(
+                "{file_label} frontmatter is not terminated -- expected a line containing \
+                 exactly +++ before the document ends"
+            ))
         })?;
         if is_delimiter_line(line) {
             let fm_end = pos;
@@ -731,7 +738,7 @@ const PALETTE_FIELD_NAMES: &[&str] = &[
 /// is caught earlier, before this function is ever called, by
 /// [`find_unquoted_hex_hint`] scanning the raw text; that path produces a
 /// clearer error because it can see the actual line, not just a field name.
-fn classify_toml_error(err: toml::de::Error) -> BrandError {
+pub(crate) fn classify_toml_error(err: toml::de::Error) -> BrandError {
     let msg = err.to_string();
 
     if msg.contains("missing field `dark`") || msg.contains("missing field `light`") {
@@ -768,7 +775,11 @@ fn classify_toml_error(err: toml::de::Error) -> BrandError {
 /// value" error pointing at end-of-line rather than anything mentioning the
 /// key. Recognizing the pattern in the source text directly produces a
 /// message an author can act on instead of a parser's confusion.
-fn find_unquoted_hex_hint(frontmatter: &str) -> Option<String> {
+///
+/// `file_label` names the file in the returned hint only -- see
+/// [`split_frontmatter`]'s doc comment for why this cannot hardcode
+/// `brand.md`.
+pub(crate) fn find_unquoted_hex_hint(frontmatter: &str, file_label: &str) -> Option<String> {
     for line in frontmatter.lines() {
         let trimmed = line.trim_start();
         // A line that is itself a comment can start with `#`; only inspect
@@ -794,9 +805,9 @@ fn find_unquoted_hex_hint(frontmatter: &str) -> Option<String> {
         let value = line[eq_pos + 1..].trim_start();
         if value.starts_with('#') {
             return Some(format!(
-                "brand.md line {line:?}: `{key}` looks like it was written as an unquoted hex \
-                 colour. `#` starts a comment in TOML, so everything from it to the end of the \
-                 line is discarded and the value is empty -- did you forget to quote the hex \
+                "{file_label} line {line:?}: `{key}` looks like it was written as an unquoted \
+                 hex colour. `#` starts a comment in TOML, so everything from it to the end of \
+                 the line is discarded and the value is empty -- did you forget to quote the hex \
                  value? Use `{key} = \"#......\"` instead."
             ));
         }
@@ -928,9 +939,9 @@ pub fn render_brand_md(cfg: &BrandConfig) -> String {
 /// [`BrandError::Invalid`] instead of a config: a brand that fails
 /// validation is not partially applied.
 pub fn parse(source: &str) -> Result<(BrandConfig, Vec<BrandIssue>), BrandError> {
-    let (frontmatter_src, notes) = split_frontmatter(source)?;
+    let (frontmatter_src, notes) = split_frontmatter(source, "brand.md")?;
 
-    if let Some(hint) = find_unquoted_hex_hint(frontmatter_src) {
+    if let Some(hint) = find_unquoted_hex_hint(frontmatter_src, "brand.md") {
         return Err(BrandError::Toml(hint));
     }
 
@@ -1245,7 +1256,7 @@ fn bare_filename_violations(file: &str) -> Vec<&'static str> {
 /// `rgb(...)`, or named colours. The point is not just "reject garbage" --
 /// it is that this grammar cannot express a network fetch at all, whatever
 /// the CSP happens to allow at the point a value is applied.
-fn is_valid_hex_color(value: &str) -> bool {
+pub(crate) fn is_valid_hex_color(value: &str) -> bool {
     let Some(hex) = value.strip_prefix('#') else {
         return false;
     };
@@ -1254,7 +1265,7 @@ fn is_valid_hex_color(value: &str) -> bool {
 
 /// The 18 curated palette keys, paired with their TOML (camelCase) spelling
 /// for error messages, in the same order as [`BrandPalette`]'s fields.
-fn palette_fields(palette: &BrandPalette) -> [(&'static str, &str); 18] {
+pub(crate) fn palette_fields(palette: &BrandPalette) -> [(&'static str, &str); 18] {
     [
         ("bg", palette.bg.as_str()),
         ("bgSide", palette.bg_side.as_str()),

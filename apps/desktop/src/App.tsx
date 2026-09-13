@@ -23,6 +23,7 @@ import {
   listConnectorGrants,
   listProviderDescriptors,
   listProviderModels,
+  listUserThemes,
   revealArtifactsDir,
   searchMessages,
   setArtifactContent,
@@ -52,6 +53,7 @@ import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
 import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
+import { applyCachedUserTheme, reconcileUserThemes } from './themes/userThemes';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -561,13 +563,18 @@ export default function App() {
         // not-yet-registered `get_brand_logo` command degrades to `null`
         // rather than failing this whole Promise.all, same as every other
         // brand-optional load here.
-        const [loadedPaths, loadedSettings, onboardingState, loadedBrand, loadedLogo] = await Promise.all([
-          getAppPaths(),
-          getSettings(),
-          getOnboardingState(),
-          getBrandConfig(),
-          fetchBrandLogo(),
-        ]);
+        const [loadedPaths, loadedSettings, onboardingState, loadedBrand, loadedLogo, userThemeEntries] =
+          await Promise.all([
+            getAppPaths(),
+            getSettings(),
+            getOnboardingState(),
+            getBrandConfig(),
+            fetchBrandLogo(),
+            // Theming Phase 5: `dev:web` has no backend, so this rejects there —
+            // degrade to "no user themes" rather than failing the whole boot,
+            // same as `fetchBrandLogo`'s own never-rejects wrapper above.
+            listUserThemes().catch(() => []),
+          ]);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
         setSettingsLoaded(true);
@@ -589,6 +596,15 @@ export default function App() {
           setBrandLogo(null);
         }
         setBrandConfig(loadedBrand);
+        // Theming Phase 5 — reconcile the persisted user-theme selection
+        // against the authoritative file list, ordered after the brand
+        // reconcile above so `isBrandActive()` (which reads `data-palette`)
+        // reflects Rust's answer rather than the pre-paint replay's guess.
+        const userThemeOutcome = reconcileUserThemes(
+          userThemeEntries,
+          resolveTheme(loadedSettings.theme),
+          t,
+        );
         void listProviderDescriptors()
           .then(setProviders)
           .catch(() => setProviders([]));
@@ -605,6 +621,19 @@ export default function App() {
         } else {
           setBoundaryOk(true);
           setStatus(null);
+        }
+        // Theming Phase 5: after the null above, not before it — a toast set
+        // earlier in this effect would just be clobbered by that
+        // unconditional clear.
+        if (userThemeOutcome.cleared) {
+          setStatus(
+            makeStatus(
+              t('settings.appearance.userThemes.toastCleared', {
+                fileName: userThemeOutcome.fileName ?? '',
+              }),
+              'error',
+            ),
+          );
         }
       } catch (error) {
         setBoundaryOk(false);
@@ -1232,6 +1261,15 @@ export default function App() {
   useEffect(() => {
     if (brandConfig) applyBrandTheme(brandConfig, effectiveTheme);
   }, [brandConfig, effectiveTheme]);
+
+  // Theming Phase 5 — same reasoning as the brand effect above: a user
+  // theme's palette override is also inline CSS on <html>, so it has to be
+  // re-applied for the resolved theme on every mode flip, not just when the
+  // theme picker changes it. A no-op when no user theme is selected
+  // (`applyCachedUserTheme` reads its own storage and returns `null`).
+  useEffect(() => {
+    applyCachedUserTheme(effectiveTheme);
+  }, [effectiveTheme]);
 
   // V7 — the active provider's identity tints the app (spec §5.4).
   useEffect(() => {

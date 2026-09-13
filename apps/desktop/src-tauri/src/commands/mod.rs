@@ -12,6 +12,7 @@ pub mod memory;
 pub mod prompts;
 pub mod settings;
 pub mod skills;
+pub mod themes;
 
 pub use artifacts::*;
 pub use branding::*;
@@ -21,3 +22,4 @@ pub use memory::*;
 pub use prompts::*;
 pub use settings::*;
 pub use skills::*;
+pub use themes::*;

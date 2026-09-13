@@ -349,6 +349,7 @@
 .theme-card-body { display: grid; gap: 2px; }
 .theme-card-name {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
   font-size: var(--fs-3xl);
@@ -367,6 +368,49 @@
   letter-spacing: .04em;
 }
 .theme-picker-note { margin: 0; font-size: var(--fs-lg); color: var(--ink-3); }
+
+/* ── User themes (theming Phase 5) ───────────────────────────────────────── */
+.theme-picker-usersection {
+  display: grid;
+  gap: var(--sp-2);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.theme-picker-usersection-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.theme-picker-user-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+/* Same card as a built-in theme; the name/description need a width-bounded
+   clamp a built-in never does, because a file's `name`/`description` are
+   author-supplied text with no length the picker controls (Rust bounds them
+   to 48/160 chars, still enough to overflow a 220px card). */
+/* Badges wrap under a long name before the name truncates; the ellipsis is
+ * only for a name longer than the whole card. */
+.theme-card-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+}
+.theme-card-description--clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.theme-picker-user-error { margin: 0; font-size: var(--fs-lg); color: var(--err); }
+.theme-picker-invalid-list { display: grid; gap: var(--sp-1); }
+.theme-picker-invalid-row {
+  margin: 0;
+  font-size: var(--fs-lg);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
 
 /* ── Appearance → Advanced (look x palette, theming Phase 2) ────────────── */
 .appearance-advanced { padding: 10px 0; border-bottom: 1px solid var(--line-soft); }

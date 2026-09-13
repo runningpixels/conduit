@@ -1194,7 +1194,17 @@
     "settings.appearance.themes.greenPhosphor.name": "5bba2ef8dee253feab2ab51ecdd55c0e493c16ef",
     "settings.appearance.themes.highContrast.description": "414544baf8f5f3e7c493168e9a0f2a3ea6cfcf18",
     "settings.appearance.themes.highContrast.name": "26ddb9ead2ebb343c114923bf5a3f75fcaa19175",
-    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d"
+    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d",
+    "settings.appearance.userThemes.createExample": "629cdf7f9701e78b11aee47db45d3a16a41773f5",
+    "settings.appearance.userThemes.customBadge": "081ae3fdc403609cf6e760849ebb14117b7a50cb",
+    "settings.appearance.userThemes.empty": "301f164a906768d8bba976d22347d4c09f95c018",
+    "settings.appearance.userThemes.error.unknown": "96d4437bf58668ba331a89dce8ce7cffac42f733",
+    "settings.appearance.userThemes.error.unknownBase": "53165f18dc41deba8c5385f9ba6ccf002db61178",
+    "settings.appearance.userThemes.groupLabel": "12ac7599315b04615acac8b264cf0ebe95cdb82c",
+    "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
+    "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
+    "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2391,7 +2401,17 @@
     "settings.appearance.themes.greenPhosphor.name": "5bba2ef8dee253feab2ab51ecdd55c0e493c16ef",
     "settings.appearance.themes.highContrast.description": "414544baf8f5f3e7c493168e9a0f2a3ea6cfcf18",
     "settings.appearance.themes.highContrast.name": "26ddb9ead2ebb343c114923bf5a3f75fcaa19175",
-    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d"
+    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d",
+    "settings.appearance.userThemes.createExample": "629cdf7f9701e78b11aee47db45d3a16a41773f5",
+    "settings.appearance.userThemes.customBadge": "081ae3fdc403609cf6e760849ebb14117b7a50cb",
+    "settings.appearance.userThemes.empty": "301f164a906768d8bba976d22347d4c09f95c018",
+    "settings.appearance.userThemes.error.unknown": "96d4437bf58668ba331a89dce8ce7cffac42f733",
+    "settings.appearance.userThemes.error.unknownBase": "53165f18dc41deba8c5385f9ba6ccf002db61178",
+    "settings.appearance.userThemes.groupLabel": "12ac7599315b04615acac8b264cf0ebe95cdb82c",
+    "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
+    "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
+    "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3588,7 +3608,17 @@
     "settings.appearance.themes.greenPhosphor.name": "5bba2ef8dee253feab2ab51ecdd55c0e493c16ef",
     "settings.appearance.themes.highContrast.description": "414544baf8f5f3e7c493168e9a0f2a3ea6cfcf18",
     "settings.appearance.themes.highContrast.name": "26ddb9ead2ebb343c114923bf5a3f75fcaa19175",
-    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d"
+    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d",
+    "settings.appearance.userThemes.createExample": "629cdf7f9701e78b11aee47db45d3a16a41773f5",
+    "settings.appearance.userThemes.customBadge": "081ae3fdc403609cf6e760849ebb14117b7a50cb",
+    "settings.appearance.userThemes.empty": "301f164a906768d8bba976d22347d4c09f95c018",
+    "settings.appearance.userThemes.error.unknown": "96d4437bf58668ba331a89dce8ce7cffac42f733",
+    "settings.appearance.userThemes.error.unknownBase": "53165f18dc41deba8c5385f9ba6ccf002db61178",
+    "settings.appearance.userThemes.groupLabel": "12ac7599315b04615acac8b264cf0ebe95cdb82c",
+    "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
+    "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
+    "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4785,7 +4815,17 @@
     "settings.appearance.themes.greenPhosphor.name": "5bba2ef8dee253feab2ab51ecdd55c0e493c16ef",
     "settings.appearance.themes.highContrast.description": "414544baf8f5f3e7c493168e9a0f2a3ea6cfcf18",
     "settings.appearance.themes.highContrast.name": "26ddb9ead2ebb343c114923bf5a3f75fcaa19175",
-    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d"
+    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d",
+    "settings.appearance.userThemes.createExample": "629cdf7f9701e78b11aee47db45d3a16a41773f5",
+    "settings.appearance.userThemes.customBadge": "081ae3fdc403609cf6e760849ebb14117b7a50cb",
+    "settings.appearance.userThemes.empty": "301f164a906768d8bba976d22347d4c09f95c018",
+    "settings.appearance.userThemes.error.unknown": "96d4437bf58668ba331a89dce8ce7cffac42f733",
+    "settings.appearance.userThemes.error.unknownBase": "53165f18dc41deba8c5385f9ba6ccf002db61178",
+    "settings.appearance.userThemes.groupLabel": "12ac7599315b04615acac8b264cf0ebe95cdb82c",
+    "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
+    "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
+    "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -5982,7 +6022,17 @@
     "settings.appearance.themes.greenPhosphor.name": "5bba2ef8dee253feab2ab51ecdd55c0e493c16ef",
     "settings.appearance.themes.highContrast.description": "414544baf8f5f3e7c493168e9a0f2a3ea6cfcf18",
     "settings.appearance.themes.highContrast.name": "26ddb9ead2ebb343c114923bf5a3f75fcaa19175",
-    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d"
+    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d",
+    "settings.appearance.userThemes.createExample": "629cdf7f9701e78b11aee47db45d3a16a41773f5",
+    "settings.appearance.userThemes.customBadge": "081ae3fdc403609cf6e760849ebb14117b7a50cb",
+    "settings.appearance.userThemes.empty": "301f164a906768d8bba976d22347d4c09f95c018",
+    "settings.appearance.userThemes.error.unknown": "96d4437bf58668ba331a89dce8ce7cffac42f733",
+    "settings.appearance.userThemes.error.unknownBase": "53165f18dc41deba8c5385f9ba6ccf002db61178",
+    "settings.appearance.userThemes.groupLabel": "12ac7599315b04615acac8b264cf0ebe95cdb82c",
+    "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
+    "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
+    "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7179,7 +7229,17 @@
     "settings.appearance.themes.greenPhosphor.name": "5bba2ef8dee253feab2ab51ecdd55c0e493c16ef",
     "settings.appearance.themes.highContrast.description": "414544baf8f5f3e7c493168e9a0f2a3ea6cfcf18",
     "settings.appearance.themes.highContrast.name": "26ddb9ead2ebb343c114923bf5a3f75fcaa19175",
-    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d"
+    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d",
+    "settings.appearance.userThemes.createExample": "629cdf7f9701e78b11aee47db45d3a16a41773f5",
+    "settings.appearance.userThemes.customBadge": "081ae3fdc403609cf6e760849ebb14117b7a50cb",
+    "settings.appearance.userThemes.empty": "301f164a906768d8bba976d22347d4c09f95c018",
+    "settings.appearance.userThemes.error.unknown": "96d4437bf58668ba331a89dce8ce7cffac42f733",
+    "settings.appearance.userThemes.error.unknownBase": "53165f18dc41deba8c5385f9ba6ccf002db61178",
+    "settings.appearance.userThemes.groupLabel": "12ac7599315b04615acac8b264cf0ebe95cdb82c",
+    "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
+    "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
+    "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8376,6 +8436,16 @@
     "settings.appearance.themes.greenPhosphor.name": "5bba2ef8dee253feab2ab51ecdd55c0e493c16ef",
     "settings.appearance.themes.highContrast.description": "414544baf8f5f3e7c493168e9a0f2a3ea6cfcf18",
     "settings.appearance.themes.highContrast.name": "26ddb9ead2ebb343c114923bf5a3f75fcaa19175",
-    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d"
+    "settings.appearance.themes.lightOnlyLabel": "4b735cbc3cea347a98e711b2872472dd197da16d",
+    "settings.appearance.userThemes.createExample": "629cdf7f9701e78b11aee47db45d3a16a41773f5",
+    "settings.appearance.userThemes.customBadge": "081ae3fdc403609cf6e760849ebb14117b7a50cb",
+    "settings.appearance.userThemes.empty": "301f164a906768d8bba976d22347d4c09f95c018",
+    "settings.appearance.userThemes.error.unknown": "96d4437bf58668ba331a89dce8ce7cffac42f733",
+    "settings.appearance.userThemes.error.unknownBase": "53165f18dc41deba8c5385f9ba6ccf002db61178",
+    "settings.appearance.userThemes.groupLabel": "12ac7599315b04615acac8b264cf0ebe95cdb82c",
+    "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
+    "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
+    "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
   }
 }

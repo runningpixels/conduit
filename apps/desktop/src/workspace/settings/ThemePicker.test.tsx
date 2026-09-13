@@ -1,16 +1,35 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ThemePicker } from './ThemePicker';
 import { DEFAULT_THEME_ID, THEMES, themeById } from '../../themes/registry';
 
+const { listUserThemes, revealThemesDir, createExampleUserTheme } = vi.hoisted(() => ({
+  listUserThemes: vi.fn(),
+  revealThemesDir: vi.fn(),
+  createExampleUserTheme: vi.fn(),
+}));
+
+vi.mock('../../ipc/client', () => ({
+  listUserThemes,
+  revealThemesDir,
+  createExampleUserTheme,
+}));
+
 function resetDocument() {
   localStorage.clear();
-  document.documentElement.removeAttribute('data-look');
-  document.documentElement.removeAttribute('data-palette');
+  for (const attr of Array.from(document.documentElement.attributes)) {
+    document.documentElement.removeAttribute(attr.name);
+  }
+  document.documentElement.removeAttribute('style');
 }
 
 describe('ThemePicker', () => {
-  beforeEach(resetDocument);
+  beforeEach(() => {
+    resetDocument();
+    listUserThemes.mockReset().mockResolvedValue([]);
+    revealThemesDir.mockReset().mockResolvedValue(undefined);
+    createExampleUserTheme.mockReset();
+  });
 
   /** The card's accessible name for each shipped manifest, by i18n key. */
   const CARD_NAME: Record<string, RegExp> = {
@@ -148,5 +167,166 @@ describe('ThemePicker', () => {
       expect(Boolean(dark)).toBe(only === 'dark');
       expect(Boolean(light)).toBe(only === 'light');
     }
+  });
+});
+
+// ── Theming Phase 5 — user theme files ─────────────────────────────────────
+
+function fullPalette(overrides: Record<string, string> = {}) {
+  return {
+    bg: '#111111', bgSide: '#121212', card: '#131313', cardHi: '#141414',
+    line: '#151515', lineSoft: '#161616', lineHi: '#171717',
+    ink: '#e0e0e0', ink2: '#d0d0d0', ink3: '#c0c0c0',
+    hue: '#ff9900', hueText: '#ffb020', hueSolid: '#ffb020', onHue: '#000000',
+    ok: '#22cc55', warn: '#ddaa00', err: '#dd3333', link: '#66aaff',
+    ...overrides,
+  };
+}
+
+const VALID_ENTRY = {
+  id: 'my-theme',
+  fileName: 'my-theme.theme.md',
+  theme: { schemaVersion: 1, name: 'My Custom Theme', description: 'A hand-rolled look.', extends: 'graphite' },
+};
+
+const INVALID_ENTRY = {
+  id: 'broken',
+  fileName: 'broken.theme.md',
+  error: 'missing required field "extends"',
+};
+
+describe('ThemePicker — user theme files (theming Phase 5)', () => {
+  beforeEach(() => {
+    resetDocument();
+    listUserThemes.mockReset().mockResolvedValue([]);
+    revealThemesDir.mockReset().mockResolvedValue(undefined);
+    createExampleUserTheme.mockReset();
+  });
+
+  it('renders a valid user theme as a card in its own labelled radiogroup, badged Custom', async () => {
+    listUserThemes.mockResolvedValue([VALID_ENTRY]);
+    render(<ThemePicker />);
+
+    const group = await screen.findByRole('radiogroup', { name: 'Your themes' });
+    const card = within(group).getByRole('radio', { name: /My Custom Theme/ });
+    expect(within(card).getByText('Custom')).toBeInTheDocument();
+    expect(within(card).getByText('A hand-rolled look.')).toBeInTheDocument();
+  });
+
+  it('selecting a user theme card applies it and marks it checked', async () => {
+    listUserThemes.mockResolvedValue([VALID_ENTRY]);
+    render(<ThemePicker />);
+
+    const card = await screen.findByRole('radio', { name: /My Custom Theme/ });
+    fireEvent.click(card);
+
+    expect(card).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem('conduit:v10-user-theme')).toBe('my-theme');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('graphite');
+    // Every built-in card is now unchecked.
+    for (const radio of screen.getAllByRole('radio')) {
+      if (radio !== card) expect(radio).toHaveAttribute('aria-checked', 'false');
+    }
+  });
+
+  it('lists an invalid file as plain text, not a selectable card', async () => {
+    listUserThemes.mockResolvedValue([INVALID_ENTRY]);
+    render(<ThemePicker />);
+
+    expect(await screen.findByText(/broken\.theme\.md/)).toBeInTheDocument();
+    expect(screen.getByText(/missing required field/)).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /broken/i })).not.toBeInTheDocument();
+  });
+
+  it('degrades to the empty-state line when the command rejects (dev:web has no backend)', async () => {
+    listUserThemes.mockRejectedValue('command list_user_themes not found');
+    render(<ThemePicker />);
+
+    expect(await screen.findByText('No custom themes yet.')).toBeInTheDocument();
+    // The actions still render — reload/open/create are not gated on a backend.
+    expect(screen.getByRole('button', { name: 'Open themes folder' })).toBeInTheDocument();
+  });
+
+  it('keyboard nav continues from the last built-in card into the first user card', async () => {
+    listUserThemes.mockResolvedValue([VALID_ENTRY]);
+    render(<ThemePicker />);
+    await screen.findByRole('radio', { name: /My Custom Theme/ });
+
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(THEMES.length + 1);
+    const lastBuiltin = radios[THEMES.length - 1];
+    const firstUser = radios[THEMES.length];
+
+    lastBuiltin.focus();
+    fireEvent.keyDown(lastBuiltin, { key: 'ArrowRight' });
+    expect(firstUser).toHaveFocus();
+    expect(firstUser).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('Reload surfaces a command failure inline rather than throwing', async () => {
+    listUserThemes.mockResolvedValueOnce([]);
+    render(<ThemePicker />);
+    await waitFor(() => expect(listUserThemes).toHaveBeenCalledTimes(1));
+
+    listUserThemes.mockRejectedValueOnce({ code: 'error.unknown', params: {}, fallback: 'disk read failed' });
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+
+    expect(await screen.findByText('disk read failed')).toBeInTheDocument();
+  });
+
+  it('Create example theme creates, reloads, and selects the new theme', async () => {
+    listUserThemes.mockResolvedValueOnce([]).mockResolvedValueOnce([VALID_ENTRY]);
+    createExampleUserTheme.mockResolvedValue('my-theme');
+    render(<ThemePicker />);
+    await waitFor(() => expect(listUserThemes).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create example theme' }));
+
+    const card = await screen.findByRole('radio', { name: /My Custom Theme/ });
+    expect(card).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem('conduit:v10-user-theme')).toBe('my-theme');
+  });
+
+  it('Open themes folder calls the reveal command and reports a failure inline', async () => {
+    render(<ThemePicker />);
+    revealThemesDir.mockRejectedValueOnce({ code: 'error.unknown', params: {}, fallback: "couldn't open folder" });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open themes folder' }));
+
+    expect(await screen.findByText("couldn't open folder")).toBeInTheDocument();
+    expect(revealThemesDir).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unknown-base user theme is listed as invalid with every valid id named', async () => {
+    listUserThemes.mockResolvedValue([
+      {
+        id: 'bad-base',
+        fileName: 'bad-base.theme.md',
+        theme: { schemaVersion: 1, name: 'Bad Base', extends: 'not-a-real-theme' },
+      },
+    ]);
+    render(<ThemePicker />);
+
+    expect(await screen.findByText(/not-a-real-theme/)).toBeInTheDocument();
+    expect(screen.getByText(/conduit-orange-charcoal/)).toBeInTheDocument();
+  });
+
+  it('a two-mode palette override on a dark-only base narrows the single-mode badge', async () => {
+    listUserThemes.mockResolvedValue([
+      {
+        id: 'my-theme',
+        fileName: 'my-theme.theme.md',
+        theme: {
+          schemaVersion: 1,
+          name: 'Recolored Amber',
+          extends: 'amber-terminal',
+          palette: { dark: fullPalette() },
+        },
+      },
+    ]);
+    render(<ThemePicker />);
+
+    const card = await screen.findByRole('radio', { name: /Recolored Amber/ });
+    expect(within(card).getByText('Dark only')).toBeInTheDocument();
   });
 });

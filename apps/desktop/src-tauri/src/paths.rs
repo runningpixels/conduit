@@ -28,6 +28,10 @@ pub struct AppPaths {
     /// pipeline (`attachments`/`artifacts` above both require a real
     /// `conversation_id` FK) — see `docs/private/white-label-plan.md` §4.
     pub branding: PathBuf,
+    /// Theming Phase 5: user theme files (`<id>.theme.md`) live here —
+    /// see `docs/theming/user-themes.md`. Sibling to `branding` for the same
+    /// reason: presentation-only, not conversation- or artifact-scoped.
+    pub themes: PathBuf,
 }
 
 pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
@@ -53,6 +57,7 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
     let connectors = root.join("connectors");
     let exports = root.join("exports");
     let branding = root.join("branding");
+    let themes = root.join("themes");
     // t1-4: Conduit-managed SKILL.md packages. Not an AppPaths field — tests
     // construct AppPaths by hand in many places; deriving from `root` keeps
     // those literals compiling. Created here so dropping a folder in works.
@@ -69,6 +74,7 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
         &connectors,
         &exports,
         &branding,
+        &themes,
         &skills,
     ] {
         fs::create_dir_all(path).map_err(|error| error.to_string())?;
@@ -87,5 +93,6 @@ pub fn resolve_in(root: &Path) -> Result<AppPaths, String> {
         connectors,
         exports,
         branding,
+        themes,
     })
 }

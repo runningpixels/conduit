@@ -21,6 +21,11 @@ import {
   type Mode,
   type PaletteId,
 } from '../themes/registry';
+import {
+  readSelectedUserThemeId,
+  readUserThemeCache,
+  USER_THEME_PREFIX,
+} from '../themes/userThemeStorage';
 
 const PALETTE_KEY = 'conduit:v9-palette';
 const LOOK_KEY = 'conduit:v10-look';
@@ -162,8 +167,23 @@ export function applyLook(value: LookPref): void {
 }
 
 /** The theme the stored look × palette pairing names, or `custom`. Derived,
- *  never stored, so it cannot drift from the two prefs it describes. */
+ *  never stored, so it cannot drift from the two prefs it describes.
+ *
+ *  A user theme (theming Phase 5) is checked first: its id is stored
+ *  separately (`conduit:v10-user-theme`, `themes/userThemeStorage.ts`) from
+ *  the look/palette pair, which stay pointed at the theme it extends so a
+ *  reader that only knows about built-ins still renders something sane. Only
+ *  reported here when the pre-paint cache still names the same id — a
+ *  selected-but-now-invalid user theme (its file deleted, its cache cleared)
+ *  must fall back to `custom`/the pair, not claim an id `themeById` cannot
+ *  resolve; `App.tsx`'s boot reconcile is what actually clears the stale
+ *  pref once it can ask Rust. */
 export function readThemeId(): string {
+  const userId = readSelectedUserThemeId();
+  if (userId !== null) {
+    const cached = readUserThemeCache();
+    if (cached && cached.id === userId) return `${USER_THEME_PREFIX}${userId}`;
+  }
   return themeForPair(readLook(), readPalette())?.id ?? CUSTOM_THEME_ID;
 }
 
@@ -181,9 +201,22 @@ export function selectTheme(id: string): void {
 /**
  * Modes the active look × palette can render. A brand declares both a dark
  * and a light palette (the brand schema requires it), so it never narrows.
+ *
+ * A selected user theme (theming Phase 5) answers this itself — its modes
+ * are whichever palette modes its file overrides, or its base theme's modes
+ * when it overrides none (`themes/userThemes.ts`'s `resolveUserTheme`) — read
+ * straight from the pre-paint cache rather than re-resolving, so this stays
+ * as cheap as the built-in path and does not need IPC. Falls through to the
+ * ordinary look × palette answer once the cache no longer names the selected
+ * id, same as `readThemeId` above.
  */
 export function supportedModes(): readonly Mode[] {
   if (isBrandActive()) return ['dark', 'light'];
+  const userId = readSelectedUserThemeId();
+  if (userId !== null) {
+    const cached = readUserThemeCache();
+    if (cached && cached.id === userId) return cached.modes;
+  }
   return modesForPalette(readPalette());
 }
 

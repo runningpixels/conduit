@@ -1379,6 +1379,198 @@ fn default_true_bool() -> bool {
 /// The only `schema_version` this build understands.
 pub const BRAND_SCHEMA_VERSION: u32 = 1;
 
+// ── User theme files (docs/theming/README.md, theming Phase 5) ─────────────
+//
+// A user drops `<appDataLocal>/themes/<id>.theme.md` — `+++` TOML frontmatter
+// like `brand.md` — that starts from a built-in theme (`extends`) and may
+// override its colours (the same eighteen hex-only keys a brand sets) and a
+// few structural choices. Structure is **enums only**: a theme file names a
+// choice the renderer maps to token values from a fixed table; it can never
+// express a CSS value, so it cannot reach the network or escape a declaration
+// whatever the CSP allows. Presentation-only: nothing here touches settings,
+// providers or data.
+
+/// The only user-theme `schemaVersion` this build understands.
+pub const USER_THEME_SCHEMA_VERSION: u32 = 1;
+
+/// A parsed, validated user theme file.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/user_theme.ts"
+)]
+pub struct UserTheme {
+    pub schema_version: u32,
+    /// Display name in the theme picker. 1–48 characters, no control characters.
+    pub name: String,
+    /// One line under the name. Up to 160 characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
+    /// Id of the built-in theme this one starts from (`graphite`,
+    /// `amber-terminal`, …). Grammar-checked here (`[a-z0-9-]{1,40}`);
+    /// membership is checked by the renderer, which owns the theme registry.
+    pub extends: String,
+    /// Colour overrides. Absent keeps the base theme's colours. Each present
+    /// mode must be complete; the modes present become the theme's modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub palette: Option<UserThemePalettes>,
+    /// Structural choices. Absent keeps the base theme's look.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub structure: Option<UserThemeStructure>,
+    /// Markdown body after the frontmatter, verbatim. Never rendered as HTML.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub notes: Option<String>,
+}
+
+/// Per-mode colour overrides. At least one mode when the table is present.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/user_theme_palettes.ts"
+)]
+pub struct UserThemePalettes {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub dark: Option<BrandPalette>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub light: Option<BrandPalette>,
+}
+
+/// Structural choices, each a closed set the renderer maps to token values.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/user_theme_structure.ts"
+)]
+pub struct UserThemeStructure {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub corners: Option<ThemeCorners>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ui_font: Option<ThemeFace>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reading_font: Option<ThemeFace>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub labels: Option<ThemeLabels>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub shadows: Option<ThemeShadows>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub motion: Option<ThemeMotion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub icon_stroke: Option<ThemeIconStroke>,
+}
+
+/// Corner radius family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/theme_corners.ts"
+)]
+pub enum ThemeCorners {
+    Square,
+    Subtle,
+    Rounded,
+    Soft,
+}
+
+/// A bundled face (Geist, Source Serif 4, Geist Mono). Never a font name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/theme_face.ts"
+)]
+pub enum ThemeFace {
+    Sans,
+    Serif,
+    Mono,
+}
+
+/// How section labels are set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/theme_labels.ts"
+)]
+pub enum ThemeLabels {
+    Plain,
+    Uppercase,
+    SmallCaps,
+}
+
+/// Elevation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/theme_shadows.ts"
+)]
+pub enum ThemeShadows {
+    None,
+    Soft,
+}
+
+/// Transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/theme_motion.ts"
+)]
+pub enum ThemeMotion {
+    None,
+    Standard,
+}
+
+/// Icon stroke weight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/theme_icon_stroke.ts"
+)]
+pub enum ThemeIconStroke {
+    Thin,
+    Regular,
+    Bold,
+}
+
+/// One file in the themes folder: its id (the file stem) and either the
+/// validated theme or the reason it was rejected. Invalid files are listed,
+/// not hidden, so the picker can tell the author what to fix.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/user_theme_entry.ts"
+)]
+pub struct UserThemeEntry {
+    pub id: String,
+    pub file_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub theme: Option<UserTheme>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(

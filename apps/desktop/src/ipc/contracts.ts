@@ -25,6 +25,7 @@ import type {
   ToolCallStatus,
   Transport,
   UpdatePolicy,
+  UserThemeEntry,
 } from '@conduit/config-schema';
 
 export interface AppPaths {
@@ -185,6 +186,7 @@ export type {
   ProviderRequest,
   SettingsPatch,
   ModelInfo,
+  UserThemeEntry,
 };
 
 // =============================================================================

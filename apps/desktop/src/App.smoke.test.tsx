@@ -91,6 +91,11 @@ const SHAPES: Record<string, unknown> = {
   listMemoryItems: [],
   loadProviderCredentialReference: { providerId: 'anthropic', credentialRef: '', storedInKeychain: false },
   checkArtifactFileState: {},
+  // Theming Phase 5: reconcileUserThemes (App.tsx boot) calls
+  // `entries.find(...)` on this — the Proxy default (`null`) would throw
+  // there before setBoundaryOk ever runs, hanging the boot effect exactly
+  // like a missing getBrandConfig/getBrandLogo shape does (see above).
+  listUserThemes: [],
 };
 
 /**
@@ -139,6 +144,10 @@ const IPC_EXPORTS = [
   'getBrandConfig', 'getBrandLogo', 'saveBrandLogo', 'clearBrandLogo',
   'getBrandWarnings', 'clearBrandConfig', 'importBrandFile', 'applyBrandEdits',
   'exportBrandConfig',
+  // Theming Phase 5: same reasoning as the brand block above — App.tsx's
+  // boot effect calls listUserThemes() unconditionally too (wrapped in its
+  // own .catch, but still awaited in the same Promise.all).
+  'listUserThemes', 'revealThemesDir', 'createExampleUserTheme',
 ] as const;
 
 afterEach(() => {

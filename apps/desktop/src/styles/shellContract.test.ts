@@ -166,16 +166,23 @@ describe('window controls', () => {
 });
 
 /**
- * The reveal button is the only pointer affordance that reopens a collapsed
- * sidebar now that the top bar is gone; without it the collapse is a dead end
- * for anyone not using the hotkey.
+ * A collapsed sidebar takes its own actions with it — reopen, New chat, Search
+ * — so the title strip carries them while it is closed. Without them the
+ * collapse is a dead end for anyone not using the hotkeys.
  */
 describe('collapsed sidebar', () => {
+  const css = allCss.replace(/\/\*[\s\S]*?\*\//g, '');
+
   it('has a reveal affordance shown when the sidebar is closed', () => {
-    expect(openingTagFor('sb-reveal'), 'nothing renders .sb-reveal').not.toBeNull();
-    expect(allCss.replace(/\/\*[\s\S]*?\*\//g, '')).toMatch(
-      /html\[data-sidebar="closed"\]\s+\.sb-reveal\s*\{[^}]*display\s*:\s*grid/,
-    );
+    const found = openingTagFor('head-nav');
+    expect(found, 'nothing renders .head-nav').not.toBeNull();
+    const src = readFileSync(join(repoRoot, found!.file), 'utf8');
+    const start = src.indexOf(found!.tag);
+    const block = src.slice(start, src.indexOf('</div>', start));
+    for (const handler of ['onToggleSidebar', 'onNewChat', 'onOpenPalette']) {
+      expect(block, `.head-nav in ${found!.file} lost ${handler}`).toContain(`onClick={${handler}}`);
+    }
+    expect(css).toMatch(/html\[data-sidebar="closed"\]\s+\.head-nav\s*\{[^}]*display\s*:\s*flex/);
   });
 });
 

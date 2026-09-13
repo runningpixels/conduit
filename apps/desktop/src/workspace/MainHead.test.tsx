@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MainHead } from './MainHead';
 
@@ -9,6 +9,11 @@ function renderHead(props: Partial<Parameters<typeof MainHead>[0]> = {}) {
       onToggleTheme={vi.fn()}
       panelOpen={false}
       onTogglePanel={vi.fn()}
+      onToggleSidebar={vi.fn()}
+      onNewChat={vi.fn()}
+      onOpenPalette={vi.fn()}
+      onOpenSettings={vi.fn()}
+      onExportDiagnostics={vi.fn()}
       {...props}
     />,
   );
@@ -85,5 +90,112 @@ describe('title strip', () => {
     renderHead({ onToggleTheme });
     screen.getByRole('button', { name: 'Toggle light and dark mode' }).click();
     expect(onToggleTheme).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * The strip's settings entry point. Before it, the only pointer path to
+ * settings was the sidebar's workspace chip — two clicks deep, and gone
+ * entirely once the sidebar was collapsed.
+ */
+describe('settings split-button', () => {
+  it('opens settings in one click, without naming a section', () => {
+    const onOpenSettings = vi.fn();
+    renderHead({ onOpenSettings });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    // No section: the app reopens wherever the sheet was last left.
+    expect(onOpenSettings).toHaveBeenCalledWith();
+  });
+
+  it('lists sections from the chevron, with focus on the first item', () => {
+    renderHead();
+    const trigger = screen.getByRole('button', { name: 'Settings menu' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const menu = screen.getByRole('menu', { name: 'Settings menu' });
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]')).map((el) => el.textContent);
+    expect(items).toEqual([
+      'SettingsCtrl+,',
+      'Providers & keys',
+      'Chat defaults',
+      'Connectors',
+      'Appearance',
+      'Privacy & data',
+      'Export diagnostics',
+      'About',
+    ]);
+    expect(document.activeElement).toBe(menu.querySelector('[role="menuitem"]'));
+  });
+
+  it.each([
+    ['Providers & keys', 'providers'],
+    ['Chat defaults', 'chat'],
+    ['Connectors', 'connectors'],
+    ['Appearance', 'appearance'],
+    ['Privacy & data', 'privacy'],
+    ['About', 'about'],
+  ])('routes %s to its section and closes', (label, section) => {
+    const onOpenSettings = vi.fn();
+    renderHead({ onOpenSettings });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: label }));
+    expect(onOpenSettings).toHaveBeenCalledWith(section);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('runs diagnostics export rather than opening a section', () => {
+    const onOpenSettings = vi.fn();
+    const onExportDiagnostics = vi.fn();
+    renderHead({ onOpenSettings, onExportDiagnostics });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Export diagnostics' }));
+    expect(onExportDiagnostics).toHaveBeenCalledOnce();
+    expect(onOpenSettings).not.toHaveBeenCalled();
+  });
+
+  it('shows provider and connector counts', () => {
+    renderHead({ providerCount: 3, connectorCount: 2 });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings menu' }));
+    expect(screen.getByRole('menuitem', { name: /Providers & keys/ }).querySelector('.tail')).toHaveTextContent('3');
+    expect(screen.getByRole('menuitem', { name: /Connectors/ }).querySelector('.tail')).toHaveTextContent('2');
+  });
+
+  it('opens the menu on right-click of the gear', () => {
+    renderHead();
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('menu', { name: 'Settings menu' })).toBeInTheDocument();
+  });
+
+  it('closes on Escape and on a press outside', () => {
+    renderHead();
+    const trigger = screen.getByRole('button', { name: 'Settings menu' });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
+/**
+ * The sidebar's row of actions, standing in while it is collapsed. Visibility
+ * is CSS (`html[data-sidebar="closed"] .head-nav`, pinned by
+ * shellContract.test.ts), so this checks only that each one does its job.
+ */
+describe('collapsed-sidebar actions', () => {
+  it.each([
+    ['Open sidebar', 'onToggleSidebar'],
+    ['New chat', 'onNewChat'],
+    ['Search', 'onOpenPalette'],
+  ] as const)('%s calls %s', (label, handler) => {
+    const fn = vi.fn();
+    renderHead({ [handler]: fn });
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(fn).toHaveBeenCalledOnce();
   });
 });

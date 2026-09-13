@@ -47,7 +47,8 @@ interface SidebarProps {
   /** Collapse the sidebar; the floating reveal button brings it back. */
   onCollapse: () => void;
   onRevealWorkspace: () => void;
-  onOpenSettings: (section: string) => void;
+  /** Open the settings sheet; no section means wherever it was last left. */
+  onOpenSettings: (section?: string) => void;
   /** Export a redacted diagnostics bundle (workspace menu). */
   onExportDiagnostics: () => void;
   /** Delete one conversation (routes through the confirm dialog). Omit to
@@ -216,7 +217,7 @@ export function Sidebar({
     }
   }
 
-  function openSection(section: string) {
+  function openSection(section?: string) {
     closeMenu();
     onOpenSettings(section);
   }
@@ -601,7 +602,7 @@ export function Sidebar({
             onClick={() => openSection('connectors')}
           />
           <MenuItem icon={<LockIcon />} label={t('shell.sidebar.menu.privacyData')} onClick={() => openSection('privacy')} />
-          <MenuItem icon={<SettingsIcon />} label={t('shell.sidebar.menu.settings')} kbd={modShortcutHint(',')} onClick={() => openSection('appearance')} />
+          <MenuItem icon={<SettingsIcon />} label={t('shell.sidebar.menu.settings')} kbd={modShortcutHint(',')} onClick={() => openSection()} />
           <div className="menu-sep" />
           <MenuItem
             icon={<DiagnosticsIcon />}

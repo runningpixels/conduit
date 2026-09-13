@@ -9,12 +9,18 @@
  * button reset.
  *
  * Ratios are computed from tokens.css itself, so editing a colour re-checks it.
+ *
+ * The set of looks this file checks is registry-driven (Phase 2): every
+ * `PALETTE_IDS` entry × the modes `modesForPalette` says it supports. Adding a
+ * palette to the registry (and its block(s) to tokens.css) is automatically
+ * covered here without touching this file — see themes/registry.ts.
  */
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { PALETTE_IDS, modesForPalette } from '../themes/registry';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Normalised: the repo checks out CRLF on Windows, and the selector probes
@@ -124,6 +130,11 @@ function blockFor(selector: string): string {
   return hits[0].decls;
 }
 
+/** Whether any top-level rule declares `selector` among its comma-separated members. */
+function hasSelector(selector: string): boolean {
+  return RULES.some((r) => r.selectors.includes(selector));
+}
+
 /**
  * Resolve a token the way the browser would: walk the layers in cascade order
  * and take the last one that declares it. A palette is a *delta* over a theme —
@@ -152,29 +163,51 @@ const SURFACES = ['bg', 'bg-side', 'card', 'card-hi'] as const;
 const INKS = ['ink', 'ink-2', 'ink-3'] as const;
 
 /**
- * The six looks the app can render: three palettes × two themes. Each is a
- * *stack* of token layers in cascade order, because a palette is a delta over
- * a theme — it declares only what it changes.
+ * The palette selector for a non-`terra` palette id.
  *
- * The terracotta light stacks list the palette's base block after
+ * `terra` is the base look: it has no `html[data-palette]` block of its own —
+ * `:root` / `[data-theme="light"]` already *are* Terra — so it is handled
+ * separately below rather than through this helper.
+ */
+function paletteSelector(id: string): string {
+  return `html[data-palette="${id}"]`;
+}
+
+function paletteLightSelector(id: string): string {
+  return `${paletteSelector(id)}[data-theme="light"]`;
+}
+
+/**
+ * The looks the app can render, one entry per palette × supported mode. Each
+ * is a *stack* of token layers in cascade order, because a palette is a delta
+ * over a theme — it declares only what it changes.
+ *
+ * The non-terra light stacks list the palette's base block after
  * `[data-theme="light"]` deliberately: `html[data-palette="…"]` is (0,1,1)
  * and `[data-theme="light"]` is (0,1,0), so in the browser the palette's dark
  * values *do* outrank the light theme. That is why the light palette block has
  * to redeclare every colour the dark one does, and why the coverage test below
  * exists.
+ *
+ * Registry-driven (Phase 2): built from `PALETTE_IDS` × `modesForPalette`, so a
+ * new palette (and its tokens.css block(s)) is covered the moment it lands in
+ * the registry, with no edit here.
  */
-const OC = 'html[data-palette="orange-charcoal"]';
-const OC_LIGHT = 'html[data-palette="orange-charcoal"][data-theme="light"]';
-const OD = 'html[data-palette="orange-dark"]';
-const OD_LIGHT = 'html[data-palette="orange-dark"][data-theme="light"]';
-const THEMES = {
-  'terra dark': [':root'],
-  'terra light': [':root', '[data-theme="light"]'],
-  'orange-charcoal dark': [':root', OC],
-  'orange-charcoal light': [':root', '[data-theme="light"]', OC, OC_LIGHT],
-  'orange-dark dark': [':root', OD],
-  'orange-dark light': [':root', '[data-theme="light"]', OD, OD_LIGHT],
-} as const;
+const THEMES: Record<string, readonly string[]> = {};
+for (const id of PALETTE_IDS) {
+  const modes = modesForPalette(id);
+  if (id === 'terra') {
+    THEMES['terra dark'] = [':root'];
+    if (modes.includes('light')) THEMES['terra light'] = [':root', '[data-theme="light"]'];
+    continue;
+  }
+  const dark = paletteSelector(id);
+  const light = paletteLightSelector(id);
+  THEMES[`${id} dark`] = [':root', dark];
+  if (modes.includes('light')) {
+    THEMES[`${id} light`] = [':root', '[data-theme="light"]', dark, light];
+  }
+}
 
 describe.each(Object.entries(THEMES))('%s', (_look, layers) => {
   const surfaces = Object.fromEntries(SURFACES.map((s) => [s, resolve(layers, s)]));
@@ -231,6 +264,10 @@ describe.each(Object.entries(THEMES))('%s', (_look, layers) => {
  * Each is checked against the theme it is scoped to. Without the split, all
  * four dark hues measure 3.57–4.43 on --card/--card-hi and white-on-hue
  * measures 2.98–3.20 — the state the V9 spec ships and describes as legible.
+ *
+ * These roles are declared theme-wide (`[data-provider="…"]`, not scoped to a
+ * palette), so they are checked once against Terra's surfaces regardless of
+ * how many palettes the registry lists.
  */
 const PROVIDERS = ['anthropic', 'openai', 'ollama', 'custom'] as const;
 const THEME_PROVIDERS = (['dark', 'light'] as const).flatMap((theme) =>
@@ -281,109 +318,112 @@ describe('provider hue: solid fill role', () => {
 });
 
 /**
- * The Orange Charcoal palette pins one identity across every provider, and it
- * does so through private `--oc-*` literals rather than by declaring `--hue`
- * directly — so that the rule doing the assigning can stay theme-agnostic and
- * lose to `provider-colour: off` on source order.
+ * Some palettes pin one identity across every provider through private
+ * `--<prefix>-hue*` literals rather than by declaring `--hue` directly — so
+ * that the rule doing the assigning can stay theme-agnostic and lose to
+ * `provider-colour: off` on source order (see the orange-charcoal/orange-dark
+ * blocks in tokens.css).
  *
- * That indirection costs the checks above their subject: under this palette
- * `--hue` is a `var()`, which `readTokenIn` cannot see. These three tests put
- * the subject back — the literals are measured, and the mapping from literal to
- * role is asserted, so the two cannot drift apart.
+ * That indirection costs the checks above their subject: under such a palette
+ * `--hue` is a `var()`, which `readTokenIn` cannot see. This section puts the
+ * subject back for *any* palette that declares the pin — the literals are
+ * measured, and the mapping from literal to role is asserted, so the two
+ * cannot drift apart.
+ *
+ * Registry-driven: a palette is included here iff tokens.css declares
+ * `html[data-palette="<id>"] [data-provider]` (the pinned-hue rule), and the
+ * private variable names are read out of that rule's own text rather than
+ * hardcoded — so this generalizes to any future pinning palette (Phase 3's
+ * `amber`, if it pins) with no edit here.
  */
-describe('orange-charcoal palette hue', () => {
-  const LOOKS = [
-    ['orange-charcoal dark', OC, THEMES['orange-charcoal dark']],
-    ['orange-charcoal light', OC_LIGHT, THEMES['orange-charcoal light']],
-  ] as const;
+function pinSelector(id: string): string {
+  return `${paletteSelector(id)} [data-provider]`;
+}
 
-  it.each(LOOKS)('%s --oc-hue-text clears AA on every surface', (_look, sel, layers) => {
-    const hueText = readTokenIn(blockFor(sel), 'oc-hue-text')!;
+interface PinnedHueVars {
+  hue: string;
+  hueText: string;
+  hueSolid: string;
+}
+
+function pinnedHueVars(pin: string): PinnedHueVars | null {
+  const hue = pin.match(/--hue:\s*var\((--[a-z0-9-]+)\)/)?.[1];
+  const hueText = pin.match(/--hue-text:\s*var\((--[a-z0-9-]+)\)/)?.[1];
+  const hueSolid = pin.match(/--hue-solid:\s*var\((--[a-z0-9-]+)\)/)?.[1];
+  if (!hue || !hueText || !hueSolid) return null;
+  return { hue, hueText, hueSolid };
+}
+
+const PINNED_PALETTES = PALETTE_IDS.filter((id) => id !== 'terra' && hasSelector(pinSelector(id)));
+
+describe.each(PINNED_PALETTES)('%s palette hue (pinned via [data-provider])', (id) => {
+  const dark = paletteSelector(id);
+  const light = paletteLightSelector(id);
+  const pin = blockFor(pinSelector(id));
+  const vars = pinnedHueVars(pin);
+
+  it('pins --hue / --hue-text / --hue-solid to private var() tokens', () => {
+    expect(vars, `${pinSelector(id)} does not map --hue/--hue-text/--hue-solid to var(--private) tokens`).not.toBeNull();
+  });
+
+  const modes: Array<readonly [mode: 'dark' | 'light', sel: string, layers: readonly string[]]> = [
+    ['dark', dark, THEMES[`${id} dark`]],
+  ];
+  if (modesForPalette(id).includes('light')) {
+    modes.push(['light', light, THEMES[`${id} light`]]);
+  }
+
+  it.each(modes)('%s --hue-text clears AA on every surface', (_mode, sel, layers) => {
+    const hueText = readTokenIn(blockFor(sel), vars!.hueText.slice(2))!;
     for (const surface of SURFACES) {
       expect(
         contrast(hueText, resolve(layers, surface)),
-        `--oc-hue-text on --${surface}`,
+        `${vars!.hueText} on --${surface}`,
       ).toBeGreaterThanOrEqual(AA);
     }
   });
 
-  it.each(LOOKS)('%s --oc-hue clears 3:1 on every surface', (_look, sel, layers) => {
-    const hue = readTokenIn(blockFor(sel), 'oc-hue')!;
+  it.each(modes)('%s --hue clears 3:1 on every surface', (_mode, sel, layers) => {
+    const hue = readTokenIn(blockFor(sel), vars!.hue.slice(2))!;
     for (const surface of SURFACES) {
-      expect(
-        contrast(hue, resolve(layers, surface)),
-        `--oc-hue on --${surface}`,
-      ).toBeGreaterThanOrEqual(AA_NON_TEXT);
+      expect(contrast(hue, resolve(layers, surface)), `${vars!.hue} on --${surface}`).toBeGreaterThanOrEqual(
+        AA_NON_TEXT,
+      );
     }
   });
 
-  it.each(LOOKS)('%s --on-hue clears AA on --oc-hue-solid', (_look, sel, layers) => {
-    const solid = readTokenIn(blockFor(sel), 'oc-hue-solid')!;
+  it.each(modes)('%s --on-hue clears AA on the pinned hue-solid', (_mode, sel, layers) => {
+    const solid = readTokenIn(blockFor(sel), vars!.hueSolid.slice(2))!;
     expect(contrast(resolve(layers, 'on-hue'), solid)).toBeGreaterThanOrEqual(AA);
   });
 
   // Without this, the literals above could be measured while the app renders
   // something else entirely.
-  it('maps every hue role onto a measured literal', () => {
-    const pin = blockFor('html[data-palette="orange-charcoal"] [data-provider]');
-    expect(pin).toContain('--hue: var(--oc-hue)');
-    expect(pin).toContain('--hue-text: var(--oc-hue-text)');
-    expect(pin).toContain('--hue-solid: var(--oc-hue-solid)');
-  });
-});
-
-describe('orange-dark palette hue', () => {
-  const LOOKS = [
-    ['orange-dark dark', OD, THEMES['orange-dark dark']],
-    ['orange-dark light', OD_LIGHT, THEMES['orange-dark light']],
-  ] as const;
-
-  it.each(LOOKS)('%s --od-hue-text clears AA on every surface', (_look, sel, layers) => {
-    const hueText = readTokenIn(blockFor(sel), 'od-hue-text')!;
-    for (const surface of SURFACES) {
-      expect(
-        contrast(hueText, resolve(layers, surface)),
-        `--od-hue-text on --${surface}`,
-      ).toBeGreaterThanOrEqual(AA);
-    }
-  });
-
-  it.each(LOOKS)('%s --od-hue clears 3:1 on every surface', (_look, sel, layers) => {
-    const hue = readTokenIn(blockFor(sel), 'od-hue')!;
-    for (const surface of SURFACES) {
-      expect(
-        contrast(hue, resolve(layers, surface)),
-        `--od-hue on --${surface}`,
-      ).toBeGreaterThanOrEqual(AA_NON_TEXT);
-    }
-  });
-
-  it.each(LOOKS)('%s --on-hue clears AA on --od-hue-solid', (_look, sel, layers) => {
-    const solid = readTokenIn(blockFor(sel), 'od-hue-solid')!;
-    expect(contrast(resolve(layers, 'on-hue'), solid)).toBeGreaterThanOrEqual(AA);
-  });
-
-  it('maps every hue role onto a measured literal', () => {
-    const pin = blockFor('html[data-palette="orange-dark"] [data-provider]');
-    expect(pin).toContain('--hue: var(--od-hue)');
-    expect(pin).toContain('--hue-text: var(--od-hue-text)');
-    expect(pin).toContain('--hue-solid: var(--od-hue-solid)');
+  it('maps every hue role onto the measured literal', () => {
+    expect(pin).toContain(`--hue: var(${vars!.hue})`);
+    expect(pin).toContain(`--hue-text: var(${vars!.hueText})`);
+    expect(pin).toContain(`--hue-solid: var(${vars!.hueSolid})`);
   });
 });
 
 /**
- * `html[data-palette="orange-charcoal"]` is (0,1,1) and `[data-theme="light"]` is
- * (0,1,0), so the palette's dark values outrank the light theme. Any colour the
- * dark block declares and the light block forgets leaks into light mode — and
- * for `--ink` that is near-white text on near-white paper, with every contrast
+ * `html[data-palette="<id>"]` is (0,1,1) and `[data-theme="light"]` is (0,1,0),
+ * so the palette's dark values outrank the light theme. Any colour the dark
+ * block declares and the light block forgets leaks into light mode — and for
+ * `--ink` that is near-white text on near-white paper, with every contrast
  * assertion above still green because they resolve the stack correctly.
  *
- * So the coverage itself is the assertion.
+ * So the coverage itself is the assertion. Registry-driven: runs for every
+ * non-terra palette that `modesForPalette` says supports light.
  */
-describe('orange-charcoal palette: light covers dark', () => {
+const LIGHT_CAPABLE_PALETTES = PALETTE_IDS.filter(
+  (id) => id !== 'terra' && modesForPalette(id).includes('light'),
+);
+
+describe.each(LIGHT_CAPABLE_PALETTES)('%s palette: light covers dark', (id) => {
   it('redeclares every colour the dark block declares', () => {
-    const dark = blockFor(OC);
-    const light = blockFor(OC_LIGHT);
+    const dark = blockFor(paletteSelector(id));
+    const light = blockFor(paletteLightSelector(id));
     const declared = [...dark.matchAll(/--([a-z0-9-]+)\s*:\s*(?:#|rgba?\()/g)].map((m) => m[1]);
     expect(declared.length, 'the dark palette block declares no colours').toBeGreaterThan(0);
     const missing = declared.filter((name) => !new RegExp(`--${name}\\s*:`).test(light));
@@ -391,13 +431,31 @@ describe('orange-charcoal palette: light covers dark', () => {
   });
 });
 
-describe('orange-dark palette: light covers dark', () => {
-  it('redeclares every colour the dark block declares', () => {
-    const dark = blockFor(OD);
-    const light = blockFor(OD_LIGHT);
-    const declared = [...dark.matchAll(/--([a-z0-9-]+)\s*:\s*(?:#|rgba?\()/g)].map((m) => m[1]);
-    expect(declared.length, 'the dark palette block declares no colours').toBeGreaterThan(0);
-    const missing = declared.filter((name) => !new RegExp(`--${name}\\s*:`).test(light));
-    expect(missing, 'these leak dark values into light mode').toEqual([]);
+/**
+ * Block-existence coverage: every palette the registry names must actually
+ * have the tokens.css blocks its modes promise, or the whole suite above is
+ * silently vacuous (`blockFor` only throws for a selector some *other* rule
+ * still happens to declare; a palette with *no* block at all would just never
+ * be exercised).
+ */
+describe('palette block coverage (registry vs. tokens.css)', () => {
+  it.each(PALETTE_IDS.filter((id) => id !== 'terra'))('%s has a dark block', (id) => {
+    expect(hasSelector(paletteSelector(id)), `expected ${paletteSelector(id)} in tokens.css`).toBe(true);
   });
+
+  it.each(PALETTE_IDS.filter((id) => id !== 'terra'))(
+    '%s has a light block iff its registry modes include light',
+    (id) => {
+      const supportsLight = modesForPalette(id).includes('light');
+      const hasLightBlock = hasSelector(paletteLightSelector(id));
+      if (supportsLight) {
+        expect(hasLightBlock, `${id} supports light but has no ${paletteLightSelector(id)} block`).toBe(
+          true,
+        );
+      }
+      // Dark-only palettes are not required to omit a light block (one would
+      // simply be unused); they are only required not to *need* one, which
+      // the `if` above already covers by asserting nothing in that case.
+    },
+  );
 });

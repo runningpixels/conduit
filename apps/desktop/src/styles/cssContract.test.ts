@@ -308,6 +308,10 @@ const NOT_IN_MARKUP: Record<string, string> = {
   'kind-error': 'built from a template literal in ToastStack.tsx',
   'kind-success': 'built from a template literal in ToastStack.tsx',
   'kind-warning': 'built from a template literal in ToastStack.tsx',
+  // Composed as `theme-picker--${variant}` in ThemePicker.tsx; the `settings`
+  // variant has no rule of its own (the base `.theme-picker` covers it), so
+  // only the `onboarding` override needs registering here.
+  'theme-picker--onboarding': 'built from a template literal in ThemePicker.tsx',
 };
 
 describe('no dead rules', () => {

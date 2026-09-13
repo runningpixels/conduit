@@ -4,6 +4,7 @@
  * No new preference store — AppSettings (validated in state.rs) is the source.
  */
 import type { AppSettings } from '@conduit/config-schema';
+import { supportedModes } from './shell/uiPrefs';
 
 export type ThemeMode = AppSettings['theme'];
 
@@ -13,12 +14,18 @@ function prefersLight(): boolean {
     : false;
 }
 
-/** Resolve the effective theme ('dark' | 'light') for a settings value. */
+/**
+ * Resolve the effective theme ('dark' | 'light') for a settings value.
+ *
+ * The active look × palette may narrow the modes it can render (a dark-only
+ * palette, themes/registry.ts). That forces the effective mode without writing
+ * AppSettings.theme, so choosing a theme that supports both modes again brings
+ * the user's own choice straight back.
+ */
 export function resolveTheme(mode: ThemeMode): 'dark' | 'light' {
-  if (mode === 'system') {
-    return prefersLight() ? 'light' : 'dark';
-  }
-  return mode;
+  const wanted = mode === 'system' ? (prefersLight() ? 'light' : 'dark') : mode;
+  const modes = supportedModes();
+  return modes.includes(wanted) ? wanted : modes[0];
 }
 
 /** Apply the effective theme to <html data-theme>. */

@@ -10,7 +10,20 @@
  * tokens.css / styles.css can react without React re-rendering.
  */
 
+import {
+  CUSTOM_THEME_ID,
+  LOOK_IDS,
+  PALETTE_IDS,
+  modesForPalette,
+  themeById,
+  themeForPair,
+  type LookId,
+  type Mode,
+  type PaletteId,
+} from '../themes/registry';
+
 const PALETTE_KEY = 'conduit:v9-palette';
+const LOOK_KEY = 'conduit:v10-look';
 const PROVIDER_COLOUR_KEY = 'conduit:v7-provider-colour';
 const REDUCE_MOTION_KEY = 'conduit:v7-reduce-motion';
 const SHOW_REASONING_KEY = 'conduit:v7-show-reasoning';
@@ -19,7 +32,8 @@ const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
 const EXPANDED_STATUS_KEY = 'conduit:v9-expanded-status';
 const MERMAID_SCALE_KEY = 'conduit:v9-mermaid-scale';
 
-export type PalettePref = 'terra' | 'orange-charcoal' | 'orange-dark';
+export type PalettePref = PaletteId;
+export type LookPref = LookId;
 export type ProviderColourPref = 'on' | 'off';
 export type ReduceMotionPref = 'on' | 'off';
 export type ShowReasoningPref = 'on' | 'off';
@@ -87,17 +101,90 @@ export function readPalette(): PalettePref {
   } catch {
     /* storage unavailable */
   }
-  return readPref(PALETTE_KEY, ['terra', 'orange-charcoal', 'orange-dark'], 'orange-charcoal');
+  return readPref(PALETTE_KEY, PALETTE_IDS, 'orange-charcoal');
 }
 
 export function writePalette(value: PalettePref): void {
   writePref(PALETTE_KEY, value);
-  applyPalette(value);
+  if (!isBrandActive()) applyPalette(value);
+  notifyThemeChanged();
 }
 
 /** `html[data-palette]` swaps surfaces, hue, and (for the terracotta looks) the prose face. */
 export function applyPalette(value: PalettePref): void {
   document.documentElement.setAttribute('data-palette', value);
+}
+
+/* ── Look (theming, docs/theming/README.md) ─────────────────────────────────
+ * The structural axis beside the palette: type, radii, borders, elevation,
+ * motion. `soft` is the product's own look and the default. A look and a
+ * palette together are a theme (themes/registry.ts); the two are stored
+ * separately so Appearance → Advanced can mix them, and so the palette key
+ * keeps meaning exactly what it meant before looks existed (applyBrand.ts
+ * restores it on clearBrand). */
+
+/** Fired on `window` whenever the look or palette changes, so the mode can be
+ *  re-resolved (a dark-only palette forces dark) and renderers that cannot read
+ *  CSS variables (Mermaid, the artifact iframe) can repaint. */
+export const THEME_CHANGED_EVENT = 'conduit:theme-changed';
+
+function notifyThemeChanged(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(THEME_CHANGED_EVENT));
+  } catch {
+    /* non-browser environments */
+  }
+}
+
+/** A white-label brand owns the palette while active (applyBrand.ts sets
+ *  `data-palette="brand"`); the user's stored palette waits underneath. */
+export function isBrandActive(): boolean {
+  try {
+    return document.documentElement.getAttribute('data-palette') === 'brand';
+  } catch {
+    return false;
+  }
+}
+
+export function readLook(): LookPref {
+  return readPref(LOOK_KEY, LOOK_IDS, 'soft');
+}
+
+export function writeLook(value: LookPref): void {
+  writePref(LOOK_KEY, value);
+  applyLook(value);
+  notifyThemeChanged();
+}
+
+/** `html[data-look]` retargets structural tokens and enables the look's sheet. */
+export function applyLook(value: LookPref): void {
+  document.documentElement.setAttribute('data-look', value);
+}
+
+/** The theme the stored look × palette pairing names, or `custom`. Derived,
+ *  never stored, so it cannot drift from the two prefs it describes. */
+export function readThemeId(): string {
+  return themeForPair(readLook(), readPalette())?.id ?? CUSTOM_THEME_ID;
+}
+
+/** Select a named theme: writes both axes at once and notifies once. */
+export function selectTheme(id: string): void {
+  const theme = themeById(id);
+  if (!theme) return;
+  writePref(LOOK_KEY, theme.look);
+  writePref(PALETTE_KEY, theme.palette);
+  applyLook(theme.look);
+  if (!isBrandActive()) applyPalette(theme.palette);
+  notifyThemeChanged();
+}
+
+/**
+ * Modes the active look × palette can render. A brand declares both a dark
+ * and a light palette (the brand schema requires it), so it never narrows.
+ */
+export function supportedModes(): readonly Mode[] {
+  if (isBrandActive()) return ['dark', 'light'];
+  return modesForPalette(readPalette());
 }
 
 /* ── Provider colour ──────────────────────────────────────────────────── */
@@ -220,6 +307,10 @@ export function applyMermaidScale(value: MermaidScalePref): void {
 
 /** Apply every document-level pref on boot (idempotent). */
 export function applyUiPrefs(): void {
+  applyLook(readLook());
+  /* Unconditional, unlike the writers: App's boot calls this before it knows
+   * whether the Rust-side brand still exists, then re-applies the brand if it
+   * does — so a cached brand that has since been removed is cleared here. */
   applyPalette(readPalette());
   applyProviderColour(readProviderColour());
   applyReduceMotion(readReduceMotion());

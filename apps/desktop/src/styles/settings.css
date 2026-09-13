@@ -292,7 +292,96 @@
 }
 .appearance-form > :last-child { border-bottom: 0; }
 
-/* ── Onboarding (full-screen route) ────────────────────────────────────── */
+/* ── Theme picker (theming Phase 2) ────────────────────────────────────── */
+/* A block row, not a `.field`: the card grid needs the whole row width, not
+   the label/control column pair every other appearance-form row uses. The
+   `.field-label` class is reused as-is — `.appearance-form .field-label`
+   (above) already un-does the generic uppercase treatment for any descendant
+   with that class, `.field` ancestor or not. */
+.appearance-form > .theme-picker {
+  display: grid;
+  gap: var(--sp-2);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-3);
+}
+.theme-picker--onboarding .theme-picker-grid {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--sp-2);
+}
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  text-align: left;
+  transition: border-color var(--tap), background var(--tap);
+}
+.theme-card:hover { border-color: var(--line-hi); }
+.theme-card:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+.theme-card--selected { border-color: var(--hue); background: var(--hue-weak); }
+.theme-card-preview {
+  height: 52px;
+  border-radius: var(--r-4);
+  display: flex;
+  align-items: flex-end;
+  padding: var(--sp-1);
+}
+.theme-card-preview-surface {
+  flex: 1 1 auto;
+  height: 65%;
+  border-radius: var(--r-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 8px;
+}
+.theme-card-preview-ink { width: 55%; height: 2px; border-radius: var(--r-1); }
+.theme-card-preview-accent { width: 10px; height: 10px; border-radius: var(--r-round); }
+.theme-card-body { display: grid; gap: 2px; }
+.theme-card-name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+  color: var(--ink);
+}
+.theme-card-description { font-size: var(--fs-lg); color: var(--ink-3); line-height: 1.4; }
+.theme-card-badge {
+  font-size: var(--fs-xs);
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.theme-picker-note { margin: 0; font-size: var(--fs-lg); color: var(--ink-3); }
+
+/* ── Appearance → Advanced (look x palette, theming Phase 2) ────────────── */
+.appearance-advanced { padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.appearance-advanced summary {
+  cursor: pointer;
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.appearance-advanced summary::-webkit-details-marker { color: var(--ink-3); }
+.appearance-advanced[open] summary { color: var(--ink); }
+.appearance-advanced-body { margin-top: var(--sp-3); display: grid; gap: 0; }
+.appearance-advanced-body .field:last-child { border-bottom: 0; }
+
+/* ── Onboarding (full-screen route) ────────────────────────────────────── */─ */
 /* Fills the second `.app` row rather than the viewport: the caption row takes
    the first, so a 100vh minimum would overflow the shell by exactly its
    height. */

@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import type { AppSettings } from '../ipc/contracts';
 import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../i18n';
 import { applyUiReadability, readUiDensity, readUiFontSize, type UiFontSize } from '../workspace/readability';
-import { readPalette, writePalette, type PalettePref } from '../shell/uiPrefs';
+import { ThemePicker } from '../workspace/settings/ThemePicker';
 import { usePersistSteps } from './persistSteps';
 
 /**
- * First-run appearance: language, theme, palette, text size.
+ * First-run appearance: language, mode, theme, text size.
  *
  * **Why this is step one.** Two reasons, and they point the same way. A user
  * who cannot read the interface cannot act on any later step, so the language
@@ -38,7 +38,6 @@ export function AppearanceStep({
   const t = useT();
   const { set, writeThenApply } = usePersistSteps(settings, onSettingsChange, onStatus);
   const [fontSize, setFontSize] = useState<UiFontSize>(() => readUiFontSize());
-  const [palette, setPalette] = useState<PalettePref>(() => readPalette());
   /* The language write is awaited, so the select has a real in-flight window.
      Disabling it stops a second choice from queueing a second re-mount. */
   const [switchingLanguage, setSwitchingLanguage] = useState(false);
@@ -109,24 +108,11 @@ export function AppearanceStep({
           </select>
         </label>
 
-        {/* Palette and text size are renderer-only presentation prefs: they live
-            in localStorage and on <html>, deliberately outside AppSettings, so
-            they are written directly rather than through the settings path. */}
-        <label className="field">
-          <span className="field-label">{t('settings.appearance.palette.label')}</span>
-          <select
-            value={palette}
-            onChange={(e) => {
-              const next = e.target.value as PalettePref;
-              setPalette(next);
-              writePalette(next);
-            }}
-          >
-            <option value="orange-charcoal">{t('settings.appearance.palette.optionOrangeCharcoal')}</option>
-            <option value="orange-dark">{t('settings.appearance.palette.optionOrangeDark')}</option>
-            <option value="terra">{t('settings.appearance.palette.optionTerra')}</option>
-          </select>
-        </label>
+        {/* The theme (look x palette) is a renderer-only presentation pref: it
+            lives in localStorage and on <html>, deliberately outside
+            AppSettings, so ThemePicker writes it directly rather than through
+            the settings path. */}
+        <ThemePicker variant="onboarding" />
 
         <label className="field">
           <span className="field-label">{t('settings.appearance.fontSize.label')}</span>

@@ -59,7 +59,7 @@ import { deriveConnectionState } from './lib/connectionState';
 import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
-import { applyUiPrefs } from './shell/uiPrefs';
+import { applyUiPrefs, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
   useColumnOverlay,
   useColumnResize,
@@ -1180,7 +1180,15 @@ export default function App() {
   useEffect(() => {
     const eff = applyTheme(settings.theme);
     setEffectiveTheme(eff);
-    return watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
+    const stopWatching = watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
+    /* A theme change can narrow the renderable modes (a dark-only palette), so
+     * the effective mode is re-resolved whenever the look or palette moves. */
+    const onThemeChanged = () => setEffectiveTheme(applyTheme(settings.theme));
+    window.addEventListener(THEME_CHANGED_EVENT, onThemeChanged);
+    return () => {
+      stopWatching();
+      window.removeEventListener(THEME_CHANGED_EVENT, onThemeChanged);
+    };
   }, [settings.theme]);
 
   /* The language analogue of the theme effect above, and the reconcile half of

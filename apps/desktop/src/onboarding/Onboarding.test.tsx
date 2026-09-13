@@ -326,7 +326,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
       // effect and re-mounts nothing, so making the user wait on IPC to see a
       // colour change would be latency for its own sake.
       const { onSettingsChange } = renderOnboarding();
-      fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'light' } });
+      fireEvent.change(screen.getByLabelText('Mode'), { target: { value: 'light' } });
       expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
     });
   });

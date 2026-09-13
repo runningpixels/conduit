@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   readProviderColour,
@@ -17,12 +17,18 @@ import {
   readMermaidScale,
   writeMermaidScale,
   mermaidScaleFactor,
+  readLook,
+  writeLook,
+  selectTheme,
+  readThemeId,
+  THEME_CHANGED_EVENT,
 } from './uiPrefs';
 
 describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-palette');
+    document.documentElement.removeAttribute('data-look');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
@@ -98,17 +104,20 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
   });
 
   it('applyUiPrefs sets every document attribute idempotently', () => {
+    writeLook('soft');
     writePalette('orange-charcoal');
     writeProviderColour('off');
     writeReduceMotion('on');
     writeExpandedStatus('on');
     writeMermaidScale('compact');
+    document.documentElement.removeAttribute('data-look');
     document.documentElement.removeAttribute('data-palette');
     document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
     document.documentElement.removeAttribute('data-mermaid-scale');
     applyUiPrefs();
+    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
     expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
@@ -190,5 +199,105 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     const css = readFileSync(`${process.cwd()}/../../packages/ui/src/tokens.css`, 'utf8')
       .replace(/\r\n/g, '\n');
     expect(css).toContain('html[data-provider-colour="off"][data-provider]');
+  });
+});
+
+describe('look (theming Phase 2, structural axis)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-look');
+    document.documentElement.removeAttribute('data-palette');
+  });
+
+  it('defaults to soft and falls back to soft on garbage', () => {
+    expect(readLook()).toBe('soft');
+    localStorage.setItem('conduit:v10-look', 'brutalist');
+    expect(readLook()).toBe('soft');
+  });
+
+  it('writeLook persists the value, applies data-look, and fires THEME_CHANGED_EVENT once', () => {
+    const handler = vi.fn();
+    window.addEventListener(THEME_CHANGED_EVENT, handler);
+    writeLook('soft');
+    expect(readLook()).toBe('soft');
+    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
+    expect(handler).toHaveBeenCalledTimes(1);
+    window.removeEventListener(THEME_CHANGED_EVENT, handler);
+  });
+
+  it('selectTheme writes both axes, applies both attributes, and fires the change event once', () => {
+    const handler = vi.fn();
+    window.addEventListener(THEME_CHANGED_EVENT, handler);
+    selectTheme('conduit-orange-dark');
+    expect(readLook()).toBe('soft');
+    expect(readPalette()).toBe('orange-dark');
+    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
+    expect(handler).toHaveBeenCalledTimes(1);
+    window.removeEventListener(THEME_CHANGED_EVENT, handler);
+  });
+
+  it('selectTheme is a no-op for an id no manifest carries', () => {
+    writePalette('terra');
+    selectTheme('does-not-exist');
+    expect(readPalette()).toBe('terra');
+  });
+
+  it('selectTheme does not overwrite data-palette="brand" while a brand is active', () => {
+    document.documentElement.setAttribute('data-palette', 'brand');
+    selectTheme('conduit-orange-dark');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
+    // The preference underneath still updates, so it is what re-applies once
+    // the brand clears.
+    expect(readPalette()).toBe('orange-dark');
+    document.documentElement.removeAttribute('data-palette');
+  });
+
+  it('writePalette does not overwrite data-palette="brand" while a brand is active, but still persists', () => {
+    document.documentElement.setAttribute('data-palette', 'brand');
+    writePalette('orange-dark');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
+    expect(readPalette()).toBe('orange-dark');
+    document.documentElement.removeAttribute('data-palette');
+  });
+
+  it('readThemeId derives the id from the stored look × palette pair', () => {
+    selectTheme('conduit-terra');
+    expect(readThemeId()).toBe('conduit-terra');
+    selectTheme('conduit-orange-charcoal');
+    expect(readThemeId()).toBe('conduit-orange-charcoal');
+    selectTheme('conduit-orange-dark');
+    expect(readThemeId()).toBe('conduit-orange-dark');
+  });
+
+  it('applyUiPrefs applies data-look', () => {
+    writeLook('soft');
+    document.documentElement.removeAttribute('data-look');
+    applyUiPrefs();
+    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
+  });
+
+  describe('readThemeId for a pair no manifest names', () => {
+    afterEach(() => {
+      vi.doUnmock('../themes/registry');
+      vi.resetModules();
+    });
+
+    it('falls back to the custom pseudo-theme id', async () => {
+      vi.resetModules();
+      vi.doMock('../themes/registry', async () => {
+        const actual =
+          await vi.importActual<typeof import('../themes/registry')>('../themes/registry');
+        // Every real look × palette pair is named today (LOOK_IDS has only
+        // `soft`, and every PALETTE_ID has a `soft` manifest) — so the only
+        // way to exercise "no manifest names this pair" is to mock the
+        // lookup itself, exactly as the task note anticipates.
+        return { ...actual, themeForPair: () => undefined };
+      });
+      const mod = await import('./uiPrefs');
+      localStorage.setItem('conduit:v10-look', 'soft');
+      localStorage.setItem('conduit:v9-palette', 'orange-charcoal');
+      expect(mod.readThemeId()).toBe('custom');
+    });
   });
 });

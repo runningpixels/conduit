@@ -4,7 +4,7 @@ import '@conduit/ui/tokens.css';
 import './styles.css';
 import App from './App';
 import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
-import { applyPalette, readPalette } from './shell/uiPrefs';
+import { applyLook, applyPalette, readLook, readPalette } from './shell/uiPrefs';
 import { applyCachedBrand } from './brand/applyBrand';
 import { resolveTheme } from './theme';
 import { I18nProvider, bootstrapI18n } from './i18n';
@@ -17,6 +17,9 @@ applyUiReadability(readUiFontSize(), readUiDensity());
  * Conduit look on every launch. The rest of the prefs tint or animate, so they
  * can wait; this one repaints. */
 applyPalette(readPalette());
+/* The look moves structure (type, radii, borders) as much as the palette moves
+ * colour, so it is applied pre-paint for the same reason. */
+applyLook(readLook());
 /* Same reasoning, for a white-label brand: `get_brand_config` is IPC too, so
  * replay the last-known-good config from localStorage synchronously here, and
  * let App's boot effect reconcile against the authoritative Rust read once it

@@ -36,3 +36,14 @@ actually decided and why. Newest phase last.
 | P1.7 | Shadows whose colour is `var(--hue)` keep the colour at the use site and tokenise **geometry only** (`--shadow-composer-focus-spread`, `--tab-active-rule-w`, `--shadow-handle-glow-*`). | A custom property resolves where it is declared; hoisting `var(--hue)` into `:root` would freeze it at the root and lose per-provider hue on `[data-provider]` descendants. |
 | P1.8 | Verification bar was **pixel-exact** (`maxDiffPixels: 0` across all 66 snapshots), stricter than the suite's 0.1% default. | The contract was "zero visual change"; a ratio tolerance could hide a changed corner. |
 | P1.5 | Icon stroke is retargeted by attribute-qualified CSS (`.cu-icon[stroke-width="1.7"]`), not by changing React props. | Only the wrapper's defaults change; icons whose callers set their own stroke keep it, so the soft look is pixel-identical. |
+
+## Phase 2 — theme infrastructure
+
+| # | Decision | Why |
+|---|---|---|
+| P2.1 | The theme id is **derived, never stored**: `readThemeId()` = the manifest naming the stored look × palette pair, else `custom`. Look lives in `conduit:v10-look`; the palette keeps its existing key `conduit:v9-palette`. | No migration needed (existing palette choices map straight to their theme), no third key to drift, and `applyBrand.clearBrand()` keeps restoring the palette exactly as before. |
+| P2.2 | Mode narrowing lives in `resolveTheme()`: when the active palette can't render the wanted mode it resolves to a supported one, without writing `AppSettings.theme`. App re-resolves on `conduit:theme-changed`. | One chokepoint that brand application, App and the pre-paint path already call. The user's saved mode returns as soon as they pick a two-mode theme. |
+| P2.3 | Writers (`writePalette`, `selectTheme`) **don't overwrite `data-palette="brand"`** while a brand is active; they still persist. `applyUiPrefs()` stays unconditional. | Implements S6 (brand locks the palette). Boot still needs the unconditional apply so a cached brand that was removed on the Rust side gets cleared. |
+| P2.4 | Mermaid and the HTML-artifact iframe get a per-manifest `native` \| `tokens` switch; the three existing themes stay `native`. Token-driven rendering lands with the first theme that needs it (Phase 3). | Keeps the existing looks pixel-stable; nothing would exercise `tokens` until Amber Terminal exists. |
+| P2.5 | The old "Theme" select became **Mode** and "Theme" now names the picker, in every locale (the existing per-locale word moved with the concept). | Theme = look + palette is the user-facing concept; dark/light is a mode of it. |
+| P2.6 | Tauri window `setBackgroundColor` per theme was **not** added. | It needs a new window capability permission (ADR-008 keeps that surface minimal) to fix a resize-edge flash only visible on the black theme. Revisit if the flash proves noticeable. |

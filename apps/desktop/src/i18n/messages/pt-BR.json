@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "Redimensionar a coluna de documentos",
   "app.sidebar.openAriaLabel": "Abrir barra lateral",
   "app.sidebar.openTitle": "Abrir barra lateral  {shortcut}",
+  "app.sidebarResizeHandle.ariaLabel": "Redimensionar a barra lateral",
   "app.status.allHistoryDeleted": "Todo o histórico de chats foi excluído",
   "app.status.archiveConversationFailed": "Falha ao arquivar o chat",
   "app.status.artifactExportedTo": "Exportado para {path}",

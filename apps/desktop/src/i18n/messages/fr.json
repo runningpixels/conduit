@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "Redimensionner la colonne de documents",
   "app.sidebar.openAriaLabel": "Ouvrir la barre latérale",
   "app.sidebar.openTitle": "Ouvrir la barre latérale  {shortcut}",
+  "app.sidebarResizeHandle.ariaLabel": "Redimensionner la barre latérale",
   "app.status.allHistoryDeleted": "Tout l'historique des conversations a été supprimé",
   "app.status.archiveConversationFailed": "Échec de l'archivage de la conversation",
   "app.status.artifactExportedTo": "Exporté vers {path}",

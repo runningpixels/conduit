@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "调整文档栏宽度",
   "app.sidebar.openAriaLabel": "打开侧边栏",
   "app.sidebar.openTitle": "打开侧边栏  {shortcut}",
+  "app.sidebarResizeHandle.ariaLabel": "调整侧边栏宽度",
   "app.status.allHistoryDeleted": "已删除全部聊天记录",
   "app.status.archiveConversationFailed": "归档聊天失败",
   "app.status.artifactExportedTo": "已导出到 {path}",

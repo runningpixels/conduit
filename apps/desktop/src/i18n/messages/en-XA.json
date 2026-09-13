@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "[Ŕéšîžé ḍöçüḿéñť çöļüḿñ —————— ———]",
   "app.sidebar.openAriaLabel": "[Öṕéñ šîḍéḅàŕ —————]",
   "app.sidebar.openTitle": "[Öṕéñ šîḍéḅàŕ  {shortcut} ——————]",
+  "app.sidebarResizeHandle.ariaLabel": "[Ŕéšîžé šîḍéḅàŕ ——————]",
   "app.status.allHistoryDeleted": "[Àļļ çĥàť ĥîšťöŕý ḍéļéťéḍ —————— ————]",
   "app.status.archiveConversationFailed": "[Ḟàîļéḍ ťö àŕçĥîṽé çĥàť —————— ———]",
   "app.status.artifactExportedTo": "[Éẍṕöŕťéḍ ťö {path} —————]",

@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "ドキュメント列のサイズを変更",
   "app.sidebar.openAriaLabel": "サイドバーを開く",
   "app.sidebar.openTitle": "サイドバーを開く  {shortcut}",
+  "app.sidebarResizeHandle.ariaLabel": "サイドバーのサイズを変更",
   "app.status.allHistoryDeleted": "チャット履歴をすべて削除しました",
   "app.status.archiveConversationFailed": "チャットをアーカイブできませんでした",
   "app.status.artifactExportedTo": "{path} にエクスポートしました",

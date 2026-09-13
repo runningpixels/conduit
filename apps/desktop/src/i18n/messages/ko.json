@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "문서 열 크기 조절",
   "app.sidebar.openAriaLabel": "사이드바 열기",
   "app.sidebar.openTitle": "사이드바 열기  {shortcut}",
+  "app.sidebarResizeHandle.ariaLabel": "사이드바 크기 조절",
   "app.status.allHistoryDeleted": "모든 채팅 기록을 삭제했습니다",
   "app.status.archiveConversationFailed": "채팅을 보관하지 못했습니다",
   "app.status.artifactExportedTo": "{path}(으)로 내보냈습니다",

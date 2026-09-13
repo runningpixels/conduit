@@ -141,7 +141,12 @@
 
   /* Structural (spec §5) */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-  --sidebar-w: 280px;
+  /* The sidebar's open width. useLayout.ts overrides it inline on <html> when
+   * the user drags the column; --sidebar-w is what the grid track reads, and
+   * collapse zeroes that one, so content keeps its open width while shutting. */
+  --sidebar-open-w: 280px;
+  --sidebar-min: 220px;
+  --sidebar-w: var(--sidebar-open-w);
   --panel-w: 420px;
   --measure: 46rem;
   /* The window's caption row (.titlebar). Windows 11 metrics: 32px tall, with

@@ -13,6 +13,7 @@
   "app.resizeHandle.ariaLabel": "Resize document column",
   "app.sidebar.openAriaLabel": "Open sidebar",
   "app.sidebar.openTitle": "Open sidebar  {shortcut}",
+  "app.sidebarResizeHandle.ariaLabel": "Resize sidebar",
   "app.status.allHistoryDeleted": "All chat history deleted",
   "app.status.archiveConversationFailed": "Failed to archive chat",
   "app.status.artifactExportedTo": "Exported to {path}",

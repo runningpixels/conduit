@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import {
   ChatIcon,
   ChevronDown,
@@ -93,19 +93,7 @@ export function MainHead({
   const panelHint = modShortcutHint('J');
   const panelLabel = t('workspace.mainHead.panelToggleLabel', { count: hiddenArtifactCount });
   const [menuOpen, setMenuOpen] = useState(false);
-  const settingsRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
-
-  // Menu owns Escape and arrow keys; an outside press is the caller's to close.
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onPointerDown(event: PointerEvent) {
-      if (settingsRef.current?.contains(event.target as Node)) return;
-      setMenuOpen(false);
-    }
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [menuOpen]);
 
   function MenuItem({
     icon,
@@ -202,7 +190,7 @@ export function MainHead({
           )}
         </button>
 
-        <div className="head-settings" ref={settingsRef}>
+        <div className="head-settings">
           <button
             className="iconbtn head-settings-open"
             type="button"
@@ -233,6 +221,7 @@ export function MainHead({
             triggerRef={menuTriggerRef}
             className="menu head-settings-list"
             label={t('workspace.mainHead.settingsMenu.ariaLabel')}
+            dismissOnOutsidePress
           >
             <MenuItem
               icon={<SettingsIcon />}

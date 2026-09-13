@@ -35,6 +35,7 @@ import { providerHueId } from '../lib/providerIdentity';
 import { ChevronDown } from '../icons';
 import { useT, type Translate } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+import { Menu } from '../workspace/Menu';
 
 /**
  * How long a single provider gets to answer before its group renders empty.
@@ -148,7 +149,6 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
     const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
     const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
     const [loading, setLoading] = useState(false);
-    const rootRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
     /** Session cache: the menu is opened repeatedly, the catalogue is stable. */
     const loadedRef = useRef(false);
@@ -190,25 +190,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
       if (open) void load();
     }, [open, load]);
 
-    // Outside click + Escape close the menu; focus returns to the trigger.
-    useEffect(() => {
-      if (!open) return;
-      function onPointerDown(event: PointerEvent) {
-        if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-      }
-      function onKeyDown(event: KeyboardEvent) {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-      document.addEventListener('pointerdown', onPointerDown);
-      document.addEventListener('keydown', onKeyDown);
-      return () => {
-        document.removeEventListener('pointerdown', onPointerDown);
-        document.removeEventListener('keydown', onKeyDown);
-      };
-    }, [open]);
+    const closeMenu = useCallback(() => setOpen(false), []);
 
     function pick(descriptor: ProviderDescriptor, modelId: string) {
       setOpen(false);
@@ -223,7 +205,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
     const settled = !loading && providers.length > 0;
 
     return (
-      <div className="composer-model-picker" ref={rootRef}>
+      <div className="composer-model-picker">
         <button
           ref={triggerRef}
           className="cbtn model"
@@ -239,60 +221,65 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
           <ChevronDown />
         </button>
 
-        {open && (
-          <div className="menu model-menu" data-open="true" role="menu" aria-label={t('chat.modelPicker.switchModel')}>
-            {settled &&
-              sortedProviders.map((provider) => {
-                const models = modelsByProvider[provider.id] ?? [];
-                return (
-                  <div key={provider.id} data-provider={providerHueId(provider.id)}>
-                    <div
-                      className="menu-label"
-                      title={`${provider.displayName} · ${keyPosture(provider, t)}`}
-                    >
-                      {provider.displayName} · {keyPosture(provider, t)}
-                    </div>
-                    {models.length > 0 ? (
-                      models.map((model) => {
-                        const active =
-                          provider.id === settings.activeProvider &&
-                          model.id === settings.activeModel;
-                        const tail = modelTail(provider, model.id, t);
-                        return (
-                          <button
-                            key={model.id}
-                            type="button"
-                            role="menuitem"
-                            className="menu-item"
-                            aria-current={active || undefined}
-                            onClick={() => pick(provider, model.id)}
-                          >
-                            <i className="pdot" aria-hidden="true" />
-                            {model.displayName ?? model.id}
-                            {tail && <span className="tail">{tail}</span>}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <ModelIdRow
-                        provider={provider}
-                        initial={
-                          provider.id === settings.activeProvider ? settings.activeModel : ''
-                        }
-                        onCommit={pick}
-                      />
-                    )}
+        <Menu
+          open={open}
+          onClose={closeMenu}
+          triggerRef={triggerRef}
+          className="menu model-menu"
+          label={t('chat.modelPicker.switchModel')}
+          dismissOnOutsidePress
+        >
+          {settled &&
+            sortedProviders.map((provider) => {
+              const models = modelsByProvider[provider.id] ?? [];
+              return (
+                <div key={provider.id} data-provider={providerHueId(provider.id)}>
+                  <div
+                    className="menu-label"
+                    title={`${provider.displayName} · ${keyPosture(provider, t)}`}
+                  >
+                    {provider.displayName} · {keyPosture(provider, t)}
                   </div>
-                );
-              })}
+                  {models.length > 0 ? (
+                    models.map((model) => {
+                      const active =
+                        provider.id === settings.activeProvider &&
+                        model.id === settings.activeModel;
+                      const tail = modelTail(provider, model.id, t);
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          role="menuitem"
+                          className="menu-item"
+                          aria-current={active || undefined}
+                          onClick={() => pick(provider, model.id)}
+                        >
+                          <i className="pdot" aria-hidden="true" />
+                          {model.displayName ?? model.id}
+                          {tail && <span className="tail">{tail}</span>}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <ModelIdRow
+                      provider={provider}
+                      initial={
+                        provider.id === settings.activeProvider ? settings.activeModel : ''
+                      }
+                      onCommit={pick}
+                    />
+                  )}
+                </div>
+              );
+            })}
 
-            {!settled && (
-              <div className="menu-empty">
-                {loading ? t('chat.modelPicker.loadingModels') : t('chat.modelPicker.noProviders')}
-              </div>
-            )}
-          </div>
-        )}
+          {!settled && (
+            <div className="menu-empty">
+              {loading ? t('chat.modelPicker.loadingModels') : t('chat.modelPicker.noProviders')}
+            </div>
+          )}
+        </Menu>
       </div>
     );
   },

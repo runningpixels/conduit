@@ -1,6 +1,6 @@
 # UI improvements — resizable sidebar, top-bar settings, and follow-ups
 
-Status: **PR 1** (#42), **PR 2** (#43) and **PR 3** (narrow-window overlays) implemented; PRs 4–6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
+Status: **PRs 1–4** implemented (#42, #43, #44, and row actions / menus); PRs 5–6 proposed · Branch: `feat/ui-improvements` · Drafted 2026-09-13
 
 Two asks from dogfooding, plus what a pass over the running shell turned up:
 
@@ -290,6 +290,17 @@ follow-up the `workspace.css:644` comment already names. Do the same for the doc
   `renameChat` already does the IPC work.
 - Move the hand-rolled workspace-chip menu (`Sidebar.tsx:150-217`) and the `StatusLine` popover
   onto `Menu.tsx` as well. That puts one keyboard model behind every menu.
+
+*As built:*
+- **Two more menus migrated.** The composer's model picker and its folder menu were also
+  hand-rolled; the folder menu did not even close on Escape.
+- **`Menu` gained options.** `dismissOnOutsidePress` and a point-anchored, viewport-clamped
+  `anchorPoint` for context menus. It also leaves Home/End/arrows to a text field inside it (the
+  model-id row) and lets ArrowDown from the trigger enter the menu, which reaches items that finish
+  loading after it opens.
+- **A guard.** A test now fails on any `role="menu"` written outside `Menu.tsx`.
+- **Inline rename skipped.** Double-click opens the existing rename dialog, which now renames
+  whichever row it was opened on rather than only the open chat.
 
 ### P2: quality and discoverability
 

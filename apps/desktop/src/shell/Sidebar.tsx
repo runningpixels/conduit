@@ -6,8 +6,13 @@
  *
  * t0-5 adds pin / archive / one-level folders on this list: Pinned → Folders →
  * Recent (day groups) → Archived (collapsed). Context menu + drag onto a folder.
+ *
+ * A row's actions menu opens from right-click, from the row's ⋯ button, or from
+ * the keyboard (Shift+F10 or the ContextMenu key) — right-click alone left it
+ * out of reach of anyone not using a mouse. Both menus here are `Menu`, so they
+ * take focus, answer the arrow keys, and hand focus back like every other menu.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
 import { organizeConversations } from '../lib/conversationOrganization';
@@ -15,12 +20,15 @@ import { modShortcutHint } from '../lib/shortcuts';
 import { appName } from '../brand';
 import { useRichT, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+import { Menu } from '../workspace/Menu';
 import {
   ArchiveIcon,
   BrandMark,
   ConnectorsIcon,
   FolderIcon,
   LockIcon,
+  MoreIcon,
+  PencilIcon,
   PinIcon,
   PlusIcon,
   SearchIcon,
@@ -54,6 +62,8 @@ interface SidebarProps {
   /** Delete one conversation (routes through the confirm dialog). Omit to
    *  render the list without per-row delete affordances. */
   onDeleteConversation?: (id: string) => void;
+  /** Rename one conversation (routes through the rename dialog). */
+  onRenameConversation?: (id: string) => void;
   /** Delete all conversation history (routes through the confirm dialog). */
   onDeleteAllHistory: () => void;
   onPinConversation?: (id: string, pinned: boolean) => void;
@@ -119,6 +129,7 @@ export function Sidebar({
   onOpenSettings,
   onExportDiagnostics,
   onDeleteConversation,
+  onRenameConversation,
   onDeleteAllHistory,
   onPinConversation,
   onArchiveConversation,
@@ -140,82 +151,13 @@ export function Sidebar({
     { mode: 'create'; moveId?: string } | { mode: 'rename'; folderId: string; name: string } | null
   >(null);
   const [folderName, setFolderName] = useState('');
-  const menuRef = useRef<HTMLDivElement>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
-  const contextRef = useRef<HTMLDivElement>(null);
+  /** The row control that opened the actions menu; focus returns to it. */
+  const contextTriggerRef = useRef<HTMLElement | null>(null);
 
   const closeMenu = () => setMenuOpen(false);
+  const closeContextMenu = () => setContextMenu(null);
   const organized = organizeConversations(conversations, folders, { locale: fmt.locale, t });
-
-  // Outside click + Escape close the workspace menu; focus returns to the chip.
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (menuRef.current?.contains(target) || chipRef.current?.contains(target)) return;
-      closeMenu();
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeMenu();
-        chipRef.current?.focus();
-      }
-    }
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
-    first?.focus();
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    function onPointerDown(event: PointerEvent) {
-      if (contextRef.current?.contains(event.target as Node)) return;
-      setContextMenu(null);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setContextMenu(null);
-      }
-    }
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [contextMenu]);
-
-  function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [],
-    );
-    if (items.length === 0) return;
-    const index = items.indexOf(document.activeElement as HTMLElement);
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      items[(index + 1) % items.length]?.focus();
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      items[(index - 1 + items.length) % items.length]?.focus();
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      items[0]?.focus();
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      items[items.length - 1]?.focus();
-    }
-  }
 
   function openSection(section?: string) {
     closeMenu();
@@ -300,10 +242,18 @@ export function Sidebar({
     if (id) onArchiveConversation?.(id, true);
   }
 
-  function openContextMenu(event: React.MouseEvent, conversationId: string) {
+  function openContextMenu(event: React.MouseEvent<HTMLElement>, conversationId: string) {
     event.preventDefault();
     event.stopPropagation();
+    contextTriggerRef.current = event.currentTarget.querySelector<HTMLElement>('.convo');
     setContextMenu({ conversationId, x: event.clientX, y: event.clientY });
+  }
+
+  /** Opens the actions menu under a control: the ⋯ button, or a focused row. */
+  function openContextMenuAt(element: HTMLElement, conversationId: string) {
+    const rect = element.getBoundingClientRect();
+    contextTriggerRef.current = element;
+    setContextMenu({ conversationId, x: rect.left, y: rect.bottom + 2 });
   }
 
   async function commitFolderDialog() {
@@ -346,6 +296,13 @@ export function Sidebar({
           aria-current={row.id === activeConversationId ? 'true' : undefined}
           title={label}
           onClick={() => onSelectConversation(row.id)}
+          onDoubleClick={onRenameConversation ? () => onRenameConversation(row.id) : undefined}
+          onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              event.preventDefault();
+              openContextMenuAt(event.currentTarget, row.id);
+            }
+          }}
         >
           <i className="convo-dot" aria-hidden="true" />
           {row.pinnedAt && !row.archivedAt ? (
@@ -355,6 +312,20 @@ export function Sidebar({
           ) : null}
           <span className="convo-name">{label}</span>
           <span className="convo-meta">{fmt.timeAgoTerse(row.updatedAt)}</span>
+        </button>
+        <button
+          className="convo-more"
+          type="button"
+          aria-label={t('shell.sidebar.row.moreAriaLabel', { title: label })}
+          title={t('shell.sidebar.row.moreTitle')}
+          aria-haspopup="menu"
+          aria-expanded={contextMenu?.conversationId === row.id}
+          onClick={(event) => {
+            event.stopPropagation();
+            openContextMenuAt(event.currentTarget, row.id);
+          }}
+        >
+          <MoreIcon />
         </button>
         {onDeleteConversation && (
           <button
@@ -577,13 +548,13 @@ export function Sidebar({
           </svg>
         </button>
 
-        <div
-          ref={menuRef}
+        <Menu
+          open={menuOpen}
+          onClose={closeMenu}
+          triggerRef={chipRef}
           className="menu ws-menu"
-          data-open={menuOpen ? 'true' : 'false'}
-          role="menu"
-          aria-label={t('shell.sidebar.menu.ariaLabel')}
-          onKeyDown={handleMenuKeyDown}
+          label={t('shell.sidebar.menu.ariaLabel')}
+          dismissOnOutsidePress
         >
           <div className="menu-label">{t('shell.sidebar.menu.workspaceHeading')}</div>
           <MenuItem icon={<FolderIcon />} label={t('shell.sidebar.menu.revealInExplorer')} onClick={() => { closeMenu(); onRevealWorkspace(); }} />
@@ -615,20 +586,35 @@ export function Sidebar({
             danger
             onClick={() => { closeMenu(); onDeleteAllHistory(); }}
           />
-        </div>
+        </Menu>
       </div>
 
       {contextRow && contextMenu && (
-        <div
-          ref={contextRef}
+        <Menu
+          open
+          onClose={closeContextMenu}
+          triggerRef={contextTriggerRef}
           className="menu convo-menu"
-          data-open="true"
-          role="menu"
-          aria-label={t('shell.sidebar.contextMenu.ariaLabel', {
+          label={t('shell.sidebar.contextMenu.ariaLabel', {
             title: contextRow.displayTitle ?? t('chat.title.untitled'),
           })}
-          style={{ top: contextMenu.y, left: contextMenu.x }}
+          anchorPoint={{ x: contextMenu.x, y: contextMenu.y }}
+          dismissOnOutsidePress
         >
+          {onRenameConversation && (
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setContextMenu(null);
+                onRenameConversation(contextRow.id);
+              }}
+            >
+              <PencilIcon />
+              {t('shell.sidebar.contextMenu.rename')}
+            </button>
+          )}
           {onPinConversation && (
             <button
               className="menu-item"
@@ -723,7 +709,7 @@ export function Sidebar({
               </button>
             </>
           )}
-        </div>
+        </Menu>
       )}
 
       {folderDialog && (

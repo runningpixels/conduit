@@ -1,7 +1,8 @@
 # Theming
 
 How Conduit's themes work, and how to add one. Decisions and their reasons
-are logged in [decisions.md](decisions.md).
+are logged in [decisions.md](decisions.md). To write your own theme file
+without touching code, see [user-themes.md](user-themes.md).
 
 ## The model
 

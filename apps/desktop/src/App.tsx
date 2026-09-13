@@ -56,7 +56,6 @@ import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
 import { deriveConnectionState } from './lib/connectionState';
-import { SidebarIcon } from './icons';
 import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
@@ -1041,9 +1040,18 @@ export default function App() {
   // replaces the old edge rail as the "there is something in there" signal.
   const hiddenArtifactCount = docPanelCollapsed ? artifacts.length : 0;
 
+  // Where the sheet was when it last closed. Opening it without naming a
+  // section — the gear, Ctrl+, or the palette's "Open settings" — returns
+  // there, so the one-click paths agree on a destination instead of each
+  // hard-coding its own (the workspace menu's "Settings" used to open
+  // Appearance while its own Ctrl+, hint opened Providers).
+  const lastSettingsSectionRef = useRef<SettingsSection>('providers');
   const openSettings = useCallback((section?: SettingsSection) => {
-    setSettingsSection(section ?? 'providers');
+    setSettingsSection(section ?? lastSettingsSectionRef.current);
     setSettingsOpen(true);
+  }, []);
+  const rememberSettingsSection = useCallback((section: SettingsSection) => {
+    lastSettingsSectionRef.current = section;
   }, []);
 
   const handleRevealWorkspace = useCallback(() => {
@@ -1256,18 +1264,6 @@ export default function App() {
           (shellContract.test.ts pins this). */}
       <TitleBar />
 
-      {/* Only pointer affordance for reopening a collapsed sidebar; CSS
-          reveals it on html[data-sidebar="closed"]. */}
-      <button
-        className="sb-reveal"
-        type="button"
-        aria-label={t('app.sidebar.openAriaLabel')}
-        title={t('app.sidebar.openTitle', { shortcut: modShortcutHint('\\') })}
-        onClick={() => toggleSidebar()}
-      >
-        <SidebarIcon />
-      </button>
-
       <div className="body">
         <Sidebar
           conversations={conversations}
@@ -1283,7 +1279,7 @@ export default function App() {
           onOpenPalette={openPalette}
           onCollapse={() => toggleSidebar()}
           onRevealWorkspace={handleRevealWorkspace}
-          onOpenSettings={(section) => openSettings(section as SettingsSection)}
+          onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
           onExportDiagnostics={() => void handleExportDiagnostics()}
           onDeleteConversation={handleDeleteConversation}
           onDeleteAllHistory={handleDeleteAllHistory}
@@ -1325,6 +1321,13 @@ export default function App() {
             panelOpen={!docPanelCollapsed}
             onTogglePanel={toggleDocPanel}
             hiddenArtifactCount={hiddenArtifactCount}
+            onToggleSidebar={toggleSidebar}
+            onNewChat={() => void handleNewChat()}
+            onOpenPalette={openPalette}
+            onOpenSettings={openSettings}
+            onExportDiagnostics={() => void handleExportDiagnostics()}
+            providerCount={providers.length > 0 ? providers.length : undefined}
+            connectorCount={connectorCount}
           />
           <ChatView
             ref={chatViewRef}
@@ -1392,6 +1395,7 @@ export default function App() {
       <SettingsSheet
         open={settingsOpen}
         initialSection={settingsSection}
+        onSectionChange={rememberSettingsSection}
         onClose={() => setSettingsOpen(false)}
         settings={settings}
         onSettingsChange={setSettings}

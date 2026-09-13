@@ -161,6 +161,25 @@ describe('SettingsSheet', () => {
     expect(screen.getByTestId('workspace-section')).toBeTruthy();
   });
 
+  it('reports the section on screen, on open and on every change', () => {
+    const onSectionChange = vi.fn();
+    render(
+      <SettingsSheet
+        open
+        initialSection="memory"
+        onSectionChange={onSectionChange}
+        onClose={vi.fn()}
+        settings={baseSettings}
+        onSettingsChange={vi.fn()}
+        paths={null}
+        onStatus={vi.fn()}
+      />,
+    );
+    expect(onSectionChange).toHaveBeenLastCalledWith('memory');
+    fireEvent.click(screen.getByText('Appearance'));
+    expect(onSectionChange).toHaveBeenLastCalledWith('appearance');
+  });
+
   it('honours initialSection', () => {
     renderSheet({ initialSection: 'prompts' });
     expect(screen.getByTestId('prompts-section')).toBeTruthy();

@@ -88,7 +88,7 @@ test.describe('the sidebar sash', () => {
     await (await dragSashTo(page, 40)).release();
     await expect(page.locator('html')).toHaveAttribute('data-sidebar', 'closed');
 
-    await page.locator('.sb-reveal').click();
+    await page.getByRole('button', { name: 'Open sidebar' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-sidebar', 'open');
     await expect.poll(() => sidebarWidth(page)).toBe(320);
   });

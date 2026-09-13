@@ -52,6 +52,39 @@
   color: var(--ink-3);
 }
 .sheet-nav-title + .sheet-nav-group { padding-top: 0; }
+.sheet-search {
+  width: 100%;
+  margin: 0 0 var(--sp-2);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+.sheet-search::placeholder { color: var(--ink-3); }
+.sheet-search:focus-visible { outline: 2px solid var(--hue); outline-offset: -1px; }
+.sheet-search + .sheet-nav-group { padding-top: var(--sp-2); }
+/* A result names the settings that matched under its section, so the reader
+   sees why it is listed before opening it. */
+.sheet-nav-label { display: grid; min-width: 0; text-align: left; }
+.sheet-nav-match {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet-search-empty { padding: var(--sp-2) 10px; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; margin: 0; }
+/* The row a search result opened on, marked for a moment. */
+.settings-search-hit {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--hue) 22%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--hue) 22%, transparent);
+  transition: background .6s ease, box-shadow .6s ease;
+}
 .sheet-nav button {
   width: 100%;
   display: flex;

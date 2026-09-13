@@ -50,6 +50,7 @@ import {
 } from './uiPrefs';
 import { useFocusTrap } from './useFocusTrap';
 import { allowUserBranding } from '../brand/buildFlags';
+import { foldForSearch, searchSettings } from './settingsSearch';
 import { modKey } from '../lib/shortcuts';
 import { useRichT, useT } from '../i18n';
 import {
@@ -228,9 +229,42 @@ export function SettingsSheet({
   const [exportMetadata, setExportMetadata] = useState(readExportMetadata);
   const [expandedStatus, setExpandedStatus] = useState(readExpandedStatus);
 
+  // Settings search. `query` filters the nav; picking a result remembers what
+  // was searched so the section can bring the matching row into view.
+  const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const visibleNav = NAV_ITEMS.filter((item) => item.id !== 'branding' || allowUserBranding);
+  const matches = query.trim() ? searchSettings(query, t, visibleNav) : null;
+  const shownNav = matches ? visibleNav.filter((item) => matches.has(item.id)) : visibleNav;
+
+  function openSection(id: SettingsSection) {
+    setSection(id);
+    if (matches) setHighlight(query);
+  }
+
+  // Bring the first row naming the query into view and mark it briefly. Looked
+  // up in the rendered section by text, so it finds the row however the
+  // section builds it, and in whatever language it is rendered.
+  useEffect(() => {
+    if (!highlight) return;
+    const needle = foldForSearch(highlight);
+    const candidates = mainRef.current?.querySelectorAll<HTMLElement>(
+      'h2, h3, b, label, .grp-label, .field-label, .srow-text > b, legend',
+    );
+    const hit = Array.from(candidates ?? []).find((el) => foldForSearch(el.textContent ?? '').includes(needle));
+    setHighlight(null);
+    if (!hit) return;
+    hit.scrollIntoView?.({ block: 'center' });
+    hit.classList.add('settings-search-hit');
+    const timer = window.setTimeout(() => hit.classList.remove('settings-search-hit'), 1600);
+    return () => window.clearTimeout(timer);
+  }, [highlight, section]);
+
   // Reset to the requested section each time the sheet opens; focus + restore.
   useEffect(() => {
     if (!open) return;
+    setQuery('');
     const requested = initialSection ?? 'providers';
     // A stale deep link into 'branding' (a saved shortcut, a prior session)
     // must not land on the empty pane a disabled Mode B build renders for
@@ -287,27 +321,67 @@ export function SettingsSheet({
       <div ref={sheetRef} className="sheet" role="dialog" aria-label={t('shell.settingsSheet.ariaLabel')} aria-modal="true">
         <nav ref={navRef} className="sheet-nav scroll" aria-label={t('shell.settingsSheet.nav.ariaLabel')}>
           <div className="sheet-nav-title">{t('shell.settingsSheet.nav.title')}</div>
-          {NAV_GROUPS.map((group) => (
-            <div key={group.id} role="group" aria-label={t(group.labelId)}>
-              <div className="sheet-nav-group" aria-hidden="true">{t(group.labelId)}</div>
-              {NAV_ITEMS.filter((item) => item.group === group.id)
-                .filter((item) => item.id !== 'branding' || allowUserBranding)
-                .map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-current={section === item.id ? 'true' : undefined}
-                    onClick={() => setSection(item.id)}
-                  >
-                    {item.icon}
-                    {t(item.labelId)}
-                  </button>
-                ))}
-            </div>
-          ))}
+          <input
+            className="sheet-search"
+            type="search"
+            value={query}
+            placeholder={t('shell.settingsSheet.search.placeholder')}
+            aria-label={t('shell.settingsSheet.search.ariaLabel')}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && shownNav[0]) {
+                event.preventDefault();
+                openSection(shownNav[0].id);
+              } else if (event.key === 'Escape' && query) {
+                // Clear the search, and stop there: the sheet's own Escape (and
+                // the app's) would otherwise close it along with the query.
+                event.preventDefault();
+                event.stopPropagation();
+                event.nativeEvent.stopImmediatePropagation();
+                setQuery('');
+              }
+            }}
+          />
+          {NAV_GROUPS.map((group) => {
+            const items = shownNav.filter((item) => item.group === group.id);
+            if (items.length === 0) return null;
+            return (
+              <div key={group.id} role="group" aria-label={t(group.labelId)}>
+                <div className="sheet-nav-group" aria-hidden="true">{t(group.labelId)}</div>
+                {items.map((item) => {
+                  const found = matches?.get(item.id) ?? [];
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-current={section === item.id ? 'true' : undefined}
+                      onClick={() => openSection(item.id)}
+                    >
+                      {item.icon}
+                      <span className="sheet-nav-label">
+                        {t(item.labelId)}
+                        {found.length > 0 && (
+                          <small className="sheet-nav-match" title={found.join(' · ')}>
+                            {found.join(' · ')}
+                          </small>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {matches && shownNav.length === 0 && (
+            <p className="sheet-search-empty" role="status">
+              {t('shell.settingsSheet.search.noResults', { query: query.trim() })}
+            </p>
+          )}
         </nav>
 
-        <div className="sheet-main scroll">
+        <div ref={mainRef} className="sheet-main scroll">
           {section === 'providers' && (
             <div ref={pickerRef}>
               <h2 className="sheet-h">{t('shell.settingsSheet.providers.heading')}</h2>

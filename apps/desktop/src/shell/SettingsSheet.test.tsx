@@ -161,6 +161,41 @@ describe('SettingsSheet', () => {
     expect(screen.getByTestId('workspace-section')).toBeTruthy();
   });
 
+  describe('search', () => {
+    it('narrows the nav to sections holding a matching setting, and says which', () => {
+      renderSheet();
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'keychain' } });
+      const nav = screen.getByRole('navigation');
+      const items = Array.from(nav.querySelectorAll('button')).map((b) => b.querySelector('.sheet-nav-label')?.firstChild?.textContent);
+      expect(items).toEqual(['Privacy & data']);
+      expect(nav).toHaveTextContent('Keychain mode');
+    });
+
+    it('opens the first result on Enter', () => {
+      renderSheet();
+      const search = screen.getByRole('searchbox', { name: 'Search settings' });
+      fireEvent.change(search, { target: { value: 'density' } });
+      fireEvent.keyDown(search, { key: 'Enter' });
+      expect(screen.getByTestId('appearance-section')).toBeTruthy();
+    });
+
+    it('clears on Escape without closing the sheet', () => {
+      const { onClose } = renderSheet();
+      const search = screen.getByRole('searchbox', { name: 'Search settings' });
+      fireEvent.change(search, { target: { value: 'keychain' } });
+      fireEvent.keyDown(search, { key: 'Escape' });
+      expect(search).toHaveValue('');
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByText('Chat defaults')).toBeTruthy();
+    });
+
+    it('says so when nothing matches', () => {
+      renderSheet();
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'zzqx' } });
+      expect(screen.getByRole('status')).toHaveTextContent('No settings match “zzqx”.');
+    });
+  });
+
   it('groups the nav under Models, Assistant and App', () => {
     renderSheet();
     const group = (name: string) =>

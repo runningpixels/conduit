@@ -92,7 +92,7 @@ import {
  * component gallery. Lazy so its fixtures and every component it renders
  * standalone (`dev/Gallery.tsx`) ship as a separate chunk that a production
  * build — where `devRoute` is always `null` — never fetches. */
-const LazyGallery = lazy(() => import('./dev/Gallery'));
+const LazyGallery = import.meta.env.DEV ? lazy(() => import('./dev/Gallery')) : null;
 
 const DOC_PANEL_HINT_KEY = 'conduit:v5-doc-panel-hint-seen';
 const CONVO_PROVIDERS_KEY = 'conduit:v7-convo-providers';
@@ -1495,7 +1495,7 @@ export default function App() {
    * entirely rather than threading through every check below. `devRoute` is
    * `null` in every production build (see `devRoute.ts`), so this branch is
    * unreachable there. */
-  if (devRoute === 'gallery') {
+  if (devRoute === 'gallery' && LazyGallery) {
     return (
       <Suspense fallback={null}>
         <LazyGallery />

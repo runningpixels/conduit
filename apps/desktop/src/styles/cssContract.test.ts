@@ -467,3 +467,17 @@ describe('no orphan classes', () => {
     }
   });
 });
+
+/**
+ * Comment balance. The dev server and every test here read CSS leniently, but
+ * the production minifier (lightningcss, `pnpm build:web` / `tauri build`)
+ * rejects a stray `*\/` outright — a broken section-header comment once passed
+ * vitest, the visual suite and review, and failed only in CI's Tauri build.
+ */
+describe('stylesheet comments are balanced', () => {
+  it.each(cssFiles.map((f) => [relative(repoRoot, f).split('\\').join('/'), f]))('%s', (_name, file) => {
+    const stripped = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(stripped.includes('*/'), 'a "*/" outside any comment').toBe(false);
+    expect(stripped.includes('/*'), 'an unterminated "/*" comment').toBe(false);
+  });
+});

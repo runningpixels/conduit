@@ -425,7 +425,7 @@
 .appearance-advanced-body { margin-top: var(--sp-3); display: grid; gap: 0; }
 .appearance-advanced-body .field:last-child { border-bottom: 0; }
 
-/* ── Onboarding (full-screen route) ────────────────────────────────────── */─ */
+/* ── Onboarding (full-screen route) ────────────────────────────────────── */
 /* Fills the second `.app` row rather than the viewport: the caption row takes
    the first, so a 100vh minimum would overflow the shell by exactly its
    height. */

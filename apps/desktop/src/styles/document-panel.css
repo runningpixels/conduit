@@ -148,7 +148,14 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   align-items: end;
   gap: 3px;
   overflow-x: auto;
+  /* A crowded strip scrolls; the native bar under 30px tabs was heavier than
+     the tabs themselves. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
 }
+/* With tabs, the strip is the flexible part; a spacer beside it took half the
+   free width and left the tabs to shrink. */
+[data-multi-open="true"] .doc-toolbar-spacer { display: none; }
 [data-multi-open="true"] .artifact-tabs {
   padding-bottom: 0;
   border-bottom: 0;
@@ -194,7 +201,10 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   background: var(--card-hi);
 }
 .artifact-file-tab {
-  min-width: 0;
+  /* A floor, so a crowded strip scrolls (.artifact-tabs is overflow-x: auto)
+     instead of shrinking every tab to its icon — the names were at 0px. */
+  flex: 0 0 auto;
+  min-width: 96px;
   max-width: 240px;
   display: inline-flex;
   align-items: center;
@@ -318,6 +328,28 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   border-left: 0;
   border-right: 0;
   border-radius: 0;
+}
+
+/* Documents read at a measure. The panel can take most of the window now, and a
+   Markdown or plain-text preview stretched across it ran prose past 190
+   characters a line. The column centres at ~80ch while the surface still fills
+   the pane; tables break out to the right, keeping the text's left edge, so a
+   wide table uses the room instead of wrapping every cell. HTML is left full
+   width — a page lays itself out. At an ordinary panel width the padding
+   bottoms out at 18px and nothing changes. */
+[data-doc-tab="preview"] .doc-pane[data-doc-pane="preview"] { container: docpane / inline-size; }
+[data-doc-tab="preview"] .artifact-markdown,
+[data-doc-tab="preview"] .artifact-plain {
+  min-height: 100%;
+  padding-inline: max(18px, calc((100% - 80ch) / 2));
+}
+/* The breakout stays inside the padding box, so hiding x-overflow clips nothing
+   visible — it only stops the 15px a table runs past the column registering as
+   a scrollbar across the pane. */
+[data-doc-tab="preview"] .artifact-markdown { overflow-x: hidden; }
+[data-doc-tab="preview"] .artifact-markdown table {
+  width: max-content;
+  max-width: calc((100cqi + 100%) / 2 - 18px);
 }
 
 /* Consistent baseline for other artifact preview renderers */

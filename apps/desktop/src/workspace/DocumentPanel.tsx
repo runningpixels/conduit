@@ -19,7 +19,7 @@ import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIc
 import { Menu } from './Menu';
 import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
 import { readExportMetadata } from '../shell/uiPrefs';
-import { modShortcutHint } from '../lib/shortcuts';
+import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import type { PendingArtifact } from '../artifacts/pendingArtifact';
 import { applyBrand, applyBrandTheme, clearBrand } from '../brand/applyBrand';
 import { allowUserBranding } from '../brand/buildFlags';
@@ -72,6 +72,10 @@ interface DocumentPanelProps {
   onExport: (artifactId: string, includeMetadata: boolean) => Promise<void>;
   onCloseTab?: (id: string) => void;
   onCollapsePanel?: () => void;
+  /** The panel is expanded (usePanelExpand). */
+  expanded?: boolean;
+  /** Expand the panel, or restore the layout. Omit to render no control. */
+  onToggleExpand?: () => void;
   /// Clear a failed pending artifact (the panel's Dismiss action).
   onDismissPending?: () => void;
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
@@ -205,6 +209,24 @@ function ArtifactPendingState({
   );
 }
 
+/** Two arrows pointing out to opposite corners. */
+function ExpandIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7" />
+    </svg>
+  );
+}
+
+/** Two arrows pointing back in, from opposite corners. */
+function RestoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19 11h-6V5M13 11l7-7M5 13h6v6M11 13l-7 7" />
+    </svg>
+  );
+}
+
 export function DocumentPanel({
   artifact,
   pendingArtifact = null,
@@ -221,6 +243,8 @@ export function DocumentPanel({
   onExport,
   onCloseTab,
   onCollapsePanel,
+  expanded = false,
+  onToggleExpand,
   onDismissPending,
   onRenameArtifact,
   onStatus,
@@ -243,6 +267,7 @@ export function DocumentPanel({
   const isFilePayload = artifact?.contentPath != null;
   const multiOpen = openArtifacts.length > 1;
   const collapseHint = modShortcutHint('J');
+  const expandHint = modShiftShortcutHint('E');
 
   const [loadedText, setLoadedText] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -861,6 +886,24 @@ export function DocumentPanel({
               </div>
             </Menu>
           </div>
+          {onToggleExpand && (
+            <button
+              className="icon-btn doc-expand"
+              type="button"
+              aria-label={
+                expanded ? t('workspace.documentPanel.restoreAriaLabel') : t('workspace.documentPanel.expandAriaLabel')
+              }
+              aria-pressed={expanded}
+              title={
+                expanded
+                  ? t('workspace.documentPanel.restoreTitleWithShortcut', { shortcut: expandHint })
+                  : t('workspace.documentPanel.expandTitleWithShortcut', { shortcut: expandHint })
+              }
+              onClick={onToggleExpand}
+            >
+              {expanded ? <RestoreIcon /> : <ExpandIcon />}
+            </button>
+          )}
           {onCollapsePanel && (
             <button
               className="icon-btn"

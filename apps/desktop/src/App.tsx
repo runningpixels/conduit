@@ -64,6 +64,7 @@ import {
   useColumnOverlay,
   useColumnResize,
   useDocPanelCollapse,
+  usePanelExpand,
   useSidebarCollapse,
   useSidebarResize,
 } from './workspace/useLayout';
@@ -284,14 +285,22 @@ export default function App() {
   const panelOverlay = useColumnOverlay('panel');
   const { hide: hideSidebarOverlay, toggle: toggleSidebarOverlay } = sidebarOverlay;
   const { hide: hidePanelOverlay, show: showPanelOverlay, toggle: togglePanelOverlay } = panelOverlay;
+  const panelExpand = usePanelExpand();
+  const { expanded: panelExpanded, restore: restorePanelLayout } = panelExpand;
   const toggleSidebarView = useCallback(() => {
+    if (panelExpanded) {
+      // Asking for the sidebar while the artifact is expanded is asking for
+      // the ordinary layout back.
+      restorePanelLayout();
+      return;
+    }
     if (!sidebarOverlay.narrow) {
       toggleSidebar();
       return;
     }
     hidePanelOverlay();
     toggleSidebarOverlay();
-  }, [sidebarOverlay.narrow, toggleSidebar, hidePanelOverlay, toggleSidebarOverlay]);
+  }, [panelExpanded, restorePanelLayout, sidebarOverlay.narrow, toggleSidebar, hidePanelOverlay, toggleSidebarOverlay]);
   const toggleDocPanelView = useCallback(() => {
     if (!panelOverlay.narrow) {
       if (panelSuppressed) {
@@ -321,6 +330,17 @@ export default function App() {
     hidePanelOverlay();
   }, [hideSidebarOverlay, hidePanelOverlay]);
   const panelVisible = panelOverlay.narrow ? panelOverlay.open : !docPanelCollapsed;
+
+  // Expanding is a desktop layout: it ends when the panel is put away or the
+  // window becomes too narrow for the panel to be a column at all.
+  useEffect(() => {
+    if (panelExpanded && (docPanelCollapsed || panelOverlay.narrow)) restorePanelLayout();
+  }, [panelExpanded, docPanelCollapsed, panelOverlay.narrow, restorePanelLayout]);
+  const toggleArtifactExpand = useCallback(() => {
+    if (panelOverlay.narrow) return;
+    if (!panelExpanded && docPanelCollapsed) showDocPanel();
+    panelExpand.toggle();
+  }, [panelOverlay.narrow, panelExpanded, docPanelCollapsed, showDocPanel, panelExpand]);
 
   // An overlay is modal in effect — the scrim takes the pointer — so it takes
   // the keyboard too: focus moves in, Tab stays in, and closing hands focus
@@ -741,6 +761,23 @@ export default function App() {
     void refreshArtifacts(activeConversationId);
   }, [activeConversationId, refreshArtifacts]);
 
+  // Dev-only (`?route=artifacts`, see devRoute.ts): put sample artifacts in the
+  // panel, which dev:web otherwise cannot fill. `devRoute` is null in every
+  // production build, and the fixtures are only imported behind that check.
+  useEffect(() => {
+    if (devRoute !== 'artifacts') return;
+    let cancelled = false;
+    void import('./dev/artifactFixtures').then(({ FIXTURE_ARTIFACTS }) => {
+      if (cancelled) return;
+      setArtifacts(FIXTURE_ARTIFACTS);
+      setOpenArtifactIds(FIXTURE_ARTIFACTS.map((artifact) => artifact.id));
+      setActiveArtifact(FIXTURE_ARTIFACTS[0]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [devRoute]);
+
   const addOpenArtifactId = useCallback((artifactId: string) => {
     setOpenArtifactIds((current) => (current.includes(artifactId) ? current : [...current, artifactId]));
   }, []);
@@ -748,11 +785,18 @@ export default function App() {
   const handleOpenArtifact = useCallback(
     async (artifactId: string) => {
       try {
-        const got = await getArtifact(artifactId);
+        // `?route=artifacts` (dev only) has no backend to fetch from; its
+        // fixtures are already in memory.
+        const fixture = devRoute === 'artifacts' ? artifacts.find((a) => a.id === artifactId) : undefined;
+        const got = fixture ?? (await getArtifact(artifactId));
         if (!got) return;
         showDocPanel();
         addOpenArtifactId(artifactId);
         setActiveArtifact(got);
+        if (fixture) {
+          setDocTab('preview');
+          return;
+        }
         const state = await checkArtifactFileState(artifactId);
         setFileStateMap((current) => ({ ...current, [artifactId]: state }));
         setDocTab('preview');
@@ -760,7 +804,7 @@ export default function App() {
         setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.openArtifactFailed'), 'error'));
       }
     },
-    [addOpenArtifactId, showDocPanel],
+    [addOpenArtifactId, showDocPanel, devRoute, artifacts],
   );
 
   const handleChatTurnComplete = useCallback(
@@ -1278,6 +1322,7 @@ export default function App() {
       shortcuts: () => setShortcutsOpen((open) => !open),
       toggleSidebar: () => toggleSidebarView(),
       toggleDocPanel: () => toggleDocPanelView(),
+      toggleArtifactExpand: () => toggleArtifactExpand(),
       historySearch: () => openPalette(),
       cycleProvider: () => {
         void handleCycleProvider();
@@ -1341,6 +1386,7 @@ export default function App() {
       shortcutsOpen,
       toggleDocPanelView,
       toggleSidebarView,
+      toggleArtifactExpand,
       sidebarOverlay.open,
       panelOverlay.open,
       closeOverlays,
@@ -1554,6 +1600,8 @@ export default function App() {
           onOpenArtifact={(id) => void handleOpenArtifact(id)}
           onCloseTab={handleCloseArtifactTab}
           onCollapsePanel={handleCollapseDocPanel}
+          expanded={panelExpanded}
+          onToggleExpand={panelOverlay.narrow ? undefined : toggleArtifactExpand}
           onDismissPending={() => setPendingArtifact(null)}
           onSaveContent={(artifactId, content, mimeType) => handleSaveContent(artifactId, content, mimeType)}
           onExport={(artifactId, includeMetadata) => handleExport(artifactId, includeMetadata)}
@@ -1599,6 +1647,7 @@ export default function App() {
         onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
         onToggleTheme={handleToggleTheme}
         onOpenShortcuts={openShortcuts}
+        onToggleArtifactExpand={toggleArtifactExpand}
         onToggleDocPanel={toggleDocPanelView}
         onToggleSidebar={toggleSidebarView}
         onToggleWebSearch={() => chatViewRef.current?.toggleWebSearch()}

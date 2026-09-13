@@ -13,6 +13,7 @@ import {
   useColumnOverlay,
   useColumnResize,
   useDocPanelCollapse,
+  usePanelExpand,
   useSidebarCollapse,
   useSidebarResize,
   __readStoredLayoutForTest,
@@ -114,6 +115,10 @@ function renderLayout() {
   });
 }
 
+/** A panel preference wider than a 1200px window can grant beside a max sidebar,
+ *  but that a 1600px one can. The panel has no fixed ceiling of its own. */
+const WIDE_PANEL = 700;
+
 describe('column resize', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -142,22 +147,22 @@ describe('column resize', () => {
 
   it('keeps the thread its floor, taking the room from the panel first', () => {
     setViewportWidth(1200);
-    __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
+    __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: WIDE_PANEL });
     renderLayout();
     const room = 1200 - 12 - THREAD_MIN;
     expect(cssPx('--sidebar-open-w')).toBe(SIDEBAR_MAX);
     expect(cssPx('--panel-open-w')).toBe(room - SIDEBAR_MAX);
     // The preference is left alone, so a wider window gives it back.
-    expect(__readStoredLayoutForTest()).toEqual({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
+    expect(__readStoredLayoutForTest()).toEqual({ sidebarW: SIDEBAR_MAX, panelW: WIDE_PANEL });
     setViewportWidth(1600);
     act(() => reflowColumns());
-    expect(cssPx('--panel-open-w')).toBe(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBe(WIDE_PANEL);
   });
 
   it('re-clamps on window resize', async () => {
-    __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
+    __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: WIDE_PANEL });
     renderLayout();
-    expect(cssPx('--panel-open-w')).toBe(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBe(WIDE_PANEL);
     setViewportWidth(1200);
     await act(async () => {
       window.dispatchEvent(new Event('resize'));
@@ -168,11 +173,11 @@ describe('column resize', () => {
 
   it("gives a collapsed column's room back to the other one", () => {
     setViewportWidth(1200);
-    __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: PANEL_MAX });
+    __writeStoredLayoutForTest({ sidebarW: SIDEBAR_MAX, panelW: WIDE_PANEL });
     const { result } = renderLayout();
-    expect(cssPx('--panel-open-w')).toBeLessThan(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBeLessThan(WIDE_PANEL);
     act(() => result.current.sidebar.close());
-    expect(cssPx('--panel-open-w')).toBe(PANEL_MAX);
+    expect(cssPx('--panel-open-w')).toBe(WIDE_PANEL);
   });
 
   it('moves the sidebar separator with the arrow keys and clamps to its bounds', () => {
@@ -393,5 +398,74 @@ describe('useDocPanelCollapse while suppressed', () => {
     rerender({ suppressed: false });
     expect(result.current.collapsed).toBe(true);
     expect(__readStoredDocPanelForTest()).toBe('closed');
+  });
+});
+
+/* ── Expanded artifact panel ──────────────────────────────────────────── */
+
+describe('usePanelExpand', () => {
+  function renderExpandable() {
+    return renderHook(() => {
+      const sidebar = useSidebarCollapse();
+      const panel = useDocPanelCollapse();
+      const sidebarResize = useSidebarResize({ open: sidebar.open, close: sidebar.close });
+      const panelResize = useColumnResize();
+      const expand = usePanelExpand();
+      return { sidebar, panel, sidebarResize, panelResize, expand };
+    });
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    const root = document.documentElement;
+    for (const attr of ['data-sidebar', 'data-panel', 'data-panel-expanded', 'data-resizing']) root.removeAttribute(attr);
+    root.style.removeProperty('--sidebar-open-w');
+    root.style.removeProperty('--panel-open-w');
+    setViewportWidth(1440);
+  });
+
+  it('has no fixed ceiling below what the thread floor leaves', () => {
+    const { result } = renderExpandable();
+    act(() => result.current.panelResize.onKeyDown(key('End')));
+    expect(cssPx('--panel-open-w')).toBe(1440 - 12 - THREAD_MIN - SIDEBAR_DEFAULT);
+  });
+
+  it('steps the sidebar aside and gives the panel everything but the thread floor', () => {
+    __writeStoredLayoutForTest({ sidebarW: 300, panelW: 420 });
+    const { result } = renderExpandable();
+    act(() => result.current.expand.expand());
+    expect(document.documentElement.getAttribute('data-panel-expanded')).toBe('true');
+    expect(cssPx('--panel-open-w')).toBe(1440 - 12 - THREAD_MIN);
+  });
+
+  it('keeps drags while expanded out of the saved layout, and restores it exactly', () => {
+    __writeStoredLayoutForTest({ sidebarW: 300, panelW: 420 });
+    const { result } = renderExpandable();
+    act(() => result.current.expand.expand());
+    act(() => result.current.panelResize.onKeyDown(key('ArrowRight', true)));
+    expect(cssPx('--panel-open-w')).toBe(1440 - 12 - THREAD_MIN - 50);
+    expect(__readStoredLayoutForTest()).toEqual({ sidebarW: 300, panelW: 420 });
+
+    act(() => result.current.expand.restore());
+    expect(document.documentElement.hasAttribute('data-panel-expanded')).toBe(false);
+    expect(cssPx('--panel-open-w')).toBe(420);
+    expect(cssPx('--sidebar-open-w')).toBe(300);
+  });
+
+  it('resets to full width on double-click while expanded, without touching the saved width', () => {
+    __writeStoredLayoutForTest({ panelW: 420 });
+    const { result } = renderExpandable();
+    act(() => result.current.expand.expand());
+    act(() => result.current.panelResize.onKeyDown(key('ArrowRight', true)));
+    act(() => result.current.panelResize.onDoubleClick());
+    expect(cssPx('--panel-open-w')).toBe(1440 - 12 - THREAD_MIN);
+    expect(__readStoredLayoutForTest()).toEqual({ panelW: 420 });
+  });
+
+  it('clears itself when its owner unmounts', () => {
+    const { result, unmount } = renderExpandable();
+    act(() => result.current.expand.expand());
+    unmount();
+    expect(document.documentElement.hasAttribute('data-panel-expanded')).toBe(false);
   });
 });

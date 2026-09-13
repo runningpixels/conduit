@@ -13,6 +13,8 @@ export interface HotkeyHandlers {
   toggleSidebar?: HotkeyHandler;
   /** Mod+J — toggle document panel */
   toggleDocPanel?: HotkeyHandler;
+  /** Mod+Shift+E — expand the artifact panel, or restore the layout */
+  toggleArtifactExpand?: HotkeyHandler;
   /** Mod+K — open command palette */
   historySearch?: HotkeyHandler;
   /** Mod+Shift+P — cycle the active provider (V7; re-tints the app) */
@@ -58,6 +60,7 @@ export const HOTKEYS: readonly HotkeyBinding[] = [
   { id: 'shortcuts', key: '/', shift: 'any', display: '/', group: 'general', labelId: 'workspace.shortcuts.action.shortcuts' },
   { id: 'toggleSidebar', key: '\\', shift: false, display: '\\', group: 'layout', labelId: 'workspace.shortcuts.action.toggleSidebar' },
   { id: 'toggleDocPanel', key: 'j', shift: false, display: 'J', group: 'layout', labelId: 'workspace.shortcuts.action.toggleDocPanel' },
+  { id: 'toggleArtifactExpand', key: 'e', shift: true, display: 'E', group: 'layout', labelId: 'workspace.shortcuts.action.toggleArtifactExpand' },
   { id: 'cycleProvider', key: 'p', shift: true, display: 'P', group: 'chat', labelId: 'workspace.shortcuts.action.cycleProvider' },
   { id: 'toggleWebSearch', key: 'w', shift: true, display: 'W', group: 'chat', labelId: 'workspace.shortcuts.action.toggleWebSearch' },
   { id: 'forkConversationHere', key: 'f', shift: true, display: 'F', group: 'chat', labelId: 'workspace.shortcuts.action.forkConversationHere' },

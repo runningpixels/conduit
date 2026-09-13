@@ -34,7 +34,8 @@ export const SIDEBAR_MAX = 480;
 export const SIDEBAR_DEFAULT = 280;
 
 export const PANEL_MIN = 280;
-export const PANEL_MAX = 560;
+/** No fixed ceiling of its own: the thread floor (THREAD_MIN) is what bounds it. */
+export const PANEL_MAX = 2400;
 export const PANEL_DEFAULT = 420;
 
 /**
@@ -42,7 +43,7 @@ export const PANEL_DEFAULT = 420;
  * shrinks. Before the sidebar could move, the panel clamp assumed a fixed
  * 320px for everything else, which let the thread fall to ~250px at 1101px.
  */
-export const THREAD_MIN = 420;
+export const THREAD_MIN = 400;
 
 /** The document panel's handle is a fixed grid track (workspace.css `.body`). */
 const PANEL_HANDLE_W = 12;
@@ -114,15 +115,30 @@ function clamp(px: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, px));
 }
 
+/**
+ * The expanded artifact panel's own width, or null when the panel is not
+ * expanded. Session-only on purpose: expanding is a temporary layout, so a drag
+ * while expanded adjusts this and leaves the saved preference alone, and
+ * leaving restores the layout exactly as it was.
+ */
+let expandedPanelWidth: number | null = null;
+
+function isExpanded(): boolean {
+  return expandedPanelWidth !== null;
+}
+
 /** The width the user last chose, within the column's own bounds. */
 function preferredWidth(id: ColumnId): number {
   const spec = COLUMNS[id];
+  if (id === 'panel' && expandedPanelWidth !== null) return clamp(expandedPanelWidth, spec.min, spec.max);
   const stored = readStoredLayout()[spec.field];
   return stored === undefined ? spec.fallback : clamp(stored, spec.min, spec.max);
 }
 
 function isShown(id: ColumnId): boolean {
   const spec = COLUMNS[id];
+  // The sidebar steps aside while the panel is expanded.
+  if (id === 'sidebar' && isExpanded()) return false;
   return (
     document.documentElement.getAttribute(spec.collapseAttr) !== 'closed' &&
     window.innerWidth > spec.hiddenAtOrBelow
@@ -205,7 +221,10 @@ function useResizableColumn(id: ColumnId, options: ResizableColumnOptions = {}) 
     (px: number, persist: boolean) => {
       const next = applyWidth(id, px);
       setWidthPx(next);
-      if (persist) writeStoredLayout({ [spec.field]: next });
+      if (persist) {
+        if (id === 'panel' && isExpanded()) expandedPanelWidth = next;
+        else writeStoredLayout({ [spec.field]: next });
+      }
       return next;
     },
     [id, spec],
@@ -305,8 +324,14 @@ function useResizableColumn(id: ColumnId, options: ResizableColumnOptions = {}) 
   /** Double-clicking a sash resets it — the Windows and VS Code convention. */
   const onDoubleClick = useCallback(() => {
     if (resizeDisabled()) return;
+    // Expanded, a reset means "as wide as it goes" — the expanded width.
+    if (id === 'panel' && isExpanded()) {
+      expandedPanelWidth = spec.max;
+      reflowColumns();
+      return;
+    }
     commit(spec.fallback, true);
-  }, [commit, resizeDisabled, spec]);
+  }, [commit, id, resizeDisabled, spec]);
 
   // Layout effect, so persisted widths land before the first paint. The resize
   // listener is rAF-throttled; reflow is idempotent, so two hooks each keeping
@@ -355,6 +380,44 @@ export function useColumnResize() {
  *  NARROW_BREAKPOINT, where the sidebar is force-collapsed (§4.3). */
 export function useSidebarResize(collapse: CollapseControls) {
   return useResizableColumn('sidebar', { collapse });
+}
+
+/**
+ * The artifact panel expanded: the sidebar steps aside and the panel takes all
+ * the width the thread's floor allows, so an HTML page, a wide table or a long
+ * code line gets a desktop-sized pane while the chat stays usable beside it.
+ * `[data-panel-expanded]` on <html> drives the CSS; nothing is persisted, and
+ * leaving restores the sidebar and both widths exactly as they were.
+ */
+export function usePanelExpand() {
+  const [expanded, setExpanded] = useState(false);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (expanded) {
+      expandedPanelWidth = PANEL_MAX;
+      root.setAttribute('data-panel-expanded', 'true');
+    } else {
+      expandedPanelWidth = null;
+      root.removeAttribute('data-panel-expanded');
+    }
+    reflowColumns();
+  }, [expanded]);
+
+  // Never leave the module flag behind an unmounted owner.
+  useLayoutEffect(
+    () => () => {
+      expandedPanelWidth = null;
+      document.documentElement.removeAttribute('data-panel-expanded');
+    },
+    [],
+  );
+
+  const expand = useCallback(() => setExpanded(true), []);
+  const restore = useCallback(() => setExpanded(false), []);
+  const toggle = useCallback(() => setExpanded((current) => !current), []);
+
+  return { expanded, expand, restore, toggle };
 }
 
 /** Whether the window is at or below `px` wide, tracked across resizes. */

@@ -21,11 +21,14 @@
  * cannot see. It lives for exactly one page load.
  *
  *   ?route=onboarding    render the first-run wizard against default settings
+ *   ?route=artifacts     open the workspace with sample artifacts in the panel
+ *                        (`dev/artifactFixtures.ts`) — dev:web has no backend,
+ *                        so without it the panel only ever shows its empty state
  */
 
-export type DevRoute = 'onboarding' | null;
+export type DevRoute = 'onboarding' | 'artifacts' | null;
 
-const KNOWN: readonly string[] = ['onboarding'];
+const KNOWN: readonly string[] = ['onboarding', 'artifacts'];
 
 export function readDevRoute(search?: string): DevRoute {
   if (!import.meta.env.DEV) return null;

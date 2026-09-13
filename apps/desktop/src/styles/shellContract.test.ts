@@ -278,6 +278,24 @@ describe('side columns on a narrow window', () => {
 });
 
 /**
+ * The expanded artifact panel borrows the sidebar's width for as long as it
+ * lasts. The sidebar's actions have to come with it, or expanding strands New
+ * chat and Search the way a collapsed sidebar used to.
+ */
+describe('expanded artifact panel', () => {
+  const css = allCss.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('zeroes the sidebar track and hides the sidebar', () => {
+    expect(css).toMatch(/html\[data-panel-expanded\]\s+\.body\s*\{[^}]*--sidebar-w:\s*0px/);
+    expect(css).toMatch(/html\[data-panel-expanded\]\s+\.body\s*>\s*\.sidebar\s*\{[^}]*visibility:\s*hidden/);
+  });
+
+  it("moves the sidebar's actions to the title strip", () => {
+    expect(css).toMatch(/html\[data-panel-expanded\]\s+\.head-nav\s*\{[^}]*display:\s*flex/);
+  });
+});
+
+/**
  * The caption row has to be a real, non-zero row of the `.app` grid.
  *
  * This is what replaced the previous arrangement, where the cluster floated

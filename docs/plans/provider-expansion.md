@@ -2,9 +2,44 @@
 
 ## Status
 
-Draft, ready for implementation. Scope is the seven Tier A providers identified
+Phases 1 and 2 implemented on `feat/provider-expansion` (2026-09-13), with the
+deviations below. Phase 3 not started. Scope is the seven Tier A providers identified
 in the September 2026 market review, plus the base-URL unlock that makes the
 three native adapters reusable against compatible third-party endpoints.
+
+### Implementation deviations (verified 2026-09-13)
+
+Base URLs were re-checked against each vendor's live documentation and with
+unauthenticated probes (`401`/`400` with an API-shaped error = route exists).
+
+- **Z.ai base URL is `https://api.z.ai/api/paas/v4`**, not `/api/openai/v1`.
+  docs.z.ai documents only `paas/v4` as the general endpoint;
+  `/api/openai/v1/models` answers `200` with a `404 NOT_FOUND` body, which would
+  have made "Test connection" fail in a confusing way.
+- **Perplexity is deferred — six providers ship, not seven.** Its chat
+  completions live at the root (`/chat/completions`, `/v1/chat/completions` is a
+  404) while its model list lives under `/v1/models` (root `/models` is a 404),
+  so no single base URL serves both calls the preset makes. And the docs carry a
+  sunset notice: *"Sonar Chat Completions is now Agent API. Sonar will be
+  supported until September 27, 2026"* — the replacement is
+  `POST /v1/sonar`, a different request shape. Perplexity needs its own adapter
+  against the Agent API; it moves to Tier B with Azure/Bedrock/Vertex.
+- **Touch point #8 (`contextWindows.ts`) is skipped for now.** Current model ids
+  and windows could not be confirmed from the docs without a key. A wrong window
+  mis-times auto-compaction; an unknown one degrades to a raw token count. Same
+  reasoning as D10 — fill it in with the Phase 3b table refresh from
+  authenticated `/models` calls.
+- **A tenth touch point exists after all:** base URL, locality and credential
+  mode are duplicated between the preset constructor and the descriptor, and
+  the catalog parity tests compare ids only.
+  `openai_preset.rs::every_preset_agrees_with_its_descriptor` now pins them.
+- **The Anthropic adapter normalises its base URL** — trailing slash and a
+  trailing `/v1` are stripped, because it appends `/v1/messages` itself and
+  vendors document the base both ways.
+- **Model-picker "self-hosted" tail removed.** It keyed off `defaultBaseUrl`,
+  which every cloud preset has, so OpenRouter/Groq/DeepSeek/Mistral (and all new
+  presets) were labelled "self-hosted"; the genuinely self-hosted
+  `openai_compat` is `isLocal` and never reached that branch.
 
 Every provider in Phase 1 is a **configuration change, not an adapter** — they
 all speak `/v1/chat/completions` and are reachable through the existing

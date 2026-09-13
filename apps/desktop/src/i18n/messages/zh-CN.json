@@ -177,7 +177,6 @@
   "chat.modelPicker.modelIdPlaceholder": "模型 ID",
   "chat.modelPicker.noProviders": "尚未配置提供商。请查看提供商与密钥。",
   "chat.modelPicker.switchModel": "切换模型",
-  "chat.modelPicker.tail.selfHosted": "自托管",
   "chat.modelPicker.useButton": "使用",
   "chat.search.queryCount": "{count, plural, other {# 条查询}}",
   "chat.search.running": "运行中…",

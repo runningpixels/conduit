@@ -14,8 +14,11 @@ pub fn model_accepts_images(provider_id: &str, model_id: &str) -> bool {
 
     match provider.as_str() {
         "anthropic" | "openai" | "gemini" | "openrouter" | "opencode_zen" | "groq" | "mistral"
-        | "lmstudio" | "openai_compat" => true,
+        | "lmstudio" | "openai_compat" | "xai" => true,
         "deepseek" => false,
+        // Gateway presets (zai, moonshot, qwen, together, fireworks) deliberately
+        // have no arm: their vision support is per-model, so they take the
+        // heuristic below (provider-expansion plan, D8).
         "ollama" => ollama_model_accepts_images(&model),
         _ => {
             // Unknown providers: only forward when the model id looks multimodal.
@@ -66,6 +69,25 @@ mod tests {
     #[test]
     fn deepseek_rejects() {
         assert!(!model_accepts_images("deepseek", "deepseek-chat"));
+    }
+
+    #[test]
+    fn xai_accepts() {
+        assert!(model_accepts_images("xai", "grok-4"));
+    }
+
+    #[test]
+    fn gateway_presets_use_the_model_heuristic() {
+        for provider in ["zai", "moonshot", "qwen", "together", "fireworks"] {
+            assert!(
+                model_accepts_images(provider, "qwen2.5-vl-72b-instruct"),
+                "{provider}"
+            );
+            assert!(
+                !model_accepts_images(provider, "kimi-k2-instruct"),
+                "{provider}"
+            );
+        }
     }
 
     #[test]

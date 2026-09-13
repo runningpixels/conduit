@@ -14,7 +14,19 @@ describe('providerHueId', () => {
       expect(providerHueId(id)).toBe('custom');
     }
     // Adapter classes that delegate their id to an inner adapter
-    for (const id of ['openai_compat', 'openai_preset', 'groq', 'deepseek', 'mistral']) {
+    for (const id of [
+      'openai_compat',
+      'openai_preset',
+      'groq',
+      'deepseek',
+      'mistral',
+      'xai',
+      'zai',
+      'moonshot',
+      'qwen',
+      'together',
+      'fireworks',
+    ]) {
       expect(providerHueId(id)).toBe('custom');
     }
   });

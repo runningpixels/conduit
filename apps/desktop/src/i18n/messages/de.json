@@ -177,7 +177,6 @@
   "chat.modelPicker.modelIdPlaceholder": "Modell-ID",
   "chat.modelPicker.noProviders": "Keine Anbieter konfiguriert. Prüfe Anbieter & Schlüssel.",
   "chat.modelPicker.switchModel": "Modell wechseln",
-  "chat.modelPicker.tail.selfHosted": "selbst gehostet",
   "chat.modelPicker.useButton": "nutzen",
   "chat.search.queryCount": "{count, plural, one {# Suchanfrage} other {# Suchanfragen}}",
   "chat.search.running": "läuft…",

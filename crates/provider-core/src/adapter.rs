@@ -51,6 +51,12 @@ pub fn registry() -> Vec<Box<dyn ProviderAdapter>> {
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::deepseek()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::mistral()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::lmstudio()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::xai()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::zai()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::moonshot()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::qwen()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::together()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::fireworks()),
         Box::new(crate::adapters::openai_compat::OpenAiCompatAdapter::default()),
         Box::new(crate::adapters::ollama::OllamaAdapter),
     ]

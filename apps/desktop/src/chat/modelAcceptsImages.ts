@@ -13,6 +13,7 @@ export function modelAcceptsImages(providerId: string, modelId: string): boolean
     case 'mistral':
     case 'lmstudio':
     case 'openai_compat':
+    case 'xai':
       return true;
     case 'deepseek':
       return false;

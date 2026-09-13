@@ -99,6 +99,18 @@ impl OpenAiAdapter {
         }
     }
 
+    /// Endpoint used when the user has not set a base URL.
+    #[cfg(test)]
+    pub(crate) fn default_base(&self) -> &'static str {
+        self.default_base
+    }
+
+    /// Whether requests go out without a key when none is stored.
+    #[cfg(test)]
+    pub(crate) fn optional_api_key(&self) -> bool {
+        self.optional_api_key
+    }
+
     fn request_headers(
         &self,
         ctx: &AdapterContext,

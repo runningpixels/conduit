@@ -177,7 +177,6 @@
   "chat.modelPicker.modelIdPlaceholder": "モデル ID",
   "chat.modelPicker.noProviders": "プロバイダーが設定されていません。「プロバイダーとキー」を確認してください。",
   "chat.modelPicker.switchModel": "モデルを切り替え",
-  "chat.modelPicker.tail.selfHosted": "セルフホスト",
   "chat.modelPicker.useButton": "使う",
   "chat.search.queryCount": "{count, plural, other {クエリ #件}}",
   "chat.search.running": "実行中…",

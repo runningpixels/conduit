@@ -70,6 +70,84 @@ impl OpenAiPresetAdapter {
         ))
     }
 
+    pub fn xai() -> Self {
+        Self(OpenAiAdapter::preset(
+            "xai",
+            "xAI",
+            "https://api.x.ai/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn zai() -> Self {
+        Self(OpenAiAdapter::preset(
+            "zai",
+            "Z.ai",
+            "https://api.z.ai/api/paas/v4",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn moonshot() -> Self {
+        Self(OpenAiAdapter::preset(
+            "moonshot",
+            "Moonshot AI",
+            "https://api.moonshot.ai/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn qwen() -> Self {
+        Self(OpenAiAdapter::preset(
+            "qwen",
+            "Qwen",
+            "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn together() -> Self {
+        Self(OpenAiAdapter::preset(
+            "together",
+            "Together AI",
+            "https://api.together.xyz/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn fireworks() -> Self {
+        Self(OpenAiAdapter::preset(
+            "fireworks",
+            "Fireworks AI",
+            "https://api.fireworks.ai/inference/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
     pub fn lmstudio() -> Self {
         Self(OpenAiAdapter::preset(
             "lmstudio",
@@ -142,5 +220,86 @@ mod tests {
         assert_eq!(adapter.id(), "mistral");
         assert_eq!(adapter.display_name(), "Mistral");
         assert!(!adapter.is_local(), "mistral must not be local");
+    }
+
+    fn all_presets() -> Vec<OpenAiPresetAdapter> {
+        vec![
+            OpenAiPresetAdapter::openrouter(),
+            OpenAiPresetAdapter::groq(),
+            OpenAiPresetAdapter::deepseek(),
+            OpenAiPresetAdapter::mistral(),
+            OpenAiPresetAdapter::lmstudio(),
+            OpenAiPresetAdapter::xai(),
+            OpenAiPresetAdapter::zai(),
+            OpenAiPresetAdapter::moonshot(),
+            OpenAiPresetAdapter::qwen(),
+            OpenAiPresetAdapter::together(),
+            OpenAiPresetAdapter::fireworks(),
+        ]
+    }
+
+    /// The base URL, locality and credential requirement are written twice —
+    /// once in the constructor, once in the catalog descriptor the settings UI
+    /// reads. The catalog parity tests only compare ids, so pin the rest here.
+    #[test]
+    fn every_preset_agrees_with_its_descriptor() {
+        use crate::catalog::{descriptor, CredentialMode};
+
+        for preset in all_presets() {
+            let id = preset.id();
+            let desc = descriptor(id).unwrap_or_else(|| panic!("no descriptor for {id}"));
+            assert_eq!(
+                desc.display_name,
+                preset.display_name(),
+                "{id}: display name"
+            );
+            assert_eq!(
+                desc.default_base_url,
+                Some(preset.0.default_base()),
+                "{id}: default base URL"
+            );
+            assert_eq!(desc.is_local, preset.is_local(), "{id}: is_local");
+            let optional = !matches!(desc.credential_mode, CredentialMode::Required);
+            assert_eq!(
+                optional,
+                preset.0.optional_api_key(),
+                "{id}: credential mode"
+            );
+        }
+    }
+
+    #[test]
+    fn every_preset_is_registered() {
+        let registered: Vec<&str> = crate::adapter::registry().iter().map(|a| a.id()).collect();
+        for preset in all_presets() {
+            assert!(
+                registered.contains(&preset.id()),
+                "{} is not in registry()",
+                preset.id()
+            );
+        }
+    }
+
+    /// Tier A cloud presets: base URL field shown (D6), tier 2 (D3), key required.
+    #[test]
+    fn tier_a_presets_follow_the_expansion_plan() {
+        use crate::catalog::{descriptor, CredentialMode};
+
+        for id in ["xai", "zai", "moonshot", "qwen", "together", "fireworks"] {
+            let desc = descriptor(id).unwrap_or_else(|| panic!("no descriptor for {id}"));
+            assert_eq!(desc.tier, 2, "{id}: tier");
+            assert!(
+                desc.show_base_url_field,
+                "{id}: base URL field must be shown"
+            );
+            assert!(!desc.is_local, "{id}: must not be local");
+            assert!(
+                matches!(desc.credential_mode, CredentialMode::Required),
+                "{id}: key required"
+            );
+            let base = desc.default_base_url.expect("default base URL");
+            assert!(base.starts_with("https://"), "{id}: base URL must be https");
+            assert!(!base.ends_with('/'), "{id}: no trailing slash");
+        }
     }
 }

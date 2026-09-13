@@ -514,3 +514,24 @@ describe('DocumentPanel brand-theme Preview/Apply (white-label plan §4, Phase 4
     await waitFor(() => expect(setBrandConfig).toHaveBeenCalledWith(BRAND_MARKDOWN_ARTIFACT.contentText));
   });
 });
+
+describe('DocumentPanel expand control', () => {
+  it('offers Expand, and reports the pressed state', () => {
+    const onToggleExpand = vi.fn();
+    renderPanel({ onToggleExpand, expanded: false });
+    const button = screen.getByRole('button', { name: 'Expand artifact' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(button);
+    expect(onToggleExpand).toHaveBeenCalledOnce();
+  });
+
+  it('offers Restore layout while expanded', () => {
+    renderPanel({ onToggleExpand: vi.fn(), expanded: true });
+    expect(screen.getByRole('button', { name: 'Restore layout' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('renders no control when expanding is not available', () => {
+    renderPanel();
+    expect(screen.queryByRole('button', { name: 'Expand artifact' })).toBeNull();
+  });
+});

@@ -4,7 +4,16 @@
  * horizontal scroll container. One long URL or Windows path then dragged the
  * entire transcript sideways. */
 .thread { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--sp-5) var(--sp-5) var(--sp-4); }
-.thread-inner { max-width: var(--measure); margin: 0 auto; }
+.thread-inner {
+  max-width: var(--measure);
+  margin: 0 auto;
+  /* A size container, so messages and the greeting can answer to the thread's
+     width, which beside an expanded artifact is far from the window's. Here and
+     not on .center: size containment implies layout containment, which would
+     make .center the containing block for the fixed backdrops of the dialogs
+     ChatView renders. */
+  container: thread / inline-size;
+}
 /* V9 turn (§7): two shapes, no avatars, no role names. User = right-aligned soft
  * card; assistant = plain prose behind a 2px provider rule. */
 .turn { position: relative; margin-bottom: var(--sp-6); }
@@ -1075,8 +1084,11 @@ html[data-palette="orange-dark"] .prose { font-size: 16.5px; line-height: 1.7; }
 }
 .status {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 6px;
+  row-gap: 4px;
   padding: 2px 8px;
   border-radius: var(--r-sm);
   font: 400 11.5px/1 var(--font-mono);
@@ -1084,6 +1096,10 @@ html[data-palette="orange-dark"] .prose { font-size: 16.5px; line-height: 1.7; }
   transition: color var(--tap), background var(--tap);
 }
 .status:hover { color: var(--ink-2); background: var(--card); }
+/* Each fact stays whole. In a narrow thread the line wraps between facts —
+   "not configured" moves down intact — instead of breaking inside them into
+   "not" / "configured" stacked under every item. */
+.status > span { white-space: nowrap; }
 .status .pdot { width: 5px; height: 5px; background: var(--hue); }
 /* The separators are punctuation, not data: dimmer than the facts they part. */
 .status .sep { opacity: .45; }
@@ -1559,6 +1575,13 @@ html[data-palette="orange-dark"] .prose { font-size: 16.5px; line-height: 1.7; }
  * product — sanctioned in §6.2 on the grounds that it is exactly one mark in
  * exactly one place. */
 .welcome .brand-mark { width: 34px; height: 34px; color: var(--hue); flex: none; }
+/* Beside an expanded artifact the thread is a ~400px column, where the hero
+   size wraps the greeting onto two lines and leaves the mark stranded beside
+   them. */
+@container thread (max-width: 560px) {
+  .welcome h1 { font-size: calc(var(--fs-hero) * .62); gap: 10px; }
+  .welcome .brand-mark { width: 24px; height: 24px; }
+}
 
 /* Empty thread: greeting and composer centre as a single group rather than
  * pinning the composer to the floor of an empty room. `.tab-pane` is already

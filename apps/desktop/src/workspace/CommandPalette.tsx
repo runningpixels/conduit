@@ -39,6 +39,8 @@ interface CommandPaletteProps {
   /** Open the keyboard shortcuts sheet. */
   onOpenShortcuts?: () => void;
   onToggleDocPanel: () => void;
+  /** Expand the artifact panel, or restore the layout. */
+  onToggleArtifactExpand?: () => void;
   onToggleSidebar: () => void;
   onToggleWebSearch: () => void;
   onForkConversationHere: () => void;
@@ -129,6 +131,7 @@ export function CommandPalette({
   onToggleTheme,
   onOpenShortcuts,
   onToggleDocPanel,
+  onToggleArtifactExpand,
   onToggleSidebar,
   onToggleWebSearch,
   onForkConversationHere,
@@ -205,6 +208,9 @@ export function CommandPalette({
       { id: 'cmd-edit-last-user', group, kind: 'cmd', label: t('workspace.commandPalette.command.editLastMessage'), run: () => { onEditLastUserMessage(); close(); } },
       { id: 'cmd-chat-settings', group, kind: 'cmd', label: t('workspace.commandPalette.command.chatSettings'), run: () => { onOpenChatSettings(); close(); } },
       { id: 'cmd-toggle-panel', group, kind: 'cmd', label: t('workspace.commandPalette.command.togglePanel'), tail: modShortcutHint('J'), run: () => { onToggleDocPanel(); close(); } },
+      ...(onToggleArtifactExpand
+        ? [{ id: 'cmd-artifact-expand', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.toggleArtifactExpand'), tail: modShiftShortcutHint('E'), run: () => { onToggleArtifactExpand(); close(); } }]
+        : []),
       { id: 'cmd-toggle-sidebar', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleSidebar'), tail: modShortcutHint('\\'), run: () => { onToggleSidebar(); close(); } },
       { id: 'cmd-toggle-web', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleWebSearch'), tail: modShiftShortcutHint('W'), run: () => { onToggleWebSearch(); close(); } },
       { id: 'cmd-settings', group, kind: 'cmd', label: t('workspace.commandPalette.command.openSettings'), tail: modShortcutHint(','), run: () => { onOpenSettings(); close(); } },
@@ -242,7 +248,7 @@ export function CommandPalette({
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
-    onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts,
+    onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts, onToggleArtifactExpand,
   ]);
 
   const modelItems = useMemo((): PaletteItem[] => {

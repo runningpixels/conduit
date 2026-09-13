@@ -724,6 +724,19 @@ html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden;
   to { opacity: 1; transform: none; }
 }
 
+/* ── Expanded artifact panel ───────────────────────────────────────────── */
+/* usePanelExpand: the sidebar steps aside and the panel takes the width the
+   thread's floor allows. Temporary by design — the saved sidebar state and
+   widths are untouched — so the sidebar's actions move to the title strip for
+   as long as it lasts, the way they do when it is collapsed. */
+html[data-panel-expanded] .body { --sidebar-w: 0px; }
+html[data-panel-expanded] .body > .sidebar {
+  visibility: hidden;
+  transition: visibility 0s linear .22s;
+}
+html[data-panel-expanded] .sidebar-resize { display: none; }
+html[data-panel-expanded] .head-nav { display: flex; }
+
 /* ── Side columns as overlays (narrow windows) ─────────────────────────── */
 /* Where the window has no room for a side column it is force-collapsed (the
    breakpoints below), and ⌘\ / ⌘J — or the title strip's buttons — show it

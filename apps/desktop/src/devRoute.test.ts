@@ -9,8 +9,9 @@ import { readDevRoute } from './devRoute';
 /// the only thing a test here can check: that nothing but the known value is
 /// ever returned.
 describe('the dev route override', () => {
-  it('recognises the one route it knows', () => {
+  it('recognises the routes it knows', () => {
     expect(readDevRoute('?route=onboarding')).toBe('onboarding');
+    expect(readDevRoute('?route=artifacts')).toBe('artifacts');
   });
 
   it('is null when unset', () => {

@@ -43,6 +43,14 @@ const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
   { id: 'fireworks', brand: 'Fireworks AI' },
 ];
 
+/**
+ * Adapters that report `is_local()` in provider-core — the ones `local_only`
+ * mode leaves reachable. Used only while the descriptor list is missing: the
+ * dropdown is already interactive on its fallback list then, and a provider
+ * change must still know whether it is leaving local-only mode.
+ */
+const FALLBACK_LOCAL_PROVIDER_IDS: ReadonlySet<string> = new Set(['ollama', 'lmstudio', 'openai_compat']);
+
 /** Phase 6 M6.4: shared provider + BYOK surface. Used by Onboarding and
  *  SettingsScreen. Owns provider selection, model listing, the optional base
  *  URL, the secret entry that routes through Rust to the OS keychain, the
@@ -124,10 +132,20 @@ export function ProviderPicker({
      * providers blocked, and that flag reaches further than this dropdown (web
      * search gating, the status line, the sidebar chip). Turning something off
      * to unblock the choice in front of you is a different act from turning a
-     * restriction on. */
-    const leavingLocalOnly = settings.localOnly && descriptor?.isLocal === false;
+     * restriction on.
+     *
+     * Locality must not wait on `listProviderDescriptors()`. The select is live
+     * on its fallback list before that call answers (and for good if it fails),
+     * and reading `descriptor?.isLocal === false` then wrote a cloud provider
+     * beside `localOnly: true` — the trap above, reached by being quick. */
+    const isLocal = descriptor ? descriptor.isLocal : FALLBACK_LOCAL_PROVIDER_IDS.has(providerId);
+    const leavingLocalOnly = settings.localOnly && !isLocal;
     if (leavingLocalOnly) {
-      onStatus(t('settings.provider.localOnlyCleared', { provider: descriptor.displayName }));
+      const provider =
+        descriptor?.displayName ??
+        FALLBACK_PROVIDER_BRANDS.find((b) => b.id === providerId)?.brand ??
+        providerId;
+      onStatus(t('settings.provider.localOnlyCleared', { provider }));
     }
 
     onSettingsChange({

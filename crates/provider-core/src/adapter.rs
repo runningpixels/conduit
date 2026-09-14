@@ -136,4 +136,19 @@ mod tests {
             "openai must be cloud: {cloud_ids:?}"
         );
     }
+
+    /// The renderer keeps a copy of this set (`FALLBACK_LOCAL_PROVIDER_IDS` in
+    /// `apps/desktop/src/workspace/settings/ProviderPicker.tsx`) so a provider
+    /// switch can tell whether it leaves local-only mode before the descriptor
+    /// list has loaded. Adding a local adapter means updating both.
+    #[test]
+    fn local_adapter_ids_match_the_renderer_fallback() {
+        let mut local_ids: Vec<&str> = registry()
+            .iter()
+            .filter(|a| a.is_local())
+            .map(|a| a.id())
+            .collect();
+        local_ids.sort_unstable();
+        assert_eq!(local_ids, ["lmstudio", "ollama", "openai_compat"]);
+    }
 }

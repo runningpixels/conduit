@@ -177,7 +177,6 @@
   "chat.modelPicker.modelIdPlaceholder": "모델 ID",
   "chat.modelPicker.noProviders": "구성된 공급자가 없습니다. 공급자 및 키를 확인하십시오.",
   "chat.modelPicker.switchModel": "모델 전환",
-  "chat.modelPicker.tail.selfHosted": "자체 호스팅",
   "chat.modelPicker.useButton": "사용",
   "chat.search.queryCount": "{count, plural, other {쿼리 #개}}",
   "chat.search.running": "실행 중…",

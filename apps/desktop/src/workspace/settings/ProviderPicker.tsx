@@ -35,6 +35,12 @@ const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
   { id: 'deepseek', brand: 'DeepSeek' },
   { id: 'mistral', brand: 'Mistral' },
   { id: 'lmstudio', brand: 'LM Studio' },
+  { id: 'xai', brand: 'xAI' },
+  { id: 'zai', brand: 'Z.ai' },
+  { id: 'moonshot', brand: 'Moonshot AI' },
+  { id: 'qwen', brand: 'Qwen' },
+  { id: 'together', brand: 'Together AI' },
+  { id: 'fireworks', brand: 'Fireworks AI' },
 ];
 
 /** Phase 6 M6.4: shared provider + BYOK surface. Used by Onboarding and

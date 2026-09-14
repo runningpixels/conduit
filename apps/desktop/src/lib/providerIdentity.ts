@@ -32,6 +32,12 @@ const DISPLAY_NAMES: Record<string, string> = {
   groq: 'Groq',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
+  xai: 'xAI',
+  zai: 'Z.ai',
+  moonshot: 'Moonshot AI',
+  qwen: 'Qwen',
+  together: 'Together AI',
+  fireworks: 'Fireworks AI',
 };
 
 /** Map a provider-core adapter id to one of the four CSS hue identities. */

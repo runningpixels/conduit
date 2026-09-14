@@ -177,7 +177,6 @@
   "chat.modelPicker.modelIdPlaceholder": "ID du modèle",
   "chat.modelPicker.noProviders": "Aucun fournisseur configuré. Consultez Fournisseurs & clés.",
   "chat.modelPicker.switchModel": "Changer de modèle",
-  "chat.modelPicker.tail.selfHosted": "auto-hébergé",
   "chat.modelPicker.useButton": "utiliser",
   "chat.search.queryCount": "{count, plural, one {# requête} other {# requêtes}}",
   "chat.search.running": "en cours…",

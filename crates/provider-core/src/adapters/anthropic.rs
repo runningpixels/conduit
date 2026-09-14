@@ -476,11 +476,41 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     body
 }
 
+/// The adapter appends `/v1/...` itself. A user-entered base URL is accepted
+/// with or without that suffix and with a trailing slash, since vendors
+/// document it both ways (`…/api/anthropic` and `…/api/anthropic/v1`).
 fn base_url(ctx: &AdapterContext) -> String {
-    ctx.base_url
-        .clone()
-        .filter(|u| !u.is_empty())
-        .unwrap_or_else(|| DEFAULT_BASE.to_string())
+    let configured = ctx.base_url.as_deref().map(str::trim).unwrap_or_default();
+    let trimmed = configured.trim_end_matches('/');
+    let trimmed = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
+    if trimmed.is_empty() {
+        DEFAULT_BASE.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// A base URL pointed at an Anthropic-compatible third party (Z.ai, a LiteLLM
+/// proxy, …) cannot honour Anthropic's hosted `web_search` tool. Strip the
+/// search request so the tool is never serialised, and return the event that
+/// tells the user why the answer has no search.
+fn withhold_hosted_search_off_anthropic(
+    request: &mut ProviderRequest,
+    resolved_base: &str,
+) -> Option<ProviderEvent> {
+    let web_search_intent = request.web_search.as_ref().is_some_and(|w| w.enabled);
+    if !web_search_intent || endpoint_supports_hosted_search(Some(resolved_base)) {
+        return None;
+    }
+    request.web_search = None;
+    Some(ProviderEvent::SearchUnavailable {
+        request_id: request.request_id.clone(),
+        index: 0,
+        code: "endpoint_mismatch".to_string(),
+        message: format!(
+            "The configured Anthropic-compatible endpoint ({resolved_base}) does not host web search. Falling back to a no-search response."
+        ),
+    })
 }
 
 pub(crate) fn endpoint_supports_hosted_search(base_url: Option<&str>) -> bool {
@@ -645,19 +675,8 @@ impl ProviderAdapter for AnthropicAdapter {
             });
         }
 
-        let resolved_base = base_url(&ctx);
-        let mut search_unavailable: Option<ProviderEvent> = None;
-        if web_search_intent && !endpoint_supports_hosted_search(Some(&resolved_base)) {
-            search_unavailable = Some(ProviderEvent::SearchUnavailable {
-                request_id: request.request_id.clone(),
-                index: 0,
-                code: "endpoint_mismatch".to_string(),
-                message: format!(
-                    "The configured Anthropic-compatible endpoint ({resolved_base}) does not host web search. Falling back to a no-search response."
-                ),
-            });
-            request.web_search = None;
-        }
+        let search_unavailable =
+            withhold_hosted_search_off_anthropic(&mut request, &base_url(&ctx));
 
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
@@ -916,6 +935,75 @@ mod tests {
         assert!(!endpoint_supports_hosted_search(Some(
             "https://example.invalid/anthropic"
         )));
+    }
+
+    fn search_on() -> Option<crate::schema::WebSearchRequest> {
+        Some(crate::schema::WebSearchRequest {
+            enabled: true,
+            search_context_size: None,
+            filters: None,
+            external_web_access: None,
+            return_token_budget: None,
+            user_location: None,
+            include_sources: None,
+        })
+    }
+
+    /// Provider expansion Phase 2: the base-URL field lets `anthropic` point at
+    /// a compatible third party. That endpoint must not be sent the hosted
+    /// search tool, and the user must be told search was dropped.
+    #[test]
+    fn third_party_anthropic_endpoint_gets_no_hosted_search_tool() {
+        let mut request = user_request(search_on());
+        let event =
+            withhold_hosted_search_off_anthropic(&mut request, "https://api.z.ai/api/anthropic");
+        assert!(
+            matches!(event, Some(ProviderEvent::SearchUnavailable { ref code, .. }) if code == "endpoint_mismatch"),
+            "expected SearchUnavailable, got {event:?}"
+        );
+        let body = build_payload(&NormalizedRequest { request });
+        assert!(
+            body.get("tools").is_none(),
+            "hosted search tool leaked: {body}"
+        );
+    }
+
+    #[test]
+    fn official_anthropic_endpoint_keeps_hosted_search_tool() {
+        let mut request = user_request(search_on());
+        assert!(withhold_hosted_search_off_anthropic(&mut request, &base_url_for(None)).is_none());
+        let body = build_payload(&NormalizedRequest { request });
+        assert!(body.get("tools").is_some());
+    }
+
+    /// Clearing the base-URL field (empty string) must restore the default
+    /// endpoint, not produce a relative URL.
+    #[test]
+    fn empty_base_url_falls_back_to_the_default_endpoint() {
+        assert_eq!(base_url_for(Some("")), "https://api.anthropic.com");
+        assert_eq!(base_url_for(None), "https://api.anthropic.com");
+        assert_eq!(base_url_for(Some("  ")), "https://api.anthropic.com");
+        for configured in [
+            "https://api.z.ai/api/anthropic",
+            "https://api.z.ai/api/anthropic/",
+            "https://api.z.ai/api/anthropic/v1",
+            "https://api.z.ai/api/anthropic/v1/",
+        ] {
+            assert_eq!(
+                base_url_for(Some(configured)),
+                "https://api.z.ai/api/anthropic",
+                "{configured}"
+            );
+        }
+    }
+
+    fn base_url_for(configured: Option<&str>) -> String {
+        base_url(&AdapterContext {
+            api_key: Some("sk-test".into()),
+            base_url: configured.map(str::to_string),
+            http: crate::transport::HttpClient::new(),
+            local_only: false,
+        })
     }
 
     #[test]

@@ -73,7 +73,9 @@ function modelTail(descriptor: ProviderDescriptor, modelId: string, t: Translate
   const price = formatModelPriceLabel(modelId);
   if (price) return price;
   if (descriptor.credentialMode === 'none' || descriptor.isLocal) return t('chat.modelPicker.keyPosture.local');
-  if (descriptor.defaultBaseUrl) return t('chat.modelPicker.tail.selfHosted');
+  // No "self-hosted" tail keyed off `defaultBaseUrl`: every cloud preset
+  // (OpenRouter, Groq, xAI, …) carries one, and the genuinely self-hosted
+  // `openai_compat` is `isLocal` and already answered above.
   return undefined;
 }
 

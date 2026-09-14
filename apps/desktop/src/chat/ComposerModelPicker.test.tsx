@@ -104,6 +104,30 @@ describe('ComposerModelPicker', () => {
     expect(screen.getByRole('menuitem', { name: /qwen3:14b/ })).toHaveTextContent('local');
   });
 
+  it('does not call a cloud preset self-hosted because it has a default base url', async () => {
+    const { listProviderDescriptors, listProviderModels } = await mocks();
+    vi.mocked(listProviderDescriptors).mockResolvedValue([
+      ...DESCRIPTORS,
+      {
+        id: 'xai',
+        displayName: 'xAI',
+        defaultBaseUrl: 'https://api.x.ai/v1',
+        credentialMode: 'required',
+        isLocal: false,
+        showBaseUrlField: true,
+        tier: 2,
+        description: 'Grok models',
+      },
+    ] as never);
+    vi.mocked(listProviderModels).mockImplementation(async (id: string) =>
+      id === 'xai' ? ([{ id: 'grok-unpriced', displayName: 'grok-unpriced' }] as never) : ([] as never),
+    );
+    renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    const row = await screen.findByRole('menuitem', { name: /grok-unpriced/ });
+    expect(row).not.toHaveTextContent(/self-?hosted|local/i);
+  });
+
   it('passes the descriptor default base url so an unconfigured provider is seeded', async () => {
     const { onSelectModel } = renderPicker();
     fireEvent.click(screen.getByTitle('Switch model'));

@@ -1207,5 +1207,7 @@
   "chat.documentWrite.progress": "{lines, plural, other {#行}} · {size}",
   "chat.toolCall.status.writing": "作成中…",
   "chat.stream.stillWorking": "処理を続けています · {seconds}秒",
-  "chat.stream.stillWorkingLong": "処理を続けています · {seconds}秒 — 長い応答をまとめて送るモデルもあります"
+  "chat.stream.stillWorkingLong": "処理を続けています · {seconds}秒 — 長い応答をまとめて送るモデルもあります",
+  "settings.agent.finishAfterDocumentWrite.label": "ドキュメントを書き終えたら終了する",
+  "settings.agent.finishAfterDocumentWrite.hint": "ドキュメントが保存された時点でターンを終了し、アシスタントの説明を待ちません。より高速です。締めくくりのメッセージが必要な場合はオフにしてください。"
 }

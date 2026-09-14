@@ -621,6 +621,33 @@ export function selectBuiltinTurnTools(
   };
 }
 
+/**
+ * Model-facing note for a turn whose only output was document writes, e.g.
+ * `[Wrote HTML document "Solar System Field Guide" with write_html_document.]`.
+ *
+ * Success is judged as "complete and not failed or cancelled" rather than
+ * `status === 'completed'`: execution-finished events are not persisted, so a
+ * reloaded turn has no status at all. Empty when there is nothing to report.
+ */
+export function documentWritesHistoryNote(state: AssistantStreamState | undefined): string {
+  if (!state) return '';
+  return state.toolCalls
+    .filter(
+      (tc) =>
+        isDocumentContentTool(tc.name) &&
+        tc.complete &&
+        tc.status !== 'failed' &&
+        tc.status !== 'cancelled',
+    )
+    .map((tc) => {
+      const verb = tc.name.startsWith('edit_') ? 'Updated' : 'Wrote';
+      const kind = KIND_BY_TOOL[tc.name] === 'html' ? 'HTML' : KIND_BY_TOOL[tc.name] === 'markdown' ? 'Markdown' : 'text';
+      const title = typeof tc.arguments?.title === 'string' && tc.arguments.title.trim() ? ` "${tc.arguments.title.trim()}"` : '';
+      return `[${verb} ${kind} document${title} with ${tc.name}.]`;
+    })
+    .join('\n');
+}
+
 export function completedDocumentToolCalls(state: AssistantStreamState): ToolCallState[] {
   return state.toolCalls.filter(
     (toolCall) => toolCall.status === 'completed' && DOCUMENT_TOOL_NAMES.has(toolCall.name),

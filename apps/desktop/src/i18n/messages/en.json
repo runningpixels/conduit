@@ -423,6 +423,8 @@
   "settings.about.database.label": "Database",
   "settings.about.header.title": "About",
   "settings.about.settingsFile.label": "Settings file",
+  "settings.agent.finishAfterDocumentWrite.hint": "End the turn as soon as a document is saved, without waiting for the assistant to describe it. Faster; turn off to get a closing message.",
+  "settings.agent.finishAfterDocumentWrite.label": "Finish after writing a document",
   "settings.agent.header.title": "Agent",
   "settings.agent.intro": "These guardrails cap how long a single chat message can run autonomously when the model uses tools (web search, connectors, artifacts). Each tool call and follow-up counts as one step.",
   "settings.agent.maxSteps.hint": "Provider rounds per message (tool calls + follow-ups). Range: {min}–{max}.",

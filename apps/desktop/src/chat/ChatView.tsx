@@ -101,6 +101,7 @@ import {
 import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
+  documentWritesHistoryNote,
   isDocumentContentTool,
   selectBuiltinTurnTools,
   selectBuiltinWebTools,
@@ -230,6 +231,20 @@ export interface ChatRequestOverrides {
   extraSystemSections?: string | null;
 }
 
+/**
+ * The text a past turn contributes to the next request's history.
+ *
+ * History carries display text only — tool calls never reach it — and turns
+ * with no text are dropped. A turn that ended right after writing a document
+ * (the agent loop no longer spends a round on a confirmation) has no text, so
+ * it would vanish and the model would not know it had written anything. Such
+ * a turn contributes a short note naming what it wrote instead.
+ */
+export function historyContentForTurn(turn: ChatTurn): string {
+  if (turn.content.trim() !== '' || turn.role !== 'assistant') return turn.content;
+  return documentWritesHistoryNote(turn.streamState);
+}
+
 export function buildProviderRequest(
   settings: AppSettings,
   prompt: string,
@@ -243,6 +258,7 @@ export function buildProviderRequest(
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
+    .map((turn) => ({ ...turn, content: historyContentForTurn(turn) }))
     .filter((turn) => {
       if (turn.role !== 'user' && turn.role !== 'assistant') return false;
       if (turn.content.trim() !== '') return true;

@@ -1207,5 +1207,7 @@
   "chat.documentWrite.progress": "{lines, plural, one {# linha} other {# linhas}} · {size}",
   "chat.toolCall.status.writing": "escrevendo…",
   "chat.stream.stillWorking": "ainda trabalhando · {seconds}s",
-  "chat.stream.stillWorkingLong": "ainda trabalhando · {seconds}s — alguns modelos enviam respostas longas de uma vez"
+  "chat.stream.stillWorkingLong": "ainda trabalhando · {seconds}s — alguns modelos enviam respostas longas de uma vez",
+  "settings.agent.finishAfterDocumentWrite.label": "Encerrar ao escrever um documento",
+  "settings.agent.finishAfterDocumentWrite.hint": "Encerra o turno assim que um documento é salvo, sem esperar o assistente descrevê-lo. Mais rápido; desative para receber uma mensagem final."
 }

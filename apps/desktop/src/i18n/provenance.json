@@ -1211,7 +1211,9 @@
     "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
     "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
-    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed",
+    "settings.agent.finishAfterDocumentWrite.hint": "5cc466de5e2d87a4ef6175b5520e39898659f66a",
+    "settings.agent.finishAfterDocumentWrite.label": "8b391d8299364b7a4c8333b8a4879fc8f1024e3c"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2425,7 +2427,9 @@
     "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
     "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
-    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed",
+    "settings.agent.finishAfterDocumentWrite.hint": "5cc466de5e2d87a4ef6175b5520e39898659f66a",
+    "settings.agent.finishAfterDocumentWrite.label": "8b391d8299364b7a4c8333b8a4879fc8f1024e3c"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3639,7 +3643,9 @@
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
     "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
-    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed",
+    "settings.agent.finishAfterDocumentWrite.label": "8b391d8299364b7a4c8333b8a4879fc8f1024e3c",
+    "settings.agent.finishAfterDocumentWrite.hint": "5cc466de5e2d87a4ef6175b5520e39898659f66a"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4853,7 +4859,9 @@
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
     "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
-    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed",
+    "settings.agent.finishAfterDocumentWrite.label": "8b391d8299364b7a4c8333b8a4879fc8f1024e3c",
+    "settings.agent.finishAfterDocumentWrite.hint": "5cc466de5e2d87a4ef6175b5520e39898659f66a"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6067,7 +6075,9 @@
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
     "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
-    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed",
+    "settings.agent.finishAfterDocumentWrite.label": "8b391d8299364b7a4c8333b8a4879fc8f1024e3c",
+    "settings.agent.finishAfterDocumentWrite.hint": "5cc466de5e2d87a4ef6175b5520e39898659f66a"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7281,7 +7291,9 @@
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
     "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
-    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed",
+    "settings.agent.finishAfterDocumentWrite.label": "8b391d8299364b7a4c8333b8a4879fc8f1024e3c",
+    "settings.agent.finishAfterDocumentWrite.hint": "5cc466de5e2d87a4ef6175b5520e39898659f66a"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8495,6 +8507,8 @@
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
     "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
-    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed",
+    "settings.agent.finishAfterDocumentWrite.label": "8b391d8299364b7a4c8333b8a4879fc8f1024e3c",
+    "settings.agent.finishAfterDocumentWrite.hint": "5cc466de5e2d87a4ef6175b5520e39898659f66a"
   }
 }

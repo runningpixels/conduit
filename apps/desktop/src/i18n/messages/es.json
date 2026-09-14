@@ -423,6 +423,8 @@
   "settings.about.database.label": "Base de datos",
   "settings.about.header.title": "Acerca de",
   "settings.about.settingsFile.label": "Archivo de configuración",
+  "settings.agent.finishAfterDocumentWrite.hint": "Termina el turno en cuanto se guarda un documento, sin esperar a que el asistente lo describa. Más rápido; desactívalo para recibir un mensaje final.",
+  "settings.agent.finishAfterDocumentWrite.label": "Terminar al escribir un documento",
   "settings.agent.header.title": "Agente",
   "settings.agent.intro": "Estos límites acotan cuánto tiempo puede ejecutarse de forma autónoma un solo mensaje de chat cuando el modelo usa herramientas (búsqueda web, conectores, artefactos). Cada llamada a herramienta y cada seguimiento cuentan como un paso.",
   "settings.agent.maxSteps.hint": "Rondas del proveedor por mensaje (llamadas a herramienta + seguimientos). Rango: {min}–{max}.",

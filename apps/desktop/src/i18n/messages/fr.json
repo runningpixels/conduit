@@ -1207,5 +1207,7 @@
   "chat.documentWrite.progress": "{lines, plural, one {# ligne} other {# lignes}} · {size}",
   "chat.toolCall.status.writing": "rédaction…",
   "chat.stream.stillWorking": "toujours en cours · {seconds}s",
-  "chat.stream.stillWorkingLong": "toujours en cours · {seconds}s — certains modèles envoient les longues réponses d’un seul coup"
+  "chat.stream.stillWorkingLong": "toujours en cours · {seconds}s — certains modèles envoient les longues réponses d’un seul coup",
+  "settings.agent.finishAfterDocumentWrite.label": "Terminer après l’écriture d’un document",
+  "settings.agent.finishAfterDocumentWrite.hint": "Termine le tour dès qu’un document est enregistré, sans attendre que l’assistant le décrive. Plus rapide ; désactivez pour obtenir un message de conclusion."
 }

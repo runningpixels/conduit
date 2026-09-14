@@ -423,6 +423,8 @@
   "settings.about.database.label": "Datenbank",
   "settings.about.header.title": "Info",
   "settings.about.settingsFile.label": "Einstellungsdatei",
+  "settings.agent.finishAfterDocumentWrite.hint": "Den Durchgang beenden, sobald ein Dokument gespeichert ist, ohne auf eine Beschreibung des Assistenten zu warten. Schneller; ausschalten, um eine abschließende Nachricht zu erhalten.",
+  "settings.agent.finishAfterDocumentWrite.label": "Nach dem Schreiben eines Dokuments beenden",
   "settings.agent.header.title": "Agent",
   "settings.agent.intro": "Diese Leitplanken begrenzen, wie lange eine einzelne Chat-Nachricht autonom laufen kann, wenn das Modell Tools verwendet (Websuche, Connectors, Artefakte). Jeder Tool-Aufruf und jede Folgeaktion zählt als ein Schritt.",
   "settings.agent.maxSteps.hint": "Anbieter-Runden pro Nachricht (Tool-Aufrufe + Folgeaktionen). Bereich: {min}–{max}.",

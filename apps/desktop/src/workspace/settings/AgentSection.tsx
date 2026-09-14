@@ -106,6 +106,22 @@ export function AgentSection({ settings, onUpdate, onStatus }: AgentSectionProps
             })}
           </span>
         </label>
+
+        <label
+          htmlFor="agent-finish-after-document-write"
+          style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 8, rowGap: 4, alignItems: 'start', fontSize: 'var(--fs-3xl)' }}
+        >
+          <input
+            id="agent-finish-after-document-write"
+            type="checkbox"
+            checked={agent.finishAfterDocumentWrite ?? true}
+            onChange={(e) => patchAgent({ finishAfterDocumentWrite: e.target.checked })}
+          />
+          <span>{t('settings.agent.finishAfterDocumentWrite.label')}</span>
+          <span style={{ gridColumn: 2, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
+            {t('settings.agent.finishAfterDocumentWrite.hint')}
+          </span>
+        </label>
       </div>
     </div>
   );

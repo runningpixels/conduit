@@ -436,6 +436,57 @@ describe('ChatView latent stream', () => {
 });
 
 /**
+ * A message sent from a new chat while the previous chat's turn was still
+ * finishing got queued under the new chat — and the drain that runs when a turn
+ * ends only looked at the finishing turn's conversation, so it stayed queued
+ * forever. Found while driving the live app.
+ */
+describe('ChatView queue across conversations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+  });
+
+  it('sends a message queued in a new chat once the previous chat’s turn ends', async () => {
+    const streams: Array<{ requestId: string; conversationId: string; onEvent: (e: never) => void }> = [];
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      streams.push({ requestId: request.requestId, conversationId: request.conversationId, onEvent: onEvent as never });
+      return { requestId: request.requestId };
+    });
+
+    const props = {
+      settings: baseSettings,
+      onSelectModel: vi.fn(),
+      onStatus: vi.fn(),
+      artifacts: [],
+      fileStateMap: {},
+      onPromoteArtifact: vi.fn(),
+      onOpenArtifact: vi.fn(),
+    };
+    const { rerender } = render(<ChatView {...props} conversationId="conv-1" />);
+
+    const first = await screen.findByLabelText('Message the active provider');
+    fireEvent.change(first, { target: { value: 'Make a document' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(streams).toHaveLength(1));
+
+    // Switch chats while that turn is still open, and send there.
+    rerender(<ChatView {...props} conversationId="conv-2" />);
+    const second = await screen.findByLabelText('Message the active provider');
+    fireEvent.change(second, { target: { value: 'Hello from the new chat' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(streams).toHaveLength(1);
+
+    const { requestId, onEvent } = streams[0];
+    (onEvent as (e: unknown) => void)({ kind: 'messageComplete', requestId, index: 0, finishReason: 'stop' });
+
+    await waitFor(() => expect(streams).toHaveLength(2));
+    expect(streams[1].conversationId).toBe('conv-2');
+  });
+});
+
+/**
  * A turn that dies mid-flight used to strand the workspace: `onChatTurnComplete`
  * was gated on `!errorText`, and it is the only path that resolves the pending
  * artifact state — so the document panel kept shimmering "Generating…" forever.

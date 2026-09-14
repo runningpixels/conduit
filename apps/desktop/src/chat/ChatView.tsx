@@ -661,6 +661,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       attachments: item.attachments,
     });
   }
+  const maybeDrainNextRef = useRef(maybeDrainNext);
+  maybeDrainNextRef.current = maybeDrainNext;
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId;
@@ -1187,11 +1189,23 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         request,
         (event) => {
         const active = activeRequestRef.current;
-        if (
-          !active ||
-          active.requestId !== request.requestId ||
-          currentConversationIdRef.current !== conversationId
-        ) {
+        if (!active || active.requestId !== request.requestId) {
+          return;
+        }
+        if (currentConversationIdRef.current !== conversationId) {
+          // The user moved to another chat mid-turn. Render nothing, but keep
+          // the turn's state and let it end: dropping the terminal event here
+          // left `streamDone` pending forever, so this turn never released the
+          // single active-request slot and every later send — in any chat —
+          // was queued and never sent.
+          streamStateRef.current = applyProviderEvent(
+            streamStateRef.current ?? createAssistantStreamState(request.requestId, searchBackend),
+            event,
+          );
+          if (event.kind === 'messageComplete' || event.kind === 'error') {
+            if (event.kind === 'error') terminalError = event.error.message;
+            finish();
+          }
           return;
         }
         // `streamStateRef` is the synchronous source of truth; `activeStream`
@@ -1310,7 +1324,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       // error the agent loop has already exited, so the `toolCallFinished`
       // events this polls for will never arrive and it would burn its full 30s
       // deadline with the UI still reading as busy.
-      if (!terminalError) {
+      // Off screen, runtime events are not applied and nothing is committed, so
+      // waiting for tool results would only hold the active slot for up to 30s.
+      if (!terminalError && currentConversationIdRef.current === conversationId) {
         onStatus(makeStatus(t('chat.view.status.waitingForToolResults'), 'active', 'chat'));
         await waitForPendingRuntimeCalls(request.requestId);
       }
@@ -1418,11 +1434,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       }
       providerToolByCallIdRef.current = {};
       pendingRuntimeCallsRef.current = new Set();
-      // t1-2 M1: drain the next queued follow-up after the turn settles.
+      // t1-2 M1: drain the next queued follow-up after the turn settles — for
+      // the conversation on screen, not necessarily this turn's. A message sent
+      // from a new chat while this turn was still wrapping up is queued under
+      // the new chat; draining only this turn's conversation left it queued
+      // forever, since nothing else would end a turn there.
       if (skipNextDrainRef.current) {
         skipNextDrainRef.current = false;
       } else {
-        window.setTimeout(() => maybeDrainNext(conversationId), 0);
+        window.setTimeout(() => {
+          const onScreen = currentConversationIdRef.current;
+          // Through the ref: this closure belongs to the render that started the
+          // turn, and its `handleSend` would send into that turn's conversation.
+          if (onScreen) maybeDrainNextRef.current(onScreen);
+        }, 0);
       }
     }
   }

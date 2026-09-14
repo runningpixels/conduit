@@ -215,6 +215,32 @@ pub fn is_document_write_tool(name: &str) -> bool {
     name.starts_with("write_") && name.ends_with("_document")
 }
 
+/// True for the tools that write a document's content: `write_*_document` and
+/// `edit_*_document`. `export_document` only copies an existing one to disk.
+pub fn is_document_content_tool(name: &str) -> bool {
+    (name.starts_with("write_") || name.starts_with("edit_")) && name.ends_with("_document")
+}
+
+/// True when a round did nothing but write documents, and every write
+/// succeeded — the case where another provider round would only have the model
+/// confirm what it wrote. Any failure, or any other tool, needs the model again.
+pub fn round_only_wrote_documents(calls: &[CompletedToolCall], writes_succeeded: u32) -> bool {
+    !calls.is_empty()
+        && calls
+            .iter()
+            .all(|call| is_document_content_tool(&call.name))
+        && writes_succeeded as usize == calls.len()
+}
+
+/// What executing one round's tool calls produced.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ToolRoundTally {
+    /// New documents created this round.
+    pub documents_created: u32,
+    /// `write_*_document` / `edit_*_document` calls that succeeded this round.
+    pub document_writes_succeeded: u32,
+}
+
 /// True when a `write_*` call is asking to create a new document (no usable
 /// `artifact_id`). Writes that pass an id are upserts and are not coalesced.
 pub fn is_new_document_create(call: &CompletedToolCall) -> bool {
@@ -940,7 +966,8 @@ impl StreamManager {
     /// that already succeeded; it is updated in place when this round creates
     /// more. `web_search_so_far` / `web_fetch_so_far` count local web tool
     /// executions this turn (cap binge-retries on empty Instant Answer).
-    /// Returns how many new documents this round created.
+    /// Returns how many new documents this round created and how many document
+    /// writes succeeded.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_resolved_tool_calls(
         &self,
@@ -955,7 +982,7 @@ impl StreamManager {
         web_search_so_far: &mut u32,
         web_fetch_so_far: &mut u32,
         cancel: &CancellationToken,
-    ) -> u32 {
+    ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
             Err(err) => {
@@ -1026,6 +1053,7 @@ impl StreamManager {
         let clamp_actions = classify_document_create_clamps(calls, *successful_creates_so_far);
         let web_rejects = classify_web_tool_clamps(calls, *web_search_so_far, *web_fetch_so_far);
         let mut created_this_round = 0u32;
+        let mut document_writes_succeeded = 0u32;
 
         for (idx, (call, action)) in calls.iter().zip(clamp_actions.iter()).enumerate() {
             if cancel.is_cancelled() {
@@ -1189,6 +1217,9 @@ impl StreamManager {
                                 *successful_creates_so_far =
                                     successful_creates_so_far.saturating_add(1);
                             }
+                            if !exec.is_error && is_document_content_tool(&tool_name) {
+                                document_writes_succeeded += 1;
+                            }
                             let size = serde_json::to_vec(&exec.output)
                                 .map(|bytes| bytes.len() as u64)
                                 .unwrap_or(0);
@@ -1239,6 +1270,9 @@ impl StreamManager {
                         created_this_round += 1;
                         *successful_creates_so_far = successful_creates_so_far.saturating_add(1);
                     }
+                    if !exec.is_error && is_document_content_tool(&tool_name) {
+                        document_writes_succeeded += 1;
+                    }
                     if let Some(ch) = provider_channel {
                         let _ = ch.send(ProviderEvent::ToolExecutionFinished {
                             request_id: request_id.to_string(),
@@ -1277,7 +1311,10 @@ impl StreamManager {
                     .await;
         }
 
-        created_this_round
+        ToolRoundTally {
+            documents_created: created_this_round,
+            document_writes_succeeded,
+        }
     }
 
     /// Pause the agent loop for a native `ask_user` form (t1-2).
@@ -2202,7 +2239,7 @@ impl StreamManager {
                 &tools_cancel,
             );
             let mut steered_during_tools: Option<String> = None;
-            let created_this_round = tokio::select! {
+            let tally = tokio::select! {
                 biased;
                 text = steer_rx.recv() => {
                     if let Some(text) = text {
@@ -2210,10 +2247,11 @@ impl StreamManager {
                         runtime.deny_all_pending();
                         steered_during_tools = Some(text);
                     }
-                    0u32
+                    ToolRoundTally::default()
                 }
-                n = tools_fut => n,
+                tally = tools_fut => tally,
             };
+            let created_this_round = tally.documents_created;
 
             if let Some(text) = steered_during_tools {
                 if let Err(e) = Self::apply_steer_message(
@@ -2234,6 +2272,35 @@ impl StreamManager {
             }
 
             if cancel.is_cancelled() {
+                break;
+            }
+
+            // A round that only wrote documents, all successfully, is done: the
+            // document is saved and open in the panel. Another round would only
+            // have the model confirm it — 5 to 28 seconds in live testing — so
+            // end here unless the user turned this off. The renderer keeps the
+            // turn in history without a closing message.
+            if guardrails.finishes_after_document_write()
+                && round_only_wrote_documents(
+                    &outcome.completed_tool_calls,
+                    tally.document_writes_succeeded,
+                )
+            {
+                info!(
+                    request_id = %request_id,
+                    step,
+                    writes = tally.document_writes_succeeded,
+                    "round only wrote documents; ending the turn without a confirmation round"
+                );
+                let index = match &terminal {
+                    Some(ProviderEvent::MessageComplete { index, .. }) => *index,
+                    _ => 0,
+                };
+                terminal = Some(ProviderEvent::MessageComplete {
+                    request_id: request_id.clone(),
+                    index,
+                    finish_reason: "stop".to_string(),
+                });
                 break;
             }
 

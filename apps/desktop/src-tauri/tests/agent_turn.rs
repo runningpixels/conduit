@@ -332,6 +332,7 @@ fn guardrails(max_steps: u32, wall_clock_budget_secs: u32) -> AgentGuardrails {
     AgentGuardrails {
         max_steps,
         wall_clock_budget_secs,
+        finish_after_document_write: None,
     }
 }
 
@@ -425,4 +426,95 @@ async fn running_out_of_steps_with_tools_pending_is_an_error() {
         "got {:?}",
         turn.terminal()
     );
+}
+
+// ── Finishing after a document write ─────────────────────────────────────────
+
+fn write_page(title: &str) -> (&'static str, Value) {
+    (
+        "write_html_document",
+        json!({ "title": title, "html": "<!doctype html><h1>Planets</h1>" }),
+    )
+}
+
+#[tokio::test]
+async fn a_round_that_only_writes_a_document_ends_the_turn() {
+    let turn = run_turn(
+        vec![
+            tool_round(vec![write_page("Solar System Field Guide")], Duration::ZERO),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(
+        turn.rounds_started, 1,
+        "no confirmation round after a successful write"
+    );
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), false)]
+    );
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_document_write_alongside_another_tool_still_continues() {
+    let turn = run_turn(
+        vec![
+            tool_round(
+                vec![write_page("Guide"), ("current_time", json!({}))],
+                Duration::ZERO,
+            ),
+            text_round("Written, and it is noon."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+}
+
+#[tokio::test]
+async fn a_failed_document_write_gives_the_model_another_round() {
+    // No `html`: the tool rejects the arguments.
+    let turn = run_turn(
+        vec![
+            tool_round(
+                vec![("write_html_document", json!({ "title": "Broken" }))],
+                Duration::ZERO,
+            ),
+            text_round("Sorry, retrying."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)]
+    );
+}
+
+#[tokio::test]
+async fn the_setting_off_keeps_the_confirmation_round() {
+    let turn = run_turn(
+        vec![
+            tool_round(vec![write_page("Guide")], Duration::ZERO),
+            text_round("I wrote your guide."),
+        ],
+        AgentGuardrails {
+            finish_after_document_write: Some(false),
+            ..guardrails(25, 300)
+        },
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
 }

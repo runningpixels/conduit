@@ -485,6 +485,22 @@ pub struct AgentGuardrails {
     /// still streaming is allowed to finish rather than being cut off mid-output.
     #[serde(default = "default_agent_wall_clock_secs")]
     pub wall_clock_budget_secs: u32,
+    /// End the turn once every tool call in a round was a successful document
+    /// write or edit, instead of starting another provider round only for the
+    /// model to confirm what it wrote. Absent means on — settings saved before
+    /// this field existed, and renderer code that builds guardrails without
+    /// it, keep the default. Read it through
+    /// [`AgentGuardrails::finishes_after_document_write`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub finish_after_document_write: Option<bool>,
+}
+
+impl AgentGuardrails {
+    /// Whether a round that only wrote documents ends the turn (default on).
+    pub fn finishes_after_document_write(&self) -> bool {
+        self.finish_after_document_write.unwrap_or(true)
+    }
 }
 
 fn default_agent_max_steps() -> u32 {
@@ -500,6 +516,7 @@ impl Default for AgentGuardrails {
         Self {
             max_steps: default_agent_max_steps(),
             wall_clock_budget_secs: default_agent_wall_clock_secs(),
+            finish_after_document_write: None,
         }
     }
 }

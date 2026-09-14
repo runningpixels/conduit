@@ -179,6 +179,7 @@ async fn settings_and_db_survive_in_place_reopen() {
         agent: Some(provider_core::schema::AgentGuardrails {
             max_steps: 40,
             wall_clock_budget_secs: 600,
+            finish_after_document_write: None,
         }),
         branding_enabled: None,
         workspace_tools_enabled: None,

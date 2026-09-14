@@ -38,6 +38,16 @@ const INTENT_REGEX =
   /\b(create|make|new|generate)\b.*\bartifact\b|\bartifact\b.*\b(html|markdown|json|code|text)\b/i;
 
 /**
+ * A creation verb followed by something that is plainly a document. Without
+ * this, "Create an HTML document titled …" never mentioned "artifact", got no
+ * document tools, and the model wrote a workspace file instead — three minutes
+ * with no document panel. Plain writing requests with no document noun
+ * ("write a poem", "draft an email") stay general.
+ */
+const DOCUMENT_CREATION_REGEX =
+  /\b(create|make|build|generate|write|draft|design|produce|put\s+together)\b.*\b(documents?|web\s?pages?|landing\s+pages?|html\s+pages?|one[- ]pagers?|reports?|guides?|cheat\s?sheets?|infographics?|brochures?|flyers?|newsletters?|html|markdown)\b/i;
+
+/**
  * Returns true when the user prompt indicates intent to create an artifact.
  * Matches phrases like "create a new artifact html" or "artifact json", but
  * returns false for informational questions ("what is an html artifact?") so
@@ -47,5 +57,5 @@ export function looksLikeArtifactCreationRequest(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (!trimmed) return false;
   if (INFORMATIONAL_QUESTION_PREFIX_REGEX.test(trimmed)) return false;
-  return INTENT_REGEX.test(trimmed);
+  return INTENT_REGEX.test(trimmed) || DOCUMENT_CREATION_REGEX.test(trimmed);
 }

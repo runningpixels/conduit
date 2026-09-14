@@ -65,6 +65,26 @@ export function classifyDocumentTurnIntent(prompt: string): DocumentTurnIntent {
   return 'general';
 }
 
+/**
+ * Guidance for turns where document write/edit tools are offered.
+ *
+ * Reasoning models were drafting the whole document — structure, copy, CSS —
+ * in their reasoning and then generating it again as the tool call, which
+ * doubled the time to a document (107s of reasoning, then 85s of tool call, in
+ * one measured run). Worded conditionally: this is guidance on *how* to write
+ * a document if one is written, not pressure to write one (see the comment on
+ * `isCreationIntent` in `buildProviderRequest`).
+ */
+export function documentWriteDeveloperPromptFor(toolNames: readonly string[]): string | undefined {
+  const offersDocumentWrites = toolNames.some((name) => /^(write|edit)_(html|markdown|text)_document$/.test(name));
+  if (!offersDocumentWrites) return undefined;
+  return [
+    'If you create or revise a document with a write_*_document or edit_*_document tool:',
+    'plan its structure in a few short lines at most, and do not draft the document, its copy or its styles in your reasoning.',
+    'Write the content once, directly in the tool call, and pass title before the content.',
+  ].join(' ');
+}
+
 /** Short developer reinforcement for informational turns. */
 export function informationalDeveloperPromptFor(userPrompt: string): string | undefined {
   if (!looksLikeInformationalQuestion(userPrompt)) return undefined;

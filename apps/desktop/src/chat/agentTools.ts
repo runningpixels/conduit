@@ -1,7 +1,8 @@
 import type { ToolDefinition } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
-import type { DocumentTurnIntent } from './documentTurnIntent';
+import { classifyDocumentTurnIntent, type DocumentTurnIntent } from './documentTurnIntent';
+import { looksLikeBrandThemeRequest } from './brandPrompt';
 import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
 import type { Translate } from '../i18n';
@@ -322,7 +323,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'workspace_write',
     name: 'workspace_write',
     description:
-      'Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories.',
+      'Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories. Use only for files the user wants in their project; to create a document for the user to view in the app, use write_html_document, write_markdown_document or write_text_document.',
     inputSchema: schema([
       { name: 'path', type: 'string', required: true },
       { name: 'content', type: 'string', required: true },
@@ -563,6 +564,61 @@ export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefi
 export function selectBuiltinBrandTools(brandIntent: boolean): ToolDefinition[] {
   if (!brandIntent || !allowUserBranding) return [];
   return builtinToolDefinitions().filter((tool) => tool.displayGroup === BRAND_TOOL_GROUP);
+}
+
+/** Workspace tools that change files, as opposed to reading or searching them. */
+const WORKSPACE_WRITE_TOOL_NAMES = new Set(['workspace_write', 'workspace_edit']);
+
+/**
+ * True when the prompt points at a file in the user's project: a file, folder
+ * or path, or a filename with an extension ("notes.md").
+ */
+export function mentionsWorkspaceFileTarget(prompt: string): boolean {
+  return (
+    /\b(files?|folders?|director(y|ies)|paths?|repo(sitory)?|project|workspace|disk)\b/i.test(prompt) ||
+    /\b[\w-]+\.(html?|md|markdown|txt|json|csv|ya?ml|toml|css|scss|jsx?|tsx?|py|rs|go|java|rb|sh)\b/i.test(prompt)
+  );
+}
+
+/**
+ * The built-in tools for one turn: document, brand, workspace and memory tools.
+ * Web and connector tools are resolved separately by the caller.
+ *
+ * One function because three call sites in `ChatView.tsx` (the request itself
+ * and two token estimates) used to assemble this list independently, and the
+ * estimates must match what is actually sent.
+ *
+ * On a document turn, workspace *write* tools are left out unless the prompt
+ * names a file, folder or path: two tools that can both "write an HTML file"
+ * left the choice to the model, which picked `workspace_write` and produced a
+ * file on disk instead of a document in the panel. Read and search tools stay,
+ * so the model can still use project files as source material.
+ */
+export function selectBuiltinTurnTools(
+  prompt: string,
+  settings: {
+    workspaceToolsEnabled?: boolean;
+    workspaceRoot?: string | null;
+    workspaceToolsConsentAcknowledged?: boolean;
+    memoryEnabled: boolean;
+  },
+  conversationRoot?: string | null,
+): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
+  const intent = classifyDocumentTurnIntent(prompt);
+  const documentTurn = intent === 'create' || intent === 'edit';
+  const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
+    (tool) =>
+      !documentTurn || !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name) || mentionsWorkspaceFileTarget(prompt),
+  );
+  return {
+    intent,
+    tools: [
+      ...selectBuiltinDocumentTools(intent),
+      ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
+      ...workspaceTools,
+      ...selectBuiltinMemoryTools(settings.memoryEnabled),
+    ],
+  };
 }
 
 export function completedDocumentToolCalls(state: AssistantStreamState): ToolCallState[] {

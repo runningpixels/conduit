@@ -102,11 +102,8 @@ import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
   isDocumentContentTool,
-  selectBuiltinBrandTools,
-  selectBuiltinDocumentTools,
-  selectBuiltinMemoryTools,
+  selectBuiltinTurnTools,
   selectBuiltinWebTools,
-  selectBuiltinWorkspaceTools,
   type DocumentToolActivity,
 } from './agentTools';
 import {
@@ -115,7 +112,7 @@ import {
   documentWriteLabel,
 } from './documentWriteScan';
 import {
-  classifyDocumentTurnIntent,
+  documentWriteDeveloperPromptFor,
   informationalDeveloperPromptFor,
 } from './documentTurnIntent';
 import { CONDUIT_BRAND_SYSTEM_APPENDIX, looksLikeBrandThemeRequest } from './brandPrompt';
@@ -358,8 +355,11 @@ export function buildProviderRequest(
   const compactionDevPrompt = chatOverrides?.compactionSummary?.trim()
     ? formatCompactionDeveloperPrompt(chatOverrides.compactionSummary)
     : undefined;
+  const documentWriteDevPrompt = documentWriteDeveloperPromptFor(
+    toolDefinitions.map((tool) => tool.name),
+  );
   const developerPrompt =
-    [compactionDevPrompt, infoDevPrompt, editDevPrompt, webSearchDevPrompt]
+    [compactionDevPrompt, infoDevPrompt, editDevPrompt, documentWriteDevPrompt, webSearchDevPrompt]
       .filter(Boolean)
       .join('\n\n') || undefined;
   const systemPrompt = composeSystemPrompt(
@@ -857,16 +857,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     prompt: string,
     searchBackend: SearchBackend | null,
   ): Promise<ToolDefinition[]> {
-    const intent = classifyDocumentTurnIntent(prompt);
     const connectorTools = await loadConnectorToolDefinitions();
-    const builtinTools = selectBuiltinDocumentTools(intent);
-    const brandTools = selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt));
-    const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot);
-    const memoryTools = selectBuiltinMemoryTools(settings.memoryEnabled);
+    const { tools: builtinTools } = selectBuiltinTurnTools(prompt, settings, conversationWorkspaceRoot);
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
     const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
-    return [...builtinTools, ...brandTools, ...workspaceTools, ...memoryTools, ...webTools, ...connectorTools];
+    return [...builtinTools, ...webTools, ...connectorTools];
   }
 
   function applyRuntimeEventToActiveStream(
@@ -1014,13 +1010,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       if (windowTokens != null && windowTokens > 0) {
         const priorForEstimate = override?.history ?? turns;
         const keptForEstimate = historyForProviderRequest(priorForEstimate, activeCompaction);
-        const intent = classifyDocumentTurnIntent(trimmed);
-        const estimateTools = [
-          ...selectBuiltinDocumentTools(intent),
-          ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(trimmed)),
-          ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
-          ...selectBuiltinMemoryTools(settings.memoryEnabled),
-        ];
+        const { tools: estimateTools } = selectBuiltinTurnTools(
+          trimmed,
+          settings,
+          conversationWorkspaceRoot,
+        );
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
           resolveUserInstructions(settings, conversationUserInstructions),
@@ -1629,13 +1623,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       const live = activeStream.blocks.map((b) => b.content).join('');
       if (live) historyTexts.push(live);
     }
-    const intent = classifyDocumentTurnIntent(prompt);
-    const toolDefinitions = [
-      ...selectBuiltinDocumentTools(intent),
-      ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
-      ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
-      ...selectBuiltinMemoryTools(settings.memoryEnabled),
-    ];
+    const { tools: toolDefinitions } = selectBuiltinTurnTools(
+      prompt,
+      settings,
+      conversationWorkspaceRoot,
+    );
     const systemPrompt = composeSystemPrompt(
       [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
       resolveUserInstructions(settings, conversationUserInstructions),

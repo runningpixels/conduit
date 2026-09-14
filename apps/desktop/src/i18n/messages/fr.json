@@ -1205,6 +1205,6 @@
   "chat.documentWrite.writingKind": "Rédaction du document {kind, select, markdown {Markdown} html {HTML} other {texte}}…",
   "chat.documentWrite.updatingKind": "Mise à jour du document {kind, select, markdown {Markdown} html {HTML} other {texte}}…",
   "chat.documentWrite.progress": "{lines, plural, one {# ligne} other {# lignes}} · {size}",
-  "chat.documentWrite.stillWorking": "toujours en cours",
-  "chat.toolCall.status.writing": "rédaction…"
+  "chat.toolCall.status.writing": "rédaction…",
+  "chat.stream.stillWorking": "toujours en cours · {seconds}s"
 }

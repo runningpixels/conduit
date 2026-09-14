@@ -113,6 +113,9 @@ export interface AssistantStreamState {
   error?: string;
   interrupted: boolean;
   streaming: boolean;
+  /** When the last event that shows the turn is alive arrived (keepalive
+   *  pings excluded). The live tail says "still working" once this is old. */
+  lastEventAt?: number;
   /** Agent loop phase indicator. undefined = not in agent loop. */
   agentPhase?: {
     /** Current phase label shown to user. */
@@ -132,9 +135,6 @@ export interface AssistantStreamState {
       | 'steering';
     /** Secondary progress shown after the label ("214 lines · 18 KB"). */
     detail?: string;
-    /** Last sign of life for this phase; the indicator adds "still working"
-     *  once it is older than `DOCUMENT_WRITE_STALL_MS`. */
-    lastActivityAt?: number;
   };
   /** Pending mid-turn ask_user form (t1-2). */
   askUser?: {
@@ -163,6 +163,8 @@ export function createAssistantStreamState(
     searchBackend: searchBackend ?? null,
     interrupted: false,
     streaming: true,
+    // The request itself is the first sign of life; silence is measured from it.
+    lastEventAt: Date.now(),
   };
 }
 
@@ -319,6 +321,17 @@ function withoutEmptyTextSegments(state: AssistantStreamState): TurnSegment[] {
 }
 
 export function applyProviderEvent(
+  state: AssistantStreamState,
+  event: ProviderEvent,
+): AssistantStreamState {
+  const next = reduceProviderEvent(state, event);
+  // A ping proves the connection is open, not that the model is producing
+  // anything — exactly the silence "still working" exists to admit.
+  if (event.kind === 'ping' || !next.streaming) return next;
+  return { ...next, lastEventAt: Date.now() };
+}
+
+function reduceProviderEvent(
   state: AssistantStreamState,
   event: ProviderEvent,
 ): AssistantStreamState {
@@ -699,6 +712,15 @@ export function markInterrupted(state: AssistantStreamState): AssistantStreamSta
 /// records the terminal status + error and resolves consent (a `cancelled`
 /// status means the user denied or the request was dropped).
 export function applyConnectorRuntimeEvent(
+  state: AssistantStreamState,
+  event: ConnectorRuntimeEvent,
+): AssistantStreamState {
+  const next = reduceConnectorRuntimeEvent(state, event);
+  if (next === state || !next.streaming) return next;
+  return { ...next, lastEventAt: Date.now() };
+}
+
+function reduceConnectorRuntimeEvent(
   state: AssistantStreamState,
   event: ConnectorRuntimeEvent,
 ): AssistantStreamState {

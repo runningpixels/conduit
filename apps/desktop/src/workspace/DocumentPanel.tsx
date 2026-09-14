@@ -28,7 +28,7 @@ import { useRichT, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { documentKindLabel } from '../lib/documentKind';
 import { useNow } from '../lib/useNow';
-import { documentWriteDetail, documentWriteStalled } from '../chat/documentWriteScan';
+import { documentWriteDetail, stillWorkingText } from '../chat/documentWriteScan';
 
 type DocTab = 'preview' | 'source';
 
@@ -119,7 +119,7 @@ interface DocumentPanelProps {
 }
 
 /**
- * "214 lines · 18 KB · still working" for a document the model is writing.
+ * "214 lines · 18 KB · still working · 12s" for a document the model is writing.
  * Renders nothing until there is something to say: no content yet and not
  * stalled means the skeleton alone is still accurate.
  */
@@ -131,9 +131,7 @@ function PendingWriteProgress({ pending, className }: { pending: PendingArtifact
   const lastActivityAt = pending.progress?.lastActivityAt ?? pending.startedAt;
   const parts = [
     pending.progress ? documentWriteDetail(pending.progress, t, fmt) : undefined,
-    watching && documentWriteStalled(lastActivityAt, now)
-      ? t('chat.documentWrite.stillWorking')
-      : undefined,
+    watching ? stillWorkingText(lastActivityAt, now, t) : undefined,
   ].filter(Boolean);
   if (parts.length === 0) return null;
   return (

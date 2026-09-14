@@ -18,8 +18,8 @@ describe('ThinkingIndicator', () => {
           round: 1,
           subPhase: 'writing_document',
           detail: '12 lines · 1 KB',
-          lastActivityAt: Date.now(),
         }}
+        lastActivityAt={Date.now()}
       />,
     );
     expect(screen.getByText('Writing “Plan”…')).toBeInTheDocument();
@@ -27,17 +27,23 @@ describe('ThinkingIndicator', () => {
     expect(screen.queryByText(/still working/)).not.toBeInTheDocument();
   });
 
-  it('adds "still working" when the write has been silent past the stall window', () => {
+  it('counts the seconds of silence once the stream has gone quiet', () => {
     render(
       <ThinkingIndicator
-        phase={{
-          label: 'Writing HTML document…',
-          round: 1,
-          subPhase: 'writing_document',
-          lastActivityAt: Date.now() - 60_000,
-        }}
+        phase={{ label: 'Thinking…', round: 1, subPhase: 'thinking' }}
+        lastActivityAt={Date.now() - 42_000}
       />,
     );
-    expect(screen.getByText('still working')).toBeInTheDocument();
+    expect(screen.getByText('still working · 42s')).toBeInTheDocument();
+  });
+
+  it('joins write progress and the silence notice', () => {
+    render(
+      <ThinkingIndicator
+        phase={{ label: 'Writing HTML document…', round: 1, subPhase: 'writing_document', detail: '3 lines · 90 B' }}
+        lastActivityAt={Date.now() - 12_000}
+      />,
+    );
+    expect(screen.getByText('3 lines · 90 B · still working · 12s')).toBeInTheDocument();
   });
 });

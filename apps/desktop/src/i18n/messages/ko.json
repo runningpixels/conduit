@@ -1205,6 +1205,6 @@
   "chat.documentWrite.writingKind": "{kind, select, markdown {Markdown} html {HTML} other {텍스트}} 문서 작성 중…",
   "chat.documentWrite.updatingKind": "{kind, select, markdown {Markdown} html {HTML} other {텍스트}} 문서 업데이트 중…",
   "chat.documentWrite.progress": "{lines, plural, other {#줄}} · {size}",
-  "chat.documentWrite.stillWorking": "계속 작업 중",
-  "chat.toolCall.status.writing": "작성 중…"
+  "chat.toolCall.status.writing": "작성 중…",
+  "chat.stream.stillWorking": "계속 작업 중 · {seconds}초"
 }

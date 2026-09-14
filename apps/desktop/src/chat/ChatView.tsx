@@ -434,7 +434,6 @@ function deriveAgentPhase(
       totalRounds: state.agentPhase?.totalRounds,
       subPhase: 'writing_document',
       detail: documentWriteDetail(write, t, fmt),
-      lastActivityAt: write.lastActivityAt,
     };
   }
 

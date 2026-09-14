@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   activeDocumentWrite,
   advanceDocumentWriteScan,
-  documentWriteStalled,
-  DOCUMENT_WRITE_STALL_MS,
+  streamStalled,
+  STREAM_STALL_MS,
   startDocumentWriteScan,
   type DocumentWriteScan,
 } from './documentWriteScan';
@@ -115,10 +115,45 @@ describe('activeDocumentWrite', () => {
   });
 });
 
-describe('documentWriteStalled', () => {
+describe('streamStalled', () => {
   it('fires only after the stall window without activity', () => {
-    expect(documentWriteStalled(undefined, 10 ** 9)).toBe(false);
-    expect(documentWriteStalled(1000, 1000 + DOCUMENT_WRITE_STALL_MS - 1)).toBe(false);
-    expect(documentWriteStalled(1000, 1000 + DOCUMENT_WRITE_STALL_MS)).toBe(true);
+    expect(streamStalled(undefined, 10 ** 9)).toBe(false);
+    expect(streamStalled(1000, 1000 + STREAM_STALL_MS - 1)).toBe(false);
+    expect(streamStalled(1000, 1000 + STREAM_STALL_MS)).toBe(true);
+  });
+});
+
+describe('lastEventAt (the silence clock)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('advances on model output but not on keepalive pings, and stops at the end', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    let state = createAssistantStreamState('req');
+    expect(state.lastEventAt).toBe(1_000);
+
+    vi.setSystemTime(20_000);
+    state = applyProviderEvent(state, { kind: 'ping', requestId: 'req' });
+    expect(state.lastEventAt).toBe(1_000);
+
+    vi.setSystemTime(21_000);
+    state = applyProviderEvent(state, {
+      kind: 'reasoningDelta',
+      requestId: 'req',
+      blockId: 'b0',
+      index: 1,
+      content: 'hmm',
+    });
+    expect(state.lastEventAt).toBe(21_000);
+
+    vi.setSystemTime(30_000);
+    state = applyProviderEvent(state, {
+      kind: 'messageComplete',
+      requestId: 'req',
+      index: 2,
+      finishReason: 'stop',
+    });
+    expect(state.streaming).toBe(false);
+    expect(state.lastEventAt).toBe(21_000);
   });
 });

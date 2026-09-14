@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AssistantStreamState } from './streamState';
 import { useT } from '../i18n';
-import { documentWriteStalled } from './documentWriteScan';
+import { stillWorkingText } from './documentWriteScan';
 import { useNow } from '../lib/useNow';
 
 export interface ThinkingIndicatorProps {
@@ -21,17 +21,27 @@ export interface ThinkingIndicatorProps {
   message?: string;
   /** Whether this indicator is visible (for minimum display time logic). */
   visible?: boolean;
+  /** When the turn last showed a sign of life. Past the stall window the
+   *  indicator adds "still working · 12s" so silence reads as waiting, not
+   *  as a hang. */
+  lastActivityAt?: number;
 }
 
 /** Minimum time (ms) the indicator should stay visible to prevent flicker. */
 const MIN_DISPLAY_MS = 300;
 
-export function ThinkingIndicator({ modelId, phase, message, visible = true }: ThinkingIndicatorProps) {
+export function ThinkingIndicator({
+  modelId,
+  phase,
+  message,
+  visible = true,
+  lastActivityAt,
+}: ThinkingIndicatorProps) {
   const t = useT();
   const [show, setShow] = useState(visible);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shownAt = useRef<number | null>(null);
-  const now = useNow(show && phase?.lastActivityAt !== undefined);
+  const now = useNow(show && lastActivityAt !== undefined);
 
   useEffect(() => {
     if (visible) {
@@ -64,7 +74,7 @@ export function ThinkingIndicator({ modelId, phase, message, visible = true }: T
   const bareLabel = label.replace(/(…|\.\.\.)\s*$/, '');
   const detail = [
     phase?.detail,
-    documentWriteStalled(phase?.lastActivityAt, now) ? t('chat.documentWrite.stillWorking') : undefined,
+    stillWorkingText(lastActivityAt, now, t),
   ]
     .filter(Boolean)
     .join(' · ');

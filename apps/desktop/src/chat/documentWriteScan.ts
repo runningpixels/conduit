@@ -25,8 +25,8 @@ export const CONTENT_FIELD_BY_TOOL: Record<string, string> = {
   edit_text_document: 'updated_text',
 };
 
-/** How long a write may go without a fragment before the UI says it is still working. */
-export const DOCUMENT_WRITE_STALL_MS = 15_000;
+/** How long a turn may go without a sign of life before the UI says it is still working. */
+export const STREAM_STALL_MS = 10_000;
 
 /** Longest `title`/`filename` kept — a label, not a payload. */
 const MAX_LABEL_CHARS = 200;
@@ -234,7 +234,21 @@ export function documentWriteDetail(
   });
 }
 
-/** True once a write has gone `DOCUMENT_WRITE_STALL_MS` without a fragment. */
-export function documentWriteStalled(lastActivityAt: number | undefined, now: number): boolean {
-  return lastActivityAt !== undefined && now - lastActivityAt >= DOCUMENT_WRITE_STALL_MS;
+/** True once `STREAM_STALL_MS` has passed without a sign of life. */
+export function streamStalled(lastActivityAt: number | undefined, now: number): boolean {
+  return lastActivityAt !== undefined && now - lastActivityAt >= STREAM_STALL_MS;
+}
+
+/**
+ * "still working · 12s" once the turn has been silent past the stall window,
+ * otherwise `undefined`. The seconds are real silence, never an estimate:
+ * the count is what tells a slow provider apart from a dead one.
+ */
+export function stillWorkingText(
+  lastActivityAt: number | undefined,
+  now: number,
+  t: Translate,
+): string | undefined {
+  if (lastActivityAt === undefined || !streamStalled(lastActivityAt, now)) return undefined;
+  return t('chat.stream.stillWorking', { seconds: Math.floor((now - lastActivityAt) / 1000) });
 }

@@ -1205,6 +1205,6 @@
   "chat.documentWrite.writingKind": "Escrevendo documento {kind, select, markdown {Markdown} html {HTML} other {de texto}}…",
   "chat.documentWrite.updatingKind": "Atualizando documento {kind, select, markdown {Markdown} html {HTML} other {de texto}}…",
   "chat.documentWrite.progress": "{lines, plural, one {# linha} other {# linhas}} · {size}",
-  "chat.documentWrite.stillWorking": "ainda trabalhando",
-  "chat.toolCall.status.writing": "escrevendo…"
+  "chat.toolCall.status.writing": "escrevendo…",
+  "chat.stream.stillWorking": "ainda trabalhando · {seconds}s"
 }

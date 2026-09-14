@@ -221,21 +221,57 @@ pub fn is_document_write_tool(name: &str) -> bool {
     name.starts_with("write_") && name.ends_with("_document")
 }
 
-/// True for the tools that write a document's content: `write_*_document` and
-/// `edit_*_document`. `export_document` only copies an existing one to disk.
+/// True for the tools that write a document's content: `write_*_document`,
+/// `edit_*_document` and `patch_document`. `export_document` only copies an
+/// existing one to disk, and `read_document` changes nothing.
 pub fn is_document_content_tool(name: &str) -> bool {
-    (name.starts_with("write_") || name.starts_with("edit_")) && name.ends_with("_document")
+    ((name.starts_with("write_") || name.starts_with("edit_")) && name.ends_with("_document"))
+        || name == agent_tools::PATCH_DOCUMENT_TOOL
+}
+
+/// True when the model marked a document call as one step of a longer build
+/// (`more_to_write: true`): a skeleton now, sections in later calls.
+pub fn call_has_more_to_write(call: &CompletedToolCall) -> bool {
+    call.arguments
+        .get("more_to_write")
+        .and_then(|v| v.as_bool())
+        == Some(true)
 }
 
 /// True when a round did nothing but write documents, and every write
 /// succeeded — the case where another provider round would only have the model
-/// confirm what it wrote. Any failure, or any other tool, needs the model again.
+/// confirm what it wrote. Any failure, any other tool, or a write the model
+/// said it will keep building needs the model again.
 pub fn round_only_wrote_documents(calls: &[CompletedToolCall], writes_succeeded: u32) -> bool {
     !calls.is_empty()
         && calls
             .iter()
-            .all(|call| is_document_content_tool(&call.name))
+            .all(|call| is_document_content_tool(&call.name) && !call_has_more_to_write(call))
         && writes_succeeded as usize == calls.len()
+}
+
+/// What the model is told when a document call was cut off at the output limit
+/// and the turn can still recover: nothing was saved, and how to write the
+/// document in parts that each fit.
+pub fn output_limit_recovery_message(call: &CompletedToolCall) -> String {
+    let start = if call.name.starts_with("write_") {
+        format!(
+            "call {} again with a short skeleton — the full structure, with a placeholder \
+             comment such as <!-- section: moons --> where each long section will go — \
+             and more_to_write: true",
+            call.name
+        )
+    } else {
+        "save a short skeleton first — the full structure, with a placeholder comment such as \
+         <!-- section: moons --> where each long section will go — with more_to_write: true"
+            .to_string()
+    };
+    format!(
+        "Cut off: this call reached the output limit before its arguments were finished, so \
+         nothing was saved. Write the document in parts instead: {start}. Then replace the \
+         placeholders with patch_document, one or two sections per call, setting more_to_write: \
+         true on every call except the last."
+    )
 }
 
 /// True when a tool call's arguments never became JSON: adapters complete a
@@ -1123,6 +1159,7 @@ impl StreamManager {
         successful_creates_so_far: &mut u32,
         web_search_so_far: &mut u32,
         web_fetch_so_far: &mut u32,
+        rejected: &HashMap<String, String>,
         cancel: &CancellationToken,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
@@ -1217,8 +1254,10 @@ impl StreamManager {
                 });
             }
 
-            let reject_msg = action
-                .reject_message()
+            let reject_msg = rejected
+                .get(&call.tool_call_id)
+                .map(String::as_str)
+                .or_else(|| action.reject_message())
                 .or_else(|| web_rejects.get(idx).copied().flatten());
             if let Some(reject_msg) = reject_msg {
                 match agent_tools::record_clamped_builtin_tool(
@@ -2101,6 +2140,9 @@ impl StreamManager {
         let mut ended_with_pending_tools = false;
         let mut cumulative_usage: Option<provider_core::schema::ProviderUsage> = None;
         let mut successful_document_creates: u32 = 0;
+        // Whether this turn already asked the model to rebuild a cut-off
+        // document in parts; a second cut-off ends the turn.
+        let mut output_limit_recovery_used = false;
         let mut web_search_calls: u32 = 0;
         let mut web_fetch_calls: u32 = 0;
 
@@ -2352,12 +2394,39 @@ impl StreamManager {
             // unless the user set one. Arguments that end in the middle of a
             // JSON value on a round that otherwise finished cleanly are the
             // same cut-off, seen from the other side.
+            //
+            // Once per turn, a cut-off document call is not the end: when
+            // patch_document is on offer the model is told to write the document
+            // in parts that each fit, and gets another round to do it. A second
+            // cut-off ends the turn with the error.
+            let mut rejected_calls: HashMap<String, String> = HashMap::new();
             {
                 let cut_off = runnable.iter().find(|call| {
                     tool_call_arguments_cut_off(call)
                         && (outcome.hit_output_limit || tool_call_arguments_end_early(call))
                 });
-                let message = if let Some(call) = cut_off {
+                let recoverable = cut_off.filter(|call| {
+                    !output_limit_recovery_used
+                        && is_document_content_tool(&call.name)
+                        && current_request
+                            .tool_definitions
+                            .iter()
+                            .any(|tool| tool.name == agent_tools::PATCH_DOCUMENT_TOOL)
+                });
+                let message = if let Some(call) = recoverable {
+                    output_limit_recovery_used = true;
+                    info!(
+                        request_id = %request_id,
+                        step,
+                        tool = %call.name,
+                        "document call cut off at the output limit; asking the model to write it in parts"
+                    );
+                    rejected_calls.insert(
+                        call.tool_call_id.clone(),
+                        output_limit_recovery_message(call),
+                    );
+                    None
+                } else if let Some(call) = cut_off {
                     Some(output_limit_cut_off_message(call, outcome.output_limit))
                 } else if outcome.hit_output_limit && runnable.is_empty() && !outcome.produced_text
                 {
@@ -2437,6 +2506,7 @@ impl StreamManager {
                 &mut successful_document_creates,
                 &mut web_search_calls,
                 &mut web_fetch_calls,
+                &rejected_calls,
                 &tools_cancel,
             );
             let mut steered_during_tools: Option<String> = None;

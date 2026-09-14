@@ -258,6 +258,7 @@ fn tool(name: &str, display_group: &str) -> ToolDefinition {
 struct Turn {
     events: Vec<ProviderEvent>,
     rounds_started: usize,
+    requests: Vec<ProviderRequest>,
 }
 
 impl Turn {
@@ -290,13 +291,27 @@ impl Turn {
 }
 
 async fn run_turn(rounds: Vec<Round>, agent: AgentGuardrails) -> Turn {
-    run_turn_with_max_tokens(rounds, agent, None).await
+    run_turn_with(rounds, agent, None, &[]).await
 }
 
 async fn run_turn_with_max_tokens(
     rounds: Vec<Round>,
     agent: AgentGuardrails,
     max_tokens: Option<u32>,
+) -> Turn {
+    run_turn_with(rounds, agent, max_tokens, &[]).await
+}
+
+/// Also declares `patch_document` and `read_document`.
+async fn run_turn_with_patching(rounds: Vec<Round>, agent: AgentGuardrails) -> Turn {
+    run_turn_with(rounds, agent, None, &["patch_document", "read_document"]).await
+}
+
+async fn run_turn_with(
+    rounds: Vec<Round>,
+    agent: AgentGuardrails,
+    max_tokens: Option<u32>,
+    extra_tools: &[&str],
 ) -> Turn {
     let pool = common::setup_pool().await;
     let conversation = conversations::create(&pool, None).await.unwrap();
@@ -358,10 +373,13 @@ async fn run_turn_with_max_tokens(
         system_prompt: None,
         developer_prompt: None,
         attachments: None,
-        tool_definitions: vec![
+        tool_definitions: [
             tool("write_html_document", "Documents"),
             tool("current_time", "Utilities"),
-        ],
+        ]
+        .into_iter()
+        .chain(extra_tools.iter().map(|name| tool(name, "Documents")))
+        .collect(),
         generation_controls: max_tokens.map(|max_tokens| GenerationControls {
             temperature: None,
             top_p: None,
@@ -379,9 +397,11 @@ async fn run_turn_with_max_tokens(
         .expect("turn runs");
 
     let events = events.lock().unwrap().clone();
+    let requests = script.requests.lock().unwrap().clone();
     Turn {
         events,
         rounds_started: script.rounds_started(),
+        requests,
     }
 }
 
@@ -819,5 +839,99 @@ async fn complete_but_malformed_arguments_still_reach_the_tool() {
     assert_eq!(
         turn.tool_executions(),
         vec![("write_html_document".to_string(), true)]
+    );
+}
+
+// ── Building a document in parts ─────────────────────────────────────────────
+
+fn request_mentions(request: &ProviderRequest, needle: &str) -> bool {
+    request
+        .messages
+        .iter()
+        .flat_map(|m| m.parts.iter())
+        .any(|p| p.content.as_deref().is_some_and(|c| c.contains(needle)))
+}
+
+#[tokio::test]
+async fn a_cut_off_document_asks_the_model_to_write_it_in_parts_once() {
+    let cut_off = json!({ "raw": "{\"title\": \"Solar System\", \"html\": \"<h2>Jupiter" });
+    let turn = run_turn_with_patching(
+        vec![
+            finishing_with(
+                tool_round(vec![("write_html_document", cut_off)], Duration::ZERO),
+                "length",
+            ),
+            text_round("Writing it in parts."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2, "the model gets a round to recover");
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)]
+    );
+    assert!(
+        request_mentions(&turn.requests[1], "Write the document in parts"),
+        "the continuation must carry the recovery instructions"
+    );
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { .. }),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_second_cut_off_in_the_same_turn_ends_it() {
+    let cut_off = || json!({ "raw": "{\"title\": \"Solar System\", \"html\": \"<h2>Jupiter" });
+    let turn = run_turn_with_patching(
+        vec![
+            finishing_with(
+                tool_round(vec![("write_html_document", cut_off())], Duration::ZERO),
+                "length",
+            ),
+            finishing_with(
+                tool_round(vec![("write_html_document", cut_off())], Duration::ZERO),
+                "length",
+            ),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. } if error.provider_code.as_deref() == Some("output_limit")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn more_to_write_keeps_the_turn_going_after_a_document_write() {
+    let skeleton = json!({
+        "title": "Solar System",
+        "html": "<main><!-- section: mercury --></main>",
+        "more_to_write": true
+    });
+    let turn = run_turn_with_patching(
+        vec![
+            tool_round(vec![("write_html_document", skeleton)], Duration::ZERO),
+            text_round("Filling in the sections."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), false)]
     );
 }

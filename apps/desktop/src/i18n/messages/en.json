@@ -217,7 +217,7 @@
   "chat.toolCall.consent.rememberChat": "Remember for this chat",
   "chat.toolCall.consent.safetyNote": "{appName} never runs a side-effecting tool without your approval. Tool output is sandboxed and never re-injected into the prompt.",
   "chat.toolCall.deniedNotice": "<strong>Denied.</strong> The tool call was not executed.",
-  "chat.toolCall.document.action": "{action, select, create {Create} edit {Edit} other {Document}}",
+  "chat.toolCall.document.action": "{action, select, create {Create} edit {Edit} read {Read} other {Document}}",
   "chat.toolCall.document.cancelled": "Document tool cancelled.",
   "chat.toolCall.document.failed": "<strong>Couldn’t {action, select, create {create} edit {edit} other {update}} the document.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "The document was not created or updated.",

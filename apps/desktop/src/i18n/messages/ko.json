@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "이 채팅에서 기억",
   "chat.toolCall.consent.safetyNote": "{appName}은(는) 승인 없이 부작용이 있는 도구를 실행하지 않습니다. 도구 출력은 격리되며 프롬프트에 다시 삽입되지 않습니다.",
   "chat.toolCall.deniedNotice": "<strong>거부했습니다.</strong> 도구 호출은 실행되지 않았습니다.",
-  "chat.toolCall.document.action": "{action, select, create {만들기} edit {편집} other {문서}}",
+  "chat.toolCall.document.action": "{action, select, create {만들기} edit {편집} read {읽기} other {문서}}",
   "chat.toolCall.document.cancelled": "문서 도구를 취소했습니다.",
   "chat.toolCall.document.failed": "<strong>문서를 {action, select, create {만들지} edit {편집하지} other {업데이트하지}} 못했습니다.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "문서가 생성되거나 업데이트되지 않았습니다.",

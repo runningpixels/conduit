@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "在本次聊天中记住",
   "chat.toolCall.consent.safetyNote": "未经你批准，{appName} 绝不会运行有副作用的工具。工具输出是隔离的，绝不会被重新注入提示词。",
   "chat.toolCall.deniedNotice": "<strong>已拒绝。</strong>该工具调用未被执行。",
-  "chat.toolCall.document.action": "{action, select, create {创建} edit {编辑} other {文档}}",
+  "chat.toolCall.document.action": "{action, select, create {创建} edit {编辑} read {读取} other {文档}}",
   "chat.toolCall.document.cancelled": "文档工具已取消。",
   "chat.toolCall.document.failed": "<strong>无法{action, select, create {创建} edit {编辑} other {更新}}该文档。</strong>{explained}",
   "chat.toolCall.document.fallbackError": "文档既没有被创建，也没有被更新。",

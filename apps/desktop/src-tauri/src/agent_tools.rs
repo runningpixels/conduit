@@ -26,6 +26,14 @@ pub const EDIT_MARKDOWN_TOOL: &str = "edit_markdown_document";
 pub const WRITE_TEXT_TOOL: &str = "write_text_document";
 pub const EDIT_TEXT_TOOL: &str = "edit_text_document";
 pub const EXPORT_DOCUMENT_TOOL: &str = "export_document";
+/// Exact-text replacements in an existing document of any kind.
+pub const PATCH_DOCUMENT_TOOL: &str = "patch_document";
+/// Current content of an existing document, so a patch can quote it exactly.
+pub const READ_DOCUMENT_TOOL: &str = "read_document";
+
+/// Longest `read_document` response, in characters. Larger documents come back
+/// truncated with a note saying how to read further.
+const READ_DOCUMENT_MAX_CHARS: usize = 60_000;
 
 // Branding tools (SideEffectful — proposes a theme artifact, never writes
 // brand.md directly; see `write_brand_theme`'s doc comment).
@@ -88,6 +96,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("html", "string", true),
+                ("more_to_write", "boolean", false),
                 ("artifact_id", "string", false),
                 ("filename", "string", false),
             ]),
@@ -105,6 +114,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             input_schema: json_schema(&[
                 ("artifact_id", "string", true),
                 ("updated_html", "string", true),
+                ("more_to_write", "boolean", false),
             ]),
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
@@ -121,6 +131,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("markdown", "string", true),
+                ("more_to_write", "boolean", false),
                 ("artifact_id", "string", false),
                 ("filename", "string", false),
             ]),
@@ -138,6 +149,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             input_schema: json_schema(&[
                 ("artifact_id", "string", true),
                 ("updated_markdown", "string", true),
+                ("more_to_write", "boolean", false),
             ]),
             permission_level: Some(PermissionLevel::SideEffectful),
             display_group: Some("Documents".to_string()),
@@ -154,6 +166,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             input_schema: json_schema(&[
                 ("title", "string", false),
                 ("text", "string", true),
+                ("more_to_write", "boolean", false),
                 ("mime_type", "string", false),
                 ("artifact_id", "string", false),
                 ("filename", "string", false),
@@ -172,9 +185,37 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             input_schema: json_schema(&[
                 ("artifact_id", "string", true),
                 ("updated_text", "string", true),
+                ("more_to_write", "boolean", false),
                 ("mime_type", "string", false),
             ]),
             permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Documents".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: PATCH_DOCUMENT_TOOL.to_string(),
+            name: PATCH_DOCUMENT_TOOL.to_string(),
+            description: "Change part of an existing document by exact text replacement."
+                .to_string(),
+            input_schema: patch_document_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Documents".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: READ_DOCUMENT_TOOL.to_string(),
+            name: READ_DOCUMENT_TOOL.to_string(),
+            description: "Read the current content of an existing document.".to_string(),
+            input_schema: json_schema(&[
+                ("artifact_id", "string", true),
+                ("start_line", "integer", false),
+                ("end_line", "integer", false),
+            ]),
+            permission_level: Some(PermissionLevel::ReadOnly),
             display_group: Some("Documents".to_string()),
             tenant_scope: None,
             kind: None,
@@ -485,6 +526,8 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | WRITE_TEXT_TOOL
             | EDIT_TEXT_TOOL
             | EXPORT_DOCUMENT_TOOL
+            | PATCH_DOCUMENT_TOOL
+            | READ_DOCUMENT_TOOL
             | WRITE_BRAND_THEME_TOOL
             | CURRENT_TIME_TOOL
             | UUID_TOOL
@@ -604,6 +647,14 @@ pub async fn execute_builtin_tool(
         EXPORT_DOCUMENT_TOOL => {
             let input: ExportInput = parse_args(tool_name, arguments)?;
             export_document(ctx, &input.artifact_id, input.include_metadata_sidecar).await
+        }
+        PATCH_DOCUMENT_TOOL => {
+            let input: PatchDocumentInput = parse_args(tool_name, arguments)?;
+            patch_document(ctx, input).await
+        }
+        READ_DOCUMENT_TOOL => {
+            let input: ReadDocumentInput = parse_args(tool_name, arguments)?;
+            read_document(ctx, input).await
         }
         // ---------------------------------------------------------------------
         // Branding tools
@@ -827,6 +878,30 @@ fn json_schema(fields: &[(&str, &str, bool)]) -> Value {
         schema["required"] = serde_json::json!(required);
     }
     schema
+}
+
+/// The `patch_document` input schema: `edits` is an array of objects, which the
+/// flat [`json_schema`] helper cannot express.
+fn patch_document_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "edits": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "old_text": { "type": "string" },
+                        "new_text": { "type": "string" },
+                    },
+                    "required": ["old_text", "new_text"],
+                },
+            },
+            "more_to_write": { "type": "boolean" },
+        },
+        "required": ["artifact_id", "edits"],
+    })
 }
 
 /// The `write_brand_theme` input schema. Built with `serde_json::json!`
@@ -1064,6 +1139,165 @@ async fn export_document(
     }))
 }
 
+/// Apply exact-text replacements to a document, in order, all or nothing.
+///
+/// Each `old_text` must occur exactly once in the document as it stands after
+/// the edits before it. When one does not, nothing is saved and the error
+/// names the edit and what was wrong, so the model can fix that one edit —
+/// usually by quoting more surrounding text, or reading the document first.
+pub fn apply_document_edits(content: &str, edits: &[DocumentEdit]) -> Result<String, String> {
+    if edits.is_empty() {
+        return Err("edits is empty — pass at least one {old_text, new_text} pair".to_string());
+    }
+    let mut next = content.to_string();
+    for (i, edit) in edits.iter().enumerate() {
+        let n = i + 1;
+        if edit.old_text.is_empty() {
+            return Err(format!(
+                "edit {n}: old_text is empty — quote the exact text to replace"
+            ));
+        }
+        let matches = next.matches(edit.old_text.as_str()).count();
+        match matches {
+            1 => next = next.replacen(edit.old_text.as_str(), &edit.new_text, 1),
+            0 => {
+                return Err(format!(
+                    "edit {n}: old_text was not found in the document — nothing was saved. \
+                     Quote the text exactly as it appears (read_document shows the current content)"
+                ))
+            }
+            count => {
+                return Err(format!(
+                    "edit {n}: old_text matches {count} places — nothing was saved. \
+                     Include more surrounding text so it matches exactly one"
+                ))
+            }
+        }
+    }
+    Ok(next)
+}
+
+async fn patch_document(
+    ctx: &AgentToolContext<'_>,
+    input: PatchDocumentInput,
+) -> Result<Value, String> {
+    let existing = artifacts::get(ctx.db, ctx.encryption, &input.artifact_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("artifact '{}' not found", input.artifact_id))?;
+    let Some(content) = existing.content_text.as_deref() else {
+        return Err(format!(
+            "artifact '{}' has no text content to patch",
+            input.artifact_id
+        ));
+    };
+    let patched = apply_document_edits(content, &input.edits)?;
+    let updated = artifacts::set_content(
+        ctx.db,
+        ctx.artifacts_dir,
+        ctx.encryption,
+        &existing.id,
+        existing.mime_type.as_deref(),
+        &ArtifactContent::Text {
+            text: patched.clone(),
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "artifact_id": updated.id,
+        "updated": true,
+        "kind": existing.kind,
+        "edits_applied": input.edits.len(),
+        "lines": patched.lines().count(),
+    }))
+}
+
+async fn read_document(
+    ctx: &AgentToolContext<'_>,
+    input: ReadDocumentInput,
+) -> Result<Value, String> {
+    let existing = artifacts::get(ctx.db, ctx.encryption, &input.artifact_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("artifact '{}' not found", input.artifact_id))?;
+    let Some(content) = existing.content_text.as_deref() else {
+        return Err(format!(
+            "artifact '{}' has no text content to read",
+            input.artifact_id
+        ));
+    };
+    Ok(read_document_output(
+        &existing,
+        content,
+        input.start_line,
+        input.end_line,
+    ))
+}
+
+/// The `read_document` result: the requested lines (all by default), capped at
+/// [`READ_DOCUMENT_MAX_CHARS`] and cut at a line boundary.
+pub fn read_document_output(
+    artifact: &Artifact,
+    content: &str,
+    start_line: Option<usize>,
+    end_line: Option<usize>,
+) -> Value {
+    let total_lines = content.lines().count();
+    let start = start_line.unwrap_or(1).max(1);
+    let end = end_line.unwrap_or(total_lines).min(total_lines);
+    let mut text = String::new();
+    let mut last_line = start.saturating_sub(1);
+    let mut line_cut = false;
+    for (i, line) in content.lines().enumerate().skip(start - 1) {
+        let n = i + 1;
+        if n > end {
+            break;
+        }
+        if text.len() + line.len() + 1 > READ_DOCUMENT_MAX_CHARS {
+            // A single line longer than the cap (minified HTML) still returns
+            // its beginning rather than nothing.
+            if text.is_empty() {
+                let mut cut = READ_DOCUMENT_MAX_CHARS.min(line.len());
+                while !line.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                text.push_str(&line[..cut]);
+                last_line = n;
+                line_cut = true;
+            }
+            break;
+        }
+        text.push_str(line);
+        text.push('\n');
+        last_line = n;
+    }
+    let mut output = serde_json::json!({
+        "ok": true,
+        "artifact_id": artifact.id,
+        "kind": artifact.kind,
+        "title": artifact.title,
+        "total_lines": total_lines,
+        "start_line": start,
+        "end_line": last_line,
+        "content": text,
+    });
+    if line_cut {
+        output["note"] = serde_json::json!(format!(
+            "Line {last_line} is longer than {READ_DOCUMENT_MAX_CHARS} characters and was cut. \
+             Quote text from the part shown when patching."
+        ));
+    } else if last_line < end {
+        output["note"] = serde_json::json!(format!(
+            "Truncated at line {last_line} of {total_lines}. Call read_document with start_line {} to read on.",
+            last_line + 1
+        ));
+    }
+    output
+}
+
 /// Turn a validated [`WriteBrandThemeInput`] into a `brand.md`-shaped
 /// [`BrandConfig`], validate it, and — only on success — render it and save
 /// it as a Markdown artifact via the exact same [`write_document`] path
@@ -1239,6 +1473,26 @@ struct WriteHtmlInput {
     html: String,
     artifact_id: Option<String>,
     filename: Option<String>,
+}
+
+/// One `patch_document` replacement.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DocumentEdit {
+    pub old_text: String,
+    pub new_text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PatchDocumentInput {
+    artifact_id: String,
+    edits: Vec<DocumentEdit>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadDocumentInput {
+    artifact_id: String,
+    start_line: Option<usize>,
+    end_line: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1811,7 +2065,8 @@ mod tests {
         // + 1 write_brand_theme (Phase 4)
         // + 5 workspace file tools
         // + 1 ask_user (t1-2)
-        // + 1 remember (t1-5) = 23
-        assert_eq!(defs.len(), 23);
+        // + 1 remember (t1-5)
+        // + patch_document + read_document = 25
+        assert_eq!(defs.len(), 25);
     }
 }

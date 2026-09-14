@@ -217,7 +217,7 @@
   "chat.toolCall.consent.rememberChat": "Für diesen Chat merken",
   "chat.toolCall.consent.safetyNote": "{appName} führt nie ein Tool mit Seiteneffekten ohne deine Zustimmung aus. Tool-Ausgaben laufen in einer Sandbox und werden nie wieder in den Prompt eingespeist.",
   "chat.toolCall.deniedNotice": "<strong>Abgelehnt.</strong> Der Tool-Aufruf wurde nicht ausgeführt.",
-  "chat.toolCall.document.action": "{action, select, create {Erstellen} edit {Bearbeiten} other {Dokument}}",
+  "chat.toolCall.document.action": "{action, select, create {Erstellen} edit {Bearbeiten} read {Lesen} other {Dokument}}",
   "chat.toolCall.document.cancelled": "Dokument-Tool abgebrochen.",
   "chat.toolCall.document.failed": "<strong>Das Dokument konnte nicht {action, select, create {erstellt} edit {bearbeitet} other {aktualisiert}} werden.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "Das Dokument wurde nicht erstellt oder aktualisiert.",

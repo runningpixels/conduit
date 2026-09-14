@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "このチャットで記憶する",
   "chat.toolCall.consent.safetyNote": "{appName} は、承認なしに副作用のあるツールを実行することはありません。ツールの出力はサンドボックス化され、プロンプトに再び挿入されることはありません。",
   "chat.toolCall.deniedNotice": "<strong>拒否しました。</strong>ツール呼び出しは実行されていません。",
-  "chat.toolCall.document.action": "{action, select, create {作成} edit {編集} other {ドキュメント}}",
+  "chat.toolCall.document.action": "{action, select, create {作成} edit {編集} read {読み取り} other {ドキュメント}}",
   "chat.toolCall.document.cancelled": "ドキュメントツールをキャンセルしました。",
   "chat.toolCall.document.failed": "<strong>ドキュメントを{action, select, create {作成} edit {編集} other {更新}}できませんでした。</strong>{explained}",
   "chat.toolCall.document.fallbackError": "ドキュメントは作成も更新もされませんでした。",

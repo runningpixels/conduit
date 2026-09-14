@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "Lembrar para este chat",
   "chat.toolCall.consent.safetyNote": "O {appName} nunca executa uma ferramenta com efeitos colaterais sem sua aprovação. A saída da ferramenta fica isolada e nunca é reinserida no prompt.",
   "chat.toolCall.deniedNotice": "<strong>Negado.</strong> A chamada de ferramenta não foi executada.",
-  "chat.toolCall.document.action": "{action, select, create {Criar} edit {Editar} other {Documento}}",
+  "chat.toolCall.document.action": "{action, select, create {Criar} edit {Editar} read {Ler} other {Documento}}",
   "chat.toolCall.document.cancelled": "Ferramenta de documento cancelada.",
   "chat.toolCall.document.failed": "<strong>Não foi possível {action, select, create {criar} edit {editar} other {atualizar}} o documento.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "O documento não foi criado nem atualizado.",

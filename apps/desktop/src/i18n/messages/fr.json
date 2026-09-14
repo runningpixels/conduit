@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "Mémoriser pour cette conversation",
   "chat.toolCall.consent.safetyNote": "{appName} n’exécute jamais un outil à effets secondaires sans votre approbation. La sortie de l’outil est isolée et n’est jamais réinjectée dans le prompt.",
   "chat.toolCall.deniedNotice": "<strong>Refusé.</strong> L’appel d’outil n’a pas été exécuté.",
-  "chat.toolCall.document.action": "{action, select, create {Créer} edit {Modifier} other {Document}}",
+  "chat.toolCall.document.action": "{action, select, create {Créer} edit {Modifier} read {Lire} other {Document}}",
   "chat.toolCall.document.cancelled": "Outil de document annulé.",
   "chat.toolCall.document.failed": "<strong>Impossible de {action, select, create {créer} edit {modifier} other {mettre à jour}} le document.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "Le document n’a été ni créé ni mis à jour.",

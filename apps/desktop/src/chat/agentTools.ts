@@ -89,10 +89,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_html_document',
     name: 'write_html_document',
     description:
-      `Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document. Give title before html so the user sees which document is being written.`,
+      `Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with patch_document for targeted changes or edit_html_document to rewrite it, using the returned artifact_id; do not call write_html_document again for the same document. Give title before html so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'html', type: 'string', required: true },
+      { name: 'more_to_write', type: 'boolean' },
       { name: 'artifact_id', type: 'string' },
       { name: 'filename', type: 'string' },
     ]),
@@ -103,10 +104,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'edit_html_document',
     name: 'edit_html_document',
     description:
-      'Replace the full contents of an existing HTML document artifact. Use only when the user explicitly asked to revise an existing HTML document.',
+      'Replace the full contents of an existing HTML document artifact. Use only when the user explicitly asked to revise an existing HTML document and most of it changes; for targeted changes use patch_document.',
     inputSchema: schema([
       { name: 'artifact_id', type: 'string', required: true },
       { name: 'updated_html', type: 'string', required: true },
+      { name: 'more_to_write', type: 'boolean' },
     ]),
     permissionLevel: 'sideEffectful',
     displayGroup: DOCUMENT_TOOL_GROUP,
@@ -115,10 +117,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_markdown_document',
     name: 'write_markdown_document',
     description:
-      `Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document. Give title before markdown so the user sees which document is being written.`,
+      `Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with patch_document for targeted changes or edit_markdown_document to rewrite it, using the returned artifact_id; do not call write_markdown_document again for the same document. Give title before markdown so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'markdown', type: 'string', required: true },
+      { name: 'more_to_write', type: 'boolean' },
       { name: 'artifact_id', type: 'string' },
       { name: 'filename', type: 'string' },
     ]),
@@ -129,10 +132,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'edit_markdown_document',
     name: 'edit_markdown_document',
     description:
-      'Replace the full contents of an existing Markdown document artifact. Use only when the user explicitly asked to revise an existing Markdown document.',
+      'Replace the full contents of an existing Markdown document artifact. Use only when the user explicitly asked to revise an existing Markdown document and most of it changes; for targeted changes use patch_document.',
     inputSchema: schema([
       { name: 'artifact_id', type: 'string', required: true },
       { name: 'updated_markdown', type: 'string', required: true },
+      { name: 'more_to_write', type: 'boolean' },
     ]),
     permissionLevel: 'sideEffectful',
     displayGroup: DOCUMENT_TOOL_GROUP,
@@ -141,10 +145,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_text_document',
     name: 'write_text_document',
     description:
-      `Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document. Give title before text so the user sees which document is being written.`,
+      `Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with patch_document for targeted changes or edit_text_document to rewrite it, using the returned artifact_id; do not call write_text_document again for the same document. Give title before text so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'text', type: 'string', required: true },
+      { name: 'more_to_write', type: 'boolean' },
       { name: 'mime_type', type: 'string' },
       { name: 'artifact_id', type: 'string' },
       { name: 'filename', type: 'string' },
@@ -156,13 +161,54 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'edit_text_document',
     name: 'edit_text_document',
     description:
-      'Replace the full contents of an existing plain-text document artifact. Use only when the user explicitly asked to revise an existing plain-text document.',
+      'Replace the full contents of an existing plain-text document artifact. Use only when the user explicitly asked to revise an existing plain-text document and most of it changes; for targeted changes use patch_document.',
     inputSchema: schema([
       { name: 'artifact_id', type: 'string', required: true },
       { name: 'updated_text', type: 'string', required: true },
+      { name: 'more_to_write', type: 'boolean' },
       { name: 'mime_type', type: 'string' },
     ]),
     permissionLevel: 'sideEffectful',
+    displayGroup: DOCUMENT_TOOL_GROUP,
+  },
+  {
+    toolId: 'patch_document',
+    name: 'patch_document',
+    description:
+      'Change part of an existing document by exact text replacement, without rewriting the rest. Each old_text must match exactly one place in the document, as it stands after the edits before it; quote enough surrounding text to make it unique. Edits apply in order, and if any fails nothing is saved. Use it for targeted revisions, and to fill in a long document section by section after writing a skeleton with placeholder comments. Set more_to_write: true when more calls will follow in this turn.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        artifact_id: { type: 'string' },
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              old_text: { type: 'string' },
+              new_text: { type: 'string' },
+            },
+            required: ['old_text', 'new_text'],
+          },
+        },
+        more_to_write: { type: 'boolean' },
+      },
+      required: ['artifact_id', 'edits'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DOCUMENT_TOOL_GROUP,
+  },
+  {
+    toolId: 'read_document',
+    name: 'read_document',
+    description:
+      'Read the current content of an existing document, optionally a range of lines (1-based, inclusive). Use it before patch_document when the exact current text is not already in the conversation.',
+    inputSchema: schema([
+      { name: 'artifact_id', type: 'string', required: true },
+      { name: 'start_line', type: 'integer' },
+      { name: 'end_line', type: 'integer' },
+    ]),
+    permissionLevel: 'readOnly',
     displayGroup: DOCUMENT_TOOL_GROUP,
   },
   {
@@ -404,7 +450,7 @@ export const DOCUMENT_TOOL_NAMES = new Set(
 
 /** Document tools that create or edit content (excludes export). */
 export const DOCUMENT_CONTENT_TOOL_NAMES = new Set(
-  [...DOCUMENT_TOOL_NAMES].filter((name) => name !== 'export_document'),
+  [...DOCUMENT_TOOL_NAMES].filter((name) => name !== 'export_document' && name !== 'read_document'),
 );
 
 /** `complete`: the model finished the arguments. `written`: the tool saved the document. */
@@ -436,6 +482,11 @@ export function isDocumentContentTool(name: string): boolean {
 
 export function isDocumentCreateTool(name: string): boolean {
   return name.startsWith('write_') && DOCUMENT_CONTENT_TOOL_NAMES.has(name);
+}
+
+/** `patch_document`: a targeted change to a document that already exists. */
+export function isDocumentPatchTool(name: string): boolean {
+  return name === 'patch_document';
 }
 
 export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
@@ -511,19 +562,24 @@ export function workspaceFolderLabel(root: string): string {
   return parts[parts.length - 1] || root;
 }
 
+/** Offered with every document write or edit: part-by-part building and targeted revisions. */
+const DOCUMENT_REVISION_TOOL_NAMES = new Set(['patch_document', 'read_document']);
+
 /** Built-in document tools exposed to the model for a given turn intent. */
 export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefinition[] {
   const utilityTools = builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name));
   switch (intent) {
     case 'create':
-      // Include edit_* so mid-turn revisions use the returned artifact_id
-      // instead of spawning duplicate documents via another write_*.
+      // Include edit_* and patch_document so mid-turn revisions use the
+      // returned artifact_id instead of spawning duplicate documents via
+      // another write_*, and so a long document can be built in parts.
       return [
         ...utilityTools,
         ...builtinToolDefinitions().filter(
           (tool) =>
             tool.name.startsWith('write_') ||
             tool.name.startsWith('edit_') ||
+            DOCUMENT_REVISION_TOOL_NAMES.has(tool.name) ||
             tool.name === 'export_document',
         ),
       ];
@@ -531,7 +587,10 @@ export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefi
       return [
         ...utilityTools,
         ...builtinToolDefinitions().filter(
-          (tool) => tool.name.startsWith('edit_') || tool.name === 'export_document',
+          (tool) =>
+            tool.name.startsWith('edit_') ||
+            DOCUMENT_REVISION_TOOL_NAMES.has(tool.name) ||
+            tool.name === 'export_document',
         ),
       ];
     case 'info':
@@ -640,6 +699,10 @@ export function documentWritesHistoryNote(state: AssistantStreamState | undefine
         tc.status !== 'cancelled',
     )
     .map((tc) => {
+      if (isDocumentPatchTool(tc.name)) {
+        const edits = Array.isArray(tc.arguments?.edits) ? tc.arguments.edits.length : 0;
+        return `[Patched a document with patch_document (${edits} edit${edits === 1 ? '' : 's'}).]`;
+      }
       const verb = tc.name.startsWith('edit_') ? 'Updated' : 'Wrote';
       const kind = KIND_BY_TOOL[tc.name] === 'html' ? 'HTML' : KIND_BY_TOOL[tc.name] === 'markdown' ? 'Markdown' : 'text';
       const title = typeof tc.arguments?.title === 'string' && tc.arguments.title.trim() ? ` "${tc.arguments.title.trim()}"` : '';
@@ -714,6 +777,8 @@ const ACTION_BY_TOOL: Record<string, string> = {
   edit_markdown_document: 'edit',
   write_text_document: 'create',
   edit_text_document: 'edit',
+  patch_document: 'edit',
+  read_document: 'read',
 };
 
 export interface DocumentToolSummary {
@@ -745,7 +810,18 @@ export function summarizeDocumentToolCall(toolCall: ToolCallState): DocumentTool
   }
   const args = toolCall.arguments ?? {};
   const contentField = CONTENT_FIELD_BY_TOOL[toolCall.name];
-  const content = typeof args[contentField] === 'string' ? (args[contentField] as string) : '';
+  // A patch's size is the text it puts in, not the whole document.
+  const content = isDocumentPatchTool(toolCall.name)
+    ? (Array.isArray(args.edits) ? args.edits : [])
+        .map((edit) =>
+          edit && typeof edit === 'object' && typeof (edit as { new_text?: unknown }).new_text === 'string'
+            ? (edit as { new_text: string }).new_text
+            : '',
+        )
+        .join('\n')
+    : typeof args[contentField] === 'string'
+      ? (args[contentField] as string)
+      : '';
   const lineCount = content ? content.split('\n').length : 0;
   const charCount = content.length;
   const title = typeof args.title === 'string' ? args.title : undefined;
@@ -789,6 +865,9 @@ export function redactDocumentToolArguments(
   args: Record<string, unknown>,
   toolName: string,
 ): Record<string, unknown> {
+  if (isDocumentPatchTool(toolName) && Array.isArray(args.edits)) {
+    return { ...args, edits: `… ${args.edits.length}` };
+  }
   const contentField = CONTENT_FIELD_BY_TOOL[toolName];
   if (!contentField) return args;
   const next: Record<string, unknown> = { ...args };

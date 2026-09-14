@@ -217,7 +217,7 @@
   "chat.toolCall.consent.rememberChat": "[Ŕéḿéḿḅéŕ ḟöŕ ťĥîš çĥàť —————— ———]",
   "chat.toolCall.consent.safetyNote": "[{appName} ñéṽéŕ ŕüñš à šîḍé-éḟḟéçťîñĝ ťööļ ŵîťĥöüť ýöüŕ àṕṕŕöṽàļ. Ťööļ öüťṕüť îš šàñḍḅöẍéḍ àñḍ ñéṽéŕ ŕé-îñĵéçťéḍ îñťö ťĥé ṕŕöḿṕť. —————— —————— —————— —————— —————— —————— —————— ——————]",
   "chat.toolCall.deniedNotice": "[<strong>Ḍéñîéḍ.</strong> Ťĥé ťööļ çàļļ ŵàš ñöť éẍéçüťéḍ. —————— —————— ————]",
-  "chat.toolCall.document.action": "[{action, select, create {Çŕéàťé} edit {Éḍîť} other {Ḍöçüḿéñť}} —————— ——]",
+  "chat.toolCall.document.action": "[{action, select, create {Çŕéàťé} edit {Éḍîť} read {Ŕéàḍ} other {Ḍöçüḿéñť}} —————— ———]",
   "chat.toolCall.document.cancelled": "[Ḍöçüḿéñť ťööļ çàñçéļļéḍ. —————— ————]",
   "chat.toolCall.document.failed": "[<strong>Çöüļḍñ’ť {action, select, create {çŕéàťé} edit {éḍîť} other {üṕḍàťé}} ťĥé ḍöçüḿéñť.</strong> {explained} —————— —————— ————]",
   "chat.toolCall.document.fallbackError": "[Ťĥé ḍöçüḿéñť ŵàš ñöť çŕéàťéḍ öŕ üṕḍàťéḍ. —————— —————— ————]",

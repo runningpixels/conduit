@@ -78,11 +78,22 @@ export function classifyDocumentTurnIntent(prompt: string): DocumentTurnIntent {
 export function documentWriteDeveloperPromptFor(toolNames: readonly string[]): string | undefined {
   const offersDocumentWrites = toolNames.some((name) => /^(write|edit)_(html|markdown|text)_document$/.test(name));
   if (!offersDocumentWrites) return undefined;
-  return [
+  const lines = [
     'If you create or revise a document with a write_*_document or edit_*_document tool:',
     'plan its structure in a few short lines at most, and do not draft the document, its copy or its styles in your reasoning.',
     'Write the content once, directly in the tool call, and pass title before the content.',
-  ].join(' ');
+  ];
+  if (toolNames.includes('patch_document')) {
+    lines.push(
+      // One tool call has to fit in the model's output limit; a long document
+      // that does not is cut off and lost. Parts that each fit are not.
+      'For a long document — more than a few hundred lines, or many long sections — write it in parts:',
+      'first the full structure with a placeholder comment such as <!-- section: moons --> where each long section goes, with more_to_write: true;',
+      'then replace the placeholders with patch_document, one or two sections per call, with more_to_write: true on every call but the last.',
+      'To change part of an existing document, use patch_document rather than rewriting it.',
+    );
+  }
+  return lines.join(' ');
 }
 
 /** Short developer reinforcement for informational turns. */

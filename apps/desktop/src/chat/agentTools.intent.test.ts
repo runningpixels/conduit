@@ -11,6 +11,7 @@ describe('selectBuiltinDocumentTools', () => {
     expect(names).toContain('calculator');
     expect(names).not.toContain('write_html_document');
     expect(names).not.toContain('edit_html_document');
+    expect(names).not.toContain('patch_document');
 
     const generalTools = selectBuiltinDocumentTools('general');
     const generalNames = generalTools.map((tool) => tool.name);
@@ -26,6 +27,8 @@ describe('selectBuiltinDocumentTools', () => {
     expect(names).toContain('write_text_document');
     expect(names).toContain('edit_html_document');
     expect(names).toContain('edit_markdown_document');
+    expect(names).toContain('patch_document');
+    expect(names).toContain('read_document');
     expect(names).toContain('edit_text_document');
     expect(names).toContain('export_document');
     expect(names).toContain('current_time');
@@ -35,6 +38,9 @@ describe('selectBuiltinDocumentTools', () => {
   it('exposes edit + utility tools for edit intent', () => {
     const tools = selectBuiltinDocumentTools('edit');
     const names = tools.map((tool) => tool.name);
+    expect(names).toContain('patch_document');
+    expect(names).toContain('read_document');
+    expect(names).not.toContain('write_html_document');
     expect(names).toContain('edit_html_document');
     expect(names).toContain('edit_markdown_document');
     expect(names).toContain('edit_text_document');
@@ -43,8 +49,9 @@ describe('selectBuiltinDocumentTools', () => {
   });
 
   it('keeps the full catalog available for reference', () => {
-    // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember.
-    expect(builtinToolDefinitions()).toHaveLength(23);
+    // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember
+    // + patch_document + read_document.
+    expect(builtinToolDefinitions()).toHaveLength(25);
   });
 
   it('advertises remember only when memory injection is on', () => {

@@ -246,6 +246,19 @@ pub fn tool_call_arguments_cut_off(call: &CompletedToolCall) -> bool {
         .is_some_and(|args| args.len() == 1 && args.get("raw").is_some_and(|v| v.is_string()))
 }
 
+/// True when cut-off arguments are an unfinished prefix of JSON — the text
+/// stops inside a value, as it does when output runs out — rather than JSON the
+/// model finished but got wrong, which the tool should see and report.
+pub fn tool_call_arguments_end_early(call: &CompletedToolCall) -> bool {
+    let Some(raw) = call.arguments.get("raw").and_then(|v| v.as_str()) else {
+        return false;
+    };
+    matches!(
+        serde_json::from_str::<serde_json::Value>(raw),
+        Err(e) if e.classify() == serde_json::error::Category::Eof
+    )
+}
+
 /// True when a round's reported output tokens reached the output limit it ran
 /// under. `false` when either number is unknown.
 pub fn reached_output_limit(
@@ -2333,13 +2346,21 @@ impl StreamManager {
             // and a lost document — and a round with nothing to show would
             // end on a blank bubble. Say what happened instead. A round whose
             // calls all completed before the limit carries on as usual.
-            if outcome.hit_output_limit {
-                let cut_off = runnable
-                    .iter()
-                    .find(|call| tool_call_arguments_cut_off(call));
+            //
+            // The stop reason and the token count are not always there to go
+            // on — a provider can say `stop`, and its default limit is unknown
+            // unless the user set one. Arguments that end in the middle of a
+            // JSON value on a round that otherwise finished cleanly are the
+            // same cut-off, seen from the other side.
+            {
+                let cut_off = runnable.iter().find(|call| {
+                    tool_call_arguments_cut_off(call)
+                        && (outcome.hit_output_limit || tool_call_arguments_end_early(call))
+                });
                 let message = if let Some(call) = cut_off {
                     Some(output_limit_cut_off_message(call, outcome.output_limit))
-                } else if runnable.is_empty() && !outcome.produced_text {
+                } else if outcome.hit_output_limit && runnable.is_empty() && !outcome.produced_text
+                {
                     Some(output_limit_empty_message(outcome.output_limit))
                 } else {
                     None

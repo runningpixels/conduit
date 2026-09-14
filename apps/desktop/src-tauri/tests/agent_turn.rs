@@ -775,3 +775,49 @@ async fn output_below_the_limit_with_a_stop_is_not_cut_off() {
         turn.terminal()
     );
 }
+
+#[tokio::test]
+async fn arguments_that_stop_mid_json_count_as_cut_off_without_any_limit_signal() {
+    // No length stop, no token count, no known limit: only the arguments show it.
+    let cut_off = json!({ "raw": "{\"title\": \"Solar System\", \"html\": \"<h2>Jupiter</h2><p>The largest" });
+    let turn = run_turn(
+        vec![
+            tool_round(vec![("write_html_document", cut_off)], Duration::ZERO),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 1);
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. }
+                if error.message.contains("reached its output limit while writing “Solar System”")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn complete_but_malformed_arguments_still_reach_the_tool() {
+    // Finished JSON the model got wrong is the tool's to report, and the model
+    // gets another round to fix it.
+    let malformed = json!({ "raw": "{\"title\": \"Guide\", html: \"<p>hi</p>\"}" });
+    let turn = run_turn(
+        vec![
+            tool_round(vec![("write_html_document", malformed)], Duration::ZERO),
+            text_round("Fixed it."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)]
+    );
+}

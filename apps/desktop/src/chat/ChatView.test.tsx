@@ -373,6 +373,69 @@ describe('ChatView suggested prompts', () => {
 });
 
 /**
+ * `start_chat_stream` is fire-and-forget: the invoke resolves as soon as the
+ * stream is spawned, and a real provider's events arrive afterwards. Every
+ * other test here delivers events synchronously inside the mock, which is how
+ * the 2026-06-25 "stream completes blank" bug hid — teardown ran on the invoke
+ * resolving and dropped the late events. This delivers them late.
+ * (docs/postmortems/2026-06-25-chat-stream-completes-blank.md, Prevention.)
+ */
+describe('ChatView latent stream', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+  });
+
+  it('keeps events that arrive after startChatStream has resolved', async () => {
+    const onChatTurnComplete = vi.fn();
+    let invokeResolved = false;
+
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      const { requestId } = request;
+      setTimeout(() => {
+        // The invoke must already be settled, or this proves nothing.
+        expect(invokeResolved).toBe(true);
+        onEvent({ kind: 'messageStart', requestId, index: 0 });
+        onEvent({ kind: 'contentBlockStart', requestId, blockId: 'block-0', index: 1, blockKind: 'text' });
+        onEvent({ kind: 'contentDelta', requestId, blockId: 'block-0', index: 2, content: 'Test received.' });
+        onEvent({ kind: 'contentDelta', requestId, blockId: 'block-0', index: 3, content: ' How can I help?' });
+        onEvent({ kind: 'messageComplete', requestId, index: 4, finishReason: 'stop' });
+      }, 30);
+      queueMicrotask(() => {
+        invokeResolved = true;
+      });
+      return { requestId };
+    });
+
+    render(
+      <ChatView
+        settings={baseSettings}
+        onSelectModel={vi.fn()}
+        onStatus={vi.fn()}
+        conversationId="conv-1"
+        artifacts={[]}
+        fileStateMap={{}}
+        onPromoteArtifact={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onChatTurnComplete={onChatTurnComplete}
+      />,
+    );
+
+    const textarea = await screen.findByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: 'Test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => expect(onChatTurnComplete).toHaveBeenCalled());
+    const state = onChatTurnComplete.mock.calls[0][0];
+    expect(state.blocks.map((b: { content: string }) => b.content).join('')).toBe(
+      'Test received. How can I help?',
+    );
+    expect(state.error ?? null).toBeNull();
+  });
+});
+
+/**
  * A turn that dies mid-flight used to strand the workspace: `onChatTurnComplete`
  * was gated on `!errorText`, and it is the only path that resolves the pending
  * artifact state — so the document panel kept shimmering "Generating…" forever.

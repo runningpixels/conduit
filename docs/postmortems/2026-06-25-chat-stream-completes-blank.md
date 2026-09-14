@@ -193,7 +193,9 @@ stderr — visible in the `tauri dev` terminal, not in a built app.
   throughout because the mock stream delivered events synchronously,
   hiding the teardown race. A test that injects a delayed `messageComplete`
   (events arrive after `startChatStream` resolves) would have caught this.
-  Left as a follow-up.
+  *Resolved (2026-09-13):* `ChatView.test.tsx` → "ChatView latent stream"
+  delivers every event on a timer after the invoke has settled. Checked by
+  removing `await streamDone` from `handleSend`: the test fails.
 
 ## Files touched
 

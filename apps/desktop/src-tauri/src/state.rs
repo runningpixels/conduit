@@ -209,9 +209,17 @@ impl AppState {
     /// the db pool + paths (e.g. the connector runtime supervisor tests).
     #[doc(hidden)]
     pub fn test_instance(db: DbPool, paths: AppPaths) -> Self {
+        Self::test_instance_with_settings(db, paths, AppSettings::default())
+    }
+
+    /// [`Self::test_instance`] with explicit settings. Skips `update_settings`
+    /// validation on purpose, so a test can use values the Settings UI would
+    /// refuse (a one-second turn time limit, say).
+    #[doc(hidden)]
+    pub fn test_instance_with_settings(db: DbPool, paths: AppPaths, settings: AppSettings) -> Self {
         Self {
             paths,
-            settings: Arc::new(Mutex::new(AppSettings::default())),
+            settings: Arc::new(Mutex::new(settings)),
             http: HttpClient::new(),
             db,
             encryption: Arc::new(Encryption::off()),

@@ -391,17 +391,32 @@ pub(crate) struct ActiveStream {
     pub(crate) steer_tx: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
+/// Resolves a provider id to the adapter that streams its responses.
+pub type AdapterResolver =
+    Arc<dyn Fn(&str) -> Option<Box<dyn provider_core::ProviderAdapter>> + Send + Sync>;
+
 pub struct StreamManager {
     active: Arc<Mutex<HashMap<String, ActiveStream>>>,
     /// Pending `ask_user` oneshots keyed by tool_call_id (t1-2).
     ask_user_pending: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>>>,
+    /// The built-in provider registry in production. Tests substitute a
+    /// scripted adapter so the agent loop can run end to end without a network.
+    adapter_resolver: AdapterResolver,
 }
 
 impl StreamManager {
     pub fn new() -> Self {
+        Self::with_adapter_resolver(Arc::new(provider_core::get_adapter))
+    }
+
+    /// A manager whose streaming rounds use `resolver` instead of the built-in
+    /// provider registry. For integration tests.
+    #[doc(hidden)]
+    pub fn with_adapter_resolver(resolver: AdapterResolver) -> Self {
         Self {
             active: Arc::new(Mutex::new(HashMap::new())),
             ask_user_pending: Arc::new(Mutex::new(HashMap::new())),
+            adapter_resolver: resolver,
         }
     }
 
@@ -490,7 +505,7 @@ impl StreamManager {
             request.request_id.clone()
         };
 
-        let adapter = provider_core::get_adapter(&provider_id)
+        let adapter = (self.adapter_resolver)(&provider_id)
             .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
 
         // M4: honor `local_only` — block cloud providers when the user has opted
@@ -717,7 +732,7 @@ impl StreamManager {
         };
         let provider_id = settings.active_provider.clone();
 
-        let adapter = match provider_core::get_adapter(&provider_id) {
+        let adapter = match (self.adapter_resolver)(&provider_id) {
             Some(a) => a,
             None => {
                 return RoundOutcome {

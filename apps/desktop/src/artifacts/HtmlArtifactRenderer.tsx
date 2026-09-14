@@ -33,6 +33,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildArtifactCsp, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import {
+  buildShortcutForwarderScript,
+  parseArtifactShortcutMessage,
+  replayShortcut,
+} from './frameShortcuts';
+import {
   ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE,
   parseArtifactExternalLinkMessage,
 } from './externalUrl';
@@ -185,7 +190,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}</script>` +
+    `<script>${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${buildShortcutForwarderScript()}</script>` +
     `</head><body>${html}</body></html>`
   );
 }
@@ -227,6 +232,11 @@ export function HtmlArtifactRenderer({
     function onMessage(event: MessageEvent) {
       const frame = iframeRef.current;
       if (!frame || event.source !== frame.contentWindow) return;
+      const shortcut = parseArtifactShortcutMessage(event.data);
+      if (shortcut) {
+        replayShortcut(shortcut);
+        return;
+      }
       const href = parseArtifactExternalLinkMessage(event.data);
       if (!href) return;
       onExternalLinkRef.current?.(href);

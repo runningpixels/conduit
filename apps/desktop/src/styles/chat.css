@@ -994,7 +994,7 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
  * button used to carry — with three things on the right, the push has to happen
  * once, in one place. */
 .spacer { flex: 1 1 auto; }
-.composer-model-picker { position: relative; min-width: 0; }
+.composer-model-picker { position: relative; min-width: 0; display: flex; }
 /* The composer's folder menu opens upward from its chip. It was inline-styled
    with its own shadow and radius; as a `Menu` it takes the shared menu surface
    and keeps only its placement and the column layout of its path and actions. */
@@ -1034,7 +1034,9 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
 .cbtn.armed:hover { background: color-mix(in srgb, var(--hue) 9%, transparent); color: var(--hue-text); }
 
 /* The model trigger: provider dot, model name, chevron (V9 §2.3). */
-.cbtn.model { max-width: min(220px, 42vw); color: var(--ink-2); font-weight: 500; gap: 5px; }
+/* Capped by its own slot, not the window: `42vw` let the label outgrow a
+   composer narrowed by the document panel and run under the send button. */
+.cbtn.model { max-width: min(220px, 100%); min-width: 0; color: var(--ink-2); font-weight: 500; gap: 5px; }
 .cbtn.model .pdot { width: 6px; height: 6px; background: var(--hue); }
 .cbtn.model .model-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cbtn.model svg { width: 13px; height: 13px; color: var(--ink-3); }
@@ -1256,10 +1258,14 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   border-color: var(--hue);
   box-shadow: var(--glow);
 }
+/* Bottom-right: at the top it sat over the document panel's toolbar and hid
+   Preview/Source and the panel actions for as long as a toast lived. The
+   panel's footer line is the least important thing in that corner. */
 .toast-stack {
   position: fixed;
-  top: 48px;
+  bottom: 16px;
   right: 16px;
+  align-content: end;
   z-index: 1100;
   display: grid;
   gap: 8px;

@@ -1298,13 +1298,21 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onStatus(makeStatus(t('chat.view.status.waitingForToolResults'), 'active', 'chat'));
         await waitForPendingRuntimeCalls(request.requestId);
       }
-      onStatus(
-        makeStatus(
-          terminalError ?? t('chat.view.status.streamComplete'),
-          terminalError ? 'error' : 'success',
-          'chat',
-        ),
-      );
+      // A turn that saved a document already gets "Document updated" from the
+      // workspace; a second success toast for the same moment is noise.
+      const documentWritten =
+        !terminalError &&
+        streamStateRef.current !== null &&
+        hadSuccessfulDocumentToolCalls(streamStateRef.current);
+      if (!documentWritten) {
+        onStatus(
+          makeStatus(
+            terminalError ?? t('chat.view.status.streamComplete'),
+            terminalError ? 'error' : 'success',
+            'chat',
+          ),
+        );
+      }
     } catch (error) {
       console.error('[startChatStream] rejected:', error);
       onStatus(makeStatus(describeInvokeError(error), 'error', 'chat'));

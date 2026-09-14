@@ -700,6 +700,12 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   border: 0;
   opacity: 0;
 }
+/* Pressed reads as on: the toggle otherwise looks the same in both states. */
+.live-preview-toggle[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--card-hi);
+  border-color: var(--line);
+}
 .live-preview-frame[data-shown="true"] {
   opacity: 1;
 }

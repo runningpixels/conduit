@@ -664,3 +664,55 @@ async fn read_document_cuts_a_minified_line_instead_of_returning_nothing() {
     let note = result.output.get("note").and_then(|v| v.as_str()).unwrap();
     assert!(note.contains("was cut"), "{note}");
 }
+
+// ── apply_document_edits ─────────────────────────────────────────────────────
+
+fn edit(old_text: &str, new_text: &str) -> agent_tools::DocumentEdit {
+    agent_tools::DocumentEdit {
+        old_text: old_text.to_string(),
+        new_text: new_text.to_string(),
+    }
+}
+
+#[test]
+fn an_edit_quoted_without_indentation_still_applies_and_keeps_the_indentation() {
+    // Recorded live: the skeleton indented its placeholders two spaces, and the
+    // model's first patch quoted them flush left.
+    let doc = "<main>\r\n  <!-- SECTION:mercury -->\r\n  <!-- SECTION:venus -->\r\n</main>\r\n";
+    let patched = agent_tools::apply_document_edits(
+        doc,
+        &[edit(
+            "<!-- SECTION:mercury -->\n<!-- SECTION:venus -->\n",
+            "<h2>Mercury</h2>\n  <!-- SECTION:venus -->",
+        )],
+    )
+    .unwrap();
+    assert_eq!(
+        patched,
+        "<main>\r\n  <h2>Mercury</h2>\n  <!-- SECTION:venus -->\r\n</main>\r\n"
+    );
+}
+
+#[test]
+fn an_exact_match_wins_over_the_indentation_fallback() {
+    let doc = "a\n  b\nb\n";
+    assert_eq!(
+        agent_tools::apply_document_edits(doc, &[edit("  b", "B")]).unwrap(),
+        "a\nB\nb\n"
+    );
+}
+
+#[test]
+fn the_indentation_fallback_still_needs_exactly_one_match() {
+    let doc = "<ul>\n  <li>x</li>\n</ul>\n<ol>\n    <li>x</li>\n</ol>\n";
+    // Trailing space: no exact match, two matches once whitespace is ignored.
+    let error =
+        agent_tools::apply_document_edits(doc, &[edit("<li>x</li> \n", "<li>y</li>")]).unwrap_err();
+    assert!(
+        error.contains("matches 2 places when indentation is ignored"),
+        "{error}"
+    );
+    let error =
+        agent_tools::apply_document_edits(doc, &[edit("<li>z</li>", "<li>y</li>")]).unwrap_err();
+    assert!(error.contains("even ignoring indentation"), "{error}");
+}

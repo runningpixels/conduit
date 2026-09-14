@@ -1160,12 +1160,28 @@ pub fn apply_document_edits(content: &str, edits: &[DocumentEdit]) -> Result<Str
         let matches = next.matches(edit.old_text.as_str()).count();
         match matches {
             1 => next = next.replacen(edit.old_text.as_str(), &edit.new_text, 1),
-            0 => {
-                return Err(format!(
-                    "edit {n}: old_text was not found in the document — nothing was saved. \
-                     Quote the text exactly as it appears (read_document shows the current content)"
-                ))
-            }
+            // Models often quote a block without its indentation — live, the
+            // first patch of a build quoted `<!-- SECTION:mercury -->` where the
+            // skeleton had it indented. Fall back to whole lines compared
+            // without surrounding whitespace, still requiring one match.
+            0 => match find_lines_ignoring_indentation(&next, &edit.old_text) {
+                LineMatch::One(range) => {
+                    next.replace_range(range, edit.new_text.trim());
+                }
+                LineMatch::Many(count) => {
+                    return Err(format!(
+                        "edit {n}: old_text matches {count} places when indentation is ignored — \
+                         nothing was saved. Include more surrounding text so it matches exactly one"
+                    ))
+                }
+                LineMatch::None => {
+                    return Err(format!(
+                        "edit {n}: old_text was not found in the document, even ignoring \
+                         indentation — nothing was saved. Quote the text exactly as it appears \
+                         (read_document shows the current content)"
+                    ))
+                }
+            },
             count => {
                 return Err(format!(
                     "edit {n}: old_text matches {count} places — nothing was saved. \
@@ -1175,6 +1191,61 @@ pub fn apply_document_edits(content: &str, edits: &[DocumentEdit]) -> Result<Str
         }
     }
     Ok(next)
+}
+
+enum LineMatch {
+    None,
+    /// Byte range to replace: from the first matched line's first
+    /// non-whitespace character to the last matched line's last one, so the
+    /// document keeps its own indentation and line endings.
+    One(std::ops::Range<usize>),
+    Many(usize),
+}
+
+/// Find `needle` as a run of whole lines in `haystack`, comparing each line
+/// without leading or trailing whitespace. Blank lines at either end of the
+/// needle are ignored.
+fn find_lines_ignoring_indentation(haystack: &str, needle: &str) -> LineMatch {
+    let wanted: Vec<&str> = needle.lines().map(str::trim).collect();
+    let first = wanted.iter().position(|line| !line.is_empty());
+    let last = wanted.iter().rposition(|line| !line.is_empty());
+    let (Some(first), Some(last)) = (first, last) else {
+        return LineMatch::None;
+    };
+    let wanted = &wanted[first..=last];
+
+    // (start offset, line without its line ending) for every line.
+    let mut lines = Vec::new();
+    let mut offset = 0;
+    for raw in haystack.split_inclusive('\n') {
+        let line = raw.trim_end_matches(['\n', '\r']);
+        lines.push((offset, line));
+        offset += raw.len();
+    }
+    if lines.len() < wanted.len() {
+        return LineMatch::None;
+    }
+
+    let mut found = Vec::new();
+    for start in 0..=lines.len() - wanted.len() {
+        let window = &lines[start..start + wanted.len()];
+        if window
+            .iter()
+            .zip(wanted)
+            .all(|((_, line), want)| line.trim() == *want)
+        {
+            let (first_offset, first_line) = window[0];
+            let (last_offset, last_line) = window[wanted.len() - 1];
+            let begin = first_offset + (first_line.len() - first_line.trim_start().len());
+            let end = last_offset + last_line.trim_end().len();
+            found.push(begin..end);
+        }
+    }
+    match found.len() {
+        0 => LineMatch::None,
+        1 => LineMatch::One(found.remove(0)),
+        count => LineMatch::Many(count),
+    }
 }
 
 async fn patch_document(

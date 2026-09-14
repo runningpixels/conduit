@@ -83,15 +83,12 @@ export function documentWriteDeveloperPromptFor(toolNames: readonly string[]): s
     'plan its structure in a few short lines at most, and do not draft the document, its copy or its styles in your reasoning.',
     'Write the content once, directly in the tool call, and pass title before the content.',
   ];
+  // Building a document in parts is not suggested up front: every part is a
+  // round of its own, and live it turned a one-call document into a
+  // multi-minute build even with room to spare. The agent loop asks for parts
+  // only after a write is actually cut off at the output limit.
   if (toolNames.includes('patch_document')) {
-    lines.push(
-      // One tool call has to fit in the model's output limit; a long document
-      // that does not is cut off and lost. Parts that each fit are not.
-      'For a long document — more than a few hundred lines, or many long sections — write it in parts:',
-      'first the full structure with a placeholder comment such as <!-- section: moons --> where each long section goes, with more_to_write: true;',
-      'then replace the placeholders with patch_document, one or two sections per call, with more_to_write: true on every call but the last.',
-      'To change part of an existing document, use patch_document rather than rewriting it.',
-    );
+    lines.push('To change part of an existing document, use patch_document rather than rewriting it.');
   }
   return lines.join(' ');
 }

@@ -59,10 +59,10 @@ describe('documentWriteDeveloperPromptFor', () => {
 });
 
 describe('documentWriteDeveloperPromptFor with patch_document', () => {
-  it('explains building a long document in parts only when patching is offered', () => {
+  it('points targeted changes at patch_document, without asking for parts up front', () => {
     const withPatch = documentWriteDeveloperPromptFor(['write_html_document', 'patch_document']) ?? '';
-    expect(withPatch).toContain('write it in parts');
-    expect(withPatch).toContain('more_to_write: true');
+    expect(withPatch).toContain('use patch_document rather than rewriting it');
+    expect(withPatch).not.toContain('in parts');
     expect(documentWriteDeveloperPromptFor(['write_html_document']) ?? '').not.toContain('patch_document');
   });
 });

@@ -480,7 +480,9 @@ pub struct AgentGuardrails {
     /// Maximum provider rounds (tool-call + continuation cycles) per user message.
     #[serde(default = "default_agent_max_steps")]
     pub max_steps: u32,
-    /// Wall-clock time limit in seconds for a single agent turn.
+    /// Wall-clock time limit in seconds for a single agent turn. Once it has
+    /// passed, no further provider round or tool step starts; a round that is
+    /// still streaming is allowed to finish rather than being cut off mid-output.
     #[serde(default = "default_agent_wall_clock_secs")]
     pub wall_clock_budget_secs: u32,
 }

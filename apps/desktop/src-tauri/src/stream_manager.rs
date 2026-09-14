@@ -1928,8 +1928,11 @@ impl StreamManager {
                     request_id: request_id.clone(),
                     error: provider_core::schema::ProviderError {
                         provider_code: None,
+                        // Reached only between steps: the step in progress was
+                        // allowed to finish (and its tools to run), so say that
+                        // rather than implying work was cut off.
                         message: format!(
-                            "Agent turn exceeded wall-clock budget ({wall_clock_secs}s). Increase it in Settings → Agent."
+                            "Agent turn reached its time limit ({wall_clock_secs}s). The step in progress finished, but no further steps were started. Increase the limit in Settings → Chat defaults → Turn time limit."
                         ),
                         retryable: false,
                     },
@@ -1975,7 +1978,6 @@ impl StreamManager {
             // Soft-cancel for this round only — steer cancels the child without
             // ending the turn; hard cancel cancels the parent and ends it.
             let round_cancel = cancel.child_token();
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             let round_fut = self.run_provider_round(
                 state,
                 current_request.clone(),
@@ -2000,30 +2002,26 @@ impl StreamManager {
                     // minimal aborted outcome so the loop can inject steer.
                     RoundOutcome { aborted: true, ..Default::default() }
                 }
-                timed = tokio::time::timeout(remaining, round_fut) => {
-                    match timed {
-                        Ok(outcome) => outcome,
-                        Err(_) => {
-                            warn!(
-                                request_id = %request_id,
-                                step,
-                                "provider round exceeded the remaining wall-clock budget"
-                            );
-                            terminal = Some(ProviderEvent::Error {
-                                request_id: request_id.clone(),
-                                error: provider_core::schema::ProviderError {
-                                    provider_code: None,
-                                    message: format!(
-                                        "Agent turn exceeded wall-clock budget ({wall_clock_secs}s) waiting on the provider. Increase it in Settings → Agent."
-                                    ),
-                                    retryable: false,
-                                },
-                            });
-                            break;
-                        }
-                    }
-                }
+                // No deadline on the round itself. The budget bounds how long the
+                // loop keeps *starting* work (checked at the top of each step);
+                // it used to also cut off a round in flight, which killed
+                // reasoning models mid-stream — 300s of visible thinking, then
+                // an error and nothing to show for it. A round that is still
+                // producing output is the one thing the budget should not
+                // interrupt. Silence is bounded separately: the transport ends a
+                // stream that sends nothing for `SSE_IDLE_TIMEOUT`, and output
+                // length by the request's `max_tokens`.
+                outcome = round_fut => outcome,
             };
+
+            if tokio::time::Instant::now() > deadline {
+                info!(
+                    request_id = %request_id,
+                    step,
+                    budget_secs = wall_clock_secs,
+                    "provider round finished past the wall-clock budget; no further rounds will start"
+                );
+            }
 
             if let Some(text) = steered_during_round.take() {
                 if let Err(e) = Self::apply_steer_message(

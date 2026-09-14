@@ -10,6 +10,8 @@ export type AgentGuardrails = {
  */
 maxSteps: number, 
 /**
- * Wall-clock time limit in seconds for a single agent turn.
+ * Wall-clock time limit in seconds for a single agent turn. Once it has
+ * passed, no further provider round or tool step starts; a round that is
+ * still streaming is allowed to finish rather than being cut off mid-output.
  */
 wallClockBudgetSecs: number, };

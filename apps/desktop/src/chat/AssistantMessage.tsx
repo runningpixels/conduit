@@ -63,6 +63,9 @@ interface AssistantMessageProps {
   onFork?: () => void;
   /// Whether this is the last persisted turn (gates retry/delete affordances).
   isLast?: boolean;
+  /// Live turn only: this model delivers documents all at once and this turn
+  /// offers document tools, so a long silence is explained up front.
+  documentWriteHeld?: boolean;
 }
 
 /** P3.3 — group consecutive same-name tool calls into one collapsible card. */
@@ -269,6 +272,7 @@ export function AssistantMessage({
   onFork,
   isLast = true,
   conversationId = null,
+  documentWriteHeld = false,
 }: AssistantMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
@@ -481,6 +485,7 @@ export function AssistantMessage({
             modelId={modelId}
             phase={state.agentPhase}
             lastActivityAt={state.lastEventAt}
+            heldDocument={documentWriteHeld}
             // Prose earlier in the turn must not hide the one signal that work
             // is still happening: while a document is written into a tool
             // call, or while the provider has gone quiet.

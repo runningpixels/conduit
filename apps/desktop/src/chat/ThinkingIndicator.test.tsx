@@ -49,6 +49,19 @@ describe('ThinkingIndicator', () => {
     ).toBeInTheDocument();
   });
 
+  it('explains the silence up front for a model known to hold documents back', () => {
+    render(
+      <ThinkingIndicator
+        phase={{ label: 'Thinking…', round: 1, subPhase: 'thinking' }}
+        lastActivityAt={Date.now() - 12_000}
+        heldDocument
+      />,
+    );
+    expect(
+      screen.getByText('still working · 12s — this model sends documents all at once'),
+    ).toBeInTheDocument();
+  });
+
   it('joins write progress and the silence notice', () => {
     render(
       <ThinkingIndicator

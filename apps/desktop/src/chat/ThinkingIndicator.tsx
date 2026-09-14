@@ -25,6 +25,9 @@ export interface ThinkingIndicatorProps {
    *  indicator adds "still working · 12s" so silence reads as waiting, not
    *  as a hang. */
   lastActivityAt?: number;
+  /** This model is known to deliver documents all at once, and this turn may
+   *  write one: silence is explained from the start of the stall. */
+  heldDocument?: boolean;
 }
 
 /** Minimum time (ms) the indicator should stay visible to prevent flicker. */
@@ -36,6 +39,7 @@ export function ThinkingIndicator({
   message,
   visible = true,
   lastActivityAt,
+  heldDocument = false,
 }: ThinkingIndicatorProps) {
   const t = useT();
   const [show, setShow] = useState(visible);
@@ -74,7 +78,7 @@ export function ThinkingIndicator({
   const bareLabel = label.replace(/(…|\.\.\.)\s*$/, '');
   const detail = [
     phase?.detail,
-    stillWorkingText(lastActivityAt, now, t),
+    stillWorkingText(lastActivityAt, now, t, { heldDocument }),
   ]
     .filter(Boolean)
     .join(' · ');

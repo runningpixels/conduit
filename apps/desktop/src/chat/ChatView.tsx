@@ -112,6 +112,7 @@ import {
   documentWriteDetail,
   documentWriteLabel,
 } from './documentWriteScan';
+import { readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
 import {
   documentWriteDeveloperPromptFor,
   informationalDeveloperPromptFor,
@@ -618,6 +619,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   /** When true, the in-flight handleSend finally must not auto-drain (Send now). */
   const skipNextDrainRef = useRef(false);
   const [agentPhase, setAgentPhase] = useState<AssistantStreamState['agentPhase']>(undefined);
+  /** The live turn offers document tools to a model known to send documents
+   *  all at once (`streamingBehavior.ts`). */
+  const [activeTurnDocumentWriteHeld, setActiveTurnDocumentWriteHeld] = useState(false);
 
   const queuedForConversation = listFor(messageQueues, conversationId);
 
@@ -1144,6 +1148,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
     const initialStream = createAssistantStreamState(request.requestId, searchBackend);
+    setActiveTurnDocumentWriteHeld(
+      toolDefinitions.some((tool) => isDocumentContentTool(tool.name)) &&
+        readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
+    );
     providerToolByCallIdRef.current = {};
     pendingRuntimeCallsRef.current = new Set();
     activeRequestRef.current = {
@@ -1264,6 +1272,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             providerToolByCallIdRef.current[event.toolCallId] ??
             next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId)?.name;
           if (toolName && isDocumentContentTool(toolName)) {
+            const finishedCall = next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
+            if (finishedCall) {
+              recordDocumentWrite(settings.activeProvider, settings.activeModel, finishedCall);
+            }
             const title =
               typeof event.arguments?.title === 'string' ? event.arguments.title : undefined;
             const artifactId =
@@ -2219,6 +2231,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               switchedFrom={liveTurnInfo.switchedFrom}
               showModelLine={liveTurnInfo.showModelLine}
               conversationId={conversationId}
+              documentWriteHeld={activeTurnDocumentWriteHeld}
             />
           )}
         </div>

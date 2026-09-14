@@ -1212,5 +1212,6 @@
   "settings.agent.finishAfterDocumentWrite.hint": "Termine le tour dès qu’un document est enregistré, sans attendre que l’assistant le décrive. Plus rapide ; désactivez pour obtenir un message de conclusion.",
   "workspace.documentPanel.pending.peek": "Aperçu en direct",
   "workspace.documentPanel.pending.peekHint": "Afficher le document pendant sa rédaction. Ses scripts s’exécutent une fois qu’il est terminé.",
-  "workspace.documentPanel.pending.peekTooLarge": "Ce document est trop volumineux pour être prévisualisé pendant sa rédaction."
+  "workspace.documentPanel.pending.peekTooLarge": "Ce document est trop volumineux pour être prévisualisé pendant sa rédaction.",
+  "chat.stream.stillWorkingHeldDocument": "toujours en cours · {seconds}s — ce modèle envoie les documents d’un seul coup"
 }

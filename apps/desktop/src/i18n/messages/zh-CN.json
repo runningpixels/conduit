@@ -1212,5 +1212,6 @@
   "settings.agent.finishAfterDocumentWrite.hint": "文档保存后立即结束本轮，不等待助手描述。速度更快；如需结束语，请关闭此项。",
   "workspace.documentPanel.pending.peek": "实时预览",
   "workspace.documentPanel.pending.peekHint": "在编写过程中显示文档。文档完成后才会运行其中的脚本。",
-  "workspace.documentPanel.pending.peekTooLarge": "此文档过大，无法在编写过程中预览。"
+  "workspace.documentPanel.pending.peekTooLarge": "此文档过大，无法在编写过程中预览。",
+  "chat.stream.stillWorkingHeldDocument": "仍在处理 · {seconds}秒 — 此模型会一次性发送文档"
 }

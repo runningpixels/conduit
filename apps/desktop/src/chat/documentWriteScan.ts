@@ -262,9 +262,13 @@ export function stillWorkingText(
   lastActivityAt: number | undefined,
   now: number,
   t: Translate,
+  options: { heldDocument?: boolean } = {},
 ): string | undefined {
   if (lastActivityAt === undefined || !streamStalled(lastActivityAt, now)) return undefined;
   const seconds = Math.floor((now - lastActivityAt) / 1000);
+  // Known from earlier turns (streamingBehavior.ts): this model delivers a
+  // document all at once, so say so as soon as the silence starts to show.
+  if (options.heldDocument) return t('chat.stream.stillWorkingHeldDocument', { seconds });
   // Past half a minute the bare count stops reassuring. The common cause seen
   // in testing is a provider holding a whole tool call back and delivering it
   // at once (85s of silence, then the full document in under a second).

@@ -378,6 +378,10 @@ export function buildProviderRequest(
     : undefined;
   const documentWriteDevPrompt = documentWriteDeveloperPromptFor(
     toolDefinitions.map((tool) => tool.name),
+    {
+      heldDocuments:
+        readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
+    },
   );
   const developerPrompt =
     [compactionDevPrompt, infoDevPrompt, editDevPrompt, documentWriteDevPrompt, webSearchDevPrompt]

@@ -75,7 +75,14 @@ export function classifyDocumentTurnIntent(prompt: string): DocumentTurnIntent {
  * a document if one is written, not pressure to write one (see the comment on
  * `isCreationIntent` in `buildProviderRequest`).
  */
-export function documentWriteDeveloperPromptFor(toolNames: readonly string[]): string | undefined {
+export function documentWriteDeveloperPromptFor(
+  toolNames: readonly string[],
+  options: {
+    /** The active model was seen sending documents in one burst rather than
+     *  streaming them (`streamingBehavior.ts`). */
+    heldDocuments?: boolean;
+  } = {},
+): string | undefined {
   const offersDocumentWrites = toolNames.some((name) => /^(write|edit)_(html|markdown|text)_document$/.test(name));
   if (!offersDocumentWrites) return undefined;
   const lines = [
@@ -83,11 +90,23 @@ export function documentWriteDeveloperPromptFor(toolNames: readonly string[]): s
     'plan its structure in a few short lines at most, and do not draft the document, its copy or its styles in your reasoning.',
     'Write the content once, directly in the tool call, and pass title before the content.',
   ];
-  // Building a document in parts is not suggested up front: every part is a
-  // round of its own, and live it turned a one-call document into a
+  // Building a document in parts is not suggested to every model: each part is
+  // a round of its own, and live it turned a one-call document into a
   // multi-minute build even with room to spare. The agent loop asks for parts
-  // only after a write is actually cut off at the output limit.
+  // after a write is actually cut off at the output limit.
+  //
+  // The exception is a model that sends a document in one burst. Nothing
+  // arrives while it writes, and a long document meant two minutes of silence
+  // that OpenRouter ended with "Upstream idle timeout exceeded", twice in a
+  // row. Parts keep each silence short.
   if (toolNames.includes('patch_document')) {
+    if (options.heldDocuments) {
+      lines.push(
+        'For a long document — more than about 200 lines — write it in parts:',
+        'first the full structure with a placeholder comment such as <!-- section: moons --> where each long section goes, with more_to_write: true;',
+        'then replace the placeholders with patch_document, one or two sections per call, with more_to_write: true on every call but the last.',
+      );
+    }
     lines.push('To change part of an existing document, use patch_document rather than rewriting it.');
   }
   return lines.join(' ');

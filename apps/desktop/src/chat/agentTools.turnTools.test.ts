@@ -66,3 +66,14 @@ describe('documentWriteDeveloperPromptFor with patch_document', () => {
     expect(documentWriteDeveloperPromptFor(['write_html_document']) ?? '').not.toContain('patch_document');
   });
 });
+
+describe('documentWriteDeveloperPromptFor for a model that holds documents', () => {
+  it('asks for a long document in parts only when the model sends documents in one burst', () => {
+    const tools = ['write_html_document', 'patch_document'];
+    expect(documentWriteDeveloperPromptFor(tools, { heldDocuments: true })).toContain('write it in parts');
+    expect(documentWriteDeveloperPromptFor(tools, { heldDocuments: false })).not.toContain('in parts');
+    expect(documentWriteDeveloperPromptFor(['write_html_document'], { heldDocuments: true })).not.toContain(
+      'in parts',
+    );
+  });
+});

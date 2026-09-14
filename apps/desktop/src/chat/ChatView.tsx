@@ -151,6 +151,10 @@ export interface ChatViewHandle {
   editLastUserMessage: () => boolean;
   /// t0-6 — open the per-conversation chat settings popover (palette).
   openChatSettings: () => boolean;
+  /// The document tool call whose arguments are streaming right now, raw.
+  /// Read on demand by the document panel's live preview, so partial document
+  /// text never has to travel through app state on every fragment.
+  readActiveDocumentWrite: () => { toolName: string; argumentsText: string } | null;
 }
 
 interface ChatViewProps {
@@ -1449,6 +1453,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   useImperativeHandle(ref, () => ({
     stopStreaming: () => {
       void handleCancel();
+    },
+    readActiveDocumentWrite: () => {
+      const state = streamStateRef.current;
+      const write = activeDocumentWrite(state);
+      const call = write && state?.toolCalls.find((tc) => tc.toolCallId === write.toolCallId);
+      return call ? { toolName: call.name, argumentsText: call.argumentsText } : null;
     },
     isStreaming: () => activeRequestRef.current != null,
     copyLastAssistantMessage: async () => {

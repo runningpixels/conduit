@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { BrandConfig } from '@conduit/config-schema';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { DocumentPanel } from './DocumentPanel';
@@ -311,6 +311,35 @@ describe('DocumentPanel chrome', () => {
     });
     expect(screen.getByText(/42 lines/)).toBeInTheDocument();
     expect(screen.queryByText(/still working/)).not.toBeInTheDocument();
+  });
+
+  it('offers a live preview only while content is streaming, off by default', () => {
+    const pending = {
+      kind: 'html' as const,
+      title: 'Guide',
+      toolName: 'write_html_document',
+      mode: 'create' as const,
+      startedAt: Date.now(),
+    };
+    const readLiveDocument = () => ({ toolName: 'write_html_document', argumentsText: '{"html":"<h1>Hi' });
+    renderPanel({ artifact: null, openArtifacts: [], pendingArtifact: pending, docTab: 'preview', readLiveDocument });
+    expect(screen.queryByRole('button', { name: 'Live preview' })).not.toBeInTheDocument();
+    cleanup();
+
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: { ...pending, progress: { contentChars: 12, contentLines: 1, lastActivityAt: Date.now() } },
+      docTab: 'preview',
+      readLiveDocument,
+    });
+    const toggle = screen.getByRole('button', { name: 'Live preview' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(document.querySelector('.artifact-skeleton')).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(document.querySelector('.live-preview')).not.toBeNull();
+    localStorage.removeItem('conduit:v10-document-peek');
   });
 
   it('says it is still working once the stream has gone quiet', () => {

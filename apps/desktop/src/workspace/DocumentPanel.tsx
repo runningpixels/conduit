@@ -18,7 +18,7 @@ import { inlineArtifactText } from '../artifacts/format';
 import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
 import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
-import { readExportMetadata } from '../shell/uiPrefs';
+import { readDocumentPeek, readExportMetadata, writeDocumentPeek } from '../shell/uiPrefs';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import type { PendingArtifact } from '../artifacts/pendingArtifact';
 import { applyBrand, applyBrandTheme, clearBrand } from '../brand/applyBrand';
@@ -28,6 +28,7 @@ import { useRichT, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { documentKindLabel } from '../lib/documentKind';
 import { useNow } from '../lib/useNow';
+import { LiveDocumentPreview, type LiveDocumentSource } from '../artifacts/LiveDocumentPreview';
 import { documentWriteDetail, stillWorkingText } from '../chat/documentWriteScan';
 
 type DocTab = 'preview' | 'source';
@@ -80,6 +81,8 @@ interface DocumentPanelProps {
   onToggleExpand?: () => void;
   /// Clear a failed pending artifact (the panel's Dismiss action).
   onDismissPending?: () => void;
+  /// The document tool call streaming right now, for the optional live preview.
+  readLiveDocument?: () => LiveDocumentSource | null;
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
   onStatus?: (message: string) => void;
   /** Validated `data:image/...` brand logo URI, threaded to the empty-state
@@ -146,13 +149,22 @@ function ArtifactPendingState({
   onCollapsePanel,
   collapseShortcutHint,
   onDismissPending,
+  readLiveDocument,
+  allowlist,
+  styledPreview,
+  effectiveTheme,
 }: {
   pending: PendingArtifact;
   onCollapsePanel?: () => void;
   collapseShortcutHint?: string;
   onDismissPending?: () => void;
+  readLiveDocument?: () => LiveDocumentSource | null;
+  allowlist: string[];
+  styledPreview: boolean;
+  effectiveTheme: ArtifactColorScheme;
 }) {
   const t = useT();
+  const [peek, setPeek] = useState(() => readDocumentPeek() === 'on');
   const kindLabel = documentKindLabel(pending.kind, t);
   const title = pending.title?.trim() || t('workspace.documentPanel.pending.title', { kind: kindLabel });
   const isEdit = pending.mode === 'edit';
@@ -169,6 +181,16 @@ function ArtifactPendingState({
     : isEdit
       ? t('workspace.documentPanel.pending.statusUpdating')
       : t('workspace.documentPanel.pending.statusGenerating');
+  // Offered only while content is actually streaming in: a provider that sends
+  // the whole document at once has nothing to preview until it is done.
+  const canPeek =
+    readLiveDocument !== undefined && !failed && !isEdit && !pending.produced && (pending.progress?.contentChars ?? 0) > 0;
+  const peeking = canPeek && peek;
+  function togglePeek() {
+    const next = !peek;
+    setPeek(next);
+    writeDocumentPeek(next ? 'on' : 'off');
+  }
 
   return (
     <section
@@ -185,8 +207,20 @@ function ArtifactPendingState({
           </div>
         </div>
         <span className="doc-toolbar-spacer" />
-        {onCollapsePanel && (
+        {(onCollapsePanel || canPeek) && (
           <div className="doc-actions">
+            {canPeek && (
+              <button
+                className="btn ghost live-preview-toggle"
+                type="button"
+                aria-pressed={peek}
+                title={t('workspace.documentPanel.pending.peekHint')}
+                onClick={togglePeek}
+              >
+                {t('workspace.documentPanel.pending.peek')}
+              </button>
+            )}
+            {onCollapsePanel && (
             <button
               className="icon-btn"
               type="button"
@@ -201,6 +235,7 @@ function ArtifactPendingState({
             >
               <ChevronRight />
             </button>
+            )}
           </div>
         )}
       </div>
@@ -220,6 +255,19 @@ function ArtifactPendingState({
                 {t('common.actions.dismiss')}
               </button>
             )}
+          </div>
+        ) : peeking && readLiveDocument ? (
+          <div className="artifact-pending peek">
+            <PendingWriteProgress pending={pending} className="artifact-pending-progress" />
+            <div className="live-preview">
+              <LiveDocumentPreview
+                kind={pending.kind}
+                readSource={readLiveDocument}
+                allowlist={allowlist}
+                styledPreview={styledPreview}
+                colorScheme={effectiveTheme}
+              />
+            </div>
           </div>
         ) : (
           <div className="artifact-pending">
@@ -272,6 +320,7 @@ export function DocumentPanel({
   expanded = false,
   onToggleExpand,
   onDismissPending,
+  readLiveDocument,
   onRenameArtifact,
   onStatus,
   logoSrc,
@@ -592,6 +641,10 @@ export function DocumentPanel({
         onCollapsePanel={onCollapsePanel}
         collapseShortcutHint={collapseHint}
         onDismissPending={onDismissPending}
+        readLiveDocument={readLiveDocument}
+        allowlist={allowlist}
+        styledPreview={styledPreview}
+        effectiveTheme={effectiveTheme}
       />
     );
   }

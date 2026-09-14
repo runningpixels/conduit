@@ -1209,5 +1209,8 @@
   "chat.stream.stillWorking": "toujours en cours · {seconds}s",
   "chat.stream.stillWorkingLong": "toujours en cours · {seconds}s — certains modèles envoient les longues réponses d’un seul coup",
   "settings.agent.finishAfterDocumentWrite.label": "Terminer après l’écriture d’un document",
-  "settings.agent.finishAfterDocumentWrite.hint": "Termine le tour dès qu’un document est enregistré, sans attendre que l’assistant le décrive. Plus rapide ; désactivez pour obtenir un message de conclusion."
+  "settings.agent.finishAfterDocumentWrite.hint": "Termine le tour dès qu’un document est enregistré, sans attendre que l’assistant le décrive. Plus rapide ; désactivez pour obtenir un message de conclusion.",
+  "workspace.documentPanel.pending.peek": "Aperçu en direct",
+  "workspace.documentPanel.pending.peekHint": "Afficher le document pendant sa rédaction. Ses scripts s’exécutent une fois qu’il est terminé.",
+  "workspace.documentPanel.pending.peekTooLarge": "Ce document est trop volumineux pour être prévisualisé pendant sa rédaction."
 }

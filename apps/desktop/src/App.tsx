@@ -1729,6 +1729,7 @@ export default function App() {
           openArtifacts={openArtifacts}
           fileStateMap={fileStateMap}
           activeFileState={activeFileState}
+          readLiveDocument={() => chatViewRef.current?.readActiveDocumentWrite() ?? null}
           allowlist={settings.artifactRemoteAllowlist}
           styledPreview={settings.artifactStyledPreview}
           effectiveTheme={effectiveTheme}

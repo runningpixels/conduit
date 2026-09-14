@@ -1209,5 +1209,8 @@
   "chat.stream.stillWorking": "계속 작업 중 · {seconds}초",
   "chat.stream.stillWorkingLong": "계속 작업 중 · {seconds}초 — 일부 모델은 긴 응답을 한 번에 보냅니다",
   "settings.agent.finishAfterDocumentWrite.label": "문서를 작성하면 종료",
-  "settings.agent.finishAfterDocumentWrite.hint": "문서가 저장되는 즉시 턴을 끝내고 어시스턴트의 설명을 기다리지 않습니다. 더 빠르며, 마무리 메시지를 받으려면 끄세요."
+  "settings.agent.finishAfterDocumentWrite.hint": "문서가 저장되는 즉시 턴을 끝내고 어시스턴트의 설명을 기다리지 않습니다. 더 빠르며, 마무리 메시지를 받으려면 끄세요.",
+  "workspace.documentPanel.pending.peek": "실시간 미리보기",
+  "workspace.documentPanel.pending.peekHint": "작성 중인 문서를 보여줍니다. 스크립트는 문서가 완성된 뒤 실행됩니다.",
+  "workspace.documentPanel.pending.peekTooLarge": "이 문서는 너무 커서 작성 중에 미리 볼 수 없습니다."
 }

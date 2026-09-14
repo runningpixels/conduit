@@ -83,8 +83,18 @@ const SIMPLE_ESCAPES: Record<string, string> = {
   f: '\f',
 };
 
-/** Feed one argument fragment into the scan. Pure: returns a new scan. */
-export function advanceDocumentWriteScan(scan: DocumentWriteScan, chunk: string): DocumentWriteScan {
+/**
+ * Feed one argument fragment into the scan. Pure: returns a new scan.
+ *
+ * capture, when given, receives the decoded content characters. Stream state
+ * never passes it — the scan kept there holds counts, not the document — but the
+ * live preview decodes on demand with it (decodePartialContent).
+ */
+export function advanceDocumentWriteScan(
+  scan: DocumentWriteScan,
+  chunk: string,
+  capture?: string[],
+): DocumentWriteScan {
   const s: DocumentWriteScan = { ...scan };
 
   const emit = (ch: string) => {
@@ -94,6 +104,7 @@ export function advanceDocumentWriteScan(scan: DocumentWriteScan, chunk: string)
     }
     if (s.role !== 'value') return;
     if (s.key === s.contentField) {
+      capture?.push(ch);
       s.contentChars += 1;
       if (ch === '\n') s.contentLines += 1;
     } else if (s.key === 'title' || s.key === 'filename') {
@@ -260,4 +271,17 @@ export function stillWorkingText(
   return now - lastActivityAt >= STREAM_STALL_LONG_MS
     ? t('chat.stream.stillWorkingLong', { seconds })
     : t('chat.stream.stillWorking', { seconds });
+}
+
+/**
+ * The document content received so far, decoded from a tool call's partial
+ * arguments (`ToolCallState.argumentsText`). `undefined` for tools that carry
+ * no document. Re-scans the whole text, so callers throttle it.
+ */
+export function decodePartialContent(toolName: string, argumentsText: string): string | undefined {
+  const scan = startDocumentWriteScan(toolName);
+  if (!scan) return undefined;
+  const capture: string[] = [];
+  advanceDocumentWriteScan(scan, argumentsText, capture);
+  return capture.join('');
 }

@@ -1209,5 +1209,8 @@
   "chat.stream.stillWorking": "ainda trabalhando · {seconds}s",
   "chat.stream.stillWorkingLong": "ainda trabalhando · {seconds}s — alguns modelos enviam respostas longas de uma vez",
   "settings.agent.finishAfterDocumentWrite.label": "Encerrar ao escrever um documento",
-  "settings.agent.finishAfterDocumentWrite.hint": "Encerra o turno assim que um documento é salvo, sem esperar o assistente descrevê-lo. Mais rápido; desative para receber uma mensagem final."
+  "settings.agent.finishAfterDocumentWrite.hint": "Encerra o turno assim que um documento é salvo, sem esperar o assistente descrevê-lo. Mais rápido; desative para receber uma mensagem final.",
+  "workspace.documentPanel.pending.peek": "Prévia ao vivo",
+  "workspace.documentPanel.pending.peekHint": "Mostra o documento enquanto é escrito. Os scripts rodam quando ele estiver pronto.",
+  "workspace.documentPanel.pending.peekTooLarge": "Este documento é grande demais para visualizar enquanto é escrito."
 }

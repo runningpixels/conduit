@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod error;
 pub mod fixtures;
 pub mod normalize;
+pub mod output_limits;
 pub mod retry;
 pub mod schema;
 pub mod transport;

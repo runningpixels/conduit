@@ -3,6 +3,7 @@ use crate::adapters::{
     message_text, missing_key, normalized_or_err, parse_fixture_stream, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
+use crate::output_limits::{anthropic_default_max_tokens, FINISH_REASON_LENGTH};
 use crate::schema::{
     ContentAnnotation, MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
     ProviderRequest, ToolChoice, WebSearchRequest,
@@ -23,6 +24,9 @@ struct AnthropicParser {
     blocks: HashMap<usize, String>,
     tool_calls: HashMap<usize, (String, String, String)>,
     search_result_blocks: HashSet<usize>,
+    /// Set from `message_delta.delta.stop_reason` when the response ran out of
+    /// output tokens.
+    finish_reason: Option<&'static str>,
 }
 
 impl AnthropicParser {
@@ -31,6 +35,7 @@ impl AnthropicParser {
             blocks: HashMap::new(),
             tool_calls: HashMap::new(),
             search_result_blocks: HashSet::new(),
+            finish_reason: None,
         }
     }
 }
@@ -210,6 +215,12 @@ impl StreamParser for AnthropicParser {
                 *index += 1;
             }
             "message_delta" => {
+                if matches!(
+                    value.pointer("/delta/stop_reason").and_then(Value::as_str),
+                    Some("max_tokens" | "model_context_window_exceeded")
+                ) {
+                    self.finish_reason = Some(FINISH_REASON_LENGTH);
+                }
                 if let Some(usage) = value.pointer("/usage") {
                     events.push(ProviderEvent::Usage {
                         request_id: request_id.to_string(),
@@ -272,6 +283,10 @@ impl StreamParser for AnthropicParser {
         }
 
         events
+    }
+
+    fn finish_reason(&self) -> Option<&str> {
+        self.finish_reason
     }
 }
 
@@ -418,9 +433,14 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         }
     }
 
+    let max_tokens = request
+        .generation_controls
+        .as_ref()
+        .and_then(|c| c.max_tokens)
+        .unwrap_or_else(|| anthropic_default_max_tokens(&request.model_id));
     let mut body = json!({
       "model": request.model_id,
-      "max_tokens": request.generation_controls.as_ref().and_then(|c| c.max_tokens).unwrap_or(4096),
+      "max_tokens": max_tokens,
       "messages": messages,
       "stream": true,
     });
@@ -1056,6 +1076,60 @@ mod tests {
             ),
             "expected a raw fallback completion, got {events:?}"
         );
+    }
+
+    #[test]
+    fn max_tokens_stop_is_reported_as_length() {
+        let fixture = [
+            r#"data: {"type":"message_start","message":{"id":"msg_1"}}"#,
+            r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"write_html_document","input":{}}}"#,
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"title\": \"Report\", \"html\": \"<h1>cut"}}"#,
+            r#"data: {"type":"content_block_stop","index":0}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"max_tokens","stop_sequence":null},"usage":{"output_tokens":64000}}"#,
+            r#"data: {"type":"message_stop"}"#,
+        ]
+        .join("\n");
+        let events = parse_fixture_stream(&mut AnthropicParser::new(), "req", &fixture, |line| {
+            line.strip_prefix("data:").map(str::trim)
+        });
+        assert!(
+            matches!(
+                events.last(),
+                Some(ProviderEvent::MessageComplete { finish_reason, .. }) if finish_reason == "length"
+            ),
+            "expected a length completion, got {events:?}"
+        );
+    }
+
+    #[test]
+    fn end_turn_and_tool_use_stops_stay_stop() {
+        for reason in ["end_turn", "tool_use", "stop_sequence"] {
+            let mut parser = AnthropicParser::new();
+            let delta = format!(
+                r#"{{"type":"message_delta","delta":{{"stop_reason":"{reason}"}},"usage":{{"output_tokens":12}}}}"#
+            );
+            parser.parse_chunk("req", &delta, &mut 0);
+            assert_eq!(parser.finish_reason(), None, "{reason}");
+        }
+    }
+
+    #[test]
+    fn payload_uses_the_model_output_ceiling_unless_max_tokens_is_set() {
+        let body = build_payload(&NormalizedRequest {
+            request: user_request(None),
+        });
+        assert_eq!(body["max_tokens"], json!(64_000));
+
+        let mut request = user_request(None);
+        request.generation_controls = Some(crate::schema::GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: Some(2_048),
+            stop_sequences: None,
+            tool_choice: None,
+        });
+        let body = build_payload(&NormalizedRequest { request });
+        assert_eq!(body["max_tokens"], json!(2_048));
     }
 
     /// Clearing the base-URL field (empty string) must restore the default

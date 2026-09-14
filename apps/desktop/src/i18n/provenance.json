@@ -1210,7 +1210,8 @@
     "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
     "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
-    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae"
+    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2423,7 +2424,8 @@
     "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
     "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
-    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae"
+    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3636,7 +3638,8 @@
     "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
-    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae"
+    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4849,7 +4852,8 @@
     "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
-    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae"
+    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6062,7 +6066,8 @@
     "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
-    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae"
+    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7275,7 +7280,8 @@
     "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
-    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae"
+    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8488,6 +8494,7 @@
     "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
     "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
     "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588",
-    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae"
+    "chat.stream.stillWorking": "e8a83d18ca6b761881498bf9396d9fc5a782dcae",
+    "chat.stream.stillWorkingLong": "4429b8f6ec6b07f693f8c1d5b552d2d6082689ed"
   }
 }

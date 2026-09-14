@@ -199,6 +199,7 @@
   "chat.skills.source.workspace": "[Ŵöŕķšṕàçé ————]",
   "chat.skills.toggleAriaLabel": "[{action, select, disable {Ḍîšàḅļé {name}} other {Éñàḅļé {name}}} ——————]",
   "chat.stream.stillWorking": "[šťîļļ ŵöŕķîñĝ · {seconds}š —————— —]",
+  "chat.stream.stillWorkingLong": "[šťîļļ ŵöŕķîñĝ · {seconds}š — šöḿé ḿöḍéļš šéñḍ ļöñĝ ŕéšṕöñšéš àļļ àť öñçé —————— —————— —————— —————— ——]",
   "chat.suggestedPrompts.ariaLabel": "[Šüĝĝéšťéḍ ḟöļļöŵ-üṕš —————— ——]",
   "chat.thinking.default": "[Ťĥîñķîñĝ ————]",
   "chat.thinking.modelThinking": "[{modelId} îš ťĥîñķîñĝ —————]",

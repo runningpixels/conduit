@@ -199,6 +199,7 @@
   "chat.skills.source.workspace": "Espacio de trabajo",
   "chat.skills.toggleAriaLabel": "{action, select, disable {Desactivar {name}} other {Activar {name}}}",
   "chat.stream.stillWorking": "sigue trabajando · {seconds}s",
+  "chat.stream.stillWorkingLong": "sigue trabajando · {seconds}s — algunos modelos envían las respuestas largas de una vez",
   "chat.suggestedPrompts.ariaLabel": "Sugerencias de seguimiento",
   "chat.thinking.default": "Pensando",
   "chat.thinking.modelThinking": "{modelId} está pensando",

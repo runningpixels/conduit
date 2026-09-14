@@ -1206,5 +1206,6 @@
   "chat.documentWrite.updatingKind": "{kind, select, markdown {Markdown} html {HTML} other {テキスト}} ドキュメントを更新しています…",
   "chat.documentWrite.progress": "{lines, plural, other {#行}} · {size}",
   "chat.toolCall.status.writing": "作成中…",
-  "chat.stream.stillWorking": "処理を続けています · {seconds}秒"
+  "chat.stream.stillWorking": "処理を続けています · {seconds}秒",
+  "chat.stream.stillWorkingLong": "処理を続けています · {seconds}秒 — 長い応答をまとめて送るモデルもあります"
 }

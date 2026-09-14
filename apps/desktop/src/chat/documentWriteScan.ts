@@ -28,6 +28,9 @@ export const CONTENT_FIELD_BY_TOOL: Record<string, string> = {
 /** How long a turn may go without a sign of life before the UI says it is still working. */
 export const STREAM_STALL_MS = 10_000;
 
+/** Silence long enough to say why it might be happening, not just that it is. */
+export const STREAM_STALL_LONG_MS = 30_000;
+
 /** Longest `title`/`filename` kept — a label, not a payload. */
 const MAX_LABEL_CHARS = 200;
 /** Longest top-level key tracked; real keys are short, anything longer is not one we want. */
@@ -250,5 +253,11 @@ export function stillWorkingText(
   t: Translate,
 ): string | undefined {
   if (lastActivityAt === undefined || !streamStalled(lastActivityAt, now)) return undefined;
-  return t('chat.stream.stillWorking', { seconds: Math.floor((now - lastActivityAt) / 1000) });
+  const seconds = Math.floor((now - lastActivityAt) / 1000);
+  // Past half a minute the bare count stops reassuring. The common cause seen
+  // in testing is a provider holding a whole tool call back and delivering it
+  // at once (85s of silence, then the full document in under a second).
+  return now - lastActivityAt >= STREAM_STALL_LONG_MS
+    ? t('chat.stream.stillWorkingLong', { seconds })
+    : t('chat.stream.stillWorking', { seconds });
 }

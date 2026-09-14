@@ -1206,5 +1206,6 @@
   "chat.documentWrite.updatingKind": "正在更新 {kind, select, markdown {Markdown} html {HTML} other {文本}} 文档…",
   "chat.documentWrite.progress": "{lines, plural, other {# 行}} · {size}",
   "chat.toolCall.status.writing": "写入中…",
-  "chat.stream.stillWorking": "仍在处理 · {seconds}秒"
+  "chat.stream.stillWorking": "仍在处理 · {seconds}秒",
+  "chat.stream.stillWorkingLong": "仍在处理 · {seconds}秒 — 部分模型会一次性发送较长的回复"
 }

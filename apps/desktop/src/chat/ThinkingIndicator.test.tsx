@@ -31,10 +31,22 @@ describe('ThinkingIndicator', () => {
     render(
       <ThinkingIndicator
         phase={{ label: 'Thinking…', round: 1, subPhase: 'thinking' }}
+        lastActivityAt={Date.now() - 18_000}
+      />,
+    );
+    expect(screen.getByText('still working · 18s')).toBeInTheDocument();
+  });
+
+  it('says why after half a minute of silence', () => {
+    render(
+      <ThinkingIndicator
+        phase={{ label: 'Thinking…', round: 1, subPhase: 'thinking' }}
         lastActivityAt={Date.now() - 42_000}
       />,
     );
-    expect(screen.getByText('still working · 42s')).toBeInTheDocument();
+    expect(
+      screen.getByText('still working · 42s — some models send long responses all at once'),
+    ).toBeInTheDocument();
   });
 
   it('joins write progress and the silence notice', () => {

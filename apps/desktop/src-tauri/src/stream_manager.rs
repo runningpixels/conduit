@@ -246,6 +246,18 @@ pub fn tool_call_arguments_cut_off(call: &CompletedToolCall) -> bool {
         .is_some_and(|args| args.len() == 1 && args.get("raw").is_some_and(|v| v.is_string()))
 }
 
+/// True when a round's reported output tokens reached the output limit it ran
+/// under. `false` when either number is unknown.
+pub fn reached_output_limit(
+    usage: Option<&provider_core::schema::ProviderUsage>,
+    limit: Option<u32>,
+) -> bool {
+    match (usage.and_then(|u| u.output_tokens), limit) {
+        (Some(used), Some(limit)) => used >= u64::from(limit),
+        _ => false,
+    }
+}
+
 /// The document title from a write's partial arguments, when the model got as
 /// far as writing one.
 fn partial_document_title(call: &CompletedToolCall) -> Option<String> {
@@ -1013,7 +1025,7 @@ impl StreamManager {
 
             let is_completion = matches!(event, ProviderEvent::MessageComplete { .. });
             if let ProviderEvent::MessageComplete { finish_reason, .. } = &event {
-                hit_output_limit =
+                hit_output_limit |=
                     finish_reason == provider_core::output_limits::FINISH_REASON_LENGTH;
             }
             let withhold = is_completion && completion == CompletionDelivery::Deferred;
@@ -1037,6 +1049,12 @@ impl StreamManager {
                 break;
             }
         }
+
+        // Not every provider says so when it stops at the limit: OpenRouter
+        // serving GLM reported `stop` on rounds that produced exactly
+        // `max_tokens` and ended mid-argument. Output that reached the known
+        // limit was cut off, whatever the stop reason claims.
+        hit_output_limit |= reached_output_limit(round_usage.as_ref(), output_limit);
 
         // Cleanup active stream entry (registered by caller via register_stream)
         // only when this round owns the slot. The agent loop keeps the canonical
@@ -2334,6 +2352,20 @@ impl StreamManager {
                         tool = cut_off.map(|call| call.name.as_str()).unwrap_or(""),
                         "round stopped at the output-token limit; ending the turn"
                     );
+                    // None of this round's calls run; without a finish their
+                    // cards read as if they had.
+                    for call in &runnable {
+                        let _ = channel.send(ProviderEvent::ToolExecutionFinished {
+                            request_id: request_id.clone(),
+                            tool_call_id: call.tool_call_id.clone(),
+                            tool_name: call.name.clone(),
+                            is_error: true,
+                            error: Some(
+                                "Not run: the model reached its output limit in this step."
+                                    .to_string(),
+                            ),
+                        });
+                    }
                     terminal = Some(ProviderEvent::Error {
                         request_id: request_id.clone(),
                         error: provider_core::schema::ProviderError {

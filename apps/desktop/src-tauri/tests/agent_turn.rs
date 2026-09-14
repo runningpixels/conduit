@@ -20,8 +20,9 @@ use conduit_desktop::{
 };
 use futures::stream::{Stream, StreamExt};
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind,
-    MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest, ToolDefinition,
+    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, GenerationControls, Message, MessagePart,
+    MessagePartKind, MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest,
+    ToolDefinition,
 };
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
@@ -289,6 +290,14 @@ impl Turn {
 }
 
 async fn run_turn(rounds: Vec<Round>, agent: AgentGuardrails) -> Turn {
+    run_turn_with_max_tokens(rounds, agent, None).await
+}
+
+async fn run_turn_with_max_tokens(
+    rounds: Vec<Round>,
+    agent: AgentGuardrails,
+    max_tokens: Option<u32>,
+) -> Turn {
     let pool = common::setup_pool().await;
     let conversation = conversations::create(&pool, None).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -353,7 +362,13 @@ async fn run_turn(rounds: Vec<Round>, agent: AgentGuardrails) -> Turn {
             tool("write_html_document", "Documents"),
             tool("current_time", "Utilities"),
         ],
-        generation_controls: None,
+        generation_controls: max_tokens.map(|max_tokens| GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: Some(max_tokens),
+            stop_sequences: None,
+            tool_choice: None,
+        }),
         response_format: None,
         web_search: None,
     };
@@ -580,9 +595,10 @@ async fn a_document_cut_off_by_the_output_limit_ends_the_turn_with_a_clear_error
     .await;
 
     assert_eq!(turn.rounds_started, 1, "retrying would hit the same limit");
-    assert!(
-        turn.tool_executions().is_empty(),
-        "unreadable arguments must not reach the tool"
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)],
+        "the call is reported as not run, never executed"
     );
     assert!(
         matches!(
@@ -681,4 +697,81 @@ fn the_cut_off_message_names_the_limit_and_the_document() {
 
     let message = output_limit_cut_off_message(&call("current_time", r#"{"zone": "#), Some(900));
     assert!(message.contains("input for current_time"), "{message}");
+}
+
+/// `round` with a `Usage` event reporting `output_tokens` before it completes.
+fn using_output_tokens(round: Round, output_tokens: u64) -> Round {
+    Arc::new(move |rid: &str| {
+        let mut steps = round(rid);
+        let at = steps.len().saturating_sub(1);
+        steps.insert(
+            at,
+            Step::Event(ProviderEvent::Usage {
+                request_id: rid.to_string(),
+                usage: provider_core::schema::ProviderUsage {
+                    input_tokens: Some(2_720),
+                    output_tokens: Some(output_tokens),
+                    cache_tokens: None,
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                    cost_hint: None,
+                },
+            }),
+        );
+        steps
+    })
+}
+
+#[tokio::test]
+async fn output_at_the_limit_counts_as_cut_off_even_when_the_provider_says_stop() {
+    // Recorded live: OpenRouter serving GLM ended each round with `stop` after
+    // exactly max_tokens of output, the write's arguments cut off mid-HTML.
+    let cut_off = json!({ "raw": "{\"title\": \"Solar System\", \"html\": \"<h2>Jupiter</h2><table><tr><th colspan=" });
+    let turn = run_turn_with_max_tokens(
+        vec![
+            using_output_tokens(
+                finishing_with(
+                    tool_round(vec![("write_html_document", cut_off)], Duration::ZERO),
+                    "stop",
+                ),
+                3_000,
+            ),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+        Some(3_000),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 1);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)]
+    );
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. }
+                if error.message.contains("output limit (3,000 tokens)")
+                    && error.message.contains("“Solar System”")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn output_below_the_limit_with_a_stop_is_not_cut_off() {
+    let turn = run_turn_with_max_tokens(
+        vec![using_output_tokens(text_round("Short answer."), 120)],
+        guardrails(25, 300),
+        Some(3_000),
+    )
+    .await;
+
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"),
+        "got {:?}",
+        turn.terminal()
+    );
 }

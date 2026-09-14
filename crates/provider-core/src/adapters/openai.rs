@@ -353,7 +353,12 @@ impl StreamParser for OpenAiParser {
                     .get("finish_reason")
                     .and_then(|v| v.as_str())
                     .filter(|s| !s.is_empty());
-                if finish == Some("length") {
+                // OpenRouter normalizes `finish_reason` and passes the upstream
+                // model's own value as `native_finish_reason`.
+                let native = choice.get("native_finish_reason").and_then(|v| v.as_str());
+                if finish == Some("length")
+                    || matches!(native, Some("length" | "max_tokens" | "MAX_TOKENS"))
+                {
                     self.finish_reason = Some(FINISH_REASON_LENGTH);
                 }
                 if finish.is_some() {
@@ -2208,6 +2213,14 @@ mod tests {
         let raw = raw_arguments_for(&events, "call_doc_1")
             .expect("the cut-off call must complete with its partial arguments");
         assert!(raw.ends_with("Revenue grew"), "{raw}");
+        assert_eq!(last_finish_reason(&events), Some("length"));
+    }
+
+    #[test]
+    fn openrouter_native_finish_reason_length_is_reported_as_length() {
+        let fixture = include_str!("../../tests/fixtures/openai/tool_call_native_length.sse");
+        let events = parse_fixture("req-native", fixture);
+        assert!(raw_arguments_for(&events, "call_doc_3").is_some());
         assert_eq!(last_finish_reason(&events), Some("length"));
     }
 

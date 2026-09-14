@@ -260,6 +260,43 @@ describe('Onboarding (Phase 6 M6.4)', () => {
       );
     });
 
+    /* Found as a CI flake on the test above. The dropdown renders its fallback
+     * brand list until `listProviderDescriptors()` answers, and locality used to
+     * come only from the loaded descriptor — so picking a cloud provider in that
+     * window, or at all when the call fails, wrote `activeProvider: 'openai'`
+     * beside `localOnly: true`. Both cases are pinned, deterministically. */
+    it.each([
+      ['has not answered yet', () => new Promise<never>(() => {})],
+      ['failed', () => Promise.reject(new Error('ipc down'))],
+    ])('clears local-only for a cloud provider when the descriptor list %s', async (_label, pending) => {
+      vi.mocked(listProviderDescriptors).mockImplementationOnce(pending as never);
+      const { onSettingsChange, onStatus } = renderOnboarding();
+      goToStep(/· Provider/i);
+      const select = await screen.findByDisplayValue('Anthropic');
+      fireEvent.change(select, { target: { value: 'openai' } });
+
+      expect(onSettingsChange).toHaveBeenCalledWith(
+        expect.objectContaining({ activeProvider: 'openai', localOnly: false }),
+      );
+      expect(onStatus).toHaveBeenCalledWith(expect.stringContaining('OpenAI'));
+    });
+
+    it.each([['ollama'], ['lmstudio'], ['openai_compat']])(
+      'still treats %s as local before the descriptor list answers',
+      async (id) => {
+        vi.mocked(listProviderDescriptors).mockImplementationOnce(() => new Promise<never>(() => {}));
+        const { onSettingsChange, onStatus } = renderOnboarding();
+        goToStep(/· Provider/i);
+        const select = await screen.findByDisplayValue('Anthropic');
+        fireEvent.change(select, { target: { value: id } });
+
+        expect(onSettingsChange).toHaveBeenCalledWith(
+          expect.objectContaining({ activeProvider: id, localOnly: true }),
+        );
+        expect(onStatus).not.toHaveBeenCalled();
+      },
+    );
+
     it('leaves local-only mode alone when a local provider is chosen', async () => {
       // One-way. Running a local model once is not a request to start blocking
       // cloud providers, and that flag reaches well beyond this dropdown.

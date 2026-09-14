@@ -95,6 +95,12 @@ If a settings/onboarding button "does nothing":
    serialize to a string or object, not an `Error` — a single shared
    `describeInvokeError` helper covers the shapes. (The chat path has its own
    copy in `ChatView.tsx`; a shared util is a future cleanup.)
+   *Resolved (2026-09-13):* the shared layer is `apps/desktop/src/ipc/errors.ts`.
+   Every command in `client.ts` goes through `invokeCommand`, which normalises
+   any rejection to an `IpcError`, and `translateError` turns that into a
+   sentence. `ChatView.tsx` keeps `describeInvokeError` only because its catch
+   sites also see plain JS errors and `null`, which `toIpcError` would render
+   as `Error: …` / `undefined`.
 
 ## Files touched
 

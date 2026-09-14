@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Six more providers: xAI, Z.ai, Moonshot AI, Qwen, Together AI and Fireworks
+  AI. Each takes an API key like the others, and each has a base URL field for
+  regional or self-hosted endpoints — Qwen and Moonshot default to their
+  international endpoints.
+- Anthropic and OpenAI have a base URL field too, so either can point at a
+  compatible endpoint such as Z.ai's Anthropic-compatible API or a LiteLLM
+  proxy. Hosted web search is only offered on the official endpoints.
 - Themes go beyond colour. A theme now sets the type, corner radii, borders,
   elevation and motion as well as the palette, and one Theme picker in
   Settings → Appearance (and in first-run setup) chooses it. Six new themes
@@ -23,8 +30,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Optional automatic updates. Settings → About gains an Automatic updates
   choice: only when you check (the default, unchanged), tell me when an update
   is available — checked shortly after launch and then daily — or install when
-  you quit, which also downloads and verifies the update in the background. Nothing is checked while a reply is streaming,
-  and turning update checks off still means no network request at all.
+  you quit, which also downloads and verifies the update in the background —
+  never while a reply is streaming. Turning update checks off still means no
+  network request at all.
   Automatic is not offered for the Linux `.deb`, which would need a password
   prompt after the window has closed.
 - The sidebar can be resized by dragging its edge, from the keyboard, or reset
@@ -60,6 +68,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Picking a cloud provider in first-run setup or Settings before the provider
+  list had finished loading — or when it failed to load — left local-only mode
+  on, so the first message failed with an error about a setting the user had
+  never seen. Local-only is now turned off for any cloud provider, whether or
+  not the list has arrived.
+- The model menu labelled models from OpenRouter, Groq, DeepSeek, Mistral and
+  other cloud providers "self-hosted" whenever it had no price for them.
 - On a narrow window the sidebar and artifact panel were hidden and their
   toggles did nothing, so no conversation or artifact could be reached with a
   mouse. They now open as overlays over the chat.

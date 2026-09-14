@@ -19,7 +19,7 @@
 
 Conduit is a desktop chat client for large language models, built on Tauri 2
 with a Rust core and a React renderer. You bring your own API key, talk to any
-of eleven providers, and everything — conversations, attachments, artifacts —
+of seventeen providers, and everything — conversations, attachments, artifacts —
 is stored locally in a SQLite database on your own disk, with optional
 encryption at rest. There is no Conduit account, no backend, and no telemetry.
 
@@ -36,8 +36,8 @@ encryption at rest. There is no Conduit account, no backend, and no telemetry.
   if the key is unavailable and encrypted data exists, the app refuses to start
   rather than fall back to plaintext.
 - **Bring your own provider.** Anthropic, OpenAI, Gemini, OpenRouter, OpenCode
-  Zen, Groq, DeepSeek, Mistral, LM Studio, Ollama, and any OpenAI-compatible
-  endpoint.
+  Zen, Groq, DeepSeek, Mistral, xAI, Z.ai, Moonshot AI, Qwen, Together AI,
+  Fireworks AI, LM Studio, Ollama, and any OpenAI-compatible endpoint.
 - **MCP connectors with a real consent gate.** Local stdio and remote
   streamable-HTTP Model Context Protocol servers run under a supervisor with
   restart backoff, a concurrency cap, and per-call timeouts. Side-effecting tools prompt before they run, tool
@@ -81,7 +81,7 @@ rather than a 1.0. Expect rough edges.
 
 | Area | State |
 |---|---|
-| Provider streaming (11 adapters, cancellation, normalization) | Working |
+| Provider streaming (17 providers, cancellation, normalization) | Working |
 | Local SQLite persistence, migrations, encryption at rest | Working |
 | MCP connector runtime (stdio and streamable HTTP, consent, supervision) | Working |
 | Artifacts — create, render, edit, export | Working |

@@ -307,6 +307,10 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   background: color-mix(in srgb, var(--hue) 8%, var(--card));
   border: 1px solid color-mix(in srgb, var(--hue) 30%, var(--line));
 }
+.doc-banner-progress {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
 .doc-pane { display: none; }
 [data-doc-tab="preview"] .doc-pane[data-doc-pane="preview"],
 [data-doc-tab="source"] .doc-pane[data-doc-pane="source"] { display: block; }
@@ -470,7 +474,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
     var(--card) 75%
   );
   background-size: 200% 100%;
-  animation: shimmer 1.8s ease-in-out infinite;
+  animation: artifact-shimmer 1.8s ease-in-out infinite;
 }
 .artifact-pending {
   display: flex;
@@ -487,6 +491,13 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   font-size: var(--fs-3xl);
   color: var(--ink-2);
 }
+/* Live size of the document being written — the part that visibly moves. */
+.artifact-pending-progress {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
 /* Failed generation: no skeleton, no shimmer — the panel stops implying work
    is still happening and states the reason instead. */
 .artifact-pending.failed {
@@ -495,7 +506,10 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .artifact-pending.failed .artifact-pending-copy {
   color: var(--err);
 }
-@keyframes shimmer {
+/* Its own name: keyframes are global, and chat.css's `shimmer` (an opacity
+   pulse for the thread skeleton) replaced this sweep for whichever sheet
+   loaded first, so one of the two skeletons never animated. */
+@keyframes artifact-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }

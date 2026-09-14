@@ -6,6 +6,7 @@ import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
 import type { Translate } from '../i18n';
 import { documentKindLabel } from '../lib/documentKind';
+import { CONTENT_FIELD_BY_TOOL } from './documentWriteScan';
 
 const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
@@ -87,7 +88,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_html_document',
     name: 'write_html_document',
     description:
-      `Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document.`,
+      `Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document. Give title before html so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'html', type: 'string', required: true },
@@ -113,7 +114,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_markdown_document',
     name: 'write_markdown_document',
     description:
-      `Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document.`,
+      `Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document. Give title before markdown so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'markdown', type: 'string', required: true },
@@ -139,7 +140,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_text_document',
     name: 'write_text_document',
     description:
-      `Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document.`,
+      `Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document. Give title before text so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'text', type: 'string', required: true },
@@ -405,7 +406,16 @@ export const DOCUMENT_CONTENT_TOOL_NAMES = new Set(
   [...DOCUMENT_TOOL_NAMES].filter((name) => name !== 'export_document'),
 );
 
-export type DocumentToolPhase = 'start' | 'complete' | 'error';
+/** `complete`: the model finished the arguments. `written`: the tool saved the document. */
+export type DocumentToolPhase = 'start' | 'progress' | 'complete' | 'written' | 'error';
+
+/** How much of a streaming document has arrived — see `documentWriteScan.ts`. */
+export interface DocumentWriteProgress {
+  contentChars: number;
+  contentLines: number;
+  /** Last time an argument fragment arrived; drives "still working". */
+  lastActivityAt: number;
+}
 
 export interface DocumentToolActivity {
   phase: DocumentToolPhase;
@@ -415,6 +425,8 @@ export interface DocumentToolActivity {
   artifactId?: string;
   /** Failure reason on `phase: 'error'`, shown in the document panel. */
   error?: string;
+  /** `phase: 'progress'` only. */
+  progress?: DocumentWriteProgress;
 }
 
 export function isDocumentContentTool(name: string): boolean {
@@ -601,16 +613,6 @@ export function resolveDocumentArtifactId(
   return artifactId;
 }
 
-// Content field names per document tool (for redaction + summary)
-const CONTENT_FIELD_BY_TOOL: Record<string, string> = {
-  write_html_document: 'html',
-  edit_html_document: 'updated_html',
-  write_markdown_document: 'markdown',
-  edit_markdown_document: 'updated_markdown',
-  write_text_document: 'text',
-  edit_text_document: 'updated_text',
-};
-
 /* Ids, not display words. These reach the UI through `documentKindLabel` and
  * an ICU `select`; a word here would be English in every locale. */
 const KIND_BY_TOOL: Record<string, string> = {
@@ -645,6 +647,19 @@ export interface DocumentToolSummary {
 /** Summarize a document tool call for compact display (no full content). */
 export function summarizeDocumentToolCall(toolCall: ToolCallState): DocumentToolSummary | undefined {
   if (!DOCUMENT_TOOL_NAMES.has(toolCall.name)) return undefined;
+  // Arguments are only parsed at `toolCallComplete`. Until then the streaming
+  // scan is the one place the title and size are known.
+  const live = toolCall.arguments === undefined ? toolCall.documentWrite : undefined;
+  if (live) {
+    return {
+      action: ACTION_BY_TOOL[toolCall.name] ?? 'document',
+      kind: KIND_BY_TOOL[toolCall.name] ?? 'document',
+      title: live.title?.trim() || undefined,
+      filename: live.filename?.trim() || undefined,
+      lineCount: live.contentLines,
+      charCount: live.contentChars,
+    };
+  }
   const args = toolCall.arguments ?? {};
   const contentField = CONTENT_FIELD_BY_TOOL[toolCall.name];
   const content = typeof args[contentField] === 'string' ? (args[contentField] as string) : '';

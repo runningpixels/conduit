@@ -12,6 +12,8 @@ import {
 import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
 import { useRichT, useT } from '../i18n';
 import { documentKindLabel } from '../lib/documentKind';
+import { useFormatters } from '../i18n/formatters';
+import { documentWriteDetail } from './documentWriteScan';
 import type { Translate } from '../i18n';
 
 interface ToolCallBlockProps {
@@ -87,6 +89,7 @@ export function ToolCallBlock({
 }: ToolCallBlockProps) {
   const t = useT();
   const tr = useRichT();
+  const fmt = useFormatters();
   const [resolving, setResolving] = useState(false);
   const [rememberScope, setRememberScope] = useState<'none' | 'conversation' | 'always'>('none');
   // Running calls (or a pending consent gate) start expanded; completed calls
@@ -120,11 +123,17 @@ export function ToolCallBlock({
   const anyRunning = activeCalls.some((c) => callTone(c) === 'run');
   const anyFailed = activeCalls.some((c) => callTone(c) === 'fail');
   const running = anyRunning;
+  // The model is still producing this call's document (arguments streaming),
+  // as opposed to the tool running on arguments it already has.
+  const writing =
+    !group && toolCall.documentWrite !== undefined && toolCall.arguments === undefined && anyRunning;
   const statusSuffix = anyFailed
     ? t('chat.toolCall.status.failed')
-    : anyRunning
-      ? t('chat.toolCall.status.running')
-      : '';
+    : writing
+      ? t('chat.toolCall.status.writing')
+      : anyRunning
+        ? t('chat.toolCall.status.running')
+        : '';
 
   const totalMs = activeCalls.reduce((acc, c) => {
     if (c.startedAt == null || c.endedAt == null) return acc;
@@ -181,13 +190,24 @@ export function ToolCallBlock({
     );
   } else if (isDocumentTool && docSummary) {
     name = t('chat.toolCall.documentsName');
-    summary = `${t('chat.toolCall.document.action', { action: docSummary.action })} · ${
-      docSummary.filename || docSummary.title || documentKindLabel(docSummary.kind, t)
-    }`;
+    const liveDetail = writing
+      ? documentWriteDetail(
+          { contentChars: docSummary.charCount, contentLines: docSummary.lineCount },
+          t,
+          fmt,
+        )
+      : undefined;
+    summary = [
+      t('chat.toolCall.document.action', { action: docSummary.action }),
+      docSummary.filename || docSummary.title || documentKindLabel(docSummary.kind, t),
+      liveDetail,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     const rows: [string, string][] = [];
     if (docSummary.title) rows.push(['title', docSummary.title]);
     if (docSummary.filename) rows.push(['file', docSummary.filename]);
-    if (docSummary.lineCount != null) rows.push(['lines', String(docSummary.lineCount)]);
+    if (docSummary.lineCount != null && !writing) rows.push(['lines', String(docSummary.lineCount)]);
     if (toolCall.arguments && typeof toolCall.arguments.artifact_id === 'string') {
       rows.push(['artifact', toolCall.arguments.artifact_id]);
     }

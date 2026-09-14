@@ -1200,5 +1200,11 @@
   "workspace.shortcuts.group.chat": "Chat",
   "workspace.shortcuts.group.general": "Geral",
   "workspace.shortcuts.group.layout": "Layout",
-  "workspace.shortcuts.title": "Atalhos de teclado"
+  "workspace.shortcuts.title": "Atalhos de teclado",
+  "chat.documentWrite.writingTitled": "Escrevendo “{title}”…",
+  "chat.documentWrite.writingKind": "Escrevendo documento {kind, select, markdown {Markdown} html {HTML} other {de texto}}…",
+  "chat.documentWrite.updatingKind": "Atualizando documento {kind, select, markdown {Markdown} html {HTML} other {de texto}}…",
+  "chat.documentWrite.progress": "{lines, plural, one {# linha} other {# linhas}} · {size}",
+  "chat.documentWrite.stillWorking": "ainda trabalhando",
+  "chat.toolCall.status.writing": "escrevendo…"
 }

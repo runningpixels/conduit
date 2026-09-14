@@ -1,5 +1,5 @@
 import type { ArtifactKind } from '../ipc/contracts';
-import { failedDocumentToolCalls } from '../chat/agentTools';
+import { failedDocumentToolCalls, type DocumentWriteProgress } from '../chat/agentTools';
 import type { AssistantStreamState } from '../chat/streamState';
 
 /** In-flight document tool create/edit shown in the artifact panel. */
@@ -14,6 +14,14 @@ export interface PendingArtifact {
   status?: 'generating' | 'failed';
   /** Why the generation stopped, shown on `status: 'failed'`. */
   error?: string;
+  /** How much of the document has streamed in. Absent before any content
+   *  arrives, and for providers that do not stream tool arguments. */
+  progress?: DocumentWriteProgress;
+  /** When this write started — the stall baseline until content arrives. */
+  startedAt?: number;
+  /** The model has finished producing the document; the tool is saving it.
+   *  Nothing is streaming any more, so there is nothing to call stalled. */
+  produced?: boolean;
 }
 
 /**

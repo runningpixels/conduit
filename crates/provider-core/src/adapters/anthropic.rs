@@ -513,6 +513,37 @@ fn withhold_hosted_search_off_anthropic(
     })
 }
 
+/// Opt every user-defined tool into fine-grained tool streaming.
+///
+/// Without `eager_input_streaming` the API buffers and validates each tool
+/// parameter before streaming it, so a `write_html_document` call delivers its
+/// whole `html` argument in one burst at the end — the UI has nothing to show
+/// for the entire time the document is being written. With it, fragments
+/// arrive as they are generated. The accumulated input may then be invalid
+/// JSON (e.g. a `max_tokens` stop mid-parameter); `content_block_stop` already
+/// falls back to `{ "raw": … }` rather than failing the stream.
+///
+/// Only the first-party endpoint gets the field: Anthropic-compatible third
+/// parties may reject an unknown tool property outright. Hosted server tools
+/// (`web_search_20250305`) are not user-defined and keep their shape.
+fn enable_eager_tool_input(body: &mut Value, resolved_base: &str) {
+    if !endpoint_supports_hosted_search(Some(resolved_base)) {
+        return;
+    }
+    let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for tool in tools {
+        let user_defined = match tool.get("type").and_then(Value::as_str) {
+            None => true,
+            Some(kind) => kind == "custom",
+        };
+        if user_defined {
+            tool["eager_input_streaming"] = json!(true);
+        }
+    }
+}
+
 pub(crate) fn endpoint_supports_hosted_search(base_url: Option<&str>) -> bool {
     const ANTHROPIC_HOSTED_SEARCH_HOSTS: &[&str] = &["api.anthropic.com"];
     let Some(raw) = base_url.filter(|s| !s.is_empty()) else {
@@ -680,7 +711,8 @@ impl ProviderAdapter for AnthropicAdapter {
 
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
-        let body = build_payload(&normalized);
+        let mut body = build_payload(&normalized);
+        enable_eager_tool_input(&mut body, &base_url(&ctx));
 
         let sse = post_sse(
             &ctx.http,
@@ -974,6 +1006,56 @@ mod tests {
         assert!(withhold_hosted_search_off_anthropic(&mut request, &base_url_for(None)).is_none());
         let body = build_payload(&NormalizedRequest { request });
         assert!(body.get("tools").is_some());
+    }
+
+    fn tools_body() -> Value {
+        json!({
+            "tools": [
+                { "name": "write_html_document", "input_schema": {} },
+                { "name": "uuid", "type": "custom", "input_schema": {} },
+                { "name": "web_search", "type": "web_search_20250305" },
+            ]
+        })
+    }
+
+    #[test]
+    fn official_endpoint_streams_user_tool_input_eagerly() {
+        let mut body = tools_body();
+        enable_eager_tool_input(&mut body, DEFAULT_BASE);
+        let tools = body["tools"].as_array().expect("tools array");
+        assert_eq!(tools[0]["eager_input_streaming"], json!(true));
+        assert_eq!(tools[1]["eager_input_streaming"], json!(true));
+        assert!(
+            tools[2].get("eager_input_streaming").is_none(),
+            "hosted server tool must keep its shape: {}",
+            tools[2]
+        );
+    }
+
+    #[test]
+    fn third_party_endpoint_gets_no_eager_tool_input_field() {
+        let mut body = tools_body();
+        enable_eager_tool_input(&mut body, "https://api.z.ai/api/anthropic");
+        assert_eq!(body, tools_body());
+    }
+
+    #[test]
+    fn truncated_eager_tool_input_still_completes_the_call() {
+        let mut parser = AnthropicParser::new();
+        let mut index = 0;
+        let start = r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"write_html_document","input":{}}}"#;
+        let delta = r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"html\": \"<p>cut off"}}"#;
+        let stop = r#"{"type":"content_block_stop","index":0}"#;
+        parser.parse_chunk("req", start, &mut index);
+        parser.parse_chunk("req", delta, &mut index);
+        let events = parser.parse_chunk("req", stop, &mut index);
+        assert!(
+            matches!(
+                events.as_slice(),
+                [ProviderEvent::ToolCallComplete { arguments, .. }] if arguments.get("raw").is_some()
+            ),
+            "expected a raw fallback completion, got {events:?}"
+        );
     }
 
     /// Clearing the base-URL field (empty string) must restore the default

@@ -9,6 +9,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AssistantStreamState } from './streamState';
 import { useT } from '../i18n';
+import { documentWriteStalled } from './documentWriteScan';
+import { useNow } from '../lib/useNow';
 
 export interface ThinkingIndicatorProps {
   /** Optional model identifier shown in the label. */
@@ -29,6 +31,7 @@ export function ThinkingIndicator({ modelId, phase, message, visible = true }: T
   const [show, setShow] = useState(visible);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shownAt = useRef<number | null>(null);
+  const now = useNow(show && phase?.lastActivityAt !== undefined);
 
   useEffect(() => {
     if (visible) {
@@ -56,6 +59,15 @@ export function ThinkingIndicator({ modelId, phase, message, visible = true }: T
   const label = message
     ?? phase?.label
     ?? (modelId ? t('chat.thinking.modelThinking', { modelId }) : t('chat.thinking.default'));
+  // Phase labels carry their own ellipsis ("Thinking…"); the indicator adds
+  // one too, which rendered "Thinking……".
+  const bareLabel = label.replace(/(…|\.\.\.)\s*$/, '');
+  const detail = [
+    phase?.detail,
+    documentWriteStalled(phase?.lastActivityAt, now) ? t('chat.documentWrite.stillWorking') : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="thinking-indicator" role="status" aria-live="polite">
@@ -64,7 +76,11 @@ export function ThinkingIndicator({ modelId, phase, message, visible = true }: T
         <span className="thinking-dot" />
         <span className="thinking-dot" />
       </span>
-      <span className="thinking-label">{label}&hellip;</span>
+      <span className="thinking-label">{bareLabel}&hellip;</span>
+      {/* Hidden from the live region: the counter changes with every streamed
+          fragment and would be read out continuously. The label carries the
+          announcement. */}
+      {detail && <span className="thinking-detail" aria-hidden="true">{detail}</span>}
     </div>
   );
 }

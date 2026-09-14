@@ -512,13 +512,37 @@ export default function App() {
     setPendingArtifact(null);
   }, []);
 
+  /** Bumped by every document write that starts, so an async open for an
+   *  earlier write can tell a newer one has taken over the panel. */
+  const documentWriteSeqRef = useRef(0);
+
   const handleDocumentToolActivity = useCallback(
     (activity: DocumentToolActivity) => {
+      // Opening the saved document needs the artifact list; see
+      // `handleDocumentWritten`, which `routeDocumentToolActivity` sends it to.
+      if (activity.phase === 'written') return;
+      if (activity.phase === 'start') documentWriteSeqRef.current += 1;
+
       if (activity.phase === 'error') {
         // Freeze the panel on the failure rather than dropping it: a skeleton
         // that silently disappears reads as "still thinking about it".
         setPendingArtifact((current) =>
           current ? { ...current, status: 'failed', error: activity.error } : null,
+        );
+        return;
+      }
+
+      if (activity.phase === 'progress') {
+        // Counts only — the panel was opened by `start`. A progress update for
+        // a write the panel has already let go of must not resurrect it.
+        setPendingArtifact((current) =>
+          current && current.status !== 'failed'
+            ? {
+                ...current,
+                title: activity.titleHint ?? current.title,
+                progress: activity.progress,
+              }
+            : current,
         );
         return;
       }
@@ -537,6 +561,10 @@ export default function App() {
         artifactId: activity.artifactId ?? current?.artifactId,
         // A retry after a failure re-enters the generating state.
         status: 'generating',
+        // `start` begins a new write; `complete` keeps the last counts.
+        progress: activity.phase === 'complete' ? current?.progress : undefined,
+        startedAt: activity.phase === 'start' ? Date.now() : current?.startedAt,
+        produced: activity.phase === 'complete',
       }));
     },
     [expandDocPanel],
@@ -880,6 +908,44 @@ export default function App() {
       refreshActiveConversationSummary,
       handleOpenArtifact,
     ],
+  );
+
+  /** Show a document the moment its tool saved it. The turn can run on for a
+   *  while after that — the model summarising what it wrote — and the panel
+   *  used to hold the skeleton over an already-saved document until it
+   *  ended. `handleChatTurnComplete` still runs afterwards and is idempotent. */
+  const handleDocumentWritten = useCallback(
+    async (activity: DocumentToolActivity) => {
+      if (!activeConversationId) return;
+      const seq = documentWriteSeqRef.current;
+      try {
+        const listed = await refreshArtifacts(activeConversationId);
+        // A newer write started meanwhile; its own lifecycle owns the panel.
+        if (documentWriteSeqRef.current !== seq) return;
+        const artifactId =
+          activity.artifactId ??
+          (isDocumentCreateTool(activity.toolName) ? listed[0]?.id : undefined);
+        if (!artifactId) return;
+        await handleOpenArtifact(artifactId);
+        if (documentWriteSeqRef.current !== seq) return;
+        setPendingArtifact(null);
+      } catch {
+        // Leave the pending state to the end-of-turn handler, which reports
+        // failures; an early open is only a head start.
+      }
+    },
+    [activeConversationId, refreshArtifacts, handleOpenArtifact],
+  );
+
+  const routeDocumentToolActivity = useCallback(
+    (activity: DocumentToolActivity) => {
+      if (activity.phase === 'written') {
+        void handleDocumentWritten(activity);
+        return;
+      }
+      handleDocumentToolActivity(activity);
+    },
+    [handleDocumentWritten, handleDocumentToolActivity],
   );
 
   const handleCloseArtifactTab = useCallback(
@@ -1632,7 +1698,7 @@ export default function App() {
             onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
             onOpenArtifact={(id) => void handleOpenArtifact(id)}
             onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
-            onDocumentToolActivity={handleDocumentToolActivity}
+            onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
             pendingSendText={pendingSendText}

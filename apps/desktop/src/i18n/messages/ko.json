@@ -1200,5 +1200,11 @@
   "workspace.shortcuts.group.chat": "채팅",
   "workspace.shortcuts.group.general": "일반",
   "workspace.shortcuts.group.layout": "레이아웃",
-  "workspace.shortcuts.title": "키보드 단축키"
+  "workspace.shortcuts.title": "키보드 단축키",
+  "chat.documentWrite.writingTitled": "“{title}” 작성 중…",
+  "chat.documentWrite.writingKind": "{kind, select, markdown {Markdown} html {HTML} other {텍스트}} 문서 작성 중…",
+  "chat.documentWrite.updatingKind": "{kind, select, markdown {Markdown} html {HTML} other {텍스트}} 문서 업데이트 중…",
+  "chat.documentWrite.progress": "{lines, plural, other {#줄}} · {size}",
+  "chat.documentWrite.stillWorking": "계속 작업 중",
+  "chat.toolCall.status.writing": "작성 중…"
 }

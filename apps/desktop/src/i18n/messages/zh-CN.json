@@ -1200,5 +1200,11 @@
   "workspace.shortcuts.group.chat": "聊天",
   "workspace.shortcuts.group.general": "常规",
   "workspace.shortcuts.group.layout": "布局",
-  "workspace.shortcuts.title": "键盘快捷键"
+  "workspace.shortcuts.title": "键盘快捷键",
+  "chat.documentWrite.writingTitled": "正在撰写“{title}”…",
+  "chat.documentWrite.writingKind": "正在撰写 {kind, select, markdown {Markdown} html {HTML} other {文本}} 文档…",
+  "chat.documentWrite.updatingKind": "正在更新 {kind, select, markdown {Markdown} html {HTML} other {文本}} 文档…",
+  "chat.documentWrite.progress": "{lines, plural, other {# 行}} · {size}",
+  "chat.documentWrite.stillWorking": "仍在处理",
+  "chat.toolCall.status.writing": "写入中…"
 }

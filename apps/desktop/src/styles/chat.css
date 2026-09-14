@@ -412,6 +412,24 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   white-space: nowrap;
 }
 .tool-sum.err { color: var(--err); }
+/* Running call: a hue bar sweeps the top edge. The reduced-motion blocks
+   below already hide it; this base rule had gone missing, which left a
+   running card with nothing moving but static "running…" text. */
+.tool.running { position: relative; }
+.tool.running::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--hue), transparent) no-repeat;
+  background-size: 40% 100%;
+  animation: tool-running-sweep 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes tool-running-sweep {
+  from { background-position: -70% 0; }
+  to { background-position: 170% 0; }
+}
 .tool-chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
 .tool[data-open="true"] .tool-chev { transform: rotate(90deg); }
 .tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-tool-expand) var(--ease-tap); }
@@ -1682,6 +1700,14 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
 .thinking-label {
   color: var(--ink-2);
   font-size: var(--fs-2xl);
+}
+/* Progress after the label ("214 lines · 18 KB · still working"). Tabular
+   digits so the counter does not jitter the row as it climbs. Under reduced
+   motion the dots stop, and this changing text is what still shows life. */
+.thinking-detail {
+  color: var(--ink-3);
+  font-size: var(--fs-2xl);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Streaming caret inside an inline code block. Same signal as `.streaming`

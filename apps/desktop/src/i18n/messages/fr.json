@@ -1200,5 +1200,11 @@
   "workspace.shortcuts.group.chat": "Conversation",
   "workspace.shortcuts.group.general": "Général",
   "workspace.shortcuts.group.layout": "Disposition",
-  "workspace.shortcuts.title": "Raccourcis clavier"
+  "workspace.shortcuts.title": "Raccourcis clavier",
+  "chat.documentWrite.writingTitled": "Rédaction de « {title} »…",
+  "chat.documentWrite.writingKind": "Rédaction du document {kind, select, markdown {Markdown} html {HTML} other {texte}}…",
+  "chat.documentWrite.updatingKind": "Mise à jour du document {kind, select, markdown {Markdown} html {HTML} other {texte}}…",
+  "chat.documentWrite.progress": "{lines, plural, one {# ligne} other {# lignes}} · {size}",
+  "chat.documentWrite.stillWorking": "toujours en cours",
+  "chat.toolCall.status.writing": "rédaction…"
 }

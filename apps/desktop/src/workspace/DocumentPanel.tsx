@@ -27,6 +27,8 @@ import { ConfirmDialog } from '@conduit/ui';
 import { useRichT, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { documentKindLabel } from '../lib/documentKind';
+import { useNow } from '../lib/useNow';
+import { documentWriteDetail, documentWriteStalled } from '../chat/documentWriteScan';
 
 type DocTab = 'preview' | 'source';
 
@@ -116,6 +118,31 @@ interface DocumentPanelProps {
   brandingEnabled?: boolean;
 }
 
+/**
+ * "214 lines · 18 KB · still working" for a document the model is writing.
+ * Renders nothing until there is something to say: no content yet and not
+ * stalled means the skeleton alone is still accurate.
+ */
+function PendingWriteProgress({ pending, className }: { pending: PendingArtifact; className: string }) {
+  const t = useT();
+  const fmt = useFormatters();
+  const watching = pending.status !== 'failed' && !pending.produced;
+  const now = useNow(watching);
+  const lastActivityAt = pending.progress?.lastActivityAt ?? pending.startedAt;
+  const parts = [
+    pending.progress ? documentWriteDetail(pending.progress, t, fmt) : undefined,
+    watching && documentWriteStalled(lastActivityAt, now)
+      ? t('chat.documentWrite.stillWorking')
+      : undefined,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <span className={className} aria-hidden="true">
+      {parts.join(' · ')}
+    </span>
+  );
+}
+
 function ArtifactPendingState({
   pending,
   onCollapsePanel,
@@ -202,6 +229,7 @@ function ArtifactPendingState({
             <p className="artifact-pending-copy">
               {t('workspace.documentPanel.pending.body', { action: actionLabel, kind: pending.kind })}
             </p>
+            <PendingWriteProgress pending={pending} className="artifact-pending-progress" />
           </div>
         )}
       </div>
@@ -923,7 +951,8 @@ export function DocumentPanel({
         <DocumentPanelErrorBoundary>
         {pendingArtifact?.mode === 'edit' && (
           <div className="doc-banner hold" role="status">
-            {tr('workspace.documentPanel.banner.updating')}
+            {tr('workspace.documentPanel.banner.updating')}{' '}
+            <PendingWriteProgress pending={pendingArtifact} className="doc-banner-progress" />
           </div>
         )}
         {activeFileState === 'modified' && !dismissedModified && (

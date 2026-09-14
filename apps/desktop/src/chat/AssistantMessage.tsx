@@ -279,7 +279,10 @@ export function AssistantMessage({
   const segments = useMemo(() => synthesizeSegments(state), [state]);
   const timeline = useMemo(() => buildTimelineItems(state, segments), [state, segments]);
   const elapsed = useLiveElapsed(state.streaming);
-  const tokenCount = Math.round(text.length / 4);
+  // Tool arguments are model output too. Counting only prose froze this
+  // number for the whole time a document was being written into a tool call.
+  const argumentChars = state.toolCalls.reduce((n, tc) => n + tc.argumentsText.length, 0);
+  const tokenCount = Math.round((text.length + argumentChars) / 4);
 
   const producingText = state.blocks.some(
     (b) =>
@@ -472,7 +475,9 @@ export function AssistantMessage({
           <ThinkingIndicator
             modelId={modelId}
             phase={state.agentPhase}
-            visible={!producingText}
+            // A document being written is not prose on screen: text earlier in
+            // the turn must not hide the one signal that work is happening.
+            visible={!producingText || state.agentPhase?.subPhase === 'writing_document'}
           />
           {!proseCaretVisible && <span className="streaming thinking-trailing" aria-hidden="true" />}
         </div>

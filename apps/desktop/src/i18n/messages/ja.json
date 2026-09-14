@@ -1200,5 +1200,11 @@
   "workspace.shortcuts.group.chat": "チャット",
   "workspace.shortcuts.group.general": "全般",
   "workspace.shortcuts.group.layout": "レイアウト",
-  "workspace.shortcuts.title": "キーボードショートカット"
+  "workspace.shortcuts.title": "キーボードショートカット",
+  "chat.documentWrite.writingTitled": "「{title}」を作成しています…",
+  "chat.documentWrite.writingKind": "{kind, select, markdown {Markdown} html {HTML} other {テキスト}} ドキュメントを作成しています…",
+  "chat.documentWrite.updatingKind": "{kind, select, markdown {Markdown} html {HTML} other {テキスト}} ドキュメントを更新しています…",
+  "chat.documentWrite.progress": "{lines, plural, other {#行}} · {size}",
+  "chat.documentWrite.stillWorking": "処理を続けています",
+  "chat.toolCall.status.writing": "作成中…"
 }

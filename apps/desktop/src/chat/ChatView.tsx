@@ -110,6 +110,11 @@ import {
   type DocumentToolActivity,
 } from './agentTools';
 import {
+  activeDocumentWrite,
+  documentWriteDetail,
+  documentWriteLabel,
+} from './documentWriteScan';
+import {
   classifyDocumentTurnIntent,
   informationalDeveloperPromptFor,
 } from './documentTurnIntent';
@@ -401,6 +406,9 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
+/** Minimum gap between document-write progress updates sent to the panel. */
+const DOCUMENT_PROGRESS_INTERVAL_MS = 250;
+
 /** Derive agent loop phase from stream state and pending calls.
  *  Prefers backend-sent agent phase info when available (from ProviderEvent::AgentPhase
  *  events emitted by run_agent_turn in Rust). Falls back to frontend derivation when
@@ -409,8 +417,26 @@ function deriveAgentPhase(
   state: AssistantStreamState | null,
   pendingCalls: Set<string>,
   t: Translate,
+  fmt: Formatters,
 ): AssistantStreamState['agentPhase'] | undefined {
   if (!state) return undefined;
+
+  // A document whose arguments are still streaming outranks every other
+  // phase, the backend's included: the backend only knows the round is
+  // "thinking", and for the tens of seconds a large document takes that label
+  // (or no label at all, once text has been produced) is what made the turn
+  // look stuck.
+  const write = activeDocumentWrite(state);
+  if (write) {
+    return {
+      label: documentWriteLabel(write, t),
+      round: state.agentPhase?.round ?? 1,
+      totalRounds: state.agentPhase?.totalRounds,
+      subPhase: 'writing_document',
+      detail: documentWriteDetail(write, t, fmt),
+      lastActivityAt: write.lastActivityAt,
+    };
+  }
 
   // Prefer backend-sent phase info when available.
   if (state.agentPhase) {
@@ -557,6 +583,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const streamStateRef = useRef<AssistantStreamState | null>(null);
   const toolBindingsRef = useRef<Record<string, ConnectorToolBinding>>({});
   const providerToolByCallIdRef = useRef<Record<string, string>>({});
+  /** Last document-write progress handed to the panel, for throttling. */
+  const documentProgressSentRef = useRef<{ toolCallId: string; at: number; title?: string } | null>(
+    null,
+  );
   const pendingRuntimeCallsRef = useRef<Set<string>>(new Set());
   const onPendingSendConsumedRef = useRef(onPendingSendConsumed);
   onPendingSendConsumedRef.current = onPendingSendConsumed;
@@ -790,9 +820,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
 
   // Derive agent loop phase from stream state + pending calls.
   useEffect(() => {
-    const phase = deriveAgentPhase(activeStream, pendingRuntimeCallsRef.current, t);
+    const phase = deriveAgentPhase(activeStream, pendingRuntimeCallsRef.current, t, fmt);
     setAgentPhase(phase);
-  }, [activeStream, t]);
+  }, [activeStream, t, fmt]);
 
   async function loadConnectorToolDefinitions(): Promise<ToolDefinition[]> {
     try {
@@ -1158,6 +1188,48 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
           if (isDocumentContentTool(event.name)) {
             onDocumentToolActivity?.({ phase: 'start', toolName: event.name });
+          }
+        } else if (event.kind === 'toolCallDelta') {
+          // Every fragment re-renders the chat already; the panel lives in App
+          // and does not need to. Forward a new title at once, counts at most
+          // a few times a second.
+          const write = activeDocumentWrite(next);
+          if (write && write.toolCallId === event.toolCallId) {
+            const sent = documentProgressSentRef.current;
+            const title = write.title ?? write.filename;
+            const now = Date.now();
+            const due =
+              !sent ||
+              sent.toolCallId !== write.toolCallId ||
+              sent.title !== title ||
+              now - sent.at >= DOCUMENT_PROGRESS_INTERVAL_MS;
+            if (due) {
+              documentProgressSentRef.current = { toolCallId: write.toolCallId, at: now, title };
+              onDocumentToolActivity?.({
+                phase: 'progress',
+                toolName: write.toolName,
+                titleHint: write.mode === 'create' ? title : undefined,
+                progress: {
+                  contentChars: write.contentChars,
+                  contentLines: write.contentLines,
+                  lastActivityAt: write.lastActivityAt,
+                },
+              });
+            }
+          }
+        } else if (event.kind === 'toolExecutionFinished') {
+          // The document exists now. The model may keep talking for a while
+          // before the turn ends; the panel should not keep a skeleton up over
+          // a document that is already saved.
+          if (!event.isError && isDocumentContentTool(event.toolName)) {
+            const call = next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
+            const artifactId = call?.arguments?.artifact_id;
+            onDocumentToolActivity?.({
+              phase: 'written',
+              toolName: event.toolName,
+              artifactId:
+                typeof artifactId === 'string' && artifactId.trim() !== '' ? artifactId : undefined,
+            });
           }
         } else if (event.kind === 'toolCallComplete') {
           // Phase A: tool execution is now owned by the Rust `AgentLoop` inside

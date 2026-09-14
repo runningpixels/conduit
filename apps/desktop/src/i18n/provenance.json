@@ -1204,7 +1204,13 @@
     "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
     "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
     "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
-    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d",
+    "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
+    "chat.documentWrite.stillWorking": "9b41483d70af4b23b9ad86c8164fbf9a9ec556ee",
+    "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
+    "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
+    "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
+    "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2411,7 +2417,13 @@
     "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
     "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
     "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
-    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d",
+    "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
+    "chat.documentWrite.stillWorking": "9b41483d70af4b23b9ad86c8164fbf9a9ec556ee",
+    "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
+    "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
+    "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
+    "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3618,7 +3630,13 @@
     "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
     "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
     "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
-    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d",
+    "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
+    "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
+    "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
+    "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
+    "chat.documentWrite.stillWorking": "9b41483d70af4b23b9ad86c8164fbf9a9ec556ee",
+    "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4825,7 +4843,13 @@
     "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
     "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
     "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
-    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d",
+    "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
+    "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
+    "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
+    "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
+    "chat.documentWrite.stillWorking": "9b41483d70af4b23b9ad86c8164fbf9a9ec556ee",
+    "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6032,7 +6056,13 @@
     "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
     "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
     "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
-    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d",
+    "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
+    "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
+    "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
+    "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
+    "chat.documentWrite.stillWorking": "9b41483d70af4b23b9ad86c8164fbf9a9ec556ee",
+    "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7239,7 +7269,13 @@
     "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
     "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
     "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
-    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d",
+    "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
+    "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
+    "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
+    "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
+    "chat.documentWrite.stillWorking": "9b41483d70af4b23b9ad86c8164fbf9a9ec556ee",
+    "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8446,6 +8482,12 @@
     "settings.appearance.userThemes.invalidRegionLabel": "82cd32d6b314a873674873622db7f237823af55a",
     "settings.appearance.userThemes.openFolder": "885a263d88275022d7d83995e4ec200855e9e0fe",
     "settings.appearance.userThemes.reload": "cce7155371fc26686b89c7452337d8419692f31e",
-    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d"
+    "settings.appearance.userThemes.toastCleared": "bbb71fb451d580c8dc2dce135e9a3a9d1916ef2d",
+    "chat.documentWrite.writingTitled": "51462201cfd696095ac477b3db491802e41325ce",
+    "chat.documentWrite.writingKind": "f45a39bf971242499742bf4161119ee226028cfa",
+    "chat.documentWrite.updatingKind": "956949adc12b63624d4c43666b40488bd51317eb",
+    "chat.documentWrite.progress": "d27118bb75b2d18aa5e6d241e4e0821add527ea4",
+    "chat.documentWrite.stillWorking": "9b41483d70af4b23b9ad86c8164fbf9a9ec556ee",
+    "chat.toolCall.status.writing": "65e845f979b8e7e822bc1ede52c6c00edf4a5588"
   }
 }

@@ -293,6 +293,59 @@ describe('DocumentPanel chrome', () => {
     expect(screen.queryByText('Artifacts live here')).not.toBeInTheDocument();
   });
 
+  // A static skeleton over a long write read as a hung app. The streamed size
+  // is the part of the panel that visibly moves.
+  it('shows how much of a streaming document has arrived', () => {
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        title: 'API Overview',
+        toolName: 'write_html_document',
+        mode: 'create',
+        startedAt: Date.now(),
+        progress: { contentChars: 2048, contentLines: 42, lastActivityAt: Date.now() },
+      },
+      docTab: 'preview',
+    });
+    expect(screen.getByText(/42 lines/)).toBeInTheDocument();
+    expect(screen.queryByText(/still working/)).not.toBeInTheDocument();
+  });
+
+  it('says it is still working once the stream has gone quiet', () => {
+    const longAgo = Date.now() - 60_000;
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        toolName: 'write_html_document',
+        mode: 'create',
+        startedAt: longAgo,
+      },
+      docTab: 'preview',
+    });
+    expect(screen.getByText(/still working/)).toBeInTheDocument();
+  });
+
+  it('does not call a produced document stalled while the tool saves it', () => {
+    const longAgo = Date.now() - 60_000;
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        toolName: 'write_html_document',
+        mode: 'create',
+        startedAt: longAgo,
+        produced: true,
+      },
+      docTab: 'preview',
+    });
+    expect(screen.queryByText(/still working/)).not.toBeInTheDocument();
+  });
+
   // A turn that dies mid-write leaves this panel as the only surface still
   // claiming to be working. It must stop shimmering and say what happened.
   it('shows the reason instead of a skeleton when the generation failed', () => {

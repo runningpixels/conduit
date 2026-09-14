@@ -67,6 +67,35 @@ function expectedEffectText(t: Translate, level: PermissionLevel, description: s
   return description.trim().length === 0 ? kind : `${kind}\n${description}`;
 }
 
+/** Arguments that carry a whole file body; shown as a size, never as text. */
+const FILE_BODY_ARGUMENT_BY_TOOL: Record<string, string> = {
+  workspace_write: 'content',
+  workspace_edit: 'content',
+};
+
+/** Longest argument text a tool card shows before cutting it. */
+export const TOOL_ARGUMENT_MAX_CHARS = 200;
+
+/**
+ * One argument as card text. A `workspace_write` carries the entire file in
+ * `content`, and the card used to print all of it — a whole HTML page inside a
+ * one-line tool card. File bodies become their size; any other long value is
+ * cut to its first line with the full size after it.
+ */
+export function toolArgumentDisplay(
+  toolName: string,
+  key: string,
+  value: unknown,
+  size: (bytes: number) => string,
+): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
+  const bytes = new TextEncoder().encode(text).length;
+  if (FILE_BODY_ARGUMENT_BY_TOOL[toolName] === key) return size(bytes);
+  if (text.length <= TOOL_ARGUMENT_MAX_CHARS && !text.includes('\n')) return text;
+  const firstLine = text.split('\n', 1)[0].slice(0, TOOL_ARGUMENT_MAX_CHARS);
+  return `${firstLine}… (${size(bytes)})`;
+}
+
 /** kv rows for the tool's arguments — mono, flat, one level of disclosure. */
 function kvRows(rows: [string, string][]): React.ReactNode {
   return rows.map(([k, v]) => (
@@ -253,7 +282,7 @@ export function ToolCallBlock({
         : displayName.connector;
     const rows: [string, string][] = Object.entries(toolCall.arguments ?? {})
       .slice(0, 6)
-      .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]);
+      .map(([k, v]) => [k, toolArgumentDisplay(toolCall.name, k, v, (bytes) => fmt.size(bytes))]);
     summary = rows.length > 0 ? rows[0][1] : undefined;
     body = (
       <>

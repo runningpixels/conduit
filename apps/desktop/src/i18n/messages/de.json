@@ -95,6 +95,7 @@
   "chat.assistant.actions.deleteTitle": "Diese Antwort löschen",
   "chat.assistant.actions.forkLabel": "Chat an dieser Nachricht verzweigen",
   "chat.assistant.actions.retryTitle": "Diese Antwort erneut versuchen",
+  "chat.assistant.cutOff": "Abgeschnitten – diese Antwort hat das Ausgabelimit erreicht. Erhöhe „Max. Tokens“ unter Einstellungen → Chat-Vorgaben → Modellparameter.",
   "chat.assistant.liveMeta": "{elapsed}s · {tokenCount} Tok.",
   "chat.assistant.status.complete": "Antwort abgeschlossen.",
   "chat.assistant.status.error": "Antwort mit einem Fehler beendet.",

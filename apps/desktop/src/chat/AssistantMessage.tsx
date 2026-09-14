@@ -497,6 +497,13 @@ export function AssistantMessage({
         </div>
       )}
       {state.error && <p className="error-text">{state.error}</p>}
+      {/* The provider stopped this reply at its output-token limit. The text
+          above is all there is; without this it reads as a finished answer. */}
+      {!state.streaming && !state.error && state.finishReason === 'length' && (
+        <p className="turn-cutoff-note" role="status">
+          {t('chat.assistant.cutOff')}
+        </p>
+      )}
       {messageId && onOpenArtifact && (
         <AssistantArtifactStrip
           messageId={messageId}

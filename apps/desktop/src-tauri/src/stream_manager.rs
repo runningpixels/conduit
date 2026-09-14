@@ -97,6 +97,12 @@ pub struct RoundOutcome {
     /// or steer soft-interrupt). Not a provider error — the agent loop decides
     /// whether to end the turn or inject a steering message.
     pub aborted: bool,
+    /// True when the round's `MessageComplete` reported that the response
+    /// stopped at its output-token limit.
+    pub hit_output_limit: bool,
+    /// The output limit the round ran under, when known (see
+    /// [`provider_core::output_limits::effective_max_output_tokens`]).
+    pub output_limit: Option<u32>,
 }
 
 /// Split completed tool calls into the ones this request declared and the ones
@@ -230,6 +236,96 @@ pub fn round_only_wrote_documents(calls: &[CompletedToolCall], writes_succeeded:
             .iter()
             .all(|call| is_document_content_tool(&call.name))
         && writes_succeeded as usize == calls.len()
+}
+
+/// True when a tool call's arguments never became JSON: adapters complete a
+/// call whose stream ended mid-argument as `{ "raw": "<partial text>" }`.
+pub fn tool_call_arguments_cut_off(call: &CompletedToolCall) -> bool {
+    call.arguments
+        .as_object()
+        .is_some_and(|args| args.len() == 1 && args.get("raw").is_some_and(|v| v.is_string()))
+}
+
+/// The document title from a write's partial arguments, when the model got as
+/// far as writing one.
+fn partial_document_title(call: &CompletedToolCall) -> Option<String> {
+    let raw = call.arguments.get("raw")?.as_str()?;
+    let key = "\"title\"";
+    let after = raw[raw.find(key)? + key.len()..].trim_start();
+    let value = after.strip_prefix(':')?.trim_start();
+    if !value.starts_with('"') {
+        return None;
+    }
+    let mut escaped = false;
+    for (i, byte) in value.bytes().enumerate().skip(1) {
+        match byte {
+            b'\\' if !escaped => escaped = true,
+            b'"' if !escaped => {
+                return serde_json::from_str::<String>(&value[..=i])
+                    .ok()
+                    .map(|title| title.trim().to_string())
+                    .filter(|title| !title.is_empty());
+            }
+            _ => escaped = false,
+        }
+    }
+    None
+}
+
+/// "output limit (64,000 tokens)", or "output limit" when the number is unknown.
+fn output_limit_phrase(limit: Option<u32>) -> String {
+    match limit {
+        Some(n) => {
+            let digits = n.to_string();
+            let mut grouped = String::new();
+            for (i, ch) in digits.chars().enumerate() {
+                if i > 0 && (digits.len() - i) % 3 == 0 {
+                    grouped.push(',');
+                }
+                grouped.push(ch);
+            }
+            format!("output limit ({grouped} tokens)")
+        }
+        None => "output limit".to_string(),
+    }
+}
+
+const RAISE_OUTPUT_LIMIT_HINT: &str =
+    "Raise Max tokens in Settings → Chat defaults → Model parameters";
+
+/// The error for a round that ran out of output tokens part-way through a tool
+/// call. Without it the call reached the tool as unreadable arguments, the
+/// model was told "missing field html", and the partial document was lost
+/// with no mention of why.
+pub fn output_limit_cut_off_message(call: &CompletedToolCall, limit: Option<u32>) -> String {
+    let limit = output_limit_phrase(limit);
+    if is_document_content_tool(&call.name) {
+        let what = match partial_document_title(call) {
+            Some(title) => format!("“{title}”"),
+            None => "the document".to_string(),
+        };
+        format!(
+            "The model reached its {limit} while writing {what}, so the document was cut off and not saved. \
+             {RAISE_OUTPUT_LIMIT_HINT}, or ask for a shorter document."
+        )
+    } else {
+        format!(
+            "The model reached its {limit} while writing the input for {}, so it was not run. \
+             {RAISE_OUTPUT_LIMIT_HINT}.",
+            call.name
+        )
+    }
+}
+
+/// The error for a round that spent its whole output limit without writing an
+/// answer or a tool call — typically all of it on reasoning, which counts
+/// toward the limit.
+pub fn output_limit_empty_message(limit: Option<u32>) -> String {
+    format!(
+        "The model used its whole {} before writing an answer (reasoning counts toward the limit). \
+         {RAISE_OUTPUT_LIMIT_HINT}.",
+        output_limit_phrase(limit)
+    )
 }
 
 /// What executing one round's tool calls produced.
@@ -836,6 +932,15 @@ impl StreamManager {
         // nothing still answered nothing.
         let mut produced_text = false;
         let mut round_text = String::new();
+        let mut hit_output_limit = false;
+        let output_limit = provider_core::output_limits::effective_max_output_tokens(
+            &provider_id,
+            &request.model_id,
+            request
+                .generation_controls
+                .as_ref()
+                .and_then(|c| c.max_tokens),
+        );
 
         futures::pin_mut!(stream);
         while let Some(event) = stream.next().await {
@@ -907,6 +1012,10 @@ impl StreamManager {
             let _ = event_log::append_and_apply(&pool, &conversation_id, &persist_id, &event).await;
 
             let is_completion = matches!(event, ProviderEvent::MessageComplete { .. });
+            if let ProviderEvent::MessageComplete { finish_reason, .. } = &event {
+                hit_output_limit =
+                    finish_reason == provider_core::output_limits::FINISH_REASON_LENGTH;
+            }
             let withhold = is_completion && completion == CompletionDelivery::Deferred;
 
             if withhold {
@@ -955,6 +1064,8 @@ impl StreamManager {
             completion_event,
             round_text,
             aborted: cancel.is_cancelled(),
+            hit_output_limit,
+            output_limit,
         }
     }
 
@@ -2196,6 +2307,43 @@ impl StreamManager {
                     },
                 });
                 break;
+            }
+
+            // A response that ran out of output tokens is not a finished one.
+            // A tool call it left half-written would reach the tool as
+            // unreadable arguments — for a document, a "missing field" error
+            // and a lost document — and a round with nothing to show would
+            // end on a blank bubble. Say what happened instead. A round whose
+            // calls all completed before the limit carries on as usual.
+            if outcome.hit_output_limit {
+                let cut_off = runnable
+                    .iter()
+                    .find(|call| tool_call_arguments_cut_off(call));
+                let message = if let Some(call) = cut_off {
+                    Some(output_limit_cut_off_message(call, outcome.output_limit))
+                } else if runnable.is_empty() && !outcome.produced_text {
+                    Some(output_limit_empty_message(outcome.output_limit))
+                } else {
+                    None
+                };
+                if let Some(message) = message {
+                    warn!(
+                        request_id = %request_id,
+                        step,
+                        limit = ?outcome.output_limit,
+                        tool = cut_off.map(|call| call.name.as_str()).unwrap_or(""),
+                        "round stopped at the output-token limit; ending the turn"
+                    );
+                    terminal = Some(ProviderEvent::Error {
+                        request_id: request_id.clone(),
+                        error: provider_core::schema::ProviderError {
+                            provider_code: Some("output_limit".to_string()),
+                            message,
+                            retryable: false,
+                        },
+                    });
+                    break;
+                }
             }
 
             outcome.completed_tool_calls = runnable;

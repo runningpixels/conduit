@@ -178,6 +178,48 @@ fn tool_round(calls: Vec<(&'static str, Value)>, pause: Duration) -> Round {
     })
 }
 
+/// `round` with its closing `MessageComplete` reporting `finish_reason`.
+fn finishing_with(round: Round, finish_reason: &'static str) -> Round {
+    Arc::new(move |rid: &str| {
+        round(rid)
+            .into_iter()
+            .map(|step| match step {
+                Step::Event(ProviderEvent::MessageComplete {
+                    request_id, index, ..
+                }) => Step::Event(ProviderEvent::MessageComplete {
+                    request_id,
+                    index,
+                    finish_reason: finish_reason.into(),
+                }),
+                other => other,
+            })
+            .collect()
+    })
+}
+
+fn reasoning_round(thought: &'static str) -> Round {
+    Arc::new(move |rid: &str| {
+        let r = rid.to_string();
+        vec![
+            Step::Event(ProviderEvent::MessageStart {
+                request_id: r.clone(),
+                index: 0,
+            }),
+            Step::Event(ProviderEvent::ReasoningDelta {
+                request_id: r.clone(),
+                block_id: "reasoning-0".into(),
+                index: 1,
+                content: thought.into(),
+            }),
+            Step::Event(ProviderEvent::MessageComplete {
+                request_id: r,
+                index: 2,
+                finish_reason: "stop".into(),
+            }),
+        ]
+    })
+}
+
 // ── Harness ──────────────────────────────────────────────────────────────────
 
 fn test_paths(root: &Path) -> AppPaths {
@@ -517,4 +559,126 @@ async fn the_setting_off_keeps_the_confirmation_round() {
     .await;
 
     assert_eq!(turn.rounds_started, 2);
+}
+
+// ── Output limit ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn a_document_cut_off_by_the_output_limit_ends_the_turn_with_a_clear_error() {
+    // What an adapter hands over when the stream stopped mid-argument.
+    let cut_off = json!({ "raw": "{\"title\": \"Q3 report\", \"html\": \"<!doctype html><h1>Q3" });
+    let turn = run_turn(
+        vec![
+            finishing_with(
+                tool_round(vec![("write_html_document", cut_off)], Duration::ZERO),
+                "length",
+            ),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 1, "retrying would hit the same limit");
+    assert!(
+        turn.tool_executions().is_empty(),
+        "unreadable arguments must not reach the tool"
+    );
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. }
+                if error.provider_code.as_deref() == Some("output_limit")
+                    && error.message.contains("“Q3 report”")
+                    && error.message.contains("not saved")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_round_that_reasons_until_the_limit_reports_it_instead_of_a_blank_answer() {
+    let turn = run_turn(
+        vec![finishing_with(reasoning_round("Let me think…"), "length")],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. } if error.message.contains("before writing an answer")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_text_answer_cut_off_by_the_limit_completes_as_length() {
+    let turn = run_turn(
+        vec![finishing_with(text_round("The report covers"), "length")],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "length"),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn tool_calls_that_completed_before_the_limit_still_run() {
+    let turn = run_turn(
+        vec![
+            finishing_with(
+                tool_round(vec![("current_time", json!({}))], Duration::ZERO),
+                "length",
+            ),
+            text_round("It is noon."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("current_time".to_string(), false)]
+    );
+}
+
+#[test]
+fn the_cut_off_message_names_the_limit_and_the_document() {
+    use conduit_desktop::stream_manager::{output_limit_cut_off_message, CompletedToolCall};
+
+    let call = |name: &str, raw: &str| CompletedToolCall {
+        tool_call_id: "call-1".into(),
+        tool_id: Some(name.into()),
+        name: name.into(),
+        arguments: json!({ "raw": raw }),
+    };
+
+    let message = output_limit_cut_off_message(
+        &call(
+            "write_html_document",
+            r#"{"title": "The \"Big\" Plan", "html": "<p>"#,
+        ),
+        Some(64_000),
+    );
+    assert!(
+        message.contains("output limit (64,000 tokens)"),
+        "{message}"
+    );
+    assert!(message.contains("“The \"Big\" Plan”"), "{message}");
+
+    let message = output_limit_cut_off_message(&call("write_html_document", r#"{"ht"#), None);
+    assert!(message.contains("while writing the document"), "{message}");
+    assert!(!message.contains("tokens)"), "{message}");
+
+    let message = output_limit_cut_off_message(&call("current_time", r#"{"zone": "#), Some(900));
+    assert!(message.contains("input for current_time"), "{message}");
 }

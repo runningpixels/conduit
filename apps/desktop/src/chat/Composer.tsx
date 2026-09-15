@@ -6,7 +6,10 @@ import {
   loadProviderCredentialReference,
   saveAttachment,
 } from '../ipc/client';
-import { AttachIcon, FilePlainIcon, FolderIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { ComposerMcpPrompts } from './ComposerMcpPrompts';
+import { ComposerMcpResources } from './ComposerMcpResources';
+import type { ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
 import { brand } from '../brand';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
@@ -71,6 +74,14 @@ export interface ComposerProps {
   skills?: SkillSummary[];
   enabledSkillIds?: string[];
   onToggleSkill?: (skillId: string, enabled: boolean) => void;
+  /** Prompts and resources advertised by the running connectors (t0-9). */
+  mcpPrompts?: ConnectorPromptInfo[];
+  mcpResources?: ConnectorResourceInfo[];
+  /** Resources attached to the turn being composed. Cleared on send. */
+  attachedResources?: ResourceRef[];
+  onPickMcpPrompt?: (prompt: ConnectorPromptInfo) => void;
+  onToggleMcpResource?: (resource: ConnectorResourceInfo, attached: boolean) => void;
+  onRefreshMcpCapabilities?: () => void;
   /// Open a settings section ('providers' | 'privacy' …) from the strip.
   onOpenSettings?: (tab?: string) => void;
   /// Accumulated usage for spend (turns + live stream).
@@ -114,6 +125,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   skills = [],
   enabledSkillIds = [],
   onToggleSkill,
+  mcpPrompts = [],
+  mcpResources = [],
+  attachedResources = [],
+  onPickMcpPrompt,
+  onToggleMcpResource,
+  onRefreshMcpCapabilities,
   onOpenSettings,
   usage,
   contextTokens = 0,
@@ -131,6 +148,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [mcpPromptsOpen, setMcpPromptsOpen] = useState(false);
+  const [mcpResourcesOpen, setMcpResourcesOpen] = useState(false);
 
   useComposerAutosize(textareaRef, prompt);
 
@@ -641,6 +660,66 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onClose={() => setSkillsOpen(false)}
                 onToggle={onToggleSkill}
                 onOpenSettings={onOpenSettings ? () => onOpenSettings('skills') : undefined}
+              />
+            </span>
+          )}
+          {onPickMcpPrompt && mcpPrompts.length > 0 && !streaming && (
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                className={`cbtn${mcpPromptsOpen ? ' armed' : ''}`}
+                type="button"
+                aria-label={t('chat.mcpPrompts.ariaLabel')}
+                title={t('chat.mcpPrompts.ariaLabel')}
+                aria-haspopup="dialog"
+                aria-expanded={mcpPromptsOpen}
+                onClick={() => {
+                  setWorkspaceMenuOpen(false);
+                  setChatSettingsOpen(false);
+                  setSkillsOpen(false);
+                  setMcpResourcesOpen(false);
+                  setMcpPromptsOpen((open) => !open);
+                }}
+              >
+                <ConnectorsIcon />
+              </button>
+              <ComposerMcpPrompts
+                open={mcpPromptsOpen}
+                prompts={mcpPrompts}
+                onClose={() => setMcpPromptsOpen(false)}
+                onPick={(prompt) => {
+                  setMcpPromptsOpen(false);
+                  onPickMcpPrompt(prompt);
+                }}
+                onRefresh={() => onRefreshMcpCapabilities?.()}
+              />
+            </span>
+          )}
+          {onToggleMcpResource && mcpResources.length > 0 && !streaming && (
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                className={`cbtn${attachedResources.length > 0 ? ' armed' : ''}${mcpResourcesOpen ? ' armed' : ''}`}
+                type="button"
+                aria-label={t('chat.mcpResources.ariaLabel')}
+                title={t('chat.mcpResources.ariaLabel')}
+                aria-haspopup="dialog"
+                aria-expanded={mcpResourcesOpen}
+                onClick={() => {
+                  setWorkspaceMenuOpen(false);
+                  setChatSettingsOpen(false);
+                  setSkillsOpen(false);
+                  setMcpPromptsOpen(false);
+                  setMcpResourcesOpen((open) => !open);
+                }}
+              >
+                <FilesIcon />
+              </button>
+              <ComposerMcpResources
+                open={mcpResourcesOpen}
+                resources={mcpResources}
+                attached={attachedResources}
+                onClose={() => setMcpResourcesOpen(false)}
+                onToggle={onToggleMcpResource}
+                onRefresh={() => onRefreshMcpCapabilities?.()}
               />
             </span>
           )}

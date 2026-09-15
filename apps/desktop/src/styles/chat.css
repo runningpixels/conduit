@@ -811,6 +811,33 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   padding: 0 var(--sp-5) var(--sp-2);
   background: var(--bg);
 }
+/* Resources the gate refused, or that were truncated, for the turn just sent.
+   Shares `.suggested-prompts-inline`'s width maths so it lines up with the
+   composer's left edge at every width -- see the note above. */
+.mcp-resource-skipped {
+  flex: none;
+  width: 100%;
+  max-width: calc(var(--measure) + 2 * var(--sp-5));
+  margin: 0 auto;
+  padding: var(--sp-2) var(--sp-5);
+  background: var(--bg);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.mcp-resource-skipped p {
+  margin: 0 0 var(--sp-1);
+}
+.mcp-resource-skipped ul {
+  margin: 0 0 var(--sp-2);
+  padding-left: var(--sp-4);
+}
+.mcp-resource-skipped li {
+  margin-bottom: 2px;
+}
+.mcp-resource-skipped code {
+  word-break: break-all;
+}
+
 /* One line per chip, so --r-pill is the right radius and the caption reads in
    full. `.suggested-prompt-chip-*` are gone with the two-line layout. */
 .suggested-prompt-chip {

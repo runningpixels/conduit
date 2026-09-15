@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- The prompts and resources your connected servers offer are now reachable from
+  the composer, not just their tools. A prompt picker fills in whatever
+  arguments the prompt declares and drops the result into the composer, where
+  you can read and edit it before sending. A resource picker attaches a
+  document to the next message; what it contains is redacted, size-capped and
+  checked before it reaches the model, and a resource that tries to issue
+  instructions of its own is refused and named rather than quietly included.
+  An attachment lasts one message, so nothing keeps riding along after you have
+  moved on. Servers that offer only tools look exactly as they did.
+
 ## [0.1.0-rc.5] - 2026-09-15
 
 ### Added

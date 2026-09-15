@@ -1,5 +1,20 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AppSettings, GenerationControls, MessageRole, ProviderRequest } from '@conduit/config-schema';
+import {
+  buildPromptArguments,
+  needsArgumentDialog,
+  sameResource,
+  toResourceRef,
+} from './connectorCapabilities';
+import { McpPromptArgumentsDialog } from './McpPromptArgumentsDialog';
+import { McpResourceConsentDialog } from './McpResourceConsentDialog';
+import type {
+  ConnectorPromptInfo,
+  ConnectorResourceInfo,
+  ResourceBlock,
+  ResourceRef,
+  SkippedResource,
+} from '../ipc/contracts';
 import type { ProviderUsage } from '@conduit/config-schema';
 import {
   cancelChatStream,
@@ -27,6 +42,12 @@ import {
   setConversationSkills,
   getSkillPromptBlock,
   getMemoryPromptBlock,
+  acknowledgeConnectorResources,
+  getConnectorPrompt,
+  isConnectorResourceAcknowledged,
+  listConnectorPrompts,
+  listConnectorResources,
+  readConnectorResources,
   type ConversationCompaction,
 } from '../ipc/client';
 import type { Conversation, SkillSummary } from '../ipc/contracts';
@@ -199,6 +220,9 @@ interface ChatViewProps {
   paneActive?: boolean;
   /// Open a settings section ('providers' | 'privacy' …) from the status line.
   onOpenSettings?: (tab?: string) => void;
+  /// Whether the settings sheet is open. Connectors are added there, so this
+  /// toggling is the signal that the MCP prompt/resource lists may be stale.
+  settingsOpen?: boolean;
   /// Renderer-only conversation → last-used provider map (sidebar row dots).
   /// Falls back to `settings.activeProvider` for per-turn hue + model line.
   convoProviders?: Record<string, string>;
@@ -429,6 +453,29 @@ const HTML_ESCAPES: Record<string, string> = {
   '"': '&quot;',
   "'": '&#39;',
 };
+const EMPTY_RESOURCE_BLOCK: ResourceBlock = { text: '', included: [], skipped: [] };
+
+/**
+ * Read this turn's attached MCP resources. Rust does the sanitizing — redaction,
+ * the reinjection gate, and the size caps — so this only has to survive the call
+ * failing outright, which must not cost the user their turn.
+ */
+async function readAttachedResources(refs: ResourceRef[]): Promise<ResourceBlock> {
+  if (refs.length === 0) return EMPTY_RESOURCE_BLOCK;
+  try {
+    return await readConnectorResources(refs);
+  } catch (err) {
+    return {
+      text: '',
+      included: [],
+      skipped: refs.map((r) => ({
+        uri: r.uri,
+        reason: err instanceof Error ? err.message : String(err),
+      })),
+    };
+  }
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
@@ -542,6 +589,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onPendingSendConsumed,
     paneActive = true,
     onOpenSettings,
+  settingsOpen = false,
     convoProviders = {},
   },
   ref,
@@ -587,6 +635,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [enabledSkillIds, setEnabledSkillIds] = useState<string[]>([]);
   const enabledSkillIdsRef = useRef<string[]>([]);
   enabledSkillIdsRef.current = enabledSkillIds;
+  // Attached MCP resources are per turn, not per conversation: they contribute
+  // to the turn they were attached for and are cleared on send, so a large or
+  // fast-changing resource never rides along silently on later turns.
+  const [attachedResources, setAttachedResources] = useState<ResourceRef[]>([]);
+  const attachedResourcesRef = useRef<ResourceRef[]>([]);
+  attachedResourcesRef.current = attachedResources;
+  const [skippedResources, setSkippedResources] = useState<SkippedResource[]>([]);
+  const [mcpPrompts, setMcpPrompts] = useState<ConnectorPromptInfo[]>([]);
+  const [mcpResources, setMcpResources] = useState<ConnectorResourceInfo[]>([]);
+  const [mcpPromptNeedingArgs, setMcpPromptNeedingArgs] = useState<ConnectorPromptInfo | null>(null);
+  const [mcpResourceNeedingConsent, setMcpResourceNeedingConsent] =
+    useState<ConnectorResourceInfo | null>(null);
+  const [mcpReloadToken, setMcpReloadToken] = useState(0);
   const [skillPromptBlock, setSkillPromptBlock] = useState('');
   const [memoryPromptBlock, setMemoryPromptBlock] = useState('');
   const [showWorkspaceConsent, setShowWorkspaceConsent] = useState(false);
@@ -750,6 +811,32 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       cancelled = true;
     };
   }, [conversationId, pendingSendText]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [prompts, resources] = await Promise.all([
+          listConnectorPrompts(),
+          listConnectorResources(),
+        ]);
+        if (!cancelled) {
+          setMcpPrompts(prompts);
+          setMcpResources(resources);
+        }
+      } catch {
+        // A connector that is not running yet is the normal case, not an
+        // error worth a status line: the pickers simply stay empty.
+        if (!cancelled) {
+          setMcpPrompts([]);
+          setMcpResources([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mcpReloadToken, settingsOpen]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -1150,13 +1237,21 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ...historyForProviderRequest(priorHistory, activeCompaction),
       userTurn,
     ];
+    const [skillBlock, memoryBlock, resourceBlock] = await Promise.all([
+      getSkillPromptBlock(enabledSkillIdsRef.current, conversationWorkspaceRoot).catch(
+        () => skillPromptBlock,
+      ),
+      getMemoryPromptBlock().catch(() => memoryPromptBlock),
+      readAttachedResources(attachedResourcesRef.current),
+    ]);
+    // Surface anything the gate refused or truncated, then clear the chips:
+    // the content belongs to this turn only.
+    setSkippedResources(resourceBlock.skipped);
+    if (attachedResourcesRef.current.length > 0) setAttachedResources([]);
     const extraSystemSections = joinExtraSystemSections(
-      ...(await Promise.all([
-        getSkillPromptBlock(enabledSkillIdsRef.current, conversationWorkspaceRoot).catch(
-          () => skillPromptBlock,
-        ),
-        getMemoryPromptBlock().catch(() => memoryPromptBlock),
-      ])),
+      skillBlock,
+      memoryBlock,
+      resourceBlock.text,
     );
     const request = buildProviderRequest(
       settings,
@@ -1563,21 +1658,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }
       }, 100);
     },
-    insertPrompt: (text: string) => {
-      setPrompt((prev) => {
-        const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
-        if (ta && document.activeElement === ta) {
-          const start = ta.selectionStart;
-          const end = ta.selectionEnd;
-          return prev.slice(0, start) + text + prev.slice(end);
-        }
-        return prev + (prev ? '\n' : '') + text;
-      });
-      requestAnimationFrame(() => {
-        const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
-        ta?.focus();
-      });
-    },
+    insertPrompt: insertPromptText,
     toggleWebSearch: () => {
       // Only reachable when the composer's web toggle would be visible.
       if (settings.webSearchEnabled && !settings.localOnly) {
@@ -1681,6 +1762,99 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       );
     } catch (error) {
       onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotSaveChatSettings'));
+    }
+  }
+
+  /// Insert text at the composer's cursor, or append it when the composer is
+  /// not focused. Shared by the prompts library (via the imperative handle)
+  /// and the MCP prompt picker.
+  function insertPromptText(text: string) {
+    setPrompt((prev) => {
+      const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
+      if (ta && document.activeElement === ta) {
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        return prev.slice(0, start) + text + prev.slice(end);
+      }
+      return prev + (prev ? '\n' : '') + text;
+    });
+    requestAnimationFrame(() => {
+      const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
+      ta?.focus();
+    });
+  }
+
+  /**
+   * Picking a prompt either resolves straight into the composer, or opens the
+   * argument form first. Either way the result is editable draft text, so the
+   * user sees exactly what will be sent.
+   */
+  function handlePickMcpPrompt(prompt: ConnectorPromptInfo) {
+    if (needsArgumentDialog(prompt)) {
+      setMcpPromptNeedingArgs(prompt);
+      return;
+    }
+    void resolveMcpPrompt(prompt, {});
+  }
+
+  async function resolveMcpPrompt(prompt: ConnectorPromptInfo, values: Record<string, string>) {
+    setMcpPromptNeedingArgs(null);
+    try {
+      const text = await getConnectorPrompt({
+        connectorVersionId: prompt.connectorVersionId,
+        name: prompt.name,
+        arguments: buildPromptArguments(prompt, values),
+      });
+      composerRef.current?.focusPrompt();
+      insertPromptText(text);
+    } catch (error) {
+      onStatusRef.current(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function attachMcpResource(resource: ConnectorResourceInfo) {
+    const ref = toResourceRef(resource);
+    setAttachedResources((prev) =>
+      prev.some((r) => sameResource(r, ref)) ? prev : [...prev, ref],
+    );
+  }
+
+  /**
+   * Detaching is unconditional. Attaching asks once per connector first,
+   * because it is what sends that server's content to the model provider.
+   * Rust enforces the same check, so declining here is not the only thing
+   * standing between an unacknowledged server and a read.
+   */
+  function handleToggleMcpResource(resource: ConnectorResourceInfo, attach: boolean) {
+    if (!attach) {
+      const ref = toResourceRef(resource);
+      setAttachedResources((prev) => prev.filter((r) => !sameResource(r, ref)));
+      return;
+    }
+    void (async () => {
+      let acknowledged = false;
+      try {
+        acknowledged = await isConnectorResourceAcknowledged(resource.connectorVersionId);
+      } catch {
+        // Treat an unreadable answer as "not yet asked": the prompt is
+        // cheap, and silently attaching would be the wrong way to fail.
+        acknowledged = false;
+      }
+      if (acknowledged) {
+        attachMcpResource(resource);
+      } else {
+        setMcpResourceNeedingConsent(resource);
+      }
+    })();
+  }
+
+  async function confirmMcpResourceConsent(resource: ConnectorResourceInfo) {
+    setMcpResourceNeedingConsent(null);
+    try {
+      await acknowledgeConnectorResources(resource.connectorVersionId);
+      attachMcpResource(resource);
+    } catch (error) {
+      onStatusRef.current(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -2364,6 +2538,38 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         <SuggestedPrompts prompts={suggestedPrompts} onSelect={handleSuggestionSelect} />
       )}
 
+      {mcpPromptNeedingArgs && (
+        <McpPromptArgumentsDialog
+          prompt={mcpPromptNeedingArgs}
+          onConfirm={(values) => void resolveMcpPrompt(mcpPromptNeedingArgs, values)}
+          onCancel={() => setMcpPromptNeedingArgs(null)}
+        />
+      )}
+
+      {mcpResourceNeedingConsent && (
+        <McpResourceConsentDialog
+          resource={mcpResourceNeedingConsent}
+          onConfirm={() => void confirmMcpResourceConsent(mcpResourceNeedingConsent)}
+          onCancel={() => setMcpResourceNeedingConsent(null)}
+        />
+      )}
+
+      {skippedResources.length > 0 && (
+        <div className="mcp-resource-skipped" role="status">
+          <p>{t('chat.mcpResources.skippedIntro')}</p>
+          <ul>
+            {skippedResources.map((s) => (
+              <li key={s.uri}>
+                <code>{s.uri}</code> — {s.reason}
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="btn ghost" onClick={() => setSkippedResources([])}>
+            {t('chat.mcpResources.dismissSkipped')}
+          </button>
+        </div>
+      )}
+
       <Composer
         ref={composerRef}
         settings={settings}
@@ -2432,6 +2638,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         skills={discoveredSkills}
         enabledSkillIds={enabledSkillIds}
         onToggleSkill={(id, on) => void handleToggleSkill(id, on)}
+        mcpPrompts={mcpPrompts}
+        mcpResources={mcpResources}
+        attachedResources={attachedResources}
+        onPickMcpPrompt={handlePickMcpPrompt}
+        onToggleMcpResource={handleToggleMcpResource}
+        onRefreshMcpCapabilities={() => setMcpReloadToken((n) => n + 1)}
         onOpenSettings={onOpenSettings}
         usage={accumulatedUsage}
         contextTokens={contextTokens}

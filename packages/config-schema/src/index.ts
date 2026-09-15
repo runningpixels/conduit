@@ -105,6 +105,15 @@ export type { ConsentDecision } from './generated/consent_decision';
 export type { ConsentPrompt } from './generated/consent_prompt';
 export type { ConnectorRuntimeEvent } from './generated/connector_runtime_event';
 
+// t0-9 — MCP resources & prompts in the composer
+export type { ConnectorPromptArgument } from './generated/connector_prompt_argument';
+export type { ConnectorPromptInfo } from './generated/connector_prompt_info';
+export type { ConnectorResourceInfo } from './generated/connector_resource_info';
+export type { ResourceRef } from './generated/resource_ref';
+export type { SkippedResource } from './generated/skipped_resource';
+export type { ResourceBlock } from './generated/resource_block';
+export type { PromptArguments } from './generated/prompt_arguments';
+
 // License
 export type { LicenseClaims } from './generated/license_claims';
 

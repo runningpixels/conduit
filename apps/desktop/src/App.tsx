@@ -1694,6 +1694,7 @@ export default function App() {
           <ChatView
             ref={chatViewRef}
             settings={settings}
+            settingsOpen={settingsOpen}
             onSelectModel={handleSelectModel}
             onStatus={setStatusMessage}
             conversationId={activeConversationId}

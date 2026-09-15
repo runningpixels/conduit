@@ -24,8 +24,8 @@ pub mod transport;
 pub use consent::{classify, ConsentDecision, ConsentKind};
 pub use httpsse::{HttpSseConfig, HttpSseTransport};
 pub use protocol::{
-    ClientInfo, McpPrompt, McpResource, McpTool, PermissionLevel, ServerInfo, ToolContent,
-    ToolOutput,
+    ClientInfo, McpPrompt, McpPromptArgument, McpResource, McpTool, PermissionLevel, PromptMessage,
+    ResourceContents, ServerInfo, ToolContent, ToolOutput,
 };
 pub use reinject::{validate_reinjection, ReinjectionRisk};
 pub use stdio::{StdioConfig, StdioTransport};

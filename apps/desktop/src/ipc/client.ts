@@ -17,6 +17,8 @@ import type {
   ConnectorDefinition,
   ConnectorGrant,
   ConnectorRuntimeEvent,
+  ConnectorPromptInfo,
+  ConnectorResourceInfo,
   ConnectorRuntimeSnapshot,
   ConnectorServerInfo,
   ConnectorVersion,
@@ -30,6 +32,9 @@ import type {
   FileState,
   GenerationControls,
   InvokeConnectorToolRequest,
+  PromptArguments,
+  ResourceBlock,
+  ResourceRef,
   Message,
   MockStreamRequest,
   ModelInfo,
@@ -652,6 +657,43 @@ export async function listConnectorCapabilities(connectorVersionId: string): Pro
 
 export async function getConnectorRuntimeStates(): Promise<ConnectorRuntimeSnapshot[]> {
   return invokeCommand<ConnectorRuntimeSnapshot[]>('get_connector_runtime_states');
+}
+
+/// Prompts advertised by the running connectors, for the composer picker.
+/// Reads the capability cache; no connector round-trip.
+export async function listConnectorPrompts(): Promise<ConnectorPromptInfo[]> {
+  return invokeCommand<ConnectorPromptInfo[]>('list_connector_prompts');
+}
+
+/// Resources advertised by the running connectors, for the composer picker.
+export async function listConnectorResources(): Promise<ConnectorResourceInfo[]> {
+  return invokeCommand<ConnectorResourceInfo[]>('list_connector_resources');
+}
+
+/// Resolve a prompt template into composer draft text. The result is editable
+/// by the user before it is sent, so it needs no consent gate.
+export async function getConnectorPrompt(request: PromptArguments): Promise<string> {
+  return invokeCommand<string>('get_connector_prompt', { request });
+}
+
+/// Whether this connector's resources may already be sent to the model.
+export async function isConnectorResourceAcknowledged(
+  connectorVersionId: string,
+): Promise<boolean> {
+  return invokeCommand<boolean>('is_connector_resource_acknowledged', { connectorVersionId });
+}
+
+/// Record the user's first-use agreement for this connector's resources.
+export async function acknowledgeConnectorResources(connectorVersionId: string): Promise<void> {
+  return invokeCommand<void>('acknowledge_connector_resources', { connectorVersionId });
+}
+
+/// Read the resources attached to one turn into a sanitized context block.
+/// Rust redacts, runs the reinjection gate and caps the size; a resource that
+/// fails any of those comes back in `skipped` with a reason rather than
+/// failing the turn.
+export async function readConnectorResources(refs: ResourceRef[]): Promise<ResourceBlock> {
+  return invokeCommand<ResourceBlock>('read_connector_resources', { refs });
 }
 
 export async function startConnector(connectorVersionId: string): Promise<ConnectorServerInfo> {

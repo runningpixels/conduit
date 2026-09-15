@@ -13,18 +13,20 @@
 use provider_core::schema::{
     AgentGuardrails, AppError, AppSettings, Artifact, ArtifactKind, AskUserField, Attachment,
     BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime,
-    BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeEvent,
-    ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
-    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
-    GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
-    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel,
+    BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorPromptArgument,
+    ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent, ConnectorVersion,
+    ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary,
+    CredentialRequest, CredentialSummary, GenerationControls, GrantScope, GrantStatus,
+    KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
+    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel, PromptArguments,
     ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
-    ReasoningEffort, ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel,
-    SearchContextSize, SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme,
-    ThemeCorners, ThemeFace, ThemeIconStroke, ThemeLabels, ThemeMotion, ThemeShadows,
-    ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy,
-    UserLocation, UserTheme, UserThemeEntry, UserThemePalettes, UserThemeStructure,
-    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
+    ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
+    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
+    SupportState, TenantConfig, TenantIdentity, Theme, ThemeCorners, ThemeFace, ThemeIconStroke,
+    ThemeLabels, ThemeMotion, ThemeShadows, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, UserTheme, UserThemeEntry,
+    UserThemePalettes, UserThemeStructure, WebSearchDefaults, WebSearchFilters, WebSearchMode,
+    WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -115,6 +117,15 @@ fn main() {
     // Phase 4 — MCP runtime / consent IPC
     ConsentDecision::export().expect("export ConsentDecision");
     ConsentPrompt::export().expect("export ConsentPrompt");
+
+    // MCP resources & prompts in the composer (t0-9).
+    ConnectorPromptArgument::export().expect("export ConnectorPromptArgument");
+    ConnectorPromptInfo::export().expect("export ConnectorPromptInfo");
+    ConnectorResourceInfo::export().expect("export ConnectorResourceInfo");
+    ResourceRef::export().expect("export ResourceRef");
+    SkippedResource::export().expect("export SkippedResource");
+    ResourceBlock::export().expect("export ResourceBlock");
+    PromptArguments::export().expect("export PromptArguments");
     ConnectorRuntimeEvent::export().expect("export ConnectorRuntimeEvent");
 
     // License

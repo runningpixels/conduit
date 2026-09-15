@@ -148,6 +148,51 @@ pub struct McpPrompt {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Declared `prompts/get` arguments. Servers may omit the key entirely, so
+    /// this defaults to empty rather than failing the whole `prompts/list`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<McpPromptArgument>,
+}
+
+/// One declared argument of an MCP prompt. `required` defaults to `false`, as
+/// the spec treats an absent key as optional.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptArgument {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+}
+
+// --- resources/read + prompts/get results ------------------------------------
+
+/// One item of a `resources/read` result. The spec returns either `text` or a
+/// base64 `blob`; both are optional here so an unexpected shape decodes to a
+/// skippable item instead of failing the read.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceContents {
+    pub uri: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Base64 payload for a binary resource. Never decoded here — callers skip
+    /// non-text contents rather than inlining bytes into a prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blob: Option<String>,
+}
+
+/// One message of a `prompts/get` result. `content` reuses [`ToolContent`] so a
+/// non-text part (image, embedded resource) survives as `Other` and can be
+/// skipped with a note instead of being interpreted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptMessage {
+    pub role: String,
+    pub content: ToolContent,
 }
 
 // --- tools/call result -------------------------------------------------------

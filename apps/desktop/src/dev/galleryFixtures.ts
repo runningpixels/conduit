@@ -14,6 +14,8 @@
 import type {
   AppSettings,
   Artifact,
+  ConnectorPromptInfo,
+  ConnectorResourceInfo,
   ConversationFolder,
   ConversationSummary,
   SkillSummary,
@@ -161,6 +163,70 @@ export const GALLERY_SKILLS: SkillSummary[] = [
     hasScripts: true,
     hasReferences: false,
     hasAssets: false,
+  },
+];
+
+/** Prompts for the `mcp` gallery section: required+optional args, no args, stale. */
+export const GALLERY_MCP_PROMPTS: ConnectorPromptInfo[] = [
+  {
+    connectorVersionId: 'cv-github',
+    connectorName: 'GitHub',
+    name: 'summarize_pr',
+    description: 'Summarize a pull request by number.',
+    arguments: [
+      { name: 'pr_number', description: 'Pull request number.', required: true },
+      { name: 'tone', description: 'Optional tone for the summary.', required: false },
+    ],
+    stale: false,
+    discoveredAt: GALLERY_NOW,
+  },
+  {
+    connectorVersionId: 'cv-github',
+    connectorName: 'GitHub',
+    name: 'list_open_issues',
+    description: 'List open issues assigned to you.',
+    arguments: [],
+    stale: false,
+    discoveredAt: GALLERY_NOW,
+  },
+  {
+    connectorVersionId: 'cv-linear',
+    connectorName: 'Linear',
+    name: 'triage_backlog',
+    description: 'Triage the current backlog.',
+    arguments: [],
+    stale: true,
+    discoveredAt: GALLERY_NOW,
+  },
+];
+
+/** Resources for the `mcp` gallery section: two normal, one stale. */
+export const GALLERY_MCP_RESOURCES: ConnectorResourceInfo[] = [
+  {
+    connectorVersionId: 'cv-github',
+    connectorName: 'GitHub',
+    name: 'README.md',
+    uri: 'github://runningpixels/conduit/README.md',
+    description: 'Project readme.',
+    stale: false,
+    discoveredAt: GALLERY_NOW,
+  },
+  {
+    connectorVersionId: 'cv-linear',
+    connectorName: 'Linear',
+    name: 'Roadmap',
+    uri: 'linear://roadmap',
+    description: 'Current quarter roadmap doc.',
+    stale: false,
+    discoveredAt: GALLERY_NOW,
+  },
+  {
+    connectorVersionId: 'cv-linear',
+    connectorName: 'Linear',
+    name: 'Old export',
+    uri: '',
+    stale: true,
+    discoveredAt: GALLERY_NOW,
   },
 ];
 

@@ -59,6 +59,12 @@ import { AssistantMessage } from '../chat/AssistantMessage';
 import { SuggestedPrompts } from '../chat/SuggestedPrompts';
 import { Composer } from '../chat/Composer';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from '../chat/ComposerModelPicker';
+import { ComposerMcpPrompts } from '../chat/ComposerMcpPrompts';
+import { ComposerMcpResources } from '../chat/ComposerMcpResources';
+import { McpPromptArgumentsDialog } from '../chat/McpPromptArgumentsDialog';
+import { McpResourceConsentDialog } from '../chat/McpResourceConsentDialog';
+import { buildPromptArguments, needsArgumentDialog, sameResource, toResourceRef } from '../chat/connectorCapabilities';
+import type { ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
 import {
   GALLERY_ARTIFACTS,
   GALLERY_ASSISTANT_ARTIFACT,
@@ -75,6 +81,8 @@ import {
   GALLERY_FOLDERS,
   GALLERY_HTML_ARTIFACT,
   GALLERY_MARKDOWN_ARTIFACT,
+  GALLERY_MCP_PROMPTS,
+  GALLERY_MCP_RESOURCES,
   GALLERY_SETTINGS,
   GALLERY_SKILLS,
   GALLERY_SUGGESTED_PROMPTS,
@@ -94,6 +102,7 @@ export const SECTION_IDS = [
   'settings',
   'document-panel',
   'status',
+  'mcp',
 ] as const;
 export type GallerySectionId = (typeof SECTION_IDS)[number];
 
@@ -567,6 +576,106 @@ function StatusSection() {
   );
 }
 
+/* ── 9. mcp ────────────────────────────────────────────────────────────── */
+
+function McpSection() {
+  const [pickedPrompt, setPickedPrompt] = useState('');
+  const [argPrompt, setArgPrompt] = useState<ConnectorPromptInfo | null>(null);
+  const [argsResult, setArgsResult] = useState('');
+  const [attached, setAttached] = useState<ResourceRef[]>([]);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentResult, setConsentResult] = useState('');
+
+  // Mirrors `ChatView.handlePickMcpPrompt`: a prompt with declared arguments
+  // opens the fill-in dialog instead of inserting straight away.
+  const pick = (prompt: ConnectorPromptInfo) => {
+    if (needsArgumentDialog(prompt)) {
+      setArgPrompt(prompt);
+    } else {
+      setPickedPrompt(prompt.name);
+    }
+  };
+
+  const toggleResource = (resource: ConnectorResourceInfo, next: boolean) => {
+    const ref = toResourceRef(resource);
+    setAttached((prev) => (next ? [...prev, ref] : prev.filter((r) => !sameResource(r, ref))));
+  };
+
+  return (
+    <>
+      <SubHeading>Prompts picker</SubHeading>
+      <GalleryFrame height={420}>
+        <div className="gallery-mcp-row">
+          <Button type="button" onClick={() => setArgPrompt(GALLERY_MCP_PROMPTS[0])}>
+            Open arguments dialog
+          </Button>
+          <span className="gallery-mcp-anchor">
+            <ComposerMcpPrompts
+              open
+              prompts={GALLERY_MCP_PROMPTS}
+              onClose={noop}
+              onPick={pick}
+              onRefresh={noop}
+            />
+          </span>
+        </div>
+        {argPrompt && (
+          <McpPromptArgumentsDialog
+            prompt={argPrompt}
+            onConfirm={(values) => {
+              setArgsResult(JSON.stringify(buildPromptArguments(argPrompt, values)));
+              setPickedPrompt(argPrompt.name);
+              setArgPrompt(null);
+            }}
+            onCancel={() => setArgPrompt(null)}
+          />
+        )}
+      </GalleryFrame>
+      <p data-testid="mcp-picked">{pickedPrompt}</p>
+      <p data-testid="mcp-args-result">{argsResult}</p>
+
+      <SubHeading>Resources picker</SubHeading>
+      <GalleryFrame height={340}>
+        <div className="gallery-mcp-row">
+          <span className="gallery-mcp-anchor">
+            <ComposerMcpResources
+              open
+              resources={GALLERY_MCP_RESOURCES}
+              attached={attached}
+              onClose={noop}
+              onToggle={toggleResource}
+              onRefresh={noop}
+            />
+          </span>
+        </div>
+      </GalleryFrame>
+
+      <SubHeading>Resource consent dialog</SubHeading>
+      <div className="gallery-row">
+        <Button type="button" onClick={() => setConsentOpen(true)}>
+          Open consent dialog
+        </Button>
+      </div>
+      <GalleryFrame height={260}>
+        {consentOpen && (
+          <McpResourceConsentDialog
+            resource={GALLERY_MCP_RESOURCES[0]}
+            onConfirm={() => {
+              setConsentResult('allowed');
+              setConsentOpen(false);
+            }}
+            onCancel={() => {
+              setConsentResult('cancelled');
+              setConsentOpen(false);
+            }}
+          />
+        )}
+      </GalleryFrame>
+      <p data-testid="mcp-consent-result">{consentResult}</p>
+    </>
+  );
+}
+
 /* ── page ──────────────────────────────────────────────────────────────── */
 
 const SECTION_LABELS: Record<GallerySectionId, string> = {
@@ -578,6 +687,7 @@ const SECTION_LABELS: Record<GallerySectionId, string> = {
   settings: 'Settings',
   'document-panel': 'Document panel',
   status: 'Status',
+  mcp: 'MCP',
 };
 
 const SECTION_RENDERERS: Record<GallerySectionId, () => ReactNode> = {
@@ -589,6 +699,7 @@ const SECTION_RENDERERS: Record<GallerySectionId, () => ReactNode> = {
   settings: () => <SettingsSection />,
   'document-panel': () => <DocumentPanelSection />,
   status: () => <StatusSection />,
+  mcp: () => <McpSection />,
 };
 
 export default function Gallery() {

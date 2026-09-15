@@ -21,8 +21,8 @@ use tracing::warn;
 
 use crate::protocol::{
     decode_tool_output, resp_to_result, ClientInfo, InitializeResult, JsonRpcMessage,
-    JsonRpcRequest, McpPrompt, McpResource, McpTool, RequestId, ServerInfo, ToolOutput,
-    PROTOCOL_VERSION,
+    JsonRpcRequest, McpPrompt, McpResource, McpTool, PromptMessage, RequestId, ResourceContents,
+    ServerInfo, ToolOutput, PROTOCOL_VERSION,
 };
 use crate::redact;
 use crate::transport::{McpError, McpTransport};
@@ -322,6 +322,45 @@ impl McpTransport for StdioTransport {
         )
         .map_err(|e| McpError::protocol(format!("decode prompts/list failed: {e}")))?;
         Ok(prompts)
+    }
+
+    async fn read_resource(
+        &mut self,
+        uri: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ResourceContents>, McpError> {
+        let id = self.next_request_id();
+        let params = json!({ "uri": uri });
+        let result = self
+            .round_trip(id, "resources/read", Some(params), cancel)
+            .await?;
+        serde_json::from_value(
+            result
+                .get("contents")
+                .cloned()
+                .unwrap_or(Value::Array(vec![])),
+        )
+        .map_err(|e| McpError::protocol(format!("decode resources/read failed: {e}")))
+    }
+
+    async fn get_prompt(
+        &mut self,
+        name: &str,
+        arguments: &Value,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let id = self.next_request_id();
+        let params = json!({ "name": name, "arguments": arguments });
+        let result = self
+            .round_trip(id, "prompts/get", Some(params), cancel)
+            .await?;
+        serde_json::from_value(
+            result
+                .get("messages")
+                .cloned()
+                .unwrap_or(Value::Array(vec![])),
+        )
+        .map_err(|e| McpError::protocol(format!("decode prompts/get failed: {e}")))
     }
 
     async fn call_tool(

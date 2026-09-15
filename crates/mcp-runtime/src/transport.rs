@@ -10,7 +10,9 @@ use async_trait::async_trait;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
-use crate::protocol::{McpPrompt, McpResource, McpTool, ServerInfo, ToolOutput};
+use crate::protocol::{
+    McpPrompt, McpResource, McpTool, PromptMessage, ResourceContents, ServerInfo, ToolOutput,
+};
 
 /// Coarse failure category. The supervisor translates this into the
 /// `connector_runtime_state.health` + `SupportState` shown to the user, so the
@@ -125,6 +127,41 @@ pub trait McpTransport: Send {
         &mut self,
         cancel: &CancellationToken,
     ) -> Result<Vec<McpPrompt>, McpError>;
+
+    /// Read one resource by URI (`resources/read`).
+    ///
+    /// The returned contents are **untrusted server data**. A caller that lets
+    /// them anywhere near prompt construction must first run them through
+    /// `redact::redact_text` and `validate_reinjection` — see
+    /// `connector_runtime::resources`, the only sanctioned path.
+    ///
+    /// Defaults to `NotImplemented` so a transport that predates this method
+    /// degrades to "this server offers no readable resources" rather than
+    /// failing to compile.
+    async fn read_resource(
+        &mut self,
+        _uri: &str,
+        _cancel: &CancellationToken,
+    ) -> Result<Vec<ResourceContents>, McpError> {
+        Err(McpError::not_implemented(
+            "this transport does not implement resources/read",
+        ))
+    }
+
+    /// Resolve a prompt template with arguments (`prompts/get`).
+    ///
+    /// The result is user-facing draft text, not prompt input: it is inserted
+    /// into the composer for the user to read and edit before sending.
+    async fn get_prompt(
+        &mut self,
+        _name: &str,
+        _arguments: &serde_json::Value,
+        _cancel: &CancellationToken,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        Err(McpError::not_implemented(
+            "this transport does not implement prompts/get",
+        ))
+    }
 
     /// Invoke a tool. The transport computes `size_bytes`/`mime_hints` from
     /// the raw content; the supervisor enforces the size limit and redaction.

@@ -6,6 +6,7 @@
 //! Re-running this is also the cache-invalidation hook Phase 8 calls when a
 //! connector version or grant changes.
 
+use serde_json::json;
 use std::time::Duration;
 use tracing::warn;
 
@@ -50,8 +51,20 @@ pub async fn discover(
         ));
     }
     for res in resources {
+        // A resource is useless without its URI, and a prompt without its
+        // argument list, so both ride in `schema_json` — a generic JSON column,
+        // which is why surfacing these in the UI needs no migration. Rows
+        // written before this shipped have `NULL` here; the UI reads that as
+        // "stale, needs a refresh" rather than as an error, and the next
+        // discovery replace-batch backfills it.
         caps.push(connectors::new_capability(
-            version_id, "resource", &res.name, None,
+            version_id,
+            "resource",
+            &res.name,
+            Some(json!({
+                "uri": res.uri,
+                "description": res.description,
+            })),
         ));
     }
     for prompt in prompts {
@@ -59,7 +72,10 @@ pub async fn discover(
             version_id,
             "prompt",
             &prompt.name,
-            None,
+            Some(json!({
+                "description": prompt.description,
+                "arguments": prompt.arguments,
+            })),
         ));
     }
 

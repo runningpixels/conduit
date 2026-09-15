@@ -124,3 +124,58 @@ test.describe('a connector that offers only tools', () => {
     await expect(page.getByRole('button', { name: 'MCP resources' })).toHaveCount(0);
   });
 });
+
+test.describe('a connector added while the app is running', () => {
+  /**
+   * Regression: the picker lists were fetched once on mount and never again,
+   * so a connector added mid-session left the composer with no buttons until
+   * the app was reloaded — and the picker's own Refresh was unreachable,
+   * because a picker only renders once its list is non-empty. Found by driving
+   * the real app, not by any of the tests above.
+   *
+   * The lists are re-read when the settings sheet opens or closes, which is
+   * where a connector is added; this stubs a server that only appears after
+   * that first read.
+   */
+  test('shows its pickers once settings closes, with no reload', async ({ page }) => {
+    await page.addInitScript(
+      (data) => {
+        // The connector "appears" only once the test flips this, which stands
+        // in for adding one in Settings. A call counter would not do: React
+        // StrictMode double-invokes effects in dev, so the second mount read
+        // would already see it.
+        (window as unknown as Record<string, unknown>).__mcpConnected = false;
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+          invoke: (cmd: string) => {
+            const on = (window as unknown as Record<string, unknown>).__mcpConnected;
+            if (cmd === 'list_connector_prompts') return Promise.resolve(on ? data.prompts : []);
+            if (cmd === 'list_connector_resources') return Promise.resolve(on ? data.resources : []);
+            return Promise.reject('no IPC in dev:web');
+          },
+          transformCallback: (cb: unknown) => cb,
+          unregisterCallback: () => {},
+          convertFileSrc: (p: string) => p,
+        };
+      },
+      { prompts: PROMPTS, resources: RESOURCES },
+    );
+    await openShell(page);
+
+    await expect(page.getByRole('button', { name: 'MCP prompts' })).toHaveCount(0);
+
+    // The connector is added: the lists would now answer, but nothing has
+    // asked them again.
+    await page.evaluate(() => {
+      (window as unknown as Record<string, unknown>).__mcpConnected = true;
+    });
+    await expect(page.getByRole('button', { name: 'MCP prompts' })).toHaveCount(0);
+
+    // Open and close the settings sheet, as adding a connector requires.
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.waitForTimeout(400);
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByRole('button', { name: 'MCP prompts' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'MCP resources' })).toBeVisible();
+  });
+});

@@ -12,17 +12,21 @@
 //!
 //! What makes it sound is that a resource read here is **user-initiated**: the
 //! user opened the composer picker, named the exact URI, and acknowledged that
-//! its content goes to the model provider. Every read still passes all four of:
+//! its content goes to the model provider. Every read still passes all five of:
 //!
-//! 1. **Resolved against the capability cache** — a URI the runtime never
+//! 1. **Acknowledged** — the user has agreed, once per connector, that this
+//!    server's resources may be sent to their model provider. The renderer
+//!    raises the prompt, but this is where it is *enforced*: an unacknowledged
+//!    connector's resources are refused even if the renderer asks.
+//! 2. **Resolved against the capability cache** — a URI the runtime never
 //!    discovered is refused, mirroring [`execution`]'s step 1. The renderer
 //!    cannot reach a resource that discovery did not surface.
-//! 2. **Redacted** via `redact::redact_text`, the same pass tool output gets.
-//! 3. **Reinjection-gated** — and here the gate *blocks*, where the three
+//! 3. **Redacted** via `redact::redact_text`, the same pass tool output gets.
+//! 4. **Reinjection-gated** — and here the gate *blocks*, where the three
 //!    existing call sites only warn. This is the only path where server-authored
 //!    text enters the instruction context, so a flagged resource is refused
 //!    outright rather than injected with a log line.
-//! 4. **Size-capped** before it ever reaches the renderer.
+//! 5. **Size-capped** before it ever reaches the renderer.
 //!
 //! The result is a fenced block that names its origin and is never merged into
 //! the instruction voice. It reaches exactly the turn it was attached for:
@@ -37,6 +41,39 @@ use crate::db::repository::connectors as conn_repo;
 use crate::state::AppState;
 
 use super::ConnectorRuntimeManager;
+
+/// The `tool_approval_memory` key a connector's resource acknowledgement is
+/// filed under. Consent is per connector, not per URI — a server offering a
+/// dozen files would be unusable otherwise, and the connector is the trust
+/// boundary everywhere else in this codebase.
+pub const RESOURCE_CONSENT_KEY: &str = "resource";
+
+/// Whether the user has agreed that this connector's resources may be sent to
+/// their model provider.
+pub async fn is_acknowledged(state: &AppState, connector_version_id: &str) -> bool {
+    crate::db::repository::tool_approval_memory::is_remembered(
+        &state.db,
+        connector_version_id,
+        RESOURCE_CONSENT_KEY,
+        None,
+    )
+    .await
+    .unwrap_or(false)
+}
+
+/// Record the user's agreement for this connector. Scoped `Always`: the prompt
+/// is a first-use acknowledgement, not a per-turn confirmation.
+pub async fn acknowledge(state: &AppState, connector_version_id: &str) -> Result<(), String> {
+    crate::db::repository::tool_approval_memory::remember(
+        &state.db,
+        connector_version_id,
+        RESOURCE_CONSENT_KEY,
+        crate::db::repository::tool_approval_memory::ApprovalScope::Always,
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
 
 /// Per-resource cap. A resource larger than this is truncated with a visible
 /// marker rather than dropped, so the user still gets the head of the document.
@@ -111,7 +148,16 @@ async fn read_one(
         return Err("the turn's resource budget was already spent".to_string());
     }
 
-    // 1. Resolve against the capability cache. A URI the runtime never
+    // 1. Consent. The renderer raises the prompt, but the decision is
+    //    enforced here, so a renderer that skipped it still cannot read.
+    if !is_acknowledged(state, &r.connector_version_id).await {
+        return Err(
+            "this server's resources have not been allowed to be sent to your model yet"
+                .to_string(),
+        );
+    }
+
+    // 2. Resolve against the capability cache. A URI the runtime never
     //    discovered is refused — the renderer cannot reach past discovery.
     let cap = conn_repo::get_capability_by_name(&state.db, &r.connector_version_id, &r.name)
         .await
@@ -146,7 +192,7 @@ async fn read_one(
         }
     }
 
-    // 2. Read.
+    // 3. Read.
     let cancel = CancellationToken::new();
     let contents = mgr
         .read_resource(&r.connector_version_id, &r.uri, &cancel)
@@ -157,7 +203,7 @@ async fn read_one(
         return Ok(None);
     };
 
-    // 3. Redact, then gate. Order matters: redaction can only remove text, so
+    // 4. Redact, then gate. Order matters: redaction can only remove text, so
     //    gating the redacted form never lets an injection phrase slip past by
     //    hiding inside a secret.
     let redacted = redact::redact_text(&raw);
@@ -169,7 +215,7 @@ async fn read_one(
         ));
     }
 
-    // 4. Cap. Truncate on a char boundary so the block stays valid UTF-8.
+    // 5. Cap. Truncate on a char boundary so the block stays valid UTF-8.
     let cap_bytes = MAX_RESOURCE_BYTES.min(budget);
     let (body, truncated) = truncate_on_char_boundary(&redacted, cap_bytes);
 

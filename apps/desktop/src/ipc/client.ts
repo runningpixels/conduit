@@ -676,6 +676,18 @@ export async function getConnectorPrompt(request: PromptArguments): Promise<stri
   return invokeCommand<string>('get_connector_prompt', { request });
 }
 
+/// Whether this connector's resources may already be sent to the model.
+export async function isConnectorResourceAcknowledged(
+  connectorVersionId: string,
+): Promise<boolean> {
+  return invokeCommand<boolean>('is_connector_resource_acknowledged', { connectorVersionId });
+}
+
+/// Record the user's first-use agreement for this connector's resources.
+export async function acknowledgeConnectorResources(connectorVersionId: string): Promise<void> {
+  return invokeCommand<void>('acknowledge_connector_resources', { connectorVersionId });
+}
+
 /// Read the resources attached to one turn into a sanitized context block.
 /// Rust redacts, runs the reinjection gate and caps the size; a resource that
 /// fails any of those comes back in `skipped` with a reason rather than

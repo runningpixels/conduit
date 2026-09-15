@@ -121,6 +121,13 @@ async fn seed_extended(pool: &conduit_desktop::db::DbPool) -> String {
     "echo:1.0.0".to_string()
 }
 
+/// Most tests here are about what happens *after* the user has allowed this
+/// server's resources; `unacknowledged_connector_is_refused` covers the gate
+/// itself.
+async fn acknowledge(state: &AppState, vid: &str) {
+    resources::acknowledge(state, vid).await.unwrap();
+}
+
 fn resource_ref(name: &str, uri: &str) -> ResourceRef {
     ResourceRef {
         connector_version_id: "echo:1.0.0".into(),
@@ -177,6 +184,7 @@ async fn a_text_resource_is_read_into_a_fenced_block() {
     let mgr = test_manager();
     let vid = seed_extended(&pool).await;
     mgr.start_connector(&state, &vid).await.unwrap();
+    acknowledge(&state, &vid).await;
 
     let refs = vec![resource_ref("spec.md", "echo://notes/spec.md")];
     let block = resources::read_resources(&state, &mgr, &refs)
@@ -201,6 +209,7 @@ async fn hostile_resource_is_refused_by_the_gate() {
     let mgr = test_manager();
     let vid = seed_extended(&pool).await;
     mgr.start_connector(&state, &vid).await.unwrap();
+    acknowledge(&state, &vid).await;
 
     let refs = vec![resource_ref("hostile.md", "echo://notes/hostile.md")];
     let block = resources::read_resources(&state, &mgr, &refs)
@@ -233,6 +242,7 @@ async fn a_binary_resource_is_skipped_rather_than_inlined() {
     let mgr = test_manager();
     let vid = seed_extended(&pool).await;
     mgr.start_connector(&state, &vid).await.unwrap();
+    acknowledge(&state, &vid).await;
 
     let refs = vec![resource_ref("logo.png", "echo://blob/logo.png")];
     let block = resources::read_resources(&state, &mgr, &refs)
@@ -254,6 +264,7 @@ async fn one_bad_resource_does_not_cost_the_whole_turn() {
     let mgr = test_manager();
     let vid = seed_extended(&pool).await;
     mgr.start_connector(&state, &vid).await.unwrap();
+    acknowledge(&state, &vid).await;
 
     let refs = vec![
         resource_ref("hostile.md", "echo://notes/hostile.md"),
@@ -278,6 +289,7 @@ async fn a_resource_outside_the_capability_cache_is_refused() {
     let mgr = test_manager();
     let vid = seed_extended(&pool).await;
     mgr.start_connector(&state, &vid).await.unwrap();
+    acknowledge(&state, &vid).await;
 
     // The renderer cannot reach past discovery: a name the runtime never
     // cached is refused before any connector round-trip.
@@ -300,6 +312,7 @@ async fn a_uri_that_does_not_match_the_discovered_one_is_refused() {
     let mgr = test_manager();
     let vid = seed_extended(&pool).await;
     mgr.start_connector(&state, &vid).await.unwrap();
+    acknowledge(&state, &vid).await;
 
     // A known resource name pointed at a different URI: the read is pinned to
     // what discovery recorded, not to what the caller asked for.
@@ -389,6 +402,41 @@ async fn a_tool_cannot_be_invoked_through_the_prompt_path() {
     .await
     .expect_err("a tool must not be reachable as a prompt");
     assert!(err.contains("is not a prompt"), "got: {err}");
+
+    mgr.stop_connector(&state, &vid).await.unwrap();
+}
+
+#[tokio::test]
+async fn unacknowledged_connector_is_refused() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let mgr = test_manager();
+    let vid = seed_extended(&pool).await;
+    mgr.start_connector(&state, &vid).await.unwrap();
+
+    // Deliberately no `acknowledge`. The renderer raises the prompt, but the
+    // decision is enforced here -- a renderer that skipped it still cannot
+    // read, which is the point of checking Rust-side rather than in the UI.
+    let refs = vec![resource_ref("spec.md", "echo://notes/spec.md")];
+    let block = resources::read_resources(&state, &mgr, &refs)
+        .await
+        .unwrap();
+
+    assert!(block.included.is_empty());
+    assert!(
+        block.skipped[0].reason.contains("not been allowed"),
+        "got: {}",
+        block.skipped[0].reason
+    );
+    assert!(!block.text.contains("The widget must fold"));
+
+    // Once allowed, the same read goes through.
+    acknowledge(&state, &vid).await;
+    let block = resources::read_resources(&state, &mgr, &refs)
+        .await
+        .unwrap();
+    assert_eq!(block.included.len(), 1);
 
     mgr.stop_connector(&state, &vid).await.unwrap();
 }

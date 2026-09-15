@@ -7,6 +7,7 @@ import {
   toResourceRef,
 } from './connectorCapabilities';
 import { McpPromptArgumentsDialog } from './McpPromptArgumentsDialog';
+import { McpResourceConsentDialog } from './McpResourceConsentDialog';
 import type {
   ConnectorPromptInfo,
   ConnectorResourceInfo,
@@ -41,7 +42,9 @@ import {
   setConversationSkills,
   getSkillPromptBlock,
   getMemoryPromptBlock,
+  acknowledgeConnectorResources,
   getConnectorPrompt,
+  isConnectorResourceAcknowledged,
   listConnectorPrompts,
   listConnectorResources,
   readConnectorResources,
@@ -638,6 +641,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [mcpPrompts, setMcpPrompts] = useState<ConnectorPromptInfo[]>([]);
   const [mcpResources, setMcpResources] = useState<ConnectorResourceInfo[]>([]);
   const [mcpPromptNeedingArgs, setMcpPromptNeedingArgs] = useState<ConnectorPromptInfo | null>(null);
+  const [mcpResourceNeedingConsent, setMcpResourceNeedingConsent] =
+    useState<ConnectorResourceInfo | null>(null);
   const [mcpReloadToken, setMcpReloadToken] = useState(0);
   const [skillPromptBlock, setSkillPromptBlock] = useState('');
   const [memoryPromptBlock, setMemoryPromptBlock] = useState('');
@@ -1803,15 +1808,50 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
-  function handleToggleMcpResource(resource: ConnectorResourceInfo, attach: boolean) {
+  function attachMcpResource(resource: ConnectorResourceInfo) {
     const ref = toResourceRef(resource);
     setAttachedResources((prev) =>
-      attach
-        ? prev.some((r) => sameResource(r, ref))
-          ? prev
-          : [...prev, ref]
-        : prev.filter((r) => !sameResource(r, ref)),
+      prev.some((r) => sameResource(r, ref)) ? prev : [...prev, ref],
     );
+  }
+
+  /**
+   * Detaching is unconditional. Attaching asks once per connector first,
+   * because it is what sends that server's content to the model provider.
+   * Rust enforces the same check, so declining here is not the only thing
+   * standing between an unacknowledged server and a read.
+   */
+  function handleToggleMcpResource(resource: ConnectorResourceInfo, attach: boolean) {
+    if (!attach) {
+      const ref = toResourceRef(resource);
+      setAttachedResources((prev) => prev.filter((r) => !sameResource(r, ref)));
+      return;
+    }
+    void (async () => {
+      let acknowledged = false;
+      try {
+        acknowledged = await isConnectorResourceAcknowledged(resource.connectorVersionId);
+      } catch {
+        // Treat an unreadable answer as "not yet asked": the prompt is
+        // cheap, and silently attaching would be the wrong way to fail.
+        acknowledged = false;
+      }
+      if (acknowledged) {
+        attachMcpResource(resource);
+      } else {
+        setMcpResourceNeedingConsent(resource);
+      }
+    })();
+  }
+
+  async function confirmMcpResourceConsent(resource: ConnectorResourceInfo) {
+    setMcpResourceNeedingConsent(null);
+    try {
+      await acknowledgeConnectorResources(resource.connectorVersionId);
+      attachMcpResource(resource);
+    } catch (error) {
+      onStatusRef.current(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function handleToggleSkill(skillId: string, enabled: boolean) {
@@ -2499,6 +2539,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           prompt={mcpPromptNeedingArgs}
           onConfirm={(values) => void resolveMcpPrompt(mcpPromptNeedingArgs, values)}
           onCancel={() => setMcpPromptNeedingArgs(null)}
+        />
+      )}
+
+      {mcpResourceNeedingConsent && (
+        <McpResourceConsentDialog
+          resource={mcpResourceNeedingConsent}
+          onConfirm={() => void confirmMcpResourceConsent(mcpResourceNeedingConsent)}
+          onCancel={() => setMcpResourceNeedingConsent(null)}
         />
       )}
 

@@ -227,6 +227,25 @@ pub async fn read_connector_resources(
     resources::read_resources(&state, &runtime, &refs).await
 }
 
+/// Whether the user has already agreed that this connector's resources may be
+/// sent to their model provider.
+#[tauri::command]
+pub async fn is_connector_resource_acknowledged(
+    state: State<'_, AppState>,
+    connector_version_id: String,
+) -> Result<bool, String> {
+    Ok(resources::is_acknowledged(&state, &connector_version_id).await)
+}
+
+/// Record that agreement. Asked once per connector, on the first attach.
+#[tauri::command]
+pub async fn acknowledge_connector_resources(
+    state: State<'_, AppState>,
+    connector_version_id: String,
+) -> Result<(), String> {
+    resources::acknowledge(&state, &connector_version_id).await
+}
+
 /// `(connector_version_id, connector_name)` for each running connector, so the
 /// pickers can group by server without each caller re-joining definitions.
 async fn running_connector_names(

@@ -121,6 +121,8 @@ fn main() {
             list_connector_resources,
             get_connector_prompt,
             read_connector_resources,
+            is_connector_resource_acknowledged,
+            acknowledge_connector_resources,
             get_connector_runtime_states,
             start_connector,
             stop_connector,

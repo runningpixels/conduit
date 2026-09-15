@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.0-rc.5] - 2026-09-15
+
 ### Added
 
 - Six more providers: xAI, Z.ai, Moonshot AI, Qwen, Together AI and Fireworks
@@ -51,6 +53,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The artifact panel can be expanded (`Ctrl+Shift+E`) to take everything but a
   narrow chat column, and restored to the exact layout you had. Its width is no
   longer capped at 560px, so HTML artifacts stop rendering at phone width.
+- While the assistant writes a document you can see it happening: the chat, the
+  tool card and the document panel show the title, the line count and the size
+  as they grow, and a "still working" note appears if the provider goes quiet.
+  An optional Live preview renders the document as it is written.
+- Documents too long for one reply can now be written at all. The assistant
+  saves the structure first and fills it in section by section, the chat counts
+  down the sections left, and the preview marks the ones not written yet. If the
+  turn runs out of time part-way, the document is kept as far as it got and a
+  Continue building button picks it up where it stopped.
+- Revising a document changes only the part that differs instead of rewriting
+  the whole thing, so edits are faster and cost less.
 
 ### Changed
 
@@ -65,6 +78,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   open the same section. The sidebar's Settings item used to open Appearance
   while its own `Ctrl+,` hint opened Providers.
 - The command palette has an entry for every Settings section.
+- A turn ends as soon as the document is saved, instead of spending another
+  5–30 seconds having the model confirm what it just wrote. Settings → Chat
+  defaults → Finish after writing a document turns this off.
+- Replies are no longer cut short by a low default output limit: Anthropic sent
+  4,096 tokens' worth whenever no limit was set — a few hundred lines of HTML —
+  and Gemini capped every reply at 8,192. Each model's own limit applies now.
+- The turn time limit no longer stops a reply that is still arriving, and it
+  gives a document more time for as long as it keeps saving progress.
 
 ### Fixed
 
@@ -91,6 +112,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Switching chats briefly showed the previous chat's artifact count on the
   panel button.
 - Artifact tab names were cut to nothing at every panel width.
+- A document cut off by the output limit used to fail with a message about a
+  missing field and vanish. The reply now says which document was cut off and
+  which limit it hit, and offers to retry without the limit. A model that
+  spends its whole limit thinking is told to think less and tried once more,
+  and a provider that gives up on a long silent reply gets it in parts.
+- Switching chats while a reply was arriving left every later message queued
+  and unsent, in every chat, until the app restarted.
+- Keyboard shortcuts stopped working after clicking inside an HTML preview.
+- Clearing Max tokens, temperature or the user instructions in Settings put the
+  old value straight back.
+- Searching a large project folder could run for minutes and use up the turn.
+- Ollama never received tool definitions, so it could not use tools at all.
+- The chat column could be scrolled sideways, tool cards printed whole files,
+  and notifications covered the document panel's toolbar.
 
 ## [0.1.0-rc.4] - 2026-09-12
 
@@ -207,7 +242,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.4...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.5...HEAD
+[0.1.0-rc.5]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.4...v0.1.0-rc.5
 [0.1.0-rc.4]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.3...v0.1.0-rc.4
 [0.1.0-rc.3]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.2...v0.1.0-rc.3
 [0.1.0-rc.2]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.1...v0.1.0-rc.2

@@ -2302,6 +2302,8 @@ impl StreamManager {
         // Whether this turn already retried a document round whose stream went
         // idle until the provider gave up, asking for the work in parts.
         let mut idle_timeout_retry_used = false;
+        // Phase label for the next round when it is a retry.
+        let mut next_round_label: Option<&'static str> = None;
         let mut web_search_calls: u32 = 0;
         let mut web_fetch_calls: u32 = 0;
 
@@ -2348,11 +2350,13 @@ impl StreamManager {
             // Emit agent phase event before each provider round.
             let total = max_steps as u32;
             let round_num = (step + 1) as u32;
-            let (label, sub_phase) = if step == 0 {
-                ("Thinking".to_string(), "thinking".to_string())
-            } else {
-                ("Continuing".to_string(), "thinking".to_string())
-            };
+            // A retry names itself for the whole round it starts; a label sent
+            // from the retry branch was replaced by "Continuing" at once.
+            let label = next_round_label
+                .take()
+                .unwrap_or(if step == 0 { "Thinking" } else { "Continuing" })
+                .to_string();
+            let sub_phase = "thinking".to_string();
             let _ = channel.send(ProviderEvent::AgentPhase {
                 request_id: request_id.clone(),
                 label,
@@ -2510,13 +2514,7 @@ impl StreamManager {
                             .collect::<Vec<_>>()
                             .join("\n\n"),
                     );
-                    let _ = channel.send(ProviderEvent::AgentPhase {
-                        request_id: request_id.clone(),
-                        label: "Retrying in parts".to_string(),
-                        round: (step + 1) as u32,
-                        total_rounds: max_steps as u32,
-                        sub_phase: "thinking".to_string(),
-                    });
+                    next_round_label = Some("Retrying in parts");
                     continue;
                 }
                 warn!(request_id = %request_id, step, error = %err, "agent turn aborted due to round error");
@@ -2661,13 +2659,7 @@ impl StreamManager {
                         );
                         controls.reasoning_effort =
                             Some(provider_core::schema::ReasoningEffort::Low);
-                        let _ = channel.send(ProviderEvent::AgentPhase {
-                            request_id: request_id.clone(),
-                            label: "Retrying with less thinking".to_string(),
-                            round: (step + 1) as u32,
-                            total_rounds: max_steps as u32,
-                            sub_phase: "thinking".to_string(),
-                        });
+                        next_round_label = Some("Retrying with less thinking");
                         continue;
                     }
                     Some(output_limit_empty_message(outcome.output_limit))

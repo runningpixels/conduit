@@ -935,3 +935,69 @@ async fn more_to_write_keeps_the_turn_going_after_a_document_write() {
         vec![("write_html_document".to_string(), false)]
     );
 }
+
+// ── Progress-aware time limit ────────────────────────────────────────────────
+
+#[test]
+fn saved_progress_extends_the_deadline_up_to_the_ceiling() {
+    use conduit_desktop::stream_manager::TurnDeadline;
+    let start = tokio::time::Instant::now();
+    let window = Duration::from_secs(100);
+    let mut deadline = TurnDeadline::new(start, window);
+
+    assert!(!deadline.expired(start + Duration::from_secs(99)));
+    assert!(deadline.expired(start + Duration::from_secs(101)));
+
+    // Progress at 90s: one more window from then.
+    deadline.record_progress(start + Duration::from_secs(90));
+    assert!(!deadline.expired(start + Duration::from_secs(189)));
+    assert!(deadline.expired(start + Duration::from_secs(191)));
+
+    // Progress late in the turn is capped at three windows in total.
+    deadline.record_progress(start + Duration::from_secs(280));
+    assert!(!deadline.expired(start + Duration::from_secs(299)));
+    assert!(deadline.expired(start + Duration::from_secs(301)));
+
+    // Earlier progress never pulls the deadline in.
+    deadline.record_progress(start + Duration::from_secs(10));
+    assert!(!deadline.expired(start + Duration::from_secs(299)));
+}
+
+#[tokio::test]
+async fn a_build_in_parts_gets_more_time_and_stops_with_a_continue_code() {
+    // Limit 1s. Round 1 saves a skeleton after 1.5s — progress, so the turn
+    // may run until 2.5s. Round 2 runs a tool for 1.2s, saves nothing, and the
+    // limit hits before round 3 while the document is still being built.
+    let skeleton = json!({
+        "title": "Solar System",
+        "html": "<main><!-- section: mercury --></main>",
+        "more_to_write": true
+    });
+    let turn = run_turn_with_patching(
+        vec![
+            tool_round(
+                vec![("write_html_document", skeleton)],
+                Duration::from_millis(1500),
+            ),
+            tool_round(
+                vec![("current_time", json!({}))],
+                Duration::from_millis(1200),
+            ),
+            text_round("never requested"),
+        ],
+        guardrails(25, 1),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2, "progress bought the second round");
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. }
+                if error.provider_code.as_deref() == Some("turn_time_limit_building")
+                    && error.message.contains("saved as far as it got")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}

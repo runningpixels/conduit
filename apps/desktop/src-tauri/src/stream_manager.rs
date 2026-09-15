@@ -389,6 +389,83 @@ pub fn output_limit_empty_message(limit: Option<u32>) -> String {
     )
 }
 
+/// How far past the configured turn time limit saved progress can carry a
+/// turn, as a multiple of the limit.
+pub const TURN_PROGRESS_CEILING_FACTOR: u32 = 3;
+
+/// `provider_code` of the error that ends a turn at its time limit, and of the
+/// variant for a document still being built in parts.
+pub const TURN_TIME_LIMIT_CODE: &str = "turn_time_limit";
+pub const TURN_TIME_LIMIT_BUILDING_CODE: &str = "turn_time_limit_building";
+
+/// The turn time limit, measured from the last saved progress rather than from
+/// the start of the turn.
+///
+/// A document built in parts is several provider rounds — the live build of a
+/// 59 kB guide took 400s against a 300s limit — and each round that saves a
+/// document extends the deadline to one full window from then. A turn that
+/// stops saving anything still ends one window after its last progress, and no
+/// turn runs past [`TURN_PROGRESS_CEILING_FACTOR`] times the limit.
+#[derive(Debug, Clone, Copy)]
+pub struct TurnDeadline {
+    window: std::time::Duration,
+    deadline: tokio::time::Instant,
+    ceiling: tokio::time::Instant,
+}
+
+impl TurnDeadline {
+    pub fn new(now: tokio::time::Instant, window: std::time::Duration) -> Self {
+        Self {
+            window,
+            deadline: now + window,
+            ceiling: now + window * TURN_PROGRESS_CEILING_FACTOR,
+        }
+    }
+
+    /// Saved progress: the turn may run one more window from `now`, up to the
+    /// ceiling. Never moves the deadline earlier.
+    pub fn record_progress(&mut self, now: tokio::time::Instant) {
+        self.deadline = self.deadline.max((now + self.window).min(self.ceiling));
+    }
+
+    pub fn expired(&self, now: tokio::time::Instant) -> bool {
+        now > self.deadline
+    }
+}
+
+/// The error that ends a turn at its time limit. While a document is being
+/// built in parts it says the document is saved as far as it got, so the
+/// renderer can offer to continue building it.
+pub fn turn_time_limit_error(
+    wall_clock_secs: u32,
+    building_document: bool,
+) -> provider_core::schema::ProviderError {
+    // Reached only between steps: the step in progress was allowed to finish
+    // (and its tools to run), so say that rather than implying work was cut off.
+    let (code, message) = if building_document {
+        (
+            TURN_TIME_LIMIT_BUILDING_CODE,
+            format!(
+                "The turn reached its time limit while the document was still being built. \
+                 It is saved as far as it got; continue building it, or raise the limit \
+                 ({wall_clock_secs}s) in Settings → Chat defaults → Turn time limit."
+            ),
+        )
+    } else {
+        (
+            TURN_TIME_LIMIT_CODE,
+            format!(
+                "Agent turn reached its time limit ({wall_clock_secs}s). The step in progress finished, but no further steps were started. Increase the limit in Settings → Chat defaults → Turn time limit."
+            ),
+        )
+    };
+    provider_core::schema::ProviderError {
+        provider_code: Some(code.to_string()),
+        message,
+        retryable: false,
+    }
+}
+
 /// What executing one round's tool calls produced.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ToolRoundTally {
@@ -2131,8 +2208,13 @@ impl StreamManager {
         let guardrails = state.settings().map_err(|e| e.to_string())?.agent;
         let max_steps = guardrails.max_steps as usize;
         let wall_clock_secs = guardrails.wall_clock_budget_secs;
-        let deadline =
-            tokio::time::Instant::now() + std::time::Duration::from_secs(wall_clock_secs as u64);
+        let mut deadline = TurnDeadline::new(
+            tokio::time::Instant::now(),
+            std::time::Duration::from_secs(wall_clock_secs as u64),
+        );
+        // True while the model is building a document in parts: its last
+        // document call said more calls would follow.
+        let mut building_document = false;
 
         let active_model_id = initial_request.model_id.clone();
         let mut current_request = initial_request;
@@ -2158,20 +2240,11 @@ impl StreamManager {
             if cancel.is_cancelled() {
                 break;
             }
-            if tokio::time::Instant::now() > deadline {
+            if deadline.expired(tokio::time::Instant::now()) {
                 // Terminal error, emitted below so it lands after the usage total.
                 terminal = Some(ProviderEvent::Error {
                     request_id: request_id.clone(),
-                    error: provider_core::schema::ProviderError {
-                        provider_code: None,
-                        // Reached only between steps: the step in progress was
-                        // allowed to finish (and its tools to run), so say that
-                        // rather than implying work was cut off.
-                        message: format!(
-                            "Agent turn reached its time limit ({wall_clock_secs}s). The step in progress finished, but no further steps were started. Increase the limit in Settings → Chat defaults → Turn time limit."
-                        ),
-                        retryable: false,
-                    },
+                    error: turn_time_limit_error(wall_clock_secs, building_document),
                 });
                 break;
             }
@@ -2250,7 +2323,7 @@ impl StreamManager {
                 outcome = round_fut => outcome,
             };
 
-            if tokio::time::Instant::now() > deadline {
+            if deadline.expired(tokio::time::Instant::now()) {
                 info!(
                     request_id = %request_id,
                     step,
@@ -2523,6 +2596,16 @@ impl StreamManager {
                 tally = tools_fut => tally,
             };
             let created_this_round = tally.documents_created;
+
+            // Saved document progress buys the turn more time: a build in parts is
+            // several rounds, and the limit is for turns that stop getting
+            // anywhere, not for ones saving a section a minute.
+            if tally.document_writes_succeeded > 0 {
+                deadline.record_progress(tokio::time::Instant::now());
+                building_document = outcome.completed_tool_calls.iter().any(|call| {
+                    is_document_content_tool(&call.name) && call_has_more_to_write(call)
+                });
+            }
 
             if let Some(text) = steered_during_tools {
                 if let Err(e) = Self::apply_steer_message(

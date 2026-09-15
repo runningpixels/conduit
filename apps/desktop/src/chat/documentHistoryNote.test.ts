@@ -42,6 +42,12 @@ describe('documentWritesHistoryNote', () => {
     expect(documentWritesHistoryNote(writeTurn('edit_markdown_document', { artifact_id: 'a1', updated_markdown: '#' }))).toBe(
       '[Updated Markdown document with edit_markdown_document.]',
     );
+    expect(
+      documentWritesHistoryNote(
+        writeTurn('patch_document', { artifact_id: 'a1', edits: [{ old_text: 'a', new_text: 'b' }] }),
+      ),
+    ).toBe('[Patched a document with patch_document (1 edit).]');
+    expect(documentWritesHistoryNote(writeTurn('read_document', { artifact_id: 'a1' }))).toBe('');
   });
 
   it('leaves out failed writes and turns without any', () => {

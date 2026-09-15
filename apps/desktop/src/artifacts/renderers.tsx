@@ -8,6 +8,7 @@ import { Fragment, type ReactNode } from 'react';
 import { renderHighlightLine, useHighlightTokens } from './codeHighlight';
 import { renderMarkdown } from './markdown/safeMarkdown';
 import { useT, type Translate } from '../i18n';
+import { markPlaceholdersInMarkdown } from '../chat/documentBuild';
 
 export interface PlainTextRendererProps {
   text: string;
@@ -29,9 +30,11 @@ export interface MarkdownRendererProps {
 
 /// Markdown → safe-subset React nodes (see `markdown/safeMarkdown.ts`).
 export function MarkdownRenderer({ source, styledPreview = true, onExternalLink }: MarkdownRendererProps) {
+  const t = useT();
+  const shown = markPlaceholdersInMarkdown(source, (name) => t('chat.documentBuild.pendingSection', { name }));
   return (
     <div className={`artifact-markdown scroll${styledPreview ? ' styled' : ''}`}>
-      {renderMarkdown(source, onExternalLink ? { onExternalLink } : undefined)}
+      {renderMarkdown(shown, onExternalLink ? { onExternalLink } : undefined)}
     </div>
   );
 }

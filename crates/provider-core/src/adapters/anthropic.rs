@@ -3,7 +3,9 @@ use crate::adapters::{
     message_text, missing_key, normalized_or_err, parse_fixture_stream, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
-use crate::output_limits::{anthropic_default_max_tokens, FINISH_REASON_LENGTH};
+use crate::output_limits::{
+    anthropic_default_max_tokens, anthropic_supports_effort, FINISH_REASON_LENGTH,
+};
 use crate::schema::{
     ContentAnnotation, MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
     ProviderRequest, ToolChoice, WebSearchRequest,
@@ -476,6 +478,11 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
     if let Some(controls) = &request.generation_controls {
         if let Some(temp) = controls.temperature {
             body["temperature"] = json!(temp);
+        }
+        if let Some(effort) = controls.reasoning_effort {
+            if anthropic_supports_effort(&request.model_id) {
+                body["output_config"] = json!({ "effort": effort.as_str() });
+            }
         }
         if let Some(top_p) = controls.top_p {
             body["top_p"] = json!(top_p);
@@ -1114,6 +1121,36 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_effort_is_sent_only_to_models_that_accept_it() {
+        let with_effort = |model: &str| {
+            let mut request = user_request(None);
+            request.model_id = model.into();
+            request.generation_controls = Some(crate::schema::GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: None,
+                reasoning_effort: Some(crate::schema::ReasoningEffort::Low),
+            });
+            build_payload(&NormalizedRequest { request })
+        };
+        assert_eq!(
+            with_effort("claude-opus-5").pointer("/output_config/effort"),
+            Some(&json!("low"))
+        );
+        assert!(with_effort("claude-haiku-4-5")
+            .get("output_config")
+            .is_none());
+        assert!(with_effort("glm-4.6").get("output_config").is_none());
+        assert!(build_payload(&NormalizedRequest {
+            request: user_request(None)
+        })
+        .get("output_config")
+        .is_none());
+    }
+
+    #[test]
     fn payload_uses_the_model_output_ceiling_unless_max_tokens_is_set() {
         let body = build_payload(&NormalizedRequest {
             request: user_request(None),
@@ -1127,6 +1164,7 @@ mod tests {
             max_tokens: Some(2_048),
             stop_sequences: None,
             tool_choice: None,
+            reasoning_effort: None,
         });
         let body = build_payload(&NormalizedRequest { request });
         assert_eq!(body["max_tokens"], json!(2_048));

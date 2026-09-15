@@ -103,6 +103,9 @@ pub struct RoundOutcome {
     /// The output limit the round ran under, when known (see
     /// [`provider_core::output_limits::effective_max_output_tokens`]).
     pub output_limit: Option<u32>,
+    /// The provider error that ended the round, withheld from the channel under
+    /// [`CompletionDelivery::Deferred`] so the loop can retry or report it.
+    pub withheld_error: Option<provider_core::schema::ProviderError>,
 }
 
 /// Split completed tool calls into the ones this request declared and the ones
@@ -221,21 +224,57 @@ pub fn is_document_write_tool(name: &str) -> bool {
     name.starts_with("write_") && name.ends_with("_document")
 }
 
-/// True for the tools that write a document's content: `write_*_document` and
-/// `edit_*_document`. `export_document` only copies an existing one to disk.
+/// True for the tools that write a document's content: `write_*_document`,
+/// `edit_*_document` and `patch_document`. `export_document` only copies an
+/// existing one to disk, and `read_document` changes nothing.
 pub fn is_document_content_tool(name: &str) -> bool {
-    (name.starts_with("write_") || name.starts_with("edit_")) && name.ends_with("_document")
+    ((name.starts_with("write_") || name.starts_with("edit_")) && name.ends_with("_document"))
+        || name == agent_tools::PATCH_DOCUMENT_TOOL
+}
+
+/// True when the model marked a document call as one step of a longer build
+/// (`more_to_write: true`): a skeleton now, sections in later calls.
+pub fn call_has_more_to_write(call: &CompletedToolCall) -> bool {
+    call.arguments
+        .get("more_to_write")
+        .and_then(|v| v.as_bool())
+        == Some(true)
 }
 
 /// True when a round did nothing but write documents, and every write
 /// succeeded — the case where another provider round would only have the model
-/// confirm what it wrote. Any failure, or any other tool, needs the model again.
+/// confirm what it wrote. Any failure, any other tool, or a write the model
+/// said it will keep building needs the model again.
 pub fn round_only_wrote_documents(calls: &[CompletedToolCall], writes_succeeded: u32) -> bool {
     !calls.is_empty()
         && calls
             .iter()
-            .all(|call| is_document_content_tool(&call.name))
+            .all(|call| is_document_content_tool(&call.name) && !call_has_more_to_write(call))
         && writes_succeeded as usize == calls.len()
+}
+
+/// What the model is told when a document call was cut off at the output limit
+/// and the turn can still recover: nothing was saved, and how to write the
+/// document in parts that each fit.
+pub fn output_limit_recovery_message(call: &CompletedToolCall) -> String {
+    let start = if call.name.starts_with("write_") {
+        format!(
+            "call {} again with a short skeleton — the full structure, with a placeholder \
+             comment such as <!-- section: moons --> where each long section will go — \
+             and more_to_write: true",
+            call.name
+        )
+    } else {
+        "save a short skeleton first — the full structure, with a placeholder comment such as \
+         <!-- section: moons --> where each long section will go — with more_to_write: true"
+            .to_string()
+    };
+    format!(
+        "Cut off: this call reached the output limit before its arguments were finished, so \
+         nothing was saved. Write the document in parts instead: {start}. Then replace the \
+         placeholders with patch_document, one or two sections per call, setting more_to_write: \
+         true on every call except the last."
+    )
 }
 
 /// True when a tool call's arguments never became JSON: adapters complete a
@@ -347,10 +386,123 @@ pub fn output_limit_cut_off_message(call: &CompletedToolCall, limit: Option<u32>
 /// toward the limit.
 pub fn output_limit_empty_message(limit: Option<u32>) -> String {
     format!(
-        "The model used its whole {} before writing an answer (reasoning counts toward the limit). \
-         {RAISE_OUTPUT_LIMIT_HINT}.",
+        "The model used its whole {} on reasoning before writing an answer, even when asked to \
+         think less. {RAISE_OUTPUT_LIMIT_HINT}, or clear it to use the model's own limit.",
         output_limit_phrase(limit)
     )
+}
+
+/// `provider_code` of the error for a stream the provider (or the transport)
+/// ended because nothing arrived, on a turn that writes documents.
+pub const IDLE_TIMEOUT_CODE: &str = "idle_timeout";
+
+/// Added to the developer prompt when a document turn's stream went idle, for
+/// the one retry.
+const BUILD_IN_PARTS_AFTER_TIMEOUT: &str = "The previous attempt timed out: the provider \
+     ended the response because nothing arrived for too long while a long tool call was being \
+     written. Write the document in parts instead, so each call is short: first the full \
+     structure with a placeholder comment such as <!-- section: moons --> where each long \
+     section goes, with more_to_write: true; then replace the placeholders with patch_document, \
+     one or two sections per call, with more_to_write: true on every call but the last.";
+
+/// True for an error that means the stream went silent until something gave
+/// up: OpenRouter's "Upstream idle timeout exceeded", or the transport's own
+/// "the provider sent nothing for 120s".
+pub fn is_idle_timeout(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("idle timeout") || message.contains("sent nothing for")
+}
+
+/// The idle-timeout error in the reader's terms, keeping the provider's own
+/// words at the end for anyone matching them against provider docs.
+pub fn idle_timeout_message(original: &str) -> String {
+    format!(
+        "The provider stopped waiting while the model wrote a long piece in one go — nothing \
+         arrived for about two minutes, even after retrying in parts. Try again, or ask for a \
+         shorter document. ({original})"
+    )
+}
+
+/// `provider_code` of the error for a tool call cut off at the output limit, and
+/// of the error for a round whose reasoning used the whole limit.
+pub const OUTPUT_LIMIT_CODE: &str = "output_limit";
+pub const OUTPUT_LIMIT_REASONING_CODE: &str = "output_limit_reasoning";
+
+/// How far past the configured turn time limit saved progress can carry a
+/// turn, as a multiple of the limit.
+pub const TURN_PROGRESS_CEILING_FACTOR: u32 = 3;
+
+/// `provider_code` of the error that ends a turn at its time limit, and of the
+/// variant for a document still being built in parts.
+pub const TURN_TIME_LIMIT_CODE: &str = "turn_time_limit";
+pub const TURN_TIME_LIMIT_BUILDING_CODE: &str = "turn_time_limit_building";
+
+/// The turn time limit, measured from the last saved progress rather than from
+/// the start of the turn.
+///
+/// A document built in parts is several provider rounds — the live build of a
+/// 59 kB guide took 400s against a 300s limit — and each round that saves a
+/// document extends the deadline to one full window from then. A turn that
+/// stops saving anything still ends one window after its last progress, and no
+/// turn runs past [`TURN_PROGRESS_CEILING_FACTOR`] times the limit.
+#[derive(Debug, Clone, Copy)]
+pub struct TurnDeadline {
+    window: std::time::Duration,
+    deadline: tokio::time::Instant,
+    ceiling: tokio::time::Instant,
+}
+
+impl TurnDeadline {
+    pub fn new(now: tokio::time::Instant, window: std::time::Duration) -> Self {
+        Self {
+            window,
+            deadline: now + window,
+            ceiling: now + window * TURN_PROGRESS_CEILING_FACTOR,
+        }
+    }
+
+    /// Saved progress: the turn may run one more window from `now`, up to the
+    /// ceiling. Never moves the deadline earlier.
+    pub fn record_progress(&mut self, now: tokio::time::Instant) {
+        self.deadline = self.deadline.max((now + self.window).min(self.ceiling));
+    }
+
+    pub fn expired(&self, now: tokio::time::Instant) -> bool {
+        now > self.deadline
+    }
+}
+
+/// The error that ends a turn at its time limit. While a document is being
+/// built in parts it says the document is saved as far as it got, so the
+/// renderer can offer to continue building it.
+pub fn turn_time_limit_error(
+    wall_clock_secs: u32,
+    building_document: bool,
+) -> provider_core::schema::ProviderError {
+    // Reached only between steps: the step in progress was allowed to finish
+    // (and its tools to run), so say that rather than implying work was cut off.
+    let (code, message) = if building_document {
+        (
+            TURN_TIME_LIMIT_BUILDING_CODE,
+            format!(
+                "The turn reached its time limit while the document was still being built. \
+                 It is saved as far as it got; continue building it, or raise the limit \
+                 ({wall_clock_secs}s) in Settings → Chat defaults → Turn time limit."
+            ),
+        )
+    } else {
+        (
+            TURN_TIME_LIMIT_CODE,
+            format!(
+                "Agent turn reached its time limit ({wall_clock_secs}s). The step in progress finished, but no further steps were started. Increase the limit in Settings → Chat defaults → Turn time limit."
+            ),
+        )
+    };
+    provider_core::schema::ProviderError {
+        provider_code: Some(code.to_string()),
+        message,
+        retryable: false,
+    }
 }
 
 /// What executing one round's tool calls produced.
@@ -957,6 +1109,7 @@ impl StreamManager {
         // nothing still answered nothing.
         let mut produced_text = false;
         let mut round_text = String::new();
+        let mut withheld_error: Option<provider_core::schema::ProviderError> = None;
         let mut hit_output_limit = false;
         let output_limit = provider_core::output_limits::effective_max_output_tokens(
             &provider_id,
@@ -1029,6 +1182,36 @@ impl StreamManager {
                 _ => {}
             }
 
+            // In the agent loop an error is the loop's to report, not the round's:
+            // it may retry the round (an idle timeout while a document is
+            // written in one piece), and a forwarded error would already have
+            // ended the turn in the UI. Tool calls the provider started but never
+            // finished are closed as failed so their cards do not spin forever.
+            if completion == CompletionDelivery::Deferred {
+                if let ProviderEvent::Error { error, .. } = &event {
+                    withheld_error = Some(error.clone());
+                    for (tool_call_id, (_, name)) in &tool_start_info {
+                        if completed_tool_calls
+                            .iter()
+                            .all(|call| &call.tool_call_id != tool_call_id)
+                        {
+                            let _ = channel.send(ProviderEvent::ToolExecutionFinished {
+                                request_id: request_id.clone(),
+                                tool_call_id: tool_call_id.clone(),
+                                tool_name: name.clone(),
+                                is_error: true,
+                                error: Some(
+                                    "The provider stopped before this call was finished."
+                                        .to_string(),
+                                ),
+                            });
+                        }
+                    }
+                    let _ = conversations::touch(&pool, &conversation_id).await;
+                    break;
+                }
+            }
+
             // Persist + forward. Persistence is unconditional: the event log is
             // the replay source for rebuilding a turn, so it records every round's
             // completion even when the channel does not see it. Continuation HTTP
@@ -1086,7 +1269,8 @@ impl StreamManager {
             // event. The four early returns never get this far; they build
             // their outcome with `..Default::default()`, which leaves this
             // false, and the loop then owes the terminal event.
-            error_forwarded: error_message.is_some(),
+            error_forwarded: error_message.is_some() && withheld_error.is_none(),
+            withheld_error,
             completed_tool_calls,
             finished_normally,
             produced_text,
@@ -1123,6 +1307,7 @@ impl StreamManager {
         successful_creates_so_far: &mut u32,
         web_search_so_far: &mut u32,
         web_fetch_so_far: &mut u32,
+        rejected: &HashMap<String, String>,
         cancel: &CancellationToken,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
@@ -1217,8 +1402,10 @@ impl StreamManager {
                 });
             }
 
-            let reject_msg = action
-                .reject_message()
+            let reject_msg = rejected
+                .get(&call.tool_call_id)
+                .map(String::as_str)
+                .or_else(|| action.reject_message())
                 .or_else(|| web_rejects.get(idx).copied().flatten());
             if let Some(reject_msg) = reject_msg {
                 match agent_tools::record_clamped_builtin_tool(
@@ -2092,8 +2279,13 @@ impl StreamManager {
         let guardrails = state.settings().map_err(|e| e.to_string())?.agent;
         let max_steps = guardrails.max_steps as usize;
         let wall_clock_secs = guardrails.wall_clock_budget_secs;
-        let deadline =
-            tokio::time::Instant::now() + std::time::Duration::from_secs(wall_clock_secs as u64);
+        let mut deadline = TurnDeadline::new(
+            tokio::time::Instant::now(),
+            std::time::Duration::from_secs(wall_clock_secs as u64),
+        );
+        // True while the model is building a document in parts: its last
+        // document call said more calls would follow.
+        let mut building_document = false;
 
         let active_model_id = initial_request.model_id.clone();
         let mut current_request = initial_request;
@@ -2101,6 +2293,17 @@ impl StreamManager {
         let mut ended_with_pending_tools = false;
         let mut cumulative_usage: Option<provider_core::schema::ProviderUsage> = None;
         let mut successful_document_creates: u32 = 0;
+        // Whether this turn already asked the model to rebuild a cut-off
+        // document in parts; a second cut-off ends the turn.
+        let mut output_limit_recovery_used = false;
+        // Whether this turn already retried a round that spent its whole output
+        // limit on reasoning, with low reasoning effort.
+        let mut reasoning_retry_used = false;
+        // Whether this turn already retried a document round whose stream went
+        // idle until the provider gave up, asking for the work in parts.
+        let mut idle_timeout_retry_used = false;
+        // Phase label for the next round when it is a retry.
+        let mut next_round_label: Option<&'static str> = None;
         let mut web_search_calls: u32 = 0;
         let mut web_fetch_calls: u32 = 0;
 
@@ -2116,20 +2319,11 @@ impl StreamManager {
             if cancel.is_cancelled() {
                 break;
             }
-            if tokio::time::Instant::now() > deadline {
+            if deadline.expired(tokio::time::Instant::now()) {
                 // Terminal error, emitted below so it lands after the usage total.
                 terminal = Some(ProviderEvent::Error {
                     request_id: request_id.clone(),
-                    error: provider_core::schema::ProviderError {
-                        provider_code: None,
-                        // Reached only between steps: the step in progress was
-                        // allowed to finish (and its tools to run), so say that
-                        // rather than implying work was cut off.
-                        message: format!(
-                            "Agent turn reached its time limit ({wall_clock_secs}s). The step in progress finished, but no further steps were started. Increase the limit in Settings → Chat defaults → Turn time limit."
-                        ),
-                        retryable: false,
-                    },
+                    error: turn_time_limit_error(wall_clock_secs, building_document),
                 });
                 break;
             }
@@ -2156,11 +2350,13 @@ impl StreamManager {
             // Emit agent phase event before each provider round.
             let total = max_steps as u32;
             let round_num = (step + 1) as u32;
-            let (label, sub_phase) = if step == 0 {
-                ("Thinking".to_string(), "thinking".to_string())
-            } else {
-                ("Continuing".to_string(), "thinking".to_string())
-            };
+            // A retry names itself for the whole round it starts; a label sent
+            // from the retry branch was replaced by "Continuing" at once.
+            let label = next_round_label
+                .take()
+                .unwrap_or(if step == 0 { "Thinking" } else { "Continuing" })
+                .to_string();
+            let sub_phase = "thinking".to_string();
             let _ = channel.send(ProviderEvent::AgentPhase {
                 request_id: request_id.clone(),
                 label,
@@ -2208,7 +2404,7 @@ impl StreamManager {
                 outcome = round_fut => outcome,
             };
 
-            if tokio::time::Instant::now() > deadline {
+            if deadline.expired(tokio::time::Instant::now()) {
                 info!(
                     request_id = %request_id,
                     step,
@@ -2293,10 +2489,61 @@ impl StreamManager {
             }
 
             if let Some(err) = outcome.error_message.take() {
+                let offers_patching = current_request
+                    .tool_definitions
+                    .iter()
+                    .any(|tool| tool.name == agent_tools::PATCH_DOCUMENT_TOOL);
+                if is_idle_timeout(&err) && offers_patching && !idle_timeout_retry_used {
+                    // The provider gave up on a silent stream — live, a model
+                    // writing a long document in one tool call sent nothing for
+                    // two minutes and OpenRouter ended it. Ask for the same
+                    // work in parts, each short enough to arrive in time.
+                    idle_timeout_retry_used = true;
+                    info!(
+                        request_id = %request_id,
+                        step,
+                        error = %err,
+                        "provider stream went idle on a document turn; retrying in parts"
+                    );
+                    let prompt = current_request.developer_prompt.take().unwrap_or_default();
+                    current_request.developer_prompt = Some(
+                        [prompt.as_str(), BUILD_IN_PARTS_AFTER_TIMEOUT]
+                            .iter()
+                            .filter(|part| !part.is_empty())
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join("\n\n"),
+                    );
+                    next_round_label = Some("Retrying in parts");
+                    continue;
+                }
                 warn!(request_id = %request_id, step, error = %err, "agent turn aborted due to round error");
-                match terminal_event_for_round_error(&request_id, err, outcome.error_forwarded) {
-                    Some(event) => terminal = Some(event),
-                    None => terminal_forwarded = true,
+                if let Some(error) = outcome.withheld_error.take() {
+                    let error = if is_idle_timeout(&error.message) && offers_patching {
+                        provider_core::schema::ProviderError {
+                            provider_code: Some(IDLE_TIMEOUT_CODE.to_string()),
+                            message: idle_timeout_message(&error.message),
+                            retryable: error.retryable,
+                        }
+                    } else {
+                        error
+                    };
+                    let event = ProviderEvent::Error {
+                        request_id: request_id.clone(),
+                        error,
+                    };
+                    // The round did not persist it; the reloaded turn should
+                    // still end on the error the user saw.
+                    let _ =
+                        event_log::append_and_apply(&pool, &conversation_id, &request_id, &event)
+                            .await;
+                    terminal = Some(event);
+                } else {
+                    match terminal_event_for_round_error(&request_id, err, outcome.error_forwarded)
+                    {
+                        Some(event) => terminal = Some(event),
+                        None => terminal_forwarded = true,
+                    }
                 }
                 break;
             }
@@ -2352,15 +2599,69 @@ impl StreamManager {
             // unless the user set one. Arguments that end in the middle of a
             // JSON value on a round that otherwise finished cleanly are the
             // same cut-off, seen from the other side.
+            //
+            // Once per turn, a cut-off document call is not the end: when
+            // patch_document is on offer the model is told to write the document
+            // in parts that each fit, and gets another round to do it. A second
+            // cut-off ends the turn with the error.
+            let mut rejected_calls: HashMap<String, String> = HashMap::new();
             {
                 let cut_off = runnable.iter().find(|call| {
                     tool_call_arguments_cut_off(call)
                         && (outcome.hit_output_limit || tool_call_arguments_end_early(call))
                 });
-                let message = if let Some(call) = cut_off {
+                let recoverable = cut_off.filter(|call| {
+                    !output_limit_recovery_used
+                        && is_document_content_tool(&call.name)
+                        && current_request
+                            .tool_definitions
+                            .iter()
+                            .any(|tool| tool.name == agent_tools::PATCH_DOCUMENT_TOOL)
+                });
+                let message = if let Some(call) = recoverable {
+                    output_limit_recovery_used = true;
+                    info!(
+                        request_id = %request_id,
+                        step,
+                        tool = %call.name,
+                        "document call cut off at the output limit; asking the model to write it in parts"
+                    );
+                    rejected_calls.insert(
+                        call.tool_call_id.clone(),
+                        output_limit_recovery_message(call),
+                    );
+                    None
+                } else if let Some(call) = cut_off {
                     Some(output_limit_cut_off_message(call, outcome.output_limit))
                 } else if outcome.hit_output_limit && runnable.is_empty() && !outcome.produced_text
                 {
+                    // The whole limit went on reasoning. Once per turn, try the
+                    // same request again asking for less of it: live, a model
+                    // spent 6,000, 9,000 and 16,000 tokens thinking before it
+                    // wrote a word, and ended each turn with nothing.
+                    if !reasoning_retry_used {
+                        reasoning_retry_used = true;
+                        info!(
+                            request_id = %request_id,
+                            step,
+                            limit = ?outcome.output_limit,
+                            "round spent its output limit on reasoning; retrying with low reasoning effort"
+                        );
+                        let controls = current_request.generation_controls.get_or_insert(
+                            provider_core::schema::GenerationControls {
+                                temperature: None,
+                                top_p: None,
+                                max_tokens: None,
+                                stop_sequences: None,
+                                tool_choice: None,
+                                reasoning_effort: None,
+                            },
+                        );
+                        controls.reasoning_effort =
+                            Some(provider_core::schema::ReasoningEffort::Low);
+                        next_round_label = Some("Retrying with less thinking");
+                        continue;
+                    }
                     Some(output_limit_empty_message(outcome.output_limit))
                 } else {
                     None
@@ -2390,7 +2691,14 @@ impl StreamManager {
                     terminal = Some(ProviderEvent::Error {
                         request_id: request_id.clone(),
                         error: provider_core::schema::ProviderError {
-                            provider_code: Some("output_limit".to_string()),
+                            provider_code: Some(
+                                if cut_off.is_some() {
+                                    OUTPUT_LIMIT_CODE
+                                } else {
+                                    OUTPUT_LIMIT_REASONING_CODE
+                                }
+                                .to_string(),
+                            ),
                             message,
                             retryable: false,
                         },
@@ -2437,6 +2745,7 @@ impl StreamManager {
                 &mut successful_document_creates,
                 &mut web_search_calls,
                 &mut web_fetch_calls,
+                &rejected_calls,
                 &tools_cancel,
             );
             let mut steered_during_tools: Option<String> = None;
@@ -2453,6 +2762,16 @@ impl StreamManager {
                 tally = tools_fut => tally,
             };
             let created_this_round = tally.documents_created;
+
+            // Saved document progress buys the turn more time: a build in parts is
+            // several rounds, and the limit is for turns that stop getting
+            // anywhere, not for ones saving a section a minute.
+            if tally.document_writes_succeeded > 0 {
+                deadline.record_progress(tokio::time::Instant::now());
+                building_document = outcome.completed_tool_calls.iter().any(|call| {
+                    is_document_content_tool(&call.name) && call_has_more_to_write(call)
+                });
+            }
 
             if let Some(text) = steered_during_tools {
                 if let Err(e) = Self::apply_steer_message(

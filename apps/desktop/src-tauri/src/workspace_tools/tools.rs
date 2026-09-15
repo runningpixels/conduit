@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 pub const DEFAULT_READ_MAX_BYTES: u64 = 256 * 1024;
 pub const DEFAULT_GLOB_MAX: usize = 500;
 pub const DEFAULT_GREP_MAX: usize = 100;
+/// Longest a workspace_grep may walk before returning what it found so far.
+pub const GREP_TIME_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 pub const DEFAULT_GREP_LINE_MAX: usize = 2_000;
 
 #[derive(Debug, Clone)]
@@ -263,9 +265,17 @@ pub fn execute_workspace_grep(
     let file_glob = input.glob.as_deref();
     let mut hits = Vec::new();
     let mut truncated = false;
+    // A search over a large folder (build output, a whole drive) can run for
+    // minutes and hold the turn with it. Stop at the budget and say so.
+    let deadline = std::time::Instant::now() + GREP_TIME_BUDGET;
+    let mut timed_out = false;
 
     let mut stack = vec![search_root];
     while let Some(dir) = stack.pop() {
+        if std::time::Instant::now() >= deadline {
+            timed_out = true;
+            break;
+        }
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(_) => continue,
@@ -323,11 +333,18 @@ pub fn execute_workspace_grep(
         }
     }
 
-    Ok(ok_redacted(json!({
+    let mut output = json!({
         "pattern": pattern,
         "matches": hits,
-        "truncated": truncated,
-    })))
+        "truncated": truncated || timed_out,
+    });
+    if timed_out {
+        output["note"] = json!(format!(
+            "Search stopped after {}s before covering every file. Narrow it with path or glob.",
+            GREP_TIME_BUDGET.as_secs()
+        ));
+    }
+    Ok(ok_redacted(output))
 }
 
 fn grep_file(

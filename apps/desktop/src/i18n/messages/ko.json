@@ -154,7 +154,7 @@
   "chat.errorBoundary.detail": "이 채팅을 표시하는 중 오류가 발생했습니다.",
   "chat.errorBoundary.title": "문제가 발생했습니다",
   "chat.export.dialog.title": "채팅을 {format}(으)로 내보내기",
-  "chat.generation.maxTokens.hint": "비워 두면 공급자 기본값을 사용합니다.",
+  "chat.generation.maxTokens.hint": "비워 두면 모델 자체 한도를 사용합니다. 추론 모델은 사고 과정도 이 한도에 포함하므로, 한도가 낮으면 답변할 여유가 없을 수 있습니다.",
   "chat.generation.maxTokens.label": "최대 토큰 수",
   "chat.generation.providerDefaultPlaceholder": "공급자 기본값",
   "chat.generation.stopSequences.hint": "최대 8개입니다. 모델이 그중 하나를 출력하면 생성을 중지합니다.",
@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "이 채팅에서 기억",
   "chat.toolCall.consent.safetyNote": "{appName}은(는) 승인 없이 부작용이 있는 도구를 실행하지 않습니다. 도구 출력은 격리되며 프롬프트에 다시 삽입되지 않습니다.",
   "chat.toolCall.deniedNotice": "<strong>거부했습니다.</strong> 도구 호출은 실행되지 않았습니다.",
-  "chat.toolCall.document.action": "{action, select, create {만들기} edit {편집} other {문서}}",
+  "chat.toolCall.document.action": "{action, select, create {만들기} edit {편집} read {읽기} other {문서}}",
   "chat.toolCall.document.cancelled": "문서 도구를 취소했습니다.",
   "chat.toolCall.document.failed": "<strong>문서를 {action, select, create {만들지} edit {편집하지} other {업데이트하지}} 못했습니다.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "문서가 생성되거나 업데이트되지 않았습니다.",
@@ -1214,5 +1214,12 @@
   "workspace.documentPanel.pending.peekHint": "작성 중인 문서를 보여줍니다. 스크립트는 문서가 완성된 뒤 실행됩니다.",
   "workspace.documentPanel.pending.peekTooLarge": "이 문서는 너무 커서 작성 중에 미리 볼 수 없습니다.",
   "chat.stream.stillWorkingHeldDocument": "계속 작업 중 · {seconds}초 — 이 모델은 문서를 한 번에 보냅니다",
-  "chat.assistant.cutOff": "출력 한도에 도달해 이 답변이 중간에 끊겼습니다. 설정 → 채팅 기본값 → 모델 매개변수에서 \"최대 토큰 수\"를 늘리세요."
+  "chat.assistant.cutOff": "출력 한도에 도달해 이 답변이 중간에 끊겼습니다. 설정 → 채팅 기본값 → 모델 매개변수에서 \"최대 토큰 수\"를 늘리세요.",
+  "chat.documentBuild.continue": "계속 작성",
+  "chat.documentBuild.continuePrompt": "문서 작성을 계속하세요. 아직 자리 표시자로 남은 섹션을 patch_document로 작성하세요.",
+  "chat.documentBuild.pendingSection": "아직 작성되지 않음: {name}",
+  "chat.documentBuild.sectionsLeft": "남은 섹션 {count}개",
+  "workspace.documentPanel.banner.sectionsNotWritten": "이 문서에 아직 작성되지 않은 섹션이 {count}개 있습니다.",
+  "chat.assistant.liveMetaLimit": "{elapsed}초 · {tokenCount} / {limit} 토큰",
+  "chat.assistant.retryWithoutLimit": "토큰 한도 없이 다시 시도"
 }

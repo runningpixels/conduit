@@ -525,6 +525,7 @@ mod tests {
             max_tokens: Some(2_048),
             stop_sequences: None,
             tool_choice: None,
+            reasoning_effort: None,
         });
         let body = build_payload(&NormalizedRequest { request });
         assert_eq!(body.pointer("/options/num_predict"), Some(&json!(2_048)));

@@ -154,7 +154,7 @@
   "chat.errorBoundary.detail": "Une erreur s’est produite lors de l’affichage de cette conversation.",
   "chat.errorBoundary.title": "Une erreur est survenue",
   "chat.export.dialog.title": "Exporter la conversation au format {format}",
-  "chat.generation.maxTokens.hint": "Si vide, utilise la valeur par défaut du fournisseur.",
+  "chat.generation.maxTokens.hint": "Vide utilise la limite propre au modèle. Les modèles de raisonnement y comptent leur réflexion : une limite basse peut ne laisser aucune place à la réponse.",
   "chat.generation.maxTokens.label": "Tokens max.",
   "chat.generation.providerDefaultPlaceholder": "Défaut du fournisseur",
   "chat.generation.stopSequences.hint": "Jusqu’à 8 séquences. La génération s’arrête si le modèle en émet une.",
@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "Mémoriser pour cette conversation",
   "chat.toolCall.consent.safetyNote": "{appName} n’exécute jamais un outil à effets secondaires sans votre approbation. La sortie de l’outil est isolée et n’est jamais réinjectée dans le prompt.",
   "chat.toolCall.deniedNotice": "<strong>Refusé.</strong> L’appel d’outil n’a pas été exécuté.",
-  "chat.toolCall.document.action": "{action, select, create {Créer} edit {Modifier} other {Document}}",
+  "chat.toolCall.document.action": "{action, select, create {Créer} edit {Modifier} read {Lire} other {Document}}",
   "chat.toolCall.document.cancelled": "Outil de document annulé.",
   "chat.toolCall.document.failed": "<strong>Impossible de {action, select, create {créer} edit {modifier} other {mettre à jour}} le document.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "Le document n’a été ni créé ni mis à jour.",
@@ -1214,5 +1214,12 @@
   "workspace.documentPanel.pending.peekHint": "Afficher le document pendant sa rédaction. Ses scripts s’exécutent une fois qu’il est terminé.",
   "workspace.documentPanel.pending.peekTooLarge": "Ce document est trop volumineux pour être prévisualisé pendant sa rédaction.",
   "chat.stream.stillWorkingHeldDocument": "toujours en cours · {seconds}s — ce modèle envoie les documents d’un seul coup",
-  "chat.assistant.cutOff": "Tronquée : cette réponse a atteint la limite de sortie. Augmentez « Tokens max. » dans Réglages → Préférences de conversation → Paramètres du modèle."
+  "chat.assistant.cutOff": "Tronquée : cette réponse a atteint la limite de sortie. Augmentez « Tokens max. » dans Réglages → Préférences de conversation → Paramètres du modèle.",
+  "chat.documentBuild.continue": "Poursuivre la construction",
+  "chat.documentBuild.continuePrompt": "Poursuis la construction du document : rédige les sections qui sont encore des espaces réservés, avec patch_document.",
+  "chat.documentBuild.pendingSection": "Pas encore rédigé : {name}",
+  "chat.documentBuild.sectionsLeft": "{count, plural, one {encore # section} other {encore # sections}}",
+  "workspace.documentPanel.banner.sectionsNotWritten": "{count, plural, one {# section de ce document n’est pas encore rédigée.} other {# sections de ce document ne sont pas encore rédigées.}}",
+  "chat.assistant.liveMetaLimit": "{elapsed}s · {tokenCount} / {limit} tok",
+  "chat.assistant.retryWithoutLimit": "Réessayer sans la limite de tokens"
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { BrandConfig } from '@conduit/config-schema';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { DocumentPanel } from './DocumentPanel';
@@ -291,6 +291,88 @@ describe('DocumentPanel chrome', () => {
     expect(screen.getByText(/Generating html document/i)).toBeInTheDocument();
     expect(screen.getByText('API Overview')).toBeInTheDocument();
     expect(screen.queryByText('Artifacts live here')).not.toBeInTheDocument();
+  });
+
+  // A static skeleton over a long write read as a hung app. The streamed size
+  // is the part of the panel that visibly moves.
+  it('shows how much of a streaming document has arrived', () => {
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        title: 'API Overview',
+        toolName: 'write_html_document',
+        mode: 'create',
+        startedAt: Date.now(),
+        progress: { contentChars: 2048, contentLines: 42, lastActivityAt: Date.now() },
+      },
+      docTab: 'preview',
+    });
+    expect(screen.getByText(/42 lines/)).toBeInTheDocument();
+    expect(screen.queryByText(/still working/)).not.toBeInTheDocument();
+  });
+
+  it('offers a live preview only while content is streaming, off by default', () => {
+    const pending = {
+      kind: 'html' as const,
+      title: 'Guide',
+      toolName: 'write_html_document',
+      mode: 'create' as const,
+      startedAt: Date.now(),
+    };
+    const readLiveDocument = () => ({ toolName: 'write_html_document', argumentsText: '{"html":"<h1>Hi' });
+    renderPanel({ artifact: null, openArtifacts: [], pendingArtifact: pending, docTab: 'preview', readLiveDocument });
+    expect(screen.queryByRole('button', { name: 'Live preview' })).not.toBeInTheDocument();
+    cleanup();
+
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: { ...pending, progress: { contentChars: 12, contentLines: 1, lastActivityAt: Date.now() } },
+      docTab: 'preview',
+      readLiveDocument,
+    });
+    const toggle = screen.getByRole('button', { name: 'Live preview' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(document.querySelector('.artifact-skeleton')).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(document.querySelector('.live-preview')).not.toBeNull();
+    localStorage.removeItem('conduit:v10-document-peek');
+  });
+
+  it('says it is still working once the stream has gone quiet', () => {
+    const longAgo = Date.now() - 60_000;
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        toolName: 'write_html_document',
+        mode: 'create',
+        startedAt: longAgo,
+      },
+      docTab: 'preview',
+    });
+    expect(screen.getByText(/still working/)).toBeInTheDocument();
+  });
+
+  it('does not call a produced document stalled while the tool saves it', () => {
+    const longAgo = Date.now() - 60_000;
+    renderPanel({
+      artifact: null,
+      openArtifacts: [],
+      pendingArtifact: {
+        kind: 'html',
+        toolName: 'write_html_document',
+        mode: 'create',
+        startedAt: longAgo,
+        produced: true,
+      },
+      docTab: 'preview',
+    });
+    expect(screen.queryByText(/still working/)).not.toBeInTheDocument();
   });
 
   // A turn that dies mid-write leaves this panel as the only surface still

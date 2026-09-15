@@ -10,6 +10,17 @@ export type AgentGuardrails = {
  */
 maxSteps: number, 
 /**
- * Wall-clock time limit in seconds for a single agent turn.
+ * Wall-clock time limit in seconds for a single agent turn. Once it has
+ * passed, no further provider round or tool step starts; a round that is
+ * still streaming is allowed to finish rather than being cut off mid-output.
  */
-wallClockBudgetSecs: number, };
+wallClockBudgetSecs: number, 
+/**
+ * End the turn once every tool call in a round was a successful document
+ * write or edit, instead of starting another provider round only for the
+ * model to confirm what it wrote. Absent means on — settings saved before
+ * this field existed, and renderer code that builds guardrails without
+ * it, keep the default. Read it through
+ * [`AgentGuardrails::finishes_after_document_write`].
+ */
+finishAfterDocumentWrite?: boolean, };

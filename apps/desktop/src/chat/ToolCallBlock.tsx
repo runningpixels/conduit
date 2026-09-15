@@ -12,6 +12,8 @@ import {
 import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
 import { useRichT, useT } from '../i18n';
 import { documentKindLabel } from '../lib/documentKind';
+import { useFormatters } from '../i18n/formatters';
+import { documentWriteDetail } from './documentWriteScan';
 import type { Translate } from '../i18n';
 
 interface ToolCallBlockProps {
@@ -65,6 +67,35 @@ function expectedEffectText(t: Translate, level: PermissionLevel, description: s
   return description.trim().length === 0 ? kind : `${kind}\n${description}`;
 }
 
+/** Arguments that carry a whole file body; shown as a size, never as text. */
+const FILE_BODY_ARGUMENT_BY_TOOL: Record<string, string> = {
+  workspace_write: 'content',
+  workspace_edit: 'content',
+};
+
+/** Longest argument text a tool card shows before cutting it. */
+export const TOOL_ARGUMENT_MAX_CHARS = 200;
+
+/**
+ * One argument as card text. A `workspace_write` carries the entire file in
+ * `content`, and the card used to print all of it — a whole HTML page inside a
+ * one-line tool card. File bodies become their size; any other long value is
+ * cut to its first line with the full size after it.
+ */
+export function toolArgumentDisplay(
+  toolName: string,
+  key: string,
+  value: unknown,
+  size: (bytes: number) => string,
+): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
+  const bytes = new TextEncoder().encode(text).length;
+  if (FILE_BODY_ARGUMENT_BY_TOOL[toolName] === key) return size(bytes);
+  if (text.length <= TOOL_ARGUMENT_MAX_CHARS && !text.includes('\n')) return text;
+  const firstLine = text.split('\n', 1)[0].slice(0, TOOL_ARGUMENT_MAX_CHARS);
+  return `${firstLine}… (${size(bytes)})`;
+}
+
 /** kv rows for the tool's arguments — mono, flat, one level of disclosure. */
 function kvRows(rows: [string, string][]): React.ReactNode {
   return rows.map(([k, v]) => (
@@ -87,6 +118,7 @@ export function ToolCallBlock({
 }: ToolCallBlockProps) {
   const t = useT();
   const tr = useRichT();
+  const fmt = useFormatters();
   const [resolving, setResolving] = useState(false);
   const [rememberScope, setRememberScope] = useState<'none' | 'conversation' | 'always'>('none');
   // Running calls (or a pending consent gate) start expanded; completed calls
@@ -120,11 +152,17 @@ export function ToolCallBlock({
   const anyRunning = activeCalls.some((c) => callTone(c) === 'run');
   const anyFailed = activeCalls.some((c) => callTone(c) === 'fail');
   const running = anyRunning;
+  // The model is still producing this call's document (arguments streaming),
+  // as opposed to the tool running on arguments it already has.
+  const writing =
+    !group && toolCall.documentWrite !== undefined && toolCall.arguments === undefined && anyRunning;
   const statusSuffix = anyFailed
     ? t('chat.toolCall.status.failed')
-    : anyRunning
-      ? t('chat.toolCall.status.running')
-      : '';
+    : writing
+      ? t('chat.toolCall.status.writing')
+      : anyRunning
+        ? t('chat.toolCall.status.running')
+        : '';
 
   const totalMs = activeCalls.reduce((acc, c) => {
     if (c.startedAt == null || c.endedAt == null) return acc;
@@ -181,13 +219,24 @@ export function ToolCallBlock({
     );
   } else if (isDocumentTool && docSummary) {
     name = t('chat.toolCall.documentsName');
-    summary = `${t('chat.toolCall.document.action', { action: docSummary.action })} · ${
-      docSummary.filename || docSummary.title || documentKindLabel(docSummary.kind, t)
-    }`;
+    const liveDetail = writing
+      ? documentWriteDetail(
+          { contentChars: docSummary.charCount, contentLines: docSummary.lineCount },
+          t,
+          fmt,
+        )
+      : undefined;
+    summary = [
+      t('chat.toolCall.document.action', { action: docSummary.action }),
+      docSummary.filename || docSummary.title || documentKindLabel(docSummary.kind, t),
+      liveDetail,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     const rows: [string, string][] = [];
     if (docSummary.title) rows.push(['title', docSummary.title]);
     if (docSummary.filename) rows.push(['file', docSummary.filename]);
-    if (docSummary.lineCount != null) rows.push(['lines', String(docSummary.lineCount)]);
+    if (docSummary.lineCount != null && !writing) rows.push(['lines', String(docSummary.lineCount)]);
     if (toolCall.arguments && typeof toolCall.arguments.artifact_id === 'string') {
       rows.push(['artifact', toolCall.arguments.artifact_id]);
     }
@@ -233,7 +282,7 @@ export function ToolCallBlock({
         : displayName.connector;
     const rows: [string, string][] = Object.entries(toolCall.arguments ?? {})
       .slice(0, 6)
-      .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]);
+      .map(([k, v]) => [k, toolArgumentDisplay(toolCall.name, k, v, (bytes) => fmt.size(bytes))]);
     summary = rows.length > 0 ? rows[0][1] : undefined;
     body = (
       <>

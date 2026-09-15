@@ -215,6 +215,32 @@ pub fn is_document_write_tool(name: &str) -> bool {
     name.starts_with("write_") && name.ends_with("_document")
 }
 
+/// True for the tools that write a document's content: `write_*_document` and
+/// `edit_*_document`. `export_document` only copies an existing one to disk.
+pub fn is_document_content_tool(name: &str) -> bool {
+    (name.starts_with("write_") || name.starts_with("edit_")) && name.ends_with("_document")
+}
+
+/// True when a round did nothing but write documents, and every write
+/// succeeded — the case where another provider round would only have the model
+/// confirm what it wrote. Any failure, or any other tool, needs the model again.
+pub fn round_only_wrote_documents(calls: &[CompletedToolCall], writes_succeeded: u32) -> bool {
+    !calls.is_empty()
+        && calls
+            .iter()
+            .all(|call| is_document_content_tool(&call.name))
+        && writes_succeeded as usize == calls.len()
+}
+
+/// What executing one round's tool calls produced.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ToolRoundTally {
+    /// New documents created this round.
+    pub documents_created: u32,
+    /// `write_*_document` / `edit_*_document` calls that succeeded this round.
+    pub document_writes_succeeded: u32,
+}
+
 /// True when a `write_*` call is asking to create a new document (no usable
 /// `artifact_id`). Writes that pass an id are upserts and are not coalesced.
 pub fn is_new_document_create(call: &CompletedToolCall) -> bool {
@@ -391,17 +417,32 @@ pub(crate) struct ActiveStream {
     pub(crate) steer_tx: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
+/// Resolves a provider id to the adapter that streams its responses.
+pub type AdapterResolver =
+    Arc<dyn Fn(&str) -> Option<Box<dyn provider_core::ProviderAdapter>> + Send + Sync>;
+
 pub struct StreamManager {
     active: Arc<Mutex<HashMap<String, ActiveStream>>>,
     /// Pending `ask_user` oneshots keyed by tool_call_id (t1-2).
     ask_user_pending: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>>>,
+    /// The built-in provider registry in production. Tests substitute a
+    /// scripted adapter so the agent loop can run end to end without a network.
+    adapter_resolver: AdapterResolver,
 }
 
 impl StreamManager {
     pub fn new() -> Self {
+        Self::with_adapter_resolver(Arc::new(provider_core::get_adapter))
+    }
+
+    /// A manager whose streaming rounds use `resolver` instead of the built-in
+    /// provider registry. For integration tests.
+    #[doc(hidden)]
+    pub fn with_adapter_resolver(resolver: AdapterResolver) -> Self {
         Self {
             active: Arc::new(Mutex::new(HashMap::new())),
             ask_user_pending: Arc::new(Mutex::new(HashMap::new())),
+            adapter_resolver: resolver,
         }
     }
 
@@ -490,7 +531,7 @@ impl StreamManager {
             request.request_id.clone()
         };
 
-        let adapter = provider_core::get_adapter(&provider_id)
+        let adapter = (self.adapter_resolver)(&provider_id)
             .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
 
         // M4: honor `local_only` — block cloud providers when the user has opted
@@ -717,7 +758,7 @@ impl StreamManager {
         };
         let provider_id = settings.active_provider.clone();
 
-        let adapter = match provider_core::get_adapter(&provider_id) {
+        let adapter = match (self.adapter_resolver)(&provider_id) {
             Some(a) => a,
             None => {
                 return RoundOutcome {
@@ -925,7 +966,8 @@ impl StreamManager {
     /// that already succeeded; it is updated in place when this round creates
     /// more. `web_search_so_far` / `web_fetch_so_far` count local web tool
     /// executions this turn (cap binge-retries on empty Instant Answer).
-    /// Returns how many new documents this round created.
+    /// Returns how many new documents this round created and how many document
+    /// writes succeeded.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_resolved_tool_calls(
         &self,
@@ -940,7 +982,7 @@ impl StreamManager {
         web_search_so_far: &mut u32,
         web_fetch_so_far: &mut u32,
         cancel: &CancellationToken,
-    ) -> u32 {
+    ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
             Err(err) => {
@@ -1011,6 +1053,7 @@ impl StreamManager {
         let clamp_actions = classify_document_create_clamps(calls, *successful_creates_so_far);
         let web_rejects = classify_web_tool_clamps(calls, *web_search_so_far, *web_fetch_so_far);
         let mut created_this_round = 0u32;
+        let mut document_writes_succeeded = 0u32;
 
         for (idx, (call, action)) in calls.iter().zip(clamp_actions.iter()).enumerate() {
             if cancel.is_cancelled() {
@@ -1174,6 +1217,9 @@ impl StreamManager {
                                 *successful_creates_so_far =
                                     successful_creates_so_far.saturating_add(1);
                             }
+                            if !exec.is_error && is_document_content_tool(&tool_name) {
+                                document_writes_succeeded += 1;
+                            }
                             let size = serde_json::to_vec(&exec.output)
                                 .map(|bytes| bytes.len() as u64)
                                 .unwrap_or(0);
@@ -1224,6 +1270,9 @@ impl StreamManager {
                         created_this_round += 1;
                         *successful_creates_so_far = successful_creates_so_far.saturating_add(1);
                     }
+                    if !exec.is_error && is_document_content_tool(&tool_name) {
+                        document_writes_succeeded += 1;
+                    }
                     if let Some(ch) = provider_channel {
                         let _ = ch.send(ProviderEvent::ToolExecutionFinished {
                             request_id: request_id.to_string(),
@@ -1262,7 +1311,10 @@ impl StreamManager {
                     .await;
         }
 
-        created_this_round
+        ToolRoundTally {
+            documents_created: created_this_round,
+            document_writes_succeeded,
+        }
     }
 
     /// Pause the agent loop for a native `ask_user` form (t1-2).
@@ -1928,8 +1980,11 @@ impl StreamManager {
                     request_id: request_id.clone(),
                     error: provider_core::schema::ProviderError {
                         provider_code: None,
+                        // Reached only between steps: the step in progress was
+                        // allowed to finish (and its tools to run), so say that
+                        // rather than implying work was cut off.
                         message: format!(
-                            "Agent turn exceeded wall-clock budget ({wall_clock_secs}s). Increase it in Settings → Agent."
+                            "Agent turn reached its time limit ({wall_clock_secs}s). The step in progress finished, but no further steps were started. Increase the limit in Settings → Chat defaults → Turn time limit."
                         ),
                         retryable: false,
                     },
@@ -1975,7 +2030,6 @@ impl StreamManager {
             // Soft-cancel for this round only — steer cancels the child without
             // ending the turn; hard cancel cancels the parent and ends it.
             let round_cancel = cancel.child_token();
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             let round_fut = self.run_provider_round(
                 state,
                 current_request.clone(),
@@ -2000,30 +2054,26 @@ impl StreamManager {
                     // minimal aborted outcome so the loop can inject steer.
                     RoundOutcome { aborted: true, ..Default::default() }
                 }
-                timed = tokio::time::timeout(remaining, round_fut) => {
-                    match timed {
-                        Ok(outcome) => outcome,
-                        Err(_) => {
-                            warn!(
-                                request_id = %request_id,
-                                step,
-                                "provider round exceeded the remaining wall-clock budget"
-                            );
-                            terminal = Some(ProviderEvent::Error {
-                                request_id: request_id.clone(),
-                                error: provider_core::schema::ProviderError {
-                                    provider_code: None,
-                                    message: format!(
-                                        "Agent turn exceeded wall-clock budget ({wall_clock_secs}s) waiting on the provider. Increase it in Settings → Agent."
-                                    ),
-                                    retryable: false,
-                                },
-                            });
-                            break;
-                        }
-                    }
-                }
+                // No deadline on the round itself. The budget bounds how long the
+                // loop keeps *starting* work (checked at the top of each step);
+                // it used to also cut off a round in flight, which killed
+                // reasoning models mid-stream — 300s of visible thinking, then
+                // an error and nothing to show for it. A round that is still
+                // producing output is the one thing the budget should not
+                // interrupt. Silence is bounded separately: the transport ends a
+                // stream that sends nothing for `SSE_IDLE_TIMEOUT`, and output
+                // length by the request's `max_tokens`.
+                outcome = round_fut => outcome,
             };
+
+            if tokio::time::Instant::now() > deadline {
+                info!(
+                    request_id = %request_id,
+                    step,
+                    budget_secs = wall_clock_secs,
+                    "provider round finished past the wall-clock budget; no further rounds will start"
+                );
+            }
 
             if let Some(text) = steered_during_round.take() {
                 if let Err(e) = Self::apply_steer_message(
@@ -2189,7 +2239,7 @@ impl StreamManager {
                 &tools_cancel,
             );
             let mut steered_during_tools: Option<String> = None;
-            let created_this_round = tokio::select! {
+            let tally = tokio::select! {
                 biased;
                 text = steer_rx.recv() => {
                     if let Some(text) = text {
@@ -2197,10 +2247,11 @@ impl StreamManager {
                         runtime.deny_all_pending();
                         steered_during_tools = Some(text);
                     }
-                    0u32
+                    ToolRoundTally::default()
                 }
-                n = tools_fut => n,
+                tally = tools_fut => tally,
             };
+            let created_this_round = tally.documents_created;
 
             if let Some(text) = steered_during_tools {
                 if let Err(e) = Self::apply_steer_message(
@@ -2221,6 +2272,35 @@ impl StreamManager {
             }
 
             if cancel.is_cancelled() {
+                break;
+            }
+
+            // A round that only wrote documents, all successfully, is done: the
+            // document is saved and open in the panel. Another round would only
+            // have the model confirm it — 5 to 28 seconds in live testing — so
+            // end here unless the user turned this off. The renderer keeps the
+            // turn in history without a closing message.
+            if guardrails.finishes_after_document_write()
+                && round_only_wrote_documents(
+                    &outcome.completed_tool_calls,
+                    tally.document_writes_succeeded,
+                )
+            {
+                info!(
+                    request_id = %request_id,
+                    step,
+                    writes = tally.document_writes_succeeded,
+                    "round only wrote documents; ending the turn without a confirmation round"
+                );
+                let index = match &terminal {
+                    Some(ProviderEvent::MessageComplete { index, .. }) => *index,
+                    _ => 0,
+                };
+                terminal = Some(ProviderEvent::MessageComplete {
+                    request_id: request_id.clone(),
+                    index,
+                    finish_reason: "stop".to_string(),
+                });
                 break;
             }
 

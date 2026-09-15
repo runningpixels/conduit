@@ -627,8 +627,16 @@ html[data-palette="orange-dark"] .convo { border-radius: var(--r); padding: 8px 
 .center {
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  /* `clip`, not `hidden`: a hidden box is still a scroll container, so focus
+     or scrollIntoView could slide it sideways and leave the thread and title
+     cut off at the left with no scrollbar to undo it. */
+  overflow: clip;
   display: grid;
+  /* An explicit shrinkable column. The implicit `auto` track sized itself to
+     the widest min-content inside — a long nowrap chat title plus the header
+     buttons — so with the artifact panel open the column's content ran
+     ~200px wider than the column itself. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   position: relative;
 }

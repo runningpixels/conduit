@@ -257,6 +257,16 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
       // synthetic empty-response error emitted below.
       let mut produced_substantive = false;
 
+      // Every existing parser leaves `MessageComplete` to the unconditional
+      // yield below (the chat-completions / Gemini shapes carry no reliable
+      // per-round "why did it stop" signal outside the chunk this wrapper
+      // already scans). Ollama's `done: true` chunk is the one place a parser
+      // needs to pick between "stop" and "tool_calls" itself (see
+      // `ollama.rs::OllamaParser`), so it emits its own `MessageComplete`.
+      // Tracking that here — rather than hard-coding "stop" always — is what
+      // lets that adapter opt in without every other adapter changing.
+      let mut got_message_complete = false;
+
       let mut buf = LineBuffer::new();
       futures::pin_mut!(sse);
       while let Some(chunk_result) = sse.next().await {
@@ -266,6 +276,9 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
               for event in dispatch_sse_line(&line, &request_id, &mut parser, &mut index) {
                 if is_substantive(&event) {
                   produced_substantive = true;
+                }
+                if matches!(event, ProviderEvent::MessageComplete { .. }) {
+                  got_message_complete = true;
                 }
                 yield event;
               }
@@ -286,6 +299,9 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
           if is_substantive(&event) {
             produced_substantive = true;
           }
+          if matches!(event, ProviderEvent::MessageComplete { .. }) {
+            got_message_complete = true;
+          }
           yield event;
         }
       }
@@ -301,11 +317,13 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
         };
       }
 
-      yield ProviderEvent::MessageComplete {
-        request_id: request_id.clone(),
-        index,
-        finish_reason: "stop".to_string(),
-      };
+      if !got_message_complete {
+        yield ProviderEvent::MessageComplete {
+          request_id: request_id.clone(),
+          index,
+          finish_reason: "stop".to_string(),
+        };
+      }
     };
 
     Box::pin(stream)
@@ -385,11 +403,19 @@ where
         }
     }
 
-    events.push(ProviderEvent::MessageComplete {
-        request_id: request_id.to_string(),
-        index,
-        finish_reason: "stop".to_string(),
-    });
+    // Mirror `wrap_sse_stream`: only append the generic "stop" completion when
+    // the parser did not already emit its own `MessageComplete` (Ollama does,
+    // to pick "tool_calls" vs "stop" — see `ollama.rs`).
+    let got_message_complete = events
+        .iter()
+        .any(|e| matches!(e, ProviderEvent::MessageComplete { .. }));
+    if !got_message_complete {
+        events.push(ProviderEvent::MessageComplete {
+            request_id: request_id.to_string(),
+            index,
+            finish_reason: "stop".to_string(),
+        });
+    }
 
     events
 }

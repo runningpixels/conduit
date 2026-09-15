@@ -1200,5 +1200,18 @@
   "workspace.shortcuts.group.chat": "채팅",
   "workspace.shortcuts.group.general": "일반",
   "workspace.shortcuts.group.layout": "레이아웃",
-  "workspace.shortcuts.title": "키보드 단축키"
+  "workspace.shortcuts.title": "키보드 단축키",
+  "chat.documentWrite.writingTitled": "“{title}” 작성 중…",
+  "chat.documentWrite.writingKind": "{kind, select, markdown {Markdown} html {HTML} other {텍스트}} 문서 작성 중…",
+  "chat.documentWrite.updatingKind": "{kind, select, markdown {Markdown} html {HTML} other {텍스트}} 문서 업데이트 중…",
+  "chat.documentWrite.progress": "{lines, plural, other {#줄}} · {size}",
+  "chat.toolCall.status.writing": "작성 중…",
+  "chat.stream.stillWorking": "계속 작업 중 · {seconds}초",
+  "chat.stream.stillWorkingLong": "계속 작업 중 · {seconds}초 — 일부 모델은 긴 응답을 한 번에 보냅니다",
+  "settings.agent.finishAfterDocumentWrite.label": "문서를 작성하면 종료",
+  "settings.agent.finishAfterDocumentWrite.hint": "문서가 저장되는 즉시 턴을 끝내고 어시스턴트의 설명을 기다리지 않습니다. 더 빠르며, 마무리 메시지를 받으려면 끄세요.",
+  "workspace.documentPanel.pending.peek": "실시간 미리보기",
+  "workspace.documentPanel.pending.peekHint": "작성 중인 문서를 보여줍니다. 스크립트는 문서가 완성된 뒤 실행됩니다.",
+  "workspace.documentPanel.pending.peekTooLarge": "이 문서는 너무 커서 작성 중에 미리 볼 수 없습니다.",
+  "chat.stream.stillWorkingHeldDocument": "계속 작업 중 · {seconds}초 — 이 모델은 문서를 한 번에 보냅니다"
 }

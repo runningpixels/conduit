@@ -1200,5 +1200,18 @@
   "workspace.shortcuts.group.chat": "聊天",
   "workspace.shortcuts.group.general": "常规",
   "workspace.shortcuts.group.layout": "布局",
-  "workspace.shortcuts.title": "键盘快捷键"
+  "workspace.shortcuts.title": "键盘快捷键",
+  "chat.documentWrite.writingTitled": "正在撰写“{title}”…",
+  "chat.documentWrite.writingKind": "正在撰写 {kind, select, markdown {Markdown} html {HTML} other {文本}} 文档…",
+  "chat.documentWrite.updatingKind": "正在更新 {kind, select, markdown {Markdown} html {HTML} other {文本}} 文档…",
+  "chat.documentWrite.progress": "{lines, plural, other {# 行}} · {size}",
+  "chat.toolCall.status.writing": "写入中…",
+  "chat.stream.stillWorking": "仍在处理 · {seconds}秒",
+  "chat.stream.stillWorkingLong": "仍在处理 · {seconds}秒 — 部分模型会一次性发送较长的回复",
+  "settings.agent.finishAfterDocumentWrite.label": "写完文档后结束",
+  "settings.agent.finishAfterDocumentWrite.hint": "文档保存后立即结束本轮，不等待助手描述。速度更快；如需结束语，请关闭此项。",
+  "workspace.documentPanel.pending.peek": "实时预览",
+  "workspace.documentPanel.pending.peekHint": "在编写过程中显示文档。文档完成后才会运行其中的脚本。",
+  "workspace.documentPanel.pending.peekTooLarge": "此文档过大，无法在编写过程中预览。",
+  "chat.stream.stillWorkingHeldDocument": "仍在处理 · {seconds}秒 — 此模型会一次性发送文档"
 }

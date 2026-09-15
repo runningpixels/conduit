@@ -1,11 +1,13 @@
 import type { ToolDefinition } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
-import type { DocumentTurnIntent } from './documentTurnIntent';
+import { classifyDocumentTurnIntent, type DocumentTurnIntent } from './documentTurnIntent';
+import { looksLikeBrandThemeRequest } from './brandPrompt';
 import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
 import type { Translate } from '../i18n';
 import { documentKindLabel } from '../lib/documentKind';
+import { CONTENT_FIELD_BY_TOOL } from './documentWriteScan';
 
 const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
@@ -87,7 +89,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_html_document',
     name: 'write_html_document',
     description:
-      `Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document.`,
+      `Create a new HTML document artifact. Use only when the user explicitly asked to create HTML content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_html_document and the returned artifact_id; do not call write_html_document again for the same document. Give title before html so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'html', type: 'string', required: true },
@@ -113,7 +115,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_markdown_document',
     name: 'write_markdown_document',
     description:
-      `Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document.`,
+      `Create a new Markdown document artifact. Use only when the user explicitly asked to create Markdown content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_markdown_document and the returned artifact_id; do not call write_markdown_document again for the same document. Give title before markdown so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'markdown', type: 'string', required: true },
@@ -139,7 +141,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_text_document',
     name: 'write_text_document',
     description:
-      `Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document.`,
+      `Create a new plain-text document artifact. Use only when the user explicitly asked to create plain-text content. Do not use to answer capability or explanatory questions. Omit artifact_id for new documents — ${appName()} assigns IDs. After creating, revise with edit_text_document and the returned artifact_id; do not call write_text_document again for the same document. Give title before text so the user sees which document is being written.`,
     inputSchema: schema([
       { name: 'title', type: 'string' },
       { name: 'text', type: 'string', required: true },
@@ -321,7 +323,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'workspace_write',
     name: 'workspace_write',
     description:
-      'Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories.',
+      'Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories. Use only for files the user wants in their project; to create a document for the user to view in the app, use write_html_document, write_markdown_document or write_text_document.',
     inputSchema: schema([
       { name: 'path', type: 'string', required: true },
       { name: 'content', type: 'string', required: true },
@@ -405,7 +407,16 @@ export const DOCUMENT_CONTENT_TOOL_NAMES = new Set(
   [...DOCUMENT_TOOL_NAMES].filter((name) => name !== 'export_document'),
 );
 
-export type DocumentToolPhase = 'start' | 'complete' | 'error';
+/** `complete`: the model finished the arguments. `written`: the tool saved the document. */
+export type DocumentToolPhase = 'start' | 'progress' | 'complete' | 'written' | 'error';
+
+/** How much of a streaming document has arrived — see `documentWriteScan.ts`. */
+export interface DocumentWriteProgress {
+  contentChars: number;
+  contentLines: number;
+  /** Last time an argument fragment arrived; drives "still working". */
+  lastActivityAt: number;
+}
 
 export interface DocumentToolActivity {
   phase: DocumentToolPhase;
@@ -415,6 +426,8 @@ export interface DocumentToolActivity {
   artifactId?: string;
   /** Failure reason on `phase: 'error'`, shown in the document panel. */
   error?: string;
+  /** `phase: 'progress'` only. */
+  progress?: DocumentWriteProgress;
 }
 
 export function isDocumentContentTool(name: string): boolean {
@@ -553,6 +566,88 @@ export function selectBuiltinBrandTools(brandIntent: boolean): ToolDefinition[] 
   return builtinToolDefinitions().filter((tool) => tool.displayGroup === BRAND_TOOL_GROUP);
 }
 
+/** Workspace tools that change files, as opposed to reading or searching them. */
+const WORKSPACE_WRITE_TOOL_NAMES = new Set(['workspace_write', 'workspace_edit']);
+
+/**
+ * True when the prompt points at a file in the user's project: a file, folder
+ * or path, or a filename with an extension ("notes.md").
+ */
+export function mentionsWorkspaceFileTarget(prompt: string): boolean {
+  return (
+    /\b(files?|folders?|director(y|ies)|paths?|repo(sitory)?|project|workspace|disk)\b/i.test(prompt) ||
+    /\b[\w-]+\.(html?|md|markdown|txt|json|csv|ya?ml|toml|css|scss|jsx?|tsx?|py|rs|go|java|rb|sh)\b/i.test(prompt)
+  );
+}
+
+/**
+ * The built-in tools for one turn: document, brand, workspace and memory tools.
+ * Web and connector tools are resolved separately by the caller.
+ *
+ * One function because three call sites in `ChatView.tsx` (the request itself
+ * and two token estimates) used to assemble this list independently, and the
+ * estimates must match what is actually sent.
+ *
+ * On a document turn, workspace *write* tools are left out unless the prompt
+ * names a file, folder or path: two tools that can both "write an HTML file"
+ * left the choice to the model, which picked `workspace_write` and produced a
+ * file on disk instead of a document in the panel. Read and search tools stay,
+ * so the model can still use project files as source material.
+ */
+export function selectBuiltinTurnTools(
+  prompt: string,
+  settings: {
+    workspaceToolsEnabled?: boolean;
+    workspaceRoot?: string | null;
+    workspaceToolsConsentAcknowledged?: boolean;
+    memoryEnabled: boolean;
+  },
+  conversationRoot?: string | null,
+): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
+  const intent = classifyDocumentTurnIntent(prompt);
+  const documentTurn = intent === 'create' || intent === 'edit';
+  const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
+    (tool) =>
+      !documentTurn || !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name) || mentionsWorkspaceFileTarget(prompt),
+  );
+  return {
+    intent,
+    tools: [
+      ...selectBuiltinDocumentTools(intent),
+      ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
+      ...workspaceTools,
+      ...selectBuiltinMemoryTools(settings.memoryEnabled),
+    ],
+  };
+}
+
+/**
+ * Model-facing note for a turn whose only output was document writes, e.g.
+ * `[Wrote HTML document "Solar System Field Guide" with write_html_document.]`.
+ *
+ * Success is judged as "complete and not failed or cancelled" rather than
+ * `status === 'completed'`: execution-finished events are not persisted, so a
+ * reloaded turn has no status at all. Empty when there is nothing to report.
+ */
+export function documentWritesHistoryNote(state: AssistantStreamState | undefined): string {
+  if (!state) return '';
+  return state.toolCalls
+    .filter(
+      (tc) =>
+        isDocumentContentTool(tc.name) &&
+        tc.complete &&
+        tc.status !== 'failed' &&
+        tc.status !== 'cancelled',
+    )
+    .map((tc) => {
+      const verb = tc.name.startsWith('edit_') ? 'Updated' : 'Wrote';
+      const kind = KIND_BY_TOOL[tc.name] === 'html' ? 'HTML' : KIND_BY_TOOL[tc.name] === 'markdown' ? 'Markdown' : 'text';
+      const title = typeof tc.arguments?.title === 'string' && tc.arguments.title.trim() ? ` "${tc.arguments.title.trim()}"` : '';
+      return `[${verb} ${kind} document${title} with ${tc.name}.]`;
+    })
+    .join('\n');
+}
+
 export function completedDocumentToolCalls(state: AssistantStreamState): ToolCallState[] {
   return state.toolCalls.filter(
     (toolCall) => toolCall.status === 'completed' && DOCUMENT_TOOL_NAMES.has(toolCall.name),
@@ -601,16 +696,6 @@ export function resolveDocumentArtifactId(
   return artifactId;
 }
 
-// Content field names per document tool (for redaction + summary)
-const CONTENT_FIELD_BY_TOOL: Record<string, string> = {
-  write_html_document: 'html',
-  edit_html_document: 'updated_html',
-  write_markdown_document: 'markdown',
-  edit_markdown_document: 'updated_markdown',
-  write_text_document: 'text',
-  edit_text_document: 'updated_text',
-};
-
 /* Ids, not display words. These reach the UI through `documentKindLabel` and
  * an ICU `select`; a word here would be English in every locale. */
 const KIND_BY_TOOL: Record<string, string> = {
@@ -645,6 +730,19 @@ export interface DocumentToolSummary {
 /** Summarize a document tool call for compact display (no full content). */
 export function summarizeDocumentToolCall(toolCall: ToolCallState): DocumentToolSummary | undefined {
   if (!DOCUMENT_TOOL_NAMES.has(toolCall.name)) return undefined;
+  // Arguments are only parsed at `toolCallComplete`. Until then the streaming
+  // scan is the one place the title and size are known.
+  const live = toolCall.arguments === undefined ? toolCall.documentWrite : undefined;
+  if (live) {
+    return {
+      action: ACTION_BY_TOOL[toolCall.name] ?? 'document',
+      kind: KIND_BY_TOOL[toolCall.name] ?? 'document',
+      title: live.title?.trim() || undefined,
+      filename: live.filename?.trim() || undefined,
+      lineCount: live.contentLines,
+      charCount: live.contentChars,
+    };
+  }
   const args = toolCall.arguments ?? {};
   const contentField = CONTENT_FIELD_BY_TOOL[toolCall.name];
   const content = typeof args[contentField] === 'string' ? (args[contentField] as string) : '';

@@ -5,6 +5,7 @@ use crate::adapters::{
 use crate::normalize::NormalizedRequest;
 use crate::schema::{
     MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
+    ToolKind,
 };
 use crate::transport::{get_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -18,7 +19,85 @@ const DEFAULT_BASE: &str = "http://127.0.0.1:11434";
 
 pub struct OllamaAdapter;
 
-struct OllamaParser;
+struct OllamaParser {
+    /// Set once this round has parsed at least one `message.tool_calls`
+    /// entry. Read on the `done: true` chunk to pick `MessageComplete`'s
+    /// `finish_reason` — Ollama's own `done_reason` is not a reliable "did it
+    /// call a tool" signal (the docs only show `"stop"`), so the adapter
+    /// tracks it itself, the same way the agent loop already infers a tool
+    /// round from `ToolCallComplete` events.
+    saw_tool_call: bool,
+    /// Monotonic counter for synthesizing a stable `tool_call_id` when Ollama
+    /// omits one (its wire format carries no `id`/`index` on tool calls,
+    /// unlike OpenAI/Gemini).
+    tool_call_seq: u32,
+}
+
+impl OllamaParser {
+    fn new() -> Self {
+        Self {
+            saw_tool_call: false,
+            tool_call_seq: 0,
+        }
+    }
+
+    /// Parses `message.tool_calls` into `ToolCallStart` + `ToolCallComplete`
+    /// pairs, mirroring `gemini.rs::parse_function_call`. Ollama streams each
+    /// call whole (not incrementally) and its `function.arguments` is already
+    /// a JSON object per the official docs, so there is no delta phase and no
+    /// string-to-object parsing in the common case — but a string is handled
+    /// defensively in case a model or proxy stringifies it anyway.
+    fn parse_tool_calls(
+        &mut self,
+        request_id: &str,
+        tool_calls: &[Value],
+        index: &mut usize,
+    ) -> Vec<ProviderEvent> {
+        let mut events = Vec::new();
+        for call in tool_calls {
+            let name = call
+                .pointer("/function/name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("tool")
+                .to_string();
+            let tool_call_id = call
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    let seq = self.tool_call_seq;
+                    self.tool_call_seq += 1;
+                    format!("ollama-call-{name}-{seq}")
+                });
+            let arguments = match call.pointer("/function/arguments") {
+                Some(Value::String(s)) => {
+                    serde_json::from_str(s).unwrap_or_else(|_| json!({ "raw": s }))
+                }
+                Some(v) => v.clone(),
+                None => json!({}),
+            };
+
+            self.saw_tool_call = true;
+
+            events.push(ProviderEvent::ToolCallStart {
+                request_id: request_id.to_string(),
+                tool_call_id: tool_call_id.clone(),
+                index: *index,
+                tool_id: name.clone(),
+                name,
+            });
+            *index += 1;
+            events.push(ProviderEvent::ToolCallComplete {
+                request_id: request_id.to_string(),
+                tool_call_id,
+                index: *index,
+                arguments,
+            });
+            *index += 1;
+        }
+        events
+    }
+}
 
 impl StreamParser for OllamaParser {
     fn parse_chunk(
@@ -63,6 +142,13 @@ impl StreamParser for OllamaParser {
             }
         }
 
+        if let Some(tool_calls) = value
+            .pointer("/message/tool_calls")
+            .and_then(|v| v.as_array())
+        {
+            events.extend(self.parse_tool_calls(request_id, tool_calls, index));
+        }
+
         if value.get("done").and_then(|v| v.as_bool()) == Some(true) {
             events.push(ProviderEvent::ContentBlockStop {
                 request_id: request_id.to_string(),
@@ -87,6 +173,24 @@ impl StreamParser for OllamaParser {
                 });
                 *index += 1;
             }
+
+            // Ollama's own `done_reason` is not a dependable "ended on a tool
+            // call" signal (see module doc on `saw_tool_call`), so the
+            // adapter emits its own `MessageComplete` here rather than
+            // leaving it to `wrap_sse_stream`'s generic "stop" — that is what
+            // lets a tool-calling round report `finish_reason: "tool_calls"`
+            // the way OpenAI's does, so the renderer and agent loop treat it
+            // consistently across providers.
+            events.push(ProviderEvent::MessageComplete {
+                request_id: request_id.to_string(),
+                index: *index,
+                finish_reason: if self.saw_tool_call {
+                    "tool_calls".to_string()
+                } else {
+                    "stop".to_string()
+                },
+            });
+            *index += 1;
         }
 
         events
@@ -214,11 +318,40 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         }
     }
 
-    json!({
+    let mut body = json!({
       "model": request.model_id,
       "messages": messages,
       "stream": true,
-    })
+    });
+
+    // `/api/chat` takes `tools` in the same chat-completions function shape
+    // OpenAI uses (`{"type":"function","function":{name,description,parameters}}`,
+    // per https://github.com/ollama/ollama/blob/main/docs/api.md). Ollama has
+    // no hosted-tool concept, so a `ToolKind::Hosted` definition (e.g. a
+    // future web_search) is silently dropped rather than sent in a shape the
+    // model can't use.
+    if !request.tool_definitions.is_empty() {
+        let tools: Vec<Value> = request
+            .tool_definitions
+            .iter()
+            .filter(|tool| !matches!(tool.kind, Some(ToolKind::Hosted)))
+            .map(|tool| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.input_schema,
+                    }
+                })
+            })
+            .collect();
+        if !tools.is_empty() {
+            body["tools"] = json!(tools);
+        }
+    }
+
+    body
 }
 
 fn base_url(ctx: &AdapterContext) -> String {
@@ -307,12 +440,12 @@ impl ProviderAdapter for OllamaAdapter {
         )
         .await?;
 
-        Ok(wrap_sse_stream(request_id, OllamaParser, sse))
+        Ok(wrap_sse_stream(request_id, OllamaParser::new(), sse))
     }
 }
 
 pub fn parse_fixture(request_id: &str, fixture: &str) -> Vec<ProviderEvent> {
-    parse_fixture_stream(&mut OllamaParser, request_id, fixture, |line| {
+    parse_fixture_stream(&mut OllamaParser::new(), request_id, fixture, |line| {
         if line.is_empty() {
             None
         } else {
@@ -332,6 +465,146 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| matches!(e, ProviderEvent::ContentDelta { .. })));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"
+        )));
+    }
+
+    #[test]
+    fn parses_tool_call_fixture() {
+        let fixture = include_str!("../../tests/fixtures/ollama/tool_call_single.sse");
+        let events = parse_fixture("req-1", fixture);
+
+        let starts: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallStart {
+                    tool_call_id,
+                    tool_id,
+                    name,
+                    ..
+                } => Some((tool_call_id.clone(), tool_id.clone(), name.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(starts.len(), 1);
+        assert_eq!(starts[0].1, "get_weather");
+        assert_eq!(starts[0].2, "get_weather");
+
+        let completes: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallComplete {
+                    tool_call_id,
+                    arguments,
+                    ..
+                } => Some((tool_call_id.clone(), arguments.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(completes.len(), 1);
+        // Correlates with the ToolCallStart above.
+        assert_eq!(completes[0].0, starts[0].0);
+        assert_eq!(
+            completes[0].1.get("city").and_then(|v| v.as_str()),
+            Some("Tokyo")
+        );
+
+        // A round that ends in a tool call reports finish_reason "tool_calls",
+        // not Ollama's own (unreliable) done_reason "stop" — see
+        // OllamaParser::saw_tool_call.
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "tool_calls"
+        )));
+        // Exactly one MessageComplete — the parser's own, not a second one
+        // tacked on by parse_fixture_stream/wrap_sse_stream.
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, ProviderEvent::MessageComplete { .. }))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn payload_includes_tools_array() {
+        use crate::schema::{PermissionLevel, ToolDefinition, ToolKind};
+
+        let mut request = ProviderRequest {
+            request_id: "req-tools".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "llama3.2".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![
+                ToolDefinition {
+                    tool_id: "get_weather".into(),
+                    name: "get_weather".into(),
+                    description: "Get the weather in a given city".into(),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": { "city": { "type": "string" } },
+                        "required": ["city"],
+                    }),
+                    kind: Some(ToolKind::Function),
+                    host_config: None,
+                    permission_level: None,
+                    display_group: None,
+                    tenant_scope: None,
+                },
+                ToolDefinition {
+                    tool_id: "web_search".into(),
+                    name: "web_search".into(),
+                    description: "Hosted web search tool".into(),
+                    input_schema: json!({}),
+                    kind: Some(ToolKind::Hosted),
+                    host_config: None,
+                    permission_level: Some(PermissionLevel::SideEffectful),
+                    display_group: None,
+                    tenant_scope: None,
+                },
+            ],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+
+        let body = build_payload(&NormalizedRequest {
+            request: request.clone(),
+        });
+        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools");
+        // Only the function tool: the hosted tool has no wire shape on Ollama.
+        assert_eq!(tools.len(), 1);
+        assert_eq!(
+            tools[0].get("type").and_then(|v| v.as_str()),
+            Some("function")
+        );
+        assert_eq!(
+            tools[0].pointer("/function/name").and_then(|v| v.as_str()),
+            Some("get_weather")
+        );
+        assert_eq!(
+            tools[0]
+                .pointer("/function/description")
+                .and_then(|v| v.as_str()),
+            Some("Get the weather in a given city")
+        );
+        assert_eq!(
+            tools[0]
+                .pointer("/function/parameters/type")
+                .and_then(|v| v.as_str()),
+            Some("object")
+        );
+
+        // No tool_definitions at all -> no "tools" key.
+        request.tool_definitions = vec![];
+        let body = build_payload(&NormalizedRequest { request });
+        assert!(body.get("tools").is_none());
     }
 
     #[test]

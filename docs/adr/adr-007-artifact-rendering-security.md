@@ -118,6 +118,29 @@ stays `'none'`) and without loading either library from a CDN.
 HTML artifacts remain the sandboxed-iframe path. This addendum does not apply
 to model-authored HTML that happens to include its own KaTeX/Mermaid scripts.
 
+## Addendum (2026-09-14) — shortcut forwarding and the live preview
+
+1. **Shortcut forwarding.** A key pressed inside the sandboxed frame never
+   reaches the app window, so app shortcuts (Ctrl+N, Ctrl+K, …) did nothing
+   while a preview had focus. A second Conduit-owned inline script, next to the
+   link interceptor, posts `conduit:artifact-shortcut` messages for an
+   allowlist of Mod chords and Escape. The host accepts a message only when
+   `event.source` is that frame's `contentWindow` and the chord is on the same
+   allowlist, then replays it on its own window. Artifact scripts can post the
+   same message, so the allowlist holds only shortcuts that open or rearrange
+   views (new chat, palette, settings, shortcuts sheet, sidebar, document
+   panel, expand). Switching provider, toggling web search, forking and
+   copying the last message are not forwardable.
+2. **Live preview while writing.** With the opt-in "Live preview" toggle, the
+   pending panel renders the document from the streaming tool call about once
+   a second. It uses `assembleArtifactDoc` and the same `sandbox="allow-scripts"`,
+   CSP-first `<head>` and `referrerpolicy` as the finished preview, so partial
+   content gains no capability the finished document lacks; model content is
+   still placed only in `<body>`, which a truncated document cannot escape.
+   Model `<script>` elements and inline handlers are stripped first — a
+   convenience so half-written scripts do not run, **not** a security boundary
+   (the sandbox and CSP are). One Conduit-owned line scrolls to the end so the
+   view follows the writing. Previewing stops past 1,000,000 characters.
 ## Related
 - Supersedes the interactive-rendering deferral in ADR 002 (which modeled
   artifacts as static payload records). ADR 002's append-only **versioning** is

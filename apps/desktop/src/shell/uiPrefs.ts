@@ -312,6 +312,20 @@ export function writeExportMetadata(value: ExportMetadataPref): void {
   writePref(EXPORT_METADATA_KEY, value);
 }
 
+/* ── Live document preview while writing ───────────────────────────────── */
+
+const DOCUMENT_PEEK_KEY = 'conduit:v10-document-peek';
+export type DocumentPeekPref = 'on' | 'off';
+
+/** Off by default: the pending panel shows progress, not the document. */
+export function readDocumentPeek(): DocumentPeekPref {
+  return readPref(DOCUMENT_PEEK_KEY, ['on', 'off'], 'off');
+}
+
+export function writeDocumentPeek(value: DocumentPeekPref): void {
+  writePref(DOCUMENT_PEEK_KEY, value);
+}
+
 /* ── Expanded status line (V9 §2.2 / §10.1) ───────────────────────────────
  * V9 collapses five always-on provenance chips into one muted sentence, and
  * §10.1 names the honest risk: the always-on cost/context readout was the most

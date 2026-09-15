@@ -412,6 +412,24 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   white-space: nowrap;
 }
 .tool-sum.err { color: var(--err); }
+/* Running call: a hue bar sweeps the top edge. The reduced-motion blocks
+   below already hide it; this base rule had gone missing, which left a
+   running card with nothing moving but static "running…" text. */
+.tool.running { position: relative; }
+.tool.running::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--hue), transparent) no-repeat;
+  background-size: 40% 100%;
+  animation: tool-running-sweep 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes tool-running-sweep {
+  from { background-position: -70% 0; }
+  to { background-position: 170% 0; }
+}
 .tool-chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
 .tool[data-open="true"] .tool-chev { transform: rotate(90deg); }
 .tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-tool-expand) var(--ease-tap); }
@@ -976,7 +994,7 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
  * button used to carry — with three things on the right, the push has to happen
  * once, in one place. */
 .spacer { flex: 1 1 auto; }
-.composer-model-picker { position: relative; min-width: 0; }
+.composer-model-picker { position: relative; min-width: 0; display: flex; }
 /* The composer's folder menu opens upward from its chip. It was inline-styled
    with its own shadow and radius; as a `Menu` it takes the shared menu surface
    and keeps only its placement and the column layout of its path and actions. */
@@ -1016,7 +1034,9 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
 .cbtn.armed:hover { background: color-mix(in srgb, var(--hue) 9%, transparent); color: var(--hue-text); }
 
 /* The model trigger: provider dot, model name, chevron (V9 §2.3). */
-.cbtn.model { max-width: min(220px, 42vw); color: var(--ink-2); font-weight: 500; gap: 5px; }
+/* Capped by its own slot, not the window: `42vw` let the label outgrow a
+   composer narrowed by the document panel and run under the send button. */
+.cbtn.model { max-width: min(220px, 100%); min-width: 0; color: var(--ink-2); font-weight: 500; gap: 5px; }
 .cbtn.model .pdot { width: 6px; height: 6px; background: var(--hue); }
 .cbtn.model .model-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cbtn.model svg { width: 13px; height: 13px; color: var(--ink-3); }
@@ -1238,10 +1258,14 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   border-color: var(--hue);
   box-shadow: var(--glow);
 }
+/* Bottom-right: at the top it sat over the document panel's toolbar and hid
+   Preview/Source and the panel actions for as long as a toast lived. The
+   panel's footer line is the least important thing in that corner. */
 .toast-stack {
   position: fixed;
-  top: 48px;
+  bottom: 16px;
   right: 16px;
+  align-content: end;
   z-index: 1100;
   display: grid;
   gap: 8px;
@@ -1682,6 +1706,14 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
 .thinking-label {
   color: var(--ink-2);
   font-size: var(--fs-2xl);
+}
+/* Progress after the label ("214 lines · 18 KB · still working"). Tabular
+   digits so the counter does not jitter the row as it climbs. Under reduced
+   motion the dots stop, and this changing text is what still shows life. */
+.thinking-detail {
+  color: var(--ink-3);
+  font-size: var(--fs-2xl);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Streaming caret inside an inline code block. Same signal as `.streaming`

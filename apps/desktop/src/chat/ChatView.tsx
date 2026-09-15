@@ -101,16 +101,20 @@ import {
 import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
+  documentWritesHistoryNote,
   isDocumentContentTool,
-  selectBuiltinBrandTools,
-  selectBuiltinDocumentTools,
-  selectBuiltinMemoryTools,
+  selectBuiltinTurnTools,
   selectBuiltinWebTools,
-  selectBuiltinWorkspaceTools,
   type DocumentToolActivity,
 } from './agentTools';
 import {
-  classifyDocumentTurnIntent,
+  activeDocumentWrite,
+  documentWriteDetail,
+  documentWriteLabel,
+} from './documentWriteScan';
+import { readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
+import {
+  documentWriteDeveloperPromptFor,
   informationalDeveloperPromptFor,
 } from './documentTurnIntent';
 import { CONDUIT_BRAND_SYSTEM_APPENDIX, looksLikeBrandThemeRequest } from './brandPrompt';
@@ -148,6 +152,10 @@ export interface ChatViewHandle {
   editLastUserMessage: () => boolean;
   /// t0-6 — open the per-conversation chat settings popover (palette).
   openChatSettings: () => boolean;
+  /// The document tool call whose arguments are streaming right now, raw.
+  /// Read on demand by the document panel's live preview, so partial document
+  /// text never has to travel through app state on every fragment.
+  readActiveDocumentWrite: () => { toolName: string; argumentsText: string } | null;
 }
 
 interface ChatViewProps {
@@ -228,6 +236,20 @@ export interface ChatRequestOverrides {
   extraSystemSections?: string | null;
 }
 
+/**
+ * The text a past turn contributes to the next request's history.
+ *
+ * History carries display text only — tool calls never reach it — and turns
+ * with no text are dropped. A turn that ended right after writing a document
+ * (the agent loop no longer spends a round on a confirmation) has no text, so
+ * it would vanish and the model would not know it had written anything. Such
+ * a turn contributes a short note naming what it wrote instead.
+ */
+export function historyContentForTurn(turn: ChatTurn): string {
+  if (turn.content.trim() !== '' || turn.role !== 'assistant') return turn.content;
+  return documentWritesHistoryNote(turn.streamState);
+}
+
 export function buildProviderRequest(
   settings: AppSettings,
   prompt: string,
@@ -241,6 +263,7 @@ export function buildProviderRequest(
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
+    .map((turn) => ({ ...turn, content: historyContentForTurn(turn) }))
     .filter((turn) => {
       if (turn.role !== 'user' && turn.role !== 'assistant') return false;
       if (turn.content.trim() !== '') return true;
@@ -353,8 +376,11 @@ export function buildProviderRequest(
   const compactionDevPrompt = chatOverrides?.compactionSummary?.trim()
     ? formatCompactionDeveloperPrompt(chatOverrides.compactionSummary)
     : undefined;
+  const documentWriteDevPrompt = documentWriteDeveloperPromptFor(
+    toolDefinitions.map((tool) => tool.name),
+  );
   const developerPrompt =
-    [compactionDevPrompt, infoDevPrompt, editDevPrompt, webSearchDevPrompt]
+    [compactionDevPrompt, infoDevPrompt, editDevPrompt, documentWriteDevPrompt, webSearchDevPrompt]
       .filter(Boolean)
       .join('\n\n') || undefined;
   const systemPrompt = composeSystemPrompt(
@@ -401,6 +427,9 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
+/** Minimum gap between document-write progress updates sent to the panel. */
+const DOCUMENT_PROGRESS_INTERVAL_MS = 250;
+
 /** Derive agent loop phase from stream state and pending calls.
  *  Prefers backend-sent agent phase info when available (from ProviderEvent::AgentPhase
  *  events emitted by run_agent_turn in Rust). Falls back to frontend derivation when
@@ -409,8 +438,25 @@ function deriveAgentPhase(
   state: AssistantStreamState | null,
   pendingCalls: Set<string>,
   t: Translate,
+  fmt: Formatters,
 ): AssistantStreamState['agentPhase'] | undefined {
   if (!state) return undefined;
+
+  // A document whose arguments are still streaming outranks every other
+  // phase, the backend's included: the backend only knows the round is
+  // "thinking", and for the tens of seconds a large document takes that label
+  // (or no label at all, once text has been produced) is what made the turn
+  // look stuck.
+  const write = activeDocumentWrite(state);
+  if (write) {
+    return {
+      label: documentWriteLabel(write, t),
+      round: state.agentPhase?.round ?? 1,
+      totalRounds: state.agentPhase?.totalRounds,
+      subPhase: 'writing_document',
+      detail: documentWriteDetail(write, t, fmt),
+    };
+  }
 
   // Prefer backend-sent phase info when available.
   if (state.agentPhase) {
@@ -557,6 +603,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const streamStateRef = useRef<AssistantStreamState | null>(null);
   const toolBindingsRef = useRef<Record<string, ConnectorToolBinding>>({});
   const providerToolByCallIdRef = useRef<Record<string, string>>({});
+  /** Last document-write progress handed to the panel, for throttling. */
+  const documentProgressSentRef = useRef<{ toolCallId: string; at: number; title?: string } | null>(
+    null,
+  );
   const pendingRuntimeCallsRef = useRef<Set<string>>(new Set());
   const onPendingSendConsumedRef = useRef(onPendingSendConsumed);
   onPendingSendConsumedRef.current = onPendingSendConsumed;
@@ -569,6 +619,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   /** When true, the in-flight handleSend finally must not auto-drain (Send now). */
   const skipNextDrainRef = useRef(false);
   const [agentPhase, setAgentPhase] = useState<AssistantStreamState['agentPhase']>(undefined);
+  /** The live turn offers document tools to a model known to send documents
+   *  all at once (`streamingBehavior.ts`). */
+  const [activeTurnDocumentWriteHeld, setActiveTurnDocumentWriteHeld] = useState(false);
 
   const queuedForConversation = listFor(messageQueues, conversationId);
 
@@ -608,6 +661,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       attachments: item.attachments,
     });
   }
+  const maybeDrainNextRef = useRef(maybeDrainNext);
+  maybeDrainNextRef.current = maybeDrainNext;
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId;
@@ -790,9 +845,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
 
   // Derive agent loop phase from stream state + pending calls.
   useEffect(() => {
-    const phase = deriveAgentPhase(activeStream, pendingRuntimeCallsRef.current, t);
+    const phase = deriveAgentPhase(activeStream, pendingRuntimeCallsRef.current, t, fmt);
     setAgentPhase(phase);
-  }, [activeStream, t]);
+  }, [activeStream, t, fmt]);
 
   async function loadConnectorToolDefinitions(): Promise<ToolDefinition[]> {
     try {
@@ -828,16 +883,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     prompt: string,
     searchBackend: SearchBackend | null,
   ): Promise<ToolDefinition[]> {
-    const intent = classifyDocumentTurnIntent(prompt);
     const connectorTools = await loadConnectorToolDefinitions();
-    const builtinTools = selectBuiltinDocumentTools(intent);
-    const brandTools = selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt));
-    const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot);
-    const memoryTools = selectBuiltinMemoryTools(settings.memoryEnabled);
+    const { tools: builtinTools } = selectBuiltinTurnTools(prompt, settings, conversationWorkspaceRoot);
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
     const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
-    return [...builtinTools, ...brandTools, ...workspaceTools, ...memoryTools, ...webTools, ...connectorTools];
+    return [...builtinTools, ...webTools, ...connectorTools];
   }
 
   function applyRuntimeEventToActiveStream(
@@ -985,13 +1036,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       if (windowTokens != null && windowTokens > 0) {
         const priorForEstimate = override?.history ?? turns;
         const keptForEstimate = historyForProviderRequest(priorForEstimate, activeCompaction);
-        const intent = classifyDocumentTurnIntent(trimmed);
-        const estimateTools = [
-          ...selectBuiltinDocumentTools(intent),
-          ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(trimmed)),
-          ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
-          ...selectBuiltinMemoryTools(settings.memoryEnabled),
-        ];
+        const { tools: estimateTools } = selectBuiltinTurnTools(
+          trimmed,
+          settings,
+          conversationWorkspaceRoot,
+        );
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
           resolveUserInstructions(settings, conversationUserInstructions),
@@ -1101,6 +1150,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
     const initialStream = createAssistantStreamState(request.requestId, searchBackend);
+    setActiveTurnDocumentWriteHeld(
+      toolDefinitions.some((tool) => isDocumentContentTool(tool.name)) &&
+        readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
+    );
     providerToolByCallIdRef.current = {};
     pendingRuntimeCallsRef.current = new Set();
     activeRequestRef.current = {
@@ -1136,11 +1189,23 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         request,
         (event) => {
         const active = activeRequestRef.current;
-        if (
-          !active ||
-          active.requestId !== request.requestId ||
-          currentConversationIdRef.current !== conversationId
-        ) {
+        if (!active || active.requestId !== request.requestId) {
+          return;
+        }
+        if (currentConversationIdRef.current !== conversationId) {
+          // The user moved to another chat mid-turn. Render nothing, but keep
+          // the turn's state and let it end: dropping the terminal event here
+          // left `streamDone` pending forever, so this turn never released the
+          // single active-request slot and every later send — in any chat —
+          // was queued and never sent.
+          streamStateRef.current = applyProviderEvent(
+            streamStateRef.current ?? createAssistantStreamState(request.requestId, searchBackend),
+            event,
+          );
+          if (event.kind === 'messageComplete' || event.kind === 'error') {
+            if (event.kind === 'error') terminalError = event.error.message;
+            finish();
+          }
           return;
         }
         // `streamStateRef` is the synchronous source of truth; `activeStream`
@@ -1158,6 +1223,48 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
           if (isDocumentContentTool(event.name)) {
             onDocumentToolActivity?.({ phase: 'start', toolName: event.name });
+          }
+        } else if (event.kind === 'toolCallDelta') {
+          // Every fragment re-renders the chat already; the panel lives in App
+          // and does not need to. Forward a new title at once, counts at most
+          // a few times a second.
+          const write = activeDocumentWrite(next);
+          if (write && write.toolCallId === event.toolCallId) {
+            const sent = documentProgressSentRef.current;
+            const title = write.title ?? write.filename;
+            const now = Date.now();
+            const due =
+              !sent ||
+              sent.toolCallId !== write.toolCallId ||
+              sent.title !== title ||
+              now - sent.at >= DOCUMENT_PROGRESS_INTERVAL_MS;
+            if (due) {
+              documentProgressSentRef.current = { toolCallId: write.toolCallId, at: now, title };
+              onDocumentToolActivity?.({
+                phase: 'progress',
+                toolName: write.toolName,
+                titleHint: write.mode === 'create' ? title : undefined,
+                progress: {
+                  contentChars: write.contentChars,
+                  contentLines: write.contentLines,
+                  lastActivityAt: write.lastActivityAt,
+                },
+              });
+            }
+          }
+        } else if (event.kind === 'toolExecutionFinished') {
+          // The document exists now. The model may keep talking for a while
+          // before the turn ends; the panel should not keep a skeleton up over
+          // a document that is already saved.
+          if (!event.isError && isDocumentContentTool(event.toolName)) {
+            const call = next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
+            const artifactId = call?.arguments?.artifact_id;
+            onDocumentToolActivity?.({
+              phase: 'written',
+              toolName: event.toolName,
+              artifactId:
+                typeof artifactId === 'string' && artifactId.trim() !== '' ? artifactId : undefined,
+            });
           }
         } else if (event.kind === 'toolCallComplete') {
           // Phase A: tool execution is now owned by the Rust `AgentLoop` inside
@@ -1179,6 +1286,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             providerToolByCallIdRef.current[event.toolCallId] ??
             next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId)?.name;
           if (toolName && isDocumentContentTool(toolName)) {
+            const finishedCall = next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
+            if (finishedCall) {
+              recordDocumentWrite(settings.activeProvider, settings.activeModel, finishedCall);
+            }
             const title =
               typeof event.arguments?.title === 'string' ? event.arguments.title : undefined;
             const artifactId =
@@ -1213,17 +1324,27 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       // error the agent loop has already exited, so the `toolCallFinished`
       // events this polls for will never arrive and it would burn its full 30s
       // deadline with the UI still reading as busy.
-      if (!terminalError) {
+      // Off screen, runtime events are not applied and nothing is committed, so
+      // waiting for tool results would only hold the active slot for up to 30s.
+      if (!terminalError && currentConversationIdRef.current === conversationId) {
         onStatus(makeStatus(t('chat.view.status.waitingForToolResults'), 'active', 'chat'));
         await waitForPendingRuntimeCalls(request.requestId);
       }
-      onStatus(
-        makeStatus(
-          terminalError ?? t('chat.view.status.streamComplete'),
-          terminalError ? 'error' : 'success',
-          'chat',
-        ),
-      );
+      // A turn that saved a document already gets "Document updated" from the
+      // workspace; a second success toast for the same moment is noise.
+      const documentWritten =
+        !terminalError &&
+        streamStateRef.current !== null &&
+        hadSuccessfulDocumentToolCalls(streamStateRef.current);
+      if (!documentWritten) {
+        onStatus(
+          makeStatus(
+            terminalError ?? t('chat.view.status.streamComplete'),
+            terminalError ? 'error' : 'success',
+            'chat',
+          ),
+        );
+      }
     } catch (error) {
       console.error('[startChatStream] rejected:', error);
       onStatus(makeStatus(describeInvokeError(error), 'error', 'chat'));
@@ -1313,11 +1434,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       }
       providerToolByCallIdRef.current = {};
       pendingRuntimeCallsRef.current = new Set();
-      // t1-2 M1: drain the next queued follow-up after the turn settles.
+      // t1-2 M1: drain the next queued follow-up after the turn settles — for
+      // the conversation on screen, not necessarily this turn's. A message sent
+      // from a new chat while this turn was still wrapping up is queued under
+      // the new chat; draining only this turn's conversation left it queued
+      // forever, since nothing else would end a turn there.
       if (skipNextDrainRef.current) {
         skipNextDrainRef.current = false;
       } else {
-        window.setTimeout(() => maybeDrainNext(conversationId), 0);
+        window.setTimeout(() => {
+          const onScreen = currentConversationIdRef.current;
+          // Through the ref: this closure belongs to the render that started the
+          // turn, and its `handleSend` would send into that turn's conversation.
+          if (onScreen) maybeDrainNextRef.current(onScreen);
+        }, 0);
       }
     }
   }
@@ -1360,6 +1490,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   useImperativeHandle(ref, () => ({
     stopStreaming: () => {
       void handleCancel();
+    },
+    readActiveDocumentWrite: () => {
+      const state = streamStateRef.current;
+      const write = activeDocumentWrite(state);
+      const call = write && state?.toolCalls.find((tc) => tc.toolCallId === write.toolCallId);
+      return call ? { toolName: call.name, argumentsText: call.argumentsText } : null;
     },
     isStreaming: () => activeRequestRef.current != null,
     copyLastAssistantMessage: async () => {
@@ -1558,13 +1694,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       const live = activeStream.blocks.map((b) => b.content).join('');
       if (live) historyTexts.push(live);
     }
-    const intent = classifyDocumentTurnIntent(prompt);
-    const toolDefinitions = [
-      ...selectBuiltinDocumentTools(intent),
-      ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
-      ...selectBuiltinWorkspaceTools(settings, conversationWorkspaceRoot),
-      ...selectBuiltinMemoryTools(settings.memoryEnabled),
-    ];
+    const { tools: toolDefinitions } = selectBuiltinTurnTools(
+      prompt,
+      settings,
+      conversationWorkspaceRoot,
+    );
     const systemPrompt = composeSystemPrompt(
       [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
       resolveUserInstructions(settings, conversationUserInstructions),
@@ -2122,6 +2256,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               switchedFrom={liveTurnInfo.switchedFrom}
               showModelLine={liveTurnInfo.showModelLine}
               conversationId={conversationId}
+              documentWriteHeld={activeTurnDocumentWriteHeld}
             />
           )}
         </div>

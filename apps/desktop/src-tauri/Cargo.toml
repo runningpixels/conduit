@@ -115,6 +115,12 @@ tauri-plugin-shell = "2"
 # Also used by in-crate tests, so it lives in `[dependencies]` (not dev-only).
 tempfile = "3"
 
+[dev-dependencies]
+# The scripted provider adapter in tests/agent_turn.rs implements
+# `provider_core::ProviderAdapter`, an `#[async_trait]` trait. Already in the
+# graph through provider-core.
+async-trait = "0.1"
+
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
 # Phase 6 white-label Mode B: build.rs parses `branding.build.json` to bake

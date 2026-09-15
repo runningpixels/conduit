@@ -7,6 +7,11 @@ import type {
   ProviderUsage,
   ToolCallStatus,
 } from '@conduit/config-schema';
+import {
+  advanceDocumentWriteScan,
+  startDocumentWriteScan,
+  type DocumentWriteScan,
+} from './documentWriteScan';
 
 export interface ContentBlockState {
   blockId: string;
@@ -46,6 +51,11 @@ export interface ToolCallState {
   /** P3.5 — wall-clock timestamps for the duration pill. */
   startedAt?: number;
   endedAt?: number;
+  /** When the most recent argument fragment arrived — the stall signal. */
+  lastDeltaAt?: number;
+  /** Document content tools only: title + size read from the streaming
+   *  arguments, so the UI can show what is being written before it is done. */
+  documentWrite?: DocumentWriteScan;
   /// Sources from `SearchSources` events scoped to this web_search call.
   sources?: SearchSource[];
   /** Real consent tier from the MCP runtime (Phase 4). Absent means
@@ -103,6 +113,9 @@ export interface AssistantStreamState {
   error?: string;
   interrupted: boolean;
   streaming: boolean;
+  /** When the last event that shows the turn is alive arrived (keepalive
+   *  pings excluded). The live tail says "still working" once this is old. */
+  lastEventAt?: number;
   /** Agent loop phase indicator. undefined = not in agent loop. */
   agentPhase?: {
     /** Current phase label shown to user. */
@@ -112,7 +125,16 @@ export interface AssistantStreamState {
     /** Total rounds or undefined if unknown. */
     totalRounds?: number;
     /** Sub-phase for more granular feedback. */
-    subPhase: 'connecting' | 'thinking' | 'executing_tools' | 'reviewing' | 'finalizing' | 'steering';
+    subPhase:
+      | 'connecting'
+      | 'thinking'
+      | 'writing_document'
+      | 'executing_tools'
+      | 'reviewing'
+      | 'finalizing'
+      | 'steering';
+    /** Secondary progress shown after the label ("214 lines · 18 KB"). */
+    detail?: string;
   };
   /** Pending mid-turn ask_user form (t1-2). */
   askUser?: {
@@ -141,6 +163,8 @@ export function createAssistantStreamState(
     searchBackend: searchBackend ?? null,
     interrupted: false,
     streaming: true,
+    // The request itself is the first sign of life; silence is measured from it.
+    lastEventAt: Date.now(),
   };
 }
 
@@ -300,6 +324,17 @@ export function applyProviderEvent(
   state: AssistantStreamState,
   event: ProviderEvent,
 ): AssistantStreamState {
+  const next = reduceProviderEvent(state, event);
+  // A ping proves the connection is open, not that the model is producing
+  // anything — exactly the silence "still working" exists to admit.
+  if (event.kind === 'ping' || !next.streaming) return next;
+  return { ...next, lastEventAt: Date.now() };
+}
+
+function reduceProviderEvent(
+  state: AssistantStreamState,
+  event: ProviderEvent,
+): AssistantStreamState {
   switch (event.kind) {
     case 'messageStart':
       return { ...state, streaming: true };
@@ -392,6 +427,7 @@ export function applyProviderEvent(
             argumentsText: '',
             complete: false,
             startedAt: Date.now(),
+            documentWrite: startDocumentWriteScan(event.name),
           },
         ],
         // Keep tools in event order; strip empty text stubs so a tool that
@@ -407,7 +443,14 @@ export function applyProviderEvent(
         ...state,
         toolCalls: state.toolCalls.map((toolCall) =>
           toolCall.toolCallId === event.toolCallId
-            ? { ...toolCall, argumentsText: toolCall.argumentsText + event.content }
+            ? {
+                ...toolCall,
+                argumentsText: toolCall.argumentsText + event.content,
+                lastDeltaAt: Date.now(),
+                ...(toolCall.documentWrite
+                  ? { documentWrite: advanceDocumentWriteScan(toolCall.documentWrite, event.content) }
+                  : {}),
+              }
             : toolCall,
         ),
       };
@@ -669,6 +712,15 @@ export function markInterrupted(state: AssistantStreamState): AssistantStreamSta
 /// records the terminal status + error and resolves consent (a `cancelled`
 /// status means the user denied or the request was dropped).
 export function applyConnectorRuntimeEvent(
+  state: AssistantStreamState,
+  event: ConnectorRuntimeEvent,
+): AssistantStreamState {
+  const next = reduceConnectorRuntimeEvent(state, event);
+  if (next === state || !next.streaming) return next;
+  return { ...next, lastEventAt: Date.now() };
+}
+
+function reduceConnectorRuntimeEvent(
   state: AssistantStreamState,
   event: ConnectorRuntimeEvent,
 ): AssistantStreamState {

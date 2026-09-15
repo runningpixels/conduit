@@ -3,6 +3,7 @@ import { ReasoningBlock } from './ReasoningBlock';
 import { ChatProse } from './ChatProse';
 import { TurnModelLine } from './TurnModelLine';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { streamStalled } from './documentWriteScan';
 import type {
   AssistantStreamState,
   ContentBlockState,
@@ -62,6 +63,9 @@ interface AssistantMessageProps {
   onFork?: () => void;
   /// Whether this is the last persisted turn (gates retry/delete affordances).
   isLast?: boolean;
+  /// Live turn only: this model delivers documents all at once and this turn
+  /// offers document tools, so a long silence is explained up front.
+  documentWriteHeld?: boolean;
 }
 
 /** P3.3 — group consecutive same-name tool calls into one collapsible card. */
@@ -268,6 +272,7 @@ export function AssistantMessage({
   onFork,
   isLast = true,
   conversationId = null,
+  documentWriteHeld = false,
 }: AssistantMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
@@ -279,7 +284,14 @@ export function AssistantMessage({
   const segments = useMemo(() => synthesizeSegments(state), [state]);
   const timeline = useMemo(() => buildTimelineItems(state, segments), [state, segments]);
   const elapsed = useLiveElapsed(state.streaming);
-  const tokenCount = Math.round(text.length / 4);
+  // Reasoning and tool arguments are model output too. Counting only prose
+  // held this at "0 tok" through visibly streaming reasoning, and froze it for
+  // the whole time a document was written into a tool call.
+  const argumentChars = state.toolCalls.reduce((n, tc) => n + tc.argumentsText.length, 0);
+  const reasoningChars = state.reasoning.reduce((n, b) => n + b.content.length, 0);
+  const tokenCount = Math.round((text.length + argumentChars + reasoningChars) / 4);
+  // `elapsed` ticks every second while streaming, so this re-evaluates on its own.
+  const stalled = state.streaming && streamStalled(state.lastEventAt, Date.now());
 
   const producingText = state.blocks.some(
     (b) =>
@@ -472,7 +484,14 @@ export function AssistantMessage({
           <ThinkingIndicator
             modelId={modelId}
             phase={state.agentPhase}
-            visible={!producingText}
+            lastActivityAt={state.lastEventAt}
+            heldDocument={documentWriteHeld}
+            // Prose earlier in the turn must not hide the one signal that work
+            // is still happening: while a document is written into a tool
+            // call, or while the provider has gone quiet.
+            visible={
+              !producingText || state.agentPhase?.subPhase === 'writing_document' || stalled
+            }
           />
           {!proseCaretVisible && <span className="streaming thinking-trailing" aria-hidden="true" />}
         </div>

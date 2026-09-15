@@ -154,7 +154,7 @@
   "chat.errorBoundary.detail": "이 채팅을 표시하는 중 오류가 발생했습니다.",
   "chat.errorBoundary.title": "문제가 발생했습니다",
   "chat.export.dialog.title": "채팅을 {format}(으)로 내보내기",
-  "chat.generation.maxTokens.hint": "비워 두면 공급자 기본값을 사용합니다.",
+  "chat.generation.maxTokens.hint": "비워 두면 모델 자체 한도를 사용합니다. 추론 모델은 사고 과정도 이 한도에 포함하므로, 한도가 낮으면 답변할 여유가 없을 수 있습니다.",
   "chat.generation.maxTokens.label": "최대 토큰 수",
   "chat.generation.providerDefaultPlaceholder": "공급자 기본값",
   "chat.generation.stopSequences.hint": "최대 8개입니다. 모델이 그중 하나를 출력하면 생성을 중지합니다.",
@@ -1219,5 +1219,7 @@
   "chat.documentBuild.continuePrompt": "문서 작성을 계속하세요. 아직 자리 표시자로 남은 섹션을 patch_document로 작성하세요.",
   "chat.documentBuild.pendingSection": "아직 작성되지 않음: {name}",
   "chat.documentBuild.sectionsLeft": "남은 섹션 {count}개",
-  "workspace.documentPanel.banner.sectionsNotWritten": "이 문서에 아직 작성되지 않은 섹션이 {count}개 있습니다."
+  "workspace.documentPanel.banner.sectionsNotWritten": "이 문서에 아직 작성되지 않은 섹션이 {count}개 있습니다.",
+  "chat.assistant.liveMetaLimit": "{elapsed}초 · {tokenCount} / {limit} 토큰",
+  "chat.assistant.retryWithoutLimit": "토큰 한도 없이 다시 시도"
 }

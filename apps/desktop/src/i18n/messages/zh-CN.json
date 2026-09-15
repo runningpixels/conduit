@@ -154,7 +154,7 @@
   "chat.errorBoundary.detail": "渲染这个聊天时出错。",
   "chat.errorBoundary.title": "出了点问题",
   "chat.export.dialog.title": "将聊天导出为 {format}",
-  "chat.generation.maxTokens.hint": "留空则使用提供商的默认值。",
+  "chat.generation.maxTokens.hint": "留空则使用模型自身的上限。推理模型的思考过程也计入此上限，设置过低可能没有余量写出回答。",
   "chat.generation.maxTokens.label": "最大 Token 数",
   "chat.generation.providerDefaultPlaceholder": "提供商默认值",
   "chat.generation.stopSequences.hint": "最多 8 个序列。模型输出其中任何一个都会停止生成。",
@@ -1219,5 +1219,7 @@
   "chat.documentBuild.continuePrompt": "继续生成文档：用 patch_document 写出仍是占位符的章节。",
   "chat.documentBuild.pendingSection": "尚未编写：{name}",
   "chat.documentBuild.sectionsLeft": "还剩 {count} 个章节",
-  "workspace.documentPanel.banner.sectionsNotWritten": "此文档还有 {count} 个章节尚未编写。"
+  "workspace.documentPanel.banner.sectionsNotWritten": "此文档还有 {count} 个章节尚未编写。",
+  "chat.assistant.liveMetaLimit": "{elapsed}秒 · {tokenCount} / {limit} Token",
+  "chat.assistant.retryWithoutLimit": "不限 Token 数重试"
 }

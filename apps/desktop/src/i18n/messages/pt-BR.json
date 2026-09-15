@@ -154,7 +154,7 @@
   "chat.errorBoundary.detail": "Este chat encontrou um erro ao renderizar.",
   "chat.errorBoundary.title": "Algo deu errado",
   "chat.export.dialog.title": "Exportar chat como {format}",
-  "chat.generation.maxTokens.hint": "Vazio usa o padrão do provedor.",
+  "chat.generation.maxTokens.hint": "Vazio usa o limite do próprio modelo. Modelos de raciocínio contam o raciocínio neste limite, então um limite baixo pode não deixar espaço para a resposta.",
   "chat.generation.maxTokens.label": "Máximo de tokens",
   "chat.generation.providerDefaultPlaceholder": "Padrão do provedor",
   "chat.generation.stopSequences.hint": "Até 8 sequências. A geração para se o modelo emitir uma delas.",
@@ -1219,5 +1219,7 @@
   "chat.documentBuild.continuePrompt": "Continue construindo o documento: escreva as seções que ainda são marcadores, usando patch_document.",
   "chat.documentBuild.pendingSection": "Ainda não escrito: {name}",
   "chat.documentBuild.sectionsLeft": "{count, plural, one {falta # seção} other {faltam # seções}}",
-  "workspace.documentPanel.banner.sectionsNotWritten": "{count, plural, one {# seção deste documento ainda não foi escrita.} other {# seções deste documento ainda não foram escritas.}}"
+  "workspace.documentPanel.banner.sectionsNotWritten": "{count, plural, one {# seção deste documento ainda não foi escrita.} other {# seções deste documento ainda não foram escritas.}}",
+  "chat.assistant.liveMetaLimit": "{elapsed}s · {tokenCount} / {limit} tok",
+  "chat.assistant.retryWithoutLimit": "Tentar novamente sem o limite de tokens"
 }

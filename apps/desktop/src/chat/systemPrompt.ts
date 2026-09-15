@@ -49,7 +49,8 @@ export function mergeGenerationControls(
     merged.topP == null &&
     merged.maxTokens == null &&
     !hasStops &&
-    merged.toolChoice == null
+    merged.toolChoice == null &&
+    merged.reasoningEffort == null
   ) {
     return undefined;
   }
@@ -59,6 +60,7 @@ export function mergeGenerationControls(
   if (merged.maxTokens != null) out.maxTokens = merged.maxTokens;
   if (hasStops) out.stopSequences = stops;
   if (merged.toolChoice != null) out.toolChoice = merged.toolChoice;
+  if (merged.reasoningEffort != null) out.reasoningEffort = merged.reasoningEffort;
   return out;
 }
 

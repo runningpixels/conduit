@@ -1025,6 +1025,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       attachments?: TurnAttachment[];
       /** Document intent for an app-authored prompt, whatever language it is in. */
       intent?: DocumentTurnIntent;
+      /** One-off generation controls for this send, over the conversation's own
+       *  (a key set to `undefined` clears that control). */
+      generationControls?: GenerationControls;
     },
     composerAttachments?: TurnAttachment[],
   ) {
@@ -1161,7 +1164,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       followUpArtifact,
       searchBackend,
       {
-        generationControls: conversationGenerationControls,
+        generationControls: override?.generationControls
+          ? { ...conversationGenerationControls, ...override.generationControls }
+          : conversationGenerationControls,
         userInstructions: conversationUserInstructions,
         compactionSummary: activeCompaction?.summaryText ?? null,
         extraSystemSections,
@@ -1870,7 +1875,24 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     void commitMessageEdit(editingTurnId, text);
   }
 
-  async function commitMessageEdit(messageId: string, text: string) {
+  /** The Max tokens limit in effect: the conversation's own, else the app default. */
+  const effectiveMaxTokens = mergeGenerationControls(
+    settings.generationControls,
+    conversationGenerationControls,
+  )?.maxTokens;
+
+  /** Send the last prompt again with Max tokens cleared for this one request. */
+  async function retryLastPromptWithoutLimit() {
+    const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
+    if (!lastUser) return;
+    await commitMessageEdit(lastUser.id, lastUser.content, { maxTokens: undefined });
+  }
+
+  async function commitMessageEdit(
+    messageId: string,
+    text: string,
+    generationControls?: GenerationControls,
+  ) {
     if (!conversationId || activeRequestId) return;
     const editedTurn = turns.find((t) => t.id === messageId);
     const preservedAttachments = editedTurn?.attachments;
@@ -1894,6 +1916,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         text,
         history: nextTurns,
         attachments: preservedAttachments,
+        generationControls,
       });
     } catch (error) {
       onStatus(
@@ -2168,6 +2191,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   onStatus={onStatus}
                   isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
                   onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onRetryWithoutLimit={effectiveMaxTokens ? () => void retryLastPromptWithoutLimit() : undefined}
                   onContinueBuilding={() =>
                     void handleSend({
                       text: t('chat.documentBuild.continuePrompt'),
@@ -2300,6 +2324,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   };
                 })(),
               }}
+              outputLimit={effectiveMaxTokens}
               provider={liveTurnInfo.provider}
               modelId={liveTurnInfo.model}
               switchedFrom={liveTurnInfo.switchedFrom}

@@ -153,7 +153,7 @@
     "chat.errorBoundary.detail": "d5ddbee9c8b69aac357c5f1e3e7de818bc6beaac",
     "chat.errorBoundary.title": "8d886c0ba6f2b683daba5f19568a316226ce3e4c",
     "chat.export.dialog.title": "c66254ba6bb6bda1ba60765ea1d78f8d566c8ea4",
-    "chat.generation.maxTokens.hint": "765cfdc87c42c3cf6591971cd8d964294998c86e",
+    "chat.generation.maxTokens.hint": "3f22489c27d434415801f739af92c4a85a111cf0",
     "chat.generation.maxTokens.label": "4bd246e3f7e32aa97d522ab91d10378d49779ece",
     "chat.generation.providerDefaultPlaceholder": "f75bf4414ceeae92fdf394d0784325dfe4d875c7",
     "chat.generation.stopSequences.hint": "ad49dc6fa5bb5c2aef14e5fb3061f57356cb2bfe",
@@ -1223,7 +1223,9 @@
     "chat.documentBuild.continuePrompt": "7e3c6d9852d4b038f9c01cd88689aaf425e98649",
     "chat.documentBuild.pendingSection": "0673a1e7b6ffdd0885eb1ad7708cd0a94873bd90",
     "chat.documentBuild.sectionsLeft": "d65063c39283a83c4317eb40197fff41020bb653",
-    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3"
+    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3",
+    "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
+    "chat.assistant.retryWithoutLimit": "97897136837d16fd2c4996b2f74349934d99950c"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -1379,7 +1381,7 @@
     "chat.errorBoundary.detail": "d5ddbee9c8b69aac357c5f1e3e7de818bc6beaac",
     "chat.errorBoundary.title": "8d886c0ba6f2b683daba5f19568a316226ce3e4c",
     "chat.export.dialog.title": "c66254ba6bb6bda1ba60765ea1d78f8d566c8ea4",
-    "chat.generation.maxTokens.hint": "765cfdc87c42c3cf6591971cd8d964294998c86e",
+    "chat.generation.maxTokens.hint": "3f22489c27d434415801f739af92c4a85a111cf0",
     "chat.generation.maxTokens.label": "4bd246e3f7e32aa97d522ab91d10378d49779ece",
     "chat.generation.providerDefaultPlaceholder": "f75bf4414ceeae92fdf394d0784325dfe4d875c7",
     "chat.generation.stopSequences.hint": "ad49dc6fa5bb5c2aef14e5fb3061f57356cb2bfe",
@@ -2449,7 +2451,9 @@
     "chat.documentBuild.continuePrompt": "7e3c6d9852d4b038f9c01cd88689aaf425e98649",
     "chat.documentBuild.pendingSection": "0673a1e7b6ffdd0885eb1ad7708cd0a94873bd90",
     "chat.documentBuild.sectionsLeft": "d65063c39283a83c4317eb40197fff41020bb653",
-    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3"
+    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3",
+    "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
+    "chat.assistant.retryWithoutLimit": "97897136837d16fd2c4996b2f74349934d99950c"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2605,7 +2609,7 @@
     "chat.errorBoundary.detail": "d5ddbee9c8b69aac357c5f1e3e7de818bc6beaac",
     "chat.errorBoundary.title": "8d886c0ba6f2b683daba5f19568a316226ce3e4c",
     "chat.export.dialog.title": "c66254ba6bb6bda1ba60765ea1d78f8d566c8ea4",
-    "chat.generation.maxTokens.hint": "765cfdc87c42c3cf6591971cd8d964294998c86e",
+    "chat.generation.maxTokens.hint": "3f22489c27d434415801f739af92c4a85a111cf0",
     "chat.generation.maxTokens.label": "4bd246e3f7e32aa97d522ab91d10378d49779ece",
     "chat.generation.providerDefaultPlaceholder": "f75bf4414ceeae92fdf394d0784325dfe4d875c7",
     "chat.generation.stopSequences.hint": "ad49dc6fa5bb5c2aef14e5fb3061f57356cb2bfe",
@@ -3675,7 +3679,9 @@
     "chat.documentBuild.continuePrompt": "7e3c6d9852d4b038f9c01cd88689aaf425e98649",
     "chat.documentBuild.pendingSection": "0673a1e7b6ffdd0885eb1ad7708cd0a94873bd90",
     "chat.documentBuild.sectionsLeft": "d65063c39283a83c4317eb40197fff41020bb653",
-    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3"
+    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3",
+    "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
+    "chat.assistant.retryWithoutLimit": "97897136837d16fd2c4996b2f74349934d99950c"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3831,7 +3837,7 @@
     "chat.errorBoundary.detail": "d5ddbee9c8b69aac357c5f1e3e7de818bc6beaac",
     "chat.errorBoundary.title": "8d886c0ba6f2b683daba5f19568a316226ce3e4c",
     "chat.export.dialog.title": "c66254ba6bb6bda1ba60765ea1d78f8d566c8ea4",
-    "chat.generation.maxTokens.hint": "765cfdc87c42c3cf6591971cd8d964294998c86e",
+    "chat.generation.maxTokens.hint": "3f22489c27d434415801f739af92c4a85a111cf0",
     "chat.generation.maxTokens.label": "4bd246e3f7e32aa97d522ab91d10378d49779ece",
     "chat.generation.providerDefaultPlaceholder": "f75bf4414ceeae92fdf394d0784325dfe4d875c7",
     "chat.generation.stopSequences.hint": "ad49dc6fa5bb5c2aef14e5fb3061f57356cb2bfe",
@@ -4901,7 +4907,9 @@
     "chat.documentBuild.continuePrompt": "7e3c6d9852d4b038f9c01cd88689aaf425e98649",
     "chat.documentBuild.pendingSection": "0673a1e7b6ffdd0885eb1ad7708cd0a94873bd90",
     "chat.documentBuild.sectionsLeft": "d65063c39283a83c4317eb40197fff41020bb653",
-    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3"
+    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3",
+    "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
+    "chat.assistant.retryWithoutLimit": "97897136837d16fd2c4996b2f74349934d99950c"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -5057,7 +5065,7 @@
     "chat.errorBoundary.detail": "d5ddbee9c8b69aac357c5f1e3e7de818bc6beaac",
     "chat.errorBoundary.title": "8d886c0ba6f2b683daba5f19568a316226ce3e4c",
     "chat.export.dialog.title": "c66254ba6bb6bda1ba60765ea1d78f8d566c8ea4",
-    "chat.generation.maxTokens.hint": "765cfdc87c42c3cf6591971cd8d964294998c86e",
+    "chat.generation.maxTokens.hint": "3f22489c27d434415801f739af92c4a85a111cf0",
     "chat.generation.maxTokens.label": "4bd246e3f7e32aa97d522ab91d10378d49779ece",
     "chat.generation.providerDefaultPlaceholder": "f75bf4414ceeae92fdf394d0784325dfe4d875c7",
     "chat.generation.stopSequences.hint": "ad49dc6fa5bb5c2aef14e5fb3061f57356cb2bfe",
@@ -6127,7 +6135,9 @@
     "chat.documentBuild.continuePrompt": "7e3c6d9852d4b038f9c01cd88689aaf425e98649",
     "chat.documentBuild.pendingSection": "0673a1e7b6ffdd0885eb1ad7708cd0a94873bd90",
     "chat.documentBuild.sectionsLeft": "d65063c39283a83c4317eb40197fff41020bb653",
-    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3"
+    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3",
+    "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
+    "chat.assistant.retryWithoutLimit": "97897136837d16fd2c4996b2f74349934d99950c"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6283,7 +6293,7 @@
     "chat.errorBoundary.detail": "d5ddbee9c8b69aac357c5f1e3e7de818bc6beaac",
     "chat.errorBoundary.title": "8d886c0ba6f2b683daba5f19568a316226ce3e4c",
     "chat.export.dialog.title": "c66254ba6bb6bda1ba60765ea1d78f8d566c8ea4",
-    "chat.generation.maxTokens.hint": "765cfdc87c42c3cf6591971cd8d964294998c86e",
+    "chat.generation.maxTokens.hint": "3f22489c27d434415801f739af92c4a85a111cf0",
     "chat.generation.maxTokens.label": "4bd246e3f7e32aa97d522ab91d10378d49779ece",
     "chat.generation.providerDefaultPlaceholder": "f75bf4414ceeae92fdf394d0784325dfe4d875c7",
     "chat.generation.stopSequences.hint": "ad49dc6fa5bb5c2aef14e5fb3061f57356cb2bfe",
@@ -7353,7 +7363,9 @@
     "chat.documentBuild.continuePrompt": "7e3c6d9852d4b038f9c01cd88689aaf425e98649",
     "chat.documentBuild.pendingSection": "0673a1e7b6ffdd0885eb1ad7708cd0a94873bd90",
     "chat.documentBuild.sectionsLeft": "d65063c39283a83c4317eb40197fff41020bb653",
-    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3"
+    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3",
+    "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
+    "chat.assistant.retryWithoutLimit": "97897136837d16fd2c4996b2f74349934d99950c"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7509,7 +7521,7 @@
     "chat.errorBoundary.detail": "d5ddbee9c8b69aac357c5f1e3e7de818bc6beaac",
     "chat.errorBoundary.title": "8d886c0ba6f2b683daba5f19568a316226ce3e4c",
     "chat.export.dialog.title": "c66254ba6bb6bda1ba60765ea1d78f8d566c8ea4",
-    "chat.generation.maxTokens.hint": "765cfdc87c42c3cf6591971cd8d964294998c86e",
+    "chat.generation.maxTokens.hint": "3f22489c27d434415801f739af92c4a85a111cf0",
     "chat.generation.maxTokens.label": "4bd246e3f7e32aa97d522ab91d10378d49779ece",
     "chat.generation.providerDefaultPlaceholder": "f75bf4414ceeae92fdf394d0784325dfe4d875c7",
     "chat.generation.stopSequences.hint": "ad49dc6fa5bb5c2aef14e5fb3061f57356cb2bfe",
@@ -8579,6 +8591,8 @@
     "chat.documentBuild.continuePrompt": "7e3c6d9852d4b038f9c01cd88689aaf425e98649",
     "chat.documentBuild.pendingSection": "0673a1e7b6ffdd0885eb1ad7708cd0a94873bd90",
     "chat.documentBuild.sectionsLeft": "d65063c39283a83c4317eb40197fff41020bb653",
-    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3"
+    "workspace.documentPanel.banner.sectionsNotWritten": "12bd42e23ec03ed58d16cb2f8be4a60d959f1ca3",
+    "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
+    "chat.assistant.retryWithoutLimit": "97897136837d16fd2c4996b2f74349934d99950c"
   }
 }

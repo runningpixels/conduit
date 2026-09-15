@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { AssistantMessage } from './AssistantMessage';
 import { createAssistantStreamState } from './streamState';
 import type { AssistantStreamState, ToolCallState } from './streamState';
@@ -490,5 +490,39 @@ describe('AssistantMessage document build stopped at the time limit', () => {
       />,
     );
     expect(screen.queryByRole('button', { name: 'Continue building' })).toBeNull();
+  });
+});
+
+describe('AssistantMessage output limit actions', () => {
+  it('offers a retry without the token limit after an output-limit error', () => {
+    const onRetryWithoutLimit = vi.fn();
+    render(
+      <AssistantMessage
+        state={{
+          ...streaming(),
+          streaming: false,
+          error: 'The model used its whole output limit (9,000 tokens) on reasoning.',
+          errorCode: 'output_limit_reasoning',
+        }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+        onRetryWithoutLimit={onRetryWithoutLimit}
+      />,
+    );
+    screen.getByRole('button', { name: 'Retry without the token limit' }).click();
+    expect(onRetryWithoutLimit).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the limit next to the live token count', () => {
+    vi.useFakeTimers();
+    try {
+      render(<AssistantMessage state={streaming()} provider="openai" modelId="gpt-5.4-mini" outputLimit={9000} />);
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(screen.getByText(/ \/ 9000 tok/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

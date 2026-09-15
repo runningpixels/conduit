@@ -55,6 +55,12 @@ interface AssistantMessageProps {
   onRetry?: () => void;
   /** Continue a document build that stopped at the turn time limit. */
   onContinueBuilding?: () => void;
+  /** Send the last prompt again without the Max tokens limit that cut this
+   *  turn short. Only passed when such a limit is set. */
+  onRetryWithoutLimit?: () => void;
+  /** The Max tokens limit in effect for this turn, shown next to the live
+   *  token count so a limit being used up is visible before it cuts in. */
+  outputLimit?: number;
   /// P3.2 — delete this turn (removes the last assistant turn from local history).
   onDelete?: () => void;
   /// Copy this turn's text (wired from ChatView's clipboard handler).
@@ -270,6 +276,8 @@ export function AssistantMessage({
   onStatus,
   onRetry,
   onContinueBuilding,
+  onRetryWithoutLimit,
+  outputLimit,
   onDelete,
   onCopy,
   onFork,
@@ -467,7 +475,9 @@ export function AssistantMessage({
         <div className="turn-meta">
           <span className="msg-meta">
             <span className="live-dot" aria-hidden="true" />
-            {t('chat.assistant.liveMeta', { elapsed, tokenCount })}
+            {outputLimit
+              ? t('chat.assistant.liveMetaLimit', { elapsed, tokenCount, limit: outputLimit })
+              : t('chat.assistant.liveMeta', { elapsed, tokenCount })}
           </span>
         </div>
       )}
@@ -509,6 +519,15 @@ export function AssistantMessage({
         onContinueBuilding && (
           <button type="button" className="act turn-continue-building" onClick={onContinueBuilding}>
             {t('chat.documentBuild.continue')}
+          </button>
+        )}
+      {state.error &&
+        state.errorCode?.startsWith('output_limit') &&
+        isLast &&
+        !state.streaming &&
+        onRetryWithoutLimit && (
+          <button type="button" className="act turn-continue-building" onClick={onRetryWithoutLimit}>
+            {t('chat.assistant.retryWithoutLimit')}
           </button>
         )}
       {/* The provider stopped this reply at its output-token limit. The text

@@ -1214,5 +1214,10 @@
   "workspace.documentPanel.pending.peekHint": "작성 중인 문서를 보여줍니다. 스크립트는 문서가 완성된 뒤 실행됩니다.",
   "workspace.documentPanel.pending.peekTooLarge": "이 문서는 너무 커서 작성 중에 미리 볼 수 없습니다.",
   "chat.stream.stillWorkingHeldDocument": "계속 작업 중 · {seconds}초 — 이 모델은 문서를 한 번에 보냅니다",
-  "chat.assistant.cutOff": "출력 한도에 도달해 이 답변이 중간에 끊겼습니다. 설정 → 채팅 기본값 → 모델 매개변수에서 \"최대 토큰 수\"를 늘리세요."
+  "chat.assistant.cutOff": "출력 한도에 도달해 이 답변이 중간에 끊겼습니다. 설정 → 채팅 기본값 → 모델 매개변수에서 \"최대 토큰 수\"를 늘리세요.",
+  "chat.documentBuild.continue": "계속 작성",
+  "chat.documentBuild.continuePrompt": "문서 작성을 계속하세요. 아직 자리 표시자로 남은 섹션을 patch_document로 작성하세요.",
+  "chat.documentBuild.pendingSection": "아직 작성되지 않음: {name}",
+  "chat.documentBuild.sectionsLeft": "남은 섹션 {count}개",
+  "workspace.documentPanel.banner.sectionsNotWritten": "이 문서에 아직 작성되지 않은 섹션이 {count}개 있습니다."
 }

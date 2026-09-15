@@ -113,9 +113,11 @@ import {
   documentWriteLabel,
 } from './documentWriteScan';
 import { readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
+import { placeholderSections } from './documentBuild';
 import {
   documentWriteDeveloperPromptFor,
   informationalDeveloperPromptFor,
+  type DocumentTurnIntent,
 } from './documentTurnIntent';
 import { CONDUIT_BRAND_SYSTEM_APPENDIX, looksLikeBrandThemeRequest } from './brandPrompt';
 import {
@@ -886,9 +888,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   async function loadToolDefinitions(
     prompt: string,
     searchBackend: SearchBackend | null,
+    intent?: DocumentTurnIntent,
   ): Promise<ToolDefinition[]> {
     const connectorTools = await loadConnectorToolDefinitions();
-    const { tools: builtinTools } = selectBuiltinTurnTools(prompt, settings, conversationWorkspaceRoot);
+    const { tools: builtinTools } = selectBuiltinTurnTools(
+      prompt,
+      settings,
+      conversationWorkspaceRoot,
+      intent,
+    );
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
     const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
@@ -1011,7 +1019,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }
 
   async function handleSend(
-    override?: { text: string; history: ChatTurn[]; attachments?: TurnAttachment[] },
+    override?: {
+      text: string;
+      history: ChatTurn[];
+      attachments?: TurnAttachment[];
+      /** Document intent for an app-authored prompt, whatever language it is in. */
+      intent?: DocumentTurnIntent;
+    },
     composerAttachments?: TurnAttachment[],
   ) {
     const trimmed = (override?.text ?? prompt).trim();
@@ -1116,7 +1130,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           settings.providerEndpoints,
         )
       : null;
-    const toolDefinitions = await loadToolDefinitions(trimmed, searchBackend);
+    const toolDefinitions = await loadToolDefinitions(trimmed, searchBackend, override?.intent);
     const priorHistory = history.slice(0, -1);
     const followUpArtifact = await resolveFollowUpArtifactContext(
       priorHistory,
@@ -1124,6 +1138,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       artifacts,
       getArtifact,
       activeArtifact,
+      { forceEdit: override?.intent === 'edit' },
     );
     const providerHistory = [
       ...historyForProviderRequest(priorHistory, activeCompaction),
@@ -2153,6 +2168,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   onStatus={onStatus}
                   isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
                   onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onContinueBuilding={() =>
+                    void handleSend({
+                      text: t('chat.documentBuild.continuePrompt'),
+                      history: turnsRef.current,
+                      intent: 'edit',
+                    })
+                  }
                   onDelete={() => void handleRemoveLastAssistantTurn()}
                   onCopy={() => void handleCopyText(turn.content)}
                   onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
@@ -2235,7 +2257,28 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               state={{
                 ...activeStream,
                 agentPhase: (() => {
-                  const base = agentPhase ?? activeStream.agentPhase;
+                  const phase = agentPhase ?? activeStream.agentPhase;
+                  // While the model builds a document in parts, say how much is
+                  // left — the open document refreshes after every patch, and
+                  // its placeholders are the sections still to write.
+                  const building = activeStream.toolCalls.some(
+                    (tc) => isDocumentContentTool(tc.name) && tc.arguments?.more_to_write === true,
+                  );
+                  const sectionsLeft = building
+                    ? placeholderSections(activeArtifact?.contentText).length
+                    : 0;
+                  const base =
+                    phase && sectionsLeft > 0
+                      ? {
+                          ...phase,
+                          detail: [
+                            phase.detail,
+                            t('chat.documentBuild.sectionsLeft', { count: sectionsLeft }),
+                          ]
+                            .filter(Boolean)
+                            .join(' · '),
+                        }
+                      : phase;
                   if (queuedForConversation.length === 0 || !base) {
                     return queuedForConversation.length > 0
                       ? {

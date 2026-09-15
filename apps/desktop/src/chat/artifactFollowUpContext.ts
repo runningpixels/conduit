@@ -218,13 +218,19 @@ export async function resolveFollowUpArtifactContext(
   listed: Artifact[],
   getArtifact: GetArtifactFn,
   preferredArtifact?: Artifact | null,
+  /** The prompt is known to revise the document in scope (an app-authored
+   *  follow-up such as "Continue building"), whatever its wording. */
+  options: { forceEdit?: boolean } = {},
 ): Promise<FollowUpArtifactContext | undefined> {
   const preferredId =
     preferredArtifact && isDocumentArtifact(preferredArtifact)
       ? preferredArtifact.id
       : undefined;
   const artifactId = resolveRecentDocumentArtifactId(history, listed, preferredId);
-  if (!shouldIncludeArtifactFollowUpContext(prompt, history, artifactId)) {
+  const include = options.forceEdit
+    ? Boolean(artifactId)
+    : shouldIncludeArtifactFollowUpContext(prompt, history, artifactId);
+  if (!include) {
     return undefined;
   }
 

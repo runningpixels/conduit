@@ -662,8 +662,11 @@ export function selectBuiltinTurnTools(
     memoryEnabled: boolean;
   },
   conversationRoot?: string | null,
+  /** Set by app-authored prompts (e.g. "Continue building") whose intent is
+   *  known regardless of the language they are written in. */
+  intentOverride?: DocumentTurnIntent,
 ): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
-  const intent = classifyDocumentTurnIntent(prompt);
+  const intent = intentOverride ?? classifyDocumentTurnIntent(prompt);
   const documentTurn = intent === 'create' || intent === 'edit';
   const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
     (tool) =>

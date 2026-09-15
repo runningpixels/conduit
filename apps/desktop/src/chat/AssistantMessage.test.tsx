@@ -446,3 +446,49 @@ describe('AssistantMessage output limit', () => {
     expect(screen.queryByText(/output limit/)).toBeNull();
   });
 });
+
+describe('AssistantMessage document build stopped at the time limit', () => {
+  it('offers to continue building when the build was cut short', () => {
+    const onContinueBuilding = vi.fn();
+    render(
+      <AssistantMessage
+        state={{
+          ...streaming(),
+          streaming: false,
+          error: 'The turn reached its time limit while the document was still being built.',
+          errorCode: 'turn_time_limit_building',
+        }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+        onContinueBuilding={onContinueBuilding}
+      />,
+    );
+
+    screen.getByRole('button', { name: 'Continue building' }).click();
+    expect(onContinueBuilding).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer it for other time limits or on earlier turns', () => {
+    const state = {
+      ...streaming(),
+      streaming: false,
+      error: 'Agent turn reached its time limit (300s).',
+      errorCode: 'turn_time_limit',
+    };
+    const { rerender } = render(
+      <AssistantMessage state={state} provider="openai" modelId="gpt-5.4-mini" onContinueBuilding={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Continue building' })).toBeNull();
+
+    rerender(
+      <AssistantMessage
+        state={{ ...state, errorCode: 'turn_time_limit_building' }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+        isLast={false}
+        onContinueBuilding={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Continue building' })).toBeNull();
+  });
+});

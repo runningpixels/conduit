@@ -1214,5 +1214,10 @@
   "workspace.documentPanel.pending.peekHint": "Mostra o documento enquanto é escrito. Os scripts rodam quando ele estiver pronto.",
   "workspace.documentPanel.pending.peekTooLarge": "Este documento é grande demais para visualizar enquanto é escrito.",
   "chat.stream.stillWorkingHeldDocument": "ainda trabalhando · {seconds}s — este modelo envia documentos de uma vez",
-  "chat.assistant.cutOff": "Cortada: esta resposta atingiu o limite de saída. Aumente \"Máximo de tokens\" em Configurações → Padrões do chat → Parâmetros do modelo."
+  "chat.assistant.cutOff": "Cortada: esta resposta atingiu o limite de saída. Aumente \"Máximo de tokens\" em Configurações → Padrões do chat → Parâmetros do modelo.",
+  "chat.documentBuild.continue": "Continuar construindo",
+  "chat.documentBuild.continuePrompt": "Continue construindo o documento: escreva as seções que ainda são marcadores, usando patch_document.",
+  "chat.documentBuild.pendingSection": "Ainda não escrito: {name}",
+  "chat.documentBuild.sectionsLeft": "{count, plural, one {falta # seção} other {faltam # seções}}",
+  "workspace.documentPanel.banner.sectionsNotWritten": "{count, plural, one {# seção deste documento ainda não foi escrita.} other {# seções deste documento ainda não foram escritas.}}"
 }

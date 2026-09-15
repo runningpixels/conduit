@@ -53,6 +53,8 @@ interface AssistantMessageProps {
   onStatus?: (message: string) => void;
   /// P3.1 — retry this turn (remove last assistant turn + resend the prompt).
   onRetry?: () => void;
+  /** Continue a document build that stopped at the turn time limit. */
+  onContinueBuilding?: () => void;
   /// P3.2 — delete this turn (removes the last assistant turn from local history).
   onDelete?: () => void;
   /// Copy this turn's text (wired from ChatView's clipboard handler).
@@ -267,6 +269,7 @@ export function AssistantMessage({
   onOpenArtifact,
   onStatus,
   onRetry,
+  onContinueBuilding,
   onDelete,
   onCopy,
   onFork,
@@ -497,6 +500,17 @@ export function AssistantMessage({
         </div>
       )}
       {state.error && <p className="error-text">{state.error}</p>}
+      {/* The document is saved as far as it got; one click picks the build up
+          where it stopped instead of asking the user to phrase a follow-up. */}
+      {state.error &&
+        state.errorCode === 'turn_time_limit_building' &&
+        isLast &&
+        !state.streaming &&
+        onContinueBuilding && (
+          <button type="button" className="act turn-continue-building" onClick={onContinueBuilding}>
+            {t('chat.documentBuild.continue')}
+          </button>
+        )}
       {/* The provider stopped this reply at its output-token limit. The text
           above is all there is; without this it reads as a finished answer. */}
       {!state.streaming && !state.error && state.finishReason === 'length' && (

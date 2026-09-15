@@ -30,6 +30,7 @@ import { documentKindLabel } from '../lib/documentKind';
 import { useNow } from '../lib/useNow';
 import { LiveDocumentPreview, type LiveDocumentSource } from '../artifacts/LiveDocumentPreview';
 import { documentWriteDetail, stillWorkingText } from '../chat/documentWriteScan';
+import { placeholderSections } from '../chat/documentBuild';
 
 type DocTab = 'preview' | 'source';
 
@@ -374,6 +375,7 @@ export function DocumentPanel({
   }, [artifact, loadedText]);
 
   const sourceText = useMemo(() => (effectiveArtifact ? inlineArtifactText(effectiveArtifact) : ''), [effectiveArtifact]);
+  const pendingSectionCount = useMemo(() => placeholderSections(sourceText).length, [sourceText]);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedSource, setSavedSource] = useState(false);
@@ -1004,6 +1006,13 @@ export function DocumentPanel({
           <div className="doc-banner hold" role="status">
             {tr('workspace.documentPanel.banner.updating')}{' '}
             <PendingWriteProgress pending={pendingArtifact} className="doc-banner-progress" />
+          </div>
+        )}
+        {pendingSectionCount > 0 && (
+          // Placeholder comments render as nothing, so a document built in
+          // parts that is not finished yet would look complete but short.
+          <div className="doc-banner hold" role="status">
+            {t('workspace.documentPanel.banner.sectionsNotWritten', { count: pendingSectionCount })}
           </div>
         )}
         {activeFileState === 'modified' && !dismissedModified && (

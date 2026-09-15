@@ -1214,5 +1214,10 @@
   "workspace.documentPanel.pending.peekHint": "書かれている途中のドキュメントを表示します。スクリプトは完成後に実行されます。",
   "workspace.documentPanel.pending.peekTooLarge": "このドキュメントは大きすぎるため、作成中にプレビューできません。",
   "chat.stream.stillWorkingHeldDocument": "処理を続けています · {seconds}秒 — このモデルはドキュメントをまとめて送信します",
-  "chat.assistant.cutOff": "出力の上限に達したため、この回答は途中で終わっています。設定 → チャットの既定値 → モデルパラメーター で「最大トークン数」を増やしてください。"
+  "chat.assistant.cutOff": "出力の上限に達したため、この回答は途中で終わっています。設定 → チャットの既定値 → モデルパラメーター で「最大トークン数」を増やしてください。",
+  "chat.documentBuild.continue": "作成を続ける",
+  "chat.documentBuild.continuePrompt": "ドキュメントの作成を続けてください。まだプレースホルダーのセクションを patch_document で書いてください。",
+  "chat.documentBuild.pendingSection": "未作成: {name}",
+  "chat.documentBuild.sectionsLeft": "残り {count} セクション",
+  "workspace.documentPanel.banner.sectionsNotWritten": "このドキュメントには未作成のセクションが {count} 件あります。"
 }

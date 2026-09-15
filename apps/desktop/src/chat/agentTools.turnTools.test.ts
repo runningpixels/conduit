@@ -77,3 +77,14 @@ describe('documentWriteDeveloperPromptFor for a model that holds documents', () 
     );
   });
 });
+
+describe('selectBuiltinTurnTools intent override', () => {
+  it('offers revision tools for an app-authored prompt in any language', () => {
+    const settings = { memoryEnabled: false };
+    const prompt = 'Baue das Dokument weiter auf: Schreibe die Abschnitte, die noch Platzhalter sind.';
+    expect(selectBuiltinTurnTools(prompt, settings).tools.map((t) => t.name)).not.toContain('patch_document');
+    const { intent, tools } = selectBuiltinTurnTools(prompt, settings, null, 'edit');
+    expect(intent).toBe('edit');
+    expect(tools.map((t) => t.name)).toContain('patch_document');
+  });
+});

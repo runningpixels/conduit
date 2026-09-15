@@ -48,6 +48,7 @@ import {
   type ResolvedTokens,
 } from '../themes/resolvedTokens';
 import { useT } from '../i18n';
+import { markPlaceholdersInHtml } from '../chat/documentBuild';
 
 export type ArtifactColorScheme = 'light' | 'dark';
 
@@ -211,13 +212,13 @@ export function HtmlArtifactRenderer({
   const srcdoc = useMemo(
     () =>
       assembleArtifactDoc(
-        html,
+        markPlaceholdersInHtml(html, (name) => t('chat.documentBuild.pendingSection', { name })),
         allowlist,
         styledPreview,
         colorScheme,
         themingKind === 'tokens' ? readResolvedTokens() : undefined,
       ),
-    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision],
+    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t],
   );
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);

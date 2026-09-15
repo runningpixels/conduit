@@ -77,6 +77,7 @@ fn round_outcome_with_error() {
         aborted: false,
         hit_output_limit: false,
         output_limit: None,
+        withheld_error: None,
     };
     assert_eq!(
         outcome.error_message.as_deref(),
@@ -105,6 +106,7 @@ fn round_outcome_with_tool_calls() {
         aborted: false,
         hit_output_limit: false,
         output_limit: None,
+        withheld_error: None,
     };
     assert_eq!(outcome.completed_tool_calls.len(), 1);
     assert_eq!(outcome.completed_tool_calls[0].tool_call_id, "call-1");
@@ -143,6 +145,7 @@ fn round_outcome_carries_a_withheld_completion() {
         aborted: false,
         hit_output_limit: false,
         output_limit: None,
+        withheld_error: None,
     };
     assert_eq!(outcome.completion_event, Some(completion));
 }

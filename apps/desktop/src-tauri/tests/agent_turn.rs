@@ -1040,3 +1040,126 @@ async fn a_build_in_parts_gets_more_time_and_stops_with_a_continue_code() {
         turn.terminal()
     );
 }
+
+// ── Idle timeout while a document is written in one piece ───────────────────
+
+/// A round that starts a document write and then fails with `message`, the way
+/// OpenRouter ends a stream that stayed silent too long.
+fn stalled_write_round(message: &'static str) -> Round {
+    Arc::new(move |rid: &str| {
+        let r = rid.to_string();
+        vec![
+            Step::Event(ProviderEvent::MessageStart {
+                request_id: r.clone(),
+                index: 0,
+            }),
+            Step::Event(ProviderEvent::ToolCallStart {
+                request_id: r.clone(),
+                tool_call_id: format!("stalled-{r}"),
+                index: 1,
+                tool_id: "write_html_document".into(),
+                name: "write_html_document".into(),
+            }),
+            Step::Event(ProviderEvent::Error {
+                request_id: r,
+                error: ProviderError {
+                    provider_code: None,
+                    retryable: false,
+                    message: message.into(),
+                },
+            }),
+        ]
+    })
+}
+
+fn errors(turn: &Turn) -> Vec<&ProviderError> {
+    turn.events
+        .iter()
+        .filter_map(|e| match e {
+            ProviderEvent::Error { error, .. } => Some(error),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn an_idle_timeout_on_a_document_turn_retries_once_in_parts() {
+    let turn = run_turn_with_patching(
+        vec![
+            stalled_write_round("Upstream idle timeout exceeded"),
+            text_round("Writing it in parts."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert!(
+        turn.requests[1]
+            .developer_prompt
+            .as_deref()
+            .is_some_and(|p| p.contains("Write the document in parts")),
+        "the retry asks for parts"
+    );
+    assert!(
+        errors(&turn).is_empty(),
+        "the retried error never reaches the UI"
+    );
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)],
+        "the half-received call is closed as failed"
+    );
+    assert!(turn.events.iter().any(|e| matches!(
+        e,
+        ProviderEvent::AgentPhase { label, .. } if label == "Retrying in parts"
+    )));
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { .. }),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_second_idle_timeout_ends_the_turn_with_one_clear_error() {
+    let turn = run_turn_with_patching(
+        vec![
+            stalled_write_round("Upstream idle timeout exceeded"),
+            stalled_write_round(
+                "the provider sent nothing for 120s and the connection was still open",
+            ),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    let errors = errors(&turn);
+    assert_eq!(errors.len(), 1, "exactly one terminal error: {errors:?}");
+    assert_eq!(errors[0].provider_code.as_deref(), Some("idle_timeout"));
+    assert!(
+        errors[0].message.contains("stopped waiting"),
+        "{}",
+        errors[0].message
+    );
+}
+
+#[tokio::test]
+async fn other_round_errors_still_end_the_turn_as_they_were() {
+    let turn = run_turn(
+        vec![
+            stalled_write_round("Upstream idle timeout exceeded"),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    // No patch_document on offer: nothing to retry in parts.
+    assert_eq!(turn.rounds_started, 1);
+    let errors = errors(&turn);
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].message, "Upstream idle timeout exceeded");
+}

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { classifyDocumentWrite, readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
+import {
+  classifyDocumentWrite,
+  markDocumentWritesHeld,
+  readDocumentWriteStreaming,
+  recordDocumentWrite,
+} from './streamingBehavior';
 import { startDocumentWriteScan } from './documentWriteScan';
 import type { ToolCallState } from './streamState';
 
@@ -49,5 +54,14 @@ describe('recordDocumentWrite', () => {
     expect(readDocumentWriteStreaming('anthropic', 'glm')).toBeUndefined();
     recordDocumentWrite('openrouter', 'glm', write({ chars: 9_000, durationMs: 6_000 }));
     expect(readDocumentWriteStreaming('openrouter', 'glm')).toBe('streams');
+  });
+});
+
+describe('markDocumentWritesHeld', () => {
+  it('records the model as holding documents back', () => {
+    localStorage.clear();
+    markDocumentWritesHeld('openrouter', 'z-ai/glm-5.3-flash');
+    expect(readDocumentWriteStreaming('openrouter', 'z-ai/glm-5.3-flash')).toBe('holds');
+    expect(readDocumentWriteStreaming('openrouter', 'other/model')).toBeUndefined();
   });
 });

@@ -71,3 +71,19 @@ export function recordDocumentWrite(provider: string, model: string, toolCall: T
     // Storage unavailable: the hint simply does not appear.
   }
 }
+
+/**
+ * Record that a model holds documents back, from something other than a
+ * completed write: its stream went silent until the provider gave up while
+ * it wrote one (the agent loop retries such a round in parts). Later document
+ * turns then ask it for parts from the start.
+ */
+export function markDocumentWritesHeld(provider: string, model: string): void {
+  try {
+    const all = readAll();
+    all[modelKey(provider, model)] = 'holds';
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    // Storage unavailable: the model is asked for parts only after a timeout.
+  }
+}

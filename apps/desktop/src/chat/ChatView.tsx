@@ -112,7 +112,7 @@ import {
   documentWriteDetail,
   documentWriteLabel,
 } from './documentWriteScan';
-import { readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
+import { markDocumentWritesHeld, readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
 import { placeholderSections } from './documentBuild';
 import {
   documentWriteDeveloperPromptFor,
@@ -1243,6 +1243,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         streamStateRef.current = next;
         setActiveStream(next);
 
+        // The agent loop retries a document round in parts when the provider
+        // gave up on its silent stream, and reports a second timeout with
+        // `idle_timeout`. Either way this model holds documents back.
+        if (
+          (event.kind === 'agentPhase' && event.label === 'Retrying in parts') ||
+          (event.kind === 'error' && event.error.providerCode === 'idle_timeout')
+        ) {
+          markDocumentWritesHeld(settings.activeProvider, settings.activeModel);
+        }
         if (event.kind === 'toolCallStart') {
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
           if (isDocumentContentTool(event.name)) {

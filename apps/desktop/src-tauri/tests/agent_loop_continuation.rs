@@ -768,6 +768,7 @@ async fn round_outcome_usage_defaults_to_none() {
         aborted: false,
         hit_output_limit: false,
         output_limit: None,
+        withheld_error: None,
     };
     assert!(outcome.usage.is_none());
 }

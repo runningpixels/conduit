@@ -103,6 +103,9 @@ pub struct RoundOutcome {
     /// The output limit the round ran under, when known (see
     /// [`provider_core::output_limits::effective_max_output_tokens`]).
     pub output_limit: Option<u32>,
+    /// The provider error that ended the round, withheld from the channel under
+    /// [`CompletionDelivery::Deferred`] so the loop can retry or report it.
+    pub withheld_error: Option<provider_core::schema::ProviderError>,
 }
 
 /// Split completed tool calls into the ones this request declared and the ones
@@ -386,6 +389,37 @@ pub fn output_limit_empty_message(limit: Option<u32>) -> String {
         "The model used its whole {} on reasoning before writing an answer, even when asked to \
          think less. {RAISE_OUTPUT_LIMIT_HINT}, or clear it to use the model's own limit.",
         output_limit_phrase(limit)
+    )
+}
+
+/// `provider_code` of the error for a stream the provider (or the transport)
+/// ended because nothing arrived, on a turn that writes documents.
+pub const IDLE_TIMEOUT_CODE: &str = "idle_timeout";
+
+/// Added to the developer prompt when a document turn's stream went idle, for
+/// the one retry.
+const BUILD_IN_PARTS_AFTER_TIMEOUT: &str = "The previous attempt timed out: the provider \
+     ended the response because nothing arrived for too long while a long tool call was being \
+     written. Write the document in parts instead, so each call is short: first the full \
+     structure with a placeholder comment such as <!-- section: moons --> where each long \
+     section goes, with more_to_write: true; then replace the placeholders with patch_document, \
+     one or two sections per call, with more_to_write: true on every call but the last.";
+
+/// True for an error that means the stream went silent until something gave
+/// up: OpenRouter's "Upstream idle timeout exceeded", or the transport's own
+/// "the provider sent nothing for 120s".
+pub fn is_idle_timeout(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("idle timeout") || message.contains("sent nothing for")
+}
+
+/// The idle-timeout error in the reader's terms, keeping the provider's own
+/// words at the end for anyone matching them against provider docs.
+pub fn idle_timeout_message(original: &str) -> String {
+    format!(
+        "The provider stopped waiting while the model wrote a long piece in one go — nothing \
+         arrived for about two minutes, even after retrying in parts. Try again, or ask for a \
+         shorter document. ({original})"
     )
 }
 
@@ -1075,6 +1109,7 @@ impl StreamManager {
         // nothing still answered nothing.
         let mut produced_text = false;
         let mut round_text = String::new();
+        let mut withheld_error: Option<provider_core::schema::ProviderError> = None;
         let mut hit_output_limit = false;
         let output_limit = provider_core::output_limits::effective_max_output_tokens(
             &provider_id,
@@ -1147,6 +1182,36 @@ impl StreamManager {
                 _ => {}
             }
 
+            // In the agent loop an error is the loop's to report, not the round's:
+            // it may retry the round (an idle timeout while a document is
+            // written in one piece), and a forwarded error would already have
+            // ended the turn in the UI. Tool calls the provider started but never
+            // finished are closed as failed so their cards do not spin forever.
+            if completion == CompletionDelivery::Deferred {
+                if let ProviderEvent::Error { error, .. } = &event {
+                    withheld_error = Some(error.clone());
+                    for (tool_call_id, (_, name)) in &tool_start_info {
+                        if completed_tool_calls
+                            .iter()
+                            .all(|call| &call.tool_call_id != tool_call_id)
+                        {
+                            let _ = channel.send(ProviderEvent::ToolExecutionFinished {
+                                request_id: request_id.clone(),
+                                tool_call_id: tool_call_id.clone(),
+                                tool_name: name.clone(),
+                                is_error: true,
+                                error: Some(
+                                    "The provider stopped before this call was finished."
+                                        .to_string(),
+                                ),
+                            });
+                        }
+                    }
+                    let _ = conversations::touch(&pool, &conversation_id).await;
+                    break;
+                }
+            }
+
             // Persist + forward. Persistence is unconditional: the event log is
             // the replay source for rebuilding a turn, so it records every round's
             // completion even when the channel does not see it. Continuation HTTP
@@ -1204,7 +1269,8 @@ impl StreamManager {
             // event. The four early returns never get this far; they build
             // their outcome with `..Default::default()`, which leaves this
             // false, and the loop then owes the terminal event.
-            error_forwarded: error_message.is_some(),
+            error_forwarded: error_message.is_some() && withheld_error.is_none(),
+            withheld_error,
             completed_tool_calls,
             finished_normally,
             produced_text,
@@ -2233,6 +2299,9 @@ impl StreamManager {
         // Whether this turn already retried a round that spent its whole output
         // limit on reasoning, with low reasoning effort.
         let mut reasoning_retry_used = false;
+        // Whether this turn already retried a document round whose stream went
+        // idle until the provider gave up, asking for the work in parts.
+        let mut idle_timeout_retry_used = false;
         let mut web_search_calls: u32 = 0;
         let mut web_fetch_calls: u32 = 0;
 
@@ -2416,10 +2485,67 @@ impl StreamManager {
             }
 
             if let Some(err) = outcome.error_message.take() {
+                let offers_patching = current_request
+                    .tool_definitions
+                    .iter()
+                    .any(|tool| tool.name == agent_tools::PATCH_DOCUMENT_TOOL);
+                if is_idle_timeout(&err) && offers_patching && !idle_timeout_retry_used {
+                    // The provider gave up on a silent stream — live, a model
+                    // writing a long document in one tool call sent nothing for
+                    // two minutes and OpenRouter ended it. Ask for the same
+                    // work in parts, each short enough to arrive in time.
+                    idle_timeout_retry_used = true;
+                    info!(
+                        request_id = %request_id,
+                        step,
+                        error = %err,
+                        "provider stream went idle on a document turn; retrying in parts"
+                    );
+                    let prompt = current_request.developer_prompt.take().unwrap_or_default();
+                    current_request.developer_prompt = Some(
+                        [prompt.as_str(), BUILD_IN_PARTS_AFTER_TIMEOUT]
+                            .iter()
+                            .filter(|part| !part.is_empty())
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join("\n\n"),
+                    );
+                    let _ = channel.send(ProviderEvent::AgentPhase {
+                        request_id: request_id.clone(),
+                        label: "Retrying in parts".to_string(),
+                        round: (step + 1) as u32,
+                        total_rounds: max_steps as u32,
+                        sub_phase: "thinking".to_string(),
+                    });
+                    continue;
+                }
                 warn!(request_id = %request_id, step, error = %err, "agent turn aborted due to round error");
-                match terminal_event_for_round_error(&request_id, err, outcome.error_forwarded) {
-                    Some(event) => terminal = Some(event),
-                    None => terminal_forwarded = true,
+                if let Some(error) = outcome.withheld_error.take() {
+                    let error = if is_idle_timeout(&error.message) && offers_patching {
+                        provider_core::schema::ProviderError {
+                            provider_code: Some(IDLE_TIMEOUT_CODE.to_string()),
+                            message: idle_timeout_message(&error.message),
+                            retryable: error.retryable,
+                        }
+                    } else {
+                        error
+                    };
+                    let event = ProviderEvent::Error {
+                        request_id: request_id.clone(),
+                        error,
+                    };
+                    // The round did not persist it; the reloaded turn should
+                    // still end on the error the user saw.
+                    let _ =
+                        event_log::append_and_apply(&pool, &conversation_id, &request_id, &event)
+                            .await;
+                    terminal = Some(event);
+                } else {
+                    match terminal_event_for_round_error(&request_id, err, outcome.error_forwarded)
+                    {
+                        Some(event) => terminal = Some(event),
+                        None => terminal_forwarded = true,
+                    }
                 }
                 break;
             }

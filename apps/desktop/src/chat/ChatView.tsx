@@ -628,6 +628,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   /** The live turn offers document tools to a model known to send documents
    *  all at once (`streamingBehavior.ts`). */
   const [activeTurnDocumentWriteHeld, setActiveTurnDocumentWriteHeld] = useState(false);
+  /** Max tokens the active turn was sent with — not the setting, which a
+   *  one-off retry can override. */
+  const [activeTurnOutputLimit, setActiveTurnOutputLimit] = useState<number | undefined>(undefined);
 
   const queuedForConversation = listFor(messageQueues, conversationId);
 
@@ -1174,6 +1177,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
     const initialStream = createAssistantStreamState(request.requestId, searchBackend);
+    setActiveTurnOutputLimit(request.generationControls?.maxTokens ?? undefined);
     setActiveTurnDocumentWriteHeld(
       toolDefinitions.some((tool) => isDocumentContentTool(tool.name)) &&
         readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
@@ -2333,7 +2337,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   };
                 })(),
               }}
-              outputLimit={effectiveMaxTokens}
+              outputLimit={activeTurnOutputLimit}
               provider={liveTurnInfo.provider}
               modelId={liveTurnInfo.model}
               switchedFrom={liveTurnInfo.switchedFrom}

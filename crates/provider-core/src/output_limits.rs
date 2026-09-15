@@ -45,6 +45,44 @@ pub fn anthropic_default_max_tokens(model_id: &str) -> u32 {
     UNKNOWN_MODEL_MAX_TOKENS
 }
 
+/// Whether an Anthropic model accepts `output_config.effort`: Claude Opus 4.5
+/// and later, Sonnet 4.6 and later, and every Claude 5 generation model. Older
+/// models return an error for it, and other vendors' models behind an
+/// Anthropic-compatible endpoint are not assumed to know it.
+pub fn anthropic_supports_effort(model_id: &str) -> bool {
+    let model = model_id.trim().to_ascii_lowercase();
+    let model = model.rsplit('/').next().unwrap_or(&model);
+    if !model.contains("claude") {
+        return false;
+    }
+    const KNOWN: &[&str] = &[
+        "opus-4-5",
+        "opus-4.5",
+        "opus-4-6",
+        "opus-4.6",
+        "opus-4-7",
+        "opus-4.7",
+        "opus-4-8",
+        "opus-4.8",
+        "sonnet-4-6",
+        "sonnet-4.6",
+        "fable",
+        "mythos",
+    ];
+    if KNOWN.iter().any(|needle| model.contains(needle)) {
+        return true;
+    }
+    // `claude-opus-5`, `claude-sonnet-5-1`, and later generations.
+    ["opus-", "sonnet-", "haiku-"].iter().any(|family| {
+        model
+            .split(family)
+            .nth(1)
+            .and_then(|rest| rest.split(['-', '.', '@']).next())
+            .and_then(|major| major.parse::<u32>().ok())
+            .is_some_and(|major| (5..100).contains(&major))
+    })
+}
+
 /// The output limit a request ran under, when it is known: the user's
 /// `max_tokens`, or the default this crate sends to Anthropic. Other providers
 /// apply their own defaults, which are not known here.
@@ -151,5 +189,35 @@ mod tests {
     fn other_models_behind_anthropic_endpoints_get_a_moderate_default() {
         assert_eq!(anthropic_default_max_tokens("glm-4.6"), 16_000);
         assert_eq!(anthropic_default_max_tokens("kimi-k2-instruct"), 16_000);
+    }
+}
+
+#[cfg(test)]
+mod effort_tests {
+    use super::anthropic_supports_effort;
+
+    #[test]
+    fn effort_is_sent_only_to_claude_models_that_accept_it() {
+        for model in [
+            "claude-opus-5",
+            "claude-sonnet-5",
+            "claude-fable-5-1",
+            "claude-opus-4-8",
+            "claude-opus-4-5-20251101",
+            "claude-sonnet-4-6",
+            "anthropic/claude-sonnet-4.6",
+        ] {
+            assert!(anthropic_supports_effort(model), "{model}");
+        }
+        for model in [
+            "claude-sonnet-4-5",
+            "claude-haiku-4-5",
+            "claude-opus-4-1",
+            "claude-sonnet-4-20250514",
+            "claude-3-7-sonnet-20250219",
+            "glm-4.6",
+        ] {
+            assert!(!anthropic_supports_effort(model), "{model}");
+        }
     }
 }

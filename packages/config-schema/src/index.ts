@@ -25,6 +25,7 @@ export type { ConversationSummary } from './generated/conversation_summary';
 // Provider request / response
 export type { ToolChoice } from './generated/tool_choice';
 export type { GenerationControls } from './generated/generation_controls';
+export type { ReasoningEffort } from './generated/reasoning_effort';
 export type { ResponseFormatHint } from './generated/response_format_hint';
 export type { ProviderRequest } from './generated/provider_request';
 export type { ProviderUsage } from './generated/provider_usage';

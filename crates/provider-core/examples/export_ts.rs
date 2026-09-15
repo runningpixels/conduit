@@ -19,12 +19,12 @@ use provider_core::schema::{
     GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
     MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel,
     ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
-    ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
-    SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme, ThemeCorners, ThemeFace,
-    ThemeIconStroke, ThemeLabels, ThemeMotion, ThemeShadows, ToolCallRecord, ToolCallStatus,
-    ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, UserTheme,
-    UserThemeEntry, UserThemePalettes, UserThemeStructure, WebSearchDefaults, WebSearchFilters,
-    WebSearchMode, WebSearchRequest,
+    ReasoningEffort, ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel,
+    SearchContextSize, SettingsPatch, SupportState, TenantConfig, TenantIdentity, Theme,
+    ThemeCorners, ThemeFace, ThemeIconStroke, ThemeLabels, ThemeMotion, ThemeShadows,
+    ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy,
+    UserLocation, UserTheme, UserThemeEntry, UserThemePalettes, UserThemeStructure,
+    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -40,6 +40,7 @@ fn main() {
     // Provider request/response
     ToolChoice::export().expect("export ToolChoice");
     GenerationControls::export().expect("export GenerationControls");
+    ReasoningEffort::export().expect("export ReasoningEffort");
     ResponseFormatHint::export().expect("export ResponseFormatHint");
     ProviderRequest::export().expect("export ProviderRequest");
     ProviderUsage::export().expect("export ProviderUsage");

@@ -1063,7 +1063,11 @@ fn to_responses_input(messages: Vec<Value>) -> Vec<Value> {
     input
 }
 
-fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> Value {
+fn build_payload(
+    normalized: &NormalizedRequest,
+    force_responses_api: bool,
+    provider_id: &str,
+) -> Value {
     let request = &normalized.request;
     let mut messages = Vec::new();
 
@@ -1312,13 +1316,27 @@ fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> V
     }
 
     if let Some(controls) = &request.generation_controls {
-        apply_controls(&mut body, controls, responses_api);
+        apply_controls(&mut body, controls, responses_api, provider_id);
     }
 
     body
 }
 
-fn apply_controls(body: &mut Value, controls: &GenerationControls, responses_api: bool) {
+fn apply_controls(
+    body: &mut Value,
+    controls: &GenerationControls,
+    responses_api: bool,
+    provider_id: &str,
+) {
+    if let Some(effort) = controls.reasoning_effort {
+        // The Responses API and OpenRouter take a `reasoning` object;
+        // chat-completions endpoints use the flat `reasoning_effort`.
+        if responses_api || provider_id == "openrouter" {
+            body["reasoning"] = json!({ "effort": effort.as_str() });
+        } else {
+            body["reasoning_effort"] = json!(effort.as_str());
+        }
+    }
     if let Some(temp) = controls.temperature {
         body["temperature"] = json!(temp);
     }
@@ -1466,7 +1484,7 @@ impl ProviderAdapter for OpenAiAdapter {
 
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
-        let body = build_payload(&normalized, self.force_responses);
+        let body = build_payload(&normalized, self.force_responses, self.provider_id);
 
         let headers = self.request_headers(&ctx)?;
 
@@ -1832,7 +1850,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         // Responses-API field shape, not chat-completions.
         assert!(
             body.get("input").is_some(),
@@ -1919,7 +1937,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         let ws_tool = body
             .get("tools")
             .and_then(|v| v.as_array())
@@ -1969,7 +1987,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools");
         let fn_tool = tools
             .iter()
@@ -2003,7 +2021,7 @@ mod tests {
             web_search: None,
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         assert!(
             body.get("messages").is_some(),
             "chat-completions path keeps `messages`"
@@ -2058,6 +2076,7 @@ mod tests {
                 request: request.clone(),
             },
             false,
+            "openai",
         );
         let tools = body
             .get("tools")
@@ -2086,7 +2105,7 @@ mod tests {
             display_group: None,
             tenant_scope: None,
         }];
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         let tools = body
             .get("tools")
             .and_then(|v| v.as_array())
@@ -2117,7 +2136,7 @@ mod tests {
             web_search: None,
         };
 
-        let body = build_payload(&NormalizedRequest { request }, true);
+        let body = build_payload(&NormalizedRequest { request }, true, "openai");
         assert!(body.get("input").is_some());
         assert!(body.get("messages").is_none());
         assert!(body.get("stream_options").is_none());
@@ -2243,6 +2262,31 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_effort_uses_each_endpoint_s_field() {
+        let controls = GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            tool_choice: None,
+            reasoning_effort: Some(crate::schema::ReasoningEffort::Low),
+        };
+        let mut chat = json!({});
+        apply_controls(&mut chat, &controls, false, "openai");
+        assert_eq!(chat["reasoning_effort"], json!("low"));
+        assert!(chat.get("reasoning").is_none());
+
+        let mut openrouter = json!({});
+        apply_controls(&mut openrouter, &controls, false, "openrouter");
+        assert_eq!(openrouter.pointer("/reasoning/effort"), Some(&json!("low")));
+        assert!(openrouter.get("reasoning_effort").is_none());
+
+        let mut responses = json!({});
+        apply_controls(&mut responses, &controls, true, "openai");
+        assert_eq!(responses.pointer("/reasoning/effort"), Some(&json!("low")));
+    }
+
+    #[test]
     fn responses_payload_names_the_limit_max_output_tokens() {
         let controls = GenerationControls {
             temperature: None,
@@ -2250,14 +2294,15 @@ mod tests {
             max_tokens: Some(1_000),
             stop_sequences: None,
             tool_choice: None,
+            reasoning_effort: None,
         };
         let mut chat = json!({});
-        apply_controls(&mut chat, &controls, false);
+        apply_controls(&mut chat, &controls, false, "openai");
         assert_eq!(chat["max_tokens"], json!(1_000));
         assert!(chat.get("max_output_tokens").is_none());
 
         let mut responses = json!({});
-        apply_controls(&mut responses, &controls, true);
+        apply_controls(&mut responses, &controls, true, "openai");
         assert_eq!(responses["max_output_tokens"], json!(1_000));
         assert!(responses.get("max_tokens").is_none());
     }
@@ -2447,7 +2492,7 @@ mod tests {
             web_search: None,
         };
         let normalized = crate::normalize::validate(request).expect("valid");
-        let body = build_payload(&normalized, false);
+        let body = build_payload(&normalized, false, "openai");
         let content = body
             .pointer("/messages/0/content")
             .and_then(|v| v.as_array())

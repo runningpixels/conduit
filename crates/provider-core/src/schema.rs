@@ -304,6 +304,34 @@ pub struct GenerationControls {
     pub stop_sequences: Option<Vec<String>>,
     #[ts(optional)]
     pub tool_choice: Option<ToolChoice>,
+    /// How much the model should reason, for models that let the request set
+    /// it. Unset leaves the model its default. The agent loop sets `Low` to
+    /// retry a round whose reasoning used the whole output limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/reasoning_effort.ts"
+)]
+pub enum ReasoningEffort {
+    Low,
+    Medium,
+    High,
+}
+
+impl ReasoningEffort {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

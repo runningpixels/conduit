@@ -207,6 +207,7 @@ mod tests {
                 max_tokens: Some(1024),
                 stop_sequences: None,
                 tool_choice: Some(ToolChoice::Auto),
+                reasoning_effort: None,
             }),
             response_format: None,
             web_search: None,

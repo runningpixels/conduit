@@ -383,11 +383,16 @@ pub fn output_limit_cut_off_message(call: &CompletedToolCall, limit: Option<u32>
 /// toward the limit.
 pub fn output_limit_empty_message(limit: Option<u32>) -> String {
     format!(
-        "The model used its whole {} before writing an answer (reasoning counts toward the limit). \
-         {RAISE_OUTPUT_LIMIT_HINT}.",
+        "The model used its whole {} on reasoning before writing an answer, even when asked to \
+         think less. {RAISE_OUTPUT_LIMIT_HINT}, or clear it to use the model's own limit.",
         output_limit_phrase(limit)
     )
 }
+
+/// `provider_code` of the error for a tool call cut off at the output limit, and
+/// of the error for a round whose reasoning used the whole limit.
+pub const OUTPUT_LIMIT_CODE: &str = "output_limit";
+pub const OUTPUT_LIMIT_REASONING_CODE: &str = "output_limit_reasoning";
 
 /// How far past the configured turn time limit saved progress can carry a
 /// turn, as a multiple of the limit.
@@ -2225,6 +2230,9 @@ impl StreamManager {
         // Whether this turn already asked the model to rebuild a cut-off
         // document in parts; a second cut-off ends the turn.
         let mut output_limit_recovery_used = false;
+        // Whether this turn already retried a round that spent its whole output
+        // limit on reasoning, with low reasoning effort.
+        let mut reasoning_retry_used = false;
         let mut web_search_calls: u32 = 0;
         let mut web_fetch_calls: u32 = 0;
 
@@ -2503,6 +2511,39 @@ impl StreamManager {
                     Some(output_limit_cut_off_message(call, outcome.output_limit))
                 } else if outcome.hit_output_limit && runnable.is_empty() && !outcome.produced_text
                 {
+                    // The whole limit went on reasoning. Once per turn, try the
+                    // same request again asking for less of it: live, a model
+                    // spent 6,000, 9,000 and 16,000 tokens thinking before it
+                    // wrote a word, and ended each turn with nothing.
+                    if !reasoning_retry_used {
+                        reasoning_retry_used = true;
+                        info!(
+                            request_id = %request_id,
+                            step,
+                            limit = ?outcome.output_limit,
+                            "round spent its output limit on reasoning; retrying with low reasoning effort"
+                        );
+                        let controls = current_request.generation_controls.get_or_insert(
+                            provider_core::schema::GenerationControls {
+                                temperature: None,
+                                top_p: None,
+                                max_tokens: None,
+                                stop_sequences: None,
+                                tool_choice: None,
+                                reasoning_effort: None,
+                            },
+                        );
+                        controls.reasoning_effort =
+                            Some(provider_core::schema::ReasoningEffort::Low);
+                        let _ = channel.send(ProviderEvent::AgentPhase {
+                            request_id: request_id.clone(),
+                            label: "Retrying with less thinking".to_string(),
+                            round: (step + 1) as u32,
+                            total_rounds: max_steps as u32,
+                            sub_phase: "thinking".to_string(),
+                        });
+                        continue;
+                    }
                     Some(output_limit_empty_message(outcome.output_limit))
                 } else {
                     None
@@ -2532,7 +2573,14 @@ impl StreamManager {
                     terminal = Some(ProviderEvent::Error {
                         request_id: request_id.clone(),
                         error: provider_core::schema::ProviderError {
-                            provider_code: Some("output_limit".to_string()),
+                            provider_code: Some(
+                                if cut_off.is_some() {
+                                    OUTPUT_LIMIT_CODE
+                                } else {
+                                    OUTPUT_LIMIT_REASONING_CODE
+                                }
+                                .to_string(),
+                            ),
                             message,
                             retryable: false,
                         },

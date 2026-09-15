@@ -386,6 +386,7 @@ async fn run_turn_with(
             max_tokens: Some(max_tokens),
             stop_sequences: None,
             tool_choice: None,
+            reasoning_effort: None,
         }),
         response_format: None,
         web_search: None,
@@ -634,17 +635,55 @@ async fn a_document_cut_off_by_the_output_limit_ends_the_turn_with_a_clear_error
 }
 
 #[tokio::test]
-async fn a_round_that_reasons_until_the_limit_reports_it_instead_of_a_blank_answer() {
+async fn a_round_that_reasons_until_the_limit_is_retried_once_with_less_thinking() {
     let turn = run_turn(
-        vec![finishing_with(reasoning_round("Let me think…"), "length")],
+        vec![
+            finishing_with(reasoning_round("Let me think…"), "length"),
+            text_round("Here is the answer."),
+        ],
         guardrails(25, 300),
     )
     .await;
 
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.requests[1]
+            .generation_controls
+            .as_ref()
+            .and_then(|c| c.reasoning_effort),
+        Some(provider_core::schema::ReasoningEffort::Low),
+        "the retry asks for less reasoning"
+    );
+    assert!(turn.events.iter().any(|e| matches!(
+        e,
+        ProviderEvent::AgentPhase { label, .. } if label == "Retrying with less thinking"
+    )));
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn reasoning_through_the_limit_twice_reports_it_instead_of_a_blank_answer() {
+    let turn = run_turn(
+        vec![
+            finishing_with(reasoning_round("Let me think…"), "length"),
+            finishing_with(reasoning_round("Still thinking…"), "length"),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
     assert!(
         matches!(
             turn.terminal(),
-            ProviderEvent::Error { error, .. } if error.message.contains("before writing an answer")
+            ProviderEvent::Error { error, .. }
+                if error.provider_code.as_deref() == Some("output_limit_reasoning")
+                    && error.message.contains("even when asked to think less")
         ),
         "got {:?}",
         turn.terminal()

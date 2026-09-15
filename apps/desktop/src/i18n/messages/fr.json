@@ -1213,5 +1213,6 @@
   "workspace.documentPanel.pending.peek": "Aperçu en direct",
   "workspace.documentPanel.pending.peekHint": "Afficher le document pendant sa rédaction. Ses scripts s’exécutent une fois qu’il est terminé.",
   "workspace.documentPanel.pending.peekTooLarge": "Ce document est trop volumineux pour être prévisualisé pendant sa rédaction.",
-  "chat.stream.stillWorkingHeldDocument": "toujours en cours · {seconds}s — ce modèle envoie les documents d’un seul coup"
+  "chat.stream.stillWorkingHeldDocument": "toujours en cours · {seconds}s — ce modèle envoie les documents d’un seul coup",
+  "chat.assistant.cutOff": "Tronquée : cette réponse a atteint la limite de sortie. Augmentez « Tokens max. » dans Réglages → Préférences de conversation → Paramètres du modèle."
 }

@@ -95,6 +95,7 @@
   "chat.assistant.actions.deleteTitle": "Delete this response",
   "chat.assistant.actions.forkLabel": "Fork chat at this message",
   "chat.assistant.actions.retryTitle": "Retry this response",
+  "chat.assistant.cutOff": "Cut off — this reply reached the output limit. Raise Max tokens in Settings → Chat defaults → Model parameters.",
   "chat.assistant.liveMeta": "{elapsed}s · {tokenCount} tok",
   "chat.assistant.status.complete": "Response complete.",
   "chat.assistant.status.error": "Response finished with an error.",

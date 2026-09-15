@@ -95,6 +95,7 @@
   "chat.assistant.actions.deleteTitle": "[Ḍéļéťé ťĥîš ŕéšṕöñšé —————— ——]",
   "chat.assistant.actions.forkLabel": "[Ḟöŕķ çĥàť àť ťĥîš ḿéššàĝé —————— ————]",
   "chat.assistant.actions.retryTitle": "[Ŕéťŕý ťĥîš ŕéšṕöñšé —————— ——]",
+  "chat.assistant.cutOff": "[Çüť öḟḟ — ťĥîš ŕéṕļý ŕéàçĥéḍ ťĥé öüťṕüť ļîḿîť. Ŕàîšé Ḿàẍ ťöķéñš îñ Šéťťîñĝš → Çĥàť ḍéḟàüļťš → Ḿöḍéļ ṕàŕàḿéťéŕš. —————— —————— —————— —————— —————— —————— —————— ———]",
   "chat.assistant.liveMeta": "[{elapsed}š · {tokenCount} ťöķ ————]",
   "chat.assistant.status.complete": "[Ŕéšṕöñšé çöḿṕļéťé. —————— ——]",
   "chat.assistant.status.error": "[Ŕéšṕöñšé ḟîñîšĥéḍ ŵîťĥ àñ éŕŕöŕ. —————— —————— —]",

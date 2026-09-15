@@ -1,0 +1,9 @@
+data: {"id":"chatcmpl-len","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_doc_1","type":"function","function":{"name":"write_html_document","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-len","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"title\":\"Quarterly report\",\"html\":\"<h1>Q3</h1><p>Revenue grew"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-len","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: {"id":"chatcmpl-len","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":812,"completion_tokens":4096,"total_tokens":4908}}
+
+data: [DONE]

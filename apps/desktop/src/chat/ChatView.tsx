@@ -1395,7 +1395,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           onChatTurnComplete?.({ ...finalState, streaming: false, error: errorText });
           // Warn when the user asked for an artifact but none was produced.
           const docToolsSucceeded = hadSuccessfulDocumentToolCalls(finalState);
-          if (looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded) {
+          // Skip when the turn ended with an error: the turn already says why,
+          // and a guess here ("No artifact content detected") contradicts it.
+          if (looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
             const failedDocTools = failedDocumentToolCalls(finalState);
             const hasFences = detectArtifactCandidates(content).length > 0;
             if (failedDocTools.length > 0) {

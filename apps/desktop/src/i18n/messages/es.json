@@ -95,6 +95,7 @@
   "chat.assistant.actions.deleteTitle": "Eliminar esta respuesta",
   "chat.assistant.actions.forkLabel": "Bifurcar el chat en este mensaje",
   "chat.assistant.actions.retryTitle": "Reintentar esta respuesta",
+  "chat.assistant.cutOff": "Cortada: esta respuesta alcanzó el límite de salida. Aumenta «Tokens máximos» en Ajustes → Preferencias de chat → Parámetros del modelo.",
   "chat.assistant.liveMeta": "{elapsed}s · {tokenCount} tok",
   "chat.assistant.status.complete": "Respuesta completa.",
   "chat.assistant.status.error": "La respuesta terminó con un error.",

@@ -1213,5 +1213,6 @@
   "workspace.documentPanel.pending.peek": "实时预览",
   "workspace.documentPanel.pending.peekHint": "在编写过程中显示文档。文档完成后才会运行其中的脚本。",
   "workspace.documentPanel.pending.peekTooLarge": "此文档过大，无法在编写过程中预览。",
-  "chat.stream.stillWorkingHeldDocument": "仍在处理 · {seconds}秒 — 此模型会一次性发送文档"
+  "chat.stream.stillWorkingHeldDocument": "仍在处理 · {seconds}秒 — 此模型会一次性发送文档",
+  "chat.assistant.cutOff": "此回复已达到输出上限，内容被截断。请在 设置 → 聊天默认设置 → 模型参数 中调高\"最大 Token 数\"。"
 }

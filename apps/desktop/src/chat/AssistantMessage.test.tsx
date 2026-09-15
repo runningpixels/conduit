@@ -420,3 +420,29 @@ describe('AssistantMessage chronological timeline', () => {
     expect(nodes[2].classList.contains('prose')).toBe(true);
   });
 });
+
+describe('AssistantMessage output limit', () => {
+  it('says a reply was cut off when it stopped at the output limit', () => {
+    render(
+      <AssistantMessage
+        state={{ ...streaming(), streaming: false, finishReason: 'length' }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+      />,
+    );
+
+    expect(screen.getByText(/reached the output limit/)).toBeInTheDocument();
+  });
+
+  it('says nothing for a reply that finished normally', () => {
+    render(
+      <AssistantMessage
+        state={{ ...streaming(), streaming: false, finishReason: 'stop' }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+      />,
+    );
+
+    expect(screen.queryByText(/output limit/)).toBeNull();
+  });
+});

@@ -1213,5 +1213,6 @@
   "workspace.documentPanel.pending.peek": "ライブプレビュー",
   "workspace.documentPanel.pending.peekHint": "書かれている途中のドキュメントを表示します。スクリプトは完成後に実行されます。",
   "workspace.documentPanel.pending.peekTooLarge": "このドキュメントは大きすぎるため、作成中にプレビューできません。",
-  "chat.stream.stillWorkingHeldDocument": "処理を続けています · {seconds}秒 — このモデルはドキュメントをまとめて送信します"
+  "chat.stream.stillWorkingHeldDocument": "処理を続けています · {seconds}秒 — このモデルはドキュメントをまとめて送信します",
+  "chat.assistant.cutOff": "出力の上限に達したため、この回答は途中で終わっています。設定 → チャットの既定値 → モデルパラメーター で「最大トークン数」を増やしてください。"
 }

@@ -1217,7 +1217,8 @@
     "workspace.documentPanel.pending.peek": "131a90af8eec49a8b7d1f73dfa3562e170d737f1",
     "workspace.documentPanel.pending.peekHint": "81af430626bab1527e80ce6b9573cfbdfb64eddb",
     "workspace.documentPanel.pending.peekTooLarge": "9f102a8792322c1b764fc0f515d117bc3638dd7b",
-    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5"
+    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5",
+    "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -2437,7 +2438,8 @@
     "workspace.documentPanel.pending.peek": "131a90af8eec49a8b7d1f73dfa3562e170d737f1",
     "workspace.documentPanel.pending.peekHint": "81af430626bab1527e80ce6b9573cfbdfb64eddb",
     "workspace.documentPanel.pending.peekTooLarge": "9f102a8792322c1b764fc0f515d117bc3638dd7b",
-    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5"
+    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5",
+    "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3657,7 +3659,8 @@
     "workspace.documentPanel.pending.peek": "131a90af8eec49a8b7d1f73dfa3562e170d737f1",
     "workspace.documentPanel.pending.peekHint": "81af430626bab1527e80ce6b9573cfbdfb64eddb",
     "workspace.documentPanel.pending.peekTooLarge": "9f102a8792322c1b764fc0f515d117bc3638dd7b",
-    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5"
+    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5",
+    "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4877,7 +4880,8 @@
     "workspace.documentPanel.pending.peek": "131a90af8eec49a8b7d1f73dfa3562e170d737f1",
     "workspace.documentPanel.pending.peekHint": "81af430626bab1527e80ce6b9573cfbdfb64eddb",
     "workspace.documentPanel.pending.peekTooLarge": "9f102a8792322c1b764fc0f515d117bc3638dd7b",
-    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5"
+    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5",
+    "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6097,7 +6101,8 @@
     "workspace.documentPanel.pending.peek": "131a90af8eec49a8b7d1f73dfa3562e170d737f1",
     "workspace.documentPanel.pending.peekHint": "81af430626bab1527e80ce6b9573cfbdfb64eddb",
     "workspace.documentPanel.pending.peekTooLarge": "9f102a8792322c1b764fc0f515d117bc3638dd7b",
-    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5"
+    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5",
+    "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7317,7 +7322,8 @@
     "workspace.documentPanel.pending.peek": "131a90af8eec49a8b7d1f73dfa3562e170d737f1",
     "workspace.documentPanel.pending.peekHint": "81af430626bab1527e80ce6b9573cfbdfb64eddb",
     "workspace.documentPanel.pending.peekTooLarge": "9f102a8792322c1b764fc0f515d117bc3638dd7b",
-    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5"
+    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5",
+    "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8537,6 +8543,7 @@
     "workspace.documentPanel.pending.peek": "131a90af8eec49a8b7d1f73dfa3562e170d737f1",
     "workspace.documentPanel.pending.peekHint": "81af430626bab1527e80ce6b9573cfbdfb64eddb",
     "workspace.documentPanel.pending.peekTooLarge": "9f102a8792322c1b764fc0f515d117bc3638dd7b",
-    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5"
+    "chat.stream.stillWorkingHeldDocument": "b3c3041aa8b55e1107d3e7093134e3a9006371d5",
+    "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0"
   }
 }

@@ -20,8 +20,9 @@ use conduit_desktop::{
 };
 use futures::stream::{Stream, StreamExt};
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind,
-    MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest, ToolDefinition,
+    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, GenerationControls, Message, MessagePart,
+    MessagePartKind, MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest,
+    ToolDefinition,
 };
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
@@ -178,6 +179,48 @@ fn tool_round(calls: Vec<(&'static str, Value)>, pause: Duration) -> Round {
     })
 }
 
+/// `round` with its closing `MessageComplete` reporting `finish_reason`.
+fn finishing_with(round: Round, finish_reason: &'static str) -> Round {
+    Arc::new(move |rid: &str| {
+        round(rid)
+            .into_iter()
+            .map(|step| match step {
+                Step::Event(ProviderEvent::MessageComplete {
+                    request_id, index, ..
+                }) => Step::Event(ProviderEvent::MessageComplete {
+                    request_id,
+                    index,
+                    finish_reason: finish_reason.into(),
+                }),
+                other => other,
+            })
+            .collect()
+    })
+}
+
+fn reasoning_round(thought: &'static str) -> Round {
+    Arc::new(move |rid: &str| {
+        let r = rid.to_string();
+        vec![
+            Step::Event(ProviderEvent::MessageStart {
+                request_id: r.clone(),
+                index: 0,
+            }),
+            Step::Event(ProviderEvent::ReasoningDelta {
+                request_id: r.clone(),
+                block_id: "reasoning-0".into(),
+                index: 1,
+                content: thought.into(),
+            }),
+            Step::Event(ProviderEvent::MessageComplete {
+                request_id: r,
+                index: 2,
+                finish_reason: "stop".into(),
+            }),
+        ]
+    })
+}
+
 // ── Harness ──────────────────────────────────────────────────────────────────
 
 fn test_paths(root: &Path) -> AppPaths {
@@ -247,6 +290,14 @@ impl Turn {
 }
 
 async fn run_turn(rounds: Vec<Round>, agent: AgentGuardrails) -> Turn {
+    run_turn_with_max_tokens(rounds, agent, None).await
+}
+
+async fn run_turn_with_max_tokens(
+    rounds: Vec<Round>,
+    agent: AgentGuardrails,
+    max_tokens: Option<u32>,
+) -> Turn {
     let pool = common::setup_pool().await;
     let conversation = conversations::create(&pool, None).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -311,7 +362,13 @@ async fn run_turn(rounds: Vec<Round>, agent: AgentGuardrails) -> Turn {
             tool("write_html_document", "Documents"),
             tool("current_time", "Utilities"),
         ],
-        generation_controls: None,
+        generation_controls: max_tokens.map(|max_tokens| GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: Some(max_tokens),
+            stop_sequences: None,
+            tool_choice: None,
+        }),
         response_format: None,
         web_search: None,
     };
@@ -517,4 +574,250 @@ async fn the_setting_off_keeps_the_confirmation_round() {
     .await;
 
     assert_eq!(turn.rounds_started, 2);
+}
+
+// ── Output limit ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn a_document_cut_off_by_the_output_limit_ends_the_turn_with_a_clear_error() {
+    // What an adapter hands over when the stream stopped mid-argument.
+    let cut_off = json!({ "raw": "{\"title\": \"Q3 report\", \"html\": \"<!doctype html><h1>Q3" });
+    let turn = run_turn(
+        vec![
+            finishing_with(
+                tool_round(vec![("write_html_document", cut_off)], Duration::ZERO),
+                "length",
+            ),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 1, "retrying would hit the same limit");
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)],
+        "the call is reported as not run, never executed"
+    );
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. }
+                if error.provider_code.as_deref() == Some("output_limit")
+                    && error.message.contains("“Q3 report”")
+                    && error.message.contains("not saved")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_round_that_reasons_until_the_limit_reports_it_instead_of_a_blank_answer() {
+    let turn = run_turn(
+        vec![finishing_with(reasoning_round("Let me think…"), "length")],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. } if error.message.contains("before writing an answer")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_text_answer_cut_off_by_the_limit_completes_as_length() {
+    let turn = run_turn(
+        vec![finishing_with(text_round("The report covers"), "length")],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "length"),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn tool_calls_that_completed_before_the_limit_still_run() {
+    let turn = run_turn(
+        vec![
+            finishing_with(
+                tool_round(vec![("current_time", json!({}))], Duration::ZERO),
+                "length",
+            ),
+            text_round("It is noon."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("current_time".to_string(), false)]
+    );
+}
+
+#[test]
+fn the_cut_off_message_names_the_limit_and_the_document() {
+    use conduit_desktop::stream_manager::{output_limit_cut_off_message, CompletedToolCall};
+
+    let call = |name: &str, raw: &str| CompletedToolCall {
+        tool_call_id: "call-1".into(),
+        tool_id: Some(name.into()),
+        name: name.into(),
+        arguments: json!({ "raw": raw }),
+    };
+
+    let message = output_limit_cut_off_message(
+        &call(
+            "write_html_document",
+            r#"{"title": "The \"Big\" Plan", "html": "<p>"#,
+        ),
+        Some(64_000),
+    );
+    assert!(
+        message.contains("output limit (64,000 tokens)"),
+        "{message}"
+    );
+    assert!(message.contains("“The \"Big\" Plan”"), "{message}");
+
+    let message = output_limit_cut_off_message(&call("write_html_document", r#"{"ht"#), None);
+    assert!(message.contains("while writing the document"), "{message}");
+    assert!(!message.contains("tokens)"), "{message}");
+
+    let message = output_limit_cut_off_message(&call("current_time", r#"{"zone": "#), Some(900));
+    assert!(message.contains("input for current_time"), "{message}");
+}
+
+/// `round` with a `Usage` event reporting `output_tokens` before it completes.
+fn using_output_tokens(round: Round, output_tokens: u64) -> Round {
+    Arc::new(move |rid: &str| {
+        let mut steps = round(rid);
+        let at = steps.len().saturating_sub(1);
+        steps.insert(
+            at,
+            Step::Event(ProviderEvent::Usage {
+                request_id: rid.to_string(),
+                usage: provider_core::schema::ProviderUsage {
+                    input_tokens: Some(2_720),
+                    output_tokens: Some(output_tokens),
+                    cache_tokens: None,
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                    cost_hint: None,
+                },
+            }),
+        );
+        steps
+    })
+}
+
+#[tokio::test]
+async fn output_at_the_limit_counts_as_cut_off_even_when_the_provider_says_stop() {
+    // Recorded live: OpenRouter serving GLM ended each round with `stop` after
+    // exactly max_tokens of output, the write's arguments cut off mid-HTML.
+    let cut_off = json!({ "raw": "{\"title\": \"Solar System\", \"html\": \"<h2>Jupiter</h2><table><tr><th colspan=" });
+    let turn = run_turn_with_max_tokens(
+        vec![
+            using_output_tokens(
+                finishing_with(
+                    tool_round(vec![("write_html_document", cut_off)], Duration::ZERO),
+                    "stop",
+                ),
+                3_000,
+            ),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+        Some(3_000),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 1);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)]
+    );
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. }
+                if error.message.contains("output limit (3,000 tokens)")
+                    && error.message.contains("“Solar System”")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn output_below_the_limit_with_a_stop_is_not_cut_off() {
+    let turn = run_turn_with_max_tokens(
+        vec![using_output_tokens(text_round("Short answer."), 120)],
+        guardrails(25, 300),
+        Some(3_000),
+    )
+    .await;
+
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn arguments_that_stop_mid_json_count_as_cut_off_without_any_limit_signal() {
+    // No length stop, no token count, no known limit: only the arguments show it.
+    let cut_off = json!({ "raw": "{\"title\": \"Solar System\", \"html\": \"<h2>Jupiter</h2><p>The largest" });
+    let turn = run_turn(
+        vec![
+            tool_round(vec![("write_html_document", cut_off)], Duration::ZERO),
+            text_round("never requested"),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 1);
+    assert!(
+        matches!(
+            turn.terminal(),
+            ProviderEvent::Error { error, .. }
+                if error.message.contains("reached its output limit while writing “Solar System”")
+        ),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn complete_but_malformed_arguments_still_reach_the_tool() {
+    // Finished JSON the model got wrong is the tool's to report, and the model
+    // gets another round to fix it.
+    let malformed = json!({ "raw": "{\"title\": \"Guide\", html: \"<p>hi</p>\"}" });
+    let turn = run_turn(
+        vec![
+            tool_round(vec![("write_html_document", malformed)], Duration::ZERO),
+            text_round("Fixed it."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.tool_executions(),
+        vec![("write_html_document".to_string(), true)]
+    );
 }

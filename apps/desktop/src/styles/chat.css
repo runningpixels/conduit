@@ -1646,6 +1646,11 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
  * and 5). The greeting is affordable precisely because nothing competes. */
 .welcome {
   display: flex;
+  /* Column, so the workspace hint reads as a caption under the greeting
+     rather than as a second column beside it — which is what a bare
+     `display: flex` gave it when the hint was added. */
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   text-align: center;
   padding: 0 24px var(--sp-5);

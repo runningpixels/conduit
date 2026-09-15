@@ -18,6 +18,8 @@ pub mod catalog;
 pub mod consent;
 pub mod discovery;
 pub mod execution;
+pub mod prompts;
+pub mod resources;
 pub mod supervisor;
 
 use std::collections::HashMap;
@@ -26,8 +28,8 @@ use std::time::Duration;
 
 use mcp_runtime::{
     protocol::{ClientInfo, ServerInfo},
-    HttpSseConfig, HttpSseTransport, McpError, McpTransport, StdioConfig, StdioTransport,
-    ToolOutput,
+    HttpSseConfig, HttpSseTransport, McpError, McpTransport, PromptMessage, ResourceContents,
+    StdioConfig, StdioTransport, ToolOutput,
 };
 use provider_core::schema::ConsentDecision;
 use tokio::sync::Mutex as TokioMutex;
@@ -255,6 +257,62 @@ impl ConnectorRuntimeManager {
                 let _ = guard.shutdown().await;
                 Err(McpError::timeout(format!(
                     "tool '{name}' exceeded the {:?} call timeout",
+                    self.call_timeout
+                )))
+            }
+        }
+    }
+
+    /// Read one resource on a running connector, with the same per-call
+    /// timeout + teardown discipline as [`Self::invoke_tool`].
+    ///
+    /// The contents come back **raw and untrusted**. `connector_runtime::
+    /// resources` is the only sanctioned caller: it redacts, runs the
+    /// reinjection gate and caps the size before any of this reaches a prompt.
+    pub async fn read_resource(
+        &self,
+        version_id: &str,
+        uri: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ResourceContents>, McpError> {
+        let active = self
+            .active_connector(version_id)
+            .ok_or_else(|| McpError::unavailable("connector is not running"))?;
+        let mut guard = active.transport.lock().await;
+        let call = guard.read_resource(uri, cancel);
+        match tokio::time::timeout(self.call_timeout, call).await {
+            Ok(res) => res,
+            Err(_) => {
+                cancel.cancel();
+                let _ = guard.shutdown().await;
+                Err(McpError::timeout(format!(
+                    "reading '{uri}' exceeded the {:?} call timeout",
+                    self.call_timeout
+                )))
+            }
+        }
+    }
+
+    /// Resolve a prompt template with arguments on a running connector.
+    pub async fn get_prompt(
+        &self,
+        version_id: &str,
+        name: &str,
+        arguments: &serde_json::Value,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let active = self
+            .active_connector(version_id)
+            .ok_or_else(|| McpError::unavailable("connector is not running"))?;
+        let mut guard = active.transport.lock().await;
+        let call = guard.get_prompt(name, arguments, cancel);
+        match tokio::time::timeout(self.call_timeout, call).await {
+            Ok(res) => res,
+            Err(_) => {
+                cancel.cancel();
+                let _ = guard.shutdown().await;
+                Err(McpError::timeout(format!(
+                    "prompt '{name}' exceeded the {:?} call timeout",
                     self.call_timeout
                 )))
             }

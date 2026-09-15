@@ -2,7 +2,7 @@
 //! and the local-connector registration flow.
 
 use crate::{
-    connector_runtime::{execution, ConnectorRuntimeManager},
+    connector_runtime::{execution, prompts, resources, ConnectorRuntimeManager},
     db::repository::connectors::{
         self, ConnectorCapability, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeState,
         ConnectorVersion,
@@ -12,7 +12,10 @@ use crate::{
     stream_manager::StreamHandle,
 };
 use mcp_runtime::{HttpSseConfig, McpTransport, StdioConfig};
-use provider_core::schema::{ConnectorRuntimeEvent, ConsentDecision};
+use provider_core::schema::{
+    ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
+    ConsentDecision, PromptArguments, ResourceBlock, ResourceRef,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{ipc::Channel, State};
 use uuid::Uuid;
@@ -121,6 +124,134 @@ pub async fn list_connector_capabilities(
     connectors::list_capabilities(&state.db, &connector_version_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Every prompt advertised by a currently-running connector, flattened for the
+/// composer picker. Reads the capability cache only — no connector round-trip.
+#[tauri::command]
+pub async fn list_connector_prompts(
+    state: State<'_, AppState>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+) -> Result<Vec<ConnectorPromptInfo>, String> {
+    let mut out = Vec::new();
+    for (version_id, connector_name) in running_connector_names(&state, &runtime).await? {
+        let caps = connectors::list_capabilities(&state.db, &version_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        for cap in caps.into_iter().filter(|c| c.kind == "prompt") {
+            // A row written before discovery captured argument lists has no
+            // payload. Surface it as stale rather than as an argument-less
+            // prompt, so the picker can offer a refresh instead of silently
+            // calling prompts/get without required arguments.
+            let payload = cap.schema_json.as_ref();
+            let stale = payload.is_none();
+            let arguments = payload
+                .and_then(|v| v.get("arguments"))
+                .and_then(|v| {
+                    serde_json::from_value::<Vec<ConnectorPromptArgument>>(v.clone()).ok()
+                })
+                .unwrap_or_default();
+            out.push(ConnectorPromptInfo {
+                connector_version_id: version_id.clone(),
+                connector_name: connector_name.clone(),
+                name: cap.name,
+                description: payload
+                    .and_then(|v| v.get("description"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                arguments,
+                stale,
+                discovered_at: cap.discovered_at,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Every resource advertised by a currently-running connector.
+#[tauri::command]
+pub async fn list_connector_resources(
+    state: State<'_, AppState>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+) -> Result<Vec<ConnectorResourceInfo>, String> {
+    let mut out = Vec::new();
+    for (version_id, connector_name) in running_connector_names(&state, &runtime).await? {
+        let caps = connectors::list_capabilities(&state.db, &version_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        for cap in caps.into_iter().filter(|c| c.kind == "resource") {
+            let payload = cap.schema_json.as_ref();
+            let uri = payload
+                .and_then(|v| v.get("uri"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            // Without a URI the resource cannot be read at all — stale.
+            let stale = uri.is_empty();
+            out.push(ConnectorResourceInfo {
+                connector_version_id: version_id.clone(),
+                connector_name: connector_name.clone(),
+                name: cap.name,
+                uri,
+                description: payload
+                    .and_then(|v| v.get("description"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                stale,
+                discovered_at: cap.discovered_at,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Resolve a prompt template into composer draft text.
+#[tauri::command]
+pub async fn get_connector_prompt(
+    state: State<'_, AppState>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    request: PromptArguments,
+) -> Result<String, String> {
+    prompts::get_prompt(&state, &runtime, &request).await
+}
+
+/// Read every resource attached to one turn into a sanitized context block.
+/// See `connector_runtime::resources` for why this is allowed to reach a
+/// prompt at all, and what it has to pass first.
+#[tauri::command]
+pub async fn read_connector_resources(
+    state: State<'_, AppState>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    refs: Vec<ResourceRef>,
+) -> Result<ResourceBlock, String> {
+    resources::read_resources(&state, &runtime, &refs).await
+}
+
+/// `(connector_version_id, connector_name)` for each running connector, so the
+/// pickers can group by server without each caller re-joining definitions.
+async fn running_connector_names(
+    state: &State<'_, AppState>,
+    runtime: &State<'_, ConnectorRuntimeManager>,
+) -> Result<Vec<(String, String)>, String> {
+    let mut out = Vec::new();
+    for version_id in runtime.active_version_ids() {
+        let Some(version) = connectors::get_version(&state.db, &version_id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        let name = connectors::get(&state.db, &version.connector_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|d| d.name)
+            .unwrap_or_else(|| version.connector_id.clone());
+        out.push((version_id, name));
+    }
+    // Stable order: the active set is a HashSet, so sort for a picker that
+    // does not reshuffle between opens.
+    out.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------

@@ -1765,6 +1765,119 @@ pub enum ConsentDecision {
     Denied,
 }
 
+// --- MCP resources & prompts in the composer (t0-9) --------------------------
+
+/// One prompt a connected server advertises, flattened for the composer picker
+/// from its cached `connector_capabilities` row.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/connector_prompt_info.ts"
+)]
+pub struct ConnectorPromptInfo {
+    pub connector_version_id: String,
+    pub connector_name: String,
+    pub name: String,
+    /// Server-declared description. Untrusted display data.
+    #[ts(optional)]
+    pub description: Option<String>,
+    pub arguments: Vec<ConnectorPromptArgument>,
+    /// `true` when this row predates URI/argument capture, so the picker can
+    /// offer a refresh instead of showing an argument-less prompt.
+    pub stale: bool,
+    pub discovered_at: String,
+}
+
+/// One declared argument of an MCP prompt.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/connector_prompt_argument.ts"
+)]
+pub struct ConnectorPromptArgument {
+    pub name: String,
+    #[ts(optional)]
+    pub description: Option<String>,
+    pub required: bool,
+}
+
+/// One resource a connected server advertises.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/connector_resource_info.ts"
+)]
+pub struct ConnectorResourceInfo {
+    pub connector_version_id: String,
+    pub connector_name: String,
+    pub name: String,
+    /// Empty when the row predates URI capture; `stale` is then `true`.
+    pub uri: String,
+    #[ts(optional)]
+    pub description: Option<String>,
+    pub stale: bool,
+    pub discovered_at: String,
+}
+
+/// The renderer's reference to one attached resource. The URI is pinned
+/// against the discovered one before any read.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/resource_ref.ts"
+)]
+pub struct ResourceRef {
+    pub connector_version_id: String,
+    pub name: String,
+    pub uri: String,
+}
+
+/// A resource that could not be included, and why. Surfaced to the user rather
+/// than swallowed — a refusal by the reinjection gate arrives this way.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/skipped_resource.ts"
+)]
+pub struct SkippedResource {
+    pub uri: String,
+    pub reason: String,
+}
+
+/// The sanitized context block for one turn's attached resources, plus what
+/// made it in and what did not. `text` is already redacted, reinjection-gated
+/// and size-capped — see `connector_runtime::resources`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/resource_block.ts"
+)]
+pub struct ResourceBlock {
+    pub text: String,
+    pub included: Vec<ResourceRef>,
+    pub skipped: Vec<SkippedResource>,
+}
+
+/// Arguments for one `prompts/get` call from the composer picker.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/prompt_arguments.ts"
+)]
+pub struct PromptArguments {
+    pub connector_version_id: String,
+    pub name: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub arguments: serde_json::Value,
+}
+
 /// The payload rendered in a tool-consent prompt. Carried by
 /// `ConnectorRuntimeEvent::ConsentRequested`. All tenant-authored text
 /// (`consent_copy`) and connector output (`arguments`, `data_summary`,

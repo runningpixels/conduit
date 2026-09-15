@@ -3,6 +3,9 @@ import type {
   BrandConfig,
   ConsentDecision,
   ConsentPrompt,
+  ConnectorPromptArgument,
+  ConnectorPromptInfo,
+  ConnectorResourceInfo,
   ConnectorGrant,
   ConnectorDefinition,
   ConnectorRuntimeEvent,
@@ -26,6 +29,10 @@ import type {
   Transport,
   UpdatePolicy,
   UserThemeEntry,
+  PromptArguments,
+  ResourceBlock,
+  ResourceRef,
+  SkippedResource,
 } from '@conduit/config-schema';
 
 export interface AppPaths {
@@ -197,6 +204,13 @@ export type {
 export type {
   ConsentDecision,
   ConsentPrompt,
+  ConnectorPromptArgument,
+  ConnectorPromptInfo,
+  ConnectorResourceInfo,
+  PromptArguments,
+  ResourceBlock,
+  ResourceRef,
+  SkippedResource,
   ConnectorRuntimeEvent,
   ConnectorDefinition,
   ConnectorVersion,

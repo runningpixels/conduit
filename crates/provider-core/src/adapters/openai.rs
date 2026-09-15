@@ -4,6 +4,7 @@ use crate::adapters::{
     role_to_string, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
+use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
     ContentAnnotation, GenerationControls, MessagePart, MessagePartKind, MessageRole,
     ProviderError, ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
@@ -143,7 +144,11 @@ struct OpenAiParser {
     /// system* uses. The two ids are different and only the item id appears on
     /// `response.function_call_arguments.delta`, so without this map the
     /// streamed arguments cannot be attributed to the call they belong to.
-    function_calls: HashMap<String, String>,
+    /// Also holds the arguments streamed so far, for a response that ends
+    /// before the call's `output_item.done` arrives.
+    function_calls: HashMap<String, (String, String)>,
+    /// Set when the response stopped at its output-token limit.
+    finish_reason: Option<&'static str>,
 }
 
 impl OpenAiParser {
@@ -154,6 +159,7 @@ impl OpenAiParser {
             search_calls: HashMap::new(),
             completed_search_calls: 0,
             function_calls: HashMap::new(),
+            finish_reason: None,
         }
     }
 }
@@ -338,7 +344,24 @@ impl StreamParser for OpenAiParser {
                     }
                 }
 
-                if choice.get("finish_reason").and_then(|v| v.as_str()) == Some("tool_calls") {
+                // Any finish ends the in-flight tool calls, not only
+                // `tool_calls`: a `length` stop mid-argument would otherwise
+                // drop the call without a trace, and the turn would end as if
+                // the model had chosen to say nothing. Its arguments are then
+                // incomplete JSON and complete as `{ "raw": … }`.
+                let finish = choice
+                    .get("finish_reason")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty());
+                // OpenRouter normalizes `finish_reason` and passes the upstream
+                // model's own value as `native_finish_reason`.
+                let native = choice.get("native_finish_reason").and_then(|v| v.as_str());
+                if finish == Some("length")
+                    || matches!(native, Some("length" | "max_tokens" | "MAX_TOKENS"))
+                {
+                    self.finish_reason = Some(FINISH_REASON_LENGTH);
+                }
+                if finish.is_some() {
                     let completed: Vec<_> = self.tool_calls.drain().collect();
                     for (_, (tool_call_id, _, _, args)) in completed {
                         let arguments =
@@ -422,6 +445,13 @@ impl StreamParser for OpenAiParser {
         // as `MessageComplete` (or whenever the response payload lands). We
         // emit it only when at least one hosted search call completed, to
         // avoid adding noise to non-search turns.
+        // Some Responses-compatible servers end a truncated response with
+        // `response.completed` and `status: "incomplete"` instead.
+        if value.get("type").and_then(|v| v.as_str()) == Some("response.incomplete")
+            || value.pointer("/response/status").and_then(|v| v.as_str()) == Some("incomplete")
+        {
+            events.extend(self.parse_openai_response_incomplete(request_id, &value, index));
+        }
         if value.get("type").and_then(|v| v.as_str()) == Some("response.completed")
             && self.completed_search_calls > 0
         {
@@ -437,9 +467,48 @@ impl StreamParser for OpenAiParser {
 
         events
     }
+
+    fn finish_reason(&self) -> Option<&str> {
+        self.finish_reason
+    }
 }
 
 impl OpenAiParser {
+    /// A Responses-API response that stopped early. At the output-token limit
+    /// (`incomplete_details.reason == "max_output_tokens"`) a function call can
+    /// be left open with no `output_item.done`; complete it from the arguments
+    /// streamed so far, so the call is reported as cut off instead of vanishing.
+    fn parse_openai_response_incomplete(
+        &mut self,
+        request_id: &str,
+        value: &Value,
+        index: &mut usize,
+    ) -> Vec<ProviderEvent> {
+        if value
+            .pointer("/response/incomplete_details/reason")
+            .and_then(|v| v.as_str())
+            == Some("max_output_tokens")
+        {
+            self.finish_reason = Some(FINISH_REASON_LENGTH);
+        }
+        let mut open: Vec<_> = self.function_calls.drain().collect();
+        open.sort();
+        open.into_iter()
+            .map(|(_, (call_id, raw))| {
+                let arguments =
+                    serde_json::from_str(&raw).unwrap_or_else(|_| json!({ "raw": raw }));
+                let event = ProviderEvent::ToolCallComplete {
+                    request_id: request_id.to_string(),
+                    tool_call_id: call_id,
+                    index: *index,
+                    arguments,
+                };
+                *index += 1;
+                event
+            })
+            .collect()
+    }
+
     /// Handle Responses-API output items. Returns events for hosted
     /// `web_search_call` items; ignores everything else (the chat-completions
     /// branch above handles function tool calls and message deltas).
@@ -616,7 +685,8 @@ impl OpenAiParser {
 
         let mut events = Vec::new();
         if !self.function_calls.contains_key(&item_id) {
-            self.function_calls.insert(item_id.clone(), call_id.clone());
+            self.function_calls
+                .insert(item_id.clone(), (call_id.clone(), String::new()));
             events.push(ProviderEvent::ToolCallStart {
                 request_id: request_id.to_string(),
                 tool_call_id: call_id.clone(),
@@ -672,11 +742,13 @@ impl OpenAiParser {
         let item_id = value.get("item_id").and_then(|v| v.as_str())?;
         // Only a call we opened: an unknown id would emit a delta against a
         // tool call the renderer never saw start.
-        let call_id = self.function_calls.get(item_id)?.clone();
         let delta = value.get("delta").and_then(|v| v.as_str())?;
         if delta.is_empty() {
             return None;
         }
+        let (call_id, args) = self.function_calls.get_mut(item_id)?;
+        args.push_str(delta);
+        let call_id = call_id.clone();
         let event = ProviderEvent::ToolCallDelta {
             request_id: request_id.to_string(),
             tool_call_id: call_id,
@@ -991,7 +1063,11 @@ fn to_responses_input(messages: Vec<Value>) -> Vec<Value> {
     input
 }
 
-fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> Value {
+fn build_payload(
+    normalized: &NormalizedRequest,
+    force_responses_api: bool,
+    provider_id: &str,
+) -> Value {
     let request = &normalized.request;
     let mut messages = Vec::new();
 
@@ -1240,13 +1316,27 @@ fn build_payload(normalized: &NormalizedRequest, force_responses_api: bool) -> V
     }
 
     if let Some(controls) = &request.generation_controls {
-        apply_controls(&mut body, controls);
+        apply_controls(&mut body, controls, responses_api, provider_id);
     }
 
     body
 }
 
-fn apply_controls(body: &mut Value, controls: &GenerationControls) {
+fn apply_controls(
+    body: &mut Value,
+    controls: &GenerationControls,
+    responses_api: bool,
+    provider_id: &str,
+) {
+    if let Some(effort) = controls.reasoning_effort {
+        // The Responses API and OpenRouter take a `reasoning` object;
+        // chat-completions endpoints use the flat `reasoning_effort`.
+        if responses_api || provider_id == "openrouter" {
+            body["reasoning"] = json!({ "effort": effort.as_str() });
+        } else {
+            body["reasoning_effort"] = json!(effort.as_str());
+        }
+    }
     if let Some(temp) = controls.temperature {
         body["temperature"] = json!(temp);
     }
@@ -1254,7 +1344,14 @@ fn apply_controls(body: &mut Value, controls: &GenerationControls) {
         body["top_p"] = json!(top_p);
     }
     if let Some(max_tokens) = controls.max_tokens {
-        body["max_tokens"] = json!(max_tokens);
+        // `/responses` names the limit `max_output_tokens`; `max_tokens` is a
+        // chat-completions field.
+        let field = if responses_api {
+            "max_output_tokens"
+        } else {
+            "max_tokens"
+        };
+        body[field] = json!(max_tokens);
     }
     if let Some(stops) = &controls.stop_sequences {
         body["stop"] = json!(stops);
@@ -1387,7 +1484,7 @@ impl ProviderAdapter for OpenAiAdapter {
 
         let normalized = normalized_or_err(request)?;
         let request_id = normalized.request.request_id.clone();
-        let body = build_payload(&normalized, self.force_responses);
+        let body = build_payload(&normalized, self.force_responses, self.provider_id);
 
         let headers = self.request_headers(&ctx)?;
 
@@ -1753,7 +1850,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         // Responses-API field shape, not chat-completions.
         assert!(
             body.get("input").is_some(),
@@ -1840,7 +1937,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         let ws_tool = body
             .get("tools")
             .and_then(|v| v.as_array())
@@ -1890,7 +1987,7 @@ mod tests {
             }),
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools");
         let fn_tool = tools
             .iter()
@@ -1924,7 +2021,7 @@ mod tests {
             web_search: None,
         };
 
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         assert!(
             body.get("messages").is_some(),
             "chat-completions path keeps `messages`"
@@ -1979,6 +2076,7 @@ mod tests {
                 request: request.clone(),
             },
             false,
+            "openai",
         );
         let tools = body
             .get("tools")
@@ -2007,7 +2105,7 @@ mod tests {
             display_group: None,
             tenant_scope: None,
         }];
-        let body = build_payload(&NormalizedRequest { request }, false);
+        let body = build_payload(&NormalizedRequest { request }, false, "openai");
         let tools = body
             .get("tools")
             .and_then(|v| v.as_array())
@@ -2038,7 +2136,7 @@ mod tests {
             web_search: None,
         };
 
-        let body = build_payload(&NormalizedRequest { request }, true);
+        let body = build_payload(&NormalizedRequest { request }, true, "openai");
         assert!(body.get("input").is_some());
         assert!(body.get("messages").is_none());
         assert!(body.get("stream_options").is_none());
@@ -2107,6 +2205,106 @@ mod tests {
             Some("Today"),
             "arguments must be parsed into an object the tool can consume"
         );
+    }
+
+    fn last_finish_reason(events: &[ProviderEvent]) -> Option<&str> {
+        match events.last() {
+            Some(ProviderEvent::MessageComplete { finish_reason, .. }) => Some(finish_reason),
+            _ => None,
+        }
+    }
+
+    fn raw_arguments_for<'a>(events: &'a [ProviderEvent], id: &str) -> Option<&'a str> {
+        events.iter().find_map(|e| match e {
+            ProviderEvent::ToolCallComplete {
+                tool_call_id,
+                arguments,
+                ..
+            } if tool_call_id == id => arguments.get("raw").and_then(|v| v.as_str()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_tool_call_cut_off_by_length_still_completes_and_reports_length() {
+        let fixture = include_str!("../../tests/fixtures/openai/tool_call_length.sse");
+        let events = parse_fixture("req-len", fixture);
+        let raw = raw_arguments_for(&events, "call_doc_1")
+            .expect("the cut-off call must complete with its partial arguments");
+        assert!(raw.ends_with("Revenue grew"), "{raw}");
+        assert_eq!(last_finish_reason(&events), Some("length"));
+    }
+
+    #[test]
+    fn openrouter_native_finish_reason_length_is_reported_as_length() {
+        let fixture = include_str!("../../tests/fixtures/openai/tool_call_native_length.sse");
+        let events = parse_fixture("req-native", fixture);
+        assert!(raw_arguments_for(&events, "call_doc_3").is_some());
+        assert_eq!(last_finish_reason(&events), Some("length"));
+    }
+
+    #[test]
+    fn a_responses_function_call_left_open_by_max_output_tokens_completes() {
+        let fixture =
+            include_str!("../../tests/fixtures/openai/responses_function_call_incomplete.sse");
+        let events = parse_fixture("req-inc", fixture);
+        let raw = raw_arguments_for(&events, "call_doc_2")
+            .expect("the open call must complete with its partial arguments");
+        assert!(raw.ends_with("Revenue grew"), "{raw}");
+        assert_eq!(last_finish_reason(&events), Some("length"));
+    }
+
+    #[test]
+    fn a_finished_tool_call_round_still_reports_stop() {
+        let fixture = include_str!("../../tests/fixtures/openai/tool_call_single.sse");
+        let events = parse_fixture("req-tc", fixture);
+        assert_eq!(last_finish_reason(&events), Some("stop"));
+    }
+
+    #[test]
+    fn reasoning_effort_uses_each_endpoint_s_field() {
+        let controls = GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            tool_choice: None,
+            reasoning_effort: Some(crate::schema::ReasoningEffort::Low),
+        };
+        let mut chat = json!({});
+        apply_controls(&mut chat, &controls, false, "openai");
+        assert_eq!(chat["reasoning_effort"], json!("low"));
+        assert!(chat.get("reasoning").is_none());
+
+        let mut openrouter = json!({});
+        apply_controls(&mut openrouter, &controls, false, "openrouter");
+        assert_eq!(openrouter.pointer("/reasoning/effort"), Some(&json!("low")));
+        assert!(openrouter.get("reasoning_effort").is_none());
+
+        let mut responses = json!({});
+        apply_controls(&mut responses, &controls, true, "openai");
+        assert_eq!(responses.pointer("/reasoning/effort"), Some(&json!("low")));
+    }
+
+    #[test]
+    fn responses_payload_names_the_limit_max_output_tokens() {
+        let controls = GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: Some(1_000),
+            stop_sequences: None,
+            tool_choice: None,
+            reasoning_effort: None,
+        };
+        let mut chat = json!({});
+        apply_controls(&mut chat, &controls, false, "openai");
+        assert_eq!(chat["max_tokens"], json!(1_000));
+        assert!(chat.get("max_output_tokens").is_none());
+
+        let mut responses = json!({});
+        apply_controls(&mut responses, &controls, true, "openai");
+        assert_eq!(responses["max_output_tokens"], json!(1_000));
+        assert!(responses.get("max_tokens").is_none());
     }
 
     /// `call_id` is what the continuation echoes back; `id` (`fc_*`) only
@@ -2294,7 +2492,7 @@ mod tests {
             web_search: None,
         };
         let normalized = crate::normalize::validate(request).expect("valid");
-        let body = build_payload(&normalized, false);
+        let body = build_payload(&normalized, false, "openai");
         let content = body
             .pointer("/messages/0/content")
             .and_then(|v| v.as_array())

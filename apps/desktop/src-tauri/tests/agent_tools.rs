@@ -2,8 +2,8 @@ mod common;
 
 use conduit_desktop::{
     agent_tools::{
-        self, AgentToolContext, EDIT_TEXT_TOOL, EXPORT_DOCUMENT_TOOL, WRITE_BRAND_THEME_TOOL,
-        WRITE_HTML_TOOL,
+        self, AgentToolContext, EDIT_TEXT_TOOL, EXPORT_DOCUMENT_TOOL, PATCH_DOCUMENT_TOOL,
+        READ_DOCUMENT_TOOL, WRITE_BRAND_THEME_TOOL, WRITE_HTML_TOOL,
     },
     db::repository::{artifacts, conversations},
 };
@@ -453,4 +453,266 @@ async fn write_brand_theme_surfaces_contrast_warnings_without_failing() {
         .get("artifact_id")
         .and_then(|v| v.as_str())
         .is_some());
+}
+
+// ── patch_document / read_document ──────────────────────────────────────────
+
+async fn html_document(
+    pool: &sqlx::SqlitePool,
+    enc: &conduit_desktop::encryption::Encryption,
+    dir: &std::path::Path,
+    conversation_id: &str,
+    html: &str,
+) -> String {
+    let art = artifacts::create(pool, conversation_id, "html", Some("Guide"), None)
+        .await
+        .unwrap();
+    artifacts::set_content(
+        pool,
+        dir,
+        enc,
+        &art.id,
+        Some("text/html"),
+        &artifacts::ArtifactContent::Text {
+            text: html.to_string(),
+        },
+    )
+    .await
+    .unwrap();
+    art.id
+}
+
+#[tokio::test]
+async fn patch_document_replaces_placeholders_and_keeps_the_kind() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let artifacts_dir = tempfile::tempdir().unwrap();
+    let exports_dir = tempfile::tempdir().unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let id = html_document(
+        &pool,
+        &enc,
+        artifacts_dir.path(),
+        &conv.id,
+        "<main>\n<!-- section: mercury -->\n<!-- section: venus -->\n</main>",
+    )
+    .await;
+    let ctx = AgentToolContext {
+        db: &pool,
+        artifacts_dir: artifacts_dir.path(),
+        exports_dir: exports_dir.path(),
+        encryption: &enc,
+        conversation_id: &conv.id,
+        source_message_id: None,
+        workspace: None,
+        search: Default::default(),
+    };
+
+    let result = agent_tools::execute_builtin_tool(
+        &ctx,
+        "patch-1",
+        "req-patch",
+        PATCH_DOCUMENT_TOOL,
+        &json!({
+            "artifact_id": id,
+            "edits": [
+                { "old_text": "<!-- section: mercury -->", "new_text": "<h2>Mercury</h2>" },
+                { "old_text": "<!-- section: venus -->", "new_text": "<h2>Venus</h2>" }
+            ],
+            "more_to_write": true
+        }),
+    )
+    .await
+    .expect("tool runs");
+
+    assert!(!result.is_error, "{:?}", result.output);
+    assert_eq!(result.output.get("edits_applied"), Some(&json!(2)));
+    let updated = artifacts::get(&pool, &enc, &id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.content_text.as_deref(),
+        Some("<main>\n<h2>Mercury</h2>\n<h2>Venus</h2>\n</main>")
+    );
+    assert_eq!(updated.kind, "html");
+    assert_eq!(updated.mime_type.as_deref(), Some("text/html"));
+}
+
+#[tokio::test]
+async fn a_failing_edit_saves_nothing_and_names_the_edit() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let artifacts_dir = tempfile::tempdir().unwrap();
+    let exports_dir = tempfile::tempdir().unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let original = "<p>a</p>\n<p>a</p>\n<p>b</p>";
+    let id = html_document(&pool, &enc, artifacts_dir.path(), &conv.id, original).await;
+    let ctx = AgentToolContext {
+        db: &pool,
+        artifacts_dir: artifacts_dir.path(),
+        exports_dir: exports_dir.path(),
+        encryption: &enc,
+        conversation_id: &conv.id,
+        source_message_id: None,
+        workspace: None,
+        search: Default::default(),
+    };
+
+    let result = agent_tools::execute_builtin_tool(
+        &ctx,
+        "patch-2",
+        "req-patch",
+        PATCH_DOCUMENT_TOOL,
+        &json!({
+            "artifact_id": id,
+            "edits": [
+                { "old_text": "<p>b</p>", "new_text": "<p>B</p>" },
+                { "old_text": "<p>a</p>", "new_text": "<p>A</p>" }
+            ]
+        }),
+    )
+    .await
+    .expect("tool runs");
+
+    assert!(result.is_error);
+    let error = result.output.get("error").and_then(|v| v.as_str()).unwrap();
+    assert!(
+        error.starts_with("edit 2: old_text matches 2 places"),
+        "{error}"
+    );
+    let unchanged = artifacts::get(&pool, &enc, &id).await.unwrap().unwrap();
+    assert_eq!(unchanged.content_text.as_deref(), Some(original));
+}
+
+#[tokio::test]
+async fn read_document_returns_the_requested_lines() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let artifacts_dir = tempfile::tempdir().unwrap();
+    let exports_dir = tempfile::tempdir().unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let id = html_document(
+        &pool,
+        &enc,
+        artifacts_dir.path(),
+        &conv.id,
+        "one\ntwo\nthree\nfour",
+    )
+    .await;
+    let ctx = AgentToolContext {
+        db: &pool,
+        artifacts_dir: artifacts_dir.path(),
+        exports_dir: exports_dir.path(),
+        encryption: &enc,
+        conversation_id: &conv.id,
+        source_message_id: None,
+        workspace: None,
+        search: Default::default(),
+    };
+
+    let result = agent_tools::execute_builtin_tool(
+        &ctx,
+        "read-1",
+        "req-read",
+        READ_DOCUMENT_TOOL,
+        &json!({ "artifact_id": id, "start_line": 2, "end_line": 3 }),
+    )
+    .await
+    .expect("tool runs");
+
+    assert!(!result.is_error, "{:?}", result.output);
+    assert_eq!(result.output.get("content"), Some(&json!("two\nthree\n")));
+    assert_eq!(result.output.get("total_lines"), Some(&json!(4)));
+    assert!(result.output.get("note").is_none());
+}
+
+#[tokio::test]
+async fn read_document_cuts_a_minified_line_instead_of_returning_nothing() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let artifacts_dir = tempfile::tempdir().unwrap();
+    let exports_dir = tempfile::tempdir().unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let minified = format!("<div>{}</div>", "é".repeat(40_000));
+    let id = html_document(&pool, &enc, artifacts_dir.path(), &conv.id, &minified).await;
+    let ctx = AgentToolContext {
+        db: &pool,
+        artifacts_dir: artifacts_dir.path(),
+        exports_dir: exports_dir.path(),
+        encryption: &enc,
+        conversation_id: &conv.id,
+        source_message_id: None,
+        workspace: None,
+        search: Default::default(),
+    };
+
+    let result = agent_tools::execute_builtin_tool(
+        &ctx,
+        "read-2",
+        "req-read",
+        READ_DOCUMENT_TOOL,
+        &json!({ "artifact_id": id }),
+    )
+    .await
+    .expect("tool runs");
+
+    let content = result
+        .output
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap();
+    assert!(content.starts_with("<div>é"));
+    assert!(content.len() <= 60_000);
+    let note = result.output.get("note").and_then(|v| v.as_str()).unwrap();
+    assert!(note.contains("was cut"), "{note}");
+}
+
+// ── apply_document_edits ─────────────────────────────────────────────────────
+
+fn edit(old_text: &str, new_text: &str) -> agent_tools::DocumentEdit {
+    agent_tools::DocumentEdit {
+        old_text: old_text.to_string(),
+        new_text: new_text.to_string(),
+    }
+}
+
+#[test]
+fn an_edit_quoted_without_indentation_still_applies_and_keeps_the_indentation() {
+    // Recorded live: the skeleton indented its placeholders two spaces, and the
+    // model's first patch quoted them flush left.
+    let doc = "<main>\r\n  <!-- SECTION:mercury -->\r\n  <!-- SECTION:venus -->\r\n</main>\r\n";
+    let patched = agent_tools::apply_document_edits(
+        doc,
+        &[edit(
+            "<!-- SECTION:mercury -->\n<!-- SECTION:venus -->\n",
+            "<h2>Mercury</h2>\n  <!-- SECTION:venus -->",
+        )],
+    )
+    .unwrap();
+    assert_eq!(
+        patched,
+        "<main>\r\n  <h2>Mercury</h2>\n  <!-- SECTION:venus -->\r\n</main>\r\n"
+    );
+}
+
+#[test]
+fn an_exact_match_wins_over_the_indentation_fallback() {
+    let doc = "a\n  b\nb\n";
+    assert_eq!(
+        agent_tools::apply_document_edits(doc, &[edit("  b", "B")]).unwrap(),
+        "a\nB\nb\n"
+    );
+}
+
+#[test]
+fn the_indentation_fallback_still_needs_exactly_one_match() {
+    let doc = "<ul>\n  <li>x</li>\n</ul>\n<ol>\n    <li>x</li>\n</ol>\n";
+    // Trailing space: no exact match, two matches once whitespace is ignored.
+    let error =
+        agent_tools::apply_document_edits(doc, &[edit("<li>x</li> \n", "<li>y</li>")]).unwrap_err();
+    assert!(
+        error.contains("matches 2 places when indentation is ignored"),
+        "{error}"
+    );
+    let error =
+        agent_tools::apply_document_edits(doc, &[edit("<li>z</li>", "<li>y</li>")]).unwrap_err();
+    assert!(error.contains("even ignoring indentation"), "{error}");
 }

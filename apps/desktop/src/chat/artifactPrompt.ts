@@ -18,9 +18,9 @@ export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(): string {
     'Users promote inline blocks to artifacts when they want editing, preview, or export in the document panel.',
     'Only call write_*_document or edit_*_document when the user explicitly asked to create or revise a document.',
     `For new documents, omit artifact_id — ${appName()} assigns IDs; do not invent slug-like ids.`,
-    'Create at most one document per request; after write_*_document returns an artifact_id, revise with edit_*_document — do not call write_* again for the same document.',
+    'Create at most one document per request; after write_*_document returns an artifact_id, revise with patch_document or edit_*_document — do not call write_* again for the same document.',
     'Answer capability and explanatory questions in prose; do not create or edit artifacts to demonstrate.',
-    'When a document artifact is already in scope and the user asks to revise it, prefer edit_*_document over creating a new document.',
+    'When a document artifact is already in scope and the user asks to revise it, prefer patch_document (or edit_*_document for a rewrite) over creating a new document.',
     'HTML artifacts render in a sandboxed iframe with no network access (no fetch/XHR). Do not rely on client-side fetching for live data; embed any needed information directly in the artifact. User-clicked http(s) links may open in the system browser after confirmation — emit real href attributes for sources.',
   ].join(' ');
 }

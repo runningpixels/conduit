@@ -1,0 +1,11 @@
+data: {"type":"response.created","response":{"id":"resp_2","status":"in_progress"}}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_456","call_id":"call_doc_2","name":"write_html_document","arguments":""}}
+
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_456","output_index":0,"delta":"{\"title\":\"Quarterly report\","}
+
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_456","output_index":0,"delta":"\"html\":\"<h1>Q3</h1><p>Revenue grew"}
+
+data: {"type":"response.incomplete","response":{"id":"resp_2","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}
+
+data: [DONE]

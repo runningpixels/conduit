@@ -321,7 +321,7 @@ pub(crate) fn wrap_sse_stream<P: StreamParser + 'static>(
         yield ProviderEvent::MessageComplete {
           request_id: request_id.clone(),
           index,
-          finish_reason: "stop".to_string(),
+          finish_reason: parser.finish_reason().unwrap_or("stop").to_string(),
         };
       }
     };
@@ -413,7 +413,7 @@ where
         events.push(ProviderEvent::MessageComplete {
             request_id: request_id.to_string(),
             index,
-            finish_reason: "stop".to_string(),
+            finish_reason: parser.finish_reason().unwrap_or("stop").to_string(),
         });
     }
 

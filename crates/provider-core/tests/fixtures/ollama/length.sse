@@ -1,0 +1,2 @@
+{"model":"llama3.2","message":{"role":"assistant","content":"The report covers three quarters of"},"done":false}
+{"model":"llama3.2","message":{"role":"assistant","content":" growth, starting with"},"done_reason":"length","done":true,"prompt_eval_count":40,"eval_count":2048}

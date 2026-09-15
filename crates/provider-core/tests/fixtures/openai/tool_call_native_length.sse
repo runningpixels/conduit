@@ -1,0 +1,5 @@
+data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_doc_3","type":"function","function":{"name":"write_html_document","arguments":"{\"title\":\"Solar System\",\"html\":\"<h2>Jupiter"}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls","native_finish_reason":"length"}]}
+
+data: [DONE]

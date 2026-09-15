@@ -443,3 +443,24 @@ describe('buildProviderRequest follow-up artifact context', () => {
     expect(req.systemPrompt).toContain(baseSystemPrompt());
   });
 });
+
+describe('resolveFollowUpArtifactContext with forceEdit', () => {
+  const openDoc: Artifact = {
+    id: 'art-guide',
+    conversationId: 'c1',
+    kind: 'html',
+    title: 'Planets',
+    contentText: '<main><!-- section: moons --></main>',
+    createdAt: '2026-01-03T00:00:00Z',
+    updatedAt: '2026-01-03T00:00:00Z',
+  };
+
+  it('includes the open document for a prompt the classifier cannot read', async () => {
+    const prompt = 'Baue das Dokument weiter auf.';
+    const get = async () => openDoc;
+    expect(await resolveFollowUpArtifactContext([], prompt, [openDoc], get, openDoc)).toBeUndefined();
+    const ctx = await resolveFollowUpArtifactContext([], prompt, [openDoc], get, openDoc, { forceEdit: true });
+    expect(ctx?.artifactId).toBe('art-guide');
+    expect(ctx?.content).toContain('section: moons');
+  });
+});

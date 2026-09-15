@@ -73,6 +73,13 @@ pub trait StreamParser: Send {
         data: &str,
         index: &mut usize,
     ) -> Vec<ProviderEvent>;
+
+    /// The `finish_reason` for the stream's closing `MessageComplete`, when the
+    /// parser saw a stop reason worth reporting (see
+    /// [`crate::output_limits::FINISH_REASON_LENGTH`]). `None` reports `"stop"`.
+    fn finish_reason(&self) -> Option<&str> {
+        None
+    }
 }
 
 #[cfg(test)]

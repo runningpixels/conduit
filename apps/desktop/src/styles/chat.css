@@ -1348,6 +1348,20 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
 }
 .Interrupted-action:hover { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .error-text { color: var(--err); font-size: var(--fs-2xl); margin: 6px 0 0; }
+/* The one way forward after a build stops at the time limit: a real button,
+   not another muted action link lost under the error. */
+.turn-continue-building {
+  display: inline-flex;
+  margin: 10px 0 2px;
+  padding: 6px 14px;
+  border: 1px solid var(--hue);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+  color: var(--hue-text);
+  font-weight: 600;
+}
+.turn-continue-building:hover { background: color-mix(in srgb, var(--hue) 22%, transparent); color: var(--ink); }
+.turn-cutoff-note { color: var(--warn); font-size: var(--fs-xl); margin: 6px 0 0; }
 /* Per-turn usage: info icon in the reserved footer row. Counts live in an
  * absolutely positioned tip so hover never grows the turn. Status line beneath
  * the composer is the canonical report (§6.3). */

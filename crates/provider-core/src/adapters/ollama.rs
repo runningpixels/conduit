@@ -3,6 +3,7 @@ use crate::adapters::{
     message_text, normalized_or_err, parse_fixture_stream, role_to_string, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
+use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
     MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
     ToolKind,
@@ -181,14 +182,20 @@ impl StreamParser for OllamaParser {
             // lets a tool-calling round report `finish_reason: "tool_calls"`
             // the way OpenAI's does, so the renderer and agent loop treat it
             // consistently across providers.
+            // `done_reason: "length"` does mean the response hit `num_predict`
+            // or the context window, and outranks the tool-call signal.
+            let finish_reason =
+                if value.get("done_reason").and_then(|v| v.as_str()) == Some("length") {
+                    FINISH_REASON_LENGTH
+                } else if self.saw_tool_call {
+                    "tool_calls"
+                } else {
+                    "stop"
+                };
             events.push(ProviderEvent::MessageComplete {
                 request_id: request_id.to_string(),
                 index: *index,
-                finish_reason: if self.saw_tool_call {
-                    "tool_calls".to_string()
-                } else {
-                    "stop".to_string()
-                },
+                finish_reason: finish_reason.to_string(),
             });
             *index += 1;
         }
@@ -351,6 +358,14 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         }
     }
 
+    if let Some(max_tokens) = request
+        .generation_controls
+        .as_ref()
+        .and_then(|c| c.max_tokens)
+    {
+        body["options"] = json!({ "num_predict": max_tokens });
+    }
+
     body
 }
 
@@ -469,6 +484,51 @@ mod tests {
             e,
             ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"
         )));
+    }
+
+    #[test]
+    fn length_done_reason_is_reported_as_length() {
+        let fixture = include_str!("../../tests/fixtures/ollama/length.sse");
+        let events = parse_fixture("req-1", fixture);
+        assert!(
+            matches!(
+                events.last(),
+                Some(ProviderEvent::MessageComplete { finish_reason, .. }) if finish_reason == "length"
+            ),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn payload_maps_max_tokens_to_num_predict() {
+        let mut request = ProviderRequest {
+            request_id: "req-opts".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "llama3.2".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+        let body = build_payload(&NormalizedRequest {
+            request: request.clone(),
+        });
+        assert!(body.get("options").is_none());
+
+        request.generation_controls = Some(crate::schema::GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: Some(2_048),
+            stop_sequences: None,
+            tool_choice: None,
+            reasoning_effort: None,
+        });
+        let body = build_payload(&NormalizedRequest { request });
+        assert_eq!(body.pointer("/options/num_predict"), Some(&json!(2_048)));
     }
 
     #[test]

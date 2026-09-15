@@ -192,7 +192,8 @@ export function buildArtifactEditDeveloperPrompt(
     `- kind: ${context.kind}`,
     `The user follow-up: "${userPrompt.trim()}"`,
     'Only call a document tool if the user explicitly asked to create or revise this document.',
-    `If they asked to revise it, use ${editTool} with artifact_id "${context.artifactId}" and the full updated body in ${contentField}.`,
+    `If they asked to change part of it, use patch_document with artifact_id "${context.artifactId}", quoting the exact text to replace from the content below.`,
+    `If most of it changes, use ${editTool} with artifact_id "${context.artifactId}" and the full updated body in ${contentField}.`,
     'If they only asked a question or made a general comment, answer in text and do NOT call document tools.',
     'Do NOT call write_*_document without artifact_id unless the user explicitly asked for a separate or new document.',
     `Current content:${truncatedNote}`,
@@ -217,13 +218,19 @@ export async function resolveFollowUpArtifactContext(
   listed: Artifact[],
   getArtifact: GetArtifactFn,
   preferredArtifact?: Artifact | null,
+  /** The prompt is known to revise the document in scope (an app-authored
+   *  follow-up such as "Continue building"), whatever its wording. */
+  options: { forceEdit?: boolean } = {},
 ): Promise<FollowUpArtifactContext | undefined> {
   const preferredId =
     preferredArtifact && isDocumentArtifact(preferredArtifact)
       ? preferredArtifact.id
       : undefined;
   const artifactId = resolveRecentDocumentArtifactId(history, listed, preferredId);
-  if (!shouldIncludeArtifactFollowUpContext(prompt, history, artifactId)) {
+  const include = options.forceEdit
+    ? Boolean(artifactId)
+    : shouldIncludeArtifactFollowUpContext(prompt, history, artifactId);
+  if (!include) {
     return undefined;
   }
 

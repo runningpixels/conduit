@@ -41,6 +41,7 @@ import {
   documentToolArtifactKind,
   hadSuccessfulDocumentToolCalls,
   isDocumentCreateTool,
+  isDocumentPatchTool,
   resolveDocumentArtifactId,
   type DocumentToolActivity,
 } from './chat/agentTools';
@@ -521,6 +522,10 @@ export default function App() {
       // Opening the saved document needs the artifact list; see
       // `handleDocumentWritten`, which `routeDocumentToolActivity` sends it to.
       if (activity.phase === 'written') return;
+      // A patch changes a document that is already there, in a moment; a
+      // "generating" skeleton over it would only flash. `written` still
+      // reloads it.
+      if (isDocumentPatchTool(activity.toolName)) return;
       if (activity.phase === 'start') documentWriteSeqRef.current += 1;
 
       if (activity.phase === 'error') {

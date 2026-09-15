@@ -3,6 +3,7 @@ use crate::adapters::{
     message_text, missing_key, normalized_or_err, parse_fixture_stream, wrap_sse_stream,
 };
 use crate::normalize::NormalizedRequest;
+use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
     ContentAnnotation, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
     ToolChoice, ToolKind,
@@ -26,6 +27,8 @@ struct GeminiParser {
     /// Monotonic counter for synthesizing unique tool_call_ids when the API
     /// omits `id` on functionCall parts (parallel same-name calls).
     function_call_seq: u32,
+    /// Set when a candidate reports `finishReason: "MAX_TOKENS"`.
+    finish_reason: Option<&'static str>,
 }
 
 impl GeminiParser {
@@ -36,6 +39,7 @@ impl GeminiParser {
             emitted_search_call: false,
             search_call_id: "gemini-web-search-0".to_string(),
             function_call_seq: 0,
+            finish_reason: None,
         }
     }
 
@@ -69,6 +73,9 @@ impl GeminiParser {
         let Some(candidate) = value.pointer("/candidates/0") else {
             return events;
         };
+        if candidate.get("finishReason").and_then(|v| v.as_str()) == Some("MAX_TOKENS") {
+            self.finish_reason = Some(FINISH_REASON_LENGTH);
+        }
 
         if let Some(parts) = candidate
             .pointer("/content/parts")
@@ -313,6 +320,10 @@ impl StreamParser for GeminiParser {
         };
         self.parse_generate_content_response(request_id, &value, index)
     }
+
+    fn finish_reason(&self) -> Option<&str> {
+        self.finish_reason
+    }
 }
 
 fn normalize_model_id(model_id: &str) -> String {
@@ -458,10 +469,13 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
             generation_config.insert("stopSequences".to_string(), json!(stops));
         }
     }
-    if generation_config.is_empty() {
-        generation_config.insert("maxOutputTokens".to_string(), json!(8192));
+    // No `maxOutputTokens` unless the user set one: the API then allows the
+    // model's full output. A fixed fallback here used to cap every response at
+    // 8,192 tokens — thinking included — which cut long documents off, and
+    // only applied when no other control was set.
+    if !generation_config.is_empty() {
+        body["generationConfig"] = Value::Object(generation_config);
     }
-    body["generationConfig"] = Value::Object(generation_config);
 
     let mut tools: Vec<Value> = Vec::new();
     let mut function_declarations: Vec<Value> = Vec::new();
@@ -674,6 +688,26 @@ mod tests {
     }
 
     #[test]
+    fn max_tokens_finish_is_reported_as_length() {
+        let fixture = include_str!("../../tests/fixtures/gemini/max_tokens.sse");
+        let events = parse_fixture("req-1", fixture);
+        assert!(
+            matches!(
+                events.last(),
+                Some(ProviderEvent::MessageComplete { finish_reason, .. }) if finish_reason == "length"
+            ),
+            "{events:?}"
+        );
+
+        let fixture = include_str!("../../tests/fixtures/gemini/plain_text.sse");
+        let events = parse_fixture("req-2", fixture);
+        assert!(matches!(
+            events.last(),
+            Some(ProviderEvent::MessageComplete { finish_reason, .. }) if finish_reason == "stop"
+        ));
+    }
+
+    #[test]
     fn parses_tool_call_fixture() {
         let fixture = include_str!("../../tests/fixtures/gemini/tool_call_single.sse");
         let events = parse_fixture("req-1", fixture);
@@ -816,6 +850,10 @@ mod tests {
         };
 
         let body = build_payload(&NormalizedRequest { request });
+        assert!(
+            body.get("generationConfig").is_none(),
+            "no output cap may be sent when the user set none: {body}"
+        );
         let contents = body
             .get("contents")
             .and_then(|v| v.as_array())

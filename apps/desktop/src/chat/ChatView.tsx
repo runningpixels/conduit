@@ -112,10 +112,12 @@ import {
   documentWriteDetail,
   documentWriteLabel,
 } from './documentWriteScan';
-import { readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
+import { markDocumentWritesHeld, readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
+import { placeholderSections } from './documentBuild';
 import {
   documentWriteDeveloperPromptFor,
   informationalDeveloperPromptFor,
+  type DocumentTurnIntent,
 } from './documentTurnIntent';
 import { CONDUIT_BRAND_SYSTEM_APPENDIX, looksLikeBrandThemeRequest } from './brandPrompt';
 import {
@@ -378,6 +380,10 @@ export function buildProviderRequest(
     : undefined;
   const documentWriteDevPrompt = documentWriteDeveloperPromptFor(
     toolDefinitions.map((tool) => tool.name),
+    {
+      heldDocuments:
+        readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
+    },
   );
   const developerPrompt =
     [compactionDevPrompt, infoDevPrompt, editDevPrompt, documentWriteDevPrompt, webSearchDevPrompt]
@@ -622,6 +628,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   /** The live turn offers document tools to a model known to send documents
    *  all at once (`streamingBehavior.ts`). */
   const [activeTurnDocumentWriteHeld, setActiveTurnDocumentWriteHeld] = useState(false);
+  /** Max tokens the active turn was sent with — not the setting, which a
+   *  one-off retry can override. */
+  const [activeTurnOutputLimit, setActiveTurnOutputLimit] = useState<number | undefined>(undefined);
 
   const queuedForConversation = listFor(messageQueues, conversationId);
 
@@ -882,9 +891,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   async function loadToolDefinitions(
     prompt: string,
     searchBackend: SearchBackend | null,
+    intent?: DocumentTurnIntent,
   ): Promise<ToolDefinition[]> {
     const connectorTools = await loadConnectorToolDefinitions();
-    const { tools: builtinTools } = selectBuiltinTurnTools(prompt, settings, conversationWorkspaceRoot);
+    const { tools: builtinTools } = selectBuiltinTurnTools(
+      prompt,
+      settings,
+      conversationWorkspaceRoot,
+      intent,
+    );
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
     const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
@@ -1007,7 +1022,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }
 
   async function handleSend(
-    override?: { text: string; history: ChatTurn[]; attachments?: TurnAttachment[] },
+    override?: {
+      text: string;
+      history: ChatTurn[];
+      attachments?: TurnAttachment[];
+      /** Document intent for an app-authored prompt, whatever language it is in. */
+      intent?: DocumentTurnIntent;
+      /** One-off generation controls for this send, over the conversation's own
+       *  (a key set to `undefined` clears that control). */
+      generationControls?: GenerationControls;
+    },
     composerAttachments?: TurnAttachment[],
   ) {
     const trimmed = (override?.text ?? prompt).trim();
@@ -1112,7 +1136,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           settings.providerEndpoints,
         )
       : null;
-    const toolDefinitions = await loadToolDefinitions(trimmed, searchBackend);
+    const toolDefinitions = await loadToolDefinitions(trimmed, searchBackend, override?.intent);
     const priorHistory = history.slice(0, -1);
     const followUpArtifact = await resolveFollowUpArtifactContext(
       priorHistory,
@@ -1120,6 +1144,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       artifacts,
       getArtifact,
       activeArtifact,
+      { forceEdit: override?.intent === 'edit' },
     );
     const providerHistory = [
       ...historyForProviderRequest(priorHistory, activeCompaction),
@@ -1142,7 +1167,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       followUpArtifact,
       searchBackend,
       {
-        generationControls: conversationGenerationControls,
+        generationControls: override?.generationControls
+          ? { ...conversationGenerationControls, ...override.generationControls }
+          : conversationGenerationControls,
         userInstructions: conversationUserInstructions,
         compactionSummary: activeCompaction?.summaryText ?? null,
         extraSystemSections,
@@ -1150,6 +1177,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
     const initialStream = createAssistantStreamState(request.requestId, searchBackend);
+    setActiveTurnOutputLimit(request.generationControls?.maxTokens ?? undefined);
     setActiveTurnDocumentWriteHeld(
       toolDefinitions.some((tool) => isDocumentContentTool(tool.name)) &&
         readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
@@ -1219,6 +1247,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         streamStateRef.current = next;
         setActiveStream(next);
 
+        // The agent loop retries a document round in parts when the provider
+        // gave up on its silent stream, and reports a second timeout with
+        // `idle_timeout`. Either way this model holds documents back.
+        if (
+          (event.kind === 'agentPhase' && event.label === 'Retrying in parts') ||
+          (event.kind === 'error' && event.error.providerCode === 'idle_timeout')
+        ) {
+          markDocumentWritesHeld(settings.activeProvider, settings.activeModel);
+        }
         if (event.kind === 'toolCallStart') {
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
           if (isDocumentContentTool(event.name)) {
@@ -1395,7 +1432,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           onChatTurnComplete?.({ ...finalState, streaming: false, error: errorText });
           // Warn when the user asked for an artifact but none was produced.
           const docToolsSucceeded = hadSuccessfulDocumentToolCalls(finalState);
-          if (looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded) {
+          // Skip when the turn ended with an error: the turn already says why,
+          // and a guess here ("No artifact content detected") contradicts it.
+          if (looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
             const failedDocTools = failedDocumentToolCalls(finalState);
             const hasFences = detectArtifactCandidates(content).length > 0;
             if (failedDocTools.length > 0) {
@@ -1849,7 +1888,24 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     void commitMessageEdit(editingTurnId, text);
   }
 
-  async function commitMessageEdit(messageId: string, text: string) {
+  /** The Max tokens limit in effect: the conversation's own, else the app default. */
+  const effectiveMaxTokens = mergeGenerationControls(
+    settings.generationControls,
+    conversationGenerationControls,
+  )?.maxTokens;
+
+  /** Send the last prompt again with Max tokens cleared for this one request. */
+  async function retryLastPromptWithoutLimit() {
+    const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
+    if (!lastUser) return;
+    await commitMessageEdit(lastUser.id, lastUser.content, { maxTokens: undefined });
+  }
+
+  async function commitMessageEdit(
+    messageId: string,
+    text: string,
+    generationControls?: GenerationControls,
+  ) {
     if (!conversationId || activeRequestId) return;
     const editedTurn = turns.find((t) => t.id === messageId);
     const preservedAttachments = editedTurn?.attachments;
@@ -1873,6 +1929,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         text,
         history: nextTurns,
         attachments: preservedAttachments,
+        generationControls,
       });
     } catch (error) {
       onStatus(
@@ -2147,6 +2204,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   onStatus={onStatus}
                   isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
                   onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onRetryWithoutLimit={effectiveMaxTokens ? () => void retryLastPromptWithoutLimit() : undefined}
+                  onContinueBuilding={() =>
+                    void handleSend({
+                      text: t('chat.documentBuild.continuePrompt'),
+                      history: turnsRef.current,
+                      intent: 'edit',
+                    })
+                  }
                   onDelete={() => void handleRemoveLastAssistantTurn()}
                   onCopy={() => void handleCopyText(turn.content)}
                   onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
@@ -2229,7 +2294,28 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               state={{
                 ...activeStream,
                 agentPhase: (() => {
-                  const base = agentPhase ?? activeStream.agentPhase;
+                  const phase = agentPhase ?? activeStream.agentPhase;
+                  // While the model builds a document in parts, say how much is
+                  // left — the open document refreshes after every patch, and
+                  // its placeholders are the sections still to write.
+                  const building = activeStream.toolCalls.some(
+                    (tc) => isDocumentContentTool(tc.name) && tc.arguments?.more_to_write === true,
+                  );
+                  const sectionsLeft = building
+                    ? placeholderSections(activeArtifact?.contentText).length
+                    : 0;
+                  const base =
+                    phase && sectionsLeft > 0
+                      ? {
+                          ...phase,
+                          detail: [
+                            phase.detail,
+                            t('chat.documentBuild.sectionsLeft', { count: sectionsLeft }),
+                          ]
+                            .filter(Boolean)
+                            .join(' · '),
+                        }
+                      : phase;
                   if (queuedForConversation.length === 0 || !base) {
                     return queuedForConversation.length > 0
                       ? {
@@ -2251,6 +2337,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   };
                 })(),
               }}
+              outputLimit={activeTurnOutputLimit}
               provider={liveTurnInfo.provider}
               modelId={liveTurnInfo.model}
               switchedFrom={liveTurnInfo.switchedFrom}

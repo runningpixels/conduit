@@ -154,7 +154,7 @@
   "chat.errorBoundary.detail": "このチャットの表示中にエラーが発生しました。",
   "chat.errorBoundary.title": "問題が発生しました",
   "chat.export.dialog.title": "チャットを {format} としてエクスポート",
-  "chat.generation.maxTokens.hint": "空欄の場合はプロバイダーの既定値を使います。",
+  "chat.generation.maxTokens.hint": "空欄の場合はモデル自身の上限を使用します。推論モデルは思考もこの上限に含めるため、低く設定すると回答の余地がなくなることがあります。",
   "chat.generation.maxTokens.label": "最大トークン数",
   "chat.generation.providerDefaultPlaceholder": "プロバイダーの既定値",
   "chat.generation.stopSequences.hint": "最大 8 件です。モデルがいずれかを出力すると生成を停止します。",
@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "このチャットで記憶する",
   "chat.toolCall.consent.safetyNote": "{appName} は、承認なしに副作用のあるツールを実行することはありません。ツールの出力はサンドボックス化され、プロンプトに再び挿入されることはありません。",
   "chat.toolCall.deniedNotice": "<strong>拒否しました。</strong>ツール呼び出しは実行されていません。",
-  "chat.toolCall.document.action": "{action, select, create {作成} edit {編集} other {ドキュメント}}",
+  "chat.toolCall.document.action": "{action, select, create {作成} edit {編集} read {読み取り} other {ドキュメント}}",
   "chat.toolCall.document.cancelled": "ドキュメントツールをキャンセルしました。",
   "chat.toolCall.document.failed": "<strong>ドキュメントを{action, select, create {作成} edit {編集} other {更新}}できませんでした。</strong>{explained}",
   "chat.toolCall.document.fallbackError": "ドキュメントは作成も更新もされませんでした。",
@@ -1213,5 +1213,13 @@
   "workspace.documentPanel.pending.peek": "ライブプレビュー",
   "workspace.documentPanel.pending.peekHint": "書かれている途中のドキュメントを表示します。スクリプトは完成後に実行されます。",
   "workspace.documentPanel.pending.peekTooLarge": "このドキュメントは大きすぎるため、作成中にプレビューできません。",
-  "chat.stream.stillWorkingHeldDocument": "処理を続けています · {seconds}秒 — このモデルはドキュメントをまとめて送信します"
+  "chat.stream.stillWorkingHeldDocument": "処理を続けています · {seconds}秒 — このモデルはドキュメントをまとめて送信します",
+  "chat.assistant.cutOff": "出力の上限に達したため、この回答は途中で終わっています。設定 → チャットの既定値 → モデルパラメーター で「最大トークン数」を増やしてください。",
+  "chat.documentBuild.continue": "作成を続ける",
+  "chat.documentBuild.continuePrompt": "ドキュメントの作成を続けてください。まだプレースホルダーのセクションを patch_document で書いてください。",
+  "chat.documentBuild.pendingSection": "未作成: {name}",
+  "chat.documentBuild.sectionsLeft": "残り {count} セクション",
+  "workspace.documentPanel.banner.sectionsNotWritten": "このドキュメントには未作成のセクションが {count} 件あります。",
+  "chat.assistant.liveMetaLimit": "{elapsed}秒 · {tokenCount} / {limit} トークン",
+  "chat.assistant.retryWithoutLimit": "トークン上限なしで再試行"
 }

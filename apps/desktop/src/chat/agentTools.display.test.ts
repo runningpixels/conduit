@@ -194,3 +194,39 @@ describe('document tool classification', () => {
     expect(summary).toBeUndefined();
   });
 });
+
+describe('patch_document and read_document display', () => {
+  const patch = makeToolCall('patch_document', {
+    artifact_id: 'art-1',
+    edits: [
+      { old_text: '<!-- section: mercury -->', new_text: '<h2>Mercury</h2>\n<p>Closest.</p>' },
+      { old_text: '<!-- section: venus -->', new_text: '<h2>Venus</h2>' },
+    ],
+  });
+
+  it('counts a patch as content, a read as not', () => {
+    expect(DOCUMENT_TOOL_NAMES.has('patch_document')).toBe(true);
+    expect(DOCUMENT_TOOL_NAMES.has('read_document')).toBe(true);
+    expect(isDocumentContentTool('patch_document')).toBe(true);
+    expect(isDocumentContentTool('read_document')).toBe(false);
+    expect(isDocumentCreateTool('patch_document')).toBe(false);
+  });
+
+  it('summarizes a patch by the text it puts in', () => {
+    const summary = summarizeDocumentToolCall(patch);
+    expect(summary?.action).toBe('edit');
+    expect(summary?.lineCount).toBe(3);
+    expect(summary?.charCount).toBe('<h2>Mercury</h2>\n<p>Closest.</p>\n<h2>Venus</h2>'.length);
+  });
+
+  it('labels a read as a read', () => {
+    expect(summarizeDocumentToolCall(makeToolCall('read_document', { artifact_id: 'art-1' }))?.action).toBe('read');
+  });
+
+  it('redacts patch edits to a count', () => {
+    expect(redactDocumentToolArguments(patch.arguments ?? {}, 'patch_document')).toEqual({
+      artifact_id: 'art-1',
+      edits: '… 2',
+    });
+  });
+});

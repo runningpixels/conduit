@@ -202,7 +202,11 @@ export function ToolCallBlock({
   let resultText: React.ReactNode;
 
   if (group) {
-    name = splitToolDisplayName(group.name).tool || group.name;
+    // Document tools have no connector prefix to split; show them under their
+    // group name, not as the raw tool id ("read_document").
+    name = DOCUMENT_TOOL_NAMES.has(group.name)
+      ? t('chat.toolCall.documentsName')
+      : splitToolDisplayName(group.name).tool || group.name;
     summary = t('chat.toolCall.callCount', { count: group.calls.length });
     body = (
       <div className="tool-sub">

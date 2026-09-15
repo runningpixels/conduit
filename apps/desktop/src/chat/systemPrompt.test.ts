@@ -82,3 +82,16 @@ describe('resolveUserInstructions', () => {
     expect(resolveUserInstructions({} as AppSettings, null)).toBeUndefined();
   });
 });
+
+describe('mergeGenerationControls for one-off retries', () => {
+  it('keeps reasoning effort and lets an undefined key clear a default', () => {
+    expect(mergeGenerationControls({ maxTokens: 9000 }, { reasoningEffort: 'low' })).toEqual({
+      maxTokens: 9000,
+      reasoningEffort: 'low',
+    });
+    expect(mergeGenerationControls({ maxTokens: 9000 }, { maxTokens: undefined })).toBeUndefined();
+    expect(
+      mergeGenerationControls({ maxTokens: 9000, temperature: 0.2 }, { maxTokens: undefined }),
+    ).toEqual({ temperature: 0.2 });
+  });
+});

@@ -111,6 +111,8 @@ export interface AssistantStreamState {
   usage?: ProviderUsage;
   finishReason?: string;
   error?: string;
+  /** `providerCode` of the error that ended the turn, e.g. `turn_time_limit_building`. */
+  errorCode?: string;
   interrupted: boolean;
   streaming: boolean;
   /** When the last event that shows the turn is alive arrived (keepalive
@@ -510,6 +512,7 @@ function reduceProviderEvent(
       return {
         ...state,
         error: event.error.message,
+        errorCode: event.error.providerCode,
         streaming: false,
         agentPhase: undefined,
         toolCalls: settleUnfinishedToolCalls(

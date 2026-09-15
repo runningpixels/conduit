@@ -304,6 +304,34 @@ pub struct GenerationControls {
     pub stop_sequences: Option<Vec<String>>,
     #[ts(optional)]
     pub tool_choice: Option<ToolChoice>,
+    /// How much the model should reason, for models that let the request set
+    /// it. Unset leaves the model its default. The agent loop sets `Low` to
+    /// retry a round whose reasoning used the whole output limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/reasoning_effort.ts"
+)]
+pub enum ReasoningEffort {
+    Low,
+    Medium,
+    High,
+}
+
+impl ReasoningEffort {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2118,6 +2146,18 @@ impl Default for AppSettings {
     }
 }
 
+/// Deserialize a patch field where `null` means "clear" and a missing field
+/// means "leave unchanged". Plain `Option<Option<T>>` reads both as `None`, so
+/// clearing Max tokens, temperature or instructions in Settings was silently
+/// ignored and the old value stayed.
+fn clearable<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -2175,14 +2215,17 @@ pub struct SettingsPatch {
     #[ts(optional)]
     pub workspace_tools_enabled: Option<bool>,
     #[ts(optional)]
+    #[serde(default, deserialize_with = "clearable")]
     pub workspace_root: Option<Option<String>>,
     #[ts(optional)]
     pub workspace_tools_consent_acknowledged: Option<bool>,
     /// Replace or clear app-default generation controls. `Some(None)` clears.
     #[ts(optional)]
+    #[serde(default, deserialize_with = "clearable")]
     pub generation_controls: Option<Option<GenerationControls>>,
     /// Replace or clear app-default user instructions. `Some(None)` clears.
     #[ts(optional)]
+    #[serde(default, deserialize_with = "clearable")]
     pub user_instructions: Option<Option<String>>,
     /// t1-3: toggle auto context compaction.
     #[ts(optional)]
@@ -2338,5 +2381,40 @@ mod update_policy_tests {
         let settings: AppSettings = serde_json::from_str(json).expect("deserialize");
         assert_eq!(settings.update_policy, UpdatePolicy::Automatic);
         assert!(!settings.update_check_enabled);
+    }
+}
+
+#[cfg(test)]
+mod settings_patch_tests {
+    use super::*;
+
+    #[test]
+    fn null_clears_and_a_missing_field_leaves_the_setting_alone() {
+        let cleared: SettingsPatch = serde_json::from_value(serde_json::json!({
+            "generationControls": null,
+            "userInstructions": null,
+            "workspaceRoot": null,
+        }))
+        .unwrap();
+        assert!(matches!(cleared.generation_controls, Some(None)));
+        assert!(matches!(cleared.user_instructions, Some(None)));
+        assert!(matches!(cleared.workspace_root, Some(None)));
+
+        let untouched: SettingsPatch = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(untouched.generation_controls.is_none());
+        assert!(untouched.user_instructions.is_none());
+        assert!(untouched.workspace_root.is_none());
+
+        let set: SettingsPatch = serde_json::from_value(serde_json::json!({
+            "generationControls": { "maxTokens": 2048 },
+        }))
+        .unwrap();
+        assert!(matches!(
+            set.generation_controls,
+            Some(Some(GenerationControls {
+                max_tokens: Some(2048),
+                ..
+            }))
+        ));
     }
 }

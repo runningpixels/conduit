@@ -154,7 +154,7 @@
   "chat.errorBoundary.detail": "Este chat encontrou um erro ao renderizar.",
   "chat.errorBoundary.title": "Algo deu errado",
   "chat.export.dialog.title": "Exportar chat como {format}",
-  "chat.generation.maxTokens.hint": "Vazio usa o padrão do provedor.",
+  "chat.generation.maxTokens.hint": "Vazio usa o limite do próprio modelo. Modelos de raciocínio contam o raciocínio neste limite, então um limite baixo pode não deixar espaço para a resposta.",
   "chat.generation.maxTokens.label": "Máximo de tokens",
   "chat.generation.providerDefaultPlaceholder": "Padrão do provedor",
   "chat.generation.stopSequences.hint": "Até 8 sequências. A geração para se o modelo emitir uma delas.",
@@ -209,7 +209,7 @@
   "chat.toolCall.consent.rememberChat": "Lembrar para este chat",
   "chat.toolCall.consent.safetyNote": "O {appName} nunca executa uma ferramenta com efeitos colaterais sem sua aprovação. A saída da ferramenta fica isolada e nunca é reinserida no prompt.",
   "chat.toolCall.deniedNotice": "<strong>Negado.</strong> A chamada de ferramenta não foi executada.",
-  "chat.toolCall.document.action": "{action, select, create {Criar} edit {Editar} other {Documento}}",
+  "chat.toolCall.document.action": "{action, select, create {Criar} edit {Editar} read {Ler} other {Documento}}",
   "chat.toolCall.document.cancelled": "Ferramenta de documento cancelada.",
   "chat.toolCall.document.failed": "<strong>Não foi possível {action, select, create {criar} edit {editar} other {atualizar}} o documento.</strong> {explained}",
   "chat.toolCall.document.fallbackError": "O documento não foi criado nem atualizado.",
@@ -1213,5 +1213,13 @@
   "workspace.documentPanel.pending.peek": "Prévia ao vivo",
   "workspace.documentPanel.pending.peekHint": "Mostra o documento enquanto é escrito. Os scripts rodam quando ele estiver pronto.",
   "workspace.documentPanel.pending.peekTooLarge": "Este documento é grande demais para visualizar enquanto é escrito.",
-  "chat.stream.stillWorkingHeldDocument": "ainda trabalhando · {seconds}s — este modelo envia documentos de uma vez"
+  "chat.stream.stillWorkingHeldDocument": "ainda trabalhando · {seconds}s — este modelo envia documentos de uma vez",
+  "chat.assistant.cutOff": "Cortada: esta resposta atingiu o limite de saída. Aumente \"Máximo de tokens\" em Configurações → Padrões do chat → Parâmetros do modelo.",
+  "chat.documentBuild.continue": "Continuar construindo",
+  "chat.documentBuild.continuePrompt": "Continue construindo o documento: escreva as seções que ainda são marcadores, usando patch_document.",
+  "chat.documentBuild.pendingSection": "Ainda não escrito: {name}",
+  "chat.documentBuild.sectionsLeft": "{count, plural, one {falta # seção} other {faltam # seções}}",
+  "workspace.documentPanel.banner.sectionsNotWritten": "{count, plural, one {# seção deste documento ainda não foi escrita.} other {# seções deste documento ainda não foram escritas.}}",
+  "chat.assistant.liveMetaLimit": "{elapsed}s · {tokenCount} / {limit} tok",
+  "chat.assistant.retryWithoutLimit": "Tentar novamente sem o limite de tokens"
 }

@@ -50,8 +50,8 @@ describe('selectBuiltinDocumentTools', () => {
 
   it('keeps the full catalog available for reference', () => {
     // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember
-    // + patch_document + read_document.
-    expect(builtinToolDefinitions()).toHaveLength(25);
+    // + patch_document + read_document + generate_image.
+    expect(builtinToolDefinitions()).toHaveLength(26);
   });
 
   it('advertises remember only when memory injection is on', () => {

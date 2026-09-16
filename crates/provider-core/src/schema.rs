@@ -638,6 +638,31 @@ pub struct ProviderRequest {
     pub web_search: Option<WebSearchRequest>,
 }
 
+/// t0-8: a single non-streaming image-generation call. Distinct from
+/// `ProviderRequest` because it is not chat-shaped — no messages, no tools,
+/// no streamed deltas — and carries fields (`prompt`, `size`) a chat request
+/// has no room for.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageGenerationRequest {
+    pub prompt: String,
+    /// Provider-specific size hint (e.g. "1024x1024"); omitted lets the
+    /// provider pick its own default.
+    pub size: Option<String>,
+    pub model_id: String,
+}
+
+/// Result of a `generate_image` call. Always raw bytes, never a remote URL —
+/// an adapter that gets a URL back from the provider fetches it before
+/// returning, so nothing downstream ever stores or renders a link that can
+/// rot (t0-8).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageGenerationResult {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -993,6 +1018,7 @@ pub enum ArtifactKind {
     Code,
     Json,
     Html,
+    Image,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2165,6 +2191,12 @@ pub struct AppSettings {
     /// renderer renders but never executes.
     #[serde(default)]
     pub web_search_consent_acknowledged: bool,
+    /// t0-8: first-use consent acknowledgement for image generation. `false`
+    /// until the user has seen and accepted the one-time consent dialog. The
+    /// dialog surfaces the first time an image-generation tool call would
+    /// otherwise reach a provider. Mirrors `web_search_consent_acknowledged`.
+    #[serde(default)]
+    pub image_generation_consent_acknowledged: bool,
     /// Agent loop guardrails: max provider rounds and wall-clock budget per turn.
     #[serde(default)]
     pub agent: AgentGuardrails,
@@ -2244,6 +2276,7 @@ impl Default for AppSettings {
             web_search_enabled: false,
             web_search: WebSearchDefaults::default(),
             web_search_consent_acknowledged: false,
+            image_generation_consent_acknowledged: false,
             agent: AgentGuardrails::default(),
             keychain_mode: KeychainMode::default(),
             branding_enabled: false,
@@ -2318,6 +2351,9 @@ pub struct SettingsPatch {
     /// Phase 7 / M-WebSearch: first-use consent acknowledgement.
     #[ts(optional)]
     pub web_search_consent_acknowledged: Option<bool>,
+    /// t0-8: first-use consent acknowledgement for image generation.
+    #[ts(optional)]
+    pub image_generation_consent_acknowledged: Option<bool>,
     /// Replace agent loop guardrails. Values are validated on save.
     #[ts(optional)]
     pub agent: Option<AgentGuardrails>,

@@ -50,6 +50,8 @@ fn main() {
     AskUserField::export().expect("export AskUserField");
     ProviderEvent::export().expect("export ProviderEvent");
 
+    // Image generation (t0-8).
+
     // Agent web search (M-WebSearch).
     WebSearchMode::export().expect("export WebSearchMode");
     LocalSearchBackend::export().expect("export LocalSearchBackend");

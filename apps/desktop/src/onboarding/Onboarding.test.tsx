@@ -74,6 +74,7 @@ const baseSettings: AppSettings = {
     includeSources: false,
   },
   webSearchConsentAcknowledged: false,
+  imageGenerationConsentAcknowledged: false,
   agent: {
     maxSteps: 25,
     wallClockBudgetSecs: 300,

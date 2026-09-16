@@ -56,6 +56,7 @@ export const GALLERY_SETTINGS: AppSettings = {
     includeSources: false,
   },
   webSearchConsentAcknowledged: true,
+  imageGenerationConsentAcknowledged: false,
   agent: {
     maxSteps: 25,
     wallClockBudgetSecs: 300,

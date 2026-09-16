@@ -41,6 +41,7 @@ const settings = {
   onboardingCompleted: true,
   webSearchEnabled: false,
   webSearchConsentAcknowledged: false,
+  imageGenerationConsentAcknowledged: false,
   keychainMode: 'os',
 } as unknown as AppSettings;
 

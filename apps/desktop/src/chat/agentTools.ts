@@ -293,6 +293,21 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     displayGroup: 'Utilities',
   },
   {
+    // Defined so the TS/Rust parity guard can see it, but deliberately in a
+    // group no selector filters on -- so it is described and never offered to
+    // a turn. Gating is t0-8 M4's job.
+    toolId: 'generate_image',
+    name: 'generate_image',
+    description:
+      `Generate a single image from a text prompt and save it as a new image artifact. Produces exactly one image per call -- call it again for additional images. Requires the active provider to support image generation; ${appName()} returns a clear error if it doesn't.`,
+    inputSchema: schema([
+      { name: 'prompt', type: 'string', required: true },
+      { name: 'size', type: 'string' },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: 'Images',
+  },
+  {
     toolId: 'remember',
     name: 'remember',
     description:

@@ -1356,6 +1356,27 @@ impl StreamManager {
                     _ => None,
                 }
             });
+        // t0-8 M3: resolve image-generation support once, here, the same way
+        // `workspace`/`search` above are resolved rather than left as raw
+        // `AppState`. Gated on the provider (not `settings.active_model`,
+        // which is always a chat model — see `ImageToolConfig`'s doc
+        // comment); `None` when the active provider has no configured
+        // default image model or its adapter/credentials can't be resolved,
+        // and `generate_image` fails clearly in that case rather than
+        // silently no-op'ing. Resolved via `self.adapter_resolver` (not
+        // `provider_core::get_adapter` directly) so tests can substitute a
+        // fake adapter here exactly as they already do for chat rounds.
+        let image_provider = settings.active_provider.clone();
+        let image = provider_core::default_image_model(&image_provider).and_then(|model_id| {
+            let adapter = (self.adapter_resolver)(&image_provider)?;
+            let adapter_ctx = Self::build_adapter_context(state, &image_provider).ok()?;
+            Some(agent_tools::ImageToolConfig {
+                provider_id: image_provider.clone(),
+                model_id: model_id.to_string(),
+                adapter,
+                adapter_ctx,
+            })
+        });
         let ctx = agent_tools::AgentToolContext {
             db: &state.db,
             artifacts_dir: &state.paths.artifacts,
@@ -1369,6 +1390,7 @@ impl StreamManager {
                 api_key: search_api_key,
                 searxng_base_url: settings.web_search.searxng_base_url.clone(),
             },
+            image,
         };
         let sink = runtime_channel.map(|channel| {
             let channel = channel.clone();

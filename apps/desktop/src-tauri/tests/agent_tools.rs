@@ -25,6 +25,7 @@ async fn write_html_document_creates_artifact() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -74,6 +75,7 @@ async fn write_html_document_creates_when_artifact_id_unknown() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -133,6 +135,7 @@ async fn edit_text_document_updates_existing() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
     let result = agent_tools::execute_builtin_tool(
         &ctx,
@@ -184,6 +187,7 @@ async fn export_document_writes_file() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
     let result = agent_tools::execute_builtin_tool(
         &ctx,
@@ -265,6 +269,7 @@ async fn write_brand_theme_creates_parseable_artifact() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -329,6 +334,7 @@ async fn write_brand_theme_rejects_bad_hex_naming_the_field() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let mut dark = valid_dark_palette();
@@ -377,6 +383,7 @@ async fn write_brand_theme_rejects_missing_light_palette() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -416,6 +423,7 @@ async fn write_brand_theme_surfaces_contrast_warnings_without_failing() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -506,6 +514,7 @@ async fn patch_document_replaces_placeholders_and_keeps_the_kind() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -554,6 +563,7 @@ async fn a_failing_edit_saves_nothing_and_names_the_edit() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -606,6 +616,7 @@ async fn read_document_returns_the_requested_lines() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(
@@ -642,6 +653,7 @@ async fn read_document_cuts_a_minified_line_instead_of_returning_nothing() {
         source_message_id: None,
         workspace: None,
         search: Default::default(),
+        image: None,
     };
 
     let result = agent_tools::execute_builtin_tool(

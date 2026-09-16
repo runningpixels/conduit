@@ -100,6 +100,32 @@ pub fn model_generates_images(provider_id: &str, model_id: &str) -> bool {
     }
 }
 
+/// The per-provider default image model to use when a caller wants to
+/// generate an image but has no image-specific model selected (t0-8 M3).
+///
+/// This exists because the turn's active *chat* model
+/// (`AppSettings.active_model`) is never an image model — `gpt-image-2.5-*`
+/// and `imagen-4.0-*` don't share an id namespace with `gpt-4o`/`gemini-2.0-*`
+/// — so gating image generation on `model_generates_images(provider,
+/// active_model)` would be false for every real user and the feature would
+/// never fire. Gating on the provider and picking a hardcoded default model
+/// is the deliberate M3 tradeoff instead.
+///
+/// The ids below are verified-current as of 2026-09. Providers rename and
+/// retire image models without much notice (this crate already tracks that
+/// churn loosely via [`model_generates_images`]'s substring allowlist); this
+/// function's ids will need revisiting when that happens. That periodic
+/// upkeep cost is accepted as the known price of the "pick a default"
+/// approach — the alternative (a user-facing image-model picker) is out of
+/// scope for the MVP.
+pub fn default_image_model(provider_id: &str) -> Option<&'static str> {
+    match provider_id.trim().to_ascii_lowercase().as_str() {
+        "openai" => Some("gpt-image-2.5-sunburst"),
+        "gemini" => Some("imagen-4.0-generate-001"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +225,60 @@ mod tests {
     fn top_level_keys_describes_non_object_values() {
         let value = serde_json::json!([1, 2, 3]);
         assert!(top_level_keys(&value).contains("array"));
+    }
+
+    #[test]
+    fn default_image_model_covers_the_two_generative_providers() {
+        assert_eq!(
+            default_image_model("openai"),
+            Some("gpt-image-2.5-sunburst")
+        );
+        assert_eq!(
+            default_image_model("gemini"),
+            Some("imagen-4.0-generate-001")
+        );
+    }
+
+    #[test]
+    fn default_image_model_is_none_elsewhere() {
+        assert_eq!(default_image_model("anthropic"), None);
+        assert_eq!(default_image_model("ollama"), None);
+        assert_eq!(default_image_model("made-up-provider"), None);
+    }
+
+    #[test]
+    fn default_image_model_matching_is_case_insensitive() {
+        assert_eq!(
+            default_image_model("OpenAI"),
+            Some("gpt-image-2.5-sunburst")
+        );
+        assert_eq!(
+            default_image_model("GEMINI"),
+            Some("imagen-4.0-generate-001")
+        );
+    }
+
+    /// The two tables must not contradict each other: whatever
+    /// `default_image_model` would actually send as `model_id`,
+    /// `model_generates_images` must agree is a real image model for that
+    /// provider. If a future edit renames one default without updating the
+    /// other, this is the test that catches it.
+    #[test]
+    fn default_image_model_is_always_recognized_by_model_generates_images() {
+        for provider in [
+            "openai",
+            "gemini",
+            "anthropic",
+            "ollama",
+            "made-up-provider",
+        ] {
+            if let Some(model) = default_image_model(provider) {
+                assert!(
+                    model_generates_images(provider, model),
+                    "default_image_model({provider}) = {model:?} but \
+                     model_generates_images({provider}, {model:?}) is false"
+                );
+            }
+        }
     }
 }

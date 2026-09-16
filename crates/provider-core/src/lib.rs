@@ -22,7 +22,7 @@ pub use catalog::{
     descriptor, has_usable_provider_credential, list_descriptors, CredentialMode,
     ProviderDescriptor,
 };
-pub use image_generation::model_generates_images;
+pub use image_generation::{default_image_model, model_generates_images};
 pub use normalize::{validate, NormalizedRequest};
 pub use schema::*;
 pub use vision::model_accepts_images;

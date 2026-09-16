@@ -33,6 +33,8 @@ export type { ProviderError } from './generated/provider_error';
 export type { ProviderEvent } from './generated/provider_event';
 export type { AskUserField } from './generated/ask_user_field';
 
+// Image generation (t0-8).
+
 // Agent web search (M-WebSearch).
 export type { WebSearchMode } from './generated/web_search_mode';
 export type { LocalSearchBackend } from './generated/local_search_backend';

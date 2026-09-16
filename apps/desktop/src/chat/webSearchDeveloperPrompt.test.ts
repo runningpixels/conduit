@@ -84,6 +84,7 @@ describe('buildProviderRequest web search prompts', () => {
       includeSources: false,
     },
     webSearchConsentAcknowledged: true,
+    imageGenerationConsentAcknowledged: false,
     agent: {
       maxSteps: 25,
       wallClockBudgetSecs: 300,

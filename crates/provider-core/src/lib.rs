@@ -8,6 +8,7 @@ pub mod brand_emit;
 pub mod catalog;
 pub mod error;
 pub mod fixtures;
+pub mod image_generation;
 pub mod normalize;
 pub mod output_limits;
 pub mod retry;
@@ -21,6 +22,7 @@ pub use catalog::{
     descriptor, has_usable_provider_credential, list_descriptors, CredentialMode,
     ProviderDescriptor,
 };
+pub use image_generation::model_generates_images;
 pub use normalize::{validate, NormalizedRequest};
 pub use schema::*;
 pub use vision::model_accepts_images;

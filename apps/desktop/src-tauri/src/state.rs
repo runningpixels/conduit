@@ -382,6 +382,9 @@ impl AppState {
         if let Some(value) = patch.web_search_consent_acknowledged {
             settings.web_search_consent_acknowledged = value;
         }
+        if let Some(value) = patch.image_generation_consent_acknowledged {
+            settings.image_generation_consent_acknowledged = value;
+        }
         if let Some(guardrails) = patch.agent {
             crate::validation::validate_agent_guardrails(&guardrails)?;
             settings.agent = guardrails;

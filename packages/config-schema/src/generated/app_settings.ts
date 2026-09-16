@@ -78,6 +78,13 @@ webSearch: WebSearchDefaults,
  */
 webSearchConsentAcknowledged: boolean, 
 /**
+ * t0-8: first-use consent acknowledgement for image generation. `false`
+ * until the user has seen and accepted the one-time consent dialog. The
+ * dialog surfaces the first time an image-generation tool call would
+ * otherwise reach a provider. Mirrors `web_search_consent_acknowledged`.
+ */
+imageGenerationConsentAcknowledged: boolean, 
+/**
  * Agent loop guardrails: max provider rounds and wall-clock budget per turn.
  */
 agent: AgentGuardrails, 

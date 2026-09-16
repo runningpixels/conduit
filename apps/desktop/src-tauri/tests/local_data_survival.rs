@@ -176,6 +176,7 @@ async fn settings_and_db_survive_in_place_reopen() {
         web_search_enabled: None,
         web_search: None,
         web_search_consent_acknowledged: None,
+        image_generation_consent_acknowledged: None,
         agent: Some(provider_core::schema::AgentGuardrails {
             max_steps: 40,
             wall_clock_budget_secs: 600,

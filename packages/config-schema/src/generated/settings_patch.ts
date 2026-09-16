@@ -30,6 +30,10 @@ webSearch?: WebSearchDefaults,
  */
 webSearchConsentAcknowledged?: boolean, 
 /**
+ * t0-8: first-use consent acknowledgement for image generation.
+ */
+imageGenerationConsentAcknowledged?: boolean, 
+/**
  * Replace agent loop guardrails. Values are validated on save.
  */
 agent?: AgentGuardrails, 

@@ -1,4 +1,6 @@
-use crate::schema::{ProviderError, ProviderEvent, ProviderRequest};
+use crate::schema::{
+    ImageGenerationRequest, ImageGenerationResult, ProviderError, ProviderEvent, ProviderRequest,
+};
 use async_trait::async_trait;
 use futures::stream::Stream;
 use std::pin::Pin;
@@ -38,6 +40,22 @@ pub trait ProviderAdapter: Send + Sync {
         ctx: AdapterContext,
         cancel: CancellationToken,
     ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError>;
+
+    /// t0-8: a single non-streaming image-generation call. Defaults to a
+    /// clear "unsupported" error so every existing adapter keeps compiling
+    /// and behaving exactly as before — only `openai` and `gemini` override
+    /// it (M2); every other provider inherits this default and fails the
+    /// call rather than silently doing nothing.
+    async fn generate_image(
+        &self,
+        _request: ImageGenerationRequest,
+        _ctx: &AdapterContext,
+    ) -> Result<ImageGenerationResult, ProviderError> {
+        Err(crate::error::fatal(format!(
+            "{} does not support image generation",
+            self.id()
+        )))
+    }
 }
 
 pub fn registry() -> Vec<Box<dyn ProviderAdapter>> {

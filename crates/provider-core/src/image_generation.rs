@@ -6,6 +6,80 @@
 //! documented as inbound-only (hydration lives in the desktop crate; adapters
 //! only ever see already-hydrated `MessagePartKind::Image` parts there).
 
+use base64::Engine;
+
+use crate::error::fatal;
+use crate::schema::{ImageGenerationResult, ProviderError};
+
+/// Decoded image size accepted back from a provider (mirrors the desktop
+/// crate's inbound `vision::VISION_FORWARD_MAX_BYTES` cap, applied here to
+/// the outbound direction: a generated image the adapter decodes before it
+/// is ever handed to a caller). An oversized response is rejected with a
+/// clear error rather than stored.
+pub const IMAGE_GENERATION_MAX_BYTES: usize = 20 * 1024 * 1024;
+
+/// Decode a base64 image payload returned by a provider into raw bytes,
+/// sniffing the real MIME type from the decoded bytes rather than trusting
+/// the provider's claimed type (same approach as the desktop crate's
+/// `vision::resolve_image_mime`, via the `infer` crate) — falling back to
+/// `claimed_mime` only when sniffing can't identify the bytes. Enforces
+/// [`IMAGE_GENERATION_MAX_BYTES`] and never returns `Ok` with empty bytes.
+pub(crate) fn decode_generated_image(
+    provider: &str,
+    b64: &str,
+    claimed_mime: Option<&str>,
+) -> Result<ImageGenerationResult, ProviderError> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|e| {
+            fatal(format!(
+                "{provider} returned an unparsable base64 image: {e}"
+            ))
+        })?;
+
+    if bytes.is_empty() {
+        return Err(fatal(format!("{provider} returned an empty image payload")));
+    }
+
+    if bytes.len() > IMAGE_GENERATION_MAX_BYTES {
+        return Err(fatal(format!(
+            "{provider} image ({} bytes) exceeds the {} byte outbound size cap",
+            bytes.len(),
+            IMAGE_GENERATION_MAX_BYTES
+        )));
+    }
+
+    let mime_type = infer::get(&bytes)
+        .map(|kind| kind.mime_type().to_string())
+        .or_else(|| claimed_mime.map(str::to_string))
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+
+    Ok(ImageGenerationResult { bytes, mime_type })
+}
+
+/// Renders the top-level keys of a JSON value for a diagnostic error
+/// message. Used when a provider's image-generation response is missing an
+/// expected field, so a future shape change is diagnosable from the error
+/// text alone rather than producing empty bytes silently.
+pub(crate) fn top_level_keys(value: &serde_json::Value) -> String {
+    match value.as_object() {
+        Some(map) if !map.is_empty() => map.keys().cloned().collect::<Vec<_>>().join(", "),
+        Some(_) => "(empty object)".to_string(),
+        None => format!("(not a JSON object: {})", value_kind(value)),
+    }
+}
+
+fn value_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
 /// True when `model_id` on `provider_id` is expected to generate images.
 ///
 /// This is a hand-written allowlist, not a `ModelInfo` field, for the same
@@ -59,5 +133,71 @@ mod tests {
         assert!(model_generates_images("OpenAI", "DALL-E-3"));
         assert!(model_generates_images("GEMINI", "IMAGEN-3.0-GENERATE-002"));
         assert!(model_generates_images("openai", "GPT-IMAGE-1"));
+    }
+
+    /// 1x1 PNG, base64-encoded (same bytes the desktop crate's `vision.rs`
+    /// sniff test uses).
+    const ONE_PIXEL_PNG_B64: &str =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4z8AAAAADAAEABf7U7wAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn decode_generated_image_sniffs_png_over_a_wrong_claim() {
+        let result = decode_generated_image(
+            "openai",
+            ONE_PIXEL_PNG_B64,
+            Some("application/octet-stream"),
+        )
+        .expect("decode should succeed");
+        assert_eq!(result.mime_type, "image/png");
+        assert_eq!(result.bytes.len(), 70);
+    }
+
+    #[test]
+    fn decode_generated_image_falls_back_to_claimed_mime_when_sniff_fails() {
+        // Not a real image, so `infer` cannot classify it — the claimed MIME
+        // should be used instead.
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b"not an image");
+        let result = decode_generated_image("gemini", &b64, Some("image/png"))
+            .expect("decode should succeed via fallback");
+        assert_eq!(result.mime_type, "image/png");
+    }
+
+    #[test]
+    fn decode_generated_image_rejects_malformed_base64() {
+        let err = decode_generated_image("openai", "not-valid-base64!!!", Some("image/png"))
+            .expect_err("malformed base64 should error");
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn decode_generated_image_rejects_empty_payload() {
+        let err = decode_generated_image("openai", "", Some("image/png"))
+            .expect_err("empty payload should error");
+        assert!(err.message.contains("empty"));
+    }
+
+    #[test]
+    fn decode_generated_image_enforces_size_cap() {
+        use base64::Engine;
+        let oversized = vec![0u8; IMAGE_GENERATION_MAX_BYTES + 1];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&oversized);
+        let err = decode_generated_image("gemini", &b64, Some("image/png"))
+            .expect_err("oversized payload should be rejected");
+        assert!(err.message.contains("exceeds"));
+    }
+
+    #[test]
+    fn top_level_keys_lists_object_fields() {
+        let value = serde_json::json!({ "predictions": [], "error": "x" });
+        let keys = top_level_keys(&value);
+        assert!(keys.contains("predictions"));
+        assert!(keys.contains("error"));
+    }
+
+    #[test]
+    fn top_level_keys_describes_non_object_values() {
+        let value = serde_json::json!([1, 2, 3]);
+        assert!(top_level_keys(&value).contains("array"));
     }
 }

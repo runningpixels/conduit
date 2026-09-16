@@ -2,13 +2,15 @@ use crate::adapter::{AdapterContext, ModelInfo, ProviderAdapter, StreamParser};
 use crate::adapters::{
     message_text, missing_key, normalized_or_err, parse_fixture_stream, wrap_sse_stream,
 };
+use crate::error::fatal;
+use crate::image_generation::{decode_generated_image, top_level_keys};
 use crate::normalize::NormalizedRequest;
 use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
-    ContentAnnotation, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
-    ToolChoice, ToolKind,
+    ContentAnnotation, ImageGenerationRequest, ImageGenerationResult, MessagePartKind, MessageRole,
+    ProviderError, ProviderEvent, ProviderRequest, ToolChoice, ToolKind,
 };
-use crate::transport::{gemini_api_key_header, get_json, post_sse, SseRequest};
+use crate::transport::{gemini_api_key_header, get_json, post_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::Stream;
 use serde_json::{json, Value};
@@ -627,6 +629,36 @@ impl ProviderAdapter for GeminiAdapter {
         parse_model_list(&response)
     }
 
+    /// t0-8 M2: `POST {base}/models/{model}:predict`. The response shape is
+    /// not officially documented (see the adapter's `parse_image_response`
+    /// doc comment), so decoding is defensive: a missing
+    /// `bytesBase64Encoded` field names the response's actual top-level keys
+    /// rather than silently returning empty bytes.
+    async fn generate_image(
+        &self,
+        request: ImageGenerationRequest,
+        ctx: &AdapterContext,
+    ) -> Result<ImageGenerationResult, ProviderError> {
+        let key = ctx.api_key.as_deref().ok_or_else(missing_key)?;
+        let model = normalize_model_id(&request.model_id);
+        let body = json!({
+            "instances": [{ "prompt": request.prompt }],
+            "parameters": { "sampleCount": 1 },
+        });
+
+        let cancel = CancellationToken::new();
+        let response = post_json(
+            &ctx.http,
+            &format!("{}/models/{model}:predict", base_url(ctx)),
+            gemini_api_key_header(key)?,
+            body,
+            cancel,
+        )
+        .await?;
+
+        parse_image_response(&response)
+    }
+
     async fn stream_chat(
         &self,
         request: ProviderRequest,
@@ -672,6 +704,34 @@ pub fn parse_fixture(request_id: &str, fixture: &str) -> Vec<ProviderEvent> {
     parse_fixture_stream(&mut GeminiParser::new(), request_id, fixture, |line| {
         line.strip_prefix("data:").map(str::trim)
     })
+}
+
+/// t0-8 M2: decode a `:predict` response. **The response shape below is
+/// triangulated from three non-official sources, not Google's official
+/// reference** (which omits the response schema for this endpoint):
+/// `{"predictions": [{"bytesBase64Encoded": "...", "mimeType": "image/png"}]}`.
+/// Because it is unconfirmed, this decodes defensively: any missing/renamed
+/// field produces an error that quotes the actual top-level keys present, so
+/// a real-world shape change is diagnosable from the error text instead of
+/// silently producing empty bytes.
+pub(crate) fn parse_image_response(value: &Value) -> Result<ImageGenerationResult, ProviderError> {
+    let entry = value.pointer("/predictions/0").ok_or_else(|| {
+        fatal(format!(
+            "gemini image-generation response had no predictions[0] entry (top-level keys: {})",
+            top_level_keys(value)
+        ))
+    })?;
+
+    let Some(b64) = entry.get("bytesBase64Encoded").and_then(|v| v.as_str()) else {
+        return Err(fatal(format!(
+            "gemini image-generation response predictions[0] had no bytesBase64Encoded field \
+             (keys: {})",
+            top_level_keys(entry)
+        )));
+    };
+    let claimed_mime = entry.get("mimeType").and_then(|v| v.as_str());
+
+    decode_generated_image("gemini", b64, claimed_mime.or(Some("image/png")))
 }
 
 #[cfg(test)]
@@ -1050,6 +1110,61 @@ mod tests {
                 .pointer("/inlineData/data")
                 .and_then(|v| v.as_str()),
             Some("QUJD")
+        );
+    }
+
+    /// 1x1 PNG, base64-encoded (same bytes the desktop crate's `vision.rs`
+    /// sniff test uses).
+    const ONE_PIXEL_PNG_B64: &str =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4z8AAAAADAAEABf7U7wAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn parse_image_response_decodes_bytes_base64_encoded_and_sniffs_png() {
+        let value = json!({
+            "predictions": [{ "bytesBase64Encoded": ONE_PIXEL_PNG_B64, "mimeType": "image/png" }]
+        });
+        let result = parse_image_response(&value).expect("decode should succeed");
+        assert_eq!(result.mime_type, "image/png");
+        assert_eq!(result.bytes.len(), 70);
+    }
+
+    #[test]
+    fn parse_image_response_reports_unexpected_shape() {
+        // Simulates the documented risk: the real API renames or omits the
+        // field this adapter expects.
+        let value = json!({
+            "predictions": [{ "someOtherField": "unexpected" }]
+        });
+        let err = parse_image_response(&value).expect_err("missing field should error");
+        assert!(
+            err.message.contains("someOtherField"),
+            "expected the error to name the actual keys present: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parse_image_response_reports_missing_predictions() {
+        let value = json!({ "error": { "message": "invalid argument" } });
+        let err = parse_image_response(&value).expect_err("missing predictions should error");
+        assert!(
+            err.message.contains("error"),
+            "expected the error to name the actual top-level keys: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parse_image_response_rejects_oversized_payload() {
+        use base64::Engine;
+        let oversized = vec![0u8; crate::image_generation::IMAGE_GENERATION_MAX_BYTES + 1];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&oversized);
+        let value = json!({ "predictions": [{ "bytesBase64Encoded": b64 }] });
+        let err = parse_image_response(&value).expect_err("oversized payload should be rejected");
+        assert!(
+            err.message.contains("exceeds"),
+            "expected a size-cap error: {}",
+            err.message
         );
     }
 }

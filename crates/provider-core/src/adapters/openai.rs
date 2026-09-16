@@ -3,13 +3,16 @@ use crate::adapters::{
     message_text, missing_key, normalized_or_err, openai_user_content, parse_fixture_stream,
     role_to_string, wrap_sse_stream,
 };
+use crate::error::fatal;
+use crate::image_generation::{decode_generated_image, top_level_keys};
 use crate::normalize::NormalizedRequest;
 use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
-    ContentAnnotation, GenerationControls, MessagePart, MessagePartKind, MessageRole,
-    ProviderError, ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
+    ContentAnnotation, GenerationControls, ImageGenerationRequest, ImageGenerationResult,
+    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
+    SearchContextSize, ToolChoice,
 };
-use crate::transport::{get_json, post_sse, SseRequest};
+use crate::transport::{get_json, post_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -1438,6 +1441,37 @@ impl ProviderAdapter for OpenAiAdapter {
         Ok(models)
     }
 
+    /// t0-8 M2: `POST {base}/images/generations`. OpenAI returns base64 by
+    /// default (no `response_format` is sent, so the provider's own default
+    /// applies) — see `parse_image_response` for the URL-response fallback.
+    async fn generate_image(
+        &self,
+        request: ImageGenerationRequest,
+        ctx: &AdapterContext,
+    ) -> Result<ImageGenerationResult, ProviderError> {
+        let headers = self.request_headers(ctx)?;
+        let mut body = json!({
+            "model": request.model_id,
+            "prompt": request.prompt,
+            "n": 1,
+        });
+        if let Some(size) = request.size.as_deref().filter(|s| !s.trim().is_empty()) {
+            body["size"] = json!(size);
+        }
+
+        let cancel = CancellationToken::new();
+        let response = post_json(
+            &ctx.http,
+            &format!("{}/images/generations", base_url(self, ctx)),
+            headers,
+            body,
+            cancel,
+        )
+        .await?;
+
+        parse_image_response(&response)
+    }
+
     async fn stream_chat(
         &self,
         mut request: ProviderRequest,
@@ -1547,6 +1581,37 @@ pub fn parse_fixture(request_id: &str, fixture: &str) -> Vec<ProviderEvent> {
             .map(str::trim)
             .filter(|data| *data != "[DONE]")
     })
+}
+
+/// t0-8 M2: decode `{"data":[{"b64_json": "...", "revised_prompt": "..."}]}`
+/// into raw, MIME-sniffed bytes. If a caller-less-common `url` field shows up
+/// instead (the API supports `response_format: "url"`, which this adapter
+/// never requests), that is treated as an unsupported response rather than
+/// fetched — see the M2 report for why fetch-and-discard was not added here.
+pub(crate) fn parse_image_response(value: &Value) -> Result<ImageGenerationResult, ProviderError> {
+    let entry = value.pointer("/data/0").ok_or_else(|| {
+        fatal(format!(
+            "openai image-generation response had no data[0] entry (top-level keys: {})",
+            top_level_keys(value)
+        ))
+    })?;
+
+    if let Some(b64) = entry.get("b64_json").and_then(|v| v.as_str()) {
+        return decode_generated_image("openai", b64, Some("image/png"));
+    }
+
+    if entry.get("url").and_then(|v| v.as_str()).is_some() {
+        return Err(fatal(
+            "openai returned an image URL instead of base64 data; URL responses are not \
+             supported by this adapter (it never sends response_format=url), so this \
+             indicates an unexpected API change",
+        ));
+    }
+
+    Err(fatal(format!(
+        "openai image-generation response data[0] had neither b64_json nor url (keys: {})",
+        top_level_keys(entry)
+    )))
 }
 
 #[cfg(test)]
@@ -2521,6 +2586,61 @@ mod tests {
         assert_eq!(
             input[0]["content"][1]["image_url"],
             "data:image/png;base64,QUJD"
+        );
+    }
+
+    /// 1x1 PNG, base64-encoded (same bytes the desktop crate's `vision.rs`
+    /// sniff test uses).
+    const ONE_PIXEL_PNG_B64: &str =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4z8AAAAADAAEABf7U7wAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn parse_image_response_decodes_b64_json_and_sniffs_png() {
+        let value = json!({
+            "data": [{ "b64_json": ONE_PIXEL_PNG_B64, "revised_prompt": "a red circle" }]
+        });
+        let result = parse_image_response(&value).expect("decode should succeed");
+        assert_eq!(result.mime_type, "image/png");
+        assert_eq!(result.bytes.len(), 70);
+        assert!(!result.bytes.is_empty());
+    }
+
+    #[test]
+    fn parse_image_response_rejects_url_shape() {
+        let value = json!({
+            "data": [{ "url": "https://example.com/generated.png" }]
+        });
+        let err = parse_image_response(&value).expect_err("url responses are unsupported");
+        assert!(
+            err.message.contains("URL"),
+            "expected the error to explain URL responses are unsupported: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parse_image_response_reports_unexpected_shape() {
+        let value = json!({ "error": { "message": "invalid_request" } });
+        let err = parse_image_response(&value).expect_err("missing data[0] should error");
+        assert!(
+            err.message.contains("error"),
+            "expected the error to name the actual top-level keys: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parse_image_response_rejects_oversized_payload() {
+        // Build a base64 payload whose decoded size exceeds the 20MiB cap.
+        use base64::Engine;
+        let oversized = vec![0u8; crate::image_generation::IMAGE_GENERATION_MAX_BYTES + 1];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&oversized);
+        let value = json!({ "data": [{ "b64_json": b64 }] });
+        let err = parse_image_response(&value).expect_err("oversized payload should be rejected");
+        assert!(
+            err.message.contains("exceeds"),
+            "expected a size-cap error: {}",
+            err.message
         );
     }
 }

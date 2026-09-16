@@ -221,3 +221,46 @@ pub async fn get_json(
 
     response.json().await.map_err(|e| fatal(e.to_string()))
 }
+
+/// POSTs a JSON body and decodes a JSON response. The whole request is
+/// retried on retryable errors (H4) — like `get_json`, this is a one-shot
+/// call with no mid-stream commitment, unlike `post_sse`. A per-request 30s
+/// timeout (H3) bounds the overall call; JSON decode failures are fatal and
+/// not retried.
+///
+/// t0-8: used by the image-generation adapters, whose `images/generations`
+/// and `:predict` calls are single-shot JSON in, JSON out — not SSE.
+pub async fn post_json(
+    http: &HttpClient,
+    url: &str,
+    headers: HeaderMap,
+    body: serde_json::Value,
+    cancel: CancellationToken,
+) -> Result<serde_json::Value, ProviderError> {
+    let url_owned = url.to_string();
+    let response = crate::retry::with_retry(cancel.clone(), || {
+        let client = http.client.clone();
+        let url = url_owned.clone();
+        let headers = headers.clone();
+        let body = body.clone();
+        async move {
+            let resp = client
+                .post(&url)
+                .headers(headers)
+                .json(&body)
+                .timeout(Duration::from_secs(30))
+                .send()
+                .await
+                .map_err(classify_send_error)?;
+            let status = resp.status().as_u16();
+            if status >= 400 {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(from_http_status(status, &body));
+            }
+            Ok(resp)
+        }
+    })
+    .await?;
+
+    response.json().await.map_err(|e| fatal(e.to_string()))
+}

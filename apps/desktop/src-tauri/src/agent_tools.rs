@@ -39,6 +39,11 @@ const READ_DOCUMENT_MAX_CHARS: usize = 60_000;
 // brand.md directly; see `write_brand_theme`'s doc comment).
 pub const WRITE_BRAND_THEME_TOOL: &str = "write_brand_theme";
 
+/// t0-8 M3: generate one image from a prompt and save it as an `image`-kind
+/// artifact. Only runs when `ctx.image` is configured (see
+/// [`ImageToolConfig`]); not yet reachable from a real turn (M4).
+pub const GENERATE_IMAGE_TOOL: &str = "generate_image";
+
 // Utility tools (ReadOnly, always available)
 pub const CURRENT_TIME_TOOL: &str = "current_time";
 pub const UUID_TOOL: &str = "uuid";
@@ -75,6 +80,41 @@ pub struct AgentToolContext<'a> {
     pub workspace: Option<&'a crate::workspace_tools::WorkspaceToolConfig>,
     /// Local web_search backend + optional API key. Default is DuckDuckGo.
     pub search: crate::search::LocalSearchConfig,
+    /// Present when the active provider has a configured default image model
+    /// (t0-8 M3). `None` makes `generate_image` fail with a clear error
+    /// instead of silently doing nothing — see [`ImageToolConfig`].
+    pub image: Option<ImageToolConfig>,
+}
+
+/// Resolved image-generation support for the turn's active provider (t0-8
+/// M3): which adapter to call, the `AdapterContext` it needs, and which
+/// model id to send. Built once at the single `AgentToolContext`
+/// construction site in `stream_manager.rs`, mirroring how `workspace` and
+/// `search` above are resolved configs rather than raw `AppState`.
+///
+/// Gated on the *provider*, not the turn's active chat model:
+/// `AppSettings.active_model` is always a chat model, and image models
+/// (`gpt-image-2.5-*`, `imagen-4.0-*`) don't share an id namespace with
+/// chat models, so `model_generates_images(provider, active_model)` would be
+/// false for every real user. `stream_manager.rs` instead calls
+/// `provider_core::default_image_model(active_provider)` and only builds a
+/// config when that returns `Some`.
+///
+/// Carries the already-*resolved* adapter (via `StreamManager`'s existing
+/// `AdapterResolver` seam — the same one `agent_turn.rs`'s `ScriptedAdapter`
+/// substitutes for chat) rather than just a provider id string, so a test
+/// can hand `generate_image` a fake `ProviderAdapter` directly with no
+/// network call and no `AppState`.
+pub struct ImageToolConfig {
+    /// Kept alongside `adapter` for error messages; `adapter.id()` would
+    /// also work but this reads clearer at call sites that don't otherwise
+    /// touch the adapter.
+    pub provider_id: String,
+    /// The provider's default image model — see this struct's doc comment
+    /// for why it is never the turn's active chat model.
+    pub model_id: String,
+    pub adapter: Box<dyn provider_core::ProviderAdapter>,
+    pub adapter_ctx: provider_core::AdapterContext,
 }
 
 #[derive(Debug, Clone)]
@@ -231,6 +271,31 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             ]),
             permission_level: Some(PermissionLevel::Sensitive),
             display_group: Some("Documents".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        // ---------------------------------------------------------------------
+        // Image tools (t0-8 M3). Gated on `ctx.image`, which is only ever
+        // `Some` for a provider with a configured default image model (see
+        // `ImageToolConfig`) — not reachable from a real turn until M4 adds
+        // it to `selectBuiltinTurnTools` on the TS side.
+        // ---------------------------------------------------------------------
+        ToolDefinition {
+            tool_id: GENERATE_IMAGE_TOOL.to_string(),
+            name: GENERATE_IMAGE_TOOL.to_string(),
+            description: format!(
+                "Generate a single image from a text prompt and save it as a new image \
+                 artifact. Produces exactly one image per call -- call it again for \
+                 additional images. Requires the active provider to support image \
+                 generation; {app_name} returns a clear error if it doesn't."
+            ),
+            input_schema: json_schema(&[
+                ("prompt", "string", true),
+                ("size", "string", false),
+            ]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Images".to_string()),
             tenant_scope: None,
             kind: None,
             host_config: None,
@@ -529,6 +594,7 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | PATCH_DOCUMENT_TOOL
             | READ_DOCUMENT_TOOL
             | WRITE_BRAND_THEME_TOOL
+            | GENERATE_IMAGE_TOOL
             | CURRENT_TIME_TOOL
             | UUID_TOOL
             | RANDOM_TOOL
@@ -655,6 +721,13 @@ pub async fn execute_builtin_tool(
         READ_DOCUMENT_TOOL => {
             let input: ReadDocumentInput = parse_args(tool_name, arguments)?;
             read_document(ctx, input).await
+        }
+        // ---------------------------------------------------------------------
+        // Image tools
+        // ---------------------------------------------------------------------
+        GENERATE_IMAGE_TOOL => {
+            let input: GenerateImageInput = parse_args(tool_name, arguments)?;
+            generate_image(ctx, input).await
         }
         // ---------------------------------------------------------------------
         // Branding tools
@@ -1369,6 +1442,107 @@ pub fn read_document_output(
     output
 }
 
+/// Call the configured provider's `generate_image` and save the result as a
+/// new `image`-kind artifact.
+///
+/// Mirrors [`write_document`]'s structure, but the order of operations is
+/// different on purpose: `write_document` already has its text in hand (the
+/// model produced it), so it creates the artifact row first. Here the
+/// "content" comes from an async provider call that can fail (bad prompt,
+/// provider outage, no credential) — generating first and only creating the
+/// artifact on success avoids leaving behind an empty/orphaned image
+/// artifact every time a generation fails.
+async fn generate_image(
+    ctx: &AgentToolContext<'_>,
+    input: GenerateImageInput,
+) -> Result<Value, String> {
+    // Fail clearly rather than silently doing nothing — the whole point of
+    // gating on the provider (see `ImageToolConfig`'s doc comment) instead of
+    // the active chat model is that this arm is reachable in practice, so it
+    // needs a real error message when the provider truly has no image support
+    // configured.
+    let cfg = ctx.image.as_ref().ok_or_else(|| {
+        "Image generation is not available: the active provider has no configured image model"
+            .to_string()
+    })?;
+
+    let request = provider_core::ImageGenerationRequest {
+        prompt: input.prompt.clone(),
+        size: input.size.clone(),
+        model_id: cfg.model_id.clone(),
+    };
+
+    let result = cfg
+        .adapter
+        .generate_image(request, &cfg.adapter_ctx)
+        .await
+        .map_err(|e| format!("{} image generation failed: {}", cfg.provider_id, e.message))?;
+
+    let extension = extension_for_image_mime(&result.mime_type);
+    let title = resolve_title(Some(truncate_title(&input.prompt, 100)), None);
+
+    let artifact = artifacts::create(
+        ctx.db,
+        ctx.conversation_id,
+        "image",
+        title.as_deref(),
+        ctx.source_message_id.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let filename = format!("image-{}.{extension}", artifact.id);
+
+    let updated = artifacts::set_content(
+        ctx.db,
+        ctx.artifacts_dir,
+        ctx.encryption,
+        &artifact.id,
+        Some(&result.mime_type),
+        &ArtifactContent::File {
+            bytes: result.bytes,
+            filename,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "artifact_id": updated.id,
+        "created": true,
+        "kind": "image",
+        "title": updated.title,
+        "mime_type": updated.mime_type,
+    }))
+}
+
+/// Extension matching a generated image's sniffed MIME type
+/// (`image_generation::decode_generated_image` sniffs it with `infer`,
+/// falling back to the provider's claimed type). Unrecognized types still
+/// get a valid filename rather than failing the whole tool call over a
+/// cosmetic detail.
+fn extension_for_image_mime(mime_type: &str) -> &'static str {
+    match mime_type {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        _ => "bin",
+    }
+}
+
+/// Truncate a prompt down to a reasonable artifact title. Char-based (not
+/// byte-based) so it never splits a multi-byte UTF-8 character.
+fn truncate_title(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{truncated}…")
+    }
+}
+
 /// Turn a validated [`WriteBrandThemeInput`] into a `brand.md`-shaped
 /// [`BrandConfig`], validate it, and — only on success — render it and save
 /// it as a Markdown artifact via the exact same [`write_document`] path
@@ -1606,6 +1780,12 @@ struct EditTextInput {
 struct ExportInput {
     artifact_id: String,
     include_metadata_sidecar: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GenerateImageInput {
+    prompt: String,
+    size: Option<String>,
 }
 
 /// `write_brand_theme`'s input. Deliberately camelCase-keyed
@@ -2009,6 +2189,7 @@ mod tests {
         assert!(is_builtin_tool_name(WRITE_HTML_TOOL)); // existing still works
         assert!(is_builtin_tool_name(WRITE_BRAND_THEME_TOOL));
         assert!(is_builtin_tool_name(REMEMBER_TOOL));
+        assert!(is_builtin_tool_name(GENERATE_IMAGE_TOOL));
         assert!(!is_builtin_tool_name("nonexistent_tool"));
     }
 
@@ -2137,7 +2318,8 @@ mod tests {
         // + 5 workspace file tools
         // + 1 ask_user (t1-2)
         // + 1 remember (t1-5)
-        // + patch_document + read_document = 25
-        assert_eq!(defs.len(), 25);
+        // + patch_document + read_document
+        // + 1 generate_image (t0-8 M3) = 26
+        assert_eq!(defs.len(), 26);
     }
 }

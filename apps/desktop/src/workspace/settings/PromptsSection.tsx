@@ -8,6 +8,7 @@ import {
   updatePrompt,
 } from '../../ipc/client';
 import { useT, type Translate } from '../../i18n';
+import { VariableFillDialog } from './VariableFillDialog';
 
 interface PromptsSectionProps {
   onStatus: (message: string) => void;
@@ -66,6 +67,9 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingPrompt | null>(null);
+  /// The prompt whose `{{variable}}` tokens are being filled in before insert.
+  /// Null when nothing is waiting -- a prompt with no variables never gets here.
+  const [filling, setFilling] = useState<Prompt | null>(null);
   const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -280,6 +284,13 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
                     style={{ padding: '2px 8px', fontSize: 'var(--fs-md)' }}
                     onClick={(e) => {
                       e.stopPropagation();
+                      // A prompt with variables gets filled in first; inserting
+                      // the raw body would drop `{{name}}` into the composer
+                      // for the user to find and fix by hand.
+                      if (p.variables && p.variables.length > 0) {
+                        setFilling(p);
+                        return;
+                      }
                       onInsertPrompt(p.body);
                     }}
                     title={t('settings.prompts.actions.insertTitle')}
@@ -321,6 +332,16 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
           ))}
         </div>
       </div>
+      {filling && (
+        <VariableFillDialog
+          prompt={filling}
+          onConfirm={(filledBody) => {
+            setFilling(null);
+            onInsertPrompt(filledBody);
+          }}
+          onCancel={() => setFilling(null)}
+        />
+      )}
     </div>
   );
 }

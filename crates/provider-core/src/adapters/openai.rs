@@ -2643,4 +2643,53 @@ mod tests {
             err.message
         );
     }
+
+    /// Manual QA helper (t0-8 M3 follow-up): a real, non-mocked call to
+    /// OpenAI's image-generation endpoint, same shape as
+    /// `opencode_zen::tests::zen_live_validate_and_list_models` — `#[ignore]`d
+    /// so `cargo test` never spends real money or needs network by default.
+    ///
+    /// `OPENAI_IMAGE_MODEL` lets this be pointed at a different model than
+    /// `image_generation::default_image_model("openai")` without editing the
+    /// test — useful the day that default needs bumping and you want to
+    /// confirm the replacement works before changing it.
+    ///
+    /// Run with: `OPENAI_API_KEY=... cargo test -p provider-core openai_live_generate_image -- --ignored`
+    #[tokio::test]
+    #[ignore = "requires OPENAI_API_KEY and network"]
+    async fn openai_live_generate_image() {
+        let key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
+        let model_id = std::env::var("OPENAI_IMAGE_MODEL").unwrap_or_else(|_| {
+            crate::image_generation::default_image_model("openai")
+                .expect("openai has a default image model")
+                .to_string()
+        });
+
+        let adapter = OpenAiAdapter::official();
+        let ctx = AdapterContext {
+            api_key: Some(key),
+            base_url: None,
+            http: crate::transport::HttpClient::new(),
+            local_only: false,
+        };
+        let request = crate::schema::ImageGenerationRequest {
+            prompt: "a small red circle on a plain white background".to_string(),
+            size: None,
+            model_id,
+        };
+
+        let result = adapter
+            .generate_image(request, &ctx)
+            .await
+            .expect("generate_image should succeed against the real API");
+        assert!(
+            !result.bytes.is_empty(),
+            "expected a non-empty image payload"
+        );
+        assert!(
+            result.mime_type.starts_with("image/"),
+            "expected an image MIME type, got {}",
+            result.mime_type
+        );
+    }
 }

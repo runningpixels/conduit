@@ -9,6 +9,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Ask for a picture and you get one. On OpenAI, Gemini and OpenRouter, a prompt
+  that plainly asks for an image — "draw me a logo for my bakery" — generates
+  one and saves it with the chat, where it appears in the thread and in the
+  document panel. The image is stored locally, not linked from the provider, so
+  it does not vanish when a remote URL expires.
+  Because each image is billed, you are asked once before the first one, and
+  none is ever generated without that confirmation. Declining still sends your
+  message, just without offering the tool. Asking *about* image generation —
+  "can you generate images?" — is a question, not a request, and costs nothing.
+  Providers without an image endpoint are unchanged: no new button, no dialog,
+  nothing to notice.
+
 - The prompts and resources your connected servers offer are now reachable from
   the composer, not just their tools. A prompt picker fills in whatever
   arguments the prompt declares and drops the result into the composer, where

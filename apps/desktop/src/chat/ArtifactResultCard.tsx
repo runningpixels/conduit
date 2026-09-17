@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Artifact, ArtifactKind, FileState } from '../ipc/contracts';
 import { exportArtifact, getArtifactContentBytes, revealPath } from '../ipc/client';
 import { inlineArtifactText } from '../artifacts/format';
+import { ImageRenderer } from '../artifacts/ImageRenderer';
 import { readExportMetadata } from '../shell/uiPrefs';
 import { Menu } from '../workspace/Menu';
 import { CopyIcon, DownloadIcon, FilePlainIcon, MoreIcon } from '../icons';
@@ -117,8 +118,11 @@ export function ArtifactResultCard({ artifact, fileState, onOpen, onStatus }: Ar
 
   return (
     <div className="artifact-card">
-      <span className="artifact-card-icon" aria-hidden="true">
-        <FilePlainIcon />
+      <span
+        className={artifact.kind === 'image' ? 'artifact-card-icon artifact-card-icon--image' : 'artifact-card-icon'}
+        aria-hidden="true"
+      >
+        {artifact.kind === 'image' ? <ImageRenderer artifact={artifact} /> : <FilePlainIcon />}
       </span>
       <div className="artifact-card-body">
         <div className="artifact-card-title">

@@ -27,6 +27,9 @@ describe('AssistantArtifactStrip', () => {
     vi.mocked(exportArtifact).mockReset();
     vi.mocked(getArtifactContentBytes).mockReset();
     vi.mocked(revealPath).mockReset();
+    // jsdom does not implement the Blob-URL pair ImageRenderer needs.
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url') as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn();
   });
 
   it('renders nothing when no artifacts are linked to the message', () => {
@@ -114,6 +117,27 @@ describe('AssistantArtifactStrip', () => {
     expect(screen.queryByRole('menuitem', { name: /reveal/i })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Copy contents' })).toBeEnabled();
     expect(screen.getByRole('menuitem', { name: 'Save a copy…' })).toBeEnabled();
+  });
+
+  it('shows an image thumbnail instead of the generic file glyph for image artifacts', async () => {
+    vi.mocked(getArtifactContentBytes).mockResolvedValue([1, 2, 3]);
+    const imageArtifact = {
+      ...promotedArtifact,
+      id: 'art-2',
+      kind: 'image' as const,
+      mimeType: 'image/png',
+    };
+
+    const { container } = render(
+      <AssistantArtifactStrip
+        messageId="msg-1"
+        artifacts={[imageArtifact]}
+        onOpenArtifact={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector('.artifact-card-icon--image img')).not.toBeNull());
+    expect(container.querySelector('.artifact-card-icon svg')).toBeNull();
   });
 
   it('exports, then reveals where the file landed', async () => {

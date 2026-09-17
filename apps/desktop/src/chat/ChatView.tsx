@@ -108,6 +108,9 @@ import { useComposerAutosize } from './useComposerAutosize';
 import { readSendWith } from '../shell/uiPrefs';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
 import { WorkspaceToolsConsentDialog } from '../workspace/settings/WorkspaceToolsConsentDialog';
+import { ImageGenerationConsentDialog } from '../workspace/settings/ImageGenerationConsentDialog';
+import { looksLikeImageGenerationRequest } from './imageGenerationPrompt';
+import { defaultImageModel } from './modelGeneratesImages';
 import { SuggestedPrompts } from './SuggestedPrompts';
 import { deriveSuggestedPrompts } from './suggestedPromptLogic';
 import { resolveSearchBackend, resolveWebSearchForTurn, type SearchBackend } from './webSearchIntent';
@@ -570,6 +573,28 @@ function recordSessionTurnProvider(turnId: string, provider: string, model: stri
   sessionTurnProviders.set(turnId, { provider, model });
 }
 
+/** `handleSend`'s optional first argument -- an app-authored/programmatic
+ *  send, as opposed to the composer's own `prompt` state. Named so the t0-8
+ *  M4 image-generation consent gate can stash and replay one without
+ *  duplicating the shape (see `PendingChatSend`, `pendingImageGenerationSendRef`). */
+interface HandleSendOverride {
+  text: string;
+  history: ChatTurn[];
+  attachments?: TurnAttachment[];
+  /** Document intent for an app-authored prompt, whatever language it is in. */
+  intent?: DocumentTurnIntent;
+  /** One-off generation controls for this send, over the conversation's own
+   *  (a key set to `undefined` clears that control). */
+  generationControls?: GenerationControls;
+}
+
+/** The exact arguments a deferred `handleSend(...)` call needs to resume
+ *  after the t0-8 M4 pre-send image-generation consent dialog resolves. */
+interface PendingChatSend {
+  override?: HandleSendOverride;
+  composerAttachments?: TurnAttachment[];
+}
+
 export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatView(
   {
     settings,
@@ -625,6 +650,32 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Session-only dismissal (same UX as diagnostics disclosure M6.5).
   const [showChatConsent, setShowChatConsent] = useState(false);
   const [chatConsentDismissed, setChatConsentDismissed] = useState(false);
+  // t0-8 M4: pre-send consent gate for image generation, raised from
+  // `handleSend` rather than a toggle handler (there is no toggle to
+  // intercept -- image generation has no button). `showImageGenerationConsent`
+  // is ordinary state (it only drives whether the dialog renders), but the two
+  // flags the gate itself reads are refs, not state, and deliberately so:
+  // `onAllow`/`onDeny` below resume the pending send by calling `handleSend`
+  // again *synchronously*, from a closure created on an earlier render. A
+  // `useState` setter's new value is not visible to that already-created
+  // closure until a subsequent render -- which would either re-show the
+  // dialog (denied) or omit the tool it was just granted for (allowed) on the
+  // very send meant to resume. A ref's `.current` is one shared, mutable
+  // object read live at the moment each function body executes, regardless of
+  // which render created that function -- so the mutation below is visible to
+  // the resumed call immediately.
+  const [showImageGenerationConsent, setShowImageGenerationConsent] = useState(false);
+  const imageGenerationConsentDismissedRef = useRef(false);
+  const imageGenerationConsentGrantedThisSessionRef = useRef(false);
+  const pendingImageGenerationSendRef = useRef<PendingChatSend | null>(null);
+  /** Effective consent: the persisted setting OR'd with this session's local
+   *  grant. A function, not a hoisted `const`, for the same reason the two
+   *  refs above exist -- called fresh at each use site (inside `handleSend`,
+   *  `loadToolDefinitions`, and the `contextTokens` estimate) rather than
+   *  snapshotted once per render. */
+  function imageGenerationConsented(): boolean {
+    return settings.imageGenerationConsentAcknowledged || imageGenerationConsentGrantedThisSessionRef.current;
+  }
   const [conversationWorkspaceRoot, setConversationWorkspaceRoot] = useState<string | null>(null);
   const [conversationGenerationControls, setConversationGenerationControls] =
     useState<GenerationControls | null>(null);
@@ -983,7 +1034,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const connectorTools = await loadConnectorToolDefinitions();
     const { tools: builtinTools } = selectBuiltinTurnTools(
       prompt,
-      settings,
+      // t0-8 M4: override the raw persisted flag with the effective (session
+      // OR persisted) consent -- `activeProvider` already comes through from
+      // `settings` unchanged.
+      { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
       conversationWorkspaceRoot,
       intent,
     );
@@ -1109,16 +1163,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }
 
   async function handleSend(
-    override?: {
-      text: string;
-      history: ChatTurn[];
-      attachments?: TurnAttachment[];
-      /** Document intent for an app-authored prompt, whatever language it is in. */
-      intent?: DocumentTurnIntent;
-      /** One-off generation controls for this send, over the conversation's own
-       *  (a key set to `undefined` clears that control). */
-      generationControls?: GenerationControls;
-    },
+    override?: HandleSendOverride,
     composerAttachments?: TurnAttachment[],
   ) {
     const trimmed = (override?.text ?? prompt).trim();
@@ -1137,6 +1182,23 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       return;
     }
 
+    // t0-8 M4: pre-send consent + capability gate for image generation. Fires
+    // before any provider request is built, and before the turn is added to
+    // the visible thread -- structurally like `handleWorkspacePick`'s gate
+    // (show a dialog, stash the args, resume from onAllow/onDeny), not like
+    // `handleWebSearchToggle` (there is no toggle here to intercept; the
+    // composer's Send button is the only trigger).
+    if (
+      looksLikeImageGenerationRequest(trimmed) &&
+      defaultImageModel(settings.activeProvider) != null &&
+      !imageGenerationConsented() &&
+      !imageGenerationConsentDismissedRef.current
+    ) {
+      pendingImageGenerationSendRef.current = { override, composerAttachments };
+      setShowImageGenerationConsent(true);
+      return;
+    }
+
     // t1-3: auto-compact older turns before the pending user message is sent.
     // Compaction reads DB messages only — never the in-flight composer turn.
     let activeCompaction = compactionRef.current;
@@ -1149,7 +1211,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         const keptForEstimate = historyForProviderRequest(priorForEstimate, activeCompaction);
         const { tools: estimateTools } = selectBuiltinTurnTools(
           trimmed,
-          settings,
+          { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
           conversationWorkspaceRoot,
         );
         const systemPrompt = composeSystemPrompt(
@@ -1909,7 +1971,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
     const { tools: toolDefinitions } = selectBuiltinTurnTools(
       prompt,
-      settings,
+      { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
       conversationWorkspaceRoot,
     );
     const systemPrompt = composeSystemPrompt(
@@ -1933,6 +1995,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     activeStream,
     prompt,
     settings,
+    imageGenerationConsented,
     conversationUserInstructions,
     conversationWorkspaceRoot,
     skillPromptBlock,
@@ -2664,6 +2727,33 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           setShowChatConsent(false);
           // Remember the dismissal for this session only.
           setChatConsentDismissed(true);
+        }}
+      />
+      {/* t0-8 M4: pre-send consent dialog for image generation, raised from
+          handleSend's gate above rather than a toggle. */}
+      <ImageGenerationConsentDialog
+        visible={showImageGenerationConsent}
+        onAllow={() => {
+          setShowImageGenerationConsent(false);
+          // Ref, not state -- visible immediately to the resumed send below,
+          // which calls this same render's `handleSend` closure synchronously
+          // (see the ref declarations' comment).
+          imageGenerationConsentGrantedThisSessionRef.current = true;
+          // Persist the acknowledgement so the dialog never reappears.
+          void updateSettings({ imageGenerationConsentAcknowledged: true });
+          const pending = pendingImageGenerationSendRef.current;
+          pendingImageGenerationSendRef.current = null;
+          void handleSend(pending?.override, pending?.composerAttachments);
+        }}
+        onDeny={() => {
+          setShowImageGenerationConsent(false);
+          // Remember the dismissal for this session only. Consent stays
+          // unacknowledged, so the resumed send below goes out without
+          // generate_image offered -- never a swallowed message.
+          imageGenerationConsentDismissedRef.current = true;
+          const pending = pendingImageGenerationSendRef.current;
+          pendingImageGenerationSendRef.current = null;
+          void handleSend(pending?.override, pending?.composerAttachments);
         }}
       />
       <WorkspaceToolsConsentDialog

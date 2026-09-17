@@ -1,26 +1,43 @@
 /**
- * `modelGeneratesImages.ts` is a hand-written TS mirror of provider-core's
- * `model_generates_images` (`crates/provider-core/src/image_generation.rs`).
- * Nothing generates one from the other, so nothing stops them drifting apart
- * one edit at a time -- exactly the gap `modelAcceptsImages.ts` has always
- * had (no test exists for it). This file closes that gap for the image
- * generation mirror rather than repeating it.
+ * `modelGeneratesImages.ts` is a hand-written TS mirror of two provider-core
+ * tables (`crates/provider-core/src/image_generation.rs`): the
+ * `model_generates_images` allowlist and the `default_image_model` per-provider
+ * defaults (t0-8 M4). Nothing generates one from the other, so nothing stops
+ * them drifting apart one edit at a time -- exactly the gap `modelAcceptsImages.ts`
+ * has always had (no test exists for it). This file closes that gap for the
+ * image generation mirror rather than repeating it.
  *
- * Two things are checked:
+ * Two things are checked, for *each* table:
  *  1. Behavioural parity with the Rust unit tests (same cases, same answers).
- *  2. Textual parity: the provider ids and model-id substrings literally
- *     named in this TS file are extracted and compared, as sets, against the
- *     ones named in the Rust source. Scanned as text against the Rust source
- *     because there is no shared schema between the two languages here --
- *     the only way to see drift is to look at both sources directly (same
- *     approach as `agentToolsParity.test.ts`).
+ *  2. Textual parity: the provider ids (both tables) and model-id substrings
+ *     (`model_generates_images`) or exact model ids (`default_image_model`)
+ *     literally named in this TS file are extracted and compared against the
+ *     ones named in the Rust source -- as sets for `model_generates_images`,
+ *     and as a provider→model map (checked in both directions: same provider
+ *     ids, and the same model id for every provider named on either side) for
+ *     `default_image_model`. Scanned as text against the Rust source because
+ *     there is no shared schema between the two languages here -- the only
+ *     way to see drift is to look at both sources directly (same approach as
+ *     `agentToolsParity.test.ts`).
  *
- * Know what this does NOT catch. The textual scan compares the *shape* of the
- * allowlist -- which providers, which substrings -- and catches a change to
- * either side. The behavioural cases below only exercise the TS half. So a
- * *logic* regression made on the Rust side alone (flipping `||` to `&&`, or
- * dropping the case-folding) slips past this file entirely and is caught only
- * by `image_generation.rs`'s own unit tests. Both halves need their tests;
+ *     The `default_image_model` extraction pattern (`case 'x': return 'y';`
+ *     in TS, `"x" => Some("y"),` in Rust) deliberately requires the arm to
+ *     return a bare quoted string literal. `model_generates_images`'s arms
+ *     never do -- they return a boolean expression (`model.includes(...) ||
+ *     ...`) -- so the two tables' arms cannot cross-match each other even
+ *     though both switch on the same provider ids, and no scoping to a
+ *     specific function body is needed.
+ *
+ * Know what this does NOT catch. The textual scans compare the *shape* of
+ * each table -- which providers, which substrings, which default model ids --
+ * and catch a change to either side. The behavioural cases below only
+ * exercise the TS half. So a *logic* regression made on the Rust side alone
+ * (flipping `||` to `&&`, dropping the case-folding, or renaming a default
+ * model id to something `model_generates_images` would reject -- the
+ * invariant `image_generation.rs`'s own
+ * `default_image_model_is_always_recognized_by_model_generates_images` test
+ * guards) slips past this file entirely and is caught only by
+ * `image_generation.rs`'s own unit tests. Both halves need their tests;
  * neither file is a substitute for the other.
  */
 
@@ -28,7 +45,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { modelGeneratesImages } from './modelGeneratesImages';
+import { defaultImageModel, modelGeneratesImages } from './modelGeneratesImages';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tsFile = join(here, 'modelGeneratesImages.ts');
@@ -50,6 +67,20 @@ function extractNeedles(src: string, pattern: RegExp): Set<string> {
     needles.add(m[1]);
   }
   return needles;
+}
+
+/**
+ * Provider → default-model-id pairs from a `case 'x': return 'y';` (TS) or
+ * `"x" => Some("y"),` (Rust) arm -- see the module doc comment for why this
+ * shape only matches `default_image_model`'s arms, never
+ * `model_generates_images`'s.
+ */
+function extractDefaultModelPairs(src: string, pattern: RegExp): Map<string, string> {
+  const pairs = new Map<string, string>();
+  for (const m of src.matchAll(pattern)) {
+    pairs.set(m[1], m[2]);
+  }
+  return pairs;
 }
 
 function sorted(set: Set<string>): string[] {
@@ -84,6 +115,36 @@ describe('modelGeneratesImages behavioural parity with provider-core::model_gene
   });
 });
 
+describe('defaultImageModel behavioural parity with provider-core::default_image_model', () => {
+  it('returns the known default for each generative provider', () => {
+    expect(defaultImageModel('openai')).toBe('gpt-image-2.5-sunburst');
+    expect(defaultImageModel('gemini')).toBe('imagen-4.0-generate-001');
+  });
+
+  it('returns null for providers with no image-generation endpoint', () => {
+    expect(defaultImageModel('anthropic')).toBeNull();
+    expect(defaultImageModel('ollama')).toBeNull();
+    expect(defaultImageModel('made-up-provider')).toBeNull();
+  });
+
+  it('matching is case-insensitive on the provider id', () => {
+    expect(defaultImageModel('OpenAI')).toBe('gpt-image-2.5-sunburst');
+    expect(defaultImageModel('GEMINI')).toBe('imagen-4.0-generate-001');
+  });
+
+  it('every default it returns is itself accepted by modelGeneratesImages', () => {
+    for (const provider of ['openai', 'gemini', 'anthropic', 'ollama', 'made-up-provider']) {
+      const model = defaultImageModel(provider);
+      if (model != null) {
+        expect(
+          modelGeneratesImages(provider, model),
+          `defaultImageModel(${provider}) = ${model} but modelGeneratesImages(${provider}, ${model}) is false`,
+        ).toBe(true);
+      }
+    }
+  });
+});
+
 describe('modelGeneratesImages textual parity with the Rust allowlist (drift guard)', () => {
   const tsSrc = readFileSync(tsFile, 'utf8');
   const rustSrc = readFileSync(rustFile, 'utf8');
@@ -115,5 +176,44 @@ describe('modelGeneratesImages textual parity with the Rust allowlist (drift gua
       `Model-id substrings drifted between modelGeneratesImages.ts (${sorted(tsNeedles).join(', ')}) ` +
         `and image_generation.rs (${sorted(rustNeedles).join(', ')})`,
     ).toEqual(sorted(rustNeedles));
+  });
+});
+
+describe('defaultImageModel textual parity with the Rust default table (drift guard)', () => {
+  const tsSrc = readFileSync(tsFile, 'utf8');
+  const rustSrc = readFileSync(rustFile, 'utf8');
+
+  const tsDefaults = extractDefaultModelPairs(tsSrc, /case '([a-z_]+)':\s*return '([^']+)';/g);
+  const rustDefaults = extractDefaultModelPairs(rustSrc, /"([a-z_]+)"\s*=>\s*Some\("([^"]+)"\),/g);
+
+  it('found at least one default-model pair in each source (the parser did not silently break)', () => {
+    expect(tsDefaults.size).toBeGreaterThan(0);
+    expect(rustDefaults.size).toBeGreaterThan(0);
+  });
+
+  it('names exactly the same provider ids in the default-model table as the Rust source', () => {
+    const tsProviders = sorted(new Set(tsDefaults.keys()));
+    const rustProviders = sorted(new Set(rustDefaults.keys()));
+    expect(
+      tsProviders,
+      `default_image_model provider ids drifted between modelGeneratesImages.ts (${tsProviders.join(', ')}) ` +
+        `and image_generation.rs (${rustProviders.join(', ')})`,
+    ).toEqual(rustProviders);
+  });
+
+  it('names exactly the same default model id, for every provider named on either side', () => {
+    const allProviders = sorted(new Set([...tsDefaults.keys(), ...rustDefaults.keys()]));
+    const drifted: string[] = [];
+    for (const provider of allProviders) {
+      const tsModel = tsDefaults.get(provider);
+      const rustModel = rustDefaults.get(provider);
+      if (tsModel !== rustModel) {
+        drifted.push(
+          `${provider}: modelGeneratesImages.ts says ${tsModel ?? '(not present)'}, ` +
+            `image_generation.rs says ${rustModel ?? '(not present)'}`,
+        );
+      }
+    }
+    expect(drifted, `default_image_model values drifted:\n${drifted.join('\n')}`).toEqual([]);
   });
 });

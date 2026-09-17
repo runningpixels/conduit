@@ -115,7 +115,12 @@ impl OpenAiAdapter {
         self.optional_api_key
     }
 
-    fn request_headers(
+    /// `pub(crate)`, not private: `openai_preset.rs`'s OpenRouter preset reuses
+    /// this directly for its `/images` call, so OpenRouter's image requests
+    /// carry the exact same auth + extra headers (e.g. `HTTP-Referer`,
+    /// `X-Title`) its chat requests already do, rather than a second,
+    /// possibly-drifting copy of this logic.
+    pub(crate) fn request_headers(
         &self,
         ctx: &AdapterContext,
     ) -> Result<reqwest::header::HeaderMap, ProviderError> {
@@ -1371,7 +1376,9 @@ fn apply_controls(
     }
 }
 
-fn base_url(adapter: &OpenAiAdapter, ctx: &AdapterContext) -> String {
+/// `pub(crate)` for the same reason as `request_headers` above — reused by
+/// `openai_preset.rs`'s OpenRouter image-generation call.
+pub(crate) fn base_url(adapter: &OpenAiAdapter, ctx: &AdapterContext) -> String {
     let base = ctx
         .base_url
         .clone()

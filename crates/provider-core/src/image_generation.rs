@@ -85,10 +85,21 @@ fn value_kind(value: &serde_json::Value) -> &'static str {
 /// This is a hand-written allowlist, not a `ModelInfo` field, for the same
 /// reason `vision.rs` uses one (see `model_accepts_images`): `ModelInfo` has
 /// no capability field yet, and adding one to solve this single case would be
-/// a larger change than the MVP needs. Deliberately narrow — only the two
-/// providers with a real image-generation endpoint (M2: OpenAI, Gemini), and
-/// only model ids that look like an image model, since most models those
-/// providers list are chat-only.
+/// a larger change than the MVP needs. Deliberately narrow — only the
+/// providers with a real image-generation endpoint (M2: OpenAI, Gemini; M3
+/// follow-up: OpenRouter's dedicated `/images` router), and only model ids
+/// that look like an image model, since most models those providers list are
+/// chat-only.
+///
+/// `openrouter` is the loosest of the three: it fans out to many vendors
+/// (OpenAI, Google, ByteDance, Black Forest Labs, Recraft, ...) under a
+/// `vendor/model` id namespace, so this only recognizes the naming patterns
+/// actually seen in OpenRouter's `GET /api/v1/images/models` catalog as of
+/// 2026-09 (`openai/gpt-image-*`, `google/gemini-*-image*`, `*imagen*`,
+/// `*seedream*`, `*flux*`, `*recraft*`) rather than trying to be exhaustive —
+/// an unrecognized image-capable model just won't get picked up by this
+/// check, which is the same "narrow, needs revisiting" tradeoff the other two
+/// providers already accept here.
 pub fn model_generates_images(provider_id: &str, model_id: &str) -> bool {
     let provider = provider_id.trim().to_ascii_lowercase();
     let model = model_id.trim().to_ascii_lowercase();
@@ -96,6 +107,14 @@ pub fn model_generates_images(provider_id: &str, model_id: &str) -> bool {
     match provider.as_str() {
         "openai" => model.contains("dall-e") || model.contains("gpt-image"),
         "gemini" => model.contains("imagen"),
+        "openrouter" => {
+            model.contains("image")
+                || model.contains("imagen")
+                || model.contains("dall-e")
+                || model.contains("seedream")
+                || model.contains("flux")
+                || model.contains("recraft")
+        }
         _ => false,
     }
 }
@@ -111,17 +130,23 @@ pub fn model_generates_images(provider_id: &str, model_id: &str) -> bool {
 /// never fire. Gating on the provider and picking a hardcoded default model
 /// is the deliberate M3 tradeoff instead.
 ///
-/// The ids below are verified-current as of 2026-09. Providers rename and
-/// retire image models without much notice (this crate already tracks that
-/// churn loosely via [`model_generates_images`]'s substring allowlist); this
-/// function's ids will need revisiting when that happens. That periodic
-/// upkeep cost is accepted as the known price of the "pick a default"
-/// approach — the alternative (a user-facing image-model picker) is out of
-/// scope for the MVP.
+/// The ids below are verified-current as of 2026-09 — the OpenRouter one
+/// against a live `GET /api/v1/images/models` call, which is also where
+/// `openai/gpt-image-2.5-sunburst` was chosen: it's the same underlying
+/// model as this crate's own `openai` default, just reached through
+/// OpenRouter's `vendor/model` namespace, which keeps the two easy to
+/// reconcile rather than picking an arbitrary third-party vendor. Providers
+/// rename and retire image models without much notice (this crate already
+/// tracks that churn loosely via [`model_generates_images`]'s substring
+/// allowlist); these ids will need revisiting when that happens. That
+/// periodic upkeep cost is accepted as the known price of the "pick a
+/// default" approach — the alternative (a user-facing image-model picker) is
+/// out of scope for the MVP.
 pub fn default_image_model(provider_id: &str) -> Option<&'static str> {
     match provider_id.trim().to_ascii_lowercase().as_str() {
         "openai" => Some("gpt-image-2.5-sunburst"),
         "gemini" => Some("imagen-4.0-generate-001"),
+        "openrouter" => Some("openai/gpt-image-2.5-sunburst"),
         _ => None,
     }
 }
@@ -142,9 +167,34 @@ mod tests {
     }
 
     #[test]
+    fn openrouter_image_models_across_several_vendors_are_generative() {
+        assert!(model_generates_images(
+            "openrouter",
+            "openai/gpt-image-2.5-sunburst"
+        ));
+        assert!(model_generates_images(
+            "openrouter",
+            "google/gemini-3.1-flash-image"
+        ));
+        assert!(model_generates_images(
+            "openrouter",
+            "bytedance-seed/seedream-4.5"
+        ));
+        assert!(model_generates_images(
+            "openrouter",
+            "black-forest-labs/flux.2-pro"
+        ));
+        assert!(model_generates_images("openrouter", "recraft/recraft-v4"));
+    }
+
+    #[test]
     fn chat_models_on_the_same_providers_are_not_generative() {
         assert!(!model_generates_images("openai", "gpt-4o-mini"));
         assert!(!model_generates_images("gemini", "gemini-2.0-flash"));
+        assert!(!model_generates_images(
+            "openrouter",
+            "anthropic/claude-sonnet-4"
+        ));
     }
 
     #[test]
@@ -159,6 +209,10 @@ mod tests {
         assert!(model_generates_images("OpenAI", "DALL-E-3"));
         assert!(model_generates_images("GEMINI", "IMAGEN-3.0-GENERATE-002"));
         assert!(model_generates_images("openai", "GPT-IMAGE-1"));
+        assert!(model_generates_images(
+            "OpenRouter",
+            "OPENAI/GPT-IMAGE-2.5-SUNBURST"
+        ));
     }
 
     /// 1x1 PNG, base64-encoded (same bytes the desktop crate's `vision.rs`
@@ -228,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn default_image_model_covers_the_two_generative_providers() {
+    fn default_image_model_covers_the_three_generative_providers() {
         assert_eq!(
             default_image_model("openai"),
             Some("gpt-image-2.5-sunburst")
@@ -236,6 +290,10 @@ mod tests {
         assert_eq!(
             default_image_model("gemini"),
             Some("imagen-4.0-generate-001")
+        );
+        assert_eq!(
+            default_image_model("openrouter"),
+            Some("openai/gpt-image-2.5-sunburst")
         );
     }
 
@@ -256,6 +314,10 @@ mod tests {
             default_image_model("GEMINI"),
             Some("imagen-4.0-generate-001")
         );
+        assert_eq!(
+            default_image_model("OpenRouter"),
+            Some("openai/gpt-image-2.5-sunburst")
+        );
     }
 
     /// The two tables must not contradict each other: whatever
@@ -268,6 +330,7 @@ mod tests {
         for provider in [
             "openai",
             "gemini",
+            "openrouter",
             "anthropic",
             "ollama",
             "made-up-provider",

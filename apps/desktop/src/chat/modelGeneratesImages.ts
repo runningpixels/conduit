@@ -8,6 +8,20 @@ export function modelGeneratesImages(providerId: string, modelId: string): boole
       return model.includes('dall-e') || model.includes('gpt-image');
     case 'gemini':
       return model.includes('imagen');
+    // OpenRouter fans out to many vendors under a `vendor/model` namespace,
+    // so this is the loosest of the three -- it recognises the naming
+    // patterns actually seen in OpenRouter's image-model catalog rather than
+    // trying to be exhaustive. An unrecognised image model simply is not
+    // picked up, the same narrow tradeoff the other two already accept.
+    case 'openrouter':
+      return (
+        model.includes('image') ||
+        model.includes('imagen') ||
+        model.includes('dall-e') ||
+        model.includes('seedream') ||
+        model.includes('flux') ||
+        model.includes('recraft')
+      );
     default:
       return false;
   }
@@ -29,6 +43,11 @@ export function defaultImageModel(providerId: string): string | null {
       return 'gpt-image-2.5-sunburst';
     case 'gemini':
       return 'imagen-4.0-generate-001';
+    // The same OpenAI image model this app already defaults to, reached
+    // through OpenRouter's vendor namespace -- deliberately not picking some
+    // third-party vendor on the user's behalf.
+    case 'openrouter':
+      return 'openai/gpt-image-2.5-sunburst';
     default:
       return null;
   }

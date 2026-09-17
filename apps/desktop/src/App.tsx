@@ -888,17 +888,23 @@ export default function App() {
         return next;
       });
 
+      // Re-read the artifacts before the document-specific branch below. Any
+      // tool can create one -- `generate_image` does -- and the thread renders
+      // from this list, so gating the refresh on document tools left a
+      // generated image invisible until the app was restarted.
+      const listed = await refreshArtifacts(activeConversationId);
+
       // This handler now runs for every ended turn, failures included, because
       // it owns the only reset of the pending-artifact state. Nothing below may
       // leave the panel generating.
       if (!hadSuccessfulDocumentToolCalls(streamState)) {
         // The document was asked for and never arrived — freeze the panel on
-        // the reason, or drop it when there is nothing to explain.
+        // the reason, or drop it when there is nothing to explain. Only the
+        // panel is document-specific; the list above is not.
         setPendingArtifact((current) => resolveFailedPendingArtifact(current, streamState));
         return;
       }
 
-      const listed = await refreshArtifacts(activeConversationId);
       const artifactId = resolveDocumentArtifactId(streamState, listed);
       if (artifactId) {
         await handleOpenArtifact(artifactId);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mentionsWorkspaceFileTarget, selectBuiltinTurnTools } from './agentTools';
+import { mentionsWorkspaceFileTarget, selectBuiltinImageTools, selectBuiltinTurnTools } from './agentTools';
 import { documentWriteDeveloperPromptFor } from './documentTurnIntent';
 
 const withWorkspace = {
@@ -34,6 +34,56 @@ describe('selectBuiltinTurnTools', () => {
 
   it('reports the intent it routed on', () => {
     expect(selectBuiltinTurnTools('make it dark mode', withWorkspace).intent).toBe('edit');
+  });
+});
+
+describe('selectBuiltinImageTools (t0-8 M4 gating)', () => {
+  it('offers generate_image only when intent, provider capability, and consent all hold', () => {
+    expect(selectBuiltinImageTools(true, 'openai', true).map((t) => t.name)).toContain('generate_image');
+  });
+
+  it('withholds it when the classifier does not fire, even with a capable provider and consent', () => {
+    expect(selectBuiltinImageTools(false, 'openai', true)).toEqual([]);
+  });
+
+  it('withholds it on a provider with no image-generation endpoint, even with intent and consent', () => {
+    // Anticipated by acceptance criterion 4: an Anthropic-only user sees no
+    // new tool exposure regardless of intent or a stale consent flag.
+    expect(selectBuiltinImageTools(true, 'anthropic', true)).toEqual([]);
+    expect(selectBuiltinImageTools(true, undefined, true)).toEqual([]);
+  });
+
+  it('withholds it before first-use consent, even with intent and a capable provider', () => {
+    expect(selectBuiltinImageTools(true, 'openai', false)).toEqual([]);
+    expect(selectBuiltinImageTools(true, 'openai', undefined)).toEqual([]);
+  });
+});
+
+describe('selectBuiltinTurnTools image gating end to end', () => {
+  const base = { memoryEnabled: false };
+  const toolNames = (
+    prompt: string,
+    settings: { memoryEnabled: boolean; activeProvider?: string; imageGenerationConsentAcknowledged?: boolean },
+  ) => selectBuiltinTurnTools(prompt, settings).tools.map((tool) => tool.name);
+
+  it('includes generate_image on the turn only when all three gates hold', () => {
+    const settings = { ...base, activeProvider: 'openai', imageGenerationConsentAcknowledged: true };
+    expect(toolNames('generate an image of a mountain sunset', settings)).toContain('generate_image');
+  });
+
+  it('excludes generate_image when the prompt does not read as a generation request', () => {
+    const settings = { ...base, activeProvider: 'openai', imageGenerationConsentAcknowledged: true };
+    expect(toolNames('what is the capital of France?', settings)).not.toContain('generate_image');
+  });
+
+  it('excludes generate_image on a provider with no image-generation endpoint', () => {
+    const settings = { ...base, activeProvider: 'anthropic', imageGenerationConsentAcknowledged: true };
+    expect(toolNames('generate an image of a mountain sunset', settings)).not.toContain('generate_image');
+  });
+
+  it('excludes generate_image before consent is acknowledged', () => {
+    const settings = { ...base, activeProvider: 'openai', imageGenerationConsentAcknowledged: false };
+    expect(toolNames('generate an image of a mountain sunset', settings)).not.toContain('generate_image');
   });
 });
 

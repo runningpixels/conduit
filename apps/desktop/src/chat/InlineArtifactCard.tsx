@@ -23,6 +23,10 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   code: 'Code',
   json: 'JSON',
   html: 'HTML',
+  // Unreachable: candidates here come from fence parsing (`messageSegments.ts`),
+  // which never produces 'image' — image artifacts come only from the
+  // `generate_image` tool. Present so this exhaustive Record still compiles.
+  image: 'Image',
 };
 
 function candidateLanguage(candidate: ArtifactCandidate): string {

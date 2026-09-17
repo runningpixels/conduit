@@ -10,6 +10,7 @@ import {
 } from './selectRenderer';
 import { CodeRenderer, JsonRenderer, MarkdownRenderer, PlainTextRenderer } from './renderers';
 import { HtmlArtifactRenderer } from './HtmlArtifactRenderer';
+import { ImageRenderer } from './ImageRenderer';
 
 function art(over: Partial<Artifact>): Artifact {
   return {
@@ -58,6 +59,11 @@ describe('selectRenderer dispatch', () => {
     expect(Preview).toBe(HtmlArtifactRenderer);
     expect(Source).toBe(PlainTextRenderer);
   });
+  it('image → ImageRenderer preview / PlainText source', () => {
+    const { Preview, Source } = selectRenderer(art({ kind: 'image', mimeType: 'image/png' }));
+    expect(Preview).toBe(ImageRenderer);
+    expect(Source).toBe(PlainTextRenderer);
+  });
   it('application/json mimeType overrides a non-json kind', () => {
     const { Preview } = selectRenderer(art({ kind: 'text', mimeType: 'application/json' }));
     expect(Preview).toBe(JsonRenderer);
@@ -91,6 +97,10 @@ describe('buildPreviewProps', () => {
       allowlist: ['https://x.example.com'],
       styledPreview: true,
     });
+  });
+  it('image → the artifact itself, even though it is File-content with no inline text', () => {
+    const imageArtifact = art({ kind: 'image', mimeType: 'image/png', contentPath: 'blobs/x.png' });
+    expect(buildPreviewProps(imageArtifact, [])).toEqual({ artifact: imageArtifact });
   });
 });
 

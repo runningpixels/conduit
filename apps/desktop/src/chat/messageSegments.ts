@@ -99,6 +99,10 @@ const KIND_MIME: Record<ArtifactKind, string> = {
   json: 'application/json',
   html: 'text/html',
   code: 'text/plain',
+  // Unreachable via fence parsing (`resolveKind` below never returns 'image';
+  // image artifacts come only from the `generate_image` tool) — present so
+  // this exhaustive Record still compiles against the shared `ArtifactKind`.
+  image: 'image/png',
 };
 
 const MIN_UNLABELED_BODY = 200;
@@ -111,6 +115,8 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   code: 'Code',
   json: 'JSON',
   html: 'HTML',
+  // Unreachable here — see the `image` note on `KIND_MIME` above.
+  image: 'Image',
 };
 
 function firstInfoToken(info: string): string {

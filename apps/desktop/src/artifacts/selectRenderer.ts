@@ -11,12 +11,16 @@
 /// - kind json → JSON preview / PlainText (pretty) source.
 /// - kind text → PlainText preview / PlainText source.
 /// - kind html → HtmlArtifactRenderer preview / PlainText (escaped) source.
+/// - kind image → ImageRenderer preview / PlainText (empty — binary) source.
 /// - unknown kind → PlainText fallback.
 ///
 /// File-content artifacts with no inline text: `buildPreviewProps` returns
 /// `null` (the caller shows a "load from disk" affordance / fetches bytes via
 /// `getArtifactContentBytes`). For html File-content, the caller must fetch the
-/// bytes and pass the decoded HTML to `HtmlArtifactRenderer` directly.
+/// bytes and pass the decoded HTML to `HtmlArtifactRenderer` directly. `image`
+/// is the one exception to the null rule — File-content is all it ever is, so
+/// `buildPreviewProps` special-cases it to hand back the artifact itself
+/// rather than ever returning null for it (see below).
 
 import type { ComponentType } from 'react';
 import type { Artifact, ArtifactKind } from '../ipc/contracts';
@@ -24,6 +28,8 @@ import { CodeRenderer, JsonRenderer, MarkdownRenderer, PlainTextRenderer } from 
 import type { CodeRendererProps, JsonRendererProps, MarkdownRendererProps, PlainTextRendererProps } from './renderers';
 import { HtmlArtifactRenderer } from './HtmlArtifactRenderer';
 import type { HtmlArtifactRendererProps } from './HtmlArtifactRenderer';
+import { ImageRenderer } from './ImageRenderer';
+import type { ImageRendererProps } from './ImageRenderer';
 
 export interface RendererPair {
   /// `any` because each renderer takes its own prop shape (a member of the
@@ -39,7 +45,8 @@ export type PreviewProps =
   | CodeRendererProps
   | JsonRendererProps
   | MarkdownRendererProps
-  | HtmlArtifactRendererProps;
+  | HtmlArtifactRendererProps
+  | ImageRendererProps;
 export type SourceProps = PlainTextRendererProps;
 
 /// Resolve the effective kind, applying mimeType overrides.
@@ -65,6 +72,8 @@ export function selectRenderer(artifact: Artifact): RendererPair {
       return { Preview: PlainTextRenderer, Source: PlainTextRenderer };
     case 'html':
       return { Preview: HtmlArtifactRenderer, Source: PlainTextRenderer };
+    case 'image':
+      return { Preview: ImageRenderer, Source: PlainTextRenderer };
     default:
       return { Preview: PlainTextRenderer, Source: PlainTextRenderer };
   }
@@ -91,6 +100,11 @@ export function inlineText(artifact: Artifact): string {
 /// its own affordance.
 export function buildPreviewProps(artifact: Artifact, allowlist: string[], styledPreview = true): PreviewProps | null {
   const kind = resolveKind(artifact.kind, artifact.mimeType);
+  // `image` is always File-content and never has inline text/json — the
+  // artifact itself (id + mimeType) is the whole prop shape `ImageRenderer`
+  // needs, so it is handled before the generic "no inline payload" null-return
+  // below ever gets a chance to apply to it.
+  if (kind === 'image') return { artifact };
   const text = inlineText(artifact);
   if (kind !== 'html' && text === '' && artifact.contentJson == null) {
     return null; // File-content (no inline payload) — caller shows a load affordance.

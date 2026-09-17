@@ -3,6 +3,8 @@ import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import { classifyDocumentTurnIntent, type DocumentTurnIntent } from './documentTurnIntent';
 import { looksLikeBrandThemeRequest } from './brandPrompt';
+import { looksLikeImageGenerationRequest } from './imageGenerationPrompt';
+import { defaultImageModel } from './modelGeneratesImages';
 import { appName } from '../brand';
 import { allowUserBranding } from '../brand/buildFlags';
 import type { Translate } from '../i18n';
@@ -11,6 +13,7 @@ import { CONTENT_FIELD_BY_TOOL } from './documentWriteScan';
 
 const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
+const IMAGE_TOOL_GROUP = 'Images';
 
 function schema(fields: Array<{ name: string; type: string; required?: boolean }>): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
@@ -293,9 +296,9 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     displayGroup: 'Utilities',
   },
   {
-    // Defined so the TS/Rust parity guard can see it, but deliberately in a
-    // group no selector filters on -- so it is described and never offered to
-    // a turn. Gating is t0-8 M4's job.
+    // t0-8 M4: `selectBuiltinImageTools` is now the selector that filters on
+    // this group -- offered only when intent, provider capability, and
+    // consent all hold (see `selectBuiltinTurnTools`).
     toolId: 'generate_image',
     name: 'generate_image',
     description:
@@ -305,7 +308,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       { name: 'size', type: 'string' },
     ]),
     permissionLevel: 'sideEffectful',
-    displayGroup: 'Images',
+    displayGroup: IMAGE_TOOL_GROUP,
   },
   {
     toolId: 'remember',
@@ -640,6 +643,43 @@ export function selectBuiltinBrandTools(brandIntent: boolean): ToolDefinition[] 
   return builtinToolDefinitions().filter((tool) => tool.displayGroup === BRAND_TOOL_GROUP);
 }
 
+/**
+ * `generate_image`, reachable for the first time in t0-8 M4. Offered only
+ * when all three independent gates hold:
+ *  1. `imageIntent` -- the turn's prompt reads like a request for an image
+ *     (`looksLikeImageGenerationRequest`, `chat/imageGenerationPrompt.ts`).
+ *  2. `activeProvider` resolves to a provider with image generation at all
+ *     (`defaultImageModel(activeProvider) != null`).
+ *  3. `consentAcknowledged` -- the user has accepted the billed/side-effectful
+ *     consent dialog (`ImageGenerationConsentDialog.tsx`), mirroring
+ *     `workspaceToolsConsentAcknowledged`'s shape.
+ *
+ * Gated on the *provider*, deliberately not on the turn's active *chat*
+ * model: `modelGeneratesImages(activeProvider, activeModel)` would be false
+ * for every real user, since the active model is always a chat model, never
+ * an image model (`gpt-image-2.5-*` / `imagen-4.0-*` share no id namespace
+ * with `gpt-4o` / `gemini-2.0-*`) -- see `image_generation.rs`'s
+ * `default_image_model` doc comment and the t0-8 plan's "Tool wiring --
+ * CORRECTED" section. Backward compatibility for every provider without an
+ * image endpoint (Anthropic-only users included) falls out of gate 2 alone:
+ * `defaultImageModel` returns `null` for them regardless of the other two
+ * gates, so there is no new tool exposure, dialog, or behaviour change.
+ *
+ * Takes the three inputs directly rather than one pre-classified boolean
+ * (contrast `selectBuiltinBrandTools`): unlike brand-theme intent, there is
+ * no single upstream classification step shared by all three checks here --
+ * `selectBuiltinTurnTools` computes each independently and passes them in.
+ */
+export function selectBuiltinImageTools(
+  imageIntent: boolean,
+  activeProvider: string | undefined,
+  consentAcknowledged: boolean | undefined,
+): ToolDefinition[] {
+  if (!imageIntent || !consentAcknowledged) return [];
+  if (!activeProvider || defaultImageModel(activeProvider) == null) return [];
+  return builtinToolDefinitions().filter((tool) => tool.displayGroup === IMAGE_TOOL_GROUP);
+}
+
 /** Workspace tools that change files, as opposed to reading or searching them. */
 const WORKSPACE_WRITE_TOOL_NAMES = new Set(['workspace_write', 'workspace_edit']);
 
@@ -675,6 +715,13 @@ export function selectBuiltinTurnTools(
     workspaceRoot?: string | null;
     workspaceToolsConsentAcknowledged?: boolean;
     memoryEnabled: boolean;
+    /** t0-8 M4: the active chat provider. Used only to gate `generate_image`
+     *  on provider capability (`defaultImageModel`) -- never the active chat
+     *  model, which is never an image model (see `selectBuiltinImageTools`). */
+    activeProvider?: string;
+    /** t0-8 M4: persisted first-use consent for image generation, mirroring
+     *  `workspaceToolsConsentAcknowledged`'s shape. */
+    imageGenerationConsentAcknowledged?: boolean;
   },
   conversationRoot?: string | null,
   /** Set by app-authored prompts (e.g. "Continue building") whose intent is
@@ -692,6 +739,11 @@ export function selectBuiltinTurnTools(
     tools: [
       ...selectBuiltinDocumentTools(intent),
       ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
+      ...selectBuiltinImageTools(
+        looksLikeImageGenerationRequest(prompt),
+        settings.activeProvider,
+        settings.imageGenerationConsentAcknowledged,
+      ),
       ...workspaceTools,
       ...selectBuiltinMemoryTools(settings.memoryEnabled),
     ],

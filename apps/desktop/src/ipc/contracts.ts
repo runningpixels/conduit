@@ -315,10 +315,13 @@ export interface ConnectorServerInfo {
 // override of ADR-002); saving overwrites the single payload in place.
 // =============================================================================
 
-/// Artifact kind. `html` renders in a sandboxed iframe (M6). The `kind` column
-/// is TEXT and `create_artifact` takes `kind: string`, so unknown kinds are
-/// tolerated by the backend; the renderer falls back to plain text.
-export type ArtifactKind = 'markdown' | 'text' | 'code' | 'json' | 'html';
+/// Artifact kind. `html` renders in a sandboxed iframe (M6). `image` (t0-8 M5)
+/// is always File-content (bytes fetched via `getArtifactContentBytes`,
+/// rendered as a blob-URL `<img>` — never inline `contentText`/`contentJson`).
+/// The `kind` column is TEXT and `create_artifact` takes `kind: string`, so
+/// unknown kinds are tolerated by the backend; the renderer falls back to
+/// plain text.
+export type ArtifactKind = 'markdown' | 'text' | 'code' | 'json' | 'html' | 'image';
 
 /// Content payload for `set_artifact_content`. Tagged (`kind`) to match the
 /// Rust `ArtifactContent` enum (`#[serde(tag = "kind")]`). `File` payloads are

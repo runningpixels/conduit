@@ -51,6 +51,12 @@ export function VariableFillDialog({ prompt, onConfirm, onCancel }: VariableFill
     >
       <div
         className="variable-fill-dialog"
+        // Named for assistive tech now that this dialog is actually reachable
+        // -- it had no call site at all until the prompts library started
+        // opening it, so nothing ever announced it.
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('settings.variableFill.title')}
         style={{
           background: 'var(--card)',
           borderRadius: 'var(--r-lg)',

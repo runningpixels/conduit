@@ -142,6 +142,40 @@ describe('Composer', () => {
     });
   });
 
+  /**
+   * t1-6 acceptance criterion 13: a user who has never made a knowledge base
+   * collection must see no new composer button at all.
+   *
+   * This shipped wrong once. The button was gated only on the `onToggleCollection`
+   * handler being wired, which it always is, so it appeared for everyone and
+   * opened a popover that said "No collections yet". Every render test passed,
+   * because the component was rendering exactly as written — it was only visible
+   * by driving the real app with an empty database.
+   */
+  it('hides the knowledge button entirely when there are no collections', () => {
+    renderComposer({ onToggleCollection: vi.fn(), collections: [] });
+    expect(screen.queryByRole('button', { name: /knowledge base/i })).toBeNull();
+  });
+
+  it('shows the knowledge button once a collection exists', () => {
+    renderComposer({
+      onToggleCollection: vi.fn(),
+      collections: [
+        {
+          id: 'c1',
+          name: 'Greenhouse',
+          providerId: 'openrouter',
+          embeddingModel: 'openai/text-embedding-3-small',
+          embeddingDimensions: 1536,
+          documentCount: 2,
+          createdAt: '2026-09-20T00:00:00Z',
+          updatedAt: '2026-09-20T00:00:00Z',
+        },
+      ],
+    });
+    expect(screen.getByRole('button', { name: /knowledge base/i })).toBeTruthy();
+  });
+
   it('disables send on an empty prompt', () => {
     renderComposer({ prompt: '' });
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();

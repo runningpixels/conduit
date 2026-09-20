@@ -676,7 +676,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               />
             </span>
           )}
-          {onToggleCollection && !streaming && (
+          {/* `collections.length > 0` is load-bearing, not a tidy-up: a user who
+              has never made a collection must see no new composer button at all
+              (t1-6 acceptance criterion 13). Same shape as the MCP prompt button
+              below, which hides itself when the server offers no prompts. */}
+          {onToggleCollection && collections.length > 0 && !streaming && (
             <span style={{ position: 'relative', display: 'inline-flex' }}>
               <button
                 className={`cbtn${enabledCollectionIds.length > 0 ? ' armed' : ''}${collectionsOpen ? ' armed' : ''}`}

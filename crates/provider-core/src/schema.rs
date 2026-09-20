@@ -663,6 +663,29 @@ pub struct ImageGenerationResult {
     pub mime_type: String,
 }
 
+/// t1-6 M1: a batch embedding call — one or more input strings in, one
+/// vector per input out. Rust-only, deliberately **not** `#[derive(TS)]` and
+/// **not** exported to `config-schema`: these never cross IPC. t0-8 already
+/// learned that a `Vec<u8>`/`Vec<f32>`-shaped type generates an
+/// `Array<number>` on the TypeScript side, a terrible shape for what is, in
+/// practice, a few hundred to a few thousand floats per vector. Indexing and
+/// retrieval both happen entirely inside the desktop crate's Rust layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingRequest {
+    pub model_id: String,
+    pub inputs: Vec<String>,
+}
+
+/// Result of a `generate_embeddings` call. `vectors` is always the same
+/// length as `EmbeddingRequest::inputs` and in the same order — adapters
+/// enforce this via `embeddings::validate_vectors` before returning, since a
+/// silently short or reordered result would corrupt whatever index it feeds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingResult {
+    pub vectors: Vec<Vec<f32>>,
+    pub model_id: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -2197,6 +2220,24 @@ pub struct AppSettings {
     /// otherwise reach a provider. Mirrors `web_search_consent_acknowledged`.
     #[serde(default)]
     pub image_generation_consent_acknowledged: bool,
+    /// t1-6: provider ids the user has agreed may receive knowledge-base
+    /// document text for embedding. Empty until the first import is consented
+    /// to.
+    ///
+    /// Deliberately a **list of provider ids**, not a single bool. Embedding a
+    /// document sends its text to whichever provider owns the collection, so
+    /// consent granted for one provider must not authorise another: adding a
+    /// collection on OpenAI after consenting to OpenRouter re-prompts. A bool
+    /// would silently inherit, which is the failure this feature can least
+    /// afford.
+    #[serde(default)]
+    pub embedding_consent_providers: Vec<String>,
+    /// t1-6: one-time acknowledgement of the PDF import notice (extraction
+    /// happens locally; it is imperfect, and a scanned PDF yields nothing).
+    /// Shown on the first PDF import into any collection and never again —
+    /// not per file, not per collection.
+    #[serde(default)]
+    pub pdf_import_notice_acknowledged: bool,
     /// Agent loop guardrails: max provider rounds and wall-clock budget per turn.
     #[serde(default)]
     pub agent: AgentGuardrails,
@@ -2277,6 +2318,8 @@ impl Default for AppSettings {
             web_search: WebSearchDefaults::default(),
             web_search_consent_acknowledged: false,
             image_generation_consent_acknowledged: false,
+            embedding_consent_providers: Vec::new(),
+            pdf_import_notice_acknowledged: false,
             agent: AgentGuardrails::default(),
             keychain_mode: KeychainMode::default(),
             branding_enabled: false,
@@ -2354,6 +2397,14 @@ pub struct SettingsPatch {
     /// t0-8: first-use consent acknowledgement for image generation.
     #[ts(optional)]
     pub image_generation_consent_acknowledged: Option<bool>,
+    /// t1-6: replace the set of provider ids allowed to receive document text
+    /// for embedding. A full replace, not an append, so consent can be
+    /// withdrawn by sending a shorter list.
+    #[ts(optional)]
+    pub embedding_consent_providers: Option<Vec<String>>,
+    /// t1-6: one-time acknowledgement of the PDF import notice.
+    #[ts(optional)]
+    pub pdf_import_notice_acknowledged: Option<bool>,
     /// Replace agent loop guardrails. Values are validated on save.
     #[ts(optional)]
     pub agent: Option<AgentGuardrails>,

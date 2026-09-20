@@ -34,6 +34,16 @@ webSearchConsentAcknowledged?: boolean,
  */
 imageGenerationConsentAcknowledged?: boolean, 
 /**
+ * t1-6: replace the set of provider ids allowed to receive document text
+ * for embedding. A full replace, not an append, so consent can be
+ * withdrawn by sending a shorter list.
+ */
+embeddingConsentProviders?: Array<string>, 
+/**
+ * t1-6: one-time acknowledgement of the PDF import notice.
+ */
+pdfImportNoticeAcknowledged?: boolean, 
+/**
  * Replace agent loop guardrails. Values are validated on save.
  */
 agent?: AgentGuardrails, 

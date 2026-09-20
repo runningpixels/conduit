@@ -37,6 +37,8 @@ export const PREFIX_SECTIONS: readonly (readonly [string, SettingsSection])[] = 
   ['settings.skills.', 'skills'],
   ['shell.settingsSheet.memory.', 'memory'],
   ['settings.memory.', 'memory'],
+  ['shell.settingsSheet.knowledge.', 'knowledge'],
+  ['settings.knowledge.', 'knowledge'],
   ['shell.settingsSheet.appearance.', 'appearance'],
   ['settings.appearance.', 'appearance'],
   ['settings.branding.', 'branding'],

@@ -84,6 +84,19 @@ regex = "1"
 # t1-4: import/export SKILL.md packages as zip (folder copy is the other path).
 zip = { version = "4.6", default-features = false, features = ["deflate"] }
 
+# t1-6 M6: document extraction for the local knowledge base.
+# - csv: quoted-field-aware row parsing (a hand split breaks on a comma or
+#   newline inside a quoted cell).
+# - quick-xml: docx's word/document.xml is read with a real XML parser, not a
+#   regex, so entities (&amp;) decode instead of leaking as literal markup.
+#   Already a transitive dependency via `zip`/tauri-utils' plist path (see
+#   deny.toml's RUSTSEC-2026-0194/0195 note); this promotes it to direct.
+# - pdf-extract: plain-text extraction from PDFs. Column/table order is
+#   frequently wrong -- a known, accepted limitation (see the t1-6 plan).
+csv = "1"
+quick-xml = "0.37"
+pdf-extract = "0.9"
+
 # Workspace crates
 futures = "0.3"
 provider-core = { path = "../../../crates/provider-core" }

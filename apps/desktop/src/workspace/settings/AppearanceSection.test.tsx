@@ -42,6 +42,8 @@ const settings = {
   webSearchEnabled: false,
   webSearchConsentAcknowledged: false,
   imageGenerationConsentAcknowledged: false,
+  embeddingConsentProviders: [],
+  pdfImportNoticeAcknowledged: false,
   keychainMode: 'os',
 } as unknown as AppSettings;
 

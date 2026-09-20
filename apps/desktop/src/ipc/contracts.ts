@@ -483,3 +483,58 @@ export interface ConversationFolder {
   name: string;
   createdAt: string;
 }
+
+// =============================================================================
+// Knowledge base (t1-6)
+// =============================================================================
+
+export interface KnowledgeCollection {
+  id: string;
+  name: string;
+  providerId: string; // provider that embeds this collection
+  embeddingModel: string;
+  embeddingDimensions: number;
+  documentCount: number; // computed, not a column
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  collectionId: string;
+  source: string; // absolute path it was imported from
+  title: string;
+  mimeType: string | null;
+  byteSize: number;
+  chunkCount: number;
+  importedAt: string;
+}
+
+export type KnowledgeImportStatus = 'imported' | 'duplicate';
+
+export interface KnowledgeImportOutcome {
+  status: KnowledgeImportStatus;
+  documentId: string;
+  chunkCount: number;
+  title: string;
+}
+
+export interface KnowledgeCitation {
+  documentId: string;
+  documentTitle: string;
+  chunkId: string;
+  ordinal: number;
+  charStart: number;
+  charEnd: number;
+}
+
+export interface KnowledgeContext {
+  text: string; // fenced block for extraSystemSections; '' when nothing retrieved
+  citations: KnowledgeCitation[];
+  refusedTitles: string[]; // documents dropped by the reinjection gate, named for the user
+  /** Names of collections attached to this conversation that could not be
+   *  searched this turn (lost credential, withdrawn embedding consent, or a
+   *  cloud provider while local_only is on). Distinct from `refusedTitles`:
+   *  a whole collection went unsearched, not one document's text blocked. */
+  unavailableCollections: string[];
+}

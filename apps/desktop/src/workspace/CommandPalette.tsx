@@ -222,6 +222,7 @@ export function CommandPalette({
       { id: 'cmd-prompts', group, kind: 'cmd', label: t('workspace.commandPalette.command.prompts'), run: () => { onOpenSettings('prompts'); close(); } },
       { id: 'cmd-skills', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageSkills'), run: () => { onOpenSettings('skills'); close(); } },
       { id: 'cmd-memory', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageMemory'), run: () => { onOpenSettings('memory'); close(); } },
+      { id: 'cmd-knowledge', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageKnowledge'), run: () => { onOpenSettings('knowledge'); close(); } },
       { id: 'cmd-appearance', group, kind: 'cmd', label: t('workspace.commandPalette.command.appearance'), run: () => { onOpenSettings('appearance'); close(); } },
       // Gated like its nav item: a build without user branding renders no pane for it.
       ...(allowUserBranding

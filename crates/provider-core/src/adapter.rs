@@ -1,5 +1,6 @@
 use crate::schema::{
-    ImageGenerationRequest, ImageGenerationResult, ProviderError, ProviderEvent, ProviderRequest,
+    EmbeddingRequest, EmbeddingResult, ImageGenerationRequest, ImageGenerationResult,
+    ProviderError, ProviderEvent, ProviderRequest,
 };
 use async_trait::async_trait;
 use futures::stream::Stream;
@@ -53,6 +54,23 @@ pub trait ProviderAdapter: Send + Sync {
     ) -> Result<ImageGenerationResult, ProviderError> {
         Err(crate::error::fatal(format!(
             "{} does not support image generation",
+            self.id()
+        )))
+    }
+
+    /// t1-6 M1: a single non-streaming batch embedding call. Defaults to a
+    /// clear "unsupported" error — same shape as `generate_image` — so every
+    /// existing adapter keeps compiling and behaving exactly as before; only
+    /// `openai`, `gemini`, `ollama` and the `openrouter` preset override it
+    /// (M1/M2). Every other provider inherits this default and fails the
+    /// call rather than silently doing nothing.
+    async fn generate_embeddings(
+        &self,
+        _request: EmbeddingRequest,
+        _ctx: &AdapterContext,
+    ) -> Result<EmbeddingResult, ProviderError> {
+        Err(crate::error::fatal(format!(
+            "{} does not support embeddings",
             self.id()
         )))
     }

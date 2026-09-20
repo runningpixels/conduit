@@ -306,3 +306,10 @@ export const SkillIcon = (p: IconProps) => (
     <path d="M8 7h8M8 11h5" />
   </Svg>
 );
+export const KnowledgeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3 3 7.5 12 12l9-4.5L12 3Z" />
+    <path d="M3 12.5 12 17l9-4.5" />
+    <path d="M3 16.5 12 21l9-4.5" />
+  </Svg>
+);

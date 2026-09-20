@@ -135,6 +135,23 @@ html[data-palette="orange-dark"] .bubble {
   background: var(--card);
 }
 
+/* t1-6: which knowledge base documents this turn's retrieval drew on. */
+.turn-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.turn-citation-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+
 /* t0-3 inline edit: textarea lives inside the bubble shell. */
 .bubble-editing {
   width: min(72%, 36rem);

@@ -56,6 +56,10 @@ import type {
   SkillSummary,
   MemoryItem,
   ConversationFolder,
+  KnowledgeCollection,
+  KnowledgeContext,
+  KnowledgeDocument,
+  KnowledgeImportOutcome,
   SearchMessagesRequest,
   SearchResult,
   UsagePeriod,
@@ -1000,6 +1004,73 @@ export async function acceptMemoryItem(id: string): Promise<MemoryItem> {
 
 export async function getMemoryPromptBlock(): Promise<string> {
   return invokeCommand<string>('get_memory_prompt_block');
+}
+
+// =============================================================================
+// Knowledge base (t1-6)
+// =============================================================================
+
+export async function listKnowledgeCollections(): Promise<KnowledgeCollection[]> {
+  return invokeCommand<KnowledgeCollection[]>('list_knowledge_collections');
+}
+
+export async function createKnowledgeCollection(name: string): Promise<KnowledgeCollection> {
+  return invokeCommand<KnowledgeCollection>('create_knowledge_collection', { name });
+}
+
+export async function renameKnowledgeCollection(
+  collectionId: string,
+  name: string,
+): Promise<void> {
+  return invokeCommand<void>('rename_knowledge_collection', { collectionId, name });
+}
+
+export async function deleteKnowledgeCollection(collectionId: string): Promise<void> {
+  return invokeCommand<void>('delete_knowledge_collection', { collectionId });
+}
+
+export async function listKnowledgeDocuments(collectionId: string): Promise<KnowledgeDocument[]> {
+  return invokeCommand<KnowledgeDocument[]>('list_knowledge_documents', { collectionId });
+}
+
+/** OS file picker for a document to import. `null` = cancel. */
+export async function pickKnowledgeDocument(): Promise<string | null> {
+  return invokeCommand<string | null>('pick_knowledge_document');
+}
+
+export async function importKnowledgeDocument(
+  collectionId: string,
+  path: string,
+): Promise<KnowledgeImportOutcome> {
+  return invokeCommand<KnowledgeImportOutcome>('import_knowledge_document', {
+    collectionId,
+    path,
+  });
+}
+
+export async function deleteKnowledgeDocument(documentId: string): Promise<void> {
+  return invokeCommand<void>('delete_knowledge_document', { documentId });
+}
+
+export async function listConversationCollections(conversationId: string): Promise<string[]> {
+  return invokeCommand<string[]>('list_conversation_collections', { conversationId });
+}
+
+/** Returns the canonical set actually stored -- deduplicated, blank ids
+ *  dropped -- so callers sync optimistic state to what was really saved
+ *  rather than trusting their own pre-write guess. */
+export async function setConversationCollections(
+  conversationId: string,
+  collectionIds: string[],
+): Promise<string[]> {
+  return invokeCommand<string[]>('set_conversation_collections', { conversationId, collectionIds });
+}
+
+export async function retrieveKnowledgeContext(
+  conversationId: string,
+  query: string,
+): Promise<KnowledgeContext> {
+  return invokeCommand<KnowledgeContext>('retrieve_knowledge_context', { conversationId, query });
 }
 
 /// Fetch a single payload-bearing artifact (inline content decrypted).

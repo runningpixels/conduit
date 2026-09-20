@@ -6,7 +6,7 @@ import {
   loadProviderCredentialReference,
   saveAttachment,
 } from '../ipc/client';
-import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, KnowledgeIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
 import type { ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
@@ -27,7 +27,8 @@ import { workspaceFolderLabel } from './agentTools';
 import { localSearchBackendLabel, resolveSearchBackend } from './webSearchIntent';
 import { ComposerChatSettings } from './ComposerChatSettings';
 import { ComposerSkills } from './ComposerSkills';
-import type { SkillSummary } from '../ipc/contracts';
+import { ComposerCollections } from './ComposerCollections';
+import type { KnowledgeCollection, SkillSummary } from '../ipc/contracts';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
 import { Menu } from '../workspace/Menu';
@@ -74,6 +75,11 @@ export interface ComposerProps {
   skills?: SkillSummary[];
   enabledSkillIds?: string[];
   onToggleSkill?: (skillId: string, enabled: boolean) => void;
+  /** Knowledge base collections and which ones are attached to this chat (t1-6). */
+  collections?: KnowledgeCollection[];
+  enabledCollectionIds?: string[];
+  onToggleCollection?: (collectionId: string, enabled: boolean) => void;
+  onRefreshKnowledgeCapabilities?: () => void;
   /** Prompts and resources advertised by the running connectors (t0-9). */
   mcpPrompts?: ConnectorPromptInfo[];
   mcpResources?: ConnectorResourceInfo[];
@@ -125,6 +131,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   skills = [],
   enabledSkillIds = [],
   onToggleSkill,
+  collections = [],
+  enabledCollectionIds = [],
+  onToggleCollection,
+  onRefreshKnowledgeCapabilities,
   mcpPrompts = [],
   mcpResources = [],
   attachedResources = [],
@@ -148,6 +158,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [collectionsOpen, setCollectionsOpen] = useState(false);
   const [mcpPromptsOpen, setMcpPromptsOpen] = useState(false);
   const [mcpResourcesOpen, setMcpResourcesOpen] = useState(false);
 
@@ -613,6 +624,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onClick={() => {
                   setWorkspaceMenuOpen(false);
                   setSkillsOpen(false);
+                  setCollectionsOpen(false);
                   setChatSettingsOpen((open) => !open);
                 }}
               >
@@ -647,6 +659,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onClick={() => {
                   setWorkspaceMenuOpen(false);
                   setChatSettingsOpen(false);
+                  setCollectionsOpen(false);
                   setSkillsOpen((open) => !open);
                 }}
               >
@@ -663,6 +676,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               />
             </span>
           )}
+          {onToggleCollection && !streaming && (
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                className={`cbtn${enabledCollectionIds.length > 0 ? ' armed' : ''}${collectionsOpen ? ' armed' : ''}`}
+                type="button"
+                aria-label={t('chat.composer.knowledge.ariaLabel')}
+                title={t('chat.composer.knowledge.title')}
+                aria-haspopup="dialog"
+                aria-expanded={collectionsOpen}
+                disabled={!conversationId}
+                onClick={() => {
+                  setWorkspaceMenuOpen(false);
+                  setChatSettingsOpen(false);
+                  setSkillsOpen(false);
+                  setCollectionsOpen((open) => !open);
+                }}
+              >
+                <KnowledgeIcon />
+              </button>
+              <ComposerCollections
+                open={collectionsOpen}
+                streaming={streaming}
+                collections={collections}
+                enabledIds={enabledCollectionIds}
+                onClose={() => setCollectionsOpen(false)}
+                onToggle={onToggleCollection}
+                onOpenSettings={onOpenSettings ? () => onOpenSettings('knowledge') : undefined}
+                onRefresh={
+                  onRefreshKnowledgeCapabilities ? () => onRefreshKnowledgeCapabilities() : undefined
+                }
+              />
+            </span>
+          )}
           {onPickMcpPrompt && mcpPrompts.length > 0 && !streaming && (
             <span style={{ position: 'relative', display: 'inline-flex' }}>
               <button
@@ -676,6 +722,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   setWorkspaceMenuOpen(false);
                   setChatSettingsOpen(false);
                   setSkillsOpen(false);
+                  setCollectionsOpen(false);
                   setMcpResourcesOpen(false);
                   setMcpPromptsOpen((open) => !open);
                 }}
@@ -707,6 +754,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   setWorkspaceMenuOpen(false);
                   setChatSettingsOpen(false);
                   setSkillsOpen(false);
+                  setCollectionsOpen(false);
                   setMcpPromptsOpen(false);
                   setMcpResourcesOpen((open) => !open);
                 }}

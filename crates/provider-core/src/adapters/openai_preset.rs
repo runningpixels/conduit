@@ -6,7 +6,8 @@ use crate::adapters::openai::OpenAiAdapter;
 use crate::error::fatal;
 use crate::image_generation::{decode_generated_image, top_level_keys};
 use crate::schema::{
-    ImageGenerationRequest, ImageGenerationResult, ProviderError, ProviderEvent, ProviderRequest,
+    EmbeddingRequest, EmbeddingResult, ImageGenerationRequest, ImageGenerationResult,
+    ProviderError, ProviderEvent, ProviderRequest,
 };
 use crate::transport::post_json;
 use async_trait::async_trait;
@@ -250,6 +251,48 @@ impl ProviderAdapter for OpenAiPresetAdapter {
         let response = post_json(&ctx.http, &url, headers, body, CancellationToken::new()).await?;
         parse_openrouter_image_response(&response)
     }
+
+    /// t1-6 M2: only `openrouter` has an embeddings endpoint among these
+    /// presets, and it's the same `/embeddings` shape OpenAI's own adapter
+    /// uses (OpenRouter is, contract-wise, OpenAI-compatible here) — so this
+    /// reuses the inner `OpenAiAdapter`'s auth/base-url resolution the same
+    /// way `generate_image` above does, and decodes the response through the
+    /// shared `embeddings::parse_openai_style_embeddings_response` rather
+    /// than duplicating `openai.rs`'s parsing logic. Every other preset
+    /// (Groq, DeepSeek, Mistral, ...) has no such endpoint and keeps the
+    /// trait's default "unsupported" error — pinned by
+    /// `generate_embeddings_is_unsupported_on_every_preset_except_openrouter`
+    /// below.
+    async fn generate_embeddings(
+        &self,
+        request: EmbeddingRequest,
+        ctx: &crate::adapter::AdapterContext,
+    ) -> Result<EmbeddingResult, ProviderError> {
+        if self.id() != "openrouter" {
+            return Err(fatal(format!("{} does not support embeddings", self.id())));
+        }
+
+        let headers = self.0.request_headers(ctx)?;
+        let body = json!({
+            "model": request.model_id,
+            "input": request.inputs,
+            "encoding_format": "float",
+        });
+
+        let url = format!(
+            "{}/embeddings",
+            crate::adapters::openai::base_url(&self.0, ctx)
+        );
+        let response = post_json(&ctx.http, &url, headers, body, CancellationToken::new()).await?;
+
+        let expected = request.inputs.len();
+        crate::embeddings::parse_openai_style_embeddings_response(
+            "openrouter",
+            &response,
+            expected,
+            request.model_id,
+        )
+    }
 }
 
 /// Parses `POST /api/v1/images`'s response: `{ data: [{ b64_json,
@@ -462,6 +505,124 @@ mod tests {
                 err.message
             );
         }
+    }
+
+    // -------------------------------------------------------------------
+    // t1-6 M2: generate_embeddings — openrouter only.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn openrouter_embeddings_response_decodes_and_sorts_out_of_order_index() {
+        let value = serde_json::json!({
+            "object": "list",
+            "data": [
+                { "index": 1, "embedding": [0.4, 0.5] },
+                { "index": 0, "embedding": [0.1, 0.2] },
+            ],
+        });
+        let result = crate::embeddings::parse_openai_style_embeddings_response(
+            "openrouter",
+            &value,
+            2,
+            "openai/text-embedding-3-small".to_string(),
+        )
+        .expect("well-formed response should decode");
+        assert_eq!(result.vectors, vec![vec![0.1, 0.2], vec![0.4, 0.5]]);
+    }
+
+    #[test]
+    fn openrouter_embeddings_response_rejects_count_mismatch() {
+        let value = serde_json::json!({
+            "data": [{ "index": 0, "embedding": [0.1, 0.2] }],
+        });
+        let err = crate::embeddings::parse_openai_style_embeddings_response(
+            "openrouter",
+            &value,
+            2,
+            "openai/text-embedding-3-small".to_string(),
+        )
+        .expect_err("1 vector for 2 inputs should be rejected");
+        assert!(err.message.contains("openrouter"));
+    }
+
+    #[test]
+    fn openrouter_embeddings_response_rejects_malformed_shape() {
+        let value = serde_json::json!({ "error": { "message": "invalid_request_error" } });
+        let err = crate::embeddings::parse_openai_style_embeddings_response(
+            "openrouter",
+            &value,
+            1,
+            "openai/text-embedding-3-small".to_string(),
+        )
+        .expect_err("a response with no data array should error clearly");
+        assert!(err.message.contains("openrouter"));
+    }
+
+    /// t1-6 M2: pins the trait's default-`Err` behavior for embeddings on
+    /// every preset except `openrouter`, mirroring
+    /// `generate_image_is_unsupported_on_every_preset_except_openrouter`
+    /// above. Walks every registered preset so a future preset addition is
+    /// covered automatically rather than needing a new test written for it.
+    #[tokio::test]
+    async fn generate_embeddings_is_unsupported_on_every_preset_except_openrouter() {
+        let ctx = crate::adapter::AdapterContext {
+            api_key: Some("test-key".to_string()),
+            base_url: None,
+            http: crate::transport::HttpClient::new(),
+            local_only: false,
+        };
+        let request = EmbeddingRequest {
+            model_id: "some/model".to_string(),
+            inputs: vec!["hello".to_string()],
+        };
+        for preset in all_presets() {
+            if preset.id() == "openrouter" {
+                continue;
+            }
+            let err = preset
+                .generate_embeddings(request.clone(), &ctx)
+                .await
+                .expect_err("only openrouter supports generate_embeddings");
+            assert!(
+                err.message.contains("does not support embeddings"),
+                "{}: {}",
+                preset.id(),
+                err.message
+            );
+        }
+    }
+
+    /// Manual QA helper: a real, non-mocked call to OpenRouter's
+    /// `/embeddings` endpoint. Mirrors `openrouter_live_generate_image`
+    /// below — `#[ignore]`d so `cargo test` never spends real money or needs
+    /// network by default.
+    ///
+    /// Run with: `OPENROUTER_API_KEY=... cargo test -p provider-core openrouter_live_generate_embeddings -- --ignored`
+    #[tokio::test]
+    #[ignore = "requires OPENROUTER_API_KEY and network"]
+    async fn openrouter_live_generate_embeddings() {
+        let key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
+        let model_id = crate::embeddings::default_embedding_model("openrouter")
+            .expect("openrouter has a default embedding model")
+            .to_string();
+
+        let adapter = OpenAiPresetAdapter::openrouter();
+        let ctx = crate::adapter::AdapterContext {
+            api_key: Some(key),
+            base_url: None,
+            http: crate::transport::HttpClient::new(),
+            local_only: false,
+        };
+        let request = EmbeddingRequest {
+            model_id,
+            inputs: vec!["hello world".to_string(), "a second input".to_string()],
+        };
+
+        let result = adapter
+            .generate_embeddings(request, &ctx)
+            .await
+            .expect("generate_embeddings should succeed against the real API");
+        assert_eq!(result.vectors.len(), 2);
     }
 
     /// Manual QA helper (t0-8 M3 follow-up): a real, non-mocked call to

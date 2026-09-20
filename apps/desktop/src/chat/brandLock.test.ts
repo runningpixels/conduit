@@ -52,6 +52,8 @@ describe('buildProviderRequest brand appendix on a locked build', () => {
     },
     webSearchConsentAcknowledged: false,
     imageGenerationConsentAcknowledged: false,
+    embeddingConsentProviders: [],
+    pdfImportNoticeAcknowledged: false,
     agent: {
       maxSteps: 25,
       wallClockBudgetSecs: 300,

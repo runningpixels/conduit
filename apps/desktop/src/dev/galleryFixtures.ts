@@ -57,6 +57,8 @@ export const GALLERY_SETTINGS: AppSettings = {
   },
   webSearchConsentAcknowledged: true,
   imageGenerationConsentAcknowledged: false,
+  embeddingConsentProviders: [],
+  pdfImportNoticeAcknowledged: false,
   agent: {
     maxSteps: 25,
     wallClockBudgetSecs: 300,

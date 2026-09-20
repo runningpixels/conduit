@@ -9,6 +9,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Your own documents, searchable from a chat. Settings has a Knowledge section
+  where you can create a collection and add files to it — plain text, Markdown,
+  CSV, Word documents and PDFs. Attach a collection to a chat from the composer
+  and the assistant searches it while answering, showing which documents it drew
+  on and where in them.
+
+  Search combines two methods, because they fail in different places: one finds
+  passages that mean the same thing as your question even when the words differ,
+  the other finds exact terms like error codes, names and jargon that the first
+  one is bad at.
+
+  Indexing a document sends its text to the provider that embeds the collection,
+  so you are asked before the first document goes to a given provider, and the
+  dialog says plainly that the provider sees the complete contents of each file.
+  Consent is remembered per provider, so agreeing to send documents to one does
+  not quietly authorise another. Declining leaves the document unindexed and
+  tells you so. With local-only mode on, a collection needs a local provider such
+  as Ollama, and says why rather than falling back to the cloud.
+
+  PDFs are read on your computer, not uploaded to be read, and a one-time notice
+  explains that before the first one — including that a scanned PDF with no text
+  layer will yield nothing. When a file cannot be read, the message names the
+  actual reason: scanned, too large, unreadable, or took too long.
+
+  A retrieved passage that looks like it is trying to issue instructions is
+  refused and named rather than quietly handed to the model, the same rule
+  connector resources already follow. If a collection cannot be searched for a
+  turn — its provider lost its key, or local-only is on — you are told which one,
+  instead of just getting a worse answer.
+
+  If you never open the Knowledge section, nothing changes: no new button in the
+  composer, no dialog, and no extra work on any message you send.
+
 - Ask for a picture and you get one. On OpenAI, Gemini and OpenRouter, a prompt
   that plainly asks for an image — "draw me a logo for my bakery" — generates
   one and saves it with the chat, where it appears in the thread and in the

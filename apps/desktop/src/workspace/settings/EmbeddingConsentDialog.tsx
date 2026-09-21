@@ -42,7 +42,7 @@ export function EmbeddingConsentDialog({
       className="consent-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={t('settings.knowledge.consent.dialogAriaLabel')}
+      aria-label={t('settings.knowledge.consent.dialogAriaLabel', { provider: providerId ?? '' })}
       style={{
         position: 'fixed',
         inset: 0,
@@ -70,7 +70,7 @@ export function EmbeddingConsentDialog({
         }}
       >
         <h2 style={{ margin: 0, fontSize: 'var(--fs-8xl)', fontWeight: 600 }}>
-          {t('settings.knowledge.consent.title')}
+          {t('settings.knowledge.consent.title', { provider: providerId ?? '' })}
         </h2>
         <p style={{ margin: 0, fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', lineHeight: 1.6 }}>
           {t('settings.knowledge.consent.intro', { provider: providerId ?? '' })}

@@ -95,7 +95,7 @@ zip = { version = "4.6", default-features = false, features = ["deflate"] }
 #   frequently wrong -- a known, accepted limitation (see the t1-6 plan).
 csv = "1"
 quick-xml = "0.37"
-pdf-extract = "0.9"
+pdf-extract = "0.12.1"
 
 # Workspace crates
 futures = "0.3"

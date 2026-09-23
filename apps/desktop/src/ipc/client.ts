@@ -60,6 +60,7 @@ import type {
   KnowledgeContext,
   KnowledgeDocument,
   KnowledgeImportOutcome,
+  KnowledgeImportProgress,
   SearchMessagesRequest,
   SearchResult,
   UsagePeriod,
@@ -1041,10 +1042,18 @@ export async function pickKnowledgeDocument(): Promise<string | null> {
 export async function importKnowledgeDocument(
   collectionId: string,
   path: string,
+  onProgress?: (progress: KnowledgeImportProgress) => void,
 ): Promise<KnowledgeImportOutcome> {
+  // Per-call channel, the same shape the connector and chat streams use. The
+  // Rust side takes it unconditionally (`Option<Channel<_>>` is not a valid
+  // command argument), so one is always created; without a listener its
+  // messages are simply dropped.
+  const progress = new Channel<KnowledgeImportProgress>();
+  if (onProgress) progress.onmessage = onProgress;
   return invokeCommand<KnowledgeImportOutcome>('import_knowledge_document', {
     collectionId,
     path,
+    progress,
   });
 }
 

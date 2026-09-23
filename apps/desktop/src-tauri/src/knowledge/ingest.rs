@@ -64,6 +64,24 @@ pub enum IngestOutcome {
     AlreadyImported { document_id: String },
 }
 
+/// How far along an import is. Reported per embedding batch, because that is
+/// where the time actually goes: a 181-chunk PDF spends a few seconds being
+/// read and then half a minute waiting on the provider.
+///
+/// `chunks_done` counts chunks whose vectors have come back, so it moves in
+/// steps of [`EMBEDDING_BATCH_SIZE`] rather than one at a time. Reporting
+/// per-chunk would be a lie about what has finished.
+#[derive(Debug, Clone, Copy)]
+pub struct IngestProgress {
+    pub chunks_done: usize,
+    pub chunks_total: usize,
+}
+
+/// A sink for [`IngestProgress`]. Boxed rather than generic so the ingest
+/// signature stays object-safe and the caller can pass a closure that writes
+/// to a Tauri channel without this module knowing anything about Tauri.
+pub type ProgressSink<'a> = &'a (dyn Fn(IngestProgress) + Send + Sync);
+
 /// Hash, dedup, chunk, embed (batched), and store `text` as a new document in
 /// `collection_id`.
 ///
@@ -78,6 +96,31 @@ pub async fn ingest_text(
     source: &str,
     title: &str,
     text: &str,
+) -> Result<IngestOutcome, DbError> {
+    ingest_text_with_progress(
+        pool,
+        enc,
+        embedding,
+        collection_id,
+        source,
+        title,
+        text,
+        &|_| {},
+    )
+    .await
+}
+
+/// [`ingest_text`], reporting progress as each embedding batch completes.
+#[allow(clippy::too_many_arguments)]
+pub async fn ingest_text_with_progress(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    embedding: &EmbeddingConfig,
+    collection_id: &str,
+    source: &str,
+    title: &str,
+    text: &str,
+    progress: ProgressSink<'_>,
 ) -> Result<IngestOutcome, DbError> {
     let collection = repo::get_collection(pool, collection_id)
         .await?
@@ -98,7 +141,7 @@ pub async fn ingest_text(
         ));
     }
 
-    let vectors = embed_all(embedding, &chunks).await?;
+    let vectors = embed_all(embedding, &chunks, progress).await?;
     if vectors.len() != chunks.len() {
         // Defensive: every adapter's `generate_embeddings` is supposed to
         // funnel through `provider_core::embeddings::validate_vectors`,
@@ -158,7 +201,12 @@ pub async fn ingest_text(
 async fn embed_all(
     embedding: &EmbeddingConfig,
     chunks: &[super::chunk::Chunk],
+    progress: ProgressSink<'_>,
 ) -> Result<Vec<Vec<f32>>, DbError> {
+    progress(IngestProgress {
+        chunks_done: 0,
+        chunks_total: chunks.len(),
+    });
     let mut vectors = Vec::with_capacity(chunks.len());
     for batch in chunks.chunks(EMBEDDING_BATCH_SIZE) {
         let inputs: Vec<String> = batch.iter().map(|c| c.content.clone()).collect();
@@ -185,6 +233,10 @@ async fn embed_all(
             )));
         }
         vectors.extend(result.vectors);
+        progress(IngestProgress {
+            chunks_done: vectors.len(),
+            chunks_total: chunks.len(),
+        });
     }
     Ok(vectors)
 }

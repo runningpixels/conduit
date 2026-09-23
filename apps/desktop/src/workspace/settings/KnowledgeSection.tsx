@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
-import type { KnowledgeCollection, KnowledgeDocument } from '../../ipc/contracts';
+import type {
+  KnowledgeCollection,
+  KnowledgeDocument,
+  KnowledgeImportProgress,
+} from '../../ipc/contracts';
 import {
   createKnowledgeCollection,
   deleteKnowledgeCollection,
@@ -40,6 +44,47 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+
+/** Progress for a running import.
+ *
+ *  Determinate once the chunk count is known, indeterminate while the file is
+ *  still being read — a bar that sits at 0% for five seconds and then jumps is
+ *  worse than one that admits it doesn't know yet. `aria-busy` plus a live
+ *  region means a screen reader hears the phase change without the percentage
+ *  being announced on every batch.
+ */
+function ImportProgressBar({ progress }: { progress: KnowledgeImportProgress }) {
+  const t = useT();
+  const determinate = progress.phase === 'embedding' && progress.chunksTotal > 0;
+  const percent = determinate
+    ? Math.round((progress.chunksDone / progress.chunksTotal) * 100)
+    : 0;
+  return (
+    <div className="kb-import-progress" role="status" aria-live="polite" aria-busy="true">
+      <div
+        className="kb-import-progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        {...(determinate ? { 'aria-valuenow': percent } : {})}
+      >
+        <div
+          className={`kb-import-progress-fill${determinate ? '' : ' indeterminate'}`}
+          style={determinate ? { width: `${percent}%` } : undefined}
+        />
+      </div>
+      <small>
+        {determinate
+          ? t('settings.knowledge.progress.embedding', {
+              done: progress.chunksDone,
+              total: progress.chunksTotal,
+            })
+          : t('settings.knowledge.progress.reading')}
+      </small>
+    </div>
+  );
+}
+
 /** Knowledge base collections + documents CRUD (t1-6). */
 export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSectionProps) {
   const t = useT();
@@ -49,6 +94,14 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
   const [busy, setBusy] = useState(false);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [pendingPdfNotice, setPendingPdfNotice] = useState<PendingImport | null>(null);
+  // Non-null only while an import is running. Embedding a long document takes
+  // tens of seconds against the provider, and a button that just sits there
+  // looks broken.
+  const [progress, setProgress] = useState<KnowledgeImportProgress | null>(null);
+  // Which collection the running import belongs to. Deliberately not
+  // `selectedId`: "Import document" acts on its own row without selecting it,
+  // so keying the bar off the selection hid it for every unselected row.
+  const [importingId, setImportingId] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
@@ -132,8 +185,10 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
    *  static label can't express. */
   async function proceedImport(collectionId: string, path: string) {
     setBusy(true);
+    setImportingId(collectionId);
+    setProgress({ phase: 'reading', chunksDone: 0, chunksTotal: 0 });
     try {
-      const outcome = await importKnowledgeDocument(collectionId, path);
+      const outcome = await importKnowledgeDocument(collectionId, path, setProgress);
       onStatus(
         outcome.status === 'duplicate'
           ? t('settings.knowledge.status.duplicate', { title: outcome.title })
@@ -146,6 +201,8 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
     } catch (e) {
       onStatus(t('settings.knowledge.status.importFailed', { error: String(e) }));
     } finally {
+      setProgress(null);
+      setImportingId(null);
       setBusy(false);
     }
   }
@@ -299,6 +356,9 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
                     model: collection.embeddingModel,
                   })}
                 </small>
+                {progress && importingId === collection.id ? (
+                  <ImportProgressBar progress={progress} />
+                ) : null}
               </div>
               <div className="skill-row-actions">
                 <button

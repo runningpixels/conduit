@@ -512,6 +512,15 @@ export interface KnowledgeDocument {
 
 export type KnowledgeImportStatus = 'imported' | 'duplicate';
 
+/** Progress for one import, pushed while `importKnowledgeDocument` runs.
+ *  `reading` happens locally; `embedding` waits on the provider and is where
+ *  a large document spends most of its time. Counts are 0 while reading. */
+export interface KnowledgeImportProgress {
+  phase: 'reading' | 'embedding';
+  chunksDone: number;
+  chunksTotal: number;
+}
+
 export interface KnowledgeImportOutcome {
   status: KnowledgeImportStatus;
   documentId: string;

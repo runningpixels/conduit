@@ -758,6 +758,8 @@
   "settings.knowledge.pdfNotice.imperfect": "PDF の読み取りは完璧ではありません。段組みや表の順序が入れ替わることがあり、テキストレイヤーのないスキャン PDF からは何も取得できません。インポートに失敗した場合は、どちらが起きたか通知されます。",
   "settings.knowledge.pdfNotice.local": "PDF はこのコンピューター上でオープンソースのライブラリによって読み取られます。ファイル自体が読み取りのためにアップロードされることはありません。",
   "settings.knowledge.pdfNotice.title": "PDF のインポートについて",
+  "settings.knowledge.progress.embedding": "インデックスを作成しています… {total} セクション中 {done} 件",
+  "settings.knowledge.progress.reading": "ドキュメントを読み込んでいます…",
   "settings.knowledge.prompt.createName": "このコレクションに名前を付ける",
   "settings.knowledge.prompt.renameName": "このコレクションの名前を変更",
   "settings.knowledge.status.actionFailed": "{label} に失敗しました: {error}",

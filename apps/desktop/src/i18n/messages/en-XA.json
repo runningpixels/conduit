@@ -758,6 +758,8 @@
   "settings.knowledge.pdfNotice.imperfect": "[Ŕéàḍîñĝ à ṔḌḞ îš îḿṕéŕḟéçť. Çöļüḿñš àñḍ ťàḅļéš çàñ çöḿé öüť îñ ťĥé ŵŕöñĝ öŕḍéŕ, àñḍ à šçàññéḍ ṔḌḞ ŵîťĥ ñö ťéẍť ļàýéŕ ṕŕöḍüçéš ñöťĥîñĝ àť àļļ. Ýöü'ļļ ḅé ťöļḍ ŵĥîçĥ öḟ ťĥéšé ĥàṕṕéñéḍ îḟ àñ îḿṕöŕť ḟàîļš. —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— ——]",
   "settings.knowledge.pdfNotice.local": "[ṔḌḞš àŕé ŕéàḍ öñ ťĥîš çöḿṕüťéŕ ḅý àñ öṕéñ-šöüŕçé ļîḅŕàŕý. Ťĥé ḟîļé îťšéļḟ îš ñöť üṕļöàḍéḍ ťö ḅé ŕéàḍ. —————— —————— —————— —————— —————— —————— —————]",
   "settings.knowledge.pdfNotice.title": "[Àḅöüť îḿṕöŕťîñĝ ṔḌḞš —————— ——]",
+  "settings.knowledge.progress.embedding": "[Îñḍéẍîñĝ… {done} öḟ {total} šéçťîöñš —————— ————]",
+  "settings.knowledge.progress.reading": "[Ŕéàḍîñĝ ťĥé ḍöçüḿéñť… —————— ———]",
   "settings.knowledge.prompt.createName": "[Ñàḿé ťĥîš çöļļéçťîöñ —————— ——]",
   "settings.knowledge.prompt.renameName": "[Ŕéñàḿé ťĥîš çöļļéçťîöñ —————— ———]",
   "settings.knowledge.status.actionFailed": "[{label} ḟàîļéḍ: {error} ————]",

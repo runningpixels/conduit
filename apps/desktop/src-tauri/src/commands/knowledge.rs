@@ -18,9 +18,10 @@
 //!    to the user rather than silently dropped.
 
 use provider_core::schema::AppError;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
+use tauri::ipc::Channel;
 use tauri::State;
 
 use crate::{
@@ -153,6 +154,31 @@ impl From<repo::Document> for KnowledgeDocument {
             imported_at: d.imported_at,
         }
     }
+}
+
+/// Progress for one import, pushed over a channel the renderer supplies.
+///
+/// Two phases, because they fail and wait for different reasons: `reading`
+/// happens on this machine and is usually seconds, `embedding` waits on the
+/// provider and is where a large document spends most of its time. Counts are
+/// zero while reading, since the chunk count isn't known until the text is out.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportPhase {
+    /// Reading the file on this machine. Usually seconds.
+    Reading,
+    /// Waiting on the provider. Where a large document spends its time.
+    Embedding,
+}
+
+/// A channel payload must round-trip, so this derives `Deserialize` as well as
+/// `Serialize` — which is why `phase` is an enum rather than a `&'static str`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProgress {
+    pub phase: ImportPhase,
+    pub chunks_done: usize,
+    pub chunks_total: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -460,6 +486,7 @@ pub async fn import_knowledge_document(
     state: State<'_, AppState>,
     collection_id: String,
     path: String,
+    progress: Channel<ImportProgress>,
 ) -> Result<KnowledgeImportOutcome, AppError> {
     let collection = repo::get_collection(&state.db, &collection_id)
         .await
@@ -487,6 +514,14 @@ pub async fn import_knowledge_document(
     // "couldn't import that" would be the difference between a user who
     // re-saves their scanned PDF with OCR and one who concludes the feature
     // is broken.
+    // `send` errors once the renderer drops the channel (the user navigated
+    // away). That is not a reason to abandon an import that is already paid
+    // for, so the result is ignored deliberately, here and below.
+    let _ = progress.send(ImportProgress {
+        phase: ImportPhase::Reading,
+        chunks_done: 0,
+        chunks_total: 0,
+    });
     let extracted = extract::extract_document(path_ref)
         .await
         .map_err(|failure| extract_failure_to_error(&title, failure))?;
@@ -494,7 +529,15 @@ pub async fn import_knowledge_document(
 
     let config = embedding_config(&state, &collection.provider_id, &collection.embedding_model)?;
 
-    let outcome = ingest::ingest_text(
+    let report = move |p: ingest::IngestProgress| {
+        let _ = progress.send(ImportProgress {
+            phase: ImportPhase::Embedding,
+            chunks_done: p.chunks_done,
+            chunks_total: p.chunks_total,
+        });
+    };
+
+    let outcome = ingest::ingest_text_with_progress(
         &state.db,
         &state.encryption,
         &config,
@@ -502,6 +545,7 @@ pub async fn import_knowledge_document(
         &path,
         &title,
         &text,
+        &report,
     )
     .await
     .map_err(db_err)?;

@@ -758,6 +758,8 @@
   "settings.knowledge.pdfNotice.imperfect": "Leer un PDF es imperfecto. Las columnas y las tablas pueden salir en un orden incorrecto, y un PDF escaneado sin capa de texto no produce nada en absoluto. Se te indicará cuál de estos casos ocurrió si falla una importación.",
   "settings.knowledge.pdfNotice.local": "Los PDF se leen en este equipo mediante una biblioteca de código abierto. El archivo en sí no se sube para leerlo.",
   "settings.knowledge.pdfNotice.title": "Acerca de la importación de PDF",
+  "settings.knowledge.progress.embedding": "Indexando… {done} de {total} secciones",
+  "settings.knowledge.progress.reading": "Leyendo el documento…",
   "settings.knowledge.prompt.createName": "Ponle un nombre a esta colección",
   "settings.knowledge.prompt.renameName": "Renombrar esta colección",
   "settings.knowledge.status.actionFailed": "{label} falló: {error}",

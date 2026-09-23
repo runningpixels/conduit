@@ -758,6 +758,8 @@
   "settings.knowledge.pdfNotice.imperfect": "Das Lesen eines PDFs ist nicht perfekt. Spalten und Tabellen können in der falschen Reihenfolge herauskommen, und ein gescanntes PDF ohne Textebene liefert überhaupt nichts. Du wirst informiert, welcher dieser Fälle eingetreten ist, falls ein Import fehlschlägt.",
   "settings.knowledge.pdfNotice.local": "PDFs werden auf diesem Computer von einer Open-Source-Bibliothek gelesen. Die Datei selbst wird nicht zum Lesen hochgeladen.",
   "settings.knowledge.pdfNotice.title": "Über das Importieren von PDFs",
+  "settings.knowledge.progress.embedding": "Wird indiziert … {done} von {total} Abschnitten",
+  "settings.knowledge.progress.reading": "Dokument wird gelesen …",
   "settings.knowledge.prompt.createName": "Diese Sammlung benennen",
   "settings.knowledge.prompt.renameName": "Diese Sammlung umbenennen",
   "settings.knowledge.status.actionFailed": "{label} fehlgeschlagen: {error}",

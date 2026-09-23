@@ -758,6 +758,8 @@
   "settings.knowledge.pdfNotice.imperfect": "La lecture d'un PDF n'est pas parfaite. Les colonnes et tableaux peuvent ressortir dans le mauvais ordre, et un PDF scanné sans couche de texte ne produit rien du tout. Vous serez informé de ce qui s'est passé si un import échoue.",
   "settings.knowledge.pdfNotice.local": "Les PDF sont lus sur cet ordinateur par une bibliothèque open source. Le fichier lui-même n'est pas envoyé pour être lu.",
   "settings.knowledge.pdfNotice.title": "À propos de l'importation de PDF",
+  "settings.knowledge.progress.embedding": "Indexation… {done} sur {total} sections",
+  "settings.knowledge.progress.reading": "Lecture du document…",
   "settings.knowledge.prompt.createName": "Nommer cette collection",
   "settings.knowledge.prompt.renameName": "Renommer cette collection",
   "settings.knowledge.status.actionFailed": "Échec de {label} : {error}",

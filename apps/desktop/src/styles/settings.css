@@ -1150,3 +1150,45 @@
   line-height: 1.5;
 }
 .brand-warning-item + .brand-warning-item { border-top: 1px solid var(--line-soft); }
+
+/* Knowledge base import progress (t1-6). Indeterminate while the file is being
+   read, determinate once the chunk count is known. */
+.kb-import-progress {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  max-width: 320px;
+}
+
+.kb-import-progress-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--line);
+  overflow: hidden;
+}
+
+.kb-import-progress-fill {
+  height: 100%;
+  background: var(--hue-solid);
+  border-radius: var(--r-pill);
+  transition: width var(--dur-collapse) ease-out;
+}
+
+.kb-import-progress-fill.indeterminate {
+  width: 35%;
+  animation: kb-import-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes kb-import-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-import-progress-fill.indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.45;
+  }
+  .kb-import-progress-fill { transition: none; }
+}

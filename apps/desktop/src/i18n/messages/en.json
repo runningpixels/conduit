@@ -758,6 +758,8 @@
   "settings.knowledge.pdfNotice.imperfect": "Reading a PDF is imperfect. Columns and tables can come out in the wrong order, and a scanned PDF with no text layer produces nothing at all. You'll be told which of these happened if an import fails.",
   "settings.knowledge.pdfNotice.local": "PDFs are read on this computer by an open-source library. The file itself is not uploaded to be read.",
   "settings.knowledge.pdfNotice.title": "About importing PDFs",
+  "settings.knowledge.progress.embedding": "Indexing… {done} of {total} sections",
+  "settings.knowledge.progress.reading": "Reading the document…",
   "settings.knowledge.prompt.createName": "Name this collection",
   "settings.knowledge.prompt.renameName": "Rename this collection",
   "settings.knowledge.status.actionFailed": "{label} failed: {error}",

@@ -758,6 +758,8 @@
   "settings.knowledge.pdfNotice.imperfect": "PDF 的读取并不完美。列和表格的顺序可能会出错，而没有文本层的扫描版 PDF 则完全读不出内容。如果导入失败，系统会告诉你具体是哪种情况。",
   "settings.knowledge.pdfNotice.local": "PDF 由本机上的一个开源库读取。文件本身不会被上传以供读取。",
   "settings.knowledge.pdfNotice.title": "关于导入 PDF",
+  "settings.knowledge.progress.embedding": "正在建立索引… {total} 个片段中的 {done} 个",
+  "settings.knowledge.progress.reading": "正在读取文档…",
   "settings.knowledge.prompt.createName": "为此集合命名",
   "settings.knowledge.prompt.renameName": "重命名此集合",
   "settings.knowledge.status.actionFailed": "{label} 失败：{error}",

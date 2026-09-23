@@ -175,6 +175,17 @@ describe('safeMarkdown structure', () => {
     expect(container.textContent).toContain('$5.00');
   });
 
+  it('does not treat a currency range as math', () => {
+    const { container } = render(<>{renderMarkdown('Prices of $200,000–$500,000 and $5-$10.')}</>);
+    expect(container.querySelector('.katex')).toBeNull();
+    expect(container.textContent).toContain('$200,000–$500,000 and $5-$10');
+  });
+
+  it('still renders inline math that ends before a non-digit', () => {
+    const { container } = render(<>{renderMarkdown('Let $x_1$, then $y$.')}</>);
+    expect(container.querySelectorAll('.katex').length).toBe(2);
+  });
+
   it('renders a $$ display math block', () => {
     const { container } = render(<>{renderMarkdown('$$\\int_0^1 x dx$$')}</>);
     expect(container.querySelector('.md-katex-display, .md-katex-block .katex')).not.toBeNull();

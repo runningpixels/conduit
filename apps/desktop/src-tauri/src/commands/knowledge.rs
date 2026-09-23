@@ -18,7 +18,7 @@
 //!    to the user rather than silently dropped.
 
 use provider_core::schema::AppError;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 use tauri::ipc::Channel;
@@ -162,7 +162,7 @@ impl From<repo::Document> for KnowledgeDocument {
 /// happens on this machine and is usually seconds, `embedding` waits on the
 /// provider and is where a large document spends most of its time. Counts are
 /// zero while reading, since the chunk count isn't known until the text is out.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ImportPhase {
     /// Reading the file on this machine. Usually seconds.
@@ -171,9 +171,12 @@ pub enum ImportPhase {
     Embedding,
 }
 
-/// A channel payload must round-trip, so this derives `Deserialize` as well as
-/// `Serialize` — which is why `phase` is an enum rather than a `&'static str`.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Sent over a `Channel<ImportProgress>` that the command takes as a plain
+/// argument. It must not be `Option<Channel<_>>`: Tauri implements `CommandArg`
+/// for `Channel<T>` directly, but an `Option` falls back to requiring
+/// `Deserialize`, which a channel can't satisfy. The error message points at
+/// the payload type, which is misleading.
+#[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportProgress {
     pub phase: ImportPhase,
@@ -191,6 +194,29 @@ pub struct KnowledgeImportOutcome {
     pub document_id: String,
     pub chunk_count: i64,
     pub title: String,
+}
+
+/// The passage a citation points at, for showing to the user.
+///
+/// Returned whole and verbatim: this goes to the person who owns the document,
+/// not into a prompt, so the reinjection gate does not apply. The renderer must
+/// still show `content` as plain text — it is file content, not markup.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgePassage {
+    pub chunk_id: String,
+    pub document_id: String,
+    pub document_title: String,
+    /// Where the document was imported from, so the user can find the original.
+    pub source: String,
+    pub mime_type: Option<String>,
+    /// 0-based position of this chunk, and how many the document has, so the
+    /// UI can say "section 12 of 181".
+    pub ordinal: i64,
+    pub document_chunk_count: i64,
+    pub char_start: i64,
+    pub char_end: i64,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -525,7 +551,6 @@ pub async fn import_knowledge_document(
     let extracted = extract::extract_document(path_ref)
         .await
         .map_err(|failure| extract_failure_to_error(&title, failure))?;
-    let text = extracted.text;
 
     let config = embedding_config(&state, &collection.provider_id, &collection.embedding_model)?;
 
@@ -544,7 +569,8 @@ pub async fn import_knowledge_document(
         &collection_id,
         &path,
         &title,
-        &text,
+        extracted.mime_type.as_deref(),
+        &extracted.text,
         &report,
     )
     .await
@@ -577,6 +603,40 @@ pub async fn delete_knowledge_document(
     repo::delete_document(&state.db, &document_id)
         .await
         .map_err(db_err)
+}
+
+/// The cited passage behind a citation chip. `None` when the chunk is gone —
+/// the document was deleted after the answer was written — which the UI shows
+/// as "no longer available" rather than an error.
+#[tauri::command]
+pub async fn get_knowledge_passage(
+    state: State<'_, AppState>,
+    chunk_id: String,
+) -> Result<Option<KnowledgePassage>, AppError> {
+    let Some(chunk) = repo::get_chunk(&state.db, &state.encryption, &chunk_id)
+        .await
+        .map_err(db_err)?
+    else {
+        return Ok(None);
+    };
+    let Some(document) = repo::get_document(&state.db, &chunk.document_id)
+        .await
+        .map_err(db_err)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(KnowledgePassage {
+        chunk_id: chunk.id,
+        document_id: document.id,
+        document_title: document.title,
+        source: document.source,
+        mime_type: document.mime_type,
+        ordinal: chunk.ordinal,
+        document_chunk_count: document.chunk_count,
+        char_start: chunk.char_start,
+        char_end: chunk.char_end,
+        content: chunk.content,
+    }))
 }
 
 // ---------------------------------------------------------------------------

@@ -9,11 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Your own documents, searchable from a chat. Settings has a Knowledge section
-  where you can create a collection and add files to it — plain text, Markdown,
-  CSV, Word documents and PDFs. Attach a collection to a chat from the composer
-  and the assistant searches it while answering, showing which documents it drew
-  on and where in them.
+- Your own documents, searchable from a chat. **Documents** in the sidebar is
+  where you create a collection and add files to it — plain text, Markdown, CSV,
+  Word documents and PDFs — or drag files from your desktop anywhere onto the
+  window. Adding a large document shows its progress as it is indexed. Attach a
+  collection to a chat from the composer and the assistant searches it while
+  answering. Under your message, each document it drew on is named with the
+  sections it used; click one to read the exact passage.
 
   Search combines two methods, because they fail in different places: one finds
   passages that mean the same thing as your question even when the words differ,
@@ -24,9 +26,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   so you are asked before the first document goes to a given provider, and the
   dialog says plainly that the provider sees the complete contents of each file.
   Consent is remembered per provider, so agreeing to send documents to one does
-  not quietly authorise another. Declining leaves the document unindexed and
-  tells you so. With local-only mode on, a collection needs a local provider such
-  as Ollama, and says why rather than falling back to the cloud.
+  not quietly authorise another, and you can withdraw it from Documents at any
+  time. Declining leaves the document unindexed and tells you so. With
+  local-only mode on, a collection needs a local provider such as Ollama, and
+  says why rather than falling back to the cloud.
 
   PDFs are read on your computer, not uploaded to be read, and a one-time notice
   explains that before the first one — including that a scanned PDF with no text
@@ -39,8 +42,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   turn — its provider lost its key, or local-only is on — you are told which one,
   instead of just getting a worse answer.
 
-  If you never open the Knowledge section, nothing changes: no new button in the
-  composer, no dialog, and no extra work on any message you send.
+  Until you create a collection, the chat itself is unchanged: no new button in
+  the composer, no dialog, and no extra work on any message you send.
 
 - Ask for a picture and you get one. On OpenAI, Gemini and OpenRouter, a prompt
   that plainly asks for an image — "draw me a logo for my bakery" — generates

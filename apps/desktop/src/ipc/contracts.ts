@@ -528,6 +528,21 @@ export interface KnowledgeImportOutcome {
   title: string;
 }
 
+/** The passage behind a citation chip. `content` is the document's own text,
+ *  shown to its owner — render it as plain text, never as markup. */
+export interface KnowledgePassage {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  source: string;
+  mimeType: string | null;
+  ordinal: number;
+  documentChunkCount: number;
+  charStart: number;
+  charEnd: number;
+  content: string;
+}
+
 export interface KnowledgeCitation {
   documentId: string;
   documentTitle: string;

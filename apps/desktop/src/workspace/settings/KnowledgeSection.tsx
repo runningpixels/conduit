@@ -24,18 +24,22 @@ interface KnowledgeSectionProps {
   settings: AppSettings;
   onUpdate: (next: AppSettings) => void;
   onStatus: (message: string) => void;
-}
-
-interface PendingImport {
-  collectionId: string;
-  path: string;
-  providerId: string;
+  /** Files dropped onto the window, waiting for the user to pick a collection.
+   *  Absolute paths from Tauri's native drop event. */
+  pendingPaths?: string[];
+  /** Called once the dropped files have been added or dismissed. */
+  onPendingPathsHandled?: () => void;
 }
 
 /** Extension check only -- the real format dispatch happens in Rust. This
  *  decides whether to raise the one-time notice, nothing more. */
 function isPdf(path: string): boolean {
   return path.toLowerCase().endsWith('.pdf');
+}
+
+/** The file name from an absolute path, on either separator. */
+function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
 }
 
 function formatBytes(bytes: number): string {
@@ -86,14 +90,31 @@ function ImportProgressBar({ progress }: { progress: KnowledgeImportProgress }) 
 }
 
 /** Knowledge base collections + documents CRUD (t1-6). */
-export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSectionProps) {
+export function KnowledgeSection({
+  settings,
+  onUpdate,
+  onStatus,
+  pendingPaths = [],
+  onPendingPathsHandled,
+}: KnowledgeSectionProps) {
   const t = useT();
   const [collections, setCollections] = useState<KnowledgeCollection[]>([]);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
-  const [pendingPdfNotice, setPendingPdfNotice] = useState<PendingImport | null>(null);
+  // Each one-time dialog is awaited rather than threaded through state: the
+  // resolver is parked here while the dialog is up. That keeps the import a
+  // single linear function, which a batch of dropped files needs.
+  const [pdfNoticeResolve, setPdfNoticeResolve] = useState<((ok: boolean) => void) | null>(null);
+  const [consentRequest, setConsentRequest] = useState<{
+    providerId: string;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  // The latest persisted settings. The `settings` prop lags a render behind an
+  // `updateSettings` call, and a batch import reads consent between awaits.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const [dropTargetId, setDropTargetId] = useState<string>('');
   // Non-null only while an import is running. Embedding a long document takes
   // tens of seconds against the provider, and a button that just sits there
   // looks broken.
@@ -207,6 +228,64 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
     }
   }
 
+  function askPdfNotice(): Promise<boolean> {
+    return new Promise((resolve) => setPdfNoticeResolve(() => resolve));
+  }
+
+  function askConsent(providerId: string): Promise<boolean> {
+    return new Promise((resolve) => setConsentRequest({ providerId, resolve }));
+  }
+
+  function persist(patch: Parameters<typeof updateSettings>[0]): Promise<AppSettings | null> {
+    return updateSettings(patch)
+      .then((next) => {
+        settingsRef.current = next;
+        onUpdate(next);
+        return next;
+      })
+      .catch((e: unknown) => {
+        onStatus(t('settings.knowledge.status.consentFailed', { error: String(e) }));
+        return null;
+      });
+  }
+
+  /** Import one or more files into a collection: the one-time PDF notice if
+   *  any file is a PDF, embedding consent if this provider hasn't been agreed
+   *  to, then each file in turn with progress.
+   *
+   *  The PDF notice comes first because it is about what happens *locally*
+   *  (extraction quality), while consent is about what leaves the machine.
+   *  Both are asked once for the whole batch, not per file. */
+  async function importPaths(collection: KnowledgeCollection, paths: string[]) {
+    if (paths.length === 0) return;
+    let current = settingsRef.current;
+
+    if (paths.some(isPdf) && !current.pdfImportNoticeAcknowledged) {
+      if (!(await askPdfNotice())) {
+        onStatus(t('settings.knowledge.status.declinedImport'));
+        return;
+      }
+      const next = await persist({ pdfImportNoticeAcknowledged: true });
+      if (!next) return;
+      current = next;
+    }
+
+    if (!current.embeddingConsentProviders.includes(collection.providerId)) {
+      if (!(await askConsent(collection.providerId))) {
+        onStatus(t('settings.knowledge.status.declinedImport'));
+        return;
+      }
+      const next = await persist({
+        embeddingConsentProviders: [...current.embeddingConsentProviders, collection.providerId],
+      });
+      if (!next) return;
+    }
+
+    for (const path of paths) {
+      await proceedImport(collection.id, path);
+    }
+  }
+
   async function handleImport(collection: KnowledgeCollection) {
     let path: string | null;
     try {
@@ -216,87 +295,29 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
       return;
     }
     if (!path) return; // cancelled
-    // The PDF notice comes first because it is about what happens *locally*
-    // (extraction quality), while embedding consent is about what leaves the
-    // machine. Both are one-time, so a first PDF on a fresh install shows two
-    // dialogs once and never again.
-    if (isPdf(path) && !settings.pdfImportNoticeAcknowledged) {
-      setPendingPdfNotice({
-        collectionId: collection.id,
-        path,
-        providerId: collection.providerId,
-      });
-      return;
-    }
-    await continueImportAfterPdfNotice({
-      collectionId: collection.id,
-      path,
-      providerId: collection.providerId,
+    await importPaths(collection, [path]);
+  }
+
+  async function handleAddDropped() {
+    const target = collections.find((c) => c.id === dropTargetId) ?? collections[0];
+    if (!target) return;
+    const paths = pendingPaths;
+    onPendingPathsHandled?.();
+    setSelectedId(target.id);
+    await importPaths(target, paths);
+  }
+
+  /** Withdraw consent for one provider. The list is a full replace, so sending
+   *  it without this provider is the whole operation. */
+  function handleRevokeConsent(providerId: string) {
+    if (!confirm(t('settings.knowledge.consentList.revokeConfirm', { provider: providerId }))) return;
+    void persist({
+      embeddingConsentProviders: settingsRef.current.embeddingConsentProviders.filter(
+        (p) => p !== providerId,
+      ),
+    }).then((next) => {
+      if (next) onStatus(t('settings.knowledge.consentList.revoked', { provider: providerId }));
     });
-  }
-
-  /** The rest of the import once the PDF notice is out of the way: embedding
-   *  consent if this provider hasn't been agreed to, otherwise straight in. */
-  async function continueImportAfterPdfNotice(pending: PendingImport) {
-    if (!settings.embeddingConsentProviders.includes(pending.providerId)) {
-      setPendingImport(pending);
-      return;
-    }
-    await proceedImport(pending.collectionId, pending.path);
-  }
-
-  function handlePdfNoticeContinue() {
-    const pending = pendingPdfNotice;
-    if (!pending) return;
-    setPendingPdfNotice(null);
-    void (async () => {
-      let persisted: AppSettings;
-      try {
-        persisted = await updateSettings({ pdfImportNoticeAcknowledged: true });
-        onUpdate(persisted);
-      } catch (e) {
-        onStatus(t('settings.knowledge.status.consentFailed', { error: String(e) }));
-        return;
-      }
-      // Read the consent list off the freshly persisted settings rather than
-      // the `settings` prop, which is still the pre-update render's value.
-      if (!persisted.embeddingConsentProviders.includes(pending.providerId)) {
-        setPendingImport(pending);
-        return;
-      }
-      await proceedImport(pending.collectionId, pending.path);
-    })();
-  }
-
-  function handlePdfNoticeCancel() {
-    setPendingPdfNotice(null);
-    onStatus(t('settings.knowledge.status.declinedImport'));
-  }
-
-  function handleConsentAllow() {
-    const pending = pendingImport;
-    if (!pending) return;
-    setPendingImport(null);
-    void (async () => {
-      try {
-        const persisted = await updateSettings({
-          embeddingConsentProviders: [
-            ...settings.embeddingConsentProviders,
-            pending.providerId,
-          ],
-        });
-        onUpdate(persisted);
-      } catch (e) {
-        onStatus(t('settings.knowledge.status.consentFailed', { error: String(e) }));
-        return;
-      }
-      await proceedImport(pending.collectionId, pending.path);
-    })();
-  }
-
-  function handleConsentDeny() {
-    setPendingImport(null);
-    onStatus(t('settings.knowledge.status.declinedImport'));
   }
 
   const selected = collections.find((c) => c.id === selectedId) ?? null;
@@ -316,6 +337,49 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
           {t('settings.knowledge.actions.createCollection')}
         </button>
       </div>
+      {pendingPaths.length > 0 && (
+        <div className="kb-drop-banner" role="region" aria-label={t('settings.knowledge.drop.ariaLabel')}>
+          <p>
+            {t('settings.knowledge.drop.intro', { count: pendingPaths.length })}
+          </p>
+          <ul>
+            {pendingPaths.map((path) => (
+              <li key={path}>{fileName(path)}</li>
+            ))}
+          </ul>
+          {collections.length === 0 ? (
+            <p className="kb-drop-hint">{t('settings.knowledge.drop.needCollection')}</p>
+          ) : (
+            <div className="kb-drop-actions">
+              <label>
+                {t('settings.knowledge.drop.target')}{' '}
+                <select
+                  value={dropTargetId || collections[0].id}
+                  onChange={(e) => setDropTargetId(e.target.value)}
+                >
+                  {collections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={busy}
+                onClick={() => void handleAddDropped()}
+              >
+                {t('settings.knowledge.drop.add')}
+              </button>
+            </div>
+          )}
+          <button className="btn ghost" type="button" onClick={() => onPendingPathsHandled?.()}>
+            {t('common.actions.cancel')}
+          </button>
+        </div>
+      )}
+
       {collections.length === 0 ? (
         <p style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>
           {t('settings.knowledge.empty.hint')}
@@ -432,17 +496,61 @@ export function KnowledgeSection({ settings, onUpdate, onStatus }: KnowledgeSect
         </div>
       )}
 
+      {settings.embeddingConsentProviders.length > 0 && (
+        <section className="kb-consent-list" aria-labelledby="kb-consent-heading">
+          <h3 id="kb-consent-heading" className="sheet-h" style={{ fontSize: 'var(--fs-5xl)' }}>
+            {t('settings.knowledge.consentList.heading')}
+          </h3>
+          <p className="sheet-sub">{t('settings.knowledge.consentList.intro')}</p>
+          <ul className="skill-list">
+            {settings.embeddingConsentProviders.map((providerId) => (
+              <li key={providerId} className="skill-row">
+                <div className="skill-row-main">
+                  <b>{providerId}</b>
+                </div>
+                <div className="skill-row-actions">
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleRevokeConsent(providerId)}
+                  >
+                    {t('settings.knowledge.consentList.revoke')}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <PdfImportNoticeDialog
-        visible={pendingPdfNotice != null}
-        onContinue={handlePdfNoticeContinue}
-        onCancel={handlePdfNoticeCancel}
+        visible={pdfNoticeResolve != null}
+        onContinue={() => {
+          const resolve = pdfNoticeResolve;
+          setPdfNoticeResolve(null);
+          resolve?.(true);
+        }}
+        onCancel={() => {
+          const resolve = pdfNoticeResolve;
+          setPdfNoticeResolve(null);
+          resolve?.(false);
+        }}
       />
 
       <EmbeddingConsentDialog
-        visible={pendingImport != null}
-        providerId={pendingImport?.providerId ?? null}
-        onAllow={handleConsentAllow}
-        onDeny={handleConsentDeny}
+        visible={consentRequest != null}
+        providerId={consentRequest?.providerId ?? null}
+        onAllow={() => {
+          const request = consentRequest;
+          setConsentRequest(null);
+          request?.resolve(true);
+        }}
+        onDeny={() => {
+          const request = consentRequest;
+          setConsentRequest(null);
+          request?.resolve(false);
+        }}
       />
     </div>
   );

@@ -237,6 +237,9 @@ interface ChatViewProps {
   /// Whether the settings sheet is open. Connectors are added there, so this
   /// toggling is the signal that the MCP prompt/resource lists may be stale.
   settingsOpen?: boolean;
+  /** t1-8: the Documents sheet. Collections change there, so its closing is a
+   *  refresh trigger for the composer's collection list, like Settings is. */
+  documentsOpen?: boolean;
   /// Renderer-only conversation → last-used provider map (sidebar row dots).
   /// Falls back to `settings.activeProvider` for per-turn hue + model line.
   convoProviders?: Record<string, string>;
@@ -658,6 +661,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     paneActive = true,
     onOpenSettings,
   settingsOpen = false,
+  documentsOpen = false,
     convoProviders = {},
   },
   ref,
@@ -1005,7 +1009,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, settingsOpen, knowledgeReloadToken]);
+  }, [conversationId, settingsOpen, documentsOpen, knowledgeReloadToken]);
 
   useEffect(() => {
     if (!conversationId) {

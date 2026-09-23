@@ -33,7 +33,6 @@ import { GenerationControlsSection } from '../workspace/settings/GenerationContr
 import { PromptsSection } from '../workspace/settings/PromptsSection';
 import { SkillsSection } from '../workspace/settings/SkillsSection';
 import { MemorySection } from '../workspace/settings/MemorySection';
-import { KnowledgeSection } from '../workspace/settings/KnowledgeSection';
 import { UsageSection } from '../workspace/settings/UsageSection';
 import {
   readProviderColour,
@@ -99,6 +98,8 @@ interface SettingsSheetProps {
   boundaryOk?: boolean;
   hasCredential?: boolean;
   onInsertPrompt?: (body: string) => void;
+  /** t1-8: hand off to the Documents sheet, where the knowledge base now lives. */
+  onOpenDocuments?: () => void;
   /** Optional coherence hook into App.tsx's own brand state: called after
    *  every successful save/import/reset/logo change so the sidebar
    *  wordmark/logo and the theme-change re-apply effect (App.tsx) update
@@ -223,6 +224,7 @@ export function SettingsSheet({
   boundaryOk,
   hasCredential,
   onInsertPrompt,
+  onOpenDocuments,
   onBrandChange,
 }: SettingsSheetProps) {
   const t = useT();
@@ -602,7 +604,13 @@ export function SettingsSheet({
               <p className="sheet-sub">
                 {t('shell.settingsSheet.knowledge.intro')}
               </p>
-              <KnowledgeSection settings={settings} onUpdate={save} onStatus={onStatus} />
+              {/* t1-8: the knowledge base moved to its own sheet. This stays as a
+                  signpost for anyone who looks here out of habit, rather than a
+                  second copy of the same controls. */}
+              <p className="sheet-sub">{t('shell.settingsSheet.knowledge.movedToDocuments')}</p>
+              <button className="btn primary" type="button" onClick={() => onOpenDocuments?.()}>
+                {t('shell.settingsSheet.knowledge.openDocuments')}
+              </button>
             </>
           )}
 

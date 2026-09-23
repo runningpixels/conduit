@@ -202,6 +202,7 @@ fn main() {
             list_conversation_collections,
             set_conversation_collections,
             retrieve_knowledge_context,
+            get_knowledge_passage,
             // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
             reset_local_database,
             // Migration-recovery escape hatches: dismiss the notice, delete the

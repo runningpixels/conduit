@@ -677,3 +677,60 @@ fn sha256_hex_for_test(text: &str) -> String {
     }
     s
 }
+
+/// A citation chip opens its passage by chunk id. The lookup must return the
+/// decrypted text, and must return `None` — not an error — once the document is
+/// deleted, because a citation in an old answer can outlive its document.
+#[tokio::test]
+async fn get_chunk_returns_the_passage_and_none_after_delete() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let collection = create_test_collection(&pool).await;
+    let embedding = embedding_config();
+
+    let document_id = match ingest_text(
+        &pool,
+        &enc,
+        &embedding,
+        &collection.id,
+        "test://cite.md",
+        "Citable",
+        &markdown_document(),
+    )
+    .await
+    .unwrap()
+    {
+        IngestOutcome::Imported { document_id, .. } => document_id,
+        other => panic!("expected Imported, got {other:?}"),
+    };
+
+    let chunks = repo::list_chunks_by_document(&pool, &enc, &document_id)
+        .await
+        .unwrap();
+    let first = &chunks[0];
+
+    let fetched = repo::get_chunk(&pool, &enc, &first.id)
+        .await
+        .unwrap()
+        .expect("an existing chunk is found");
+    assert_eq!(
+        fetched.content, first.content,
+        "content comes back decrypted"
+    );
+    assert_eq!(fetched.document_id, document_id);
+    assert_eq!(fetched.char_start, first.char_start);
+
+    assert!(repo::get_chunk(&pool, &enc, "no-such-chunk")
+        .await
+        .unwrap()
+        .is_none());
+
+    repo::delete_document(&pool, &document_id).await.unwrap();
+    assert!(
+        repo::get_chunk(&pool, &enc, &first.id)
+            .await
+            .unwrap()
+            .is_none(),
+        "a deleted document's chunks are gone, and that is not an error"
+    );
+}

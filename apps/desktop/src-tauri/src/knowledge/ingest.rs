@@ -104,13 +104,16 @@ pub async fn ingest_text(
         collection_id,
         source,
         title,
+        None,
         text,
         &|_| {},
     )
     .await
 }
 
-/// [`ingest_text`], reporting progress as each embedding batch completes.
+/// [`ingest_text`], reporting progress as each embedding batch completes and
+/// recording the source's MIME type, which the extractor knows and plain-text
+/// callers don't.
 #[allow(clippy::too_many_arguments)]
 pub async fn ingest_text_with_progress(
     pool: &SqlitePool,
@@ -119,6 +122,7 @@ pub async fn ingest_text_with_progress(
     collection_id: &str,
     source: &str,
     title: &str,
+    mime_type: Option<&str>,
     text: &str,
     progress: ProgressSink<'_>,
 ) -> Result<IngestOutcome, DbError> {
@@ -181,7 +185,7 @@ pub async fn ingest_text_with_progress(
         collection_id: collection_id.to_string(),
         source: source.to_string(),
         title: title.to_string(),
-        mime_type: None,
+        mime_type: mime_type.map(str::to_string),
         content_hash,
         byte_size: text.len() as i64,
         chunk_count: to_insert.len() as i64,

@@ -502,6 +502,24 @@ pub async fn list_chunks_by_document(
     rows.into_iter().map(|r| row_to_chunk(r, enc)).collect()
 }
 
+/// One chunk by id, decrypted. `None` when it no longer exists — a citation
+/// can outlive its document if the user deletes the document after the answer
+/// was written, and that is not an error.
+pub async fn get_chunk(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    chunk_id: &str,
+) -> Result<Option<KnowledgeChunk>, DbError> {
+    let row: Option<ChunkRow> = sqlx::query_as(
+        "SELECT id, document_id, ordinal, content, char_start, char_end, embedding \
+         FROM knowledge_chunks WHERE id = ?",
+    )
+    .bind(chunk_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|r| row_to_chunk(r, enc)).transpose()
+}
+
 pub async fn delete_chunks_by_document(
     pool: &SqlitePool,
     document_id: &str,

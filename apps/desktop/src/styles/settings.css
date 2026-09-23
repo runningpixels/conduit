@@ -1192,3 +1192,48 @@
   }
   .kb-import-progress-fill { transition: none; }
 }
+
+/* t1-8: the Documents sheet reuses the Settings sheet's frame without its
+   section nav, so it collapses to one column. */
+.sheet.sheet-single { grid-template-columns: minmax(0, 1fr); }
+.sheet-single-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+/* Files dropped onto the window, waiting for a collection. */
+.kb-drop-banner {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card-hi);
+}
+.kb-drop-banner p { margin: 0; }
+.kb-drop-banner ul { margin: 0; padding-left: var(--sp-5); color: var(--ink-2); }
+.kb-drop-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.kb-drop-hint { color: var(--ink-3); }
+.kb-consent-list { margin-top: var(--sp-6); }
+
+/* t1-8: shown while a droppable document hovers over the window. */
+.kb-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: var(--shade);
+  border: 2px dashed var(--hue-solid);
+}
+.kb-drop-overlay span {
+  padding: var(--sp-3) var(--sp-5);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  box-shadow: var(--lift);
+  font-weight: 600;
+}

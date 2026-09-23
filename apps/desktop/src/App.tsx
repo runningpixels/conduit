@@ -62,6 +62,8 @@ import { deriveConnectionState } from './lib/connectionState';
 import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
+import { DocumentsSheet } from './shell/DocumentsSheet';
+import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
 import { applyUiPrefs, supportedModes, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
   useColumnOverlay,
@@ -217,6 +219,10 @@ export default function App() {
   const [status, setStatus] = useState<StatusState | null>(makeStatus(t('app.status.booting'), 'active'));
   const [boundaryOk, setBoundaryOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // t1-8: the knowledge base's own sheet, and files dropped onto the window
+  // that are waiting there for the user to pick a collection.
+  const [documentsOpen, setDocumentsOpen] = useState(false);
+  const [droppedPaths, setDroppedPaths] = useState<string[]>([]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [brandConfig, setBrandConfig] = useState<BrandConfig | null>(null);
@@ -1379,9 +1385,27 @@ export default function App() {
   // Appearance while its own Ctrl+, hint opened Providers).
   const lastSettingsSectionRef = useRef<SettingsSection>('providers');
   const openSettings = useCallback((section?: SettingsSection) => {
+    // t1-8: the knowledge base moved out of Settings. Redirecting here catches
+    // every existing deep link (composer, command palette) in one place.
+    if (section === 'knowledge') {
+      setSettingsOpen(false);
+      setDocumentsOpen(true);
+      return;
+    }
     setSettingsSection(section ?? lastSettingsSectionRef.current);
     setSettingsOpen(true);
   }, []);
+
+  const openDocuments = useCallback(() => {
+    setSettingsOpen(false);
+    setDocumentsOpen(true);
+  }, []);
+
+  const dropHovering = useKnowledgeDrop((paths) => {
+    setDroppedPaths(paths);
+    setSettingsOpen(false);
+    setDocumentsOpen(true);
+  });
   const rememberSettingsSection = useCallback((section: SettingsSection) => {
     lastSettingsSectionRef.current = section;
   }, []);
@@ -1491,6 +1515,10 @@ export default function App() {
           setSettingsOpen(false);
           return;
         }
+        if (documentsOpen) {
+          setDocumentsOpen(false);
+          return;
+        }
         if (confirmDeleteId != null || confirmDeleteAll) {
           setConfirmDeleteId(null);
           setConfirmDeleteAll(false);
@@ -1520,6 +1548,7 @@ export default function App() {
       openSettings,
       paletteOpen,
       settingsOpen,
+      documentsOpen,
       shortcutsOpen,
       toggleDocPanelView,
       toggleSidebarView,
@@ -1644,6 +1673,10 @@ export default function App() {
             void handleNewChat();
           }}
           onOpenPalette={openPalette}
+          onOpenDocuments={() => {
+            hideSidebarOverlay();
+            openDocuments();
+          }}
           onCollapse={toggleSidebarView}
           onRevealWorkspace={handleRevealWorkspace}
           onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
@@ -1704,6 +1737,7 @@ export default function App() {
             ref={chatViewRef}
             settings={settings}
             settingsOpen={settingsOpen}
+            documentsOpen={documentsOpen}
             onSelectModel={handleSelectModel}
             onStatus={setStatusMessage}
             conversationId={activeConversationId}
@@ -1785,11 +1819,28 @@ export default function App() {
         boundaryOk={boundaryOk}
         hasCredential={hasCredential}
         onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
+        onOpenDocuments={openDocuments}
         onBrandChange={(config, logo) => {
           setBrandConfig(config);
           setBrandLogo(logo);
         }}
       />
+
+      <DocumentsSheet
+        open={documentsOpen}
+        onClose={() => setDocumentsOpen(false)}
+        settings={settings}
+        onSettingsChange={setSettings}
+        onStatus={setStatusMessage}
+        pendingPaths={droppedPaths}
+        onPendingPathsHandled={() => setDroppedPaths([])}
+      />
+
+      {dropHovering && (
+        <div className="kb-drop-overlay" aria-hidden="true">
+          <span>{t('shell.documentsSheet.dropHint')}</span>
+        </div>
+      )}
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
 

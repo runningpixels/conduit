@@ -61,6 +61,7 @@ import type {
   KnowledgeDocument,
   KnowledgeImportOutcome,
   KnowledgeImportProgress,
+  KnowledgePassage,
   SearchMessagesRequest,
   SearchResult,
   UsagePeriod,
@@ -1037,6 +1038,12 @@ export async function listKnowledgeDocuments(collectionId: string): Promise<Know
 /** OS file picker for a document to import. `null` = cancel. */
 export async function pickKnowledgeDocument(): Promise<string | null> {
   return invokeCommand<string | null>('pick_knowledge_document');
+}
+
+/** The cited passage for a citation chip, or null if the document has since
+ *  been deleted. */
+export async function getKnowledgePassage(chunkId: string): Promise<KnowledgePassage | null> {
+  return invokeCommand<KnowledgePassage | null>('get_knowledge_passage', { chunkId });
 }
 
 export async function importKnowledgeDocument(

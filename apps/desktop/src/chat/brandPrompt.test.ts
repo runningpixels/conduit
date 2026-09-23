@@ -69,6 +69,8 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     },
     webSearchConsentAcknowledged: false,
     imageGenerationConsentAcknowledged: false,
+    embeddingConsentProviders: [],
+    pdfImportNoticeAcknowledged: false,
     agent: {
       maxSteps: 25,
       wallClockBudgetSecs: 300,

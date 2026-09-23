@@ -85,6 +85,26 @@ webSearchConsentAcknowledged: boolean,
  */
 imageGenerationConsentAcknowledged: boolean, 
 /**
+ * t1-6: provider ids the user has agreed may receive knowledge-base
+ * document text for embedding. Empty until the first import is consented
+ * to.
+ *
+ * Deliberately a **list of provider ids**, not a single bool. Embedding a
+ * document sends its text to whichever provider owns the collection, so
+ * consent granted for one provider must not authorise another: adding a
+ * collection on OpenAI after consenting to OpenRouter re-prompts. A bool
+ * would silently inherit, which is the failure this feature can least
+ * afford.
+ */
+embeddingConsentProviders: Array<string>, 
+/**
+ * t1-6: one-time acknowledgement of the PDF import notice (extraction
+ * happens locally; it is imperfect, and a scanned PDF yields nothing).
+ * Shown on the first PDF import into any collection and never again —
+ * not per file, not per collection.
+ */
+pdfImportNoticeAcknowledged: boolean, 
+/**
  * Agent loop guardrails: max provider rounds and wall-clock budget per turn.
  */
 agent: AgentGuardrails, 

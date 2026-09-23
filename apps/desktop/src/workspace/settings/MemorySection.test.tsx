@@ -53,6 +53,8 @@ const settings: AppSettings = {
   },
   webSearchConsentAcknowledged: false,
   imageGenerationConsentAcknowledged: false,
+  embeddingConsentProviders: [],
+  pdfImportNoticeAcknowledged: false,
   agent: { maxSteps: 25, wallClockBudgetSecs: 300 },
   keychainMode: 'os',
   brandingEnabled: false,

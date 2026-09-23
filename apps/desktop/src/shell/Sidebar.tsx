@@ -26,6 +26,7 @@ import {
   BrandMark,
   ConnectorsIcon,
   FolderIcon,
+  KnowledgeIcon,
   LockIcon,
   MoreIcon,
   PencilIcon,
@@ -52,6 +53,8 @@ interface SidebarProps {
   onNewChat: () => void;
   /** Open the ⌘K palette — the `.omni` pill's former job (V9 §2.1). */
   onOpenPalette: () => void;
+  /** t1-8: open the Documents sheet (the knowledge base's own home). */
+  onOpenDocuments?: () => void;
   /** Collapse the sidebar; the floating reveal button brings it back. */
   onCollapse: () => void;
   onRevealWorkspace: () => void;
@@ -124,6 +127,7 @@ export function Sidebar({
   onSelectConversation,
   onNewChat,
   onOpenPalette,
+  onOpenDocuments,
   onCollapse,
   onRevealWorkspace,
   onOpenSettings,
@@ -381,6 +385,12 @@ export function Sidebar({
           {t('common.actions.search')}
           <kbd>{modShortcutHint('K')}</kbd>
         </button>
+        {onOpenDocuments && (
+          <button className="sb-item" type="button" onClick={onOpenDocuments}>
+            <KnowledgeIcon />
+            {t('shell.sidebar.nav.documents')}
+          </button>
+        )}
       </nav>
 
       <div className="sb-list scroll sidebar-inner">

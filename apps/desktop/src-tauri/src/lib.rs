@@ -20,6 +20,7 @@ pub mod credentials;
 pub mod db;
 pub mod diagnostics;
 pub mod encryption;
+pub mod knowledge;
 pub mod local_data;
 pub mod logo;
 pub mod mcp_oauth;

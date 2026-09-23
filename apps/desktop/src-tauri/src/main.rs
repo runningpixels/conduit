@@ -190,6 +190,19 @@ fn main() {
             delete_memory_item,
             accept_memory_item,
             get_memory_prompt_block,
+            // t1-6: local knowledge base (RAG)
+            list_knowledge_collections,
+            create_knowledge_collection,
+            rename_knowledge_collection,
+            delete_knowledge_collection,
+            list_knowledge_documents,
+            pick_knowledge_document,
+            import_knowledge_document,
+            delete_knowledge_document,
+            list_conversation_collections,
+            set_conversation_collections,
+            retrieve_knowledge_context,
+            get_knowledge_passage,
             // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
             reset_local_database,
             // Migration-recovery escape hatches: dismiss the notice, delete the

@@ -2,13 +2,15 @@ use crate::adapter::{AdapterContext, ModelInfo, ProviderAdapter, StreamParser};
 use crate::adapters::{
     message_text, normalized_or_err, parse_fixture_stream, role_to_string, wrap_sse_stream,
 };
+use crate::error::fatal;
+use crate::image_generation::top_level_keys;
 use crate::normalize::NormalizedRequest;
 use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
-    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
-    ToolKind,
+    EmbeddingRequest, EmbeddingResult, MessagePart, MessagePartKind, MessageRole, ProviderError,
+    ProviderEvent, ProviderRequest, ToolKind,
 };
-use crate::transport::{get_json, post_sse, SseRequest};
+use crate::transport::{get_json, post_json, post_sse, SseRequest};
 use async_trait::async_trait;
 use futures::stream::Stream;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
@@ -378,6 +380,49 @@ fn base_url(ctx: &AdapterContext) -> String {
         .to_string()
 }
 
+/// t1-6 M2: decode `/api/embed`'s `{"embeddings":[[...],[...]],...}` — array
+/// of arrays, in input order (no per-entry index). Same defensive-decode
+/// posture as the other adapters: a missing/renamed field names the actual
+/// top-level keys present rather than producing an empty result silently.
+fn parse_embeddings_response(
+    value: &Value,
+    expected: usize,
+    model_id: String,
+) -> Result<EmbeddingResult, ProviderError> {
+    let items = value
+        .get("embeddings")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| {
+            fatal(format!(
+                "ollama embed response had no embeddings array (top-level keys: {})",
+                top_level_keys(value)
+            ))
+        })?;
+
+    let mut vectors: Vec<Vec<f32>> = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let entry = item.as_array().ok_or_else(|| {
+            fatal(format!(
+                "ollama embed response embeddings[{index}] was not an array"
+            ))
+        })?;
+        let vector: Vec<f32> = entry
+            .iter()
+            .filter_map(|n| n.as_f64())
+            .map(|n| n as f32)
+            .collect();
+        if vector.len() != entry.len() {
+            return Err(fatal(format!(
+                "ollama embed response embeddings[{index}] contained a non-numeric value"
+            )));
+        }
+        vectors.push(vector);
+    }
+
+    let vectors = crate::embeddings::validate_vectors("ollama", expected, vectors)?;
+    Ok(EmbeddingResult { vectors, model_id })
+}
+
 #[async_trait]
 impl ProviderAdapter for OllamaAdapter {
     fn id(&self) -> &'static str {
@@ -434,6 +479,35 @@ impl ProviderAdapter for OllamaAdapter {
         Ok(models)
     }
 
+    /// t1-6 M2: `POST {base}/api/embed`. Also accepts `truncate` (default
+    /// `true`) and `dimensions`, neither of which this adapter sets — it
+    /// takes Ollama's defaults. The response's `embeddings` field is an
+    /// array of arrays, in input order (no per-entry index, unlike OpenAI's
+    /// shape), verified against live docs.
+    async fn generate_embeddings(
+        &self,
+        request: EmbeddingRequest,
+        ctx: &AdapterContext,
+    ) -> Result<EmbeddingResult, ProviderError> {
+        let body = json!({
+            "model": request.model_id,
+            "input": request.inputs,
+        });
+
+        let cancel = CancellationToken::new();
+        let response = post_json(
+            &ctx.http,
+            &format!("{}/api/embed", base_url(ctx)),
+            ollama_headers(),
+            body,
+            cancel,
+        )
+        .await?;
+
+        let expected = request.inputs.len();
+        parse_embeddings_response(&response, expected, request.model_id)
+    }
+
     async fn stream_chat(
         &self,
         request: ProviderRequest,
@@ -484,6 +558,77 @@ mod tests {
             e,
             ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"
         )));
+    }
+
+    // -------------------------------------------------------------------
+    // t1-6 M2: generate_embeddings / /api/embed response decoding.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn embeddings_response_decodes_successfully() {
+        let value = json!({
+            "model": "nomic-embed-text",
+            "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+            "total_duration": 12345,
+        });
+        let result = parse_embeddings_response(&value, 2, "nomic-embed-text".to_string())
+            .expect("well-formed response should decode");
+        assert_eq!(
+            result.vectors,
+            vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]]
+        );
+        assert_eq!(result.model_id, "nomic-embed-text");
+    }
+
+    #[test]
+    fn embeddings_response_rejects_malformed_shape() {
+        let value = json!({ "error": "model not found" });
+        let err = parse_embeddings_response(&value, 1, "nomic-embed-text".to_string())
+            .expect_err("a response with no embeddings array should error clearly");
+        assert!(
+            err.message.contains("ollama"),
+            "error should name the provider: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn embeddings_response_rejects_count_mismatch() {
+        let value = json!({ "embeddings": [[0.1, 0.2]] });
+        let err = parse_embeddings_response(&value, 2, "nomic-embed-text".to_string())
+            .expect_err("1 vector for 2 inputs should be rejected");
+        assert!(err.message.contains('2'));
+    }
+
+    /// Manual QA helper: a real, non-mocked call to a locally-running
+    /// Ollama's `/api/embed` endpoint. `#[ignore]`d so `cargo test` never
+    /// needs a local Ollama instance by default.
+    ///
+    /// Run with: `cargo test -p provider-core ollama_live_generate_embeddings -- --ignored`
+    #[tokio::test]
+    #[ignore = "requires a local Ollama instance"]
+    async fn ollama_live_generate_embeddings() {
+        let model_id = crate::embeddings::default_embedding_model("ollama")
+            .expect("ollama has a default embedding model")
+            .to_string();
+
+        let adapter = OllamaAdapter;
+        let ctx = AdapterContext {
+            api_key: None,
+            base_url: None,
+            http: crate::transport::HttpClient::new(),
+            local_only: true,
+        };
+        let request = crate::schema::EmbeddingRequest {
+            model_id,
+            inputs: vec!["hello world".to_string(), "a second input".to_string()],
+        };
+
+        let result = adapter
+            .generate_embeddings(request, &ctx)
+            .await
+            .expect("generate_embeddings should succeed against a local Ollama instance");
+        assert_eq!(result.vectors.len(), 2);
     }
 
     #[test]

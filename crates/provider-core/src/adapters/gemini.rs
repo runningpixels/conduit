@@ -7,8 +7,9 @@ use crate::image_generation::{decode_generated_image, top_level_keys};
 use crate::normalize::NormalizedRequest;
 use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
-    ContentAnnotation, ImageGenerationRequest, ImageGenerationResult, MessagePartKind, MessageRole,
-    ProviderError, ProviderEvent, ProviderRequest, ToolChoice, ToolKind,
+    ContentAnnotation, EmbeddingRequest, EmbeddingResult, ImageGenerationRequest,
+    ImageGenerationResult, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
+    ProviderRequest, ToolChoice, ToolKind,
 };
 use crate::transport::{gemini_api_key_header, get_json, post_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -659,6 +660,45 @@ impl ProviderAdapter for GeminiAdapter {
         parse_image_response(&response)
     }
 
+    /// t1-6 M1: `POST {base}/models/{model}:batchEmbedContents`. Each entry
+    /// in `requests[]` repeats the model id, prefixed `models/` — Gemini's
+    /// batch shape, unlike the single-item `:embedContent` variant, has no
+    /// top-level model field. The response carries no per-entry index, so
+    /// (verified against live docs) entries are trusted to come back in
+    /// request order.
+    async fn generate_embeddings(
+        &self,
+        request: EmbeddingRequest,
+        ctx: &AdapterContext,
+    ) -> Result<EmbeddingResult, ProviderError> {
+        let key = ctx.api_key.as_deref().ok_or_else(missing_key)?;
+        let model = normalize_model_id(&request.model_id);
+        let requests: Vec<Value> = request
+            .inputs
+            .iter()
+            .map(|text| {
+                json!({
+                    "model": format!("models/{model}"),
+                    "content": { "parts": [{ "text": text }] },
+                })
+            })
+            .collect();
+        let body = json!({ "requests": requests });
+
+        let cancel = CancellationToken::new();
+        let response = post_json(
+            &ctx.http,
+            &format!("{}/models/{model}:batchEmbedContents", base_url(ctx)),
+            gemini_api_key_header(key)?,
+            body,
+            cancel,
+        )
+        .await?;
+
+        let expected = request.inputs.len();
+        parse_embeddings_response(&response, expected, request.model_id)
+    }
+
     async fn stream_chat(
         &self,
         request: ProviderRequest,
@@ -732,6 +772,56 @@ pub(crate) fn parse_image_response(value: &Value) -> Result<ImageGenerationResul
     let claimed_mime = entry.get("mimeType").and_then(|v| v.as_str());
 
     decode_generated_image("gemini", b64, claimed_mime.or(Some("image/png")))
+}
+
+/// t1-6 M1: decode `:batchEmbedContents`'s
+/// `{"embeddings":[{"values":[...]}, ...]}`. No per-entry index (unlike
+/// OpenAI's shape), so this trusts request order, per live docs. Same
+/// defensive-decode posture as `parse_image_response`: a missing/renamed
+/// field names the actual top-level keys present rather than producing an
+/// empty result silently.
+fn parse_embeddings_response(
+    value: &Value,
+    expected: usize,
+    model_id: String,
+) -> Result<EmbeddingResult, ProviderError> {
+    let items = value
+        .get("embeddings")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| {
+            fatal(format!(
+                "gemini embeddings response had no embeddings array (top-level keys: {})",
+                top_level_keys(value)
+            ))
+        })?;
+
+    let mut vectors: Vec<Vec<f32>> = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let values = item
+            .get("values")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| {
+                fatal(format!(
+                    "gemini embeddings response embeddings[{index}] had no values array (keys: {})",
+                    top_level_keys(item)
+                ))
+            })?;
+        let vector: Vec<f32> = values
+            .iter()
+            .filter_map(|n| n.as_f64())
+            .map(|n| n as f32)
+            .collect();
+        if vector.len() != values.len() {
+            return Err(fatal(format!(
+                "gemini embeddings response embeddings[{index}] contained a non-numeric value \
+                 in its values array"
+            )));
+        }
+        vectors.push(vector);
+    }
+
+    let vectors = crate::embeddings::validate_vectors("gemini", expected, vectors)?;
+    Ok(EmbeddingResult { vectors, model_id })
 }
 
 #[cfg(test)]
@@ -1166,6 +1256,83 @@ mod tests {
             "expected a size-cap error: {}",
             err.message
         );
+    }
+
+    // -------------------------------------------------------------------
+    // t1-6 M1: generate_embeddings / batchEmbedContents response decoding.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn embeddings_response_decodes_successfully() {
+        let value = json!({
+            "embeddings": [
+                { "values": [0.1, 0.2, 0.3] },
+                { "values": [0.4, 0.5, 0.6] },
+            ],
+        });
+        let result = parse_embeddings_response(&value, 2, "gemini-embedding-001".to_string())
+            .expect("well-formed response should decode");
+        assert_eq!(
+            result.vectors,
+            vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]]
+        );
+        assert_eq!(result.model_id, "gemini-embedding-001");
+    }
+
+    #[test]
+    fn embeddings_response_rejects_malformed_shape() {
+        let value = json!({ "error": { "message": "invalid argument" } });
+        let err = parse_embeddings_response(&value, 1, "gemini-embedding-001".to_string())
+            .expect_err("a response with no embeddings array should error clearly");
+        assert!(
+            err.message.contains("gemini"),
+            "error should name the provider: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn embeddings_response_rejects_count_mismatch() {
+        let value = json!({
+            "embeddings": [{ "values": [0.1, 0.2] }],
+        });
+        let err = parse_embeddings_response(&value, 2, "gemini-embedding-001".to_string())
+            .expect_err("1 vector for 2 inputs should be rejected");
+        assert!(err.message.contains('2'));
+    }
+
+    /// Manual QA helper: a real, non-mocked call to Gemini's
+    /// `:batchEmbedContents` endpoint. Mirrors `gemini_live_generate_image`
+    /// below — `#[ignore]`d so `cargo test` never spends real money or needs
+    /// network by default.
+    ///
+    /// Run with: `GEMINI_API_KEY=... cargo test -p provider-core gemini_live_generate_embeddings -- --ignored`
+    #[tokio::test]
+    #[ignore = "requires GEMINI_API_KEY and network"]
+    async fn gemini_live_generate_embeddings() {
+        let key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
+        let model_id = crate::embeddings::default_embedding_model("gemini")
+            .expect("gemini has a default embedding model")
+            .to_string();
+
+        let adapter = GeminiAdapter;
+        let ctx = AdapterContext {
+            api_key: Some(key),
+            base_url: None,
+            http: crate::transport::HttpClient::new(),
+            local_only: false,
+        };
+        let request = crate::schema::EmbeddingRequest {
+            model_id,
+            inputs: vec!["hello world".to_string(), "a second input".to_string()],
+        };
+
+        let result = adapter
+            .generate_embeddings(request, &ctx)
+            .await
+            .expect("generate_embeddings should succeed against the real API");
+        assert_eq!(result.vectors.len(), 2);
+        assert!(!result.vectors[0].is_empty());
     }
 
     /// Manual QA helper (t0-8 M3 follow-up): a real, non-mocked call to

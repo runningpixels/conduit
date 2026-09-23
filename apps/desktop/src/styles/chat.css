@@ -135,6 +135,78 @@ html[data-palette="orange-dark"] .bubble {
   background: var(--card);
 }
 
+/* t1-6: which knowledge base documents this turn's retrieval drew on. */
+.turn-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.turn-citation-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+/* t1-8: chips open the cited passage. */
+.turn-citation-chip:hover { border-color: var(--hue-solid); color: var(--ink); }
+.turn-citation-chip:focus-visible { outline: 2px solid var(--hue-solid); outline-offset: 2px; }
+
+/* t1-8: the cited passage, opened from a citation chip. */
+.kb-passage-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: grid;
+  place-items: center;
+  background: var(--shade);
+}
+.kb-passage {
+  width: min(640px, 92vw);
+  max-height: min(640px, 86vh);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--lift);
+}
+.kb-passage-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-4); }
+.kb-passage-head h2 { margin: 0; font-size: var(--fs-5xl); font-weight: 600; overflow-wrap: anywhere; }
+.kb-passage-head small { color: var(--ink-3); }
+.kb-passage-sections { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+/* The section being read. The header already says "Section 66 of 181"; the tab
+   row has to agree, or the two contradict each other at a glance. */
+.kb-passage-sections [aria-selected="true"] {
+  border-color: var(--hue-solid);
+  color: var(--ink);
+  background: var(--card-hi);
+}
+.kb-passage-text {
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: var(--fs-2xl);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.kb-passage-note { margin: 0; color: var(--ink-3); }
+.kb-passage-source {
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* t0-3 inline edit: textarea lives inside the bubble shell. */
 .bubble-editing {
   width: min(72%, 36rem);

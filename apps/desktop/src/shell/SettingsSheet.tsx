@@ -78,6 +78,7 @@ export type SettingsSection =
   | 'prompts'
   | 'skills'
   | 'memory'
+  | 'knowledge'
   | 'appearance'
   | 'branding'
   | 'privacy'
@@ -97,6 +98,8 @@ interface SettingsSheetProps {
   boundaryOk?: boolean;
   hasCredential?: boolean;
   onInsertPrompt?: (body: string) => void;
+  /** t1-8: hand off to the Documents sheet, where the knowledge base now lives. */
+  onOpenDocuments?: () => void;
   /** Optional coherence hook into App.tsx's own brand state: called after
    *  every successful save/import/reset/logo change so the sidebar
    *  wordmark/logo and the theme-change re-apply effect (App.tsx) update
@@ -124,6 +127,7 @@ const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode; group:
   { id: 'prompts', labelId: 'shell.settingsSheet.nav.prompts', icon: <ListNavIcon />, group: 'assistant' },
   { id: 'skills', labelId: 'shell.settingsSheet.nav.skills', icon: <SkillNavIcon />, group: 'assistant' },
   { id: 'memory', labelId: 'shell.settingsSheet.nav.memory', icon: <MemoryNavIcon />, group: 'assistant' },
+  { id: 'knowledge', labelId: 'shell.settingsSheet.nav.knowledge', icon: <KnowledgeNavIcon />, group: 'assistant' },
   { id: 'appearance', labelId: 'shell.settingsSheet.nav.appearance', icon: <SunNavIcon />, group: 'app' },
   { id: 'branding', labelId: 'shell.settingsSheet.nav.branding', icon: <BrandingNavIcon />, group: 'app' },
   { id: 'privacy', labelId: 'shell.settingsSheet.nav.privacy', icon: <LockIcon />, group: 'app' },
@@ -175,6 +179,16 @@ function MemoryNavIcon() {
   );
 }
 
+function KnowledgeNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3 3 7.5 12 12l9-4.5L12 3Z" />
+      <path d="M3 12.5 12 17l9-4.5" />
+      <path d="M3 16.5 12 21l9-4.5" />
+    </svg>
+  );
+}
+
 function BrandingNavIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -210,6 +224,7 @@ export function SettingsSheet({
   boundaryOk,
   hasCredential,
   onInsertPrompt,
+  onOpenDocuments,
   onBrandChange,
 }: SettingsSheetProps) {
   const t = useT();
@@ -580,6 +595,22 @@ export function SettingsSheet({
                 {t('shell.settingsSheet.memory.intro')}
               </p>
               <MemorySection settings={settings} onUpdate={save} onStatus={onStatus} />
+            </>
+          )}
+
+          {section === 'knowledge' && (
+            <>
+              <h2 className="sheet-h">{t('shell.settingsSheet.knowledge.heading')}</h2>
+              <p className="sheet-sub">
+                {t('shell.settingsSheet.knowledge.intro')}
+              </p>
+              {/* t1-8: the knowledge base moved to its own sheet. This stays as a
+                  signpost for anyone who looks here out of habit, rather than a
+                  second copy of the same controls. */}
+              <p className="sheet-sub">{t('shell.settingsSheet.knowledge.movedToDocuments')}</p>
+              <button className="btn primary" type="button" onClick={() => onOpenDocuments?.()}>
+                {t('shell.settingsSheet.knowledge.openDocuments')}
+              </button>
             </>
           )}
 

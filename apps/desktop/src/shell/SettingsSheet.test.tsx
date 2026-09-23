@@ -86,6 +86,8 @@ const baseSettings: AppSettings = {
   },
   webSearchConsentAcknowledged: false,
   imageGenerationConsentAcknowledged: false,
+  embeddingConsentProviders: [],
+  pdfImportNoticeAcknowledged: false,
   agent: { maxSteps: 25, wallClockBudgetSecs: 300 },
   keychainMode: 'os',
   brandingEnabled: false,
@@ -202,7 +204,7 @@ describe('SettingsSheet', () => {
     const group = (name: string) =>
       Array.from(screen.getByRole('group', { name }).querySelectorAll('button')).map((b) => b.textContent);
     expect(group('Models')).toEqual(['Providers & keys', 'Chat defaults', 'Web search']);
-    expect(group('Assistant')).toEqual(['Workspace', 'Connectors', 'Prompts', 'Skills', 'Memory']);
+    expect(group('Assistant')).toEqual(['Workspace', 'Connectors', 'Prompts', 'Skills', 'Memory', 'Knowledge']);
     expect(group('App')).toEqual(expect.arrayContaining(['Appearance', 'Privacy & data', 'About']));
   });
 

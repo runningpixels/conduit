@@ -348,7 +348,9 @@ pub fn resolve_key_unavailable(
 /// Whether any encrypted data already exists in the local store. This covers
 /// both inline encrypted columns (`enc_key_version IS NOT NULL`) and encrypted
 /// blob files (attachments + file-backed artifacts with the `CDENC1` magic).
-/// Drives the non-silent-downgrade decision at startup.
+/// `knowledge_chunks.content` (t1-6) is included in the inline-column check so
+/// a tier downgrade can't silently stop protecting an already-indexed
+/// knowledge base. Drives the non-silent-downgrade decision at startup.
 pub async fn encrypted_data_exists(
     pool: &SqlitePool,
     attachments_dir: &Path,
@@ -357,7 +359,8 @@ pub async fn encrypted_data_exists(
     let row: (i64,) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM artifacts WHERE enc_key_version IS NOT NULL) \
          + (SELECT COUNT(*) FROM tenant_config_cache WHERE enc_key_version IS NOT NULL) \
-         + (SELECT COUNT(*) FROM licenses WHERE enc_key_version IS NOT NULL)",
+         + (SELECT COUNT(*) FROM licenses WHERE enc_key_version IS NOT NULL) \
+         + (SELECT COUNT(*) FROM knowledge_chunks WHERE enc_key_version IS NOT NULL)",
     )
     .fetch_one(pool)
     .await?;

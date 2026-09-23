@@ -6,6 +6,7 @@ pub mod adapters;
 pub mod brand;
 pub mod brand_emit;
 pub mod catalog;
+pub mod embeddings;
 pub mod error;
 pub mod fixtures;
 pub mod image_generation;
@@ -22,6 +23,7 @@ pub use catalog::{
     descriptor, has_usable_provider_credential, list_descriptors, CredentialMode,
     ProviderDescriptor,
 };
+pub use embeddings::{default_embedding_dimensions, default_embedding_model};
 pub use image_generation::{default_image_model, model_generates_images};
 pub use normalize::{validate, NormalizedRequest};
 pub use schema::*;

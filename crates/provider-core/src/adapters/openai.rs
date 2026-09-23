@@ -8,9 +8,9 @@ use crate::image_generation::{decode_generated_image, top_level_keys};
 use crate::normalize::NormalizedRequest;
 use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
-    ContentAnnotation, GenerationControls, ImageGenerationRequest, ImageGenerationResult,
-    MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
-    SearchContextSize, ToolChoice,
+    ContentAnnotation, EmbeddingRequest, EmbeddingResult, GenerationControls,
+    ImageGenerationRequest, ImageGenerationResult, MessagePart, MessagePartKind, MessageRole,
+    ProviderError, ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
 };
 use crate::transport::{get_json, post_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -1479,6 +1479,44 @@ impl ProviderAdapter for OpenAiAdapter {
         parse_image_response(&response)
     }
 
+    /// t1-6 M1: `POST {base}/embeddings`. `input` accepts either a string or
+    /// an array of strings — always sends an array here, one entry per
+    /// input, since that's the shape a batch call needs. The response's
+    /// `data[]` entries are **not guaranteed to come back in order** (verified
+    /// against live docs), so decoding goes through
+    /// `embeddings::parse_openai_style_embeddings_response`, which sorts by
+    /// `index` before handing the vectors to `validate_vectors`.
+    async fn generate_embeddings(
+        &self,
+        request: EmbeddingRequest,
+        ctx: &AdapterContext,
+    ) -> Result<EmbeddingResult, ProviderError> {
+        let headers = self.request_headers(ctx)?;
+        let body = json!({
+            "model": request.model_id,
+            "input": request.inputs,
+            "encoding_format": "float",
+        });
+
+        let cancel = CancellationToken::new();
+        let response = post_json(
+            &ctx.http,
+            &format!("{}/embeddings", base_url(self, ctx)),
+            headers,
+            body,
+            cancel,
+        )
+        .await?;
+
+        let expected = request.inputs.len();
+        crate::embeddings::parse_openai_style_embeddings_response(
+            "openai",
+            &response,
+            expected,
+            request.model_id,
+        )
+    }
+
     async fn stream_chat(
         &self,
         mut request: ProviderRequest,
@@ -2649,6 +2687,117 @@ mod tests {
             "expected a size-cap error: {}",
             err.message
         );
+    }
+
+    // -------------------------------------------------------------------
+    // t1-6 M1: generate_embeddings / OpenAI-shaped response decoding.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn embeddings_response_decodes_successfully() {
+        let value = json!({
+            "object": "list",
+            "data": [
+                { "object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3] },
+                { "object": "embedding", "index": 1, "embedding": [0.4, 0.5, 0.6] },
+            ],
+            "model": "text-embedding-3-small",
+            "usage": { "prompt_tokens": 8, "total_tokens": 8 },
+        });
+        let result = crate::embeddings::parse_openai_style_embeddings_response(
+            "openai",
+            &value,
+            2,
+            "text-embedding-3-small".to_string(),
+        )
+        .expect("well-formed response should decode");
+        assert_eq!(
+            result.vectors,
+            vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]]
+        );
+    }
+
+    #[test]
+    fn embeddings_response_out_of_order_index_is_sorted() {
+        let value = json!({
+            "data": [
+                { "index": 1, "embedding": [0.4, 0.5] },
+                { "index": 0, "embedding": [0.1, 0.2] },
+            ],
+        });
+        let result = crate::embeddings::parse_openai_style_embeddings_response(
+            "openai",
+            &value,
+            2,
+            "text-embedding-3-small".to_string(),
+        )
+        .expect("out-of-order data should still decode");
+        assert_eq!(result.vectors, vec![vec![0.1, 0.2], vec![0.4, 0.5]]);
+    }
+
+    #[test]
+    fn embeddings_response_rejects_malformed_shape() {
+        let value = json!({ "error": { "message": "invalid_request_error" } });
+        let err = crate::embeddings::parse_openai_style_embeddings_response(
+            "openai",
+            &value,
+            1,
+            "text-embedding-3-small".to_string(),
+        )
+        .expect_err("a response with no data array should error clearly");
+        assert!(
+            err.message.contains("openai"),
+            "error should name the provider: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn embeddings_response_rejects_count_mismatch() {
+        let value = json!({
+            "data": [{ "index": 0, "embedding": [0.1, 0.2] }],
+        });
+        let err = crate::embeddings::parse_openai_style_embeddings_response(
+            "openai",
+            &value,
+            2,
+            "text-embedding-3-small".to_string(),
+        )
+        .expect_err("1 vector for 2 inputs should be rejected");
+        assert!(err.message.contains('2'));
+    }
+
+    /// Manual QA helper: a real, non-mocked call to OpenAI's `/embeddings`
+    /// endpoint. Mirrors `openai_live_generate_image` below — `#[ignore]`d so
+    /// `cargo test` never spends real money or needs network by default.
+    ///
+    /// Run with: `OPENAI_API_KEY=... cargo test -p provider-core openai_live_generate_embeddings -- --ignored`
+    #[tokio::test]
+    #[ignore = "requires OPENAI_API_KEY and network"]
+    async fn openai_live_generate_embeddings() {
+        let key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
+        let model_id = crate::embeddings::default_embedding_model("openai")
+            .expect("openai has a default embedding model")
+            .to_string();
+
+        let adapter = OpenAiAdapter::official();
+        let ctx = AdapterContext {
+            api_key: Some(key),
+            base_url: None,
+            http: crate::transport::HttpClient::new(),
+            local_only: false,
+        };
+        let request = crate::schema::EmbeddingRequest {
+            model_id,
+            inputs: vec!["hello world".to_string(), "a second input".to_string()],
+        };
+
+        let result = adapter
+            .generate_embeddings(request, &ctx)
+            .await
+            .expect("generate_embeddings should succeed against the real API");
+        assert_eq!(result.vectors.len(), 2);
+        assert!(!result.vectors[0].is_empty());
     }
 
     /// Manual QA helper (t0-8 M3 follow-up): a real, non-mocked call to

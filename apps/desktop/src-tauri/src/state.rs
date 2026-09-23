@@ -385,6 +385,17 @@ impl AppState {
         if let Some(value) = patch.image_generation_consent_acknowledged {
             settings.image_generation_consent_acknowledged = value;
         }
+        if let Some(providers) = patch.embedding_consent_providers {
+            // Full replace, deduplicated. The renderer sends the whole list, so
+            // a shorter one withdraws consent for the providers it omits.
+            let mut providers = providers;
+            providers.sort();
+            providers.dedup();
+            settings.embedding_consent_providers = providers;
+        }
+        if let Some(value) = patch.pdf_import_notice_acknowledged {
+            settings.pdf_import_notice_acknowledged = value;
+        }
         if let Some(guardrails) = patch.agent {
             crate::validation::validate_agent_guardrails(&guardrails)?;
             settings.agent = guardrails;

@@ -42,6 +42,10 @@ import {
   setConversationSkills,
   getSkillPromptBlock,
   getMemoryPromptBlock,
+  listKnowledgeCollections,
+  listConversationCollections,
+  setConversationCollections,
+  retrieveKnowledgeContext,
   acknowledgeConnectorResources,
   getConnectorPrompt,
   isConnectorResourceAcknowledged,
@@ -50,7 +54,13 @@ import {
   readConnectorResources,
   type ConversationCompaction,
 } from '../ipc/client';
-import type { Conversation, SkillSummary } from '../ipc/contracts';
+import type {
+  Conversation,
+  SkillSummary,
+  KnowledgeCollection,
+  KnowledgeCitation,
+  KnowledgeContext,
+} from '../ipc/contracts';
 import { ConfirmDialog } from '@conduit/ui';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
@@ -65,6 +75,7 @@ import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } fr
 import { composeSystemPrompt, joinExtraSystemSections, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
 import type { TurnAttachment } from './composerTypes';
 import { UserTurnAttachments } from './UserTurnAttachments';
+import { KnowledgeCitations } from './KnowledgeCitations';
 import { modelAcceptsImages } from './modelAcceptsImages';
 import {
   webSearchCreateDeveloperPromptFor,
@@ -226,6 +237,9 @@ interface ChatViewProps {
   /// Whether the settings sheet is open. Connectors are added there, so this
   /// toggling is the signal that the MCP prompt/resource lists may be stale.
   settingsOpen?: boolean;
+  /** t1-8: the Documents sheet. Collections change there, so its closing is a
+   *  refresh trigger for the composer's collection list, like Settings is. */
+  documentsOpen?: boolean;
   /// Renderer-only conversation → last-used provider map (sidebar row dots).
   /// Falls back to `settings.activeProvider` for per-turn hue + model line.
   convoProviders?: Record<string, string>;
@@ -479,6 +493,38 @@ async function readAttachedResources(refs: ResourceRef[]): Promise<ResourceBlock
   }
 }
 
+const EMPTY_KNOWLEDGE_CONTEXT: KnowledgeContext = {
+  text: '',
+  citations: [],
+  refusedTitles: [],
+  unavailableCollections: [],
+};
+
+/**
+ * Retrieve this turn's knowledge base context, fresh per turn against the
+ * user's outgoing message -- never cached in state the way the skill/memory
+ * prompt blocks are, since retrieved chunks are per-question and caching them
+ * would inject the wrong ones into a later, unrelated turn.
+ *
+ * Skips the IPC call entirely when the conversation has no collections
+ * attached: a user who never opens the knowledge base must see zero calls
+ * and zero behavior change (acceptance criterion 13). Survives the call
+ * failing outright the same way `readAttachedResources` does -- an empty
+ * context, never a lost turn.
+ */
+async function readKnowledgeContext(
+  conversationId: string | null,
+  collectionIds: string[],
+  query: string,
+): Promise<KnowledgeContext> {
+  if (!conversationId || collectionIds.length === 0) return EMPTY_KNOWLEDGE_CONTEXT;
+  try {
+    return await retrieveKnowledgeContext(conversationId, query);
+  } catch {
+    return EMPTY_KNOWLEDGE_CONTEXT;
+  }
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
@@ -615,6 +661,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     paneActive = true,
     onOpenSettings,
   settingsOpen = false,
+  documentsOpen = false,
     convoProviders = {},
   },
   ref,
@@ -686,6 +733,22 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [enabledSkillIds, setEnabledSkillIds] = useState<string[]>([]);
   const enabledSkillIdsRef = useRef<string[]>([]);
   enabledSkillIdsRef.current = enabledSkillIds;
+  const [discoveredCollections, setDiscoveredCollections] = useState<KnowledgeCollection[]>([]);
+  const [enabledCollectionIds, setEnabledCollectionIds] = useState<string[]>([]);
+  const enabledCollectionIdsRef = useRef<string[]>([]);
+  enabledCollectionIdsRef.current = enabledCollectionIds;
+  const [knowledgeReloadToken, setKnowledgeReloadToken] = useState(0);
+  // Named documents/collections a just-sent turn's retrieval could not use --
+  // refused by the reinjection gate, or a whole collection unsearchable this
+  // turn. Cleared on the next send, same lifetime as `skippedResources`.
+  const [knowledgeRefusedTitles, setKnowledgeRefusedTitles] = useState<string[]>([]);
+  const [knowledgeUnavailableCollections, setKnowledgeUnavailableCollections] = useState<string[]>(
+    [],
+  );
+  // Citations retrieved for a turn, keyed by that user turn's id -- arrives
+  // after the turn is already in `turns`, mirroring `turnModelInfo`'s
+  // side-channel-by-id shape rather than baking onto `ChatTurn` itself.
+  const [turnCitations, setTurnCitations] = useState<Record<string, KnowledgeCitation[]>>({});
   // Attached MCP resources are per turn, not per conversation: they contribute
   // to the turn they were attached for and are cleared on send, so a large or
   // fast-changing resource never rides along silently on later turns.
@@ -914,6 +977,39 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       cancelled = true;
     };
   }, [conversationId, conversationWorkspaceRoot]);
+
+  // Knowledge base collections + this conversation's attachments. Unlike the
+  // skills discovery effect above (keyed only on conversationId/workspaceRoot,
+  // a known staleness bug this deliberately does not repeat), this is keyed on
+  // `settingsOpen` too -- exactly like the MCP prompts/resources effect just
+  // above -- plus `knowledgeReloadToken` for an explicit manual refresh. A
+  // user who imports a document, closes Settings, and returns to the composer
+  // must see the collection immediately, not after a reload.
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [listed, enabled] = await Promise.all([
+          listKnowledgeCollections(),
+          listConversationCollections(conversationId),
+        ]);
+        if (!cancelled) {
+          setDiscoveredCollections(listed);
+          setEnabledCollectionIds(enabled);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          onStatusRef.current(
+            error instanceof Error ? error.message : t('chat.view.status.failedToLoadCollections'),
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, settingsOpen, documentsOpen, knowledgeReloadToken]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -1299,21 +1395,32 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ...historyForProviderRequest(priorHistory, activeCompaction),
       userTurn,
     ];
-    const [skillBlock, memoryBlock, resourceBlock] = await Promise.all([
+    const [skillBlock, memoryBlock, resourceBlock, knowledgeContext] = await Promise.all([
       getSkillPromptBlock(enabledSkillIdsRef.current, conversationWorkspaceRoot).catch(
         () => skillPromptBlock,
       ),
       getMemoryPromptBlock().catch(() => memoryPromptBlock),
       readAttachedResources(attachedResourcesRef.current),
+      readKnowledgeContext(conversationId, enabledCollectionIdsRef.current, trimmed),
     ]);
     // Surface anything the gate refused or truncated, then clear the chips:
     // the content belongs to this turn only.
     setSkippedResources(resourceBlock.skipped);
     if (attachedResourcesRef.current.length > 0) setAttachedResources([]);
+    // Same "belongs to this turn only" rule for knowledge retrieval: named
+    // documents the reinjection gate refused, and whole collections that
+    // could not be searched, are two different problems (one document's text
+    // vs. a whole collection unreachable) and stay in separate notices.
+    setKnowledgeRefusedTitles(knowledgeContext.refusedTitles);
+    setKnowledgeUnavailableCollections(knowledgeContext.unavailableCollections);
+    if (knowledgeContext.citations.length > 0) {
+      setTurnCitations((prev) => ({ ...prev, [userTurn.id]: knowledgeContext.citations }));
+    }
     const extraSystemSections = joinExtraSystemSections(
       skillBlock,
       memoryBlock,
       resourceBlock.text,
+      knowledgeContext.text,
     );
     const request = buildProviderRequest(
       settings,
@@ -1934,6 +2041,31 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
+  async function handleToggleCollection(collectionId: string, enabled: boolean) {
+    if (!conversationId) return;
+    const previous = enabledCollectionIdsRef.current;
+    const next = enabled
+      ? [...previous, collectionId]
+      : previous.filter((id) => id !== collectionId);
+    const unique = [...new Set(next)];
+    setEnabledCollectionIds(unique);
+    try {
+      // The canonical set actually stored -- deduplicated, blank ids dropped
+      // -- not the locally-computed guess, so the UI never claims a
+      // collection is attached that the backend didn't record.
+      const stored = await setConversationCollections(conversationId, unique);
+      setEnabledCollectionIds(stored);
+    } catch (error) {
+      // Unlike `handleToggleSkill`, roll back: leaving the optimistic state
+      // in place here would show a collection as attached when the write
+      // never landed, silently dropping it from every turn's retrieval.
+      setEnabledCollectionIds(previous);
+      onStatus(
+        error instanceof Error ? error.message : t('chat.view.status.couldNotUpdateCollections'),
+      );
+    }
+  }
+
   function handleSuggestionSelect(text: string) {
     setPrompt(text);
     requestAnimationFrame(() => composerRef.current?.focusPrompt());
@@ -2385,6 +2517,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                         {turn.content.trim() ? (
                           <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
                         ) : null}
+                        {turnCitations[turn.id] ? (
+                          <KnowledgeCitations citations={turnCitations[turn.id]} />
+                        ) : null}
                       </div>
                       {turn.interrupted && <InterruptedBanner visible />}
                       <div className="turn-actions">
@@ -2633,6 +2768,42 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         </div>
       )}
 
+      {knowledgeRefusedTitles.length > 0 && (
+        <div className="mcp-resource-skipped" role="status">
+          <p>{t('chat.knowledge.refusedIntro')}</p>
+          <ul>
+            {knowledgeRefusedTitles.map((title) => (
+              <li key={title}>{title}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setKnowledgeRefusedTitles([])}
+          >
+            {t('chat.knowledge.dismissRefused')}
+          </button>
+        </div>
+      )}
+
+      {knowledgeUnavailableCollections.length > 0 && (
+        <div className="mcp-resource-skipped" role="status">
+          <p>{t('chat.knowledge.unavailableIntro')}</p>
+          <ul>
+            {knowledgeUnavailableCollections.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setKnowledgeUnavailableCollections([])}
+          >
+            {t('chat.knowledge.dismissUnavailable')}
+          </button>
+        </div>
+      )}
+
       <Composer
         ref={composerRef}
         settings={settings}
@@ -2701,6 +2872,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         skills={discoveredSkills}
         enabledSkillIds={enabledSkillIds}
         onToggleSkill={(id, on) => void handleToggleSkill(id, on)}
+        collections={discoveredCollections}
+        enabledCollectionIds={enabledCollectionIds}
+        onToggleCollection={(id, on) => void handleToggleCollection(id, on)}
+        onRefreshKnowledgeCapabilities={() => setKnowledgeReloadToken((n) => n + 1)}
         mcpPrompts={mcpPrompts}
         mcpResources={mcpResources}
         attachedResources={attachedResources}

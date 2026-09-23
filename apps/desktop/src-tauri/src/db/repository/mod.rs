@@ -14,6 +14,7 @@ pub mod compactions;
 pub mod connectors;
 pub mod conversations;
 pub mod event_log;
+pub mod knowledge;
 pub mod licenses;
 pub mod memory;
 pub mod messages;

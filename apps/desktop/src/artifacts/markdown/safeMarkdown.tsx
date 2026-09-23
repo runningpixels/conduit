@@ -290,7 +290,8 @@ export interface MarkdownOptions {
 }
 
 /// Inline `$tex$` — non-space after opener and before closer, no newlines.
-/// `$$` is handled separately as display math.
+/// `$$` is handled separately as display math. As in Pandoc, a closer followed
+/// by a digit does not close, so a price range like `$200–$500` stays text.
 function matchInlineMath(rest: string): { tex: string; length: number } | null {
   if (rest.length < 3 || rest[0] !== '$' || rest[1] === '$') return null;
   if (rest[1] === ' ' || rest[1] === '\t') return null;
@@ -300,6 +301,7 @@ function matchInlineMath(rest: string): { tex: string; length: number } | null {
     if (c === '$' && rest[j - 1] !== '\\') {
       if (rest[j - 1] === ' ' || rest[j - 1] === '\t') return null;
       if (j === 1) return null;
+      if (/[0-9]/.test(rest[j + 1] ?? '')) return null;
       return { tex: rest.slice(1, j), length: j + 1 };
     }
   }

@@ -47,7 +47,7 @@ reposo opcional. No hay cuenta de Conduit, ni backend, ni telemetría.
   del Model Context Protocol locales por stdio y remotos por HTTP en streaming
   se ejecutan bajo un supervisor con reintento escalonado, un límite de
   concurrencia y tiempos de espera por llamada. Las herramientas con efectos
-  secundarios piden permiso antes de ejecutarse, su salida se redacta y se limita
+  secundarios piden permiso antes de ejecutarse, su salida se censura y se limita
   en tamaño, y nunca se reinyecta en el prompt.
 - **Artefactos que no pueden llamar a casa.** El HTML generado por el modelo se
   renderiza en un iframe aislado de origen nulo bajo una CSP estricta con
@@ -108,7 +108,7 @@ ocupar todo menos una columna estrecha de chat.
 
 Los servidores MCP locales por stdio y remotos por HTTP en streaming se ejecutan
 bajo un supervisor. Las llamadas a herramientas se muestran en línea, los
-resultados se redactan y se limitan en tamaño, y las herramientas con efectos
+resultados se censuran y se limitan en tamaño, y las herramientas con efectos
 secundarios piden consentimiento antes de ejecutarse.
 
 Los prompts y recursos de un servidor también son accesibles desde el campo

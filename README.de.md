@@ -23,8 +23,8 @@ Conduit ist ein Desktop-Chat-Client für große Sprachmodelle, gebaut auf Tauri 
 mit einem Rust-Kern und einem React-Renderer. Sie bringen Ihren eigenen
 API-Schlüssel mit, sprechen mit einem von siebzehn Anbietern, und alles —
 Unterhaltungen, Anhänge, Artefakte — wird lokal in einer SQLite-Datenbank auf
-der eigenen Festplatte gespeichert, mit optionaler Verschlüsselung im
-Ruhezustand. Es gibt kein Conduit-Konto, kein Backend und keine Telemetrie.
+der eigenen Festplatte gespeichert, mit optionaler Verschlüsselung ruhender
+Daten. Es gibt kein Conduit-Konto, kein Backend und keine Telemetrie.
 
 ## Warum Conduit
 
@@ -33,7 +33,7 @@ Ruhezustand. Es gibt kein Conduit-Konto, kein Backend und keine Telemetrie.
   Referenz der Form `keychain://conduit/<provider>`. Sämtliche Netzwerkaufrufe
   finden in Rust statt. Das erzwingt die Architektur, nicht eine Richtlinie —
   siehe [`docs/architecture/foundation-contracts.md`](./docs/architecture/foundation-contracts.md).
-- **Optionale Verschlüsselung im Ruhezustand.** AES-256-GCM über Anhang- und
+- **Optionale Verschlüsselung ruhender Daten.** AES-256-GCM über Anhang- und
   Artefakt-Blobs sowie mehrere Datenbankspalten, mit einem Hauptschlüssel, der
   im Schlüsselbund des Betriebssystems eingeschlossen ist. Sie ist **standardmäßig
   deaktiviert** (`AppSettings.encryption_at_rest`) und deckt Nachrichteninhalte
@@ -47,7 +47,7 @@ Ruhezustand. Es gibt kein Conduit-Konto, kein Backend und keine Telemetrie.
   Streamable-HTTP-Server des Model Context Protocol laufen unter einer
   Aufsicht mit Neustart-Backoff, einer Nebenläufigkeitsgrenze und Zeitlimits pro
   Aufruf. Werkzeuge mit Seiteneffekten fragen vor der Ausführung nach, ihre
-  Ausgabe wird redigiert und in der Größe begrenzt, und sie wird nie erneut in
+  Ausgabe wird geschwärzt und in der Größe begrenzt, und sie wird nie erneut in
   den Prompt eingespeist.
 - **Artefakte, die nicht nach Hause telefonieren können.** Vom Modell erzeugtes
   HTML wird in einem sandboxed iframe mit Null-Origin unter einer strikten CSP
@@ -97,7 +97,7 @@ das Netzwerk noch die Tauri-Brücke.
 
 Sie können zusehen, wie ein Dokument geschrieben wird, mit optionaler
 Live-Vorschau. Dokumente, die zu lang für eine einzelne Antwort sind, werden
-abschnittsweise aufgebaut, und wenn einem Zug die Zeit ausgeht, bleibt das
+abschnittsweise aufgebaut, und wenn einem Durchlauf die Zeit ausgeht, bleibt das
 bisher Geschriebene erhalten und bietet **Weiter aufbauen** an. Überarbeitungen
 ändern nur den abweichenden Teil. Das Panel lässt sich erweitern
 (`Ctrl+Shift+E`), sodass es alles außer einer schmalen Chat-Spalte einnimmt.
@@ -107,7 +107,7 @@ bisher Geschriebene erhalten und bietet **Weiter aufbauen** an. Überarbeitungen
 ### MCP-Connectors
 
 Lokale stdio- und entfernte Streamable-HTTP-MCP-Server laufen unter einer
-Aufsicht. Werkzeugaufrufe werden inline offengelegt, Ergebnisse redigiert und in
+Aufsicht. Werkzeugaufrufe werden inline offengelegt, Ergebnisse geschwärzt und in
 der Größe begrenzt, und Werkzeuge mit Seiteneffekten fragen vor der Ausführung
 nach Zustimmung.
 
@@ -260,7 +260,7 @@ packages/ui/             Design tokens, primitives, bundled fonts (@conduit/ui)
 
 Die Invariante, der alles andere folgt: **der Renderer stellt nur Zustand und
 Absicht dar; Rust besitzt Geheimnisse, Persistenz und privilegierte
-Operationen.** Ein Chat-Zug:
+Operationen.** Ein Chat-Durchlauf:
 
 ```text
 React ChatView

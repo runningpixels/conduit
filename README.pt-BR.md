@@ -47,7 +47,7 @@ repouso opcional. Não há conta do Conduit, nem backend, nem telemetria.
   Model Context Protocol locais por stdio e remotos por HTTP em streaming rodam
   sob um supervisor com espera progressiva na reinicialização, limite de
   concorrência e tempo máximo por chamada. Ferramentas com efeitos colaterais
-  pedem autorização antes de executar, a saída delas é redigida e limitada em
+  pedem autorização antes de executar, a saída delas é mascarada e limitada em
   tamanho, e nunca é reinjetada no prompt.
 - **Artefatos que não conseguem ligar para casa.** O HTML gerado pelo modelo é
   renderizado em um iframe isolado de origem nula, sob uma CSP estrita com
@@ -106,7 +106,7 @@ estreita de chat.
 
 Servidores MCP locais por stdio e remotos por HTTP em streaming rodam sob um
 supervisor. As chamadas de ferramentas são exibidas em linha, os resultados são
-redigidos e limitados em tamanho, e ferramentas com efeitos colaterais pedem
+mascarados e limitados em tamanho, e ferramentas com efeitos colaterais pedem
 consentimento antes de executar.
 
 Os prompts e recursos de um servidor também ficam acessíveis pelo campo de
@@ -209,10 +209,10 @@ uma 1.0. Espere arestas.
 git clone https://github.com/runningpixels/conduit
 cd conduit
 pnpm install
-pnpm dev          # Vite na :5173, depois o shell do Tauri
+pnpm dev          # Vite na porta 5173, depois o shell do Tauri
 ```
 
-`pnpm build` gera um pacote de release. Na primeira execução, a introdução pede
+`pnpm build` gera um pacote de release. Na primeira execução, o onboarding pede
 uma chave de provedor (ou aponte para uma instância local do Ollama, que não
 precisa de chave).
 

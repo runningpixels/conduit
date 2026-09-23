@@ -46,7 +46,7 @@ Conduit 是一个面向大语言模型的桌面聊天客户端，基于 Tauri 2 
   Markdown 均通过 React 转义的渲染器呈现，安全路径上任何位置都没有
   `dangerouslySetInnerHTML`。
 - **没有遥测。** 更新检查需要主动开启，且仅发送 `Conduit-Updater/<version>`。
-  默认只在手动时检查；后台检查与退出时安装均需主动开启，且 Conduit 绝不会自行重启。
+  默认仅手动检查；后台检查与退出时安装均需主动开启，且 Conduit 绝不会自行重启。
 
 ## 功能
 
@@ -218,7 +218,7 @@ packages/config-schema/  Generated TS mirror of the Rust schema (@conduit/config
 packages/ui/             Design tokens, primitives, bundled fonts (@conduit/ui)
 ```
 
-其余一切都遵循的不变式：**渲染层只呈现状态与意图；密钥、持久化和特权操作由 Rust
+其余一切都遵循的不变式：**渲染层只呈现状态与意图；机密信息、持久化和特权操作由 Rust
 掌管。** 一次对话轮次：
 
 ```text

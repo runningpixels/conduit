@@ -15,7 +15,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-![Conduit](./docs/assets/screenshot-dark.png)
+![Conduit in the Orange Charcoal theme, with a generated bakery logo open in the artifact panel](./docs/assets/screenshot-theme-orange-charcoal.png)
 
 Conduit is a desktop chat client for large language models, built on Tauri 2
 with a Rust core and a React renderer. You bring your own API key, talk to any
@@ -51,12 +51,42 @@ encryption at rest. There is no Conduit account, no backend, and no telemetry.
   `Conduit-Updater/<version>`. Checking is manual by default; background
   checking and install-on-quit are opt-in, and Conduit never restarts itself.
 
+## Features
+
+### Your documents, searchable from a chat
+
+**Documents** in the sidebar holds collections of your own files — plain text,
+Markdown, CSV, Word and PDF — or drag files anywhere onto the window. Attach a
+collection from the composer and the assistant searches it while it answers;
+each document it drew on is named under the reply, and clicking one shows the
+exact passage. Retrieval is hybrid: semantic search for passages that mean the
+same thing, keyword search for exact terms like error codes and names.
+
+PDFs are read on your machine. Indexing sends a document's text to the
+provider that embeds the collection, so you are asked before the first
+document goes to each provider, and you can withdraw that consent at any time.
+With local-only mode on, a collection needs a local provider such as Ollama.
+Until you create a collection, nothing in the chat changes.
+
+### Image generation
+
+On OpenAI, Gemini and OpenRouter, ask for a picture — "draw me a simple logo
+for a bakery" — and you get one, saved with the chat and shown in the artifact
+panel (the screenshot at the top). Images are stored locally, not linked from
+the provider, so they do not vanish when a remote URL expires. Each image is
+billed, so Conduit asks once before the first one.
 
 ### Artifacts
 
 Model-generated code, HTML, JSON and Markdown open in a side panel with preview
 and source views. HTML renders in a null-origin sandboxed iframe with
 `connect-src 'none'` — it cannot reach the network or the Tauri bridge.
+
+You can watch a document being written, with an optional live preview. Documents
+too long for one reply are built section by section, and a turn that runs out of
+time keeps what it wrote and offers **Continue building**. Revisions change only
+the part that differs. The panel can be expanded (`Ctrl+Shift+E`) to take
+everything but a narrow chat column.
 
 ![Artifact side panel showing TypeScript source alongside the conversation](./docs/assets/screenshot-artifacts.png)
 
@@ -67,11 +97,67 @@ Tool calls are disclosed inline,
 results are redacted and size-capped, and side-effecting tools prompt for
 consent before they run.
 
+A server's prompts and resources are reachable from the composer too, not only
+its tools. The prompt picker fills in the arguments a prompt declares and drops
+the result into the composer for you to edit; the resource picker attaches a
+document to the next message, checked before it reaches the model.
+
 ![Two MCP tool calls, uuid and calculator, with their results shown inline](./docs/assets/screenshot-connectors.png)
+
+### Themes
+
+A theme sets the type, corner radii, borders, elevation and motion as well as
+the colours. Nine are built in — Orange Charcoal (the default, shown at the
+top), Orange-Dark, Terra, Amber Terminal, Green Phosphor, Amber Paper,
+Graphite, Editorial and High Contrast (AAA contrast) — chosen in
+Settings → Appearance or during first-run setup. A Reading font setting picks
+the face for assistant replies.
+
+<table>
+  <tr>
+    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Amber Terminal theme: black background, amber accent, monospace everywhere"><br><b>Amber Terminal</b></td>
+    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Green Phosphor theme: CRT green on black, monospace everywhere"><br><b>Green Phosphor</b></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Amber Paper theme: the terminal look printed on warm paper"><br><b>Amber Paper</b></td>
+    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Editorial theme in light mode: serif reading, wide margins, rules instead of boxes"><br><b>Editorial</b></td>
+  </tr>
+</table>
+
+![The theme picker in Settings → Appearance, showing all nine built-in themes](./docs/assets/screenshot-theme-picker.png)
+
+You can also write your own: a `.theme.md` file in the app's `themes` folder
+extends a built-in theme with your colours. Theme files take hex colours and a
+fixed set of structural choices only — no CSS, no URLs. See
+[`docs/theming/user-themes.md`](./docs/theming/user-themes.md).
+
+### Eight languages
+
+The interface is available in English, German, Spanish, French, Japanese,
+Korean, Brazilian Portuguese and Simplified Chinese. The language you pick also
+sets the language the assistant replies in, and dates, numbers and file sizes
+follow it rather than the machine's region.
+
+### And more
+
+- **Six more providers** in rc.5 — xAI, Z.ai, Moonshot AI, Qwen, Together AI and
+  Fireworks AI — each with a base URL field for regional or self-hosted
+  endpoints. Anthropic and OpenAI have one too, so either can point at a
+  compatible endpoint or a LiteLLM proxy.
+- **First-run setup** starts with language, theme and text size, covers
+  local-only mode, key storage, update checks and diagnostics, and ends on a
+  review of what was configured.
+- **Settings search**, a settings button in the title strip, and a keyboard
+  shortcuts sheet (`Ctrl+/`, `⌘/` on macOS).
+- **A resizable sidebar**, a ⋯ menu on every conversation (rename, pin,
+  archive, move), and overlays for the sidebar and artifact panel on narrow
+  windows.
+
+See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v0.1.0-rc.3 — pre-release.** Installers for Windows, macOS (Apple silicon and
+**v0.1.0-rc.6 — pre-release.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -92,7 +178,12 @@ rather than a 1.0. Expect rough edges.
 | Conversation pin, archive and folders | Working |
 | Vision attachments, Mermaid/KaTeX, conversation export | Working |
 | Web search (hosted OpenAI/Gemini/Anthropic + local backends) | Working |
-| Update/packaging pipeline | Working — rc.3 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Knowledge base — document collections with hybrid retrieval and citations | Working |
+| Image generation (OpenAI, Gemini, OpenRouter) | Working |
+| MCP prompts and resources in the composer | Working |
+| Themes (nine built in) and user `.theme.md` themes | Working |
+| Interface in eight languages | Working |
+| Update/packaging pipeline, with opt-in automatic updates | Working — rc.6 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

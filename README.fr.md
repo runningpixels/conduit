@@ -94,7 +94,7 @@ première.
 ### Artefacts
 
 Le code, le HTML, le JSON et le Markdown produits par le modèle s'ouvrent dans un
-panneau latéral offrant un aperçu et une vue du source. Le HTML s'affiche dans
+panneau latéral offrant un aperçu et une vue du code source. Le HTML s'affiche dans
 une iframe cloisonnée à origine nulle avec `connect-src 'none'` : il ne peut
 atteindre ni le réseau ni le pont Tauri.
 
@@ -105,7 +105,7 @@ section, et un tour qui manque de temps garde ce qu'il a écrit et propose
 diffère. Le panneau peut être agrandi (`Ctrl+Shift+E`) pour occuper tout
 l'espace sauf une étroite colonne de conversation.
 
-![Panneau latéral d'artefact montrant du source TypeScript à côté de la conversation](./docs/assets/screenshot-artifacts.png)
+![Panneau latéral d'artefact montrant du code source TypeScript à côté de la conversation](./docs/assets/screenshot-artifacts.png)
 
 ### Connecteurs MCP
 

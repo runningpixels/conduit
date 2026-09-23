@@ -41,14 +41,10 @@ pub fn decode_vector(bytes: &[u8], expected_dims: Option<usize>) -> Result<Vec<f
             )));
         }
     }
-    let mut out = Vec::with_capacity(dims);
-    for word in bytes.chunks_exact(4) {
-        let arr: [u8; 4] = word
-            .try_into()
-            .expect("chunks_exact(4) yields 4-byte slices");
-        out.push(f32::from_le_bytes(arr));
-    }
-    Ok(out)
+    // `as_chunks` yields `[u8; 4]` directly, so there is no fallible conversion
+    // per element. The remainder is empty: the length was checked above.
+    let (words, _) = bytes.as_chunks::<4>();
+    Ok(words.iter().map(|w| f32::from_le_bytes(*w)).collect())
 }
 
 /// Cosine similarity between two vectors of equal length, in `[-1.0, 1.0]`

@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.0-rc.6] - 2026-09-22
+
 ### Added
 
 - Your own documents, searchable from a chat. **Documents** in the sidebar is
@@ -66,6 +68,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   instructions of its own is refused and named rather than quietly included.
   An attachment lasts one message, so nothing keeps riding along after you have
   moved on. Servers that offer only tools look exactly as they did.
+
+### Fixed
+
+- A saved prompt with variables — `{{name}}`, `{{language}}` — now asks you to
+  fill them in when you insert it. Previously it went into the composer with the
+  braces still in, for you to find and replace by hand.
 
 ## [0.1.0-rc.5] - 2026-09-15
 
@@ -302,7 +310,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.5...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.6...HEAD
+[0.1.0-rc.6]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.5...v0.1.0-rc.6
 [0.1.0-rc.5]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.4...v0.1.0-rc.5
 [0.1.0-rc.4]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.3...v0.1.0-rc.4
 [0.1.0-rc.3]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.2...v0.1.0-rc.3

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseMessageSegments,
+  salvageLeakedToolCall,
   summarizeFenceForPreview,
   summarizeMessageContentForPreview,
 } from './messageSegments';
@@ -159,5 +160,46 @@ describe('summarizeMessageContentForPreview', () => {
     if (fence?.type === 'fence') {
       expect(summarizeFenceForPreview(fence.candidate)).toBe('HTML artifact · <div> · 3 lines');
     }
+  });
+});
+
+describe('salvageLeakedToolCall', () => {
+  const page = ['<!DOCTYPE html>', '<html lang="en">', '<head><title>Pomodoro Timer</title></head>', '<body><p>25:00</p></body>', '</html>'].join(NL);
+
+  it('recovers the document from a call the model wrote as text (as seen live)', () => {
+    // GLM 5.3 Flash on OpenRouter, head of the call lost upstream.
+    const leaked = `content</arg_key><arg_value>${page}${NL}</arg_value></tool_call>`;
+    const fences = parseMessageSegments(leaked).filter((s) => s.type === 'fence');
+    expect(fences).toHaveLength(1);
+    const fence = fences[0];
+    if (fence.type !== 'fence') throw new Error('unreachable');
+    expect(fence.candidate.kind).toBe('html');
+    expect(fence.candidate.title).toBe('Pomodoro Timer');
+    expect(fence.candidate.body).toBe(page);
+    expect(salvageLeakedToolCall(leaked)).not.toMatch(/arg_value|tool_call|arg_key/);
+  });
+
+  it('drops the whole call, title argument included, and keeps the prose around it', () => {
+    const leaked = [
+      "Here's your timer:",
+      `<tool_call>write_html_document<arg_key>title</arg_key><arg_value>Pomodoro</arg_value><arg_key>content</arg_key><arg_value>${page}</arg_value></tool_call>`,
+      'Press space to start.',
+    ].join(NL);
+    const out = salvageLeakedToolCall(leaked);
+    expect(out).not.toMatch(/arg_value|tool_call|arg_key|write_html_document/);
+    expect(out.startsWith("Here's your timer:\n```html\n<!DOCTYPE html>")).toBe(true);
+    expect(out.trimEnd().endsWith('Press space to start.')).toBe(true);
+  });
+
+  it('opens a fence for a call still streaming, so the card path applies', () => {
+    const partial = `content</arg_key><arg_value><!DOCTYPE html>${NL}<html><body><p>25`;
+    expect(salvageLeakedToolCall(partial)).toBe(`\`\`\`html${NL}<!DOCTYPE html>${NL}<html><body><p>25`);
+  });
+
+  it('leaves prose that merely mentions the markup alone', () => {
+    const prose = 'The format looks like <arg_value><!DOCTYPE html></arg_value> inside a call.';
+    expect(salvageLeakedToolCall(prose)).toBe(prose);
+    const snippet = '<arg_value>just a title</arg_value></tool_call>';
+    expect(salvageLeakedToolCall(snippet)).toBe(snippet);
   });
 });

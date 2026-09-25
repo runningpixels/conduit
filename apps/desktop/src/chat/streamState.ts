@@ -22,6 +22,11 @@ export interface ContentBlockState {
   /// into the block's final text. The renderer inserts inline `[n]` markers
   /// at the exact byte ranges the provider specified.
   citations: CitationAnnotation[];
+  /// Reasoning blocks only: when the first and latest deltas arrived, so the
+  /// block can say how long the model actually thought. Absent on blocks
+  /// rebuilt from the database, which never recorded it.
+  startedAt?: number;
+  lastDeltaAt?: number;
 }
 
 export interface CitationAnnotation {
@@ -396,7 +401,7 @@ function reduceProviderEvent(
           ...state,
           reasoning: state.reasoning.map((block) =>
             block.blockId === event.blockId
-              ? { ...block, content: block.content + event.content }
+              ? { ...block, content: block.content + event.content, lastDeltaAt: Date.now() }
               : block,
           ),
           segments: withReasoningSegmentIfNeeded(state.segments, event.blockId),
@@ -406,7 +411,14 @@ function reduceProviderEvent(
         ...state,
         reasoning: [
           ...state.reasoning,
-          { blockId: event.blockId, blockKind: 'reasoning', content: event.content, citations: [] },
+          {
+            blockId: event.blockId,
+            blockKind: 'reasoning',
+            content: event.content,
+            citations: [],
+            startedAt: Date.now(),
+            lastDeltaAt: Date.now(),
+          },
         ],
         segments: withReasoningSegmentIfNeeded(
           withoutEmptyTextSegments(state),

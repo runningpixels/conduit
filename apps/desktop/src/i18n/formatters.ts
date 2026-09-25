@@ -155,6 +155,31 @@ export function formatCount(value: number, ctx: FormatContext): string {
   return number(ctx.locale).format(value);
 }
 
+/**
+ * An elapsed time — `42s`, `9m 48s`, `1h 5m` — in the reader's locale.
+ *
+ * Whole seconds, and only the two largest units: "how long did it think" is
+ * answered by `9m 48s`, not by milliseconds. Falls back to a plain seconds
+ * count where `Intl.DurationFormat` is missing.
+ */
+/** `Intl.DurationFormat` (ES2025), which the TypeScript lib here does not declare. */
+type DurationFormatConstructor = new (
+  locale: string,
+  options: { style: 'narrow' },
+) => { format(duration: Record<string, number>): string };
+
+export function formatDuration(ms: number, ctx: FormatContext): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const parts: Record<string, number> =
+    hours > 0 ? { hours, minutes } : minutes > 0 ? { minutes, seconds } : { seconds };
+  const { DurationFormat } = Intl as unknown as { DurationFormat?: DurationFormatConstructor };
+  if (!DurationFormat) return `${total}s`;
+  return new DurationFormat(ctx.locale, { style: 'narrow' }).format(parts);
+}
+
 /** `200K`, `1M` — for a context window, where the exact digits do not matter. */
 export function formatCompact(value: number, ctx: FormatContext): string {
   return number(ctx.locale, { notation: 'compact', maximumFractionDigits: 0 }).format(value);
@@ -179,6 +204,7 @@ export interface Formatters {
   count(value: number): string;
   compact(value: number): string;
   money(cents: number): string;
+  duration(ms: number): string;
   compare(a: string, b: string): number;
   /** The active locale, for the rare call site that needs to pass it on. */
   locale: string;
@@ -199,6 +225,7 @@ export function useFormatters(): Formatters {
       count: (value) => formatCount(value, ctx),
       compact: (value) => formatCompact(value, ctx),
       money: (cents) => formatMoney(cents, ctx),
+      duration: (ms) => formatDuration(ms, ctx),
       compare: (a, b) => c.compare(a, b),
       locale,
     };

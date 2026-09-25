@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { writeShowReasoning } from '../shell/uiPrefs';
@@ -22,7 +22,47 @@ describe('ReasoningBlock', () => {
     );
     const details = document.querySelector('details.think') as HTMLDetailsElement;
     expect(details.open).toBe(true);
-    expect(screen.getByText(/Thought for \d+s/)).toBeInTheDocument();
+    // Rebuilt from the database: no timing was recorded, so no number is made up.
+    expect(screen.getByText('Thought')).toBeInTheDocument();
+  });
+
+  it('reports the time the reasoning actually spanned', () => {
+    // The old label estimated 15 words a second and capped it at 60, so ten
+    // minutes of thinking read "Thought for 60s".
+    const startedAt = 1_000_000;
+    render(
+      <ReasoningBlock
+        block={{
+          blockId: 'r1',
+          blockKind: 'reasoning',
+          content: 'a few words',
+          citations: [],
+          startedAt,
+          lastDeltaAt: startedAt + 588_000,
+        }}
+      />,
+    );
+    expect(screen.getByText('Thought for 9m 48s')).toBeInTheDocument();
+  });
+
+  it('counts up while the model is still thinking', () => {
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now() - 64_000;
+      render(
+        <ReasoningBlock
+          live
+          block={{ blockId: 'r1', blockKind: 'reasoning', content: 'hmm', citations: [], startedAt, lastDeltaAt: startedAt }}
+        />,
+      );
+      expect(screen.getByText('Thinking… 1m 4s')).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(screen.getByText('Thinking… 1m 6s')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('survives a parent re-render after the user collapses the chip', () => {

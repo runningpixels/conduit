@@ -135,6 +135,27 @@ async fn ensure_message_row_in_txn(
 /// Apply one `ProviderEvent` to the materialized view, inside the caller's
 /// transaction (the event-log append happens in the same txn — see
 /// `event_log::append_and_apply`).
+/// Append text to a content or reasoning part: the view change of a
+/// `ContentDelta` / `ReasoningDelta`. Separate so a batch can apply a run of
+/// deltas to one part as a single UPDATE — the statement rewrites the whole
+/// growing row, so issuing it per delta made a long message quadratic.
+pub async fn append_part_content_in_txn(
+    tx: &mut Transaction<'_, sqlx::Sqlite>,
+    conversation_id: &str,
+    request_id: &str,
+    block_id: &str,
+    content: &str,
+) -> Result<(), DbError> {
+    let message_id = ensure_message_row_in_txn(tx, conversation_id, request_id).await?;
+    let part_id = format!("{message_id}/{block_id}");
+    sqlx::query("UPDATE message_parts SET content = COALESCE(content, '') || ? WHERE id = ?")
+        .bind(content)
+        .bind(&part_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 pub async fn apply_event_in_txn(
     tx: &mut Transaction<'_, sqlx::Sqlite>,
     conversation_id: &str,
@@ -184,15 +205,7 @@ pub async fn apply_event_in_txn(
         | ProviderEvent::ReasoningDelta {
             block_id, content, ..
         } => {
-            let message_id = ensure_message_row_in_txn(tx, conversation_id, request_id).await?;
-            let part_id = format!("{message_id}/{block_id}");
-            sqlx::query(
-                "UPDATE message_parts SET content = COALESCE(content, '') || ? WHERE id = ?",
-            )
-            .bind(content)
-            .bind(&part_id)
-            .execute(&mut **tx)
-            .await?;
+            append_part_content_in_txn(tx, conversation_id, request_id, block_id, content).await?;
         }
         ProviderEvent::ToolCallStart {
             tool_call_id,

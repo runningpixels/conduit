@@ -387,3 +387,30 @@ export function applyUiPrefs(): void {
   applyExpandedStatus(readExpandedStatus());
   applyMermaidScale(readMermaidScale());
 }
+
+/* ── the model last used with each provider ─────────────────────────────── */
+
+const LAST_MODEL_KEY = 'conduit:v10-last-model-by-provider';
+
+/** The model the user last had selected with `providerId`, if remembered.
+ *  Lets a switch back to a provider restore its model instead of taking
+ *  whatever the listing happens to put first. */
+export function readLastModel(providerId: string): string | undefined {
+  try {
+    const map = JSON.parse(localStorage.getItem(LAST_MODEL_KEY) ?? '{}') as Record<string, unknown>;
+    const id = map[providerId];
+    return typeof id === 'string' && id ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeLastModel(providerId: string, modelId: string): void {
+  if (!providerId || !modelId) return;
+  try {
+    const map = JSON.parse(localStorage.getItem(LAST_MODEL_KEY) ?? '{}') as Record<string, string>;
+    localStorage.setItem(LAST_MODEL_KEY, JSON.stringify({ ...map, [providerId]: modelId }));
+  } catch {
+    /* storage may be unavailable; forgetting is harmless */
+  }
+}

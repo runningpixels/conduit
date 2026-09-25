@@ -125,12 +125,12 @@ export function finishedDocumentFence(state: {
   interrupted?: boolean;
 }): ArtifactCandidate | undefined {
   if (state.error || state.interrupted) return undefined;
-  const text = state.blocks
+  // Block by block: a fence never spans rounds, and joining them with nothing
+  // between glued one round's last sentence to the next round's fence opener,
+  // which then parsed the reply's closing prose as the document.
+  const documents = state.blocks
     .filter((b) => b.blockKind !== 'thinking' && b.blockKind !== 'reasoning')
-    .map((b) => b.content)
-    .join('');
-  const documents = detectArtifactCandidates(text).filter(
-    (c) => (c.kind === 'html' || c.kind === 'markdown') && shouldRenderAsCard(c) && isPromotable(c),
-  );
+    .flatMap((b) => detectArtifactCandidates(b.content))
+    .filter((c) => (c.kind === 'html' || c.kind === 'markdown') && shouldRenderAsCard(c) && isPromotable(c));
   return documents[documents.length - 1];
 }

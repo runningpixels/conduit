@@ -187,8 +187,20 @@ async fn continuation_rounds_fold_into_one_assistant_row() {
         .iter()
         .filter_map(|p| p.content.clone())
         .collect();
-    assert!(text.contains("Yes — let me run a quick test."));
-    assert!(text.contains("Yes, I have web access."));
+    // A new round is a new paragraph. Run together ("…test.Yes, I have…"), a
+    // fence the second round opened started mid-line and the rest of the
+    // reply parsed as a document.
+    assert_eq!(
+        text,
+        "Yes — let me run a quick test.\n\nYes, I have web access."
+    );
+
+    // And the fold agrees: reconciliation has nothing to repair.
+    let report = reconcile_all(&pool).await.unwrap();
+    assert_eq!(
+        report.rebuilds, 0,
+        "multi-round view matches the fold of the log"
+    );
 }
 
 /// The stream path saves deltas in batches (`append_and_apply_batch`), joining

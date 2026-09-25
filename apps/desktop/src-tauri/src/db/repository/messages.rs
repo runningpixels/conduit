@@ -132,9 +132,10 @@ async fn ensure_message_row_in_txn(
     Ok(id)
 }
 
-/// Apply one `ProviderEvent` to the materialized view, inside the caller's
-/// transaction (the event-log append happens in the same txn — see
-/// `event_log::append_and_apply`).
+/// Put between two rounds' text in one part (see the `ContentBlockStart` arm of
+/// [`apply_event_in_txn`] and `db::fold`).
+pub const ROUND_BREAK: &str = "\n\n";
+
 /// Append text to a content or reasoning part: the view change of a
 /// `ContentDelta` / `ReasoningDelta`. Separate so a batch can apply a run of
 /// deltas to one part as a single UPDATE — the statement rewrites the whole
@@ -156,6 +157,9 @@ pub async fn append_part_content_in_txn(
     Ok(())
 }
 
+/// Apply one `ProviderEvent` to the materialized view, inside the caller's
+/// transaction (the event-log append happens in the same txn — see
+/// `event_log::append_and_apply`).
 pub async fn apply_event_in_txn(
     tx: &mut Transaction<'_, sqlx::Sqlite>,
     conversation_id: &str,
@@ -196,6 +200,20 @@ pub async fn apply_event_in_txn(
             .bind(*index as i64)
             .bind(part_kind_to_str(&kind))
             .bind(&now)
+            .execute(&mut **tx)
+            .await?;
+            // A continuation round reuses the block id, so its text lands in
+            // the same part. Without a break the rounds ran together —
+            // "…in your workspace.Done! Here are the flashcards…:```html" —
+            // which left a fence opener mid-line and the reply's closing
+            // prose parsed as a document. A new round starts a new paragraph.
+            // Mirrored in `fold`.
+            sqlx::query(
+                "UPDATE message_parts SET content = content || ? \
+                 WHERE id = ? AND COALESCE(content, '') <> ''",
+            )
+            .bind(ROUND_BREAK)
+            .bind(&part_id)
             .execute(&mut **tx)
             .await?;
         }

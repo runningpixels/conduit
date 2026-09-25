@@ -205,3 +205,20 @@ describe('finishedDocumentFence', () => {
     expect(fence).toBeUndefined();
   });
 });
+
+describe('finishedDocumentFence across rounds', () => {
+  // Live: the flashcards turn ran over three rounds; the fence opener sat at
+  // the start of the last round's block and the closing prose was not a
+  // document.
+  it('finds the fence in its own round and not the prose after it', () => {
+    const page = `<!DOCTYPE html>\n<html><head><title>Flashcards</title></head><body>${'<p>card</p>\n'.repeat(30)}</body></html>`;
+    const fence = finishedDocumentFence({
+      blocks: [
+        { blockKind: 'text', content: "I'll build it and save it to your workspace." },
+        { blockKind: 'text', content: `\`\`\`html\n${page}\n\`\`\`\n\nI've also saved this as \`flashcards.html\`.\n\n${'- a feature worth listing\n'.repeat(12)}` },
+      ],
+    });
+    expect(fence?.kind).toBe('html');
+    expect(fence?.title).toBe('Flashcards');
+  });
+});

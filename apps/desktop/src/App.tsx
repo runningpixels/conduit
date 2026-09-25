@@ -407,6 +407,17 @@ export default function App() {
     setToasts((current) => current.filter((t) => t.timestamp !== timestamp));
   }, []);
 
+  // A turn's error stays in its chat, inline under the turn. As a toast it
+  // stays until dismissed, so it followed the reader into every other chat —
+  // seen live, one dashboard failure sat over five unrelated conversations.
+  // Leaving the chat takes its turn errors with it.
+  useEffect(() => {
+    setToasts((current) => {
+      const kept = current.filter((toast) => !(toast.source === 'chat' && toast.kind === 'error'));
+      return kept.length === current.length ? current : kept;
+    });
+  }, [activeConversationId]);
+
   // Background update checking. Dormant until settings load, and inert unless
   // the user opted into `notify` or `automatic` — `manual` (the default, and
   // what every pre-existing install deserializes to) schedules nothing.

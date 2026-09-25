@@ -159,8 +159,8 @@ export function formatCount(value: number, ctx: FormatContext): string {
  * An elapsed time — `42s`, `9m 48s`, `1h 5m` — in the reader's locale.
  *
  * Whole seconds, and only the two largest units: "how long did it think" is
- * answered by `9m 48s`, not by milliseconds. Falls back to a plain seconds
- * count where `Intl.DurationFormat` is missing.
+ * answered by `9m 48s`, not by milliseconds. Falls back to per-unit
+ * NumberFormat where `Intl.DurationFormat` is missing.
  */
 /** `Intl.DurationFormat` (ES2025), which the TypeScript lib here does not declare. */
 type DurationFormatConstructor = new (
@@ -176,8 +176,14 @@ export function formatDuration(ms: number, ctx: FormatContext): string {
   const parts: Record<string, number> =
     hours > 0 ? { hours, minutes } : minutes > 0 ? { minutes, seconds } : { seconds };
   const { DurationFormat } = Intl as unknown as { DurationFormat?: DurationFormatConstructor };
-  if (!DurationFormat) return `${total}s`;
-  return new DurationFormat(ctx.locale, { style: 'narrow' }).format(parts);
+  if (DurationFormat) return new DurationFormat(ctx.locale, { style: 'narrow' }).format(parts);
+  // Node 20 (CI) and older WebViews have no DurationFormat. Each unit on its
+  // own is plain NumberFormat, which reads the same in English (`9m 48s`) and
+  // stays localised elsewhere (`9 Min. 48 Sek.`).
+  const UNIT: Record<string, string> = { hours: 'hour', minutes: 'minute', seconds: 'second' };
+  return Object.entries(parts)
+    .map(([key, value]) => number(ctx.locale, { style: 'unit', unit: UNIT[key], unitDisplay: 'narrow' }).format(value))
+    .join(' ');
 }
 
 /** `200K`, `1M` — for a context window, where the exact digits do not matter. */

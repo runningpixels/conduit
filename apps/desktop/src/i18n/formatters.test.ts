@@ -4,6 +4,7 @@ import {
   collator,
   formatCompact,
   formatCount,
+  formatDuration,
   formatMoney,
   formatSize,
   formatTimeAgo,
@@ -29,6 +30,29 @@ const de: FormatContext = {
 
 /** A timestamp `minutes` in the past, for the relative formatters. */
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+
+describe('durations', () => {
+  it('keeps the two largest units', () => {
+    expect(formatDuration(42_000, en)).toBe('42s');
+    expect(formatDuration(588_000, en)).toBe('9m 48s');
+    expect(formatDuration(3_900_000, en)).toBe('1h 5m');
+  });
+
+  // CI runs Node 20, which has no Intl.DurationFormat; the first version of
+  // this fell back to a bare "588s" there. The fallback must read the same.
+  it('reads the same without Intl.DurationFormat', () => {
+    const intl = Intl as unknown as Record<string, unknown>;
+    const saved = intl.DurationFormat;
+    delete intl.DurationFormat;
+    try {
+      expect(formatDuration(588_000, en)).toBe('9m 48s');
+      expect(formatDuration(3_900_000, en)).toBe('1h 5m');
+      expect(formatDuration(588_000, de)).not.toBe(formatDuration(588_000, en));
+    } finally {
+      if (saved) intl.DurationFormat = saved;
+    }
+  });
+});
 
 describe('sizes', () => {
   it('keeps English readable', () => {

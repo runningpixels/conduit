@@ -167,10 +167,32 @@ function deriveMime(kind: ArtifactKind, info: string): string {
   return KIND_MIME[kind];
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+};
+
+/// `<title>` is escapable raw text: the browser decodes character references
+/// in it, so `Price &amp; Yield` is titled "Price & Yield". Reading it raw put
+/// the literal `&amp;` on the card and the panel tab.
+function decodeCharacterReferences(s: string): string {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, ref: string) => {
+    if (ref[0] === '#') {
+      const code = ref[1] === 'x' || ref[1] === 'X' ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    }
+    return NAMED_ENTITIES[ref.toLowerCase()] ?? whole;
+  });
+}
+
 function extractHtmlTitle(body: string): string | null {
   const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(body);
   if (!m) return null;
-  const t = m[1].replace(/\s+/g, ' ').trim();
+  const t = decodeCharacterReferences(m[1]).replace(/\s+/g, ' ').trim();
   if (!t) return null;
   return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX)}…` : t;
 }
@@ -181,6 +203,18 @@ function extractMarkdownHeading(body: string): string | null {
   const t = m[1].trim();
   if (!t) return null;
   return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX)}…` : t;
+}
+
+/**
+ * The title the document names for itself — an HTML `<title>` or a markdown
+ * heading — or `null` when `deriveTitle` would fall back to the first line.
+ * A streaming fence has no `<title>` yet for its first few lines, and
+ * "Writing “<!DOCTYPE html>”…" is worse than no title at all.
+ */
+export function explicitTitle(kind: ArtifactKind, body: string): string | null {
+  if (kind === 'html') return extractHtmlTitle(body);
+  if (kind === 'markdown') return extractMarkdownHeading(body);
+  return null;
 }
 
 function deriveTitle(kind: ArtifactKind, info: string, body: string): string {

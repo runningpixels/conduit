@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { Artifact } from '../ipc/contracts';
 import { languageFromMime } from '../artifacts/selectRenderer';
 import { renderHighlightedCode, useHighlightTokens } from '../artifacts/codeHighlight';
-import type { ArtifactCandidate } from './messageSegments';
+import { explicitTitle, type ArtifactCandidate } from './messageSegments';
 import { findPromotedArtifact, isPromotable } from './inlineArtifact';
 import { CheckIcon, CopyIcon, PlusIcon } from '../icons';
 import { useT, type Translate } from '../i18n';
+import { useFormatters, type Formatters } from '../i18n/formatters';
 import { documentKindLabel } from '../lib/documentKind';
 
 // Artifact kind names — format identifiers, not prose (see the same map and
@@ -16,6 +17,34 @@ function languageLabel(candidate: ArtifactCandidate, t: Translate): string {
   const infoLang = candidate.info.split(/\s+/)[0]?.toLowerCase();
   if (infoLang) return infoLang;
   return documentKindLabel(candidate.kind, t);
+}
+
+/// Within this many pixels of the bottom, the reader is "at the tail" and the
+/// body keeps following new lines; scrolling further up opts out.
+const FOLLOW_SLACK_PX = 24;
+
+/**
+ * "Writing “Bonds 101”… · 214 lines · 18 kB" while a fence streams.
+ *
+ * The body is capped at 420px, so without this a long fence showed its first
+ * twenty lines, standing still, for however many minutes the rest took to
+ * arrive — indistinguishable from a finished block whose card never came.
+ * The strings are the tool-driven document write's (`documentWriteScan.ts`),
+ * so both ways of producing a document read the same.
+ */
+function streamingStatus(candidate: ArtifactCandidate, t: Translate, fmt: Formatters): string | undefined {
+  if (!candidate.body) return undefined;
+  const title = explicitTitle(candidate.kind, candidate.body);
+  const label = title
+    ? t('chat.documentWrite.writingTitled', { title })
+    : candidate.kind === 'html' || candidate.kind === 'markdown'
+      ? t('chat.documentWrite.writingKind', { kind: candidate.kind })
+      : undefined;
+  const detail = t('chat.documentWrite.progress', {
+    lines: candidate.body.replace(/\n$/, '').split('\n').length,
+    size: fmt.size(new TextEncoder().encode(candidate.body).length),
+  });
+  return label ? `${label} · ${detail}` : detail;
 }
 
 interface InlineCodeBlockProps {
@@ -40,6 +69,7 @@ export function InlineCodeBlock({
   onOpenArtifact,
 }: InlineCodeBlockProps) {
   const t = useT();
+  const fmt = useFormatters();
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
   const lang = languageLabel(candidate, t);
@@ -49,6 +79,20 @@ export function InlineCodeBlock({
   const canPromote =
     !!messageId && !!onPromote && !streaming && !promoted && isPromotable(candidate);
   const canOpen = !!promoted && !!onOpenArtifact;
+
+  // Follow the tail while streaming, unless the reader has scrolled up to read.
+  const bodyRef = useRef<HTMLPreElement>(null);
+  const followRef = useRef(true);
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (streaming && el && followRef.current) el.scrollTop = el.scrollHeight;
+  }, [candidate.body, streaming]);
+  function handleScroll() {
+    const el = bodyRef.current;
+    if (!el || !streaming) return;
+    followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
+  }
+  const status = streaming ? streamingStatus(candidate, t, fmt) : undefined;
 
   async function handleCopy() {
     if (!candidate.body) return;
@@ -80,6 +124,11 @@ export function InlineCodeBlock({
     <div className="inline-code-block" data-plain={plain}>
       <div className="inline-code-block-head">
         <span className="inline-code-block-lang">{lang}</span>
+        {status && (
+          <span className="inline-code-block-status" aria-live="off" title={status}>
+            {status}
+          </span>
+        )}
         <div className="inline-code-block-actions">
           <button
             type="button"
@@ -114,7 +163,12 @@ export function InlineCodeBlock({
           )}
         </div>
       </div>
-      <pre className="inline-code-block-body scroll" data-plain={plain}>
+      <pre
+        ref={bodyRef}
+        className="inline-code-block-body scroll"
+        data-plain={plain}
+        onScroll={handleScroll}
+      >
         <code>
           {highlighted ? renderHighlightedCode(highlighted) : candidate.body}
           {streaming && <span className="cursor" aria-hidden="true" />}

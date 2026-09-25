@@ -171,6 +171,40 @@ describe('ChatProse document fences', () => {
     expect(container.textContent).toContain('<!DOCTYPE html>');
   });
 
+  it('says what a streaming fence is writing and how far it has got', () => {
+    // The body is capped at 420px; without a readout a long fence showed its
+    // first lines standing still for minutes and read as finished.
+    const inFlight = `Here it is:\n\`\`\`html\n${html}`;
+    render(<ChatProse content={inFlight} streaming messageId="msg-1" />);
+    const status = document.querySelector('.inline-code-block-status');
+    expect(status?.textContent).toMatch(/^Writing “CAPM Demo”… · 14 lines · /);
+  });
+
+  it('names no title before the fence has one', () => {
+    render(<ChatProse content={'```html\n<!DOCTYPE html>\n<html>'} streaming messageId="msg-1" />);
+    expect(document.querySelector('.inline-code-block-status')?.textContent).toMatch(
+      /^Writing HTML document… · 2 lines · /,
+    );
+  });
+
+  it('follows the tail of a streaming fence until the reader scrolls up', () => {
+    const { rerender } = render(<ChatProse content={`\`\`\`html\n${html}`} streaming messageId="msg-1" />);
+    const body = document.querySelector<HTMLPreElement>('.inline-code-block-body')!;
+    // jsdom does no layout, so give the body the geometry of an overflowing block.
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 420 });
+    let scrollHeight = 2000;
+    Object.defineProperty(body, 'scrollHeight', { configurable: true, get: () => scrollHeight });
+
+    rerender(<ChatProse content={`\`\`\`html\n${html}\n<p>more</p>`} streaming messageId="msg-1" />);
+    expect(body.scrollTop).toBe(2000);
+
+    body.scrollTop = 300;
+    fireEvent.scroll(body);
+    scrollHeight = 2400;
+    rerender(<ChatProse content={`\`\`\`html\n${html}\n<p>more</p>\n<p>again</p>`} streaming messageId="msg-1" />);
+    expect(body.scrollTop).toBe(300);
+  });
+
   it('collapses a completed fence even while later prose is still streaming', async () => {
     // Trailing prose proves the fence closed, so it is no longer the live
     // segment and should already read as a card.

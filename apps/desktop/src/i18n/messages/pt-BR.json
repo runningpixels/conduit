@@ -842,7 +842,7 @@
   "settings.privacy.trust.connected.label": "Fronteira de confiança online",
   "settings.privacy.trust.disconnected.detail": "O shell da área de trabalho não conseguiu alcançar o backend Rust local. Reinicie o {appName} se isto persistir.",
   "settings.privacy.trust.disconnected.label": "Fronteira de confiança inacessível",
-  "settings.privacy.trust.localOnly.detail": "A busca na web e outros recursos de saída ficam desativados. As chamadas BYOK ao provedor continuam indo direto para o seu provedor com sua chave.",
+  "settings.privacy.trust.localOnly.detail": "A busca na web e outros recursos de saída ficam desativados, e provedores na nuvem são recusados — só um provedor local como Ollama ou LM Studio pode responder.",
   "settings.privacy.trust.localOnly.label": "Modo somente local",
   "settings.privacy.trust.localOnlyLine": "Modo somente local: {status, select, on {ativado} off {desativado} other {desativado}}",
   "settings.privacy.trust.noKey.detail": "Adicione uma credencial de provedor em Provedores e chaves para começar a conversar. As chaves ficam no chaveiro do sistema.",

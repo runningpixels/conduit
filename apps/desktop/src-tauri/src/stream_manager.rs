@@ -694,6 +694,28 @@ pub(crate) struct ActiveStream {
 pub type AdapterResolver =
     Arc<dyn Fn(&str) -> Option<Box<dyn provider_core::ProviderAdapter>> + Send + Sync>;
 
+/// `local_only` refuses cloud providers. Local-served adapters (ollama,
+/// lm_studio, openai_compat) report `is_local()` and are always allowed.
+///
+/// Every path that starts a provider round must call this: the single-round
+/// stream, the agent turn before it persists anything, and each agent round
+/// (settings are re-read per round, so a mid-turn provider switch is caught).
+/// Before this helper existed only the single-round path checked, so any
+/// request that declared tools — the default — reached the cloud provider
+/// with local-only mode on.
+pub(crate) fn ensure_provider_allowed(
+    settings: &provider_core::schema::AppSettings,
+    adapter: &dyn provider_core::ProviderAdapter,
+    provider_id: &str,
+) -> Result<(), String> {
+    if settings.local_only && !adapter.is_local() {
+        return Err(format!(
+            "Cloud provider '{provider_id}' is disabled while local_only mode is on"
+        ));
+    }
+    Ok(())
+}
+
 pub struct StreamManager {
     active: Arc<Mutex<HashMap<String, ActiveStream>>>,
     /// Pending `ask_user` oneshots keyed by tool_call_id (t1-2).
@@ -808,13 +830,8 @@ impl StreamManager {
             .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
 
         // M4: honor `local_only` — block cloud providers when the user has opted
-        // into local-only mode. Local-served adapters (ollama, openai_compat)
-        // report `is_local()` and are always allowed.
-        if settings.local_only && !adapter.is_local() {
-            return Err(format!(
-                "Cloud provider '{provider_id}' is disabled while local_only mode is on"
-            ));
-        }
+        // into local-only mode.
+        ensure_provider_allowed(&settings, adapter.as_ref(), &provider_id)?;
 
         // Phase A: if the request declares tools, run the agent turn loop which
         // can execute multiple provider rounds. Otherwise fall through to the
@@ -1040,6 +1057,15 @@ impl StreamManager {
                 };
             }
         };
+
+        // Re-checked every round: settings are re-read here, so switching to a
+        // cloud provider (or turning local-only on) mid-turn is caught too.
+        if let Err(message) = ensure_provider_allowed(&settings, adapter.as_ref(), &provider_id) {
+            return RoundOutcome {
+                error_message: Some(message),
+                ..Default::default()
+            };
+        }
 
         let ctx = match Self::build_adapter_context(state, &provider_id) {
             Ok(c) => c,
@@ -1369,6 +1395,9 @@ impl StreamManager {
         let image_provider = settings.active_provider.clone();
         let image = provider_core::default_image_model(&image_provider).and_then(|model_id| {
             let adapter = (self.adapter_resolver)(&image_provider)?;
+            // Image generation is always a cloud call; never offer it under
+            // local_only, even if a chat round somehow got this far.
+            ensure_provider_allowed(&settings, adapter.as_ref(), &image_provider).ok()?;
             let adapter_ctx = Self::build_adapter_context(state, &image_provider).ok()?;
             Some(agent_tools::ImageToolConfig {
                 provider_id: image_provider.clone(),
@@ -2283,6 +2312,16 @@ impl StreamManager {
         };
         let conversation_id = initial_request.conversation_id.clone();
 
+        // Refuse a cloud provider under `local_only` before anything is
+        // persisted or sent — the same rule the single-round path applies.
+        {
+            let settings = state.settings()?;
+            let provider_id = settings.active_provider.clone();
+            let adapter = (self.adapter_resolver)(&provider_id)
+                .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
+            ensure_provider_allowed(&settings, adapter.as_ref(), &provider_id)?;
+        }
+
         // Ensure conversation and persist the initial user/system/developer messages
         // exactly once for the whole turn (mirrors the single-round path).
         let pool = state.db.clone();
@@ -3059,5 +3098,47 @@ async fn build_connector_tool_catalog(
 impl Default for StreamManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod local_only_tests {
+    use super::ensure_provider_allowed;
+    use provider_core::schema::AppSettings;
+
+    fn settings(local_only: bool) -> AppSettings {
+        AppSettings {
+            local_only,
+            ..AppSettings::default()
+        }
+    }
+
+    fn adapter(id: &str) -> Box<dyn provider_core::ProviderAdapter> {
+        provider_core::get_adapter(id).expect("registered adapter")
+    }
+
+    #[test]
+    fn local_only_refuses_every_cloud_provider() {
+        for id in ["anthropic", "openai", "openrouter", "gemini"] {
+            let error = ensure_provider_allowed(&settings(true), adapter(id).as_ref(), id)
+                .expect_err("cloud provider refused under local_only");
+            assert!(error.contains("local_only"), "{id}: {error}");
+        }
+    }
+
+    #[test]
+    fn local_only_allows_local_providers() {
+        for id in ["ollama", "lmstudio"] {
+            ensure_provider_allowed(&settings(true), adapter(id).as_ref(), id)
+                .unwrap_or_else(|e| panic!("{id} should be allowed: {e}"));
+        }
+    }
+
+    #[test]
+    fn with_local_only_off_every_provider_is_allowed() {
+        for id in ["anthropic", "openrouter", "ollama"] {
+            ensure_provider_allowed(&settings(false), adapter(id).as_ref(), id)
+                .unwrap_or_else(|e| panic!("{id} should be allowed: {e}"));
+        }
     }
 }

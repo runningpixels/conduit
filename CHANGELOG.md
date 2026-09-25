@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Local-only mode now blocks cloud providers in every chat.** It already
+  switched off web search and cloud document indexing, but a chat that used
+  tools — which is most chats, since the built-in tools are on by default —
+  could still be answered by a cloud provider you had selected before turning
+  local-only mode on. Every chat round, and the automatic summary that keeps a
+  long conversation within the model's limit, now refuses a cloud provider while
+  local-only mode is on; only a local provider such as Ollama or LM Studio can
+  answer. The description under Settings → Privacy & data said the opposite and
+  has been corrected in every language.
+
 ## [0.1.0-rc.6] - 2026-09-22
 
 ### Added

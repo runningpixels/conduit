@@ -842,7 +842,7 @@
   "settings.privacy.trust.connected.label": "信任边界在线",
   "settings.privacy.trust.disconnected.detail": "桌面外壳无法连接本地的 Rust 后端。如果一直这样，请重启 {appName}。",
   "settings.privacy.trust.disconnected.label": "信任边界无法连接",
-  "settings.privacy.trust.localOnly.detail": "网页搜索和其他对外发送的功能保持关闭。BYOK 的提供商调用仍会带着你的密钥直接发往你的提供商。",
+  "settings.privacy.trust.localOnly.detail": "网页搜索和其他对外发送的功能保持关闭，云端提供商会被拒绝——只有 Ollama 或 LM Studio 等本地提供商可以回答。",
   "settings.privacy.trust.localOnly.label": "仅本地模式",
   "settings.privacy.trust.localOnlyLine": "仅本地模式：{status, select, on {已开启} off {已关闭} other {已关闭}}",
   "settings.privacy.trust.noKey.detail": "在提供商与密钥中添加一个提供商凭据即可开始聊天。密钥会留在系统钥匙串中。",

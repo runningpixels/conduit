@@ -782,6 +782,33 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // block could read a state missing the last delta). Computing each event from
   // `streamStateRef` keeps the ref and state in lockstep, synchronously.
   const streamStateRef = useRef<AssistantStreamState | null>(null);
+  // Deltas are rendered at most once per frame. Each one used to re-render the
+  // whole live turn — re-parsing and re-highlighting a growing fence — so a
+  // provider sending faster than that render could keep up with queued work the
+  // UI fell further behind. The ref still advances on every event; only the
+  // render is coalesced, and it reads the ref when the frame fires.
+  const streamFrameRef = useRef<number | null>(null);
+  const cancelStreamFrame = () => {
+    if (streamFrameRef.current != null) {
+      window.cancelAnimationFrame(streamFrameRef.current);
+      streamFrameRef.current = null;
+    }
+  };
+  const renderStreamNow = () => {
+    cancelStreamFrame();
+    setActiveStream(streamStateRef.current);
+  };
+  const renderStreamNextFrame = () => {
+    if (streamFrameRef.current != null) return;
+    streamFrameRef.current = window.requestAnimationFrame(() => {
+      streamFrameRef.current = null;
+      // The user may have switched chats since this was scheduled; that chat
+      // must not be handed another conversation's live turn.
+      if (activeRequestRef.current?.conversationId !== currentConversationIdRef.current) return;
+      setActiveStream(streamStateRef.current);
+    });
+  };
+  useEffect(() => cancelStreamFrame, []);
   const toolBindingsRef = useRef<Record<string, ConnectorToolBinding>>({});
   const providerToolByCallIdRef = useRef<Record<string, string>>({});
   /** Last document-write progress handed to the panel, for throttling. */
@@ -856,6 +883,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
     if (activeRequestRef.current?.conversationId !== conversationId) {
       setActiveRequestId(null);
+      cancelStreamFrame();
       setActiveStream(null);
     }
   }, [conversationId]);
@@ -1162,7 +1190,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const base = streamStateRef.current ?? createAssistantStreamState(requestId);
     const next = applyConnectorRuntimeEvent(base, event);
     streamStateRef.current = next;
-    setActiveStream(next);
+    renderStreamNow();
 
     // A document write that failed at runtime ends the panel's generating state
     // now rather than at end of turn — otherwise the skeleton keeps shimmering
@@ -1455,7 +1483,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     };
     streamStateRef.current = initialStream;
     setActiveRequestId(request.requestId);
-    setActiveStream(initialStream);
+    renderStreamNow();
     // Track the provider/model that produced this turn so the conditional
     // model line (§6.4) can show switches within the session.
     recordSessionTurnProvider(`assistant-${request.requestId}`, settings.activeProvider, settings.activeModel);
@@ -1509,7 +1537,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           createAssistantStreamState(request.requestId, searchBackend);
         const next = applyProviderEvent(base, event);
         streamStateRef.current = next;
-        setActiveStream(next);
+        if (event.kind === 'contentDelta' || event.kind === 'reasoningDelta' || event.kind === 'toolCallDelta') {
+          renderStreamNextFrame();
+        } else {
+          // Structural and terminal events render at once, carrying any
+          // deltas still waiting on the frame with them.
+          renderStreamNow();
+        }
 
         // The agent loop retries a document round in parts when the provider
         // gave up on its silent stream, and reports a second timeout with
@@ -1731,6 +1765,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         activeRequestRef.current = null;
       }
       streamStateRef.current = null;
+      cancelStreamFrame();
       if (currentConversationIdRef.current === conversationId) {
         setActiveStream(null);
         setActiveRequestId(null);
@@ -1774,6 +1809,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (cancelledState) onChatTurnComplete?.(markInterrupted(cancelledState));
     activeRequestRef.current = null;
     streamStateRef.current = null;
+    cancelStreamFrame();
     setActiveStream(null);
     setActiveRequestId(null);
     try {

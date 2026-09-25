@@ -3,6 +3,7 @@ import type { Artifact, ArtifactKind } from '../ipc/contracts';
 import { detectArtifactCandidates } from './artifactCandidates';
 import {
   findPromotedArtifact,
+  finishedDocumentFence,
   inlineArtifactIds,
   isPromotable,
   shouldRenderAsCard,
@@ -166,5 +167,41 @@ describe('isPromotable', () => {
     // bytes — the card reports bytes, so the gate must agree with it.
     expect(isPromotable(candidateFor('text', '×'.repeat(120)))).toBe(true);
     expect(isPromotable(candidateFor('text', 'x'.repeat(120)))).toBe(false);
+  });
+});
+
+describe('finishedDocumentFence', () => {
+  const page = `<!DOCTYPE html>\n<html><head><title>Bonds</title></head><body>${'<p>row</p>\n'.repeat(30)}</body></html>`;
+  const text = (content: string) => ({ blocks: [{ blockKind: 'text', content }] });
+
+  it('picks the document a finished turn wrote', () => {
+    const fence = finishedDocumentFence(text(`Here it is:\n\`\`\`html\n${page}\n\`\`\`\nEnjoy.`));
+    expect(fence?.kind).toBe('html');
+    expect(fence?.title).toBe('Bonds');
+  });
+
+  it('prefers the last document when a turn wrote several', () => {
+    const md = `# Notes\n${'- a point worth making\n'.repeat(20)}`;
+    const fence = finishedDocumentFence(text(`\`\`\`html\n${page}\n\`\`\`\n\n\`\`\`markdown\n${md}\n\`\`\``));
+    expect(fence?.kind).toBe('markdown');
+  });
+
+  it('opens nothing for code, snippets, or a turn that did not finish', () => {
+    const code = `\`\`\`python\n${'print(1)\n'.repeat(40)}\`\`\``;
+    expect(finishedDocumentFence(text(code))).toBeUndefined();
+    expect(finishedDocumentFence(text('```html\n<p>hi</p>\n```'))).toBeUndefined();
+    const whole = `\`\`\`html\n${page}\n\`\`\``;
+    expect(finishedDocumentFence({ ...text(whole), error: 'provider failed' })).toBeUndefined();
+    expect(finishedDocumentFence({ ...text(whole), interrupted: true })).toBeUndefined();
+  });
+
+  it('ignores HTML the model only drafted in its reasoning', () => {
+    const fence = finishedDocumentFence({
+      blocks: [
+        { blockKind: 'reasoning', content: `\`\`\`html\n${page}\n\`\`\`` },
+        { blockKind: 'text', content: 'I could not finish that.' },
+      ],
+    });
+    expect(fence).toBeUndefined();
   });
 });

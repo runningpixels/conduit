@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppSettings, CredentialSummary, ModelInfo, ProviderDescriptor } from '../../ipc/contracts';
 import {
   listProviderDescriptors,
@@ -9,6 +9,7 @@ import {
   validateProviderCredentials,
 } from '../../ipc/client';
 import { useT } from '../../i18n';
+import { readLastModel, writeLastModel } from '../../shell/uiPrefs';
 import { useFormatters } from '../../i18n/formatters';
 
 /**
@@ -72,6 +73,11 @@ export function ProviderPicker({
   const [credentialSummary, setCredentialSummary] = useState<CredentialSummary | null>(null);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [busy, setBusy] = useState(false);
+  // The provider the user just switched to, until its model list arrives and
+  // `activeModel` has been checked against it.
+  const reconcileModelFor = useRef<string | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const activeDescriptor = providers.find((p) => p.id === settings.activeProvider);
 
@@ -86,11 +92,35 @@ export function ProviderPicker({
   }, []);
 
   useEffect(() => {
+    const providerId = settings.activeProvider;
+    let cancelled = false;
     void (async () => {
+      let listed: ModelInfo[] = [];
+      let answered = false;
       try {
-        setModels(await listProviderModels(settings.activeProvider));
+        listed = await listProviderModels(providerId);
+        answered = true;
       } catch {
-        setModels([]);
+        listed = [];
+      }
+      if (cancelled) return;
+      setModels(listed);
+      /* Switching provider used to keep the previous provider's model: pick
+       * LM Studio after OpenRouter and the model select, the composer chip and
+       * every request went on naming `z-ai/glm-5.3-flash`, which LM Studio has
+       * never heard of. After a switch — never on mount, where a hand-typed id
+       * the listing omits is a choice, not a leftover — a model the new
+       * provider does not list gives way to its first one, or to an empty
+       * field that asks for one when it lists nothing. A listing that failed
+       * says nothing about the model, so it is left alone. */
+      if (reconcileModelFor.current === providerId && answered) {
+        reconcileModelFor.current = null;
+        const current = settingsRef.current;
+        if (!listed.some((m) => m.id === current.activeModel)) {
+          const remembered = readLastModel(providerId);
+          const next = listed.find((m) => m.id === remembered) ?? listed[0];
+          onSettingsChange({ ...current, activeModel: next?.id ?? '' });
+        }
       }
       try {
         setCredentialSummary(await loadProviderCredentialReference(settings.activeProvider));
@@ -98,6 +128,9 @@ export function ProviderPicker({
         setCredentialSummary(null);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [settings.activeProvider]);
 
   const providerBaseUrl = settings.providerEndpoints?.[settings.activeProvider]?.baseUrl ?? '';
@@ -148,6 +181,10 @@ export function ProviderPicker({
       onStatus(t('settings.provider.localOnlyCleared', { provider }));
     }
 
+    if (providerId !== settings.activeProvider) {
+      writeLastModel(settings.activeProvider, settings.activeModel);
+      reconcileModelFor.current = providerId;
+    }
     onSettingsChange({
       ...settings,
       activeProvider: providerId,

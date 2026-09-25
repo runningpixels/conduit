@@ -1,7 +1,7 @@
 /// Shared Prism-based syntax highlighting for chat inline blocks and artifact
 /// code previews. Emits React nodes only (no dangerouslySetInnerHTML) per ADR-007.
 
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Fragment, memo, useMemo, type ReactNode } from 'react';
 import { normalizeTokens, type Token } from 'prism-react-renderer';
 import { CODE_LANG } from '../chat/messageSegments';
 import { Prism } from './prismGlobal';
@@ -87,12 +87,38 @@ export function renderHighlightLine(tokens: Token[], keyPrefix: string): ReactNo
   ));
 }
 
+function sameLine(a: Token[], b: Token[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i];
+    const y = b[i];
+    if (x.content !== y.content || x.types.length !== y.types.length) return false;
+    for (let j = 0; j < x.types.length; j += 1) if (x.types[j] !== y.types[j]) return false;
+  }
+  return true;
+}
+
+/** One line, skipped by React when its tokens are unchanged.
+ *
+ *  A streaming fence re-tokenises its whole body on every delta, and every
+ *  line but the last comes back identical. Rebuilding thousands of spans per
+ *  delta cost ~16ms plus the reconcile for a 28 kB HTML fence — most of the
+ *  main thread at a normal token rate. Comparing tokens is far cheaper than
+ *  rebuilding them, and the DOM is the same either way. */
+const HighlightLine = memo(
+  function HighlightLine({ tokens, keyPrefix }: { tokens: Token[]; keyPrefix: string }) {
+    return <>{renderHighlightLine(tokens, keyPrefix)}</>;
+  },
+  (prev, next) => prev.keyPrefix === next.keyPrefix && sameLine(prev.tokens, next.tokens),
+);
+
 /** Render all lines with newline separators between them. */
 export function renderHighlightedCode(tokens: HighlightTokens): ReactNode {
   return tokens.map((line, lineIdx) => (
     <Fragment key={`line-${lineIdx}`}>
       {lineIdx > 0 ? '\n' : null}
-      {renderHighlightLine(line, `l${lineIdx}`)}
+      <HighlightLine tokens={line} keyPrefix={`l${lineIdx}`} />
     </Fragment>
   ));
 }

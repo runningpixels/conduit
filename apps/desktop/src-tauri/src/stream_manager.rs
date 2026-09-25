@@ -437,6 +437,79 @@ pub const TURN_PROGRESS_CEILING_FACTOR: u32 = 3;
 pub const TURN_TIME_LIMIT_CODE: &str = "turn_time_limit";
 pub const TURN_TIME_LIMIT_BUILDING_CODE: &str = "turn_time_limit_building";
 
+/// How long a streamed delta may wait to be saved.
+///
+/// Every event used to be saved in its own transaction before the UI saw it.
+/// Replaying a recorded 28 kB turn without delays, that capped the stream at
+/// ~400 events/s, and each save got slower as the message grew (1.6 ms per
+/// delta at the start, 3.3 ms by the end) because appending a delta rewrites
+/// the whole part. Deltas now reach the UI at once and are saved in batches;
+/// a crash loses at most this much of the text that was on screen.
+const DELTA_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+/// Flush sooner than the interval once this many deltas are waiting.
+const DELTA_FLUSH_MAX: usize = 512;
+
+/// Streamed deltas waiting to be saved, oldest first. Anything that is not a
+/// delta is saved together with them, in order, before it is forwarded — so
+/// by the time the UI sees a completion, error or tool call, the log and the
+/// view already hold everything before it.
+#[derive(Default)]
+struct DeltaBuffer {
+    events: Vec<ProviderEvent>,
+    oldest: Option<tokio::time::Instant>,
+}
+
+impl DeltaBuffer {
+    fn is_delta(event: &ProviderEvent) -> bool {
+        matches!(
+            event,
+            ProviderEvent::ContentDelta { .. }
+                | ProviderEvent::ReasoningDelta { .. }
+                | ProviderEvent::ToolCallDelta { .. }
+        )
+    }
+
+    fn push(&mut self, event: &ProviderEvent) {
+        self.oldest.get_or_insert_with(tokio::time::Instant::now);
+        self.events.push(event.clone());
+    }
+
+    /// When the oldest waiting delta is due, if any are waiting.
+    fn deadline(&self) -> Option<tokio::time::Instant> {
+        self.oldest.map(|t| t + DELTA_FLUSH_INTERVAL)
+    }
+
+    fn due(&self) -> bool {
+        self.events.len() >= DELTA_FLUSH_MAX
+            || self
+                .deadline()
+                .is_some_and(|d| tokio::time::Instant::now() >= d)
+    }
+
+    /// Save everything waiting, then `then` if given, in one transaction.
+    async fn flush(
+        &mut self,
+        pool: &sqlx::SqlitePool,
+        conversation_id: &str,
+        request_id: &str,
+        then: Option<&ProviderEvent>,
+    ) {
+        if let Some(event) = then {
+            self.events.push(event.clone());
+        }
+        self.oldest = None;
+        if self.events.is_empty() {
+            return;
+        }
+        let events = std::mem::take(&mut self.events);
+        if let Err(e) =
+            event_log::append_and_apply_batch(pool, conversation_id, request_id, &events).await
+        {
+            warn!(request_id = %request_id, error = %e, "failed to persist stream events");
+        }
+    }
+}
+
 /// The turn time limit, measured from the last saved progress rather than from
 /// the start of the turn.
 ///
@@ -1121,7 +1194,22 @@ impl StreamManager {
         );
 
         futures::pin_mut!(stream);
-        while let Some(event) = stream.next().await {
+        let mut deltas = DeltaBuffer::default();
+        loop {
+            // Wait for the next event, but not past the moment the oldest
+            // waiting delta is due: a provider that goes quiet mid-answer must
+            // not leave what it already sent unsaved for as long as it is quiet.
+            let next = match deltas.deadline() {
+                Some(deadline) => tokio::select! {
+                    next = stream.next() => next,
+                    () = tokio::time::sleep_until(deadline) => {
+                        deltas.flush(&pool, &conversation_id, &persist_id, None).await;
+                        continue;
+                    }
+                },
+                None => stream.next().await,
+            };
+            let Some(event) = next else { break };
             if cancel.is_cancelled() {
                 break;
             }
@@ -1217,7 +1305,18 @@ impl StreamManager {
             // completion even when the channel does not see it. Continuation HTTP
             // requests carry a fresh id; fold under the turn's canonical id so
             // reload hydrates one assistant message.
-            let _ = event_log::append_and_apply(&pool, &conversation_id, &persist_id, &event).await;
+            if DeltaBuffer::is_delta(&event) {
+                deltas.push(&event);
+                if deltas.due() {
+                    deltas
+                        .flush(&pool, &conversation_id, &persist_id, None)
+                        .await;
+                }
+            } else {
+                deltas
+                    .flush(&pool, &conversation_id, &persist_id, Some(&event))
+                    .await;
+            }
 
             let is_completion = matches!(event, ProviderEvent::MessageComplete { .. });
             if let ProviderEvent::MessageComplete { finish_reason, .. } = &event {
@@ -1245,6 +1344,11 @@ impl StreamManager {
                 break;
             }
         }
+        // Every way out of the loop — end of stream, cancel, a withheld error,
+        // a closed channel — keeps the deltas it already showed.
+        deltas
+            .flush(&pool, &conversation_id, &persist_id, None)
+            .await;
 
         // Not every provider says so when it stops at the limit: OpenRouter
         // serving GLM reported `stop` on rounds that produced exactly

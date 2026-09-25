@@ -355,7 +355,7 @@ describe('AssistantMessage chronological timeline', () => {
     expect(think).not.toBeNull();
     expect(prose).not.toBeNull();
     expect(think!.compareDocumentPosition(prose!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(think!.textContent).toMatch(/Thought for \d+s/);
+    expect(think!.querySelector('summary')!.textContent).toBe('Thought');
     expect(prose!.textContent).toContain('Rome grew from a city-state.');
   });
 

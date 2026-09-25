@@ -190,3 +190,89 @@ async fn continuation_rounds_fold_into_one_assistant_row() {
     assert!(text.contains("Yes — let me run a quick test."));
     assert!(text.contains("Yes, I have web access."));
 }
+
+/// The stream path saves deltas in batches (`append_and_apply_batch`), joining
+/// a run of deltas to one part into a single UPDATE. The result must be exactly
+/// what saving each event on its own produces: one log row per event, in
+/// order, and a view the reconciliation sweep finds nothing to repair in.
+#[tokio::test]
+async fn batched_events_fold_exactly_like_single_ones() {
+    let req = "req-batch";
+    let delta = |block: &str, index: usize, text: &str, reasoning: bool| {
+        if reasoning {
+            ProviderEvent::ReasoningDelta {
+                request_id: req.into(),
+                block_id: block.into(),
+                index,
+                content: text.into(),
+            }
+        } else {
+            ProviderEvent::ContentDelta {
+                request_id: req.into(),
+                block_id: block.into(),
+                index,
+                content: text.into(),
+            }
+        }
+    };
+    let events = vec![
+        ProviderEvent::MessageStart {
+            request_id: req.into(),
+            index: 0,
+        },
+        ProviderEvent::ContentBlockStart {
+            request_id: req.into(),
+            block_id: "r0".into(),
+            index: 1,
+            block_kind: "thinking".into(),
+        },
+        delta("r0", 2, "think ", true),
+        delta("r0", 3, "hard", true),
+        ProviderEvent::ContentBlockStart {
+            request_id: req.into(),
+            block_id: "b0".into(),
+            index: 4,
+            block_kind: "text".into(),
+        },
+        delta("b0", 5, "one ", false),
+        delta("b0", 6, "two ", false),
+        // A run broken by another part, then resumed: must not be merged
+        // across the interruption out of order.
+        delta("r0", 7, "!", true),
+        delta("b0", 8, "three", false),
+        ProviderEvent::MessageComplete {
+            request_id: req.into(),
+            index: 9,
+            finish_reason: "stop".into(),
+        },
+    ];
+
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+    // Uneven batches, the last one carrying the completion like the stream path.
+    for chunk in [&events[0..3], &events[3..7], &events[7..8], &events[8..]] {
+        event_log::append_and_apply_batch(&pool, &conv.id, req, chunk)
+            .await
+            .unwrap();
+    }
+
+    let logged = event_log::load_events(&pool, &conv.id, req).await.unwrap();
+    assert_eq!(logged, events, "one log row per event, in order");
+
+    let msgs = messages::load_conversation_messages(&pool, &conv.id)
+        .await
+        .unwrap();
+    let texts: Vec<&str> = msgs[0]
+        .parts
+        .iter()
+        .map(|p| p.content.as_deref().unwrap_or(""))
+        .collect();
+    assert!(texts.contains(&"think hard!"), "reasoning part: {texts:?}");
+    assert!(texts.contains(&"one two three"), "text part: {texts:?}");
+
+    let report = reconcile_all(&pool).await.unwrap();
+    assert_eq!(
+        report.rebuilds, 0,
+        "the batched view matches the fold of the log"
+    );
+}

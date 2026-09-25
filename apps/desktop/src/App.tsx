@@ -46,6 +46,7 @@ import {
   type DocumentToolActivity,
 } from './chat/agentTools';
 import type { AssistantStreamState } from './chat/streamState';
+import { findPromotedArtifact, finishedDocumentFence } from './chat/inlineArtifact';
 import {
   resolveFailedPendingArtifact,
   type PendingArtifact,
@@ -348,6 +349,12 @@ export default function App() {
     hidePanelOverlay();
   }, [hideSidebarOverlay, hidePanelOverlay]);
   const panelVisible = panelOverlay.narrow ? panelOverlay.open : !docPanelCollapsed;
+  /* Whether a document the turn just wrote may open itself. Idle is "nothing
+   * to take away from the reader": no generation in progress, and either the
+   * panel is out of sight or it shows no document. Read when a turn ends,
+   * after awaits, hence a ref rather than a closure. */
+  const docPanelIdleRef = useRef(false);
+  docPanelIdleRef.current = pendingArtifact == null && (!panelVisible || activeArtifact == null);
 
   // Expanding is a desktop layout: it ends when the panel is put away or the
   // window becomes too narrow for the panel to be a column at all.
@@ -906,10 +913,36 @@ export default function App() {
       // it owns the only reset of the pending-artifact state. Nothing below may
       // leave the panel generating.
       if (!hadSuccessfulDocumentToolCalls(streamState)) {
+        // Before the pending state below is resolved: a panel frozen on why a
+        // requested document failed is not idle.
+        const idle = docPanelIdleRef.current;
         // The document was asked for and never arrived — freeze the panel on
         // the reason, or drop it when there is nothing to explain. Only the
         // panel is document-specific; the list above is not.
         setPendingArtifact((current) => resolveFailedPendingArtifact(current, streamState));
+
+        // A document written in a fence used to wait on the card's Open
+        // button. Open it now — but only into an idle panel, never over a
+        // document the reader has in front of them.
+        const fence = finishedDocumentFence(streamState);
+        if (fence && idle) {
+          try {
+            const sourceMessageId = await resolveSourceMessageId(
+              `${ASSISTANT_TURN_PREFIX}${streamState.requestId}`,
+            );
+            const existing = findPromotedArtifact(listed, sourceMessageId, fence);
+            if (existing) {
+              await handleOpenArtifact(existing.id);
+            } else {
+              const created = await createArtifact(activeConversationId, fence.kind, fence.title, sourceMessageId);
+              await setArtifactContent(created.id, { kind: 'text', text: fence.body }, fence.mimeType);
+              await refreshArtifacts(activeConversationId);
+              await handleOpenArtifact(created.id);
+            }
+          } catch (error) {
+            setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.promoteArtifactFailed'), 'error'));
+          }
+        }
         return;
       }
 

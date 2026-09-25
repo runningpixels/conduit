@@ -363,7 +363,10 @@ export function AssistantMessage({
   for (let ti = 0; ti < timeline.length; ti += 1) {
     const item = timeline[ti];
     if (item.kind === 'reasoning') {
-      body.push(<ReasoningBlock key={item.key} block={item.block} />);
+      // Live only while it is the newest thing in the turn: once text or a
+      // tool call follows, the model has stopped thinking in this block.
+      const live = state.streaming && ti === timeline.length - 1;
+      body.push(<ReasoningBlock key={item.key} block={item.block} live={live} />);
       continue;
     }
     if (item.kind === 'text') {

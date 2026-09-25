@@ -588,8 +588,14 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
 .think[open] summary { border-radius: var(--r) var(--r) 0 0; }
 .think summary svg { width: 14px; height: 14px; transition: transform var(--tap); }
 .think[open] summary svg { transform: rotate(90deg); }
+/* Capped: an open 48k-character think pushed the answer many screens down,
+ * during the turn and after it. It scrolls instead, and follows the newest
+ * line while live (`ReasoningBlock`). */
 .think pre {
   margin: 0;
+  max-height: 22em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   padding: 4px 13px 12px;
   border-top: 1px solid var(--line-soft);
   font-family: var(--font-mono);
@@ -636,6 +642,19 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
  * On a highlighted block the chip stays `--ink-3`: the body already carries the
  * `--syn-*` palette and a coloured chip would compete with it. */
 .inline-code-block[data-plain="true"] .inline-code-block-lang { color: var(--code); }
+/* Live "Writing … · 214 lines · 18 kB" while the fence streams. It takes the
+ * slack between the chip and the actions and truncates rather than wrapping,
+ * so the head keeps one height as the title arrives. */
+.inline-code-block-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--fs-md)/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
 .inline-code-block-actions {
   display: flex;
   align-items: center;

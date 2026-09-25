@@ -90,6 +90,78 @@ pub async fn append_and_apply(
     Ok(seq)
 }
 
+/// [`append_and_apply`] for several events in **one transaction**, in order.
+///
+/// Every event still gets its own log row, and the view after the commit is
+/// exactly `fold(events)`; only the cost changes. A run of consecutive
+/// deltas to the same part becomes one UPDATE with their text joined, instead
+/// of one per delta that each rewrote the whole growing row. The stream path
+/// buffers deltas and writes them through here (see `stream_manager`).
+pub async fn append_and_apply_batch(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    request_id: &str,
+    events: &[ProviderEvent],
+) -> Result<(), DbError> {
+    if events.is_empty() {
+        return Ok(());
+    }
+    let mut tx = pool.begin().await?;
+    let mut seq = next_sequence_in_txn(&mut tx, conversation_id, request_id).await?;
+    // (block_id, joined text) of the delta run not yet applied to the view.
+    let mut run: Option<(String, String)> = None;
+    for event in events {
+        append_event_in_txn(&mut tx, conversation_id, request_id, seq, event).await?;
+        seq += 1;
+        let delta = match event {
+            ProviderEvent::ContentDelta {
+                block_id, content, ..
+            }
+            | ProviderEvent::ReasoningDelta {
+                block_id, content, ..
+            } => Some((block_id, content)),
+            _ => None,
+        };
+        match (delta, run.as_mut()) {
+            (Some((block_id, content)), Some((run_block, run_text))) if run_block == block_id => {
+                run_text.push_str(content);
+            }
+            (Some((block_id, content)), _) => {
+                if let Some((b, text)) = run.take() {
+                    messages::append_part_content_in_txn(
+                        &mut tx,
+                        conversation_id,
+                        request_id,
+                        &b,
+                        &text,
+                    )
+                    .await?;
+                }
+                run = Some((block_id.clone(), content.clone()));
+            }
+            (None, _) => {
+                if let Some((b, text)) = run.take() {
+                    messages::append_part_content_in_txn(
+                        &mut tx,
+                        conversation_id,
+                        request_id,
+                        &b,
+                        &text,
+                    )
+                    .await?;
+                }
+                messages::apply_event_in_txn(&mut tx, conversation_id, request_id, event).await?;
+            }
+        }
+    }
+    if let Some((b, text)) = run.take() {
+        messages::append_part_content_in_txn(&mut tx, conversation_id, request_id, &b, &text)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Load all events for a turn, ordered by sequence.
 pub async fn load_events(
     pool: &SqlitePool,

@@ -49,6 +49,14 @@ describe('parseMessageSegments', () => {
     }
   });
 
+  it('decodes character references in an HTML <title>, as the browser does', () => {
+    // Seen live: the card and the panel tab read "Price, Yield &amp; the Rate
+    // Seesaw" while the rendered page's own tab said "&".
+    const src = ['```html', '<title>Price, Yield &amp; the Rate&#32;Seesaw &#x2014; 101</title>', '<p>x</p>', '```'].join(NL);
+    const fence = parseMessageSegments(src).find((seg) => seg.type === 'fence');
+    expect(fence?.type === 'fence' && fence.candidate.title).toBe('Price, Yield & the Rate Seesaw — 101');
+  });
+
   it('splits prose + html fence into 2 segments with correct kind', () => {
     const src = 'Intro text.\n```html\n<div>hi</div>\n```\nMore.';
     const segs = parseMessageSegments(src);

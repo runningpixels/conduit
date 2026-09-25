@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
 import { ChatView, describeInvokeError } from './ChatView';
@@ -435,6 +435,76 @@ describe('ChatView latent stream', () => {
       'Test received. How can I help?',
     );
     expect(state.error ?? null).toBeNull();
+  });
+});
+
+/**
+ * Every delta used to re-render the whole live turn, so a provider sending
+ * faster than that render could keep the UI permanently behind. Deltas now
+ * render at most once per frame; anything structural still renders at once.
+ */
+describe('ChatView stream render batching', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+  });
+
+  it('renders a burst of deltas in one frame, and the end of the turn at once', async () => {
+    let emit: ((e: never) => void) | undefined;
+    let requestId = '';
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      requestId = request.requestId;
+      emit = onEvent as (e: never) => void;
+      return { requestId };
+    });
+    const onChatTurnComplete = vi.fn();
+    render(
+      <ChatView
+        settings={baseSettings}
+        onSelectModel={vi.fn()}
+        onStatus={vi.fn()}
+        conversationId="conv-1"
+        artifacts={[]}
+        fileStateMap={{}}
+        onPromoteArtifact={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onChatTurnComplete={onChatTurnComplete}
+      />,
+    );
+    const textarea = await screen.findByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: 'Test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(emit).toBeDefined());
+    const send = (e: object) => act(() => emit!(e as never));
+    send({ kind: 'messageStart', requestId, index: 0 });
+    send({ kind: 'contentBlockStart', requestId, blockId: 'b0', index: 1, blockKind: 'text' });
+
+    // Hold frames so the test decides when one fires.
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    try {
+      for (let i = 0; i < 40; i += 1) {
+        send({ kind: 'contentDelta', requestId, blockId: 'b0', index: 2 + i, content: `w${i} ` });
+      }
+      expect(raf).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/w39/)).toBeNull();
+
+      act(() => frames.splice(0).forEach((cb) => cb(performance.now())));
+      expect(screen.getByText(/w0 .*w39/)).toBeInTheDocument();
+
+      // A delta waiting on the next frame still lands with the terminal event.
+      send({ kind: 'contentDelta', requestId, blockId: 'b0', index: 50, content: 'last' });
+      send({ kind: 'messageComplete', requestId, index: 51, finishReason: 'stop' });
+    } finally {
+      raf.mockRestore();
+    }
+    await waitFor(() => expect(onChatTurnComplete).toHaveBeenCalled());
+    const state = onChatTurnComplete.mock.calls[0][0];
+    expect(state.blocks.map((b: { content: string }) => b.content).join('')).toMatch(/w39 last$/);
   });
 });
 

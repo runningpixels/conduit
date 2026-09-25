@@ -1056,6 +1056,21 @@ fn the_empty_turn_message_names_the_discarded_tool() {
     );
 }
 
+/// Live, GLM called `write_html_document` on a turn that did not offer it and
+/// was told the provider had run a hosted tool, and to turn off web search.
+/// Neither was true.
+#[test]
+fn the_empty_turn_message_for_an_unoffered_app_tool_does_not_blame_the_provider() {
+    let msg = conduit_desktop::stream_manager::empty_turn_message(&[call(
+        "write_html_document",
+        "call_1",
+    )]);
+    assert!(msg.contains("write_html_document"), "got: {msg}");
+    assert!(!msg.contains("hosted"), "got: {msg}");
+    assert!(!msg.contains("web search"), "got: {msg}");
+    assert!(msg.contains("Ask again"), "got: {msg}");
+}
+
 // ---------------------------------------------------------------------------
 // Document-create thrash clamps (create + search turns)
 // ---------------------------------------------------------------------------

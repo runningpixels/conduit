@@ -67,13 +67,6 @@ export const HOTKEYS: readonly HotkeyBinding[] = [
   { id: 'copyLastAssistant', key: 'c', shift: true, display: 'C', group: 'chat', labelId: 'workspace.shortcuts.action.copyLastAssistant' },
 ];
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  const tag = target.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-}
-
 function isMod(event: KeyboardEvent): boolean {
   return event.metaKey || event.ctrlKey;
 }
@@ -88,8 +81,9 @@ export function matchHotkey(event: KeyboardEvent): HotkeyBinding | undefined {
 }
 
 /**
- * App-level keyboard shortcut registry. Skips Mod shortcuts when focus is in an
- * editable field (Escape still fires). Handlers should call preventDefault.
+ * App-level keyboard shortcut registry. Mod shortcuts fire from anywhere,
+ * text fields included, except during IME composition (Escape always fires).
+ * Handlers should call preventDefault.
  */
 export function useHotkeys(handlers: HotkeyHandlers): void {
   useEffect(() => {
@@ -99,7 +93,13 @@ export function useHotkeys(handlers: HotkeyHandlers): void {
         return;
       }
 
-      if (isEditableTarget(event.target)) return;
+      // Mod shortcuts used to be skipped whenever focus was in a text field.
+      // The composer holds focus on open and after every send, so Mod+N,
+      // Mod+K, Mod+J… did nothing for most of a session, while the sidebar
+      // advertised "New chat Ctrl+N". None of the bindings is a text-editing
+      // chord, so they fire from fields too — except mid-IME-composition,
+      // where the keystrokes belong to the input method.
+      if (event.isComposing) return;
       const binding = matchHotkey(event);
       if (!binding) return;
       event.preventDefault();

@@ -10,17 +10,36 @@
 
 import { appName } from '../brand';
 
-export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(): string {
+/**
+ * The artifact contract, for the tools this turn actually offers.
+ *
+ * It used to name write_*_document, edit_*_document and patch_document on
+ * every turn, and they are only offered when the prompt reads as a document
+ * request. "Make me a pomodoro timer" and "turn this into a dashboard" do not,
+ * so GLM 5.3 Flash was told about tools it had not been given and called them
+ * anyway: once as a structured call the loop refused as undeclared (the turn
+ * ended in an error, no dashboard), once as its own call markup written into
+ * the answer as text (9 kB of page source as prose). Without document tools the
+ * appendix says so, and names none.
+ */
+export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolNames: readonly string[] = []): string {
+  const offersDocumentTools = toolNames.some((name) => /^(write|edit)_\w+_document$|^patch_document$/.test(name));
   return [
     'Fenced code blocks in assistant replies render inline in chat first.',
     'Use labeled fences: html/htm, markdown/md, json, text, or a language tag for code.',
     'Put the full body inside the fence; a one-line confirmation without a fence does not create content.',
     'Users promote inline blocks to artifacts when they want editing, preview, or export in the document panel.',
-    'Only call write_*_document or edit_*_document when the user explicitly asked to create or revise a document.',
-    `For new documents, omit artifact_id — ${appName()} assigns IDs; do not invent slug-like ids.`,
-    'Create at most one document per request; after write_*_document returns an artifact_id, revise with patch_document or edit_*_document — do not call write_* again for the same document.',
+    ...(offersDocumentTools
+      ? [
+          'Only call write_*_document or edit_*_document when the user explicitly asked to create or revise a document.',
+          `For new documents, omit artifact_id — ${appName()} assigns IDs; do not invent slug-like ids.`,
+          'Create at most one document per request; after write_*_document returns an artifact_id, revise with patch_document or edit_*_document — do not call write_* again for the same document.',
+        ]
+      : ['No document tools are available for this message: write any page, app or document as a single labeled fence in the reply.']),
     'Answer capability and explanatory questions in prose; do not create or edit artifacts to demonstrate.',
-    'When a document artifact is already in scope and the user asks to revise it, prefer patch_document (or edit_*_document for a rewrite) over creating a new document.',
+    ...(offersDocumentTools
+      ? ['When a document artifact is already in scope and the user asks to revise it, prefer patch_document (or edit_*_document for a rewrite) over creating a new document.']
+      : []),
     'HTML artifacts render in a sandboxed iframe with no network access (no fetch/XHR). Do not rely on client-side fetching for live data; embed any needed information directly in the artifact. User-clicked http(s) links may open in the system browser after confirmation — emit real href attributes for sources.',
   ].join(' ');
 }

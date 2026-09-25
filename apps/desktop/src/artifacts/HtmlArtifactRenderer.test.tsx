@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { HtmlArtifactRenderer, assembleArtifactDoc } from './HtmlArtifactRenderer';
 import { OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import { ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE } from './externalUrl';
+import { ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE } from './runtimeError';
 import type { ResolvedTokens } from '../themes/resolvedTokens';
 
 // Defaults reproduce this file's pre-Phase-3 world (native theming), so every
@@ -193,3 +194,49 @@ describe('HtmlArtifactRenderer — tokens theming', () => {
 function frame(container: HTMLElement): HTMLElement | null {
   return container.querySelector('iframe');
 }
+describe('HtmlArtifactRenderer runtime errors', () => {
+  // Live: a dashboard's script had `const` without an initializer; the tiles and
+  // charts stayed empty and nothing said why.
+  const fromFrame = (container: HTMLElement, data: unknown) => {
+    const iframe = container.querySelector('iframe')!;
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data, source: iframe.contentWindow }));
+    });
+  };
+
+  it('registers the error reporter before the page scripts run', () => {
+    const doc = assembleArtifactDoc('<script>boom(</script>', []);
+    expect(doc.indexOf(ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE)).toBeGreaterThan(-1);
+    expect(doc.indexOf(ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE)).toBeLessThan(doc.indexOf('<body>'));
+  });
+
+  it('shows the error and drafts a fix request', () => {
+    const onAskToFix = vi.fn();
+    const { container, getByRole } = render(
+      <HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} onAskToFix={onAskToFix} />,
+    );
+    fromFrame(container, {
+      type: ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE,
+      message: 'SyntaxError: Missing initializer in const declaration',
+      line: 42,
+    });
+    expect(container.textContent).toContain('Missing initializer in const declaration');
+    fireEvent.click(getByRole('button', { name: 'Ask to fix' }));
+    expect(onAskToFix).toHaveBeenCalledWith(expect.stringContaining('line 42'));
+    expect(onAskToFix.mock.calls[0][0]).toContain('Missing initializer in const declaration');
+  });
+
+  it('keeps only the first error, and ignores reports from elsewhere', () => {
+    const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} />);
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', { data: { type: ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE, message: 'not ours' } }),
+      );
+    });
+    expect(container.querySelector('.artifact-runtime-error')).toBeNull();
+    fromFrame(container, { type: ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE, message: 'first' });
+    fromFrame(container, { type: ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE, message: 'second' });
+    expect(container.textContent).toContain('first');
+    expect(container.textContent).not.toContain('second');
+  });
+});

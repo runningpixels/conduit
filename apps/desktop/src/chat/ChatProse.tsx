@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PLACEHOLDER_CLOSE, PLACEHOLDER_OPEN, renderMarkdown } from '../artifacts/markdown/safeMarkdown';
 import { fenceLang, isMathLang, mermaidSourceFromFence } from '../artifacts/markdown/fenceLang';
 import { KatexHtml } from '../artifacts/markdown/KatexHtml';
@@ -109,6 +109,40 @@ function FenceSource({
 }
 
 /** Mermaid: hold Prism until the blob image (or failure UI) is ready. */
+/** The SVG image a fence carries: a ```svg fence, or an ```xml / unlabeled
+ *  one whose body is a whole `<svg>` element. `null` for anything else. */
+export function svgSourceFromFence(info: string, body: string): string | null {
+  const lang = fenceLang(info);
+  if (lang !== 'svg' && lang !== 'xml' && lang !== '') return null;
+  const trimmed = body.trim();
+  if (!/^(?:<\?xml[^>]*>\s*)?<svg[\s>]/i.test(trimmed) || !/<\/svg>$/i.test(trimmed)) return null;
+  return trimmed;
+}
+
+/** An SVG fence shown as the picture it describes. "Draw a logo" used to
+ *  answer with twenty lines of path data and nothing to look at. Drawn
+ *  through `<img>`, so scripts or event handlers in the markup never run;
+ *  the source stays one click away with its copy and open actions. */
+function SvgFence({ source, sourceProps }: { source: string; sourceProps: FenceSourceProps }) {
+  const [showCode, setShowCode] = useState(false);
+  const url = useMemo(() => URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' })), [source]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return (
+    <div className="svg-fence">
+      <img className="svg-fence-image" src={url} alt={sourceProps.candidate.title} />
+      <button
+        type="button"
+        className="inline-artifact-toggle"
+        aria-expanded={showCode}
+        onClick={() => setShowCode((open) => !open)}
+      >
+        {showCode ? 'Hide code' : 'Show code'}
+      </button>
+      {showCode && <FenceSource {...sourceProps} />}
+    </div>
+  );
+}
+
 function MermaidFence({
   source,
   candidate,
@@ -233,6 +267,16 @@ export function ChatProse({
               key={`f${idx}`}
               source={mermaidSource}
               {...sourceProps}
+            />
+          );
+        }
+        const svgSource = fenceStreaming ? null : svgSourceFromFence(candidate.info, candidate.body);
+        if (svgSource != null) {
+          return (
+            <SyncFence
+              key={`f${idx}`}
+              outgoing={<FenceSource {...sourceProps} />}
+              incoming={<SvgFence source={svgSource} sourceProps={sourceProps} />}
             />
           );
         }

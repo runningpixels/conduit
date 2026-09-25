@@ -56,8 +56,19 @@ pub fn fold(
                 block_kind,
                 ..
             } => {
+                // A continuation round reuses the block id: same part, new
+                // paragraph — exactly what `apply_event_in_txn` persists.
+                let part_id = format!("{message_id}/{block_id}");
+                if let Some(part) = parts.iter_mut().find(|p| p.id == part_id) {
+                    if part.content.as_deref().is_some_and(|c| !c.is_empty()) {
+                        part.content
+                            .get_or_insert_with(String::new)
+                            .push_str(messages::ROUND_BREAK);
+                    }
+                    continue;
+                }
                 parts.push(MessagePart {
-                    id: format!("{message_id}/{block_id}"),
+                    id: part_id,
                     message_id: message_id.to_string(),
                     index: *index as u32,
                     kind: if block_kind == "thinking" {

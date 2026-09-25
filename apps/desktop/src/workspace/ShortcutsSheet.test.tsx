@@ -39,7 +39,9 @@ describe('the hotkey registry', () => {
     expect(matchHotkey(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))?.id).toBe('historySearch');
   });
 
-  it('leaves shortcuts alone while typing, but not Escape', () => {
+  // The composer holds focus on open and after every send, so skipping Mod
+  // shortcuts in text fields left "New chat Ctrl+N" dead most of the time.
+  it('fires shortcuts and Escape while typing', () => {
     const newChat = vi.fn();
     const escape = vi.fn();
     renderHook(() => useHotkeys({ newChat, escape }));
@@ -47,7 +49,7 @@ describe('the hotkey registry', () => {
     document.body.appendChild(input);
     keydown({ key: 'n', ctrlKey: true }, input);
     keydown({ key: 'Escape' }, input);
-    expect(newChat).not.toHaveBeenCalled();
+    expect(newChat).toHaveBeenCalledOnce();
     expect(escape).toHaveBeenCalledOnce();
     input.remove();
   });

@@ -248,9 +248,61 @@ export type MessageSegment =
   | { type: 'prose'; text: string }
   | { type: 'fence'; candidate: ArtifactCandidate; raw: string };
 
+/// The markup that may sit in front of a leaked document argument: an
+/// optional `<tool_call>name`, any complete short `<arg_key>…<arg_value>…`
+/// pairs (the title), then the document's own key. Nothing else — prose in
+/// that stretch means this is not a leaked call and the text is left alone.
+const LEAKED_CALL_PREAMBLE =
+  /^(?:<tool_call>\s*[\w.-]*\s*)?(?:<arg_key>[^<]{0,40}<\/arg_key>\s*<arg_value>[^<]{0,300}<\/arg_value>\s*)*(?:<arg_key>)?[\w-]{0,40}\s*<\/arg_key>\s*$/;
+/// What closes a leaked call after the document: further short argument
+/// pairs, then `</tool_call>`.
+const LEAKED_CALL_TAIL =
+  /^\s*(?:<arg_key>[^<]{0,40}<\/arg_key>\s*<arg_value>[^<]{0,300}<\/arg_value>\s*)*(?:<\/tool_call>)?/;
+const DOCUMENT_START = /^\s*(?:<!doctype html|<html[\s>]|<svg[\s>])/i;
+
+/**
+ * Turn a tool call the model wrote as text back into the document it carried.
+ *
+ * Seen live with GLM 5.3 Flash on OpenRouter: offered `write_html_document`,
+ * it emitted the call in its own markup inside the answer —
+ * `content</arg_key><arg_value><!DOCTYPE html>…</arg_value></tool_call>` —
+ * with the head of the call lost upstream. No tool ran, and the reader got
+ * 9 kB of page source as prose, with no card, preview or Open. The document
+ * inside is intact, so it becomes an `html` fence and takes the normal path
+ * (card, streaming progress, auto-open). Only a whole HTML or SVG document
+ * behind nothing but call markup qualifies; an unclosed call — still
+ * streaming — becomes an open fence.
+ */
+export function salvageLeakedToolCall(text: string): string {
+  let from = 0;
+  while (text.includes('<arg_value>', from)) {
+    const open = text.indexOf('<arg_value>', from);
+    const bodyStart = open + '<arg_value>'.length;
+    from = bodyStart;
+    if (!DOCUMENT_START.test(text.slice(bodyStart, bodyStart + 40))) continue;
+    const callStart = text.lastIndexOf('<tool_call>', open);
+    const lineStart = text.lastIndexOf('\n', open) + 1;
+    const start =
+      callStart >= 0 && LEAKED_CALL_PREAMBLE.test(text.slice(callStart, open)) ? callStart : lineStart;
+    if (!LEAKED_CALL_PREAMBLE.test(text.slice(start, open))) continue;
+
+    const close = text.indexOf('</arg_value>', bodyStart);
+    const body = (close < 0 ? text.slice(bodyStart) : text.slice(bodyStart, close))
+      .replace(/^\s*\n/, '')
+      .replace(/\s+$/, '');
+    const before = text.slice(0, start);
+    const lead = before && !before.endsWith('\n') ? `${before}\n` : before;
+    if (close < 0) return `${lead}\`\`\`html\n${body}`;
+    const rest = text.slice(close + '</arg_value>'.length).replace(LEAKED_CALL_TAIL, '');
+    const fenced = `${lead}\`\`\`html\n${body}\n\`\`\`\n`;
+    return fenced + salvageLeakedToolCall(rest.replace(/^[ \t]*\n?/, '\n'));
+  }
+  return text;
+}
+
 export function parseMessageSegments(content: string): MessageSegment[] {
   if (!content) return [];
-  const src = content.replace(/\r\n?/g, '\n');
+  const src = salvageLeakedToolCall(content.replace(/\r\n?/g, '\n'));
   const lines = src.split('\n');
   const segments: MessageSegment[] = [];
   let proseLines: string[] = [];

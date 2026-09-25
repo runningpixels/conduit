@@ -11,6 +11,7 @@ import {
 } from './artifactFollowUpContext';
 import { baseSystemPrompt, buildProviderRequest } from './ChatView';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX } from './artifactPrompt';
+import { builtinToolDefinitions } from './agentTools';
 
 function makeToolCall(name: string, args: Record<string, unknown>): ToolCallState {
   return {
@@ -440,10 +441,19 @@ describe('buildProviderRequest follow-up artifact context', () => {
     expect(req.developerPrompt).not.toContain('edit_html_document');
   });
 
-  it('includes edit-tool guidance in system prompt', () => {
-    const req = buildProviderRequest(baseSettings, 'hello', [], 'c1', []);
+  it('includes edit-tool guidance in system prompt when the tools are offered', () => {
+    const tools = builtinToolDefinitions().filter((t) => t.name === 'write_html_document' || t.name === 'patch_document');
+    const req = buildProviderRequest(baseSettings, 'hello', [], 'c1', tools);
     expect(req.systemPrompt).toContain('Only call write_*_document or edit_*_document');
     expect(req.systemPrompt).toContain(baseSystemPrompt());
+  });
+
+  // Naming tools the turn does not offer had GLM calling them anyway — refused
+  // as undeclared, or written into the answer as call markup.
+  it('names no document tools when none are offered', () => {
+    const req = buildProviderRequest(baseSettings, 'hello', [], 'c1', []);
+    expect(req.systemPrompt).not.toMatch(/write_\*_document|edit_\*_document|patch_document/);
+    expect(req.systemPrompt).toContain('No document tools are available for this message');
   });
 });
 

@@ -350,3 +350,31 @@ describe('ChatProse citations', () => {
     expect(container.textContent).toContain('apnews.com');
   });
 });
+
+describe('ChatProse SVG fences', () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#30A46C"/></svg>';
+
+  it('shows an svg fence as its picture, with the source behind Show code', () => {
+    // "Draw a logo" used to answer with path data and nothing to look at.
+    const { container } = render(<ChatProse content={`Here:\n\`\`\`svg\n${svg}\n\`\`\``} messageId="m1" />);
+    return waitFor(() => {
+      const img = container.querySelector('img.svg-fence-image') as HTMLImageElement | null;
+      expect(img).not.toBeNull();
+      expect(img!.src.startsWith('blob:')).toBe(true);
+      expect(container.textContent).not.toContain('<rect');
+      fireEvent.click(screen.getByRole('button', { name: /Show code/i }));
+      expect(container.textContent).toContain('<rect');
+    });
+  });
+
+  it('keeps the source while the fence is still streaming', () => {
+    const { container } = render(<ChatProse content={`\`\`\`svg\n${svg}`} streaming messageId="m1" />);
+    expect(container.querySelector('img.svg-fence-image')).toBeNull();
+    expect(container.textContent).toContain('<rect');
+  });
+
+  it('leaves xml that is not an svg image as code', () => {
+    const { container } = render(<ChatProse content={'```xml\n<note><to>Tove</to></note>\n```'} />);
+    expect(container.querySelector('img.svg-fence-image')).toBeNull();
+  });
+});

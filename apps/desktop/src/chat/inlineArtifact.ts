@@ -7,6 +7,7 @@
 
 import type { Artifact, ArtifactKind } from '../ipc/contracts';
 import type { ArtifactCandidate } from './messageSegments';
+import { detectArtifactCandidates } from './artifactCandidates';
 import { fenceLang, isMathLang, mermaidSourceFromFence } from '../artifacts/markdown/fenceLang';
 
 /// A `code` fence longer than this is a deliverable rather than something you
@@ -107,4 +108,29 @@ export function inlineArtifactIds(
     if (promoted) ids.add(promoted.id);
   }
   return ids;
+}
+
+/**
+ * The document a finished turn wrote in a fence, if any: the last HTML or
+ * markdown fence that renders as a card and is substantial enough to promote.
+ * `undefined` for a turn that failed or was stopped — a half-written page is
+ * not something to put in front of the reader unasked.
+ *
+ * Used to open that document in the panel when the turn ends and the panel is
+ * idle, so the reader does not have to find the card and click Open.
+ */
+export function finishedDocumentFence(state: {
+  blocks: readonly { blockKind: string; content: string }[];
+  error?: string;
+  interrupted?: boolean;
+}): ArtifactCandidate | undefined {
+  if (state.error || state.interrupted) return undefined;
+  const text = state.blocks
+    .filter((b) => b.blockKind !== 'thinking' && b.blockKind !== 'reasoning')
+    .map((b) => b.content)
+    .join('');
+  const documents = detectArtifactCandidates(text).filter(
+    (c) => (c.kind === 'html' || c.kind === 'markdown') && shouldRenderAsCard(c) && isPromotable(c),
+  );
+  return documents[documents.length - 1];
 }

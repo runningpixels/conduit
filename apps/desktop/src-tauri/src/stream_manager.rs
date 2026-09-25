@@ -173,6 +173,23 @@ pub fn empty_turn_message(undeclared: &[CompletedToolCall]) -> String {
     names.sort_unstable();
     names.dedup();
     let app_name = crate::brand::app_name();
+    // The app's own document tools are offered only for document requests. A
+    // model that calls one anyway (it saw it earlier in the chat) did not hit
+    // a provider-hosted tool, and the web-search advice sent readers the wrong
+    // way — say what actually happened.
+    let app_tool = |n: &&str| {
+        n.ends_with("_document")
+            && (n.starts_with("write_") || n.starts_with("edit_") || *n == "patch_document")
+    };
+    if names.iter().all(app_tool) {
+        return format!(
+            "The model tried to use {} and then ended the turn without writing an answer. \
+             {app_name} did not offer {} for this message, so nothing was written. \
+             Ask again and say you want a document or a page — for example \"make this as an HTML page\".",
+            names.join(", "),
+            if names.len() == 1 { "that tool" } else { "those tools" },
+        );
+    }
     format!(
         "The model ran {} and then ended the turn without writing an answer. \
          {app_name} did not run {} — the provider reports it as one of its own hosted tools, \

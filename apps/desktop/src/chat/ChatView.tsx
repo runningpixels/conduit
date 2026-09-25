@@ -433,7 +433,9 @@ export function buildProviderRequest(
   const systemPrompt = composeSystemPrompt(
     [
       baseSystemPrompt(),
-      ...(searchActive && !isCreationIntent ? [] : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX()]),
+      ...(searchActive && !isCreationIntent
+        ? []
+        : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name))]),
       ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
     ],
     resolveUserInstructions(settings, chatOverrides?.userInstructions),
@@ -1339,7 +1341,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           conversationWorkspaceRoot,
         );
         const systemPrompt = composeSystemPrompt(
-          [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
+          [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(estimateTools.map((tool) => tool.name))],
           resolveUserInstructions(settings, conversationUserInstructions),
           joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
         );
@@ -2143,7 +2145,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       conversationWorkspaceRoot,
     );
     const systemPrompt = composeSystemPrompt(
-      [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX()],
+      [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name))],
       resolveUserInstructions(settings, conversationUserInstructions),
       joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
     );

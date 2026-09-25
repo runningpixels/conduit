@@ -86,6 +86,8 @@ interface DocumentPanelProps {
   readLiveDocument?: () => LiveDocumentSource | null;
   onRenameArtifact?: (id: string, title: string) => void | Promise<void>;
   onStatus?: (message: string) => void;
+  /** Drafts a fix request in the composer when an HTML preview's script throws. */
+  onAskToFix?: (prompt: string) => void;
   /** Validated `data:image/...` brand logo URI, threaded to the empty-state
    *  BrandMark. See `brand/logo.ts`. */
   logoSrc?: string;
@@ -324,6 +326,7 @@ export function DocumentPanel({
   readLiveDocument,
   onRenameArtifact,
   onStatus,
+  onAskToFix,
   logoSrc,
   activeBrandConfig = null,
   onBrandApplied,
@@ -1090,6 +1093,7 @@ export function DocumentPanel({
                 <Preview
                   {...props}
                   onExternalLink={handleExternalLink}
+                  onAskToFix={onAskToFix}
                 />
               );
             })()}

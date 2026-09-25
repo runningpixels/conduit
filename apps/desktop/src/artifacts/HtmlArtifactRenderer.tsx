@@ -49,6 +49,11 @@ import {
 } from '../themes/resolvedTokens';
 import { useT } from '../i18n';
 import { markPlaceholdersInHtml } from '../chat/documentBuild';
+import {
+  ARTIFACT_RUNTIME_ERROR_SCRIPT,
+  parseArtifactRuntimeErrorMessage,
+  type ArtifactRuntimeError,
+} from './runtimeError';
 
 export type ArtifactColorScheme = 'light' | 'dark';
 
@@ -63,6 +68,8 @@ export interface HtmlArtifactRendererProps {
   colorScheme?: ArtifactColorScheme;
   /** Called when the user clicks an http(s) link inside the sandboxed preview. */
   onExternalLink?: (url: string) => void;
+  /** Offered when the page's own script throws: drafts a fix request. */
+  onAskToFix?: (prompt: string) => void;
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -191,7 +198,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${buildShortcutForwarderScript()}</script>` +
+    `<script>${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${buildShortcutForwarderScript()}</script>` +
     `</head><body>${html}</body></html>`
   );
 }
@@ -202,6 +209,7 @@ export function HtmlArtifactRenderer({
   styledPreview = true,
   colorScheme = 'light',
   onExternalLink,
+  onAskToFix,
 }: HtmlArtifactRendererProps) {
   const t = useT();
   const themingKind = activeRendererTheming('iframe');
@@ -228,6 +236,9 @@ export function HtmlArtifactRenderer({
   const handleLoad = useCallback(() => {
     setLoaded(true);
   }, []);
+  // The first error the current page threw; a new document starts clean.
+  const [runtimeError, setRuntimeError] = useState<ArtifactRuntimeError | null>(null);
+  useEffect(() => setRuntimeError(null), [srcdoc]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -236,6 +247,11 @@ export function HtmlArtifactRenderer({
       const shortcut = parseArtifactShortcutMessage(event.data);
       if (shortcut) {
         replayShortcut(shortcut);
+        return;
+      }
+      const runtime = parseArtifactRuntimeErrorMessage(event.data);
+      if (runtime) {
+        setRuntimeError((current) => current ?? runtime);
         return;
       }
       const href = parseArtifactExternalLinkMessage(event.data);
@@ -263,6 +279,36 @@ export function HtmlArtifactRenderer({
         onLoad={handleLoad}
         style={{ position: 'relative', zIndex: 2 }}
       />
+      {runtimeError && (
+        <div className="artifact-runtime-error" role="status">
+          <span className="artifact-runtime-error-text" title={runtimeError.message}>
+            {t('artifacts.html.runtimeError', { message: runtimeError.message })}
+          </span>
+          {onAskToFix && (
+            <button
+              type="button"
+              className="btn ghost artifact-runtime-error-fix"
+              onClick={() =>
+                onAskToFix(
+                  runtimeError.line
+                    ? t('artifacts.html.fixPromptLine', { message: runtimeError.message, line: runtimeError.line })
+                    : t('artifacts.html.fixPrompt', { message: runtimeError.message }),
+                )
+              }
+            >
+              {t('artifacts.html.askToFix')}
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn artifact-runtime-error-dismiss"
+            aria-label={t('common.actions.dismiss')}
+            onClick={() => setRuntimeError(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

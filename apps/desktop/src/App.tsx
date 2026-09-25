@@ -1817,6 +1817,7 @@ export default function App() {
         />
 
         <DocumentPanel
+          onAskToFix={(prompt) => chatViewRef.current?.insertPrompt(prompt)}
           artifact={activeArtifact}
           pendingArtifact={pendingArtifact}
           openArtifacts={openArtifacts}

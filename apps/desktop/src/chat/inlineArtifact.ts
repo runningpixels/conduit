@@ -78,7 +78,10 @@ export function shouldRenderAsCard(candidate: ArtifactCandidate, streaming?: boo
   if (mermaidSourceFromFence(candidate.info, candidate.body) != null) return false;
   const lang = fenceLang(candidate.info);
   if (isMathLang(lang)) return false;
-  if (DOCUMENT_KINDS.includes(candidate.kind)) return true;
+  // A 62-byte `<form action=…>` example inside a README rendered as a document
+  // card with no Open (it is below the promote floor) — a card that cannot be
+  // opened, in place of two readable lines. Below the floor it is a snippet.
+  if (DOCUMENT_KINDS.includes(candidate.kind)) return isPromotable(candidate);
   return candidate.kind === 'code' && countLines(candidate.body) > INLINE_CODE_MAX_LINES;
 }
 

@@ -851,7 +851,7 @@
   "settings.privacy.trust.connected.label": "信頼境界: オンライン",
   "settings.privacy.trust.disconnected.detail": "デスクトップシェルがローカルの Rust バックエンドに到達できませんでした。解消しない場合は {appName} を再起動してください。",
   "settings.privacy.trust.disconnected.label": "信頼境界: 到達不可",
-  "settings.privacy.trust.localOnly.detail": "Web 検索やその他の外部送信機能はオフのままです。BYOK のプロバイダー呼び出しは、あなたのキーを使って引き続きプロバイダーへ直接送られます。",
+  "settings.privacy.trust.localOnly.detail": "Web 検索やその他の外部送信機能はオフのままで、クラウドのプロバイダーは使えません。応答できるのは Ollama や LM Studio などのローカルプロバイダーだけです。",
   "settings.privacy.trust.localOnly.label": "ローカル専用モード",
   "settings.privacy.trust.localOnlyLine": "ローカル専用モード: {status, select, on {オン} off {オフ} other {オフ}}",
   "settings.privacy.trust.noKey.detail": "チャットを始めるには、「プロバイダーとキー」でプロバイダーの認証情報を追加してください。キーは OS のキーチェーンに保存されます。",

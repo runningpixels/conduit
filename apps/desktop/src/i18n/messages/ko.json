@@ -851,7 +851,7 @@
   "settings.privacy.trust.connected.label": "신뢰 경계 온라인",
   "settings.privacy.trust.disconnected.detail": "데스크톱 셸이 로컬 Rust 백엔드에 연결하지 못했습니다. 계속되면 {appName}을(를) 다시 시작하십시오.",
   "settings.privacy.trust.disconnected.label": "신뢰 경계 연결 불가",
-  "settings.privacy.trust.localOnly.detail": "웹 검색과 그 밖의 외부 전송 기능은 꺼진 상태로 유지됩니다. BYOK 공급자 호출은 사용자의 키로 계속 공급자에게 직접 전달됩니다.",
+  "settings.privacy.trust.localOnly.detail": "웹 검색과 그 밖의 외부 전송 기능은 꺼진 상태로 유지되며, 클라우드 공급자는 거부됩니다. Ollama나 LM Studio 같은 로컬 공급자만 응답할 수 있습니다.",
   "settings.privacy.trust.localOnly.label": "로컬 전용 모드",
   "settings.privacy.trust.localOnlyLine": "로컬 전용 모드: {status, select, on {켜짐} off {꺼짐} other {꺼짐}}",
   "settings.privacy.trust.noKey.detail": "채팅을 시작하려면 공급자 및 키에서 공급자 자격 증명을 추가하십시오. 키는 시스템 키체인에 남습니다.",

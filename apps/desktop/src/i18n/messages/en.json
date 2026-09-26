@@ -851,7 +851,7 @@
   "settings.privacy.trust.connected.label": "Trust boundary online",
   "settings.privacy.trust.disconnected.detail": "The desktop shell could not reach the local Rust backend. Restart {appName} if this persists.",
   "settings.privacy.trust.disconnected.label": "Trust boundary unreachable",
-  "settings.privacy.trust.localOnly.detail": "Web search and other egress features stay off. BYOK provider calls still go straight to your provider with your key.",
+  "settings.privacy.trust.localOnly.detail": "Web search and other egress features stay off, and cloud providers are refused — only a local provider such as Ollama or LM Studio can answer.",
   "settings.privacy.trust.localOnly.label": "Local-only mode",
   "settings.privacy.trust.localOnlyLine": "Local-only mode: {status, select, on {on} off {off} other {off}}",
   "settings.privacy.trust.noKey.detail": "Add a provider credential under Providers & keys to start chatting. Keys stay in the OS keychain.",

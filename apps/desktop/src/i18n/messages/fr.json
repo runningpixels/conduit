@@ -851,7 +851,7 @@
   "settings.privacy.trust.connected.label": "Limite de confiance en ligne",
   "settings.privacy.trust.disconnected.detail": "Le shell de bureau n’a pas pu joindre le backend Rust local. Redémarrez {appName} si le problème persiste.",
   "settings.privacy.trust.disconnected.label": "Limite de confiance inaccessible",
-  "settings.privacy.trust.localOnly.detail": "La recherche web et les autres fonctionnalités de sortie de données restent désactivées. Les appels BYOK au fournisseur continuent d’aller directement à votre fournisseur avec votre clé.",
+  "settings.privacy.trust.localOnly.detail": "La recherche web et les autres fonctionnalités de sortie de données restent désactivées, et les fournisseurs cloud sont refusés : seul un fournisseur local comme Ollama ou LM Studio peut répondre.",
   "settings.privacy.trust.localOnly.label": "Mode local uniquement",
   "settings.privacy.trust.localOnlyLine": "Mode local uniquement : {status, select, on {activé} off {désactivé} other {désactivé}}",
   "settings.privacy.trust.noKey.detail": "Ajoutez des identifiants de fournisseur dans Fournisseurs & clés pour commencer à discuter. Les clés restent dans le trousseau du système.",

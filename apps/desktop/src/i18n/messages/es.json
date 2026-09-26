@@ -851,7 +851,7 @@
   "settings.privacy.trust.connected.label": "Límite de confianza en línea",
   "settings.privacy.trust.disconnected.detail": "El shell de escritorio no pudo conectar con el backend local de Rust. Reiniciar {appName} si esto persiste.",
   "settings.privacy.trust.disconnected.label": "Límite de confianza inaccesible",
-  "settings.privacy.trust.localOnly.detail": "La búsqueda web y otras funciones de salida de datos permanecen desactivadas. Las llamadas BYOK al proveedor siguen yendo directamente al proveedor con la clave guardada.",
+  "settings.privacy.trust.localOnly.detail": "La búsqueda web y otras funciones de salida de datos permanecen desactivadas, y los proveedores en la nube se rechazan: solo puede responder un proveedor local como Ollama o LM Studio.",
   "settings.privacy.trust.localOnly.label": "Modo solo local",
   "settings.privacy.trust.localOnlyLine": "Modo solo local: {status, select, on {activado} off {desactivado} other {desactivado}}",
   "settings.privacy.trust.noKey.detail": "Añadir una credencial de proveedor en Proveedores y claves para empezar a chatear. Las claves permanecen en el llavero del sistema.",

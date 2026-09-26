@@ -217,6 +217,18 @@ export function explicitTitle(kind: ArtifactKind, body: string): string | null {
   return null;
 }
 
+/// "JSON · root, parser, plugins" for an object, from its first three keys.
+function jsonTitle(body: string): string | null {
+  try {
+    const value: unknown = JSON.parse(body);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const keys = Object.keys(value).slice(0, 3);
+    return keys.length ? `JSON · ${keys.join(', ')}` : null;
+  } catch {
+    return null;
+  }
+}
+
 function deriveTitle(kind: ArtifactKind, info: string, body: string): string {
   // Prefer explicit <title> for HTML artifacts
   if (kind === 'html') {
@@ -232,10 +244,18 @@ function deriveTitle(kind: ArtifactKind, info: string, body: string): string {
   // delimiter nested inside the body. A model that wraps its whole reply in a
   // ```markdown fence leaves ```mermaid as the first line, which titled the
   // card with punctuation instead of with anything a reader could act on.
+  // JSON's first line is `{`: name it by its top-level keys instead.
+  if (kind === 'json') {
+    const t = jsonTitle(body);
+    if (t) return t;
+  }
+  // Lines with nothing to read (`{`, `};`) are skipped, and a leading comment
+  // marker is dropped: a card titled `// server.js — Todo API` or `{` was seen
+  // live, where `server.js — Todo API` says what the fence is.
   const firstLine = body
     .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.length > 0 && !isFenceLine(l));
+    .map((l) => l.trim().replace(/^(?:\/\/+|#+(?!\w)|\/\*+|\*+(?=\s)|<!--|--|;+)\s*/, '').replace(/\s*(?:\*\/|-->)$/, '').trim())
+    .find((l) => /[\p{L}\p{N}]/u.test(l) && !isFenceLine(l));
   if (firstLine) {
     return firstLine.length > TITLE_MAX ? `${firstLine.slice(0, TITLE_MAX)}…` : firstLine;
   }
@@ -300,7 +320,60 @@ export function salvageLeakedToolCall(text: string): string {
   return text;
 }
 
-export function parseMessageSegments(content: string): MessageSegment[] {
+/**
+ * The body of the fence opened at `lines[start]`, up to its closing line.
+ *
+ * Inside a markdown document fence, an opener with an info string starts a
+ * nested example, and a bare close ends that example rather than the document.
+ * Live, a README written as ```markdown with indented ```html examples inside
+ * was cut at the first example's close: its tail became prose, the examples
+ * became stray cards, and the closing remark was auto-opened as "the document".
+ * CommonMark reads it the same broken way, but the intent is not in doubt.
+ * When nesting leaves the document unclosed at the end of a finished message,
+ * the plain reading is used — a lone ```js opener must not swallow the rest.
+ */
+function scanFence(
+  lines: string[],
+  start: number,
+  open: { fence: string; info: string },
+  streaming: boolean,
+): { bodyLines: string[]; rawLines: string[]; j: number; depth: number } {
+  const scan = (nest: boolean) => {
+    const bodyLines: string[] = [];
+    const rawLines: string[] = [lines[start]];
+    let depth = 0;
+    let j = start + 1;
+    while (j < lines.length) {
+      rawLines.push(lines[j]);
+      const inner = nest ? matchFenceOpen(lines[j]) : null;
+      if (inner && inner.info && inner.fence[0] === open.fence[0]) {
+        depth += 1;
+      } else if (isFenceClose(lines[j], open.fence)) {
+        if (depth === 0) break;
+        depth -= 1;
+      }
+      bodyLines.push(lines[j]);
+      j++;
+    }
+    return { bodyLines, rawLines, j, depth };
+  };
+  if (!/^(markdown|md)$/i.test(firstInfoToken(open.info))) return scan(false);
+  const nested = scan(true);
+  // Unclosed at the end of the message, the nested reading is only trusted
+  // while the message is still arriving with every example closed — the
+  // document itself just has not closed yet, and splitting it at an example's
+  // close would flicker. Finished, or mid-example, an unclosed document is the
+  // lone-opener case: read it plainly.
+  const unclosed = nested.j >= lines.length;
+  if (unclosed && !(streaming && nested.depth === 0)) {
+    const plain = scan(false);
+    if (plain.j < lines.length) return plain;
+  }
+  return nested;
+}
+
+/// `streaming`: the message may still grow, so an unclosed fence is expected.
+export function parseMessageSegments(content: string, options: { streaming?: boolean } = {}): MessageSegment[] {
   if (!content) return [];
   const src = salvageLeakedToolCall(content.replace(/\r\n?/g, '\n'));
   const lines = src.split('\n');
@@ -312,15 +385,7 @@ export function parseMessageSegments(content: string): MessageSegment[] {
       proseLines.push(lines[i]);
       continue;
     }
-    const bodyLines: string[] = [];
-    const rawLines: string[] = [lines[i]];
-    let j = i + 1;
-    while (j < lines.length) {
-      rawLines.push(lines[j]);
-      if (isFenceClose(lines[j], open.fence)) break;
-      bodyLines.push(lines[j]);
-      j++;
-    }
+    const { bodyLines, rawLines, j } = scanFence(lines, i, open, options.streaming ?? false);
     const body = bodyLines.join('\n');
     const raw = rawLines.join('\n');
     const kind = resolveKind(open.info, body);

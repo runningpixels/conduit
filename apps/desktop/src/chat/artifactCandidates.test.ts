@@ -63,7 +63,8 @@ describe('detectArtifactCandidates', () => {
     const src = '```rust\n// This is a very long comment line that should be truncated to a reasonable title length yes indeed\nfn main() {}\n```';
     const title = detectArtifactCandidates(src)[0].title;
     expect(title.length).toBeLessThanOrEqual(61);
-    expect(title.startsWith('// This is a very long')).toBe(true);
+    // The comment marker is dropped: `// server.js — Todo API` titled a card live.
+    expect(title.startsWith('This is a very long')).toBe(true);
   });
 
   it('ignores a fenced block whose body is empty', () => {

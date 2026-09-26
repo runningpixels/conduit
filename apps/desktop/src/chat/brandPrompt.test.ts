@@ -52,6 +52,7 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     providerEndpoints: {},
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,
+    artifactNetworkEnabled: true,
     updateChannel: 'stable' as const,
     updateCheckEnabled: true,
     updatePolicy: 'manual' as const,

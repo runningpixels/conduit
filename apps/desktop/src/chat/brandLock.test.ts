@@ -35,6 +35,7 @@ describe('buildProviderRequest brand appendix on a locked build', () => {
     providerEndpoints: {},
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,
+    artifactNetworkEnabled: true,
     updateChannel: 'stable' as const,
     updateCheckEnabled: true,
     updatePolicy: 'manual' as const,

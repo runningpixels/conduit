@@ -71,7 +71,11 @@ import { providerHueId } from '../lib/providerIdentity';
 import { ChatMessageContent } from './ChatMessageContent';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
-import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX, looksLikeArtifactCreationRequest } from './artifactPrompt';
+import {
+  artifactNetworkAvailable,
+  CONDUIT_ARTIFACT_SYSTEM_APPENDIX,
+  looksLikeArtifactCreationRequest,
+} from './artifactPrompt';
 import { composeSystemPrompt, joinExtraSystemSections, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
 import type { TurnAttachment } from './composerTypes';
 import { UserTurnAttachments } from './UserTurnAttachments';
@@ -435,7 +439,7 @@ export function buildProviderRequest(
       baseSystemPrompt(),
       ...(searchActive && !isCreationIntent
         ? []
-        : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name))]),
+        : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })]),
       ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
     ],
     resolveUserInstructions(settings, chatOverrides?.userInstructions),
@@ -1341,7 +1345,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           conversationWorkspaceRoot,
         );
         const systemPrompt = composeSystemPrompt(
-          [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(estimateTools.map((tool) => tool.name))],
+          [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(estimateTools.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })],
           resolveUserInstructions(settings, conversationUserInstructions),
           joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
         );
@@ -2154,7 +2158,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       conversationWorkspaceRoot,
     );
     const systemPrompt = composeSystemPrompt(
-      [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name))],
+      [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })],
       resolveUserInstructions(settings, conversationUserInstructions),
       joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
     );

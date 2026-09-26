@@ -341,6 +341,9 @@ impl AppState {
             settings.artifact_remote_allowlist = validated;
         }
 
+        if let Some(value) = patch.artifact_network_enabled {
+            settings.artifact_network_enabled = value;
+        }
         if let Some(value) = patch.artifact_styled_preview {
             settings.artifact_styled_preview = value;
         }

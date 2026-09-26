@@ -50,6 +50,7 @@ describe('buildProviderRequest artifact prompts', () => {
     providerEndpoints: {},
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,
+    artifactNetworkEnabled: true,
     updateChannel: 'stable' as const,
     updateCheckEnabled: true,
     updatePolicy: 'manual' as const,
@@ -90,6 +91,26 @@ describe('buildProviderRequest artifact prompts', () => {
     expect(req.systemPrompt).toContain(CONDUIT_ARTIFACT_SYSTEM_APPENDIX());
     expect(req.systemPrompt).toContain('Answer capability and explanatory questions in prose');
     expect(req.systemPrompt).toContain(baseSystemPrompt());
+  });
+
+  it('teaches fetch() with declared sites only when pages can connect (ADR-010)', () => {
+    const offline = buildProviderRequest(baseSettings, 'hi', [], 'c1', []);
+    expect(offline.systemPrompt).toContain('no network access');
+    expect(offline.systemPrompt).not.toContain('conduit-network');
+
+    const online = buildProviderRequest({ ...baseSettings, localOnly: false }, 'hi', [], 'c1', []);
+    expect(online.systemPrompt).toContain('<meta name="conduit-network"');
+    expect(online.systemPrompt).toContain('Never put API keys');
+    expect(online.systemPrompt).not.toContain('no network access');
+
+    const switchedOff = buildProviderRequest(
+      { ...baseSettings, localOnly: false, artifactNetworkEnabled: false },
+      'hi',
+      [],
+      'c1',
+      [],
+    );
+    expect(switchedOff.systemPrompt).toContain('no network access');
   });
 
   it('does not inject a positive creation developer prompt (system appendix carries the contract)', () => {

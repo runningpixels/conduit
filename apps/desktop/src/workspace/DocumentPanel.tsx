@@ -9,7 +9,10 @@ import {
   revealPath,
   setBrandConfig,
 } from '../ipc/client';
-import { buildPreviewProps, selectRenderer } from '../artifacts/selectRenderer';
+import { buildPreviewProps, resolveKind, selectRenderer } from '../artifacts/selectRenderer';
+import { declaredHosts, scriptedHosts } from '../artifacts/networkHosts';
+import { useArtifactNetwork } from './useArtifactNetwork';
+import { ArtifactNetworkBanner, ArtifactNetworkChip, ArtifactNetworkDialog } from './ArtifactNetwork';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
@@ -122,6 +125,11 @@ interface DocumentPanelProps {
    * whole gate exists to prevent.
    */
   brandingEnabled?: boolean;
+  /**
+   * Changes when local-only mode or the "pages can connect" switch does, so
+   * the panel re-reads whether a page's requests are blocked (ADR-010).
+   */
+  networkPolicyKey?: string;
 }
 
 /**
@@ -331,6 +339,7 @@ export function DocumentPanel({
   activeBrandConfig = null,
   onBrandApplied,
   brandingEnabled = false,
+  networkPolicyKey = '',
 }: DocumentPanelProps) {
   const t = useT();
   const tr = useRichT();
@@ -379,6 +388,33 @@ export function DocumentPanel({
 
   const sourceText = useMemo(() => (effectiveArtifact ? inlineArtifactText(effectiveArtifact) : ''), [effectiveArtifact]);
   const pendingSectionCount = useMemo(() => placeholderSections(sourceText).length, [sourceText]);
+
+  // Network access for a saved HTML page (ADR-010): the page's fetch() waits
+  // on the reader's decision per site; the chip lists every site and request.
+  const networkArtifactId =
+    effectiveArtifact && resolveKind(effectiveArtifact.kind, effectiveArtifact.mimeType) === 'html'
+      ? effectiveArtifact.id
+      : null;
+  const network = useArtifactNetwork(networkArtifactId, sourceText, networkPolicyKey);
+  const networkDeclared = useMemo(() => (networkArtifactId ? declaredHosts(sourceText) : []), [networkArtifactId, sourceText]);
+  const networkScripted = useMemo(() => {
+    if (!networkArtifactId) return [];
+    const declared = new Set(networkDeclared.map((d) => d.origin));
+    return scriptedHosts(sourceText).filter((origin) => !declared.has(origin));
+  }, [networkArtifactId, sourceText, networkDeclared]);
+  const [networkReviewOpen, setNetworkReviewOpen] = useState(false);
+  const networkPendingOrigins = useMemo(() => network.pending.map((p) => p.origin), [network.pending]);
+  const { decide: decideNetwork } = network;
+  const handleNetworkDecision = useCallback(
+    (decision: 'deny' | 'session' | 'page') => {
+      setNetworkReviewOpen(false);
+      void decideNetwork(networkPendingOrigins, decision);
+    },
+    [decideNetwork, networkPendingOrigins],
+  );
+  useEffect(() => {
+    if (network.pending.length === 0) setNetworkReviewOpen(false);
+  }, [network.pending.length]);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedSource, setSavedSource] = useState(false);
@@ -893,6 +929,17 @@ export function DocumentPanel({
 
         <span className="doc-toolbar-spacer" />
 
+        {networkArtifactId && (
+          <ArtifactNetworkChip
+            declared={networkDeclared}
+            scripted={networkScripted}
+            state={network.state}
+            denied={network.denied}
+            log={network.log}
+            onRevoke={(origin) => void network.revoke(origin)}
+          />
+        )}
+
         <div className="doc-view-toggle" role="tablist" aria-label={t('workspace.documentPanel.viewModeAriaLabel')}>
           <button
             className={`doc-view-btn${docTab === 'preview' ? ' active' : ''}`}
@@ -1036,6 +1083,13 @@ export function DocumentPanel({
             {tr('workspace.documentPanel.banner.fileMissing')}
           </div>
         )}
+        {networkArtifactId && (
+          <ArtifactNetworkBanner
+            pending={network.pending}
+            onReview={() => setNetworkReviewOpen(true)}
+            onNotNow={() => handleNetworkDecision('deny')}
+          />
+        )}
         {brandEligible && (
           <div className="doc-banner hold" role="status" aria-label={t('workspace.documentPanel.brandBanner.ariaLabel')}>
             {brandPreviewing
@@ -1094,6 +1148,7 @@ export function DocumentPanel({
                   {...props}
                   onExternalLink={handleExternalLink}
                   onAskToFix={onAskToFix}
+                  network={networkArtifactId ? network.handler : undefined}
                 />
               );
             })()}
@@ -1156,6 +1211,14 @@ export function DocumentPanel({
         url={pendingExternalUrl}
         onConfirm={handleConfirmExternalLink}
         onCancel={handleCancelExternalLink}
+      />
+
+      <ArtifactNetworkDialog
+        open={networkReviewOpen}
+        title={artifact.title ?? null}
+        sites={network.pending}
+        declared={networkDeclared}
+        onDecide={handleNetworkDecision}
       />
 
       <ConfirmDialog

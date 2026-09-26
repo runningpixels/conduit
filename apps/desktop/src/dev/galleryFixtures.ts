@@ -40,6 +40,7 @@ export const GALLERY_SETTINGS: AppSettings = {
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
+  artifactNetworkEnabled: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
   updatePolicy: 'manual',

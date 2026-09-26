@@ -43,9 +43,12 @@ encryption at rest. There is no Conduit account, no backend, and no telemetry.
   restart backoff, a concurrency cap, and per-call timeouts. Side-effecting tools prompt before they run, tool
   output is redacted and size-capped, and it is never re-injected into the
   prompt.
-- **Artifacts that can't phone home.** Model-generated HTML renders in a
-  null-origin sandboxed iframe under a strict CSP with `connect-src 'none'` and
-  no Tauri bridge. Text, code, JSON and Markdown render through React-escaped
+- **Artifacts that can't phone home without your say-so.** Model-generated
+  HTML renders in a null-origin sandboxed iframe under a strict CSP with
+  `connect-src 'none'` and no Tauri bridge. A page that needs live data asks,
+  per site, before Conduit fetches it on the page's behalf — https only, no
+  cookies or credentials, never your local network, and never in local-only
+  mode. Text, code, JSON and Markdown render through React-escaped
   renderers with no `dangerouslySetInnerHTML` anywhere in the safe path.
 - **No telemetry.** Update checks are opt-in and send only
   `Conduit-Updater/<version>`. Checking is manual by default; background
@@ -80,7 +83,12 @@ billed, so Conduit asks once before the first one.
 
 Model-generated code, HTML, JSON and Markdown open in a side panel with preview
 and source views. HTML renders in a null-origin sandboxed iframe with
-`connect-src 'none'` — it cannot reach the network or the Tauri bridge.
+`connect-src 'none'` — it cannot reach the network or the Tauri bridge on its
+own. A page that calls `fetch()`, such as a weather dashboard, shows a banner
+naming the site; the dialog says why the page wants it and what it sends, and
+you allow it this once, always for that page, or not at all. The globe in the
+panel header lists every site and request. Settings → Artifact security turns
+this off and lists remembered permissions.
 
 You can watch a document being written, with an optional live preview. Documents
 too long for one reply are built section by section, and a turn that runs out of

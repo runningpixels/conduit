@@ -4,6 +4,7 @@
 //! `#[tauri::command]` function so `main.rs`'s `use conduit_desktop::commands::*`
 //! and `tauri::generate_handler![...]` continue to resolve.
 
+pub mod artifact_network;
 pub mod artifacts;
 pub mod branding;
 pub mod chat;
@@ -15,6 +16,7 @@ pub mod settings;
 pub mod skills;
 pub mod themes;
 
+pub use artifact_network::*;
 pub use artifacts::*;
 pub use branding::*;
 pub use chat::*;

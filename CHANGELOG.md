@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Pages that fetch live data. An HTML page can now call public web APIs — a
+  weather dashboard can show today's forecast instead of a made-up sample. The
+  first time a page asks for a site, a banner names it; **Review** shows why
+  the page says it needs the site, the request it is making and any data it
+  would send. Allow it this once, always for that page, or not at all. The
+  globe button above the page lists every site it declares or contacted, with
+  each request. Requests go through Conduit rather than the page: https only,
+  without your cookies or saved logins, never to your local network, and size-
+  and rate-limited. The site does see your IP address. Local-only mode refuses
+  every request, and **Settings → Artifact security** can turn the feature off
+  and remove remembered permissions.
+
 ### Fixed
 
 - **Local-only mode now blocks cloud providers in every chat.** It already
@@ -18,6 +32,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   local-only mode is on; only a local provider such as Ollama or LM Studio can
   answer. The description under Settings → Privacy & data said the opposite and
   has been corrected in every language.
+
+- Forms in HTML pages work. A search box, an "add item" form or a calculator
+  built as a form did nothing when you pressed its button or Enter, because the
+  page's sandbox blocks form submission before the page's own code hears about
+  it. The page now gets the submit as it expects; nothing is sent anywhere.
 
 ## [0.1.0-rc.6] - 2026-09-22
 

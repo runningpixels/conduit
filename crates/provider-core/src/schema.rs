@@ -2176,6 +2176,12 @@ pub struct AppSettings {
     /// Defaults true so previews feel native; user can disable in Settings.
     #[serde(default = "default_true")]
     pub artifact_styled_preview: bool,
+    /// ADR-010: whether HTML artifacts may ask to contact sites. On: a page's
+    /// first request to a site waits for the user to allow it (per page, per
+    /// site). Off: every request fails without asking. Local-only mode refuses
+    /// them regardless.
+    #[serde(default = "default_true")]
+    pub artifact_network_enabled: bool,
     /// Phase 6: which update channel the client checks. Consumer UI only offers
     /// `Stable`/`Beta`; `Pinned`/`TenantSpecific` are reserved for Phase 7/8/9.
     /// Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.
@@ -2310,6 +2316,7 @@ impl Default for AppSettings {
             provider_endpoints: HashMap::new(),
             artifact_remote_allowlist: Vec::new(),
             artifact_styled_preview: true,
+            artifact_network_enabled: true,
             update_channel: RolloutChannel::Stable,
             update_check_enabled: true,
             update_policy: UpdatePolicy::Manual,
@@ -2374,6 +2381,8 @@ pub struct SettingsPatch {
     pub artifact_remote_allowlist: Option<Vec<String>>,
     #[ts(optional)]
     pub artifact_styled_preview: Option<bool>,
+    #[ts(optional)]
+    pub artifact_network_enabled: Option<bool>,
     #[ts(optional)]
     pub update_channel: Option<RolloutChannel>,
     #[ts(optional)]

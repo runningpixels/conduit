@@ -8,6 +8,7 @@
 //!             via `event_log`, so the provider-stream `view == fold(events)`
 //!             invariant stays scoped to provider streaming)
 
+pub mod artifact_network;
 pub mod artifacts;
 pub mod attachments;
 pub mod compactions;

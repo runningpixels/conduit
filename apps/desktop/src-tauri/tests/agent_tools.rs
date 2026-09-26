@@ -2,8 +2,9 @@ mod common;
 
 use conduit_desktop::{
     agent_tools::{
-        self, AgentToolContext, EDIT_TEXT_TOOL, EXPORT_DOCUMENT_TOOL, PATCH_DOCUMENT_TOOL,
-        READ_DOCUMENT_TOOL, WRITE_BRAND_THEME_TOOL, WRITE_HTML_TOOL,
+        self, AgentToolContext, EDIT_HTML_TOOL, EDIT_TEXT_TOOL, EXPORT_DOCUMENT_TOOL,
+        PATCH_DOCUMENT_TOOL, READ_DOCUMENT_TOOL, WRITE_BRAND_THEME_TOOL, WRITE_HTML_TOOL,
+        WRITE_MARKDOWN_TOOL,
     },
     db::repository::{artifacts, conversations},
 };
@@ -727,4 +728,56 @@ fn the_indentation_fallback_still_needs_exactly_one_match() {
     let error =
         agent_tools::apply_document_edits(doc, &[edit("<li>z</li>", "<li>y</li>")]).unwrap_err();
     assert!(error.contains("even ignoring indentation"), "{error}");
+}
+
+/// "Turn it into a nicely styled HTML page" on a markdown resume: the rewrite
+/// used to be refused ("is 'markdown' not 'html'"), and the model pasted the
+/// page into the chat while the panel kept the markdown.
+#[tokio::test]
+async fn edit_html_document_converts_a_markdown_document() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let artifacts_dir = tempfile::tempdir().unwrap();
+    let exports_dir = tempfile::tempdir().unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let ctx = AgentToolContext {
+        db: &pool,
+        artifacts_dir: artifacts_dir.path(),
+        exports_dir: exports_dir.path(),
+        encryption: &enc,
+        conversation_id: &conv.id,
+        source_message_id: None,
+        workspace: None,
+        search: Default::default(),
+        image: None,
+    };
+    let written = agent_tools::execute_builtin_tool(
+        &ctx,
+        "call-1",
+        "req-1",
+        WRITE_MARKDOWN_TOOL,
+        &json!({ "title": "Resume", "markdown": "# Alex Rivera\n\nData analyst." }),
+    )
+    .await
+    .expect("tool runs");
+    let id = written.output["artifact_id"].as_str().unwrap().to_string();
+
+    let edited = agent_tools::execute_builtin_tool(
+        &ctx,
+        "call-2",
+        "req-2",
+        EDIT_HTML_TOOL,
+        &json!({ "artifact_id": id, "updated_html": "<h1>Alex Rivera</h1><p>Data analyst.</p>" }),
+    )
+    .await
+    .expect("tool runs");
+    assert!(!edited.is_error, "conversion refused: {}", edited.output);
+
+    let artifact = artifacts::get(&pool, &enc, &id).await.unwrap().unwrap();
+    assert_eq!(artifact.kind, "html", "same artifact, now HTML");
+    assert_eq!(artifact.mime_type.as_deref(), Some("text/html"));
+    assert_eq!(
+        artifact.content_text.as_deref(),
+        Some("<h1>Alex Rivera</h1><p>Data analyst.</p>")
+    );
 }

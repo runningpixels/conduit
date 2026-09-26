@@ -13,9 +13,8 @@ As built, beyond the design above:
 - The modal variants of Settings, Ideas and Documents remain in code
   (`variant="sheet"`, the default) with their tests; the app renders them as
   pages. They can go once nothing needs a modal.
-- The inspector's Activity tab does not yet show a page's network requests
-  (the page network log lives in the document panel's hook); the globe chip
-  on the page still lists them.
+- Activity's "This chat" summary lists the sites the chat's pages contacted
+  this session (from the page network log), next to the turn's own steps.
 - Chat status covers the one live request (the app runs one at a time).
 
 ## Why

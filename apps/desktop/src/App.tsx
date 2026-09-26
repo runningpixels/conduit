@@ -70,6 +70,7 @@ import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
 import { ActivityView } from './inspector/ActivityView';
 import { SourcesView } from './inspector/SourcesView';
 import { turnActivity, turnSites } from './inspector/turnActivity';
+import { readArtifactNetworkLog } from './workspace/useArtifactNetwork';
 import { ConnectorsPage, LibraryPage, MemoryPage, type LibraryTab } from './shell/DestinationPages';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
@@ -2058,7 +2059,12 @@ export default function App() {
           }
           inspectorView={
             inspectorTab === 'activity' ? (
-              <ActivityView turns={transcript.turns} focusTurnId={focusTurnId} onSelectTurn={setFocusTurnId} />
+              <ActivityView
+                turns={transcript.turns}
+                focusTurnId={focusTurnId}
+                onSelectTurn={setFocusTurnId}
+                networkLog={chatArtifacts.flatMap((a) => readArtifactNetworkLog(a.id))}
+              />
             ) : inspectorTab === 'sources' ? (
               <SourcesView
                 turns={transcript.turns}

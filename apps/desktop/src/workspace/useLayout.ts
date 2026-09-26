@@ -156,7 +156,10 @@ function maxWidth(id: ColumnId): number {
   const spec = COLUMNS[id];
   const other: ColumnId = id === 'sidebar' ? 'panel' : 'sidebar';
   const otherPx = isShown(other) ? appliedWidth(other) : 0;
-  const room = window.innerWidth - PANEL_HANDLE_W - THREAD_MIN - otherPx;
+  // The activity rail (UI revamp) sits left of both columns: its width is
+  // not the thread's to give away.
+  const railPx = document.querySelector('.rail')?.getBoundingClientRect().width ?? 0;
+  const room = window.innerWidth - railPx - PANEL_HANDLE_W - THREAD_MIN - otherPx;
   return Math.max(spec.min, Math.min(spec.max, room));
 }
 

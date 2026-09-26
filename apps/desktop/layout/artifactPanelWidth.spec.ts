@@ -65,8 +65,11 @@ test.describe('the artifact panel', () => {
     await openArtifacts(page);
     await page.locator('#columnResize').focus();
     await page.keyboard.press('End');
-    // 1440 − the 280px sidebar − the 12px handle − the 400px thread floor.
-    await expect.poll(() => width(page, '.body > .doc-panel')).toBeGreaterThan(700);
+    // 1440 − the activity rail − the 280px sidebar − the 12px handle − the
+    // 400px thread floor, less the panel's inset margins: well past 560.
+    const rail = await width(page, '.rail');
+    const ceiling = 1440 - rail - 280 - 12 - 400;
+    await expect.poll(() => width(page, '.body > .doc-panel')).toBeGreaterThan(Math.max(560, ceiling - 30));
     expect(await width(page, '.center')).toBeGreaterThanOrEqual(400);
   });
 
@@ -76,12 +79,15 @@ test.describe('the artifact panel', () => {
 
     await page.getByRole('button', { name: 'Expand artifact' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-panel-expanded', 'true');
-    await expect.poll(() => width(page, '.body > .doc-panel')).toBeGreaterThan(1000);
+    // The sidebar steps aside: the panel takes all but the rail, the handle
+    // and the thread's 400px floor (less its inset margins).
+    const rail = await width(page, '.rail');
+    await expect.poll(() => width(page, '.body > .doc-panel')).toBeGreaterThan(1440 - rail - 12 - 400 - 30);
     await expect(page.locator('.body > .sidebar')).toHaveCSS('visibility', 'hidden');
     // The sidebar's actions stay reachable, in the title strip.
     await expect(page.locator('.head-nav').getByRole('button', { name: 'New chat' })).toBeVisible();
     // The dashboard lays out as a page, not a phone.
-    expect(await width(page, '.doc-panel iframe')).toBeGreaterThan(1000);
+    expect(await width(page, '.doc-panel iframe')).toBeGreaterThan(900);
     // Nothing about the saved layout changed.
     expect(await page.evaluate(() => localStorage.getItem('conduit:v5-layout'))).toBe(
       JSON.stringify({ sidebarW: 280, panelW: 420 }),

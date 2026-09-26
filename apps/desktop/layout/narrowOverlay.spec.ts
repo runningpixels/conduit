@@ -64,8 +64,10 @@ test.describe('the sidebar below the narrow breakpoint', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     const sidebar = page.locator('.body > .sidebar');
     await expect(sidebar).toBeVisible();
-    // Measured once the slide-in has finished.
-    await expect.poll(async () => Math.round((await box(page, '.body > .sidebar')).x)).toBe(0);
+    // Measured once the slide-in has finished: it lands flush against the
+    // activity rail (left: var(--rail-w)), not under it.
+    const rail = await box(page, '.rail');
+    await expect.poll(async () => Math.round((await box(page, '.body > .sidebar')).x)).toBe(Math.round(rail.x + rail.width));
     expect((await box(page, '.body > .sidebar')).width).toBeGreaterThanOrEqual(220);
     await expect(page.locator('.overlay-scrim')).toBeVisible();
     // Keyboard focus went in with it.

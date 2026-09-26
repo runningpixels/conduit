@@ -1400,6 +1400,8 @@
   "shell.sidebar.row.deleteTitle": "[Ḍéļéťé çĥàť —————]",
   "shell.sidebar.row.moreAriaLabel": "[Ḿöŕé àçťîöñš ḟöŕ {title} —————— —]",
   "shell.sidebar.row.moreTitle": "[Ḿöŕé àçťîöñš —————]",
+  "shell.sidebar.status.needsYou": "[Ñééḍš ýöü ————]",
+  "shell.sidebar.status.running": "[Ŕüññîñĝ ———]",
   "shell.statusLine.chatDetails": "[Çĥàť ḍéťàîļš —————]",
   "shell.statusLine.context.full": "[{tokens} öḟ {window} ——]",
   "shell.statusLine.context.fullRaw": "[{tokens} ťöķéñš ———]",

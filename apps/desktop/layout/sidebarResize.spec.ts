@@ -24,10 +24,17 @@ async function sidebarWidth(page: Page): Promise<number> {
   return page.locator('.sidebar').evaluate((el) => Math.round(el.getBoundingClientRect().width));
 }
 
-/** Drags from the sash's centre to `toX`, in steps like a real hand. */
-async function dragSashTo(page: Page, toX: number) {
+/**
+ * Drags from the sash's centre to where the sidebar's right edge would be at
+ * `width`, in steps like a real hand. The sidebar no longer starts at x=0 —
+ * the activity rail sits to its left — so the target is measured from the
+ * sidebar's own left edge.
+ */
+async function dragSashTo(page: Page, width: number) {
   const box = await page.locator('.sidebar-resize').boundingBox();
   if (!box) throw new Error('sash has no box');
+  const left = await page.locator('.sidebar').evaluate((el) => el.getBoundingClientRect().left);
+  const toX = left + width;
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + box.width / 2, y);
   await page.mouse.down();
@@ -51,10 +58,17 @@ test.describe('the sidebar sash', () => {
 
   test('sits on the sidebar border', async ({ page }) => {
     const sash = await page.locator('.sidebar-resize').boundingBox();
-    const width = await sidebarWidth(page);
+    const border = await page.locator('.sidebar').evaluate((el) => el.getBoundingClientRect().right);
     expect(sash).not.toBeNull();
-    expect(sash!.x).toBeLessThan(width);
-    expect(sash!.x + sash!.width).toBeGreaterThan(width);
+    expect(sash!.x).toBeLessThan(border);
+    expect(sash!.x + sash!.width).toBeGreaterThan(border);
+  });
+
+  test('the sidebar starts flush against the activity rail', async ({ page }) => {
+    const rail = await page.locator('.rail').boundingBox();
+    const sidebar = await page.locator('.sidebar').boundingBox();
+    expect(rail).not.toBeNull();
+    expect(Math.round(sidebar!.x)).toBe(Math.round(rail!.x + rail!.width));
   });
 
   test('tracks the pointer with no easing, and persists across a reload', async ({ page }) => {

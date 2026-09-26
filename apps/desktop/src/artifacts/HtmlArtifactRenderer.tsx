@@ -54,6 +54,7 @@ import {
   parseArtifactRuntimeErrorMessage,
   type ArtifactRuntimeError,
 } from './runtimeError';
+import { ARTIFACT_FORM_SUBMIT_SCRIPT } from './formSubmit';
 import {
   ARTIFACT_FETCH_RESULT_MESSAGE_TYPE,
   ARTIFACT_NETWORK_BRIDGE_SCRIPT,
@@ -210,7 +211,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}</script>` +
+    `<script>${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}</script>` +
     `</head><body>${html}</body></html>`
   );
 }

@@ -21,6 +21,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   every request, and **Settings → Artifact security** can turn the feature off
   and remove remembered permissions.
 
+### Fixed
+
+- Forms in HTML pages work. A search box, an "add item" form or a calculator
+  built as a form did nothing when you pressed its button or Enter, because the
+  page's sandbox blocks form submission before the page's own code hears about
+  it. The page now gets the submit as it expects; nothing is sent anywhere.
+
 ## [0.1.0-rc.6] - 2026-09-22
 
 ### Added

@@ -37,7 +37,7 @@ import {
   deleteConversationFolder,
   updateSettings,
 } from './ipc/client';
-import { ChatView, type ChatTranscript, type ChatViewHandle } from './chat/ChatView';
+import { ChatView, type ChatTranscript, type ChatViewHandle, type RunStatus } from './chat/ChatView';
 import {
   documentToolArtifactKind,
   hadSuccessfulDocumentToolCalls,
@@ -366,6 +366,7 @@ export default function App() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('page');
   const [focusTurnId, setFocusTurnId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<ChatTranscript>({ turns: [], citations: {} });
+  const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
   useEffect(() => {
     setInspectorTab('page');
     setFocusTurnId(null);
@@ -1887,6 +1888,7 @@ export default function App() {
           onRenameFolder={(folderId, name) => void handleRenameFolder(folderId, name)}
           onDeleteFolder={(folderId) => void handleDeleteFolder(folderId)}
           logoSrc={brandLogo ?? undefined}
+          runStatus={runStatus}
         />
 
         {/* The sidebar's sash, laid over its border rather than given a grid
@@ -1948,6 +1950,7 @@ export default function App() {
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
+            onRunStatusChange={setRunStatus}
             starterIdeas={
               ideaState.rowHidden || ideaState.startsWithoutIdea >= ROW_GIVE_UP
                 ? []

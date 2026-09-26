@@ -65,5 +65,7 @@
   "shell.rail.library",
   "shell.rail.memory",
   "shell.rail.settings",
-  "shell.rail.withNew"
+  "shell.rail.withNew",
+  "shell.sidebar.status.needsYou",
+  "shell.sidebar.status.running"
 ]

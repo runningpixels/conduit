@@ -1068,3 +1068,29 @@ html[data-density="compact"][data-rail="labels"] .rail-btn { width: 60px; height
 .sheet-page .sheet-nav { background: var(--bg-side); }
 .sheet-page .sheet-main { width: 100%; box-sizing: border-box; }
 .sheet-page.sheet-single .sheet-main { max-width: 1040px; margin: 0 auto; }
+
+/* Chat-list status (UI revamp): the chat whose turn is running, or waiting on you. */
+.convo-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: var(--fs-md);
+  color: var(--ink-3);
+}
+.convo-status[data-status="needs-you"] { color: var(--warn); }
+.convo-status-mark {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: convo-spin var(--dur-spin, 1s) linear infinite;
+}
+.convo-status[data-status="needs-you"] .convo-status-mark {
+  border-color: currentColor;
+  background: currentColor;
+  animation: none;
+}
+@keyframes convo-spin { to { transform: rotate(360deg); } }
+html[data-reduce-motion="on"] .convo-status-mark { animation: none; }

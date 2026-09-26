@@ -174,6 +174,7 @@ import { getIdeaState, noteChipOffered, noteChipUsed, noteFirstMessage, useIdeaS
 import { ideaById } from '../ideas/catalog';
 import { capabilityChip } from '../ideas/capabilityChips';
 import { resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
+import { summarizeStreamState } from '../inspector/turnActivity';
 import { IdeaStarterRow } from '../ideas/IdeaStarterRow';
 import { useRichT, useT, type Translate } from '../i18n';
 
@@ -207,6 +208,11 @@ export interface ChatViewHandle {
   replacePrompt: (text: string) => void;
   /// The thread has no messages yet.
   isEmpty: () => boolean;
+}
+
+export interface RunStatus {
+  conversationId: string;
+  needsYou: boolean;
 }
 
 export interface ChatTranscript {
@@ -262,6 +268,10 @@ interface ChatViewProps {
   /// turns plus the live one, and document citations per turn. Sent when the
   /// turns or their steps change, not on every streamed token.
   onTranscriptChange?: (transcript: ChatTranscript) => void;
+  /// The one live request's chat and whether it is running or waiting on the
+  /// user (an approval or a question) — for the chat list's status. `null`
+  /// when nothing runs. Reported on change, also while another chat is open.
+  onRunStatusChange?: (status: RunStatus | null) => void;
   onPickIdea?: (idea: Idea) => void;
   onMoreIdeas?: () => void;
   onHideIdeas?: () => void;
@@ -696,6 +706,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     starterIdeas = [],
     onOpenActivity,
     onTranscriptChange,
+    onRunStatusChange,
     onPickIdea,
     onMoreIdeas,
     onHideIdeas,
@@ -913,6 +924,22 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }
   const maybeDrainNextRef = useRef(maybeDrainNext);
   maybeDrainNextRef.current = maybeDrainNext;
+
+  // Chat-list status (UI revamp): report the live request's chat and whether
+  // it waits on the user, only when that changes.
+  const onRunStatusChangeRef = useRef(onRunStatusChange);
+  onRunStatusChangeRef.current = onRunStatusChange;
+  const lastRunStatusRef = useRef('');
+  function reportRunStatus() {
+    const active = activeRequestRef.current;
+    const status: RunStatus | null = active?.conversationId
+      ? { conversationId: active.conversationId, needsYou: summarizeStreamState(streamStateRef.current ?? undefined).needsYou }
+      : null;
+    const key = status ? `${status.conversationId}:${status.needsYou}` : '';
+    if (key === lastRunStatusRef.current) return;
+    lastRunStatusRef.current = key;
+    onRunStatusChangeRef.current?.(status);
+  }
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId;
@@ -1232,6 +1259,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const next = applyConnectorRuntimeEvent(base, event);
     streamStateRef.current = next;
     renderStreamNow();
+    reportRunStatus();
 
     // A document write that failed at runtime ends the panel's generating state
     // now rather than at end of turn — otherwise the skeleton keeps shimmering
@@ -1540,6 +1568,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       isAgent: toolDefinitions.length > 0,
     };
     streamStateRef.current = initialStream;
+    reportRunStatus();
     setActiveRequestId(request.requestId);
     renderStreamNow();
     // Track the provider/model that produced this turn so the conditional
@@ -1580,6 +1609,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             streamStateRef.current ?? createAssistantStreamState(request.requestId, searchBackend),
             event,
           );
+          reportRunStatus();
           if (event.kind === 'messageComplete' || event.kind === 'error') {
             if (event.kind === 'error') terminalError = event.error.message;
             finish();
@@ -1595,6 +1625,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           createAssistantStreamState(request.requestId, searchBackend);
         const next = applyProviderEvent(base, event);
         streamStateRef.current = next;
+        reportRunStatus();
         if (event.kind === 'contentDelta' || event.kind === 'reasoningDelta' || event.kind === 'toolCallDelta') {
           renderStreamNextFrame();
         } else {
@@ -1823,6 +1854,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         activeRequestRef.current = null;
       }
       streamStateRef.current = null;
+      reportRunStatus();
       cancelStreamFrame();
       if (currentConversationIdRef.current === conversationId) {
         setActiveStream(null);
@@ -1876,6 +1908,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (cancelledState) onChatTurnComplete?.(markInterrupted(cancelledState));
     activeRequestRef.current = null;
     streamStateRef.current = null;
+    reportRunStatus();
     cancelStreamFrame();
     setActiveStream(null);
     setActiveRequestId(null);

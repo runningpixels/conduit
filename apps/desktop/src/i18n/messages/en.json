@@ -1400,6 +1400,8 @@
   "shell.sidebar.row.deleteTitle": "Delete chat",
   "shell.sidebar.row.moreAriaLabel": "More actions for {title}",
   "shell.sidebar.row.moreTitle": "More actions",
+  "shell.sidebar.status.needsYou": "Needs you",
+  "shell.sidebar.status.running": "Running",
   "shell.statusLine.chatDetails": "Chat details",
   "shell.statusLine.context.full": "{tokens} of {window}",
   "shell.statusLine.context.fullRaw": "{tokens} tokens",

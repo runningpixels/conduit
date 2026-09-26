@@ -14,6 +14,12 @@ import jaMessages from './messages/ja.json';
 import ptBrMessages from './messages/pt-BR.json';
 import koMessages from './messages/ko.json';
 import zhCnMessages from './messages/zh-CN.json';
+import pendingTranslation from './pendingTranslation.json';
+
+/** English keys added since the last translation pass (the UI revamp adds
+ *  them in English first; a translation session fills the catalogs and
+ *  empties the list). Missing keys render English at runtime (D5). */
+const PENDING = new Set<string>(pendingTranslation as string[]);
 
 /// The catalog gates from D14, minus G10 (which scans *source* and lands with
 /// the rest of the extraction in Phase 6). These three run against the catalog
@@ -207,6 +213,11 @@ describe('English catalog', () => {
     }
   });
 
+  it('lists only live English keys as pending translation', () => {
+    // A pending key English no longer has is a stale entry.
+    for (const key of PENDING) expect(en, `${key} is pending but not in en.json`).toHaveProperty([key]);
+  });
+
   it('gives every plural a singular arm', () => {
     /* `{count, plural, =0 {none} other {Found # servers}}` renders "Found 1
      * servers". Six of these were found during extraction; a seventh survived
@@ -250,7 +261,7 @@ describe.each(TRANSLATIONS)('%s catalog', (locale, catalog) => {
     // translation has yet, which is the expected state for weeks. So this
     // holds only shipped locales to completeness, exactly as `i18n:status
     // --strict` does, and `SHIPPED_FOR_RELEASE` fills in wave by wave.
-    const missing = Object.keys(en).filter((k) => !(k in catalog));
+    const missing = Object.keys(en).filter((k) => !(k in catalog) && !PENDING.has(k));
     if (!SHIPPED_FOR_RELEASE.includes(locale)) {
       expect(Object.keys(catalog).length, `${locale} has no keys at all`).toBeGreaterThan(0);
       return;

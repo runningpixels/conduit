@@ -34,6 +34,10 @@ const CORPUS: Array<[prompt: string, expected: DocumentTurnIntent]> = [
   ['Create an interactive periodic table of the first 36 elements', 'create'],
   ['Make a 5-slide pitch deck for a fictional app called Habitly.', 'create'],
   ['Turn this into a small dashboard with a revenue-vs-cost chart', 'create'],
+  // Live-data tools (ADR-010): same swallowed-call failure, 2026-09-26.
+  ['Build me a currency converter with live exchange rates.', 'create'],
+  ['make a GitHub repo viewer', 'create'],
+  ['build a crypto price ticker', 'create'],
   // …and questions about such things stay informational.
   ['what is a dashboard?', 'info'],
   ['how do I build a game in Unity?', 'info'],

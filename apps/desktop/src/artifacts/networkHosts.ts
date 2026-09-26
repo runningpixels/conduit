@@ -53,8 +53,12 @@ export function declaredHosts(html: string): DeclaredHost[] {
 export function scriptedHosts(html: string): string[] {
   const out = new Set<string>();
   for (const script of html.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) ?? []) {
-    for (const url of script.match(/https:\/\/[a-z0-9.-]+(?::\d+)?/gi) ?? []) {
-      const origin = requestOrigin(url);
+    for (const match of script.matchAll(/https:\/\/[a-z0-9.-]+(?::\d+)?/gi)) {
+      // A link target the page builds (`href="https://…`, `.href = '…'`,
+      // `window.open('…')`) is opened by the reader, not fetched.
+      const before = script.slice(Math.max(0, match.index - 24), match.index);
+      if (/(href\s*=\s*\\?["'`]?|\.href\s*=\s*["'`]|open\(\s*["'`])$/i.test(before)) continue;
+      const origin = requestOrigin(match[0]);
       if (origin && !NOT_NETWORK_HOSTS.has(new URL(origin).hostname)) out.add(origin);
     }
   }

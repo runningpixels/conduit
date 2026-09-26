@@ -18,11 +18,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{Deserialize, Serialize};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 /// Longest a request may take, redirects included.
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
@@ -31,8 +32,9 @@ pub const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
 /// Largest request body a page may send.
 pub const MAX_REQUEST_BYTES: usize = 1024 * 1024;
 /// Requests per artifact per rolling minute.
-pub const MAX_REQUESTS_PER_MINUTE: usize = 60;
-/// Requests per artifact in flight at once.
+pub const MAX_REQUESTS_PER_MINUTE: usize = 120;
+/// Requests per artifact in flight at once; more wait their turn (a page that
+/// loads five stories with `Promise.all` must not lose the fifth).
 pub const MAX_IN_FLIGHT: usize = 4;
 /// Redirect hops followed before giving up.
 const MAX_REDIRECTS: usize = 5;
@@ -177,7 +179,8 @@ struct Session {
     once: HashMap<String, HashSet<String>>,
     /// Recent request instants per artifact, for the rate cap.
     recent: HashMap<String, Vec<Instant>>,
-    in_flight: HashMap<String, usize>,
+    /// `MAX_IN_FLIGHT` permits per artifact.
+    in_flight: HashMap<String, Arc<Semaphore>>,
 }
 
 fn session() -> &'static Mutex<Session> {
@@ -242,46 +245,38 @@ pub fn has_session_grant(artifact_id: &str, host: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Reserve a request slot for `artifact_id`, or say which cap it hit. The
-/// returned guard releases the in-flight slot when dropped.
-pub fn reserve_slot(artifact_id: &str) -> Result<SlotGuard, String> {
-    let mut s = session()
-        .lock()
+/// Take a request slot for `artifact_id`: refused over the rate cap, otherwise
+/// waits until fewer than [`MAX_IN_FLIGHT`] of its requests are running. The
+/// returned guard frees the slot when dropped.
+pub async fn reserve_slot(artifact_id: &str) -> Result<SlotGuard, String> {
+    let permits = {
+        let mut s = session()
+            .lock()
+            .map_err(|_| "Network state unavailable.".to_string())?;
+        let now = Instant::now();
+        let recent = s.recent.entry(artifact_id.to_string()).or_default();
+        recent.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
+        if recent.len() >= MAX_REQUESTS_PER_MINUTE {
+            return Err(format!(
+                "This page made more than {MAX_REQUESTS_PER_MINUTE} requests in a minute; wait and try again."
+            ));
+        }
+        recent.push(now);
+        s.in_flight
+            .entry(artifact_id.to_string())
+            .or_insert_with(|| Arc::new(Semaphore::new(MAX_IN_FLIGHT)))
+            .clone()
+    };
+    let permit = permits
+        .acquire_owned()
+        .await
         .map_err(|_| "Network state unavailable.".to_string())?;
-    let now = Instant::now();
-    let recent = s.recent.entry(artifact_id.to_string()).or_default();
-    recent.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
-    if recent.len() >= MAX_REQUESTS_PER_MINUTE {
-        return Err(format!(
-            "This page made more than {MAX_REQUESTS_PER_MINUTE} requests in a minute; wait and try again."
-        ));
-    }
-    recent.push(now);
-    let in_flight = s.in_flight.entry(artifact_id.to_string()).or_insert(0);
-    if *in_flight >= MAX_IN_FLIGHT {
-        return Err(format!(
-            "This page already has {MAX_IN_FLIGHT} requests waiting; try again when they finish."
-        ));
-    }
-    *in_flight += 1;
-    Ok(SlotGuard {
-        artifact_id: artifact_id.to_string(),
-    })
+    Ok(SlotGuard { _permit: permit })
 }
 
 #[derive(Debug)]
 pub struct SlotGuard {
-    artifact_id: String,
-}
-
-impl Drop for SlotGuard {
-    fn drop(&mut self) {
-        if let Ok(mut s) = session().lock() {
-            if let Some(n) = s.in_flight.get_mut(&self.artifact_id) {
-                *n = n.saturating_sub(1);
-            }
-        }
-    }
+    _permit: OwnedSemaphorePermit,
 }
 
 // ── The request ──────────────────────────────────────────────────────────────
@@ -544,19 +539,27 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_rate_and_in_flight_caps_hold() {
+    #[tokio::test]
+    async fn requests_over_the_in_flight_cap_wait_and_the_rate_cap_refuses() {
         let id = "rate-test-artifact";
         let mut guards = Vec::new();
         for _ in 0..MAX_IN_FLIGHT {
-            guards.push(reserve_slot(id).expect("under the in-flight cap"));
+            guards.push(reserve_slot(id).await.expect("under the in-flight cap"));
         }
-        assert!(reserve_slot(id).unwrap_err().contains("requests waiting"));
+        let waiting = tokio::spawn(async move { reserve_slot(id).await.map(|_| ()) });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!waiting.is_finished(), "the fifth request waits");
+        guards.pop();
+        tokio::time::timeout(Duration::from_secs(2), waiting)
+            .await
+            .expect("runs once a slot frees")
+            .unwrap()
+            .expect("not refused");
         guards.clear();
         for _ in 0..(MAX_REQUESTS_PER_MINUTE - MAX_IN_FLIGHT - 1) {
-            drop(reserve_slot(id).expect("under the rate cap"));
+            drop(reserve_slot(id).await.expect("under the rate cap"));
         }
-        assert!(reserve_slot(id).unwrap_err().contains("in a minute"));
+        assert!(reserve_slot(id).await.unwrap_err().contains("in a minute"));
     }
 
     #[test]

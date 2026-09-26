@@ -252,8 +252,9 @@ caps, different trust):
   credential store, no proxy-auth; headers filtered (no `Cookie`,
   `Authorization` unless a later secrets feature adds one, no hop-by-hop);
   `User-Agent: Conduit-Artifact/<version>`.
-- **Caps:** 20 s timeout; 5 MB response; 1 MB request body; 60 requests a
-  minute per artifact; 4 in flight. Every cap fails as a normal network error
+- **Caps:** 20 s timeout; 5 MB response; 1 MB request body; 120 requests a
+  minute per artifact; 4 in flight, more queue (a live run with 5 parallel
+  story fetches lost the fifth when the cap refused instead). Every cap fails as a normal network error
   the page can handle, and shows in the network list with the reason.
 - **Response to the frame:** status, filtered headers (no `Set-Cookie`), body
   as an `ArrayBuffer` so JSON, text, images (`blob:` URLs are already allowed)

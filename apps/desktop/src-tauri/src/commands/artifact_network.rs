@@ -44,7 +44,7 @@ pub async fn artifact_fetch(
     if !always && !artifact_network::has_session_grant(&request.artifact_id, &host) {
         return Err(format!("This page has not been allowed to contact {host}."));
     }
-    let _slot = artifact_network::reserve_slot(&request.artifact_id)?;
+    let _slot = artifact_network::reserve_slot(&request.artifact_id).await?;
     let response = artifact_network::perform(&request, AddressPolicy::APP).await?;
     if always {
         let _ = grants::touch(&state.db, &request.artifact_id, &host).await;

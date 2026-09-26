@@ -58,12 +58,20 @@ we own.
    `cookie`, `origin`, `referer`, `user-agent`, `host`, `sec-*`, `proxy-*`
    and hop-by-hop headers are dropped; `set-cookie` and `www-authenticate`
    never reach the page. No cookie jar. User agent `Conduit-Artifact/<ver>`.
-   Caps: 20 s, 5 MB response, 1 MB body, 60 requests a minute and 4 in flight
-   per page.
+   Caps: 20 s, 5 MB response, 1 MB body, 120 requests a minute per page; at
+   most 4 run at once, and more wait their turn rather than fail (a page that
+   loads five stories with `Promise.all` must get all five).
 5. **Grants.** Keyed on (artifact id, origin). Remembered grants live in
    `artifact_network_grants` (deleted with the artifact); an edited page keeps
    them, and a new site in the edit asks again. Settings → Artifact security
    lists them with *Remove* and *Remove all*.
+
+6. **Forms.** Without `allow-forms` a browser drops a form submission before
+   its `submit` event fires, so pages that handle forms in script (search
+   boxes, "add item") did nothing. A Conduit-owned script dispatches a
+   synthetic, cancelable `submit` event for submit-button clicks, Enter and
+   `requestSubmit()`. Nothing is submitted or navigated; the sandbox flags are
+   unchanged. This applies to every page, with or without network access.
 
 ## Consequences
 - Live pages work, and the reader sees and decides every site first.

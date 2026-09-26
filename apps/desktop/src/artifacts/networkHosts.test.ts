@@ -41,6 +41,18 @@ describe('scriptedHosts', () => {
   });
 });
 
+describe('scriptedHosts link targets', () => {
+  it('skips URLs the page only links to', () => {
+    const html = `<script>
+      meta.push('<a href="https://twitter.com/' + u.twitter + '">x</a>');
+      a.href = 'https://github.com/' + login;
+      window.open('https://example.org/help');
+      const res = await fetch('https://api.github.com/users/' + login);
+    </script>`;
+    expect(scriptedHosts(html)).toEqual(['https://api.github.com']);
+  });
+});
+
 describe('hostLabel', () => {
   it('shows the host, with a port only when it is not the default', () => {
     expect(hostLabel('https://api.example.com')).toBe('api.example.com');

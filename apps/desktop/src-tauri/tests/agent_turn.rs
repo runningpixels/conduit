@@ -1163,3 +1163,60 @@ async fn other_round_errors_still_end_the_turn_as_they_were() {
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].message, "Upstream idle timeout exceeded");
 }
+
+// ── Round-3 live findings ────────────────────────────────────────────────────
+
+/// Live: "make the tiles bigger and add a search box" read a 15 kB page 26
+/// times and never edited it. Past three reads of one document in a turn, a
+/// read is answered — the model already has the content — instead of run.
+#[tokio::test]
+async fn reading_one_document_over_and_over_is_answered_not_run() {
+    let read = || {
+        tool_round(
+            vec![("read_document", json!({ "artifact_id": "doc-1" }))],
+            Duration::ZERO,
+        )
+    };
+    let turn = run_turn_with_patching(
+        vec![read(), read(), read(), read(), read(), text_round("done")],
+        guardrails(25, 300),
+    )
+    .await;
+
+    let told = |request: &ProviderRequest| {
+        request.messages.iter().any(|m| {
+            m.parts.iter().any(|p| {
+                p.content
+                    .as_deref()
+                    .is_some_and(|c| c.contains("already read this document"))
+            })
+        })
+    };
+    // Rounds 1-4 carry the results of reads 1-3; the fourth read's answer is
+    // the first the model sees in round 5.
+    assert!(
+        !turn.requests[..4].iter().any(told),
+        "reads 1-3 ran normally"
+    );
+    assert!(told(&turn.requests[4]), "read 4 was answered, not run");
+}
+
+/// Live: "tic tac toe" promised a game, then called
+/// `werkzeug\n</think><tool_call>current_time`, and the turn ended silently.
+#[tokio::test]
+async fn a_round_ending_on_a_malformed_tool_name_says_so() {
+    let turn = run_turn(
+        vec![tool_round(
+            vec![("werkzeug\n</think><tool_call>current_time", json!({}))],
+            Duration::ZERO,
+        )],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::Error { error, .. } if error.message.contains("malformed tool call")),
+        "got {:?}",
+        turn.terminal()
+    );
+}

@@ -303,6 +303,33 @@ describe('AssistantMessage chronological timeline', () => {
     expect(ask!.compareDocumentPosition(prose!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  // Live: under a pending form it read "Running 1 tool… still working · 301s —
+  // some models send long responses all at once", though nothing was running.
+  it('says it is waiting for the reader while an ask_user form is pending', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          toolCalls: [toolCall('c1', 'ask_user')],
+          askUser: {
+            toolCallId: 'c1',
+            title: 'A couple of quick preferences',
+            fields: [{ id: 'units', prompt: 'Which units?', type: 'choice', options: ['Celsius', 'Fahrenheit'] }],
+          },
+          segments: [
+            { kind: 'tool', toolCallId: 'c1' },
+            { kind: 'askUser', toolCallId: 'c1' },
+          ],
+          agentPhase: inAgentLoop,
+          lastEventAt: Date.now() - 300_000,
+        })}
+        provider="openai"
+      />,
+    );
+    const indicator = document.querySelector('.thinking-indicator');
+    expect(indicator?.textContent).toContain('Waiting for your answer above');
+    expect(indicator?.textContent).not.toMatch(/still working|Running/);
+  });
+
   it('places the live tail after the timeline end, not above later cards', () => {
     render(
       <AssistantMessage

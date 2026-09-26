@@ -95,6 +95,7 @@
   "chat.artifactCard.untitled": "無題のアーティファクト",
   "chat.askUser.choosePlaceholder": "選択…",
   "chat.askUser.submitButton": "送信",
+  "chat.askUser.waiting": "上の質問への回答を待っています",
   "chat.assistant.actions.copiedLabel": "コピーしました",
   "chat.assistant.actions.copyLabel": "メッセージをコピー",
   "chat.assistant.actions.deleteTitle": "この応答を削除",

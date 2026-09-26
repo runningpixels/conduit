@@ -499,8 +499,13 @@ export function AssistantMessage({
         <div className="turn-live-tail">
           <ThinkingIndicator
             modelId={modelId}
-            phase={state.agentPhase}
-            lastActivityAt={state.lastEventAt}
+            // A question waiting on the reader is not work in progress. Live it
+            // read "Running 1 tool… still working · 301s — some models send long
+            // responses all at once" under the form, for as long as nobody
+            // answered.
+            message={state.askUser ? t('chat.askUser.waiting') : undefined}
+            phase={state.askUser ? undefined : state.agentPhase}
+            lastActivityAt={state.askUser ? undefined : state.lastEventAt}
             heldDocument={documentWriteHeld}
             // Prose earlier in the turn must not hide the one signal that work
             // is still happening: while a document is written into a tool

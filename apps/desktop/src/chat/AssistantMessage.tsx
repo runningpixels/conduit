@@ -13,7 +13,7 @@ import type {
 import type { Artifact, FileState } from '../ipc/contracts';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
-import { CheckIcon, CopyIcon, ForkIcon, PencilIcon, TrashIcon } from '../icons';
+import { CheckIcon, ChevronRight, CopyIcon, ForkIcon, PencilIcon, TrashIcon } from '../icons';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ToolCallBlock } from './ToolCallBlock';
 import { AskUserBlock } from './AskUserBlock';
@@ -23,6 +23,8 @@ import { UsageSummary } from './UsageSummary';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { providerHueId } from '../lib/providerIdentity';
 import { useT } from '../i18n';
+import { summarizeStreamState, type ActivityStepStatus, type TurnSummary } from '../inspector/turnActivity';
+import { StepStatusIcon } from '../inspector/stepPresentation';
 
 interface AssistantMessageProps {
   state: AssistantStreamState;
@@ -74,6 +76,33 @@ interface AssistantMessageProps {
   /// Live turn only: this model delivers documents all at once and this turn
   /// offers document tools, so a long silence is explained up front.
   documentWriteHeld?: boolean;
+  /** Id the compact step line reports to `onOpenActivity`. Pass the chat
+   *  turn's id (`turn.id`); defaults to `messageId`, then the request id. */
+  turnId?: string;
+  /** Open the inspector's Activity tab for this turn. Without it the compact
+   *  step line expands the tool cards in place instead. */
+  onOpenActivity?: (turnId: string) => void;
+}
+
+/** Tool calls that need the reader (an approval gate) or show live progress
+ *  the reader watches (a document still being written) stay inline; every
+ *  other call folds into the turn's compact step line. */
+export function toolCallStaysInline(tc: ToolCallState, streaming: boolean): boolean {
+  if (tc.sideEffecting && tc.consent === 'pending') return true;
+  return (
+    streaming &&
+    tc.documentWrite !== undefined &&
+    tc.arguments === undefined &&
+    !tc.complete &&
+    !tc.status
+  );
+}
+
+function stepLineStatus(summary: TurnSummary): ActivityStepStatus {
+  if (summary.needsYou) return 'waiting';
+  if (summary.running) return 'running';
+  if (summary.failed > 0) return 'failed';
+  return 'done';
 }
 
 /** P3.3 — group consecutive same-name tool calls into one collapsible card. */
@@ -284,9 +313,13 @@ export function AssistantMessage({
   isLast = true,
   conversationId = null,
   documentWriteHeld = false,
+  turnId,
+  onOpenActivity,
 }: AssistantMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(false);
+  const activity = useMemo(() => summarizeStreamState(state), [state]);
   const text = state.blocks
     .filter((b) => b.blockKind !== 'thinking' && b.blockKind !== 'reasoning')
     .map((b) => b.content)
@@ -344,6 +377,64 @@ export function AssistantMessage({
 
   const showActions = !!messageId && isLast && !state.streaming;
 
+  function renderToolItem(calls: ToolCallState[], key: string): ReactNode {
+    const hostedSearch = useHostedSearchUi && calls.every(isWebSearchToolCall);
+    if (hostedSearch) {
+      return (
+        <SearchCallGroup
+          key={key}
+          toolCalls={calls}
+          unavailable={state.searchUnavailable}
+          cost={state.searchCost}
+        />
+      );
+    }
+    if (calls.length > 1) {
+      return (
+        <ToolCallBlock
+          key={key}
+          toolCall={calls[0]}
+          group={{ name: calls[0].name, calls }}
+          conversationId={conversationId}
+        />
+      );
+    }
+    return <ToolCallBlock key={key} toolCall={calls[0]} conversationId={conversationId} />;
+  }
+
+  const lineStatus = stepLineStatus(activity);
+  const stepLineText = [
+    t('chat.activity.steps', { count: activity.steps }),
+    activity.sites > 0 ? t('chat.activity.sites', { count: activity.sites }) : '',
+    activity.failed > 0 ? t('chat.activity.failed', { count: activity.failed }) : '',
+    activity.needsYou ? t('chat.activity.needsYou') : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const activityTurnId = turnId ?? messageId ?? state.requestId;
+  const stepLine = (
+    <button
+      key="turn-steps"
+      type="button"
+      className="turn-steps"
+      data-status={lineStatus}
+      data-open={!onOpenActivity && stepsOpen ? 'true' : 'false'}
+      title={onOpenActivity ? t('chat.activity.open') : undefined}
+      {...(onOpenActivity ? {} : { 'aria-expanded': stepsOpen })}
+      onClick={() => {
+        if (onOpenActivity) onOpenActivity(activityTurnId);
+        else setStepsOpen((v) => !v);
+      }}
+    >
+      <StepStatusIcon status={lineStatus} />
+      <span className="turn-steps-label" title={stepLineText}>
+        {stepLineText}
+      </span>
+      <ChevronRight className="turn-steps-chev" />
+    </button>
+  );
+  let stepLineShown = false;
+
   const body: ReactNode[] = [];
   if (timeline.length === 0 && !producingText) {
     body.push(
@@ -399,35 +490,22 @@ export function AssistantMessage({
       }
       continue;
     }
-    // tools
-    const hostedSearch = useHostedSearchUi && item.calls.every(isWebSearchToolCall);
-    if (hostedSearch) {
-      body.push(
-        <SearchCallGroup
-          key={item.key}
-          toolCalls={item.calls}
-          unavailable={state.searchUnavailable}
-          cost={state.searchCost}
-        />,
-      );
-    } else if (item.calls.length > 1) {
-      body.push(
-        <ToolCallBlock
-          key={item.key}
-          toolCall={item.calls[0]}
-          group={{ name: item.calls[0].name, calls: item.calls }}
-          conversationId={conversationId}
-        />,
-      );
-    } else {
-      body.push(
-        <ToolCallBlock
-          key={item.key}
-          toolCall={item.calls[0]}
-          conversationId={conversationId}
-        />,
-      );
+    // tools — one compact step line per turn, at the first tool position.
+    if (!stepLineShown && activity.steps > 0) {
+      body.push(stepLine);
+      stepLineShown = true;
     }
+    const inline = item.calls.filter((c) => toolCallStaysInline(c, state.streaming));
+    const folded = item.calls.filter((c) => !toolCallStaysInline(c, state.streaming));
+    for (const call of inline) {
+      body.push(<ToolCallBlock key={`${item.key}-${call.toolCallId}`} toolCall={call} conversationId={conversationId} />);
+    }
+    if (folded.length > 0 && stepsOpen && !onOpenActivity) {
+      body.push(renderToolItem(folded, item.key));
+    }
+  }
+  if (!stepLineShown && activity.steps > 0) {
+    body.push(stepLine);
   }
 
   // If ask_user is pending but missing from the timeline (stale edge case), show it last.

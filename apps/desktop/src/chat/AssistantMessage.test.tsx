@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { AssistantMessage } from './AssistantMessage';
 import { createAssistantStreamState } from './streamState';
 import type { AssistantStreamState, ToolCallState } from './streamState';
@@ -9,6 +9,8 @@ vi.mock('../ipc/client', () => ({
   getArtifactContentBytes: vi.fn(),
   revealPath: vi.fn(),
   submitAskUser: vi.fn(),
+  approveConnectorToolCall: vi.fn(),
+  denyConnectorToolCall: vi.fn(),
 }));
 
 function streaming(over: Partial<AssistantStreamState> = {}): AssistantStreamState {
@@ -138,7 +140,7 @@ describe('AssistantMessage live tail', () => {
     );
 
     const tail = document.querySelector('.turn-live-tail');
-    const card = document.querySelector('.tool');
+    const card = document.querySelector('.turn-steps');
     expect(tail).not.toBeNull();
     expect(card).not.toBeNull();
     // DOCUMENT_POSITION_FOLLOWING — the tail comes after the card.
@@ -233,7 +235,7 @@ describe('AssistantMessage chronological timeline', () => {
 
     const article = document.querySelector('article.turn.assistant');
     expect(article).not.toBeNull();
-    const card = article!.querySelector('.tool');
+    const card = article!.querySelector('.turn-steps');
     const prose = article!.querySelector('.prose');
     expect(card).not.toBeNull();
     expect(prose).not.toBeNull();
@@ -262,11 +264,11 @@ describe('AssistantMessage chronological timeline', () => {
     );
 
     const article = document.querySelector('article.turn.assistant')!;
-    const nodes = [...article.querySelectorAll('.prose, .tool')];
+    const nodes = [...article.querySelectorAll('.prose, .turn-steps')];
     expect(nodes).toHaveLength(3);
     expect(nodes[0].classList.contains('prose')).toBe(true);
     expect(nodes[0].textContent).toContain('Let me ask.');
-    expect(nodes[1].classList.contains('tool')).toBe(true);
+    expect(nodes[1].classList.contains('turn-steps')).toBe(true);
     expect(nodes[2].classList.contains('prose')).toBe(true);
     expect(nodes[2].textContent).toContain('Thanks!');
   });
@@ -350,7 +352,7 @@ describe('AssistantMessage chronological timeline', () => {
     );
 
     const tail = document.querySelector('.turn-live-tail');
-    const card = document.querySelector('.tool');
+    const card = document.querySelector('.turn-steps');
     expect(tail).not.toBeNull();
     expect(card).not.toBeNull();
     expect(card!.compareDocumentPosition(tail!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -440,10 +442,10 @@ describe('AssistantMessage chronological timeline', () => {
     );
 
     const article = document.querySelector('article.turn.assistant')!;
-    const nodes = [...article.querySelectorAll('.think, .tool, .prose')];
+    const nodes = [...article.querySelectorAll('.think, .turn-steps, .prose')];
     expect(nodes).toHaveLength(3);
     expect(nodes[0].classList.contains('think')).toBe(true);
-    expect(nodes[1].classList.contains('tool')).toBe(true);
+    expect(nodes[1].classList.contains('turn-steps')).toBe(true);
     expect(nodes[2].classList.contains('prose')).toBe(true);
   });
 });
@@ -551,5 +553,210 @@ describe('AssistantMessage output limit actions', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('AssistantMessage compact step line', () => {
+  const done = (id: string, name: string, over: Partial<ToolCallState> = {}): ToolCallState => ({
+    toolCallId: id,
+    toolId: name,
+    name,
+    argumentsText: '',
+    complete: true,
+    startedAt: 1,
+    endedAt: 2,
+    status: 'completed',
+    ...over,
+  });
+
+  const finished = (over: Partial<AssistantStreamState>): AssistantStreamState =>
+    streaming({
+      streaming: false,
+      blocks: [{ blockId: 'b', blockKind: 'text', content: 'Answer.', citations: [] }],
+      ...over,
+    });
+
+  const twoStepsOneSite = finished({
+    toolCalls: [
+      done('s1', 'web_search', {
+        arguments: { query: 'rust' },
+        sources: [{ raw: { title: 'Tokio', url: 'https://tokio.rs/' } }],
+      }),
+      done('c1', 'current_time'),
+    ],
+    segments: [
+      { kind: 'tool', toolCallId: 's1' },
+      { kind: 'tool', toolCallId: 'c1' },
+      { kind: 'text', blockId: 'b' },
+    ],
+  });
+
+  it('replaces the tool cards with one line per turn', () => {
+    render(<AssistantMessage state={twoStepsOneSite} provider="openai" onOpenActivity={() => {}} />);
+    const lines = document.querySelectorAll('.turn-steps');
+    expect(lines).toHaveLength(1);
+    expect(lines[0].textContent).toContain('2 steps · 1 site');
+    expect(lines[0].querySelector('.step-status')?.getAttribute('data-status')).toBe('done');
+    expect(document.querySelector('.tool')).toBeNull();
+  });
+
+  it('opens the activity for this turn when the host handles it', () => {
+    const onOpenActivity = vi.fn();
+    render(
+      <AssistantMessage
+        state={twoStepsOneSite}
+        provider="openai"
+        messageId="m1"
+        turnId="turn-1"
+        onOpenActivity={onOpenActivity}
+      />,
+    );
+    fireEvent.click(document.querySelector('.turn-steps')!);
+    expect(onOpenActivity).toHaveBeenCalledWith('turn-1');
+    expect(document.querySelector('.tool')).toBeNull();
+  });
+
+  it('falls back to the message id, then the request id', () => {
+    const onOpenActivity = vi.fn();
+    const { unmount } = render(
+      <AssistantMessage state={twoStepsOneSite} provider="openai" messageId="m1" onOpenActivity={onOpenActivity} />,
+    );
+    fireEvent.click(document.querySelector('.turn-steps')!);
+    expect(onOpenActivity).toHaveBeenLastCalledWith('m1');
+    unmount();
+    render(<AssistantMessage state={twoStepsOneSite} provider="openai" onOpenActivity={onOpenActivity} />);
+    fireEvent.click(document.querySelector('.turn-steps')!);
+    expect(onOpenActivity).toHaveBeenLastCalledWith('req-1');
+  });
+
+  it('expands the old tool cards in place without an activity handler', () => {
+    render(<AssistantMessage state={twoStepsOneSite} provider="openai" />);
+    const line = document.querySelector('.turn-steps')!;
+    expect(line).toHaveAttribute('aria-expanded', 'false');
+    expect(document.querySelector('.tool')).toBeNull();
+    fireEvent.click(line);
+    expect(line).toHaveAttribute('aria-expanded', 'true');
+    expect(document.querySelector('.search-call-group')).not.toBeNull();
+    expect(document.querySelectorAll('.tool')).toHaveLength(2);
+    fireEvent.click(line);
+    expect(document.querySelector('.tool')).toBeNull();
+  });
+
+  it('shows no line for a turn without tools', () => {
+    render(<AssistantMessage state={finished({})} provider="openai" />);
+    expect(document.querySelector('.turn-steps')).toBeNull();
+  });
+
+  it('spins while the turn is running', () => {
+    render(
+      <AssistantMessage
+        state={streaming({ toolCalls: [{ ...done('c1', 'current_time'), status: 'running', endedAt: undefined }] })}
+        provider="openai"
+      />,
+    );
+    expect(document.querySelector('.turn-steps .step-status')?.getAttribute('data-status')).toBe('running');
+  });
+
+  it('keeps a pending approval inline', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          toolCalls: [
+            done('c0', 'current_time'),
+            {
+              toolCallId: 'c1',
+              toolId: 'slack__post',
+              name: 'slack__post',
+              argumentsText: '',
+              complete: true,
+              sideEffecting: true,
+              consent: 'pending',
+            },
+          ],
+        })}
+        provider="openai"
+        onOpenActivity={() => {}}
+      />,
+    );
+    expect(document.querySelector('.consent')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+    const line = document.querySelector('.turn-steps')!;
+    expect(line.textContent).toContain('needs you');
+    // Only the gated call is a card; the finished one folded into the line.
+    expect(document.querySelectorAll('.tool')).toHaveLength(1);
+  });
+
+  it('keeps an ask_user form inline', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          toolCalls: [done('a1', 'ask_user', { status: undefined })],
+          askUser: {
+            toolCallId: 'a1',
+            title: 'Quick question',
+            fields: [{ id: 'name', prompt: 'Your name?', type: 'text', options: null }],
+          },
+          segments: [
+            { kind: 'tool', toolCallId: 'a1' },
+            { kind: 'askUser', toolCallId: 'a1' },
+          ],
+        })}
+        provider="openai"
+        onOpenActivity={() => {}}
+      />,
+    );
+    expect(document.querySelector('.ask-user')).not.toBeNull();
+    expect(screen.getByText('Your name?')).toBeInTheDocument();
+    expect(document.querySelector('.turn-steps')?.textContent).toContain('needs you');
+  });
+
+  it('keeps a document that is still being written inline', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          toolCalls: [
+            {
+              toolCallId: 'd1',
+              toolId: 'write_html_document',
+              name: 'write_html_document',
+              argumentsText: '{"title":"Plan","html":"<p>',
+              complete: false,
+              startedAt: 1,
+              documentWrite: {
+                contentField: 'html',
+                title: 'Plan',
+                contentChars: 3,
+                contentLines: 0,
+                depth: 1,
+                inString: true,
+                key: 'html',
+                expectKey: false,
+                role: 'value',
+                escaped: false,
+                unicodeRemaining: 0,
+                unicodeHex: '',
+              },
+            },
+          ],
+        })}
+        provider="openai"
+        onOpenActivity={() => {}}
+      />,
+    );
+    const card = document.querySelector('.tool');
+    expect(card).not.toBeNull();
+    expect(card!.textContent).toContain('writing…');
+    expect(card!.textContent).toContain('Plan');
+  });
+
+  it('keeps the turn error inline', () => {
+    render(
+      <AssistantMessage
+        state={finished({ error: 'Provider refused', toolCalls: [done('c1', 'current_time')] })}
+        provider="openai"
+        onOpenActivity={() => {}}
+      />,
+    );
+    expect(document.querySelector('.error-text')?.textContent).toBe('Provider refused');
   });
 });

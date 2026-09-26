@@ -132,6 +132,11 @@ interface DocumentPanelProps {
   networkPolicyKey?: string;
   /** Open the Ideas page from the empty panel. */
   onOpenIdeas?: () => void;
+  /** UI revamp: the inspector's tab strip, shown at the top of the panel. */
+  inspectorTabs?: ReactNode;
+  /** When set, the inspector shows this (Activity or Sources) instead of the
+   *  page. */
+  inspectorView?: ReactNode;
 }
 
 /**
@@ -343,6 +348,8 @@ export function DocumentPanel({
   brandingEnabled = false,
   networkPolicyKey = '',
   onOpenIdeas,
+  inspectorTabs,
+  inspectorView,
 }: DocumentPanelProps) {
   const t = useT();
   const tr = useRichT();
@@ -674,6 +681,16 @@ export function DocumentPanel({
 
   const dirty = draft !== sourceText;
 
+  // Activity or Sources: the panel is the inspector, with the page one tab away.
+  if (inspectorView) {
+    return (
+      <section className="doc-panel inspector-host" aria-label={t('workspace.documentPanel.ariaLabel')}>
+        {inspectorTabs}
+        {inspectorView}
+      </section>
+    );
+  }
+
   const showCreatePending =
     pendingArtifact != null &&
     (pendingArtifact.mode === 'create' || !artifact);
@@ -801,6 +818,7 @@ export function DocumentPanel({
       data-file-state={activeFileState}
       data-multi-open={multiOpen ? 'true' : 'false'}
     >
+      {inspectorTabs}
       <div className="doc-toolbar">
         {!multiOpen ? (
           <div className="doc-toolbar-title">

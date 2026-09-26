@@ -58,7 +58,7 @@ encryption at rest. There is no Conduit account, no backend, and no telemetry.
 
 ### Your documents, searchable from a chat
 
-**Documents** in the sidebar holds collections of your own files — plain text,
+**Documents** on the side rail holds collections of your own files — plain text,
 Markdown, CSV, Word and PDF — or drag files anywhere onto the window. Attach a
 collection from the composer and the assistant searches it while it answers;
 each document it drew on is named under the reply, and clicking one shows the
@@ -155,10 +155,19 @@ follow it rather than the machine's region.
 - **First-run setup** starts with language, theme and text size, covers
   local-only mode, key storage, update checks and diagnostics, and ends on a
   review of what was configured.
-- **Settings search**, a settings button in the title strip, and a keyboard
-  shortcuts sheet (`Ctrl+/`, `⌘/` on macOS).
+- **A side rail** — Chats, Ideas, Documents, Library (prompts and skills),
+  Connectors, Memory and Settings — so every feature has one place, with
+  icons only or icons and labels.
+- **An inspector** beside the chat with the page, the turn's **Activity**
+  (each tool call, search and site, with timings) and its **Sources**; the
+  chat itself shows one line per turn instead of tool cards.
+- **One "+" in the composer** for attachments, web search, the workspace
+  folder, documents, skills and connector prompts, with what is active shown
+  as chips; the chat list shows which chat is running or needs you.
+- **Settings search** and a keyboard shortcuts sheet (`Ctrl+/`, `⌘/` on
+  macOS).
 - **A resizable sidebar**, a ⋯ menu on every conversation (rename, pin,
-  archive, move), and overlays for the sidebar and artifact panel on narrow
+  archive, move), and overlays for the sidebar and inspector on narrow
   windows.
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.

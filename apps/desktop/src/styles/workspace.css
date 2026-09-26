@@ -3,7 +3,7 @@
   --fs-wordmark: 15px;
   /* UI revamp: the activity rail's width, with and without labels. */
   --rail-w: 56px;
-  --rail-w-labels: 76px;
+  --rail-w-labels: 88px;
   --dur-collapse: .22s;
   --dur-menu: .13s;
   --dur-resize-hover: .15s;
@@ -1015,7 +1015,7 @@ html[data-rail="labels"] .shell { --rail-current-w: var(--rail-w-labels); }
 .rail-btn:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
 .rail-label { display: none; }
 html[data-rail="labels"] .rail-btn {
-  width: 64px;
+  width: 80px;
   height: 48px;
   grid-template-rows: auto auto;
   align-content: center;
@@ -1023,7 +1023,7 @@ html[data-rail="labels"] .rail-btn {
 }
 html[data-rail="labels"] .rail-label {
   display: block;
-  max-width: 60px;
+  max-width: 76px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1043,7 +1043,7 @@ html[data-rail="labels"] .rail-label {
   box-sizing: content-box;
 }
 html[data-density="compact"] .rail-btn { width: 36px; height: 36px; }
-html[data-density="compact"][data-rail="labels"] .rail-btn { width: 60px; height: 44px; }
+html[data-density="compact"][data-rail="labels"] .rail-btn { width: 80px; height: 44px; }
 
 /* A destination page covers the body; the chat underneath stays mounted. */
 .body > .dest-page {

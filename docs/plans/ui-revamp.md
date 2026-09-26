@@ -2,11 +2,21 @@
 
 ## Status
 
-**In progress — 2026-09-26**, branch `feat/ui-revamp`. Design: the "E. Hybrid"
-boards on the revamp canvas (claude.ai artifact "Conduit UI revamp"), chosen
-over four explored directions (A Rail, B Quiet, C Spaces, D Deck). English
-only in this change; translation is a separate session (see
-[Translation](#translation)).
+**Implemented — 2026-09-26**, branch `feat/ui-revamp` (all six phases).
+English only: 69 new keys are listed in `i18n/pendingTranslation.json` for
+the translation session. Design: the "E. Hybrid" boards on the revamp canvas
+(claude.ai artifact "Conduit UI revamp"), chosen over four explored
+directions (A Rail, B Quiet, C Spaces, D Deck).
+
+As built, beyond the design above:
+
+- The modal variants of Settings, Ideas and Documents remain in code
+  (`variant="sheet"`, the default) with their tests; the app renders them as
+  pages. They can go once nothing needs a modal.
+- The inspector's Activity tab does not yet show a page's network requests
+  (the page network log lives in the document panel's hook); the globe chip
+  on the page still lists them.
+- Chat status covers the one live request (the app runs one at a time).
 
 ## Why
 

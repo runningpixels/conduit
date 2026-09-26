@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Pages that fetch live data. An HTML page can now call public web APIs — a
+  weather dashboard can show today's forecast instead of a made-up sample. The
+  first time a page asks for a site, a banner names it; **Review** shows why
+  the page says it needs the site, the request it is making and any data it
+  would send. Allow it this once, always for that page, or not at all. The
+  globe button above the page lists every site it declares or contacted, with
+  each request. Requests go through Conduit rather than the page: https only,
+  without your cookies or saved logins, never to your local network, and size-
+  and rate-limited. The site does see your IP address. Local-only mode refuses
+  every request, and **Settings → Artifact security** can turn the feature off
+  and remove remembered permissions.
+
 ## [0.1.0-rc.6] - 2026-09-22
 
 ### Added

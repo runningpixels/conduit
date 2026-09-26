@@ -1,7 +1,10 @@
 # ADR 007: Artifact Rendering Security (interactive HTML/JS)
 
 ## Status
-Accepted.
+Accepted. Amended by [ADR 010](adr-010-artifact-network-access.md): a page may
+reach public https APIs through a Rust-mediated `fetch()` after the reader
+allows each site; the frame's sandbox and CSP (`connect-src 'none'`) are
+unchanged.
 
 ## Decision
 Render model-generated artifacts through a layered containment model. Markdown,

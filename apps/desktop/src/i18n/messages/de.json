@@ -95,6 +95,7 @@
   "chat.artifactCard.untitled": "Unbenanntes Artefakt",
   "chat.askUser.choosePlaceholder": "Auswählen…",
   "chat.askUser.submitButton": "Absenden",
+  "chat.askUser.waiting": "Wartet auf deine Antwort oben",
   "chat.assistant.actions.copiedLabel": "Kopiert",
   "chat.assistant.actions.copyLabel": "Nachricht kopieren",
   "chat.assistant.actions.deleteTitle": "Diese Antwort löschen",

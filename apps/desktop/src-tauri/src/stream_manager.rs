@@ -164,6 +164,14 @@ pub fn round_produced_nothing(
     !produced_text && runnable.is_empty() && !undeclared.is_empty()
 }
 
+/// Reads of one document per turn before further reads are answered instead
+/// of run (see the loop in `run_agent_turn`).
+const REPEAT_READ_LIMIT: usize = 3;
+/// The answer to a read past [`REPEAT_READ_LIMIT`].
+const REPEAT_READ_MESSAGE: &str = "You have already read this document several times this turn and have its \
+     full content in the earlier read_document results. Do not read it again: make the change now with \
+     patch_document (quoting the exact text to replace) or rewrite it with the edit_*_document tool.";
+
 /// Shown when a round ends on a tool call whose name is not a tool name.
 pub const MALFORMED_CALL_MESSAGE: &str = "The model's reply broke off in a malformed tool call, \
      so it stopped before finishing. Retry to get the rest.";
@@ -2472,6 +2480,9 @@ impl StreamManager {
         // errored round ends the turn).
         let mut terminal: Option<ProviderEvent> = None;
         let mut terminal_forwarded = false;
+        // How often each document has been read this turn (see
+        // `REPEAT_READ_LIMIT`).
+        let mut document_reads: HashMap<String, usize> = HashMap::new();
 
         for step in 0..max_steps {
             if cancel.is_cancelled() {
@@ -2727,24 +2738,6 @@ impl StreamManager {
             // and false here — so this turn would finalize on a blank bubble
             // with `stop` and no error, the exact shape the in-band error branch
             // in `adapters/openai.rs` already exists to prevent.
-            if round_produced_nothing(outcome.produced_text, &runnable, &undeclared) {
-                warn!(
-                    request_id = %request_id,
-                    step,
-                    dropped = undeclared.len(),
-                    "turn produced no text and no runnable tool calls; reporting instead of ending silently"
-                );
-                terminal = Some(ProviderEvent::Error {
-                    request_id: request_id.clone(),
-                    error: provider_core::schema::ProviderError {
-                        provider_code: None,
-                        message: empty_turn_message(&undeclared),
-                        retryable: false,
-                    },
-                });
-                break;
-            }
-
             // A call whose name is not a tool name at all — markup from the
             // model's own call syntax, as in
             // `werkzeug\n</think><tool_call>current_time` — means the model
@@ -2762,6 +2755,24 @@ impl StreamManager {
                     error: provider_core::schema::ProviderError {
                         provider_code: None,
                         message: MALFORMED_CALL_MESSAGE.to_string(),
+                        retryable: false,
+                    },
+                });
+                break;
+            }
+
+            if round_produced_nothing(outcome.produced_text, &runnable, &undeclared) {
+                warn!(
+                    request_id = %request_id,
+                    step,
+                    dropped = undeclared.len(),
+                    "turn produced no text and no runnable tool calls; reporting instead of ending silently"
+                );
+                terminal = Some(ProviderEvent::Error {
+                    request_id: request_id.clone(),
+                    error: provider_core::schema::ProviderError {
+                        provider_code: None,
+                        message: empty_turn_message(&undeclared),
                         retryable: false,
                     },
                 });
@@ -2889,6 +2900,26 @@ impl StreamManager {
             }
 
             outcome.completed_tool_calls = runnable;
+
+            // Live, "make the tiles bigger and add a search box" read a 15 kB
+            // page 26 times in overlapping ranges, never edited it, and ended
+            // on the step limit. Past a few reads of one document in a turn,
+            // the call is answered instead of run: the model already has it.
+            for call in &outcome.completed_tool_calls {
+                if call.name != agent_tools::READ_DOCUMENT_TOOL {
+                    continue;
+                }
+                let Some(artifact_id) = call.arguments.get("artifact_id").and_then(|v| v.as_str())
+                else {
+                    continue;
+                };
+                let reads = document_reads.entry(artifact_id.to_string()).or_insert(0);
+                *reads += 1;
+                if *reads > REPEAT_READ_LIMIT {
+                    rejected_calls
+                        .insert(call.tool_call_id.clone(), REPEAT_READ_MESSAGE.to_string());
+                }
+            }
 
             if outcome.completed_tool_calls.is_empty() {
                 // No tool calls requested; the assistant produced a final answer.

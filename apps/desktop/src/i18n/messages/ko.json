@@ -95,6 +95,7 @@
   "chat.artifactCard.untitled": "제목 없는 아티팩트",
   "chat.askUser.choosePlaceholder": "선택…",
   "chat.askUser.submitButton": "제출",
+  "chat.askUser.waiting": "위 질문에 대한 답변을 기다리는 중",
   "chat.assistant.actions.copiedLabel": "복사됨",
   "chat.assistant.actions.copyLabel": "메시지 복사",
   "chat.assistant.actions.deleteTitle": "이 응답 삭제",

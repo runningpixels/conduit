@@ -21,6 +21,23 @@ const CORPUS: Array<[prompt: string, expected: DocumentTurnIntent]> = [
   ['design an infographic about sleep cycles', 'create'],
   ['can you create an html page for my portfolio?', 'create'],
 
+  // Misrouted in live testing: app-style requests. Without document tools GLM
+  // called one anyway and the provider swallowed the call — the reply was its
+  // intro sentence and nothing else.
+  ['Make a weather dashboard for Paris.', 'create'],
+  ['make this a sortable table', 'create'],
+  ['Make me a CSS-only animated loading spinner.', 'create'],
+  ['Build a simple Snake game I can play with arrow keys.', 'create'],
+  ['make me a simple pomodoro timer I can use in the browser', 'create'],
+  ['Create a budget tracker where I can add expenses by category.', 'create'],
+  ['Make flashcards for 10 common Spanish verbs', 'create'],
+  ['Create an interactive periodic table of the first 36 elements', 'create'],
+  ['Make a 5-slide pitch deck for a fictional app called Habitly.', 'create'],
+  ['Turn this into a small dashboard with a revenue-vs-cost chart', 'create'],
+  // …and questions about such things stay informational.
+  ['what is a dashboard?', 'info'],
+  ['how do I build a game in Unity?', 'info'],
+
   // Already routed correctly before; must stay that way.
   ['create a new html artifact of the history of japan', 'create'],
   ['create an artifact highlighting the history of books', 'create'],

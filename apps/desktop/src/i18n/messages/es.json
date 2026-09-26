@@ -95,6 +95,7 @@
   "chat.artifactCard.untitled": "Artefacto sin título",
   "chat.askUser.choosePlaceholder": "Elegir…",
   "chat.askUser.submitButton": "Enviar",
+  "chat.askUser.waiting": "Esperando tu respuesta arriba",
   "chat.assistant.actions.copiedLabel": "Copiado",
   "chat.assistant.actions.copyLabel": "Copiar mensaje",
   "chat.assistant.actions.deleteTitle": "Eliminar esta respuesta",

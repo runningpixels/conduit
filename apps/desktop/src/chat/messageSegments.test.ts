@@ -234,3 +234,11 @@ describe('fence nesting and titles (round-2 live findings)', () => {
     expect(js.type === 'fence' && js.candidate.title).toBe('server.js — Todo API');
   });
 });
+
+describe('card titles skip a shebang', () => {
+  // Live: a scraper's card was titled "!/usr/bin/env python3".
+  it('titles a script by its first real line', () => {
+    const seg = parseMessageSegments(['```python', '#!/usr/bin/env python3', '# Scrape headlines to CSV', 'import csv', '```'].join(NL))[0];
+    expect(seg.type === 'fence' && seg.candidate.title).toBe('Scrape headlines to CSV');
+  });
+});

@@ -95,6 +95,7 @@
   "chat.artifactCard.untitled": "未命名工件",
   "chat.askUser.choosePlaceholder": "请选择…",
   "chat.askUser.submitButton": "提交",
+  "chat.askUser.waiting": "正在等待你回答上面的问题",
   "chat.assistant.actions.copiedLabel": "已复制",
   "chat.assistant.actions.copyLabel": "复制消息",
   "chat.assistant.actions.deleteTitle": "删除这条回复",

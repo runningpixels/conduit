@@ -15,14 +15,14 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use conduit_desktop::{
-    connector_runtime::ConnectorRuntimeManager, db::repository::conversations, paths::AppPaths,
-    state::AppState, stream_manager::StreamManager,
+    connector_runtime::ConnectorRuntimeManager, credentials, db::repository::conversations,
+    paths::AppPaths, state::AppState, stream_manager::StreamManager,
 };
 use futures::stream::{Stream, StreamExt};
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, GenerationControls, Message, MessagePart,
-    MessagePartKind, MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest,
-    ToolDefinition,
+    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, GenerationControls, KeychainMode, Message,
+    MessagePart, MessagePartKind, MessageRole, PermissionLevel, ProviderError, ProviderEvent,
+    ProviderRequest, ToolDefinition,
 };
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
@@ -263,6 +263,25 @@ fn reasoning_round(thought: &'static str) -> Round {
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 
+/// OpenRouter needs a stored key before a round reaches the adapter. The
+/// default store is the OS keychain, so this test used to pass only on a
+/// machine that happened to have a real OpenRouter key saved, and failed in CI
+/// with no round started. The cloud cases now keep a fake key in a file-mode
+/// store under the test's own temp directory; the keychain is never read.
+///
+/// The file key comes from a process-wide variable. Every caller sets the same
+/// value, and nothing else in this binary uses file mode, so there is nothing
+/// to restore.
+fn give_the_cloud_provider_a_test_key(root: &Path) {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    std::env::set_var(credentials::FILE_KEY_ENV, STANDARD.encode([7u8; 32]));
+    credentials::CredentialStore::default_service()
+        .with_mode(KeychainMode::File)
+        .with_data_dir(root)
+        .save_provider_secret("openrouter", "sk-test-not-a-real-key")
+        .expect("the fake key is saved");
+}
+
 fn test_paths(root: &Path) -> AppPaths {
     AppPaths {
         root: root.to_path_buf(),
@@ -383,6 +402,13 @@ async fn run_turn_configured(
     let pool = common::setup_pool().await;
     let conversation = conversations::create(&pool, None).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
+    let keychain_mode = match provider {
+        Provider::Local => KeychainMode::default(),
+        Provider::Cloud => {
+            give_the_cloud_provider_a_test_key(dir.path());
+            KeychainMode::File
+        }
+    };
     let settings = AppSettings {
         active_provider: match provider {
             Provider::Local => "ollama".into(),
@@ -391,6 +417,7 @@ async fn run_turn_configured(
         active_model: "scripted".into(),
         agent,
         local_only,
+        keychain_mode,
         ..AppSettings::default()
     };
     let state = AppState::test_instance_with_settings(pool, test_paths(dir.path()), settings);

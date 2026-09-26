@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { createRef } from 'react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { createRef, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import type { AppSettings } from '@conduit/config-schema';
 import { Composer, type ComposerHandle } from './Composer';
 import { COMPOSER_MAX_HEIGHT_PX } from './composerTypes';
+import type { ConnectorPromptInfo, ConnectorResourceInfo } from '../ipc/contracts';
 
 const baseSettings: AppSettings = {
   activeProvider: 'anthropic',
@@ -105,6 +106,57 @@ vi.mock('../ipc/client', () => ({
   deleteAttachment: vi.fn().mockResolvedValue(undefined),
 }));
 
+const collection = {
+  id: 'c1',
+  name: 'Greenhouse',
+  providerId: 'openrouter',
+  embeddingModel: 'openai/text-embedding-3-small',
+  embeddingDimensions: 1536,
+  documentCount: 2,
+  createdAt: '2026-09-20T00:00:00Z',
+  updatedAt: '2026-09-20T00:00:00Z',
+};
+
+function skill(id: string, name: string) {
+  return {
+    id,
+    name,
+    description: '',
+    source: 'conduit' as const,
+    path: `/skills/${id}`,
+    hasScripts: false,
+    hasReferences: false,
+    hasAssets: false,
+  };
+}
+
+const resource = {
+  connectorVersionId: 'echo:1.0.0',
+  connectorName: 'Echo',
+  name: 'spec.md',
+  uri: 'echo://notes/spec.md',
+  description: undefined,
+  stale: false,
+  discoveredAt: '2026-09-15T00:00:00Z',
+} as unknown as ConnectorResourceInfo;
+
+const mcpPrompt = {
+  connectorVersionId: 'echo:1.0.0',
+  connectorName: 'Echo',
+  name: 'summarize',
+  description: 'Summarize a document',
+  arguments: [],
+  stale: false,
+  discoveredAt: '2026-09-15T00:00:00Z',
+} as unknown as ConnectorPromptInfo;
+
+const plusButton = () => screen.getByRole('button', { name: 'Add to this message' });
+
+function openPlusMenu() {
+  fireEvent.click(plusButton());
+  return screen.getByRole('menu', { name: 'Add to this message' });
+}
+
 function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
   const onSend = vi.fn();
   const onStop = vi.fn();
@@ -145,36 +197,27 @@ describe('Composer', () => {
 
   /**
    * t1-6 acceptance criterion 13: a user who has never made a knowledge base
-   * collection must see no new composer button at all.
+   * collection must see no new composer control at all.
    *
    * This shipped wrong once. The button was gated only on the `onToggleCollection`
    * handler being wired, which it always is, so it appeared for everyone and
    * opened a popover that said "No collections yet". Every render test passed,
    * because the component was rendering exactly as written — it was only visible
-   * by driving the real app with an empty database.
+   * by driving the real app with an empty database. The same gate now applies
+   * to the "+" menu's Documents item.
    */
-  it('hides the knowledge button entirely when there are no collections', () => {
+  it('hides the Documents item entirely when there are no collections', () => {
     renderComposer({ onToggleCollection: vi.fn(), collections: [] });
-    expect(screen.queryByRole('button', { name: /knowledge base/i })).toBeNull();
+    openPlusMenu();
+    expect(screen.queryByRole('menuitem', { name: /documents/i })).toBeNull();
   });
 
-  it('shows the knowledge button once a collection exists', () => {
-    renderComposer({
-      onToggleCollection: vi.fn(),
-      collections: [
-        {
-          id: 'c1',
-          name: 'Greenhouse',
-          providerId: 'openrouter',
-          embeddingModel: 'openai/text-embedding-3-small',
-          embeddingDimensions: 1536,
-          documentCount: 2,
-          createdAt: '2026-09-20T00:00:00Z',
-          updatedAt: '2026-09-20T00:00:00Z',
-        },
-      ],
-    });
-    expect(screen.getByRole('button', { name: /knowledge base/i })).toBeTruthy();
+  it('shows the Documents item once a collection exists and opens its popover', () => {
+    renderComposer({ onToggleCollection: vi.fn(), collections: [collection] });
+    openPlusMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Documents…' }));
+    expect(screen.getByRole('dialog', { name: 'Knowledge base collections' })).toBeInTheDocument();
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('disables send on an empty prompt', () => {
@@ -292,5 +335,348 @@ describe('Composer', () => {
     expect(document.activeElement).not.toBe(textarea);
     ref.current?.focusPrompt();
     expect(document.activeElement).toBe(textarea);
+  });
+});
+
+describe('Composer "+" menu', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const webSettings: AppSettings = { ...baseSettings, localOnly: false, webSearchEnabled: true };
+
+  it('lists only the items whose feature is available', () => {
+    renderComposer();
+    openPlusMenu();
+    const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(labels).toEqual(['Attach images…']);
+    expect(screen.queryByRole('menuitemcheckbox')).toBeNull();
+  });
+
+  it('lists every item when every feature is wired and advertised', () => {
+    renderComposer({
+      settings: webSettings,
+      onWorkspacePick: vi.fn(),
+      onToggleCollection: vi.fn(),
+      collections: [collection],
+      onToggleSkill: vi.fn(),
+      onPickMcpPrompt: vi.fn(),
+      mcpPrompts: [mcpPrompt],
+      onToggleMcpResource: vi.fn(),
+      mcpResources: [resource],
+      onSaveChatSettings: vi.fn(),
+    });
+    const menu = openPlusMenu();
+    const labels = Array.from(menu.querySelectorAll('[role^="menuitem"]')).map(
+      (item) => item.querySelector('span')?.textContent,
+    );
+    expect(labels).toEqual([
+      'Attach images…',
+      'Web search',
+      'Workspace folder…',
+      'Documents…',
+      'Skills…',
+      'Connector prompts…',
+      'Connector resources…',
+      'Chat settings…',
+    ]);
+  });
+
+  it('opens the file picker from Attach', () => {
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    renderComposer();
+    openPlusMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Attach images…' }));
+    expect(click).toHaveBeenCalledTimes(1);
+    click.mockRestore();
+  });
+
+  it('disables Attach when there is no conversation yet', () => {
+    renderComposer({ conversationId: null });
+    openPlusMenu();
+    expect(screen.getByRole('menuitem', { name: 'Attach images…' })).toBeDisabled();
+  });
+
+  it('disables the + button while a reply streams', () => {
+    renderComposer({ streaming: true });
+    expect(plusButton()).toBeDisabled();
+  });
+
+  it('hides web search when local-only is on', () => {
+    renderComposer({ settings: { ...baseSettings, webSearchEnabled: true, localOnly: true } });
+    openPlusMenu();
+    expect(screen.queryByRole('menuitemcheckbox', { name: /web search/i })).toBeNull();
+  });
+
+  it('toggles web search from a checkbox item', () => {
+    const { onWebSearchToggle } = renderComposer({ settings: webSettings });
+    openPlusMenu();
+    const item = screen.getByRole('menuitemcheckbox', { name: /web search/i });
+    expect(item).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(item);
+    expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('shows web search as checked and as a removable chip when on', () => {
+    const { onWebSearchToggle } = renderComposer({ settings: webSettings, webSearchOn: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off web search' }));
+    expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
+    openPlusMenu();
+    expect(screen.getByRole('menuitemcheckbox', { name: /web search/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('does not show a web search chip when web search is unavailable', () => {
+    renderComposer({ webSearchOn: true });
+    expect(screen.queryByRole('button', { name: 'Turn off web search' })).toBeNull();
+  });
+
+  describe('keyboard', () => {
+    function renderFull() {
+      return renderComposer({
+        settings: webSettings,
+        onToggleSkill: vi.fn(),
+        onSaveChatSettings: vi.fn(),
+      });
+    }
+
+    it('focuses the first item on open and moves with the arrows, Home and End', () => {
+      renderFull();
+      const menu = openPlusMenu();
+      const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
+      expect(items).toHaveLength(4);
+      expect(document.activeElement).toBe(items[0]);
+
+      fireEvent.keyDown(menu, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(items[1]);
+      fireEvent.keyDown(menu, { key: 'End' });
+      expect(document.activeElement).toBe(items[3]);
+      fireEvent.keyDown(menu, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(items[0]);
+      fireEvent.keyDown(menu, { key: 'ArrowUp' });
+      expect(document.activeElement).toBe(items[3]);
+      fireEvent.keyDown(menu, { key: 'Home' });
+      expect(document.activeElement).toBe(items[0]);
+    });
+
+    it('skips disabled items', () => {
+      renderComposer({ conversationId: null, settings: webSettings });
+      const menu = openPlusMenu();
+      const search = screen.getByRole('menuitemcheckbox', { name: /web search/i });
+      // Attach is disabled without a chat, so web search is the only stop.
+      expect(document.activeElement).toBe(search);
+      fireEvent.keyDown(menu, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(search);
+    });
+
+    it('closes on Escape and returns focus to the + button', () => {
+      renderFull();
+      openPlusMenu();
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(document.activeElement).toBe(plusButton());
+      expect(plusButton()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('opens from the trigger with ArrowDown', () => {
+      renderFull();
+      plusButton().focus();
+      fireEvent.keyDown(plusButton(), { key: 'ArrowDown' });
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getAllByRole('menuitem')[0]);
+    });
+
+    it('closes on a press outside', () => {
+      renderFull();
+      openPlusMenu();
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('toggles closed from the + button itself', () => {
+      renderFull();
+      openPlusMenu();
+      fireEvent.pointerDown(plusButton());
+      fireEvent.click(plusButton());
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+  });
+
+  describe('popovers', () => {
+    it('opens the skills popover from the menu', () => {
+      renderComposer({ onToggleSkill: vi.fn(), skills: [skill('s1', 'Research')] });
+      openPlusMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Skills…' }));
+      expect(screen.getByRole('dialog', { name: 'Skills for this chat' })).toBeInTheDocument();
+    });
+
+    it('keeps one popover open at a time', () => {
+      renderComposer({ onToggleSkill: vi.fn(), onSaveChatSettings: vi.fn() });
+      openPlusMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Skills…' }));
+      openPlusMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Chat settings…' }));
+      expect(screen.queryByRole('dialog', { name: 'Skills for this chat' })).toBeNull();
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    });
+
+    it('opens chat settings from the menu and from the imperative handle', () => {
+      const ref = createRef<ComposerHandle>();
+      renderComposer({ ref, onSaveChatSettings: vi.fn() });
+      openPlusMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Chat settings…' }));
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      act(() => ref.current?.openChatSettings());
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    });
+
+    it('opens connector prompts and resources only when advertised', () => {
+      renderComposer({
+        onPickMcpPrompt: vi.fn(),
+        mcpPrompts: [mcpPrompt],
+        onToggleMcpResource: vi.fn(),
+        mcpResources: [],
+      });
+      openPlusMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Connector resources…' })).toBeNull();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Connector prompts…' }));
+      expect(screen.getByRole('dialog', { name: 'MCP prompts' })).toBeInTheDocument();
+    });
+
+    it('picks the folder straight away when none is bound', () => {
+      const onWorkspacePick = vi.fn();
+      renderComposer({ onWorkspacePick });
+      openPlusMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Workspace folder…' }));
+      expect(onWorkspacePick).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens the folder menu when a folder is bound', () => {
+      const onWorkspacePick = vi.fn();
+      renderComposer({ onWorkspacePick, onWorkspaceClear: vi.fn(), workspaceRoot: 'C:/work/garden' });
+      openPlusMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Workspace folder…' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Change folder…' }));
+      expect(onWorkspacePick).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('context chips', () => {
+    it('renders no chip row when nothing is active', () => {
+      renderComposer({ onToggleSkill: vi.fn(), onWorkspacePick: vi.fn() });
+      expect(screen.queryByRole('group', { name: 'Active in this chat' })).toBeNull();
+    });
+
+    it('shows the workspace folder by name and clears it', () => {
+      const onWorkspaceClear = vi.fn();
+      renderComposer({ onWorkspacePick: vi.fn(), onWorkspaceClear, workspaceRoot: 'C:/work/garden' });
+      const row = screen.getByRole('group', { name: 'Active in this chat' });
+      expect(row).toHaveTextContent('garden');
+      fireEvent.click(screen.getByRole('button', { name: 'Stop using folder garden in this chat' }));
+      expect(onWorkspaceClear).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens the folder menu from the folder chip', () => {
+      renderComposer({ onWorkspacePick: vi.fn(), onWorkspaceClear: vi.fn(), workspaceRoot: 'C:/work/garden' });
+      fireEvent.click(screen.getByRole('button', { name: 'garden' }));
+      expect(screen.getByRole('menuitem', { name: 'Clear for this chat' })).toBeInTheDocument();
+    });
+
+    it('shows each attached collection and detaches it', () => {
+      const onToggleCollection = vi.fn();
+      renderComposer({ onToggleCollection, collections: [collection], enabledCollectionIds: ['c1'] });
+      fireEvent.click(screen.getByRole('button', { name: 'Detach Greenhouse' }));
+      expect(onToggleCollection).toHaveBeenCalledWith('c1', false);
+    });
+
+    it('opens the collections popover from a collection chip', () => {
+      renderComposer({ onToggleCollection: vi.fn(), collections: [collection], enabledCollectionIds: ['c1'] });
+      fireEvent.click(screen.getByRole('button', { name: 'Greenhouse' }));
+      expect(screen.getByRole('dialog', { name: 'Knowledge base collections' })).toBeInTheDocument();
+    });
+
+    it('counts enabled skills and opens the skills popover from the chip', () => {
+      renderComposer({
+        onToggleSkill: vi.fn(),
+        skills: [skill('s1', 'Research'), skill('s2', 'Review')],
+        enabledSkillIds: ['s1', 's2'],
+      });
+      fireEvent.click(screen.getByRole('button', { name: '2 skills' }));
+      expect(screen.getByRole('dialog', { name: 'Skills for this chat' })).toBeInTheDocument();
+    });
+
+    it('turns every enabled skill off from the skills chip', async () => {
+      const writes: string[][] = [];
+      // Mirrors ChatView: the toggle reads the current list from a ref that is
+      // only updated on render, so two toggles in one tick would clobber each
+      // other. The chip must hand them over one render at a time.
+      function Harness() {
+        const [ids, setIds] = useState(['s1', 's2']);
+        const idsRef = useRef(ids);
+        idsRef.current = ids;
+        return (
+          <Composer
+            settings={baseSettings}
+            onSelectModel={vi.fn()}
+            conversationId="conv-1"
+            prompt=""
+            onPromptChange={vi.fn()}
+            onSend={vi.fn()}
+            onStop={vi.fn()}
+            streaming={false}
+            webSearchOn={false}
+            onWebSearchToggle={vi.fn()}
+            skills={[skill('s1', 'Research'), skill('s2', 'Review')]}
+            enabledSkillIds={ids}
+            onToggleSkill={(id, on) => {
+              const next = on ? [...idsRef.current, id] : idsRef.current.filter((x) => x !== id);
+              writes.push(next);
+              setIds(next);
+            }}
+          />
+        );
+      }
+      render(<Harness />);
+      fireEvent.click(screen.getByRole('button', { name: 'Turn off 2 skills' }));
+      await waitFor(() => expect(screen.queryByRole('group', { name: 'Active in this chat' })).toBeNull());
+      expect(writes).toEqual([['s2'], []]);
+    });
+
+    it('shows attached connector resources and detaches them', () => {
+      const onToggleMcpResource = vi.fn();
+      renderComposer({
+        onToggleMcpResource,
+        mcpResources: [resource],
+        attachedResources: [{ connectorVersionId: 'echo:1.0.0', name: 'spec.md', uri: 'echo://notes/spec.md' }],
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Detach spec.md' }));
+      expect(onToggleMcpResource).toHaveBeenCalledWith(resource, false);
+    });
+
+    it('shows a chat settings override and resets it', () => {
+      const onSaveChatSettings = vi.fn();
+      renderComposer({ onSaveChatSettings, userInstructions: 'Be brief.' });
+      fireEvent.click(screen.getByRole('button', { name: 'Reset chat settings to defaults' }));
+      expect(onSaveChatSettings).toHaveBeenCalledWith(null, null);
+    });
+
+    it('keeps chips visible but locked while a reply streams', () => {
+      renderComposer({
+        settings: webSettings,
+        webSearchOn: true,
+        onToggleCollection: vi.fn(),
+        collections: [collection],
+        enabledCollectionIds: ['c1'],
+        streaming: true,
+      });
+      expect(screen.getByRole('button', { name: 'Turn off web search' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Detach Greenhouse' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Greenhouse' })).toBeDisabled();
+    });
   });
 });

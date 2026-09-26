@@ -68,20 +68,27 @@ async function openShell(page: Page) {
   await page.waitForSelector('.composer-textarea', { timeout: 30_000 });
 }
 
+/** The composer's pickers live behind its one "+" menu (UI revamp). */
+async function openFromPlus(page: import('@playwright/test').Page, item: string) {
+  await page.getByRole('button', { name: 'Add to this message' }).click();
+  await page.getByRole('menuitem', { name: item }).click();
+}
+
 test.describe('a connector that offers prompts and resources', () => {
   test('puts both picker buttons in the composer', async ({ page }) => {
     await stubIpc(page, { prompts: PROMPTS, resources: RESOURCES });
     await openShell(page);
 
-    await expect(page.getByRole('button', { name: 'MCP prompts' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'MCP resources' })).toBeVisible();
+    await page.getByRole('button', { name: 'Add to this message' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Connector prompts…' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Connector resources…' })).toBeVisible();
   });
 
   test('opens the prompt picker and lists the server it came from', async ({ page }) => {
     await stubIpc(page, { prompts: PROMPTS, resources: RESOURCES });
     await openShell(page);
 
-    await page.getByRole('button', { name: 'MCP prompts' }).click();
+    await openFromPlus(page, 'Connector prompts…');
     const pop = page.getByRole('dialog', { name: 'MCP prompts' });
     await expect(pop).toBeVisible();
     // The row's accessible name is the prompt name plus its description, so
@@ -95,7 +102,7 @@ test.describe('a connector that offers prompts and resources', () => {
     await stubIpc(page, { prompts: PROMPTS, resources: RESOURCES });
     await openShell(page);
 
-    await page.getByRole('button', { name: 'MCP resources' }).click();
+    await openFromPlus(page, 'Connector resources…');
     const pop = page.getByRole('dialog', { name: 'MCP resources' });
     await expect(pop).toBeVisible();
     await expect(pop.getByRole('switch').first()).toHaveAttribute('aria-pressed', 'false');
@@ -105,9 +112,9 @@ test.describe('a connector that offers prompts and resources', () => {
     await stubIpc(page, { prompts: PROMPTS, resources: RESOURCES });
     await openShell(page);
 
-    await page.getByRole('button', { name: 'MCP prompts' }).click();
+    await openFromPlus(page, 'Connector prompts…');
     await expect(page.getByRole('dialog', { name: 'MCP prompts' })).toBeVisible();
-    await page.getByRole('button', { name: 'MCP resources' }).click();
+    await openFromPlus(page, 'Connector resources…');
     await expect(page.getByRole('dialog', { name: 'MCP resources' })).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'MCP prompts' })).toBeHidden();
   });
@@ -120,8 +127,9 @@ test.describe('a connector that offers only tools', () => {
     await stubIpc(page, { prompts: [], resources: [] });
     await openShell(page);
 
-    await expect(page.getByRole('button', { name: 'MCP prompts' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'MCP resources' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Add to this message' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Connector prompts…' })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: 'Connector resources…' })).toHaveCount(0);
   });
 });
 
@@ -133,11 +141,11 @@ test.describe('a connector added while the app is running', () => {
    * because a picker only renders once its list is non-empty. Found by driving
    * the real app, not by any of the tests above.
    *
-   * The lists are re-read when the settings sheet opens or closes, which is
-   * where a connector is added; this stubs a server that only appears after
+   * The lists are re-read when you come back from a rail page (Connectors is
+   * where a connector is added); this stubs a server that only appears after
    * that first read.
    */
-  test('shows its pickers once settings closes, with no reload', async ({ page }) => {
+  test('shows its pickers once you come back from Connectors, with no reload', async ({ page }) => {
     await page.addInitScript(
       (data) => {
         // The connector "appears" only once the test flips this, which stands
@@ -161,21 +169,22 @@ test.describe('a connector added while the app is running', () => {
     );
     await openShell(page);
 
-    await expect(page.getByRole('button', { name: 'MCP prompts' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Add to this message' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Connector prompts…' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
 
     // The connector is added: the lists would now answer, but nothing has
     // asked them again.
     await page.evaluate(() => {
       (window as unknown as Record<string, unknown>).__mcpConnected = true;
     });
-    await expect(page.getByRole('button', { name: 'MCP prompts' })).toHaveCount(0);
-
-    // Open and close the settings sheet, as adding a connector requires.
-    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    // Go to Connectors and back to the chat, as adding one requires.
+    await page.getByRole('button', { name: 'Connectors', exact: true }).first().click();
     await page.waitForTimeout(400);
-    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Chats', exact: true }).first().click();
 
-    await expect(page.getByRole('button', { name: 'MCP prompts' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'MCP resources' })).toBeVisible();
+    await page.getByRole('button', { name: 'Add to this message' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Connector prompts…' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Connector resources…' })).toBeVisible();
   });
 });

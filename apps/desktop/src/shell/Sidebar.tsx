@@ -27,6 +27,7 @@ import {
   ConnectorsIcon,
   FolderIcon,
   KnowledgeIcon,
+  IdeaIcon,
   LockIcon,
   MoreIcon,
   PencilIcon,
@@ -55,6 +56,9 @@ interface SidebarProps {
   onOpenPalette: () => void;
   /** t1-8: open the Documents sheet (the knowledge base's own home). */
   onOpenDocuments?: () => void;
+  /** Open the Ideas page; `ideasDot` marks something new there. */
+  onOpenIdeas?: () => void;
+  ideasDot?: boolean;
   /** Collapse the sidebar; the floating reveal button brings it back. */
   onCollapse: () => void;
   onRevealWorkspace: () => void;
@@ -128,6 +132,8 @@ export function Sidebar({
   onNewChat,
   onOpenPalette,
   onOpenDocuments,
+  onOpenIdeas,
+  ideasDot = false,
   onCollapse,
   onRevealWorkspace,
   onOpenSettings,
@@ -389,6 +395,13 @@ export function Sidebar({
           <button className="sb-item" type="button" onClick={onOpenDocuments}>
             <KnowledgeIcon />
             {t('shell.sidebar.nav.documents')}
+          </button>
+        )}
+        {onOpenIdeas && (
+          <button className="sb-item" type="button" onClick={onOpenIdeas}>
+            <IdeaIcon />
+            {t('shell.sidebar.nav.ideas')}
+            {ideasDot && <span className="sb-dot" role="img" aria-label={t('shell.sidebar.ideasNew')} />}
           </button>
         )}
       </nav>

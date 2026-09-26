@@ -186,6 +186,8 @@ describe('English catalog', () => {
       'shell',
       'workspace',
       'artifacts',
+      // Mirrors src/ideas/: the Ideas page and its starters.
+      'ideas',
       // The app shell itself: dialogs and toasts owned by App.tsx rather
       // than by any one feature.
       'app',

@@ -2,9 +2,9 @@ import { BrandMark } from '../icons';
 import { useT } from '../i18n';
 
 /**
- * Orientation empty state for the artifact pane when no document is open.
- * Prompt chips live only in the chat empty state — this panel explains what
- * the column is for without duplicating interactive starters.
+ * Orientation empty state for the artifact pane when no document is open. It
+ * explains what the column is for; starters live in the chat's empty state
+ * and on the Ideas page, which one quiet link here points to.
  *
  * No toolbar. The bar this used to render held nothing but a flex spacer and a
  * collapse chevron — 44px of raised fill and a border, blank, at the top of a
@@ -16,9 +16,11 @@ export interface ArtifactEmptyStateProps {
   /** Validated `data:image/...` brand logo URI, or omitted/undefined for the
    *  built-in glyph. See `brand/logo.ts`. */
   logoSrc?: string;
+  /** Open the Ideas page (docs/plans/ideas-and-discovery.md). */
+  onOpenIdeas?: () => void;
 }
 
-export function ArtifactEmptyState({ logoSrc }: ArtifactEmptyStateProps = {}) {
+export function ArtifactEmptyState({ logoSrc, onOpenIdeas }: ArtifactEmptyStateProps = {}) {
   const t = useT();
   return (
     <section className="doc-panel doc-panel-empty" aria-label={t('artifacts.emptyState.panelAriaLabel')}>
@@ -33,6 +35,11 @@ export function ArtifactEmptyState({ logoSrc }: ArtifactEmptyStateProps = {}) {
           </div>
           <h2 className="artifact-empty-title">{t('artifacts.emptyState.title')}</h2>
           <p className="artifact-empty-copy">{t('artifacts.emptyState.body')}</p>
+          {onOpenIdeas && (
+            <button className="btn ghost artifact-empty-ideas" type="button" onClick={onOpenIdeas}>
+              {t('ideas.emptyPanel.link')}
+            </button>
+          )}
         </div>
       </div>
     </section>

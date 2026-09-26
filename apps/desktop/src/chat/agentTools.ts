@@ -731,6 +731,9 @@ export function selectBuiltinTurnTools(
   /** Set by app-authored prompts (e.g. "Continue building") whose intent is
    *  known regardless of the language they are written in. */
   intentOverride?: DocumentTurnIntent,
+  /** The turn asks for an image whatever its wording — an idea picked from
+   *  the Ideas page, in any language (the intent regexes are English). */
+  imageOverride?: boolean,
 ): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
   const intent = intentOverride ?? classifyDocumentTurnIntent(prompt);
   const documentTurn = intent === 'create' || intent === 'edit';
@@ -744,7 +747,7 @@ export function selectBuiltinTurnTools(
       ...selectBuiltinDocumentTools(intent),
       ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
       ...selectBuiltinImageTools(
-        looksLikeImageGenerationRequest(prompt),
+        imageOverride === true || looksLikeImageGenerationRequest(prompt),
         settings.activeProvider,
         settings.imageGenerationConsentAcknowledged,
       ),

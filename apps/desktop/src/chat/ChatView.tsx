@@ -169,6 +169,12 @@ import {
 } from './messageQueue';
 import { allowUserBranding } from '../brand/buildFlags';
 import { appName } from '../brand';
+import type { Idea } from '../ideas/catalog';
+import { getIdeaState, noteChipOffered, noteChipUsed, noteFirstMessage, useIdeaState } from '../ideas/ideaState';
+import { ideaById } from '../ideas/catalog';
+import { capabilityChip } from '../ideas/capabilityChips';
+import { resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
+import { IdeaStarterRow } from '../ideas/IdeaStarterRow';
 import { useRichT, useT, type Translate } from '../i18n';
 
 export type { ChatTurn } from './conversationHydration';
@@ -197,6 +203,10 @@ export interface ChatViewHandle {
   /// Read on demand by the document panel's live preview, so partial document
   /// text never has to travel through app state on every fragment.
   readActiveDocumentWrite: () => { toolName: string; argumentsText: string } | null;
+  /// Replace the composer's text (an idea's prompt) and focus it.
+  replacePrompt: (text: string) => void;
+  /// The thread has no messages yet.
+  isEmpty: () => boolean;
 }
 
 interface ChatViewProps {
@@ -238,6 +248,12 @@ interface ChatViewProps {
   paneActive?: boolean;
   /// Open a settings section ('providers' | 'privacy' …) from the status line.
   onOpenSettings?: (tab?: string) => void;
+  /// Ideas for an empty thread (docs/plans/ideas-and-discovery.md); empty
+  /// hides the row.
+  starterIdeas?: readonly Idea[];
+  onPickIdea?: (idea: Idea) => void;
+  onMoreIdeas?: () => void;
+  onHideIdeas?: () => void;
   /// Whether the settings sheet is open. Connectors are added there, so this
   /// toggling is the signal that the MCP prompt/resource lists may be stale.
   settingsOpen?: boolean;
@@ -666,6 +682,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onPendingSendConsumed,
     paneActive = true,
     onOpenSettings,
+    starterIdeas = [],
+    onPickIdea,
+    onMoreIdeas,
+    onHideIdeas,
   settingsOpen = false,
   documentsOpen = false,
     convoProviders = {},
@@ -1160,6 +1180,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     prompt: string,
     searchBackend: SearchBackend | null,
     intent?: DocumentTurnIntent,
+    imageOverride?: boolean,
   ): Promise<ToolDefinition[]> {
     const connectorTools = await loadConnectorToolDefinitions();
     const { tools: builtinTools } = selectBuiltinTurnTools(
@@ -1170,6 +1191,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
       conversationWorkspaceRoot,
       intent,
+      imageOverride,
     );
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
@@ -1299,6 +1321,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const trimmed = (override?.text ?? prompt).trim();
     const attachments = override?.attachments ?? composerAttachments ?? [];
     if ((!trimmed && attachments.length === 0) || !conversationId) return;
+    // A chat started from an idea says what it needs, in any language: the
+    // intent checks below read English only.
+    const pickedIdea =
+      !override && turns.length === 0 && getIdeaState().pending ? ideaById(getIdeaState().pending!) : undefined;
+    const chipIntent =
+      !override && chipIntentRef.current?.text.trim() === trimmed ? chipIntentRef.current.intent : undefined;
+    if (!override) chipIntentRef.current = null;
+    const turnIntent = override?.intent ?? chipIntent ?? (pickedIdea?.page ? 'create' : undefined);
 
     // t1-2 M1: while a turn is in flight, enqueue instead of starting another stream.
     // Use the ref (synchronous) so a just-finished turn's stale React state does
@@ -1392,6 +1422,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ...(attachments.length > 0 ? { attachments } : {}),
     };
     const history = [...(override?.history ?? turns), userTurn];
+    // The first message of a new chat: was it an idea? (on this device only)
+    if (!override && turns.length === 0) noteFirstMessage();
     setTurns(history);
     if (!override) setPrompt('');
     const imagesDropped =
@@ -1407,7 +1439,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ),
     );
 
-    const searchOn = resolveWebSearchForTurn(settings, webSearchOn, trimmed);
+    const searchOn =
+      resolveWebSearchForTurn(settings, webSearchOn, trimmed) ||
+      (pickedIdea?.needs.includes('webSearch') === true && resolveWebSearchForTurn(settings, true, trimmed));
     const searchBackend = searchOn
       ? resolveSearchBackend(
           settings.webSearch.mode,
@@ -1415,7 +1449,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           settings.providerEndpoints,
         )
       : null;
-    const toolDefinitions = await loadToolDefinitions(trimmed, searchBackend, override?.intent);
+    const toolDefinitions = await loadToolDefinitions(
+      trimmed,
+      searchBackend,
+      turnIntent,
+      pickedIdea?.needs.includes('imageGen'),
+    );
     const priorHistory = history.slice(0, -1);
     const followUpArtifact = await resolveFollowUpArtifactContext(
       priorHistory,
@@ -1423,7 +1462,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       artifacts,
       getArtifact,
       activeArtifact,
-      { forceEdit: override?.intent === 'edit' },
+      { forceEdit: turnIntent === 'edit' },
     );
     const providerHistory = [
       ...historyForProviderRequest(priorHistory, activeCompaction),
@@ -1879,6 +1918,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       }, 100);
     },
     insertPrompt: insertPromptText,
+    replacePrompt: (text: string) => {
+      setPrompt(text);
+      requestAnimationFrame(() => {
+        const ta = document.querySelector('.composer-textarea') as HTMLTextAreaElement | null;
+        ta?.focus();
+        ta?.setSelectionRange(ta.value.length, ta.value.length);
+      });
+    },
+    isEmpty: () => turns.length === 0,
     toggleWebSearch: () => {
       // Only reachable when the composer's web toggle would be visible.
       if (settings.webSearchEnabled && !settings.localOnly) {
@@ -2118,14 +2166,76 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }
 
   function handleSuggestionSelect(text: string) {
+    if (capChip && text === capChip.text) {
+      noteChipUsed(capChip.chip);
+      // Its intent holds in any language (see handleSend).
+      chipIntentRef.current = { text, intent: capChip.chip === 'liveData' ? 'edit' : 'create' };
+    }
     setPrompt(text);
     requestAnimationFrame(() => composerRef.current?.focusPrompt());
   }
 
-  const suggestedPrompts = useMemo(
-    () => deriveSuggestedPrompts({ turns, artifacts }),
-    [turns, artifacts],
-  );
+  // One chip that points at a capability the reply did not use (Ideas plan).
+  const ideaState = useIdeaState();
+  const ideaChipTurn = useMemo(() => [...turns].reverse().find((x) => x.role === 'assistant'), [turns]);
+  // Artifact lists carry no content, so the document in scope is read in full.
+  const chipArtifactId = useMemo(() => resolveRecentDocumentArtifactId(turns, artifacts) ?? null, [turns, artifacts]);
+  const chipArtifactStamp = artifacts.find((a) => a.id === chipArtifactId)?.updatedAt ?? null;
+  const [chipArtifact, setChipArtifact] = useState<{ id: string; kind: string; text: string } | null>(null);
+  useEffect(() => {
+    if (!chipArtifactId) {
+      setChipArtifact(null);
+      return;
+    }
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => getArtifact(chipArtifactId))
+      .then((a) => {
+        if (!cancelled) setChipArtifact(a ? { id: a.id, kind: a.kind, text: a.contentText ?? '' } : null);
+      })
+      .catch(() => !cancelled && setChipArtifact(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [chipArtifactId, chipArtifactStamp]);
+  const capChip = useMemo(() => {
+    if (!ideaChipTurn) return null;
+    // Until the document in scope has loaded, offer nothing rather than guess.
+    if (chipArtifactId && chipArtifact?.id !== chipArtifactId) return null;
+    const recent = chipArtifactId ? chipArtifact : null;
+    const lastUser = [...turns].reverse().find((x) => x.role === 'user')?.content ?? '';
+    const id = capabilityChip({
+      pageHtml: recent && recent.kind === 'html' ? recent.text : null,
+      otherArtifactText: recent && recent.kind !== 'html' ? recent.text : null,
+      lastUser,
+      lastAssistant: ideaChipTurn.content,
+      networkReady: artifactNetworkAvailable(settings),
+      state: ideaState,
+    });
+    return id
+      ? { id: `idea-chip-${id}`, chip: id, text: t(`ideas.chip.${id}.text`), short: t(`ideas.chip.${id}.short`) }
+      : null;
+    // Offers are counted below; re-deriving on each count would move the chip.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns, chipArtifactId, chipArtifact, ideaChipTurn, settings.localOnly, settings.artifactNetworkEnabled, t]);
+  const offeredForTurn = useRef<string | null>(null);
+  /// A capability chip's text and intent, until that text is sent.
+  const chipIntentRef = useRef<{ text: string; intent: DocumentTurnIntent } | null>(null);
+  // Counted only once it is on screen: not while the reply streams.
+  useEffect(() => {
+    if (!capChip || !ideaChipTurn || !showInlineSuggestions) return;
+    const key = `${ideaChipTurn.id}:${capChip.chip}`;
+    if (offeredForTurn.current === key) return;
+    offeredForTurn.current = key;
+    noteChipOffered(capChip.chip);
+    // showInlineSuggestions is declared further down; read at effect time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capChip, ideaChipTurn, turns.length, activeStream, activeRequestId, prompt]);
+
+  const suggestedPrompts = useMemo(() => {
+    const derived = deriveSuggestedPrompts({ turns, artifacts });
+    return capChip && derived.length > 0 ? [capChip, ...derived].slice(0, 4) : derived;
+  }, [turns, artifacts, capChip]);
 
   // Accumulated usage across the whole conversation: every committed assistant
   // turn's usage plus the live streaming turn. Spend (not context fill) uses this.
@@ -2478,6 +2588,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   })}
                 </p>
               ) : null}
+              {starterIdeas.length > 0 && onPickIdea && (
+                <IdeaStarterRow
+                  ideas={starterIdeas}
+                  onPick={onPickIdea}
+                  onMore={onMoreIdeas}
+                  onHide={onHideIdeas}
+                />
+              )}
             </div>
           )}
           {!threadLoading && compactedTurns.length > 0 && (

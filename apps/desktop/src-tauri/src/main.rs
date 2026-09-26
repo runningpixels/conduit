@@ -155,6 +155,12 @@ fn main() {
             reveal_artifacts_dir,
             reveal_artifact,
             open_external_url,
+            artifact_fetch,
+            grant_artifact_network,
+            get_artifact_network_state,
+            list_artifact_network_grants,
+            revoke_artifact_network_grant,
+            clear_artifact_network_grants,
             search_messages,
             // Competitive Feature: usage analytics
             get_usage_summary,

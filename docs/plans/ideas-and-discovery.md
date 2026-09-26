@@ -2,10 +2,12 @@
 
 ## Status
 
-**Proposed — 2026-09-26.** Nothing built. Decisions needed are listed under
-[Open questions](#open-questions). The live-data ideas depend on artifact
-network access ([ADR-010](../adr/adr-010-artifact-network-access.md), PR #78);
-the catalog gates them on that capability, so this plan does not wait for it.
+**Implemented — 2026-09-26** (branch `feat/onboarding-discovery`, stacked on
+the artifact network access branch, PR #78). Phases 0–3 shipped together with
+21 ideas; the open questions were decided as recommended (see
+[Decisions](#decisions)). Not yet built: thumbnails, cost in currency, the
+"save a chat's first message as a prompt" action, and everything under
+[Later](#later).
 
 ## Why
 
@@ -281,18 +283,39 @@ in two locales.
 - Ideas that carry a skill or a connector suggestion ("needs the GitHub
   connector — add it").
 
-## Open questions
+## Decisions
 
-1. **Name:** "Ideas" (recommended — plain, inviting) vs "Explore" / "Discover".
-2. **Try fills or sends?** Recommended: fills (cost is the user's; they can
-   edit; matches follow-up chips). A secondary "Run now" is possible later.
-3. **Empty-state row at all?** Recommended: yes, one line of three with the
-   stop rule — it is the only place every new user looks. The alternative is
-   Ideas page + onboarding only, keeping V9's empty state untouched.
-4. **Move the Prompts library** out of Settings into Ideas → My prompts?
-   Recommended: yes.
-5. **Remote idea bundles:** later, and only through the signed update path —
-   confirm we never want a live feed.
+Taken 2026-09-26, as recommended:
+
+1. **Name:** "Ideas".
+2. **Try fills the composer**; it never sends. The user sees what will run.
+3. **Empty chat:** one line of three, which stops after five chats started
+   without it and has an off switch (✕, or the Ideas page).
+4. **My prompts** is a tab on the Ideas page; Settings → Prompts stays as
+   well, so no existing path breaks.
+5. **No live feed.** More ideas arrive with app updates; a signed bundle via
+   the update check is the only later option considered.
+
+## As built
+
+- `src/ideas/catalog.ts` — 21 ideas, `IDEAS_REVISION`; `catalog.test.ts`
+  fails the build when an idea lacks strings or a page prompt would not reach
+  the document tools (and checks image, web search and workspace routing).
+- `src/ideas/capabilities.ts` — `resolveCapabilities()` wraps the existing
+  predicates: network (ADR-010 + local-only), web search, image generation
+  (the image tool's provider gate), documents (a collection exists),
+  workspace (tools + consent). ready / setup / off.
+- `src/ideas/ideaState.ts` — tried, pending, starts-without-idea, row hidden,
+  seen revision, spotlight, chip offers; localStorage only.
+- `src/ideas/selectIdeas.ts` — starters (three categories, rotated per chat,
+  no long builds on a local model), For you, onboarding picks, spotlight,
+  new.
+- `src/ideas/IdeasSheet.tsx` (sidebar **Ideas**, palette "Browse ideas"),
+  `IdeaStarterRow.tsx` (empty chat), onboarding finish picks,
+  `capabilityChips.ts` (liveData / dashboard / flashcards; one per reply,
+  gives up after three ignored offers), and a "See ideas" link in the empty
+  artifact panel.
+- Cost hint is Quick / Medium / Long build, or "Free on your local model".
 
 ## Risks
 

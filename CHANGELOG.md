@@ -9,6 +9,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Ideas.** A new page in the sidebar with things to try — a pomodoro timer,
+  a live weather dashboard, flashcards, a Snake game, a logo — grouped by what
+  you want to do. Each one starts a chat with the prompt filled in so you can
+  change it before sending. Ideas that need something you haven't set up say
+  what, and take you there; ideas this setup can't run (live data in
+  local-only mode) stay out of the way. New chats show three ideas under the
+  greeting until you've found your feet, onboarding ends with three to try,
+  and a follow-up suggestion now and then points at something the reply could
+  become ("Make it a dashboard", "Use live data"). What you've tried is
+  remembered on this device only. Saved prompts are on the same page, under
+  **My prompts**.
+
 - Pages that fetch live data. An HTML page can now call public web APIs — a
   weather dashboard can show today's forecast instead of a made-up sample. The
   first time a page asks for a site, a banner names it; **Review** shows why

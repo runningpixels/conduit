@@ -23,6 +23,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Local-only mode now blocks cloud providers in every chat.** It already
+  switched off web search and cloud document indexing, but a chat that used
+  tools — which is most chats, since the built-in tools are on by default —
+  could still be answered by a cloud provider you had selected before turning
+  local-only mode on. Every chat round, and the automatic summary that keeps a
+  long conversation within the model's limit, now refuses a cloud provider while
+  local-only mode is on; only a local provider such as Ollama or LM Studio can
+  answer. The description under Settings → Privacy & data said the opposite and
+  has been corrected in every language.
+
 - Forms in HTML pages work. A search box, an "add item" form or a calculator
   built as a form did nothing when you pressed its button or Enter, because the
   page's sandbox blocks form submission before the page's own code hears about

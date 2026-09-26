@@ -15,14 +15,14 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use conduit_desktop::{
-    connector_runtime::ConnectorRuntimeManager, db::repository::conversations, paths::AppPaths,
-    state::AppState, stream_manager::StreamManager,
+    connector_runtime::ConnectorRuntimeManager, credentials, db::repository::conversations,
+    paths::AppPaths, state::AppState, stream_manager::StreamManager,
 };
 use futures::stream::{Stream, StreamExt};
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, GenerationControls, Message, MessagePart,
-    MessagePartKind, MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest,
-    ToolDefinition,
+    AgentGuardrails, AppSettings, ConnectorRuntimeEvent, GenerationControls, KeychainMode, Message,
+    MessagePart, MessagePartKind, MessageRole, PermissionLevel, ProviderError, ProviderEvent,
+    ProviderRequest, ToolDefinition,
 };
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
@@ -70,6 +70,12 @@ impl ProviderAdapter for ScriptedAdapter {
         "Scripted"
     }
 
+    // Presents as ollama, so it is a local provider: `local_only` (on by
+    // default) must let it through.
+    fn is_local(&self) -> bool {
+        true
+    }
+
     async fn validate_credentials(&self, _ctx: &AdapterContext) -> Result<(), ProviderError> {
         Ok(())
     }
@@ -105,6 +111,40 @@ impl ProviderAdapter for ScriptedAdapter {
             })
             .filter_map(|event| async move { event });
         Ok(Box::pin(stream))
+    }
+}
+
+/// The same scripted rounds from a cloud provider — what `local_only` exists to
+/// refuse.
+struct CloudScriptedAdapter(Script);
+
+#[async_trait]
+impl ProviderAdapter for CloudScriptedAdapter {
+    fn id(&self) -> &'static str {
+        "openrouter"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Scripted cloud"
+    }
+
+    async fn validate_credentials(&self, _ctx: &AdapterContext) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
+    async fn list_models(&self, _ctx: &AdapterContext) -> Result<Vec<ModelInfo>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    async fn stream_chat(
+        &self,
+        request: ProviderRequest,
+        ctx: AdapterContext,
+        cancel: CancellationToken,
+    ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
+        ScriptedAdapter(self.0.clone())
+            .stream_chat(request, ctx, cancel)
+            .await
     }
 }
 
@@ -223,6 +263,25 @@ fn reasoning_round(thought: &'static str) -> Round {
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 
+/// OpenRouter needs a stored key before a round reaches the adapter. The
+/// default store is the OS keychain, so this test used to pass only on a
+/// machine that happened to have a real OpenRouter key saved, and failed in CI
+/// with no round started. The cloud cases now keep a fake key in a file-mode
+/// store under the test's own temp directory; the keychain is never read.
+///
+/// The file key comes from a process-wide variable. Every caller sets the same
+/// value, and nothing else in this binary uses file mode, so there is nothing
+/// to restore.
+fn give_the_cloud_provider_a_test_key(root: &Path) {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    std::env::set_var(credentials::FILE_KEY_ENV, STANDARD.encode([7u8; 32]));
+    credentials::CredentialStore::default_service()
+        .with_mode(KeychainMode::File)
+        .with_data_dir(root)
+        .save_provider_secret("openrouter", "sk-test-not-a-real-key")
+        .expect("the fake key is saved");
+}
+
 fn test_paths(root: &Path) -> AppPaths {
     AppPaths {
         root: root.to_path_buf(),
@@ -313,13 +372,52 @@ async fn run_turn_with(
     max_tokens: Option<u32>,
     extra_tools: &[&str],
 ) -> Turn {
+    let (result, turn) = run_turn_configured(
+        rounds,
+        agent,
+        max_tokens,
+        extra_tools,
+        Provider::Local,
+        true,
+    )
+    .await;
+    result.expect("turn runs");
+    turn
+}
+
+#[derive(Clone, Copy)]
+enum Provider {
+    Local,
+    Cloud,
+}
+
+async fn run_turn_configured(
+    rounds: Vec<Round>,
+    agent: AgentGuardrails,
+    max_tokens: Option<u32>,
+    extra_tools: &[&str],
+    provider: Provider,
+    local_only: bool,
+) -> (Result<(), String>, Turn) {
     let pool = common::setup_pool().await;
     let conversation = conversations::create(&pool, None).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
+    let keychain_mode = match provider {
+        Provider::Local => KeychainMode::default(),
+        Provider::Cloud => {
+            give_the_cloud_provider_a_test_key(dir.path());
+            KeychainMode::File
+        }
+    };
     let settings = AppSettings {
-        active_provider: "ollama".into(),
+        active_provider: match provider {
+            Provider::Local => "ollama".into(),
+            Provider::Cloud => "openrouter".into(),
+        },
         active_model: "scripted".into(),
         agent,
+        local_only,
+        keychain_mode,
         ..AppSettings::default()
     };
     let state = AppState::test_instance_with_settings(pool, test_paths(dir.path()), settings);
@@ -329,7 +427,12 @@ async fn run_turn_with(
     let script = Script::new(rounds);
     let resolver_script = script.clone();
     let manager = StreamManager::with_adapter_resolver(Arc::new(move |_id: &str| {
-        Some(Box::new(ScriptedAdapter(resolver_script.clone())) as Box<dyn ProviderAdapter>)
+        Some(match provider {
+            Provider::Local => {
+                Box::new(ScriptedAdapter(resolver_script.clone())) as Box<dyn ProviderAdapter>
+            }
+            Provider::Cloud => Box::new(CloudScriptedAdapter(resolver_script.clone())),
+        })
     }));
 
     let events = Arc::new(Mutex::new(Vec::<ProviderEvent>::new()));
@@ -392,18 +495,21 @@ async fn run_turn_with(
         web_search: None,
     };
 
-    manager
+    let result = manager
         .run_agent_turn(&state, &runtime, request, channel, runtime_channel)
         .await
-        .expect("turn runs");
+        .map(|_| ());
 
     let events = events.lock().unwrap().clone();
     let requests = script.requests.lock().unwrap().clone();
-    Turn {
-        events,
-        rounds_started: script.rounds_started(),
-        requests,
-    }
+    (
+        result,
+        Turn {
+            events,
+            rounds_started: script.rounds_started(),
+            requests,
+        },
+    )
 }
 
 fn guardrails(max_steps: u32, wall_clock_budget_secs: u32) -> AgentGuardrails {
@@ -415,6 +521,62 @@ fn guardrails(max_steps: u32, wall_clock_budget_secs: u32) -> AgentGuardrails {
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
+
+// Local-only mode. Requests that declare tools (the default) run through
+// `run_agent_turn`; before the fix only the tool-less path checked
+// `local_only`, so a cloud provider answered with local-only mode on.
+
+#[tokio::test]
+async fn local_only_refuses_a_cloud_provider_before_any_round_starts() {
+    let (result, turn) = run_turn_configured(
+        vec![text_round("should never be sent")],
+        guardrails(4, 30),
+        None,
+        &[],
+        Provider::Cloud,
+        true,
+    )
+    .await;
+
+    let error = result.expect_err("a cloud provider is refused under local_only");
+    assert!(
+        error.contains("local_only"),
+        "error names the setting: {error}"
+    );
+    assert_eq!(turn.rounds_started, 0, "nothing reached the provider");
+}
+
+#[tokio::test]
+async fn local_only_still_allows_a_local_provider() {
+    let (result, turn) = run_turn_configured(
+        vec![text_round("Hello from the local model.")],
+        guardrails(4, 30),
+        None,
+        &[],
+        Provider::Local,
+        true,
+    )
+    .await;
+
+    result.expect("a local provider runs under local_only");
+    assert_eq!(turn.rounds_started, 1);
+}
+
+#[tokio::test]
+async fn a_cloud_provider_runs_when_local_only_is_off() {
+    let (result, turn) = run_turn_configured(
+        vec![text_round("Hello from the cloud.")],
+        guardrails(4, 30),
+        None,
+        &[],
+        Provider::Cloud,
+        false,
+    )
+    .await;
+
+    result.expect("a cloud provider runs with local_only off");
+    assert_eq!(turn.rounds_started, 1);
+}
 
 #[tokio::test]
 async fn a_tool_round_runs_the_tool_then_one_continuation() {

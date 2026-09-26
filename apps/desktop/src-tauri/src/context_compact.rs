@@ -179,6 +179,9 @@ async fn summarize_range(
     let provider_id = settings.active_provider.clone();
     let adapter = provider_core::get_adapter(&provider_id)
         .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
+    // Compaction sends the conversation history to the provider, so it is
+    // bound by the same local_only rule as a chat round.
+    crate::stream_manager::ensure_provider_allowed(&settings, adapter.as_ref(), &provider_id)?;
     let ctx = StreamManager::build_adapter_context(state, &provider_id)?;
     let cancel = CancellationToken::new();
     let stream = adapter

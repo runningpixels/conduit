@@ -1,24 +1,13 @@
-import { useRef, useState, type ReactNode } from 'react';
 import {
-  ChatIcon,
-  ChevronDown,
-  ConnectorsIcon,
-  DownloadIcon,
-  InfoIcon,
-  LockIcon,
-  ModelIcon,
   MoonIcon,
   PanelIcon,
   PlusIcon,
   SearchIcon,
-  SettingsIcon,
   SidebarIcon,
   SunIcon,
 } from '../icons';
 import { modShortcutHint } from '../lib/shortcuts';
 import { useT } from '../i18n';
-import type { SettingsSection } from '../shell/SettingsSheet';
-import { Menu } from './Menu';
 
 interface MainHeadProps {
   /** Current chat's name. Undefined before a conversation is selected. */
@@ -43,25 +32,14 @@ interface MainHeadProps {
   onNewChat: () => void;
   /** Open the ⌘K palette, the sidebar's Search row's job. */
   onOpenPalette: () => void;
-  /** Open the settings sheet; no section means "where the user last was". */
-  onOpenSettings: (section?: SettingsSection) => void;
-  onExportDiagnostics: () => void;
-  /** Open the keyboard shortcuts sheet. */
-  onOpenShortcuts: () => void;
-  providerCount?: number;
-  connectorCount?: number;
 }
 
 /**
  * Title strip (spec §2.1, §4). 46px inside the centre column — so the sidebar
  * and the artifact panel run the full height beneath the caption row — holding
- * the chat's name, the theme and panel toggles, and the settings entry point.
- *
- * Settings used to be reachable by pointer only through the sidebar footer's
- * workspace chip, two clicks deep under a label naming the *workspace*, and not
- * at all once the sidebar was collapsed. The gear here opens the sheet in one
- * click on the section last visited; its chevron (or a right-click on the gear)
- * lists the sections worth jumping to directly.
+ * the chat's name and the theme and panel toggles. Settings is on the
+ * activity rail (UI revamp), which is always visible, so the gear and its
+ * section menu that used to sit here are gone.
  *
  * With the sidebar collapsed, `.head-nav` takes over the sidebar's own row of
  * actions — reopen, New chat, Search — so collapsing it no longer strands
@@ -77,15 +55,6 @@ interface MainHeadProps {
  * pointer — while every static gate passed, because the header itself was
  * tagged exactly as specified. `TitleBar` owns dragging outright now.
  */
-function KeyboardIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
-      <rect x="2.5" y="6" width="19" height="12" rx="2" />
-      <path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8" />
-    </svg>
-  );
-}
-
 export function MainHead({
   title,
   effectiveTheme,
@@ -98,49 +67,10 @@ export function MainHead({
   sidebarOverlayOpen = false,
   onNewChat,
   onOpenPalette,
-  onOpenSettings,
-  onExportDiagnostics,
-  onOpenShortcuts,
-  providerCount,
-  connectorCount,
 }: MainHeadProps) {
   const t = useT();
   const panelHint = modShortcutHint('J');
   const panelLabel = t('workspace.mainHead.panelToggleLabel', { count: hiddenArtifactCount });
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuTriggerRef = useRef<HTMLButtonElement>(null);
-
-  function MenuItem({
-    icon,
-    label,
-    kbd,
-    tail,
-    onSelect,
-  }: {
-    icon: ReactNode;
-    label: string;
-    kbd?: string;
-    tail?: number;
-    onSelect: () => void;
-  }) {
-    return (
-      <button
-        className="menu-item"
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          setMenuOpen(false);
-          onSelect();
-        }}
-      >
-        {icon}
-        {label}
-        {kbd ? <kbd>{kbd}</kbd> : null}
-        {tail != null ? <span className="tail">{tail}</span> : null}
-      </button>
-    );
-  }
-
   return (
     <header className="main-head">
       <div className="head-nav">
@@ -210,92 +140,6 @@ export function MainHead({
           )}
         </button>
 
-        <div className="head-settings">
-          <button
-            className="iconbtn head-settings-open"
-            type="button"
-            aria-label={t('workspace.mainHead.settingsButton.ariaLabel')}
-            title={t('workspace.mainHead.settingsButton.title', { shortcut: modShortcutHint(',') })}
-            onClick={() => onOpenSettings()}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setMenuOpen(true);
-            }}
-          >
-            <SettingsIcon />
-          </button>
-          <button
-            ref={menuTriggerRef}
-            className="iconbtn head-settings-menu"
-            type="button"
-            aria-label={t('workspace.mainHead.settingsMenu.ariaLabel')}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <ChevronDown />
-          </button>
-          <Menu
-            open={menuOpen}
-            onClose={() => setMenuOpen(false)}
-            triggerRef={menuTriggerRef}
-            className="menu head-settings-list"
-            label={t('workspace.mainHead.settingsMenu.ariaLabel')}
-            dismissOnOutsidePress
-          >
-            <MenuItem
-              icon={<SettingsIcon />}
-              label={t('workspace.mainHead.settingsMenu.openSettings')}
-              kbd={modShortcutHint(',')}
-              onSelect={() => onOpenSettings()}
-            />
-            <div className="menu-sep" role="separator" />
-            <MenuItem
-              icon={<ModelIcon />}
-              label={t('workspace.mainHead.settingsMenu.providers')}
-              tail={providerCount}
-              onSelect={() => onOpenSettings('providers')}
-            />
-            <MenuItem
-              icon={<ChatIcon />}
-              label={t('workspace.mainHead.settingsMenu.chat')}
-              onSelect={() => onOpenSettings('chat')}
-            />
-            <MenuItem
-              icon={<ConnectorsIcon />}
-              label={t('workspace.mainHead.settingsMenu.connectors')}
-              tail={connectorCount}
-              onSelect={() => onOpenSettings('connectors')}
-            />
-            <MenuItem
-              icon={<SunIcon />}
-              label={t('workspace.mainHead.settingsMenu.appearance')}
-              onSelect={() => onOpenSettings('appearance')}
-            />
-            <MenuItem
-              icon={<LockIcon />}
-              label={t('workspace.mainHead.settingsMenu.privacy')}
-              onSelect={() => onOpenSettings('privacy')}
-            />
-            <div className="menu-sep" role="separator" />
-            <MenuItem
-              icon={<KeyboardIcon />}
-              label={t('workspace.mainHead.settingsMenu.keyboardShortcuts')}
-              kbd={modShortcutHint('/')}
-              onSelect={onOpenShortcuts}
-            />
-            <MenuItem
-              icon={<DownloadIcon />}
-              label={t('workspace.mainHead.settingsMenu.exportDiagnostics')}
-              onSelect={onExportDiagnostics}
-            />
-            <MenuItem
-              icon={<InfoIcon />}
-              label={t('workspace.mainHead.settingsMenu.about')}
-              onSelect={() => onOpenSettings('about')}
-            />
-          </Menu>
-        </div>
       </div>
     </header>
   );

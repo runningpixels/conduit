@@ -38,3 +38,26 @@ export function applyUiReadability(fontSize: UiFontSize, density: UiDensity): vo
     /* ignore */
   }
 }
+
+// ── Rail style (UI revamp): icons only, or icons with labels ───────────────
+const RAIL_KEY = 'conduit:v11-rail';
+
+export type RailStyle = 'icons' | 'labels';
+
+export function readRailStyle(): RailStyle {
+  try {
+    return localStorage.getItem(RAIL_KEY) === 'labels' ? 'labels' : 'icons';
+  } catch {
+    return 'icons';
+  }
+}
+
+/** Sets `data-rail` on <html> (workspace.css widens the rail for labels). */
+export function applyRailStyle(style: RailStyle): void {
+  document.documentElement.setAttribute('data-rail', style);
+  try {
+    localStorage.setItem(RAIL_KEY, style);
+  } catch {
+    /* ignore */
+  }
+}

@@ -31,11 +31,25 @@ export interface IdeasSheetProps {
   onStatus: (message: string) => void;
   /// Which tab to open on.
   initialTab?: 'ideas' | 'prompts';
+  /// `page`: the Ideas rail destination — no scrim, no close button, no My
+  /// prompts tab (prompts live under Library). `sheet` (default): the modal.
+  variant?: 'sheet' | 'page';
 }
 
 type Tab = 'ideas' | 'prompts';
 
-export function IdeasSheet({ open, onClose, caps, onTry, onSetup, onInsertPrompt, onStatus, initialTab = 'ideas' }: IdeasSheetProps) {
+export function IdeasSheet({
+  open,
+  onClose,
+  caps,
+  onTry,
+  onSetup,
+  onInsertPrompt,
+  onStatus,
+  initialTab = 'ideas',
+  variant = 'sheet',
+}: IdeasSheetProps) {
+  const isPage = variant === 'page';
   const t = useT();
   const state = useIdeaState();
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -67,7 +81,7 @@ export function IdeasSheet({ open, onClose, caps, onTry, onSetup, onInsertPrompt
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isPage) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape' && !event.defaultPrevented) {
         event.preventDefault();
@@ -77,7 +91,7 @@ export function IdeasSheet({ open, onClose, caps, onTry, onSetup, onInsertPrompt
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
-  useFocusTrap(sheetRef, open);
+  useFocusTrap(sheetRef, open && !isPage);
 
   const text = (idea: Idea, part: 'title' | 'blurb' | 'prompt') => t(`ideas.item.${idea.id}.${part}`);
 
@@ -112,22 +126,17 @@ export function IdeasSheet({ open, onClose, caps, onTry, onSetup, onInsertPrompt
     />
   );
 
-  return (
-    <div
-      className="scrim"
-      data-open="true"
-      onPointerDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div ref={sheetRef} className="sheet sheet-single ideas-sheet" role="dialog" aria-modal="true" aria-label={t('ideas.sheet.heading')}>
+  const body = (
         <div className="sheet-main scroll">
           <div className="sheet-single-head">
             <h2 className="sheet-h">{t('ideas.sheet.heading')}</h2>
-            <button className="btn ghost" type="button" onClick={onClose}>
-              {t('common.actions.close')}
-            </button>
+            {!isPage && (
+              <button className="btn ghost" type="button" onClick={onClose}>
+                {t('common.actions.close')}
+              </button>
+            )}
           </div>
+          {!isPage && (
           <div className="ideas-tabs" role="tablist" aria-label={t('ideas.sheet.tabsAriaLabel')}>
             {(['ideas', 'prompts'] as const).map((id) => (
               <button
@@ -142,8 +151,9 @@ export function IdeasSheet({ open, onClose, caps, onTry, onSetup, onInsertPrompt
               </button>
             ))}
           </div>
+          )}
 
-          {tab === 'prompts' ? (
+          {tab === 'prompts' && !isPage ? (
             <>
               <p className="sheet-sub">{t('ideas.sheet.promptsIntro')}</p>
               <PromptsSection
@@ -227,6 +237,25 @@ export function IdeasSheet({ open, onClose, caps, onTry, onSetup, onInsertPrompt
             </>
           )}
         </div>
+  );
+
+  if (isPage) {
+    return (
+      <section className="sheet sheet-single sheet-page ideas-sheet" aria-label={t('ideas.sheet.heading')}>
+        {body}
+      </section>
+    );
+  }
+  return (
+    <div
+      className="scrim"
+      data-open="true"
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div ref={sheetRef} className="sheet sheet-single ideas-sheet" role="dialog" aria-modal="true" aria-label={t('ideas.sheet.heading')}>
+        {body}
       </div>
     </div>
   );

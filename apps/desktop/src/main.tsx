@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import '@conduit/ui/tokens.css';
 import './styles.css';
 import App from './App';
-import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
+import { applyRailStyle, applyUiReadability, readRailStyle, readUiDensity, readUiFontSize } from './workspace/readability';
 import '@conduit/ui/looks/terminal.css';
 import '@conduit/ui/looks/editorial.css';
 import '@conduit/ui/looks/contrast.css';
@@ -15,6 +15,7 @@ import { I18nProvider, bootstrapI18n } from './i18n';
 import { installDevLocaleSwitch, readDevLocalePreference } from './i18n/devLocale';
 
 applyUiReadability(readUiFontSize(), readUiDensity());
+applyRailStyle(readRailStyle());
 /* Before first paint, not in App's boot effect with the other uiPrefs: that
  * effect runs after three awaited IPC calls, and the palette moves every
  * surface and the prose face. Applied there it would show a full frame of the

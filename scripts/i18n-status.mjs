@@ -216,11 +216,18 @@ export function main(argv = process.argv.slice(2)) {
 
   const locales = discoverLocales(messagesDir);
   const allProvenance = loadProvenance(provenancePath);
+  /* English keys waiting on a translation pass (i18n/pendingTranslation.json,
+   * the UI revamp's English-first strings). They render English at runtime
+   * (D5) and are reported, but do not fail --strict. */
+  const pendingPath = join(i18nDir, 'pendingTranslation.json');
+  const pending = new Set(existsSync(pendingPath) ? JSON.parse(readFileSync(pendingPath, 'utf8')) : []);
   const results = locales.map((locale) => {
     const catalog = loadCatalog(messagesDir, locale);
     const provenance = allProvenance[locale] ?? {};
-    return { locale, ...classifyLocale(en, catalog, provenance) };
+    const classified = classifyLocale(en, catalog, provenance);
+    return { locale, ...classified, missing: classified.missing.filter((k) => !pending.has(k)) };
   });
+  if (pending.size > 0) console.log(`i18n-status: ${pending.size} English key(s) pending translation.`);
 
   printReport(results);
 

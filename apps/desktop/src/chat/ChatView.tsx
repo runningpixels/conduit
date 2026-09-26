@@ -209,6 +209,11 @@ export interface ChatViewHandle {
   isEmpty: () => boolean;
 }
 
+export interface ChatTranscript {
+  turns: ChatTurn[];
+  citations: Record<string, KnowledgeCitation[]>;
+}
+
 interface ChatViewProps {
   settings: AppSettings;
   /** Write provider + model in one settings update. The chat surface only
@@ -251,6 +256,12 @@ interface ChatViewProps {
   /// Ideas for an empty thread (docs/plans/ideas-and-discovery.md); empty
   /// hides the row.
   starterIdeas?: readonly Idea[];
+  /// UI revamp: a turn's step line was clicked — open Activity on it.
+  onOpenActivity?: (turnId: string) => void;
+  /// The transcript for the inspector's Activity and Sources tabs: persisted
+  /// turns plus the live one, and document citations per turn. Sent when the
+  /// turns or their steps change, not on every streamed token.
+  onTranscriptChange?: (transcript: ChatTranscript) => void;
   onPickIdea?: (idea: Idea) => void;
   onMoreIdeas?: () => void;
   onHideIdeas?: () => void;
@@ -683,6 +694,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     paneActive = true,
     onOpenSettings,
     starterIdeas = [],
+    onOpenActivity,
+    onTranscriptChange,
     onPickIdea,
     onMoreIdeas,
     onHideIdeas,
@@ -2232,6 +2245,27 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capChip, ideaChipTurn, turns.length, activeStream, activeRequestId, prompt]);
 
+  // The inspector's view of this chat. Keyed on step shape so a streaming
+  // reply reports each new tool call and status change, not every token.
+  const liveStepKey = activeStream
+    ? `${activeStream.requestId}:${activeStream.streaming}:${activeStream.toolCalls
+        .map((tc) => `${tc.toolCallId}.${tc.complete}.${tc.status ?? ''}.${tc.consent ?? ''}`)
+        .join(',')}:${activeStream.searchSources.length}`
+    : '';
+  const activeStreamRef = useRef(activeStream);
+  activeStreamRef.current = activeStream;
+  useEffect(() => {
+    if (!onTranscriptChange) return;
+    const live = activeStreamRef.current;
+    const liveTurn: ChatTurn[] =
+      live && !turns.some((x) => x.streamState?.requestId === live.requestId)
+        ? [{ id: live.requestId, role: 'assistant', content: '', streamState: live }]
+        : [];
+    onTranscriptChange({ turns: [...turns, ...liveTurn], citations: turnCitations });
+    // liveStepKey stands in for activeStream (see above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns, turnCitations, liveStepKey, onTranscriptChange]);
+
   const suggestedPrompts = useMemo(() => {
     const derived = deriveSuggestedPrompts({ turns, artifacts });
     return capChip && derived.length > 0 ? [capChip, ...derived].slice(0, 4) : derived;
@@ -2731,6 +2765,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               return withDay(
                 <AssistantMessage
                   key={turn.id}
+                  turnId={turn.id}
+                  onOpenActivity={onOpenActivity}
                   state={turn.streamState}
                   provider={provider}
                   modelId={model}
@@ -2832,6 +2868,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           })}
           {activeStream && (
             <AssistantMessage
+              turnId={activeStream.requestId}
+              onOpenActivity={onOpenActivity}
               state={{
                 ...activeStream,
                 agentPhase: (() => {

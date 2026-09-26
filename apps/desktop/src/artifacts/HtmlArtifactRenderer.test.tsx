@@ -4,6 +4,7 @@ import { HtmlArtifactRenderer, assembleArtifactDoc } from './HtmlArtifactRendere
 import { OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import { ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE } from './externalUrl';
 import { ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE } from './runtimeError';
+import { ARTIFACT_FETCH_MESSAGE_TYPE, ARTIFACT_FETCH_RESULT_MESSAGE_TYPE } from './networkBridge';
 import type { ResolvedTokens } from '../themes/resolvedTokens';
 
 // Defaults reproduce this file's pre-Phase-3 world (native theming), so every
@@ -238,5 +239,75 @@ describe('HtmlArtifactRenderer runtime errors', () => {
     fromFrame(container, { type: ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE, message: 'second' });
     expect(container.textContent).toContain('first');
     expect(container.textContent).not.toContain('second');
+  });
+});
+
+describe('HtmlArtifactRenderer network bridge (ADR-010)', () => {
+  const request = {
+    type: ARTIFACT_FETCH_MESSAGE_TYPE,
+    id: 7,
+    url: 'https://api.open-meteo.com/v1/forecast',
+    method: 'GET',
+    headers: [],
+    body: null,
+  };
+
+  it('injects the fetch bridge only when a handler is given, with the CSP unchanged', () => {
+    const offline = assembleArtifactDoc('<p>x</p>', []);
+    const online = assembleArtifactDoc('<p>x</p>', [], true, 'light', undefined, true);
+    expect(offline).not.toContain(ARTIFACT_FETCH_MESSAGE_TYPE);
+    expect(online).toContain(ARTIFACT_FETCH_MESSAGE_TYPE);
+    const csp = (doc: string) => /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(doc)?.[1];
+    expect(csp(online)).toBe(csp(offline));
+    expect(csp(online)).toContain("connect-src 'none'");
+    expect(online.indexOf(ARTIFACT_FETCH_MESSAGE_TYPE)).toBeLessThan(online.indexOf('<body>'));
+  });
+
+  it('answers a frame request with the handler result, transferring the body', async () => {
+    const body = new TextEncoder().encode('{}').buffer;
+    const handler = {
+      request: vi.fn(async () => ({
+        ok: true as const,
+        status: 200,
+        statusText: 'OK',
+        headers: [['content-type', 'application/json']] as Array<[string, string]>,
+        url: request.url,
+        body,
+      })),
+    };
+    const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} network={handler} />);
+    const iframe = container.querySelector('iframe')!;
+    expect(iframe.getAttribute('srcdoc') ?? '').toContain(ARTIFACT_FETCH_MESSAGE_TYPE);
+    const post = vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation(() => {});
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: request, source: iframe.contentWindow }));
+    });
+    expect(handler.request).toHaveBeenCalledWith(expect.objectContaining({ id: 7, url: request.url, method: 'GET' }));
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: 7, status: 200, body }),
+      '*',
+      [body],
+    );
+  });
+
+  it('refuses requests without a handler and ignores ones from elsewhere', async () => {
+    const handler = { request: vi.fn() };
+    const { container, rerender } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} network={handler} />);
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: request }));
+    });
+    expect(handler.request).not.toHaveBeenCalled();
+
+    rerender(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} />);
+    const iframe = container.querySelector('iframe')!;
+    expect(iframe.getAttribute('srcdoc') ?? '').not.toContain(ARTIFACT_FETCH_MESSAGE_TYPE);
+    const post = vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation(() => {});
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: request, source: iframe.contentWindow }));
+    });
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: 7, error: expect.any(String) }),
+      '*',
+    );
   });
 });

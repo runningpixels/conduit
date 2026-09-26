@@ -54,6 +54,12 @@ import {
   parseArtifactRuntimeErrorMessage,
   type ArtifactRuntimeError,
 } from './runtimeError';
+import {
+  ARTIFACT_FETCH_RESULT_MESSAGE_TYPE,
+  ARTIFACT_NETWORK_BRIDGE_SCRIPT,
+  parseArtifactFetchMessage,
+  type ArtifactNetworkHandler,
+} from './networkBridge';
 
 export type ArtifactColorScheme = 'light' | 'dark';
 
@@ -70,6 +76,11 @@ export interface HtmlArtifactRendererProps {
   onExternalLink?: (url: string) => void;
   /** Offered when the page's own script throws: drafts a fix request. */
   onAskToFix?: (prompt: string) => void;
+  /**
+   * Makes the page's `fetch()` a request to this handler (ADR-010). Absent,
+   * the page has no network at all — the streaming preview never gets one.
+   */
+  network?: ArtifactNetworkHandler;
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -187,6 +198,7 @@ export function assembleArtifactDoc(
   styledPreview = true,
   colorScheme: ArtifactColorScheme = 'light',
   tokens?: ResolvedTokens,
+  network = false,
 ): string {
   const csp = buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP;
   const tokensStyle = tokens && buildTokensArtifactStyle(tokens);
@@ -198,7 +210,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${buildShortcutForwarderScript()}</script>` +
+    `<script>${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}</script>` +
     `</head><body>${html}</body></html>`
   );
 }
@@ -210,6 +222,7 @@ export function HtmlArtifactRenderer({
   colorScheme = 'light',
   onExternalLink,
   onAskToFix,
+  network,
 }: HtmlArtifactRendererProps) {
   const t = useT();
   const themingKind = activeRendererTheming('iframe');
@@ -217,6 +230,9 @@ export function HtmlArtifactRenderer({
   // props for a tokens-themed artifact, so nothing else forces a re-render
   // when the palette changes underneath it — this is that trigger.
   const themeRevision = useThemeRevision();
+  const hasNetwork = network != null;
+  const networkRef = useRef(network);
+  networkRef.current = network;
   const srcdoc = useMemo(
     () =>
       assembleArtifactDoc(
@@ -225,8 +241,9 @@ export function HtmlArtifactRenderer({
         styledPreview,
         colorScheme,
         themingKind === 'tokens' ? readResolvedTokens() : undefined,
+        hasNetwork,
       ),
-    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t],
+    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork],
   );
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -252,6 +269,26 @@ export function HtmlArtifactRenderer({
       const runtime = parseArtifactRuntimeErrorMessage(event.data);
       if (runtime) {
         setRuntimeError((current) => current ?? runtime);
+        return;
+      }
+      const request = parseArtifactFetchMessage(event.data);
+      if (request) {
+        const handler = networkRef.current;
+        const target = frame.contentWindow;
+        const reply = (result: Awaited<ReturnType<ArtifactNetworkHandler['request']>>) => {
+          // The page may have been replaced while the request was out.
+          if (!target || iframeRef.current?.contentWindow !== target) return;
+          if (result.ok) {
+            const { ok: _ok, ...response } = result;
+            target.postMessage({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: request.id, ...response }, '*', [
+              response.body,
+            ]);
+          } else {
+            target.postMessage({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: request.id, error: result.error }, '*');
+          }
+        };
+        if (!handler) reply({ ok: false, error: 'This page has no network access.' });
+        else void handler.request(request).then(reply, (error: unknown) => reply({ ok: false, error: String(error) }));
         return;
       }
       const href = parseArtifactExternalLinkMessage(event.data);

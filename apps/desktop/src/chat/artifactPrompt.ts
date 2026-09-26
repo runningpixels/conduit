@@ -9,6 +9,13 @@
 /// Intent is now used only to gate tool visibility and the post-hoc warning.
 
 import { appName } from '../brand';
+import type { AppSettings } from '../ipc/contracts';
+
+/// Whether pages written this turn can reach the internet (ADR-010): the
+/// Settings switch is on and local-only mode is off. Rust enforces the same.
+export function artifactNetworkAvailable(settings: Pick<AppSettings, 'artifactNetworkEnabled' | 'localOnly'>): boolean {
+  return settings.artifactNetworkEnabled !== false && !settings.localOnly;
+}
 
 /**
  * The artifact contract, for the tools this turn actually offers.
@@ -22,7 +29,10 @@ import { appName } from '../brand';
  * the answer as text (9 kB of page source as prose). Without document tools the
  * appendix says so, and names none.
  */
-export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolNames: readonly string[] = []): string {
+export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(
+  toolNames: readonly string[] = [],
+  options: { network?: boolean } = {},
+): string {
   const offersDocumentTools = toolNames.some((name) => /^(write|edit)_\w+_document$|^patch_document$/.test(name));
   return [
     'Fenced code blocks in assistant replies render inline in chat first.',
@@ -40,7 +50,10 @@ export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolNames: readonly string[] = 
     ...(offersDocumentTools
       ? ['When a document artifact is already in scope and the user asks to revise it, prefer patch_document (or edit_*_document for a rewrite) over creating a new document.']
       : []),
-    'HTML artifacts render in a sandboxed iframe with no network access (no fetch/XHR). Do not rely on client-side fetching for live data; embed any needed information directly in the artifact. User-clicked http(s) links may open in the system browser after confirmation — emit real href attributes for sources.',
+    options.network
+      ? // ADR-010: fetch() reaches public https APIs once the reader allows each site.
+        'HTML artifacts render in a sandboxed iframe. A page may call fetch() to public https APIs that need no key (for example api.open-meteo.com); the reader is asked to allow each site first. Declare every site in the head as <meta name="conduit-network" content="api.example.com — why the page needs it">. Handle a refused or failed fetch with a clear message and useful fallback content, never a blank page. Never put API keys or credentials in a page. XMLHttpRequest, WebSocket, EventSource and remote scripts stay blocked — use fetch() only, and embed data that does not need to be live. User-clicked http(s) links may open in the system browser after confirmation — emit real href attributes for sources.'
+      : 'HTML artifacts render in a sandboxed iframe with no network access (no fetch/XHR). Do not rely on client-side fetching for live data; embed any needed information directly in the artifact. User-clicked http(s) links may open in the system browser after confirmation — emit real href attributes for sources.',
   ].join(' ');
 }
 

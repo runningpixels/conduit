@@ -549,6 +549,76 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 // =============================================================================
+// Artifact network access (ADR-010)
+// =============================================================================
+
+export interface ArtifactFetchRequest {
+  artifactId: string;
+  url: string;
+  method: string;
+  headers: Array<[string, string]>;
+  /** Base64. */
+  body?: string;
+}
+
+export interface ArtifactFetchResponse {
+  status: number;
+  statusText: string;
+  headers: Array<[string, string]>;
+  /** Base64. */
+  body: string;
+  url: string;
+}
+
+/** Make a request for a page, to a site the user allowed it. Rust re-checks
+ *  the grant, the address and every cap. */
+export async function artifactFetch(request: ArtifactFetchRequest): Promise<ArtifactFetchResponse> {
+  return invokeCommand<ArtifactFetchResponse>('artifact_fetch', { request });
+}
+
+/** `session`: until Conduit quits. `page`: remembered for this page. */
+export type ArtifactNetworkGrantScope = 'session' | 'page';
+
+export async function grantArtifactNetwork(
+  artifactId: string,
+  host: string,
+  scope: ArtifactNetworkGrantScope,
+): Promise<void> {
+  await invokeCommand('grant_artifact_network', { artifactId, host, scope });
+}
+
+export interface ArtifactNetworkState {
+  /** Why pages cannot connect at all right now, or null when they can. */
+  blockedReason: string | null;
+  always: string[];
+  session: string[];
+}
+
+export async function getArtifactNetworkState(artifactId: string): Promise<ArtifactNetworkState> {
+  return invokeCommand<ArtifactNetworkState>('get_artifact_network_state', { artifactId });
+}
+
+export interface ArtifactNetworkGrant {
+  artifactId: string;
+  host: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  artifactTitle: string | null;
+}
+
+export async function listArtifactNetworkGrants(): Promise<ArtifactNetworkGrant[]> {
+  return invokeCommand<ArtifactNetworkGrant[]>('list_artifact_network_grants');
+}
+
+export async function revokeArtifactNetworkGrant(artifactId: string, host: string): Promise<void> {
+  await invokeCommand('revoke_artifact_network_grant', { artifactId, host });
+}
+
+export async function clearArtifactNetworkGrants(artifactId?: string): Promise<void> {
+  await invokeCommand('clear_artifact_network_grants', { artifactId: artifactId ?? null });
+}
+
+// =============================================================================
 // Phase 6 — Consumer release: updater (trust-promise gate)
 //
 // `checkForUpdate` reads `updateChannel` + `updateCheckEnabled` from settings

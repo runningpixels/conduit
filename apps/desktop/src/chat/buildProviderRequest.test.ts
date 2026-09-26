@@ -13,6 +13,7 @@ const baseSettings = {
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
+  artifactNetworkEnabled: true,
   updateChannel: 'stable' as const,
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,

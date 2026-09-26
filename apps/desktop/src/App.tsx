@@ -140,6 +140,7 @@ const defaultSettings: AppSettings = {
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
+  artifactNetworkEnabled: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
   updatePolicy: 'manual',
@@ -1843,6 +1844,7 @@ export default function App() {
           activeBrandConfig={brandConfig}
           onBrandApplied={setBrandConfig}
           brandingEnabled={settings.brandingEnabled}
+          networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
         />
       </div>
 

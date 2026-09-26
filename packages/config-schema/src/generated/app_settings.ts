@@ -33,6 +33,13 @@ artifactRemoteAllowlist: Array<string>,
  */
 artifactStyledPreview: boolean, 
 /**
+ * ADR-010: whether HTML artifacts may ask to contact sites. On: a page's
+ * first request to a site waits for the user to allow it (per page, per
+ * site). Off: every request fails without asking. Local-only mode refuses
+ * them regardless.
+ */
+artifactNetworkEnabled: boolean, 
+/**
  * Phase 6: which update channel the client checks. Consumer UI only offers
  * `Stable`/`Beta`; `Pinned`/`TenantSpecific` are reserved for Phase 7/8/9.
  * Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.

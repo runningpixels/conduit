@@ -36,6 +36,7 @@ const settings: AppSettings = {
   providerEndpoints: {},
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
+  artifactNetworkEnabled: true,
   updateChannel: 'stable',
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,

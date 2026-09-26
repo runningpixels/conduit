@@ -254,6 +254,9 @@ function deriveTitle(kind: ArtifactKind, info: string, body: string): string {
   // live, where `server.js — Todo API` says what the fence is.
   const firstLine = body
     .split('\n')
+    // A shebang says which interpreter runs the file, not what the file is:
+    // live, a scraper's card was titled "!/usr/bin/env python3".
+    .filter((l) => !l.trim().startsWith('#!'))
     .map((l) => l.trim().replace(/^(?:\/\/+|#+(?!\w)|\/\*+|\*+(?=\s)|<!--|--|;+)\s*/, '').replace(/\s*(?:\*\/|-->)$/, '').trim())
     .find((l) => /[\p{L}\p{N}]/u.test(l) && !isFenceLine(l));
   if (firstLine) {

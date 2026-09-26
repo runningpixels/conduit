@@ -23,6 +23,9 @@ import { useFormatters } from '../i18n/formatters';
 import { useAutoSave } from '../workspace/settings/useAutoSave';
 import { AppearanceStep } from './AppearanceStep';
 import { PrivacyStep } from './PrivacyStep';
+import type { Idea } from '../ideas/catalog';
+import { resolveCapabilities } from '../ideas/capabilities';
+import { onboardingIdeas } from '../ideas/selectIdeas';
 
 type OnboardingStep = 'appearance' | 'provider' | 'privacy' | 'connectors' | 'finish';
 
@@ -65,7 +68,8 @@ export function Onboarding({
   // Current status (owned by App). Rendered here so success/error messages
   // from every onboarding action are actually visible instead of swallowed.
   status: StatusState | null;
-  onComplete: () => void;
+  /** Onboarding is done; `idea`, when given, is the one picked to try first. */
+  onComplete: (idea?: Idea) => void;
   /** Validated `data:image/...` brand logo URI, or undefined for the built-in
    *  glyph. Same seam `ArtifactEmptyState` uses; see `brand/logo.ts`. */
   logoSrc?: string;
@@ -91,7 +95,7 @@ export function Onboarding({
     })();
   }, [step]);
 
-  async function handleFinish() {
+  async function handleFinish(idea?: Idea) {
     setFinishing(true);
     try {
       // Hard gate: re-probe the keychain before closing. Ollama counts as
@@ -105,7 +109,7 @@ export function Onboarding({
       const next = await updateSettings({ ...settings, onboardingCompleted: true });
       onSettingsChange(next);
       onStatus(t('onboarding.finish.welcomeStatus'));
-      onComplete();
+      onComplete(idea);
     } catch (e) {
       onStatus(t('onboarding.finish.error', { error: String(e) }));
     } finally {
@@ -239,6 +243,37 @@ export function Onboarding({
                   : t('onboarding.finish.summaryOff')}
               </dd>
             </dl>
+            {/* "You're set up — try one": ideas this setup can run
+                (docs/plans/ideas-and-discovery.md). */}
+            {(() => {
+              const picks = onboardingIdeas(
+                resolveCapabilities({
+                  settings,
+                  provider: providers.find((p) => p.id === settings.activeProvider) ?? null,
+                  collectionCount: 0,
+                }),
+              );
+              if (picks.length === 0) return null;
+              return (
+                <div className="onboarding-ideas">
+                  <h4>{t('ideas.onboarding.heading')}</h4>
+                  <div className="onboarding-ideas-list">
+                    {picks.map((idea) => (
+                      <button
+                        key={idea.id}
+                        type="button"
+                        className="onboarding-idea"
+                        disabled={finishing}
+                        onClick={() => void handleFinish(idea)}
+                      >
+                        <b>{t(`ideas.item.${idea.id}.title`)}</b>
+                        <span>{t(`ideas.item.${idea.id}.blurb`)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </section>
         )}
 

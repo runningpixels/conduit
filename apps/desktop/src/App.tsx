@@ -23,6 +23,7 @@ import {
   listConnectorGrants,
   listProviderDescriptors,
   listProviderModels,
+  listKnowledgeCollections,
   listUserThemes,
   revealArtifactsDir,
   searchMessages,
@@ -64,6 +65,11 @@ import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
+import { IdeasSheet } from './ideas/IdeasSheet';
+import type { Idea } from './ideas/catalog';
+import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
+import { notePicked, observeReady, ROW_GIVE_UP, setRowHidden, useIdeaState } from './ideas/ideaState';
+import { newIdeas, starterIdeas } from './ideas/selectIdeas';
 import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
 import { applyUiPrefs, supportedModes, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
@@ -224,6 +230,11 @@ export default function App() {
   // t1-8: the knowledge base's own sheet, and files dropped onto the window
   // that are waiting there for the user to pick a collection.
   const [documentsOpen, setDocumentsOpen] = useState(false);
+  // Ideas (docs/plans/ideas-and-discovery.md).
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const [collectionCount, setCollectionCount] = useState<number | null>(null);
+  const [queuedIdea, setQueuedIdea] = useState<Idea | null>(null);
+  const ideaState = useIdeaState();
   const [droppedPaths, setDroppedPaths] = useState<string[]>([]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
@@ -1446,6 +1457,78 @@ export default function App() {
     setDocumentsOpen(true);
   }, []);
 
+  // ── Ideas ────────────────────────────────────────────────────────────────
+  // Collections decide whether "Ask your documents" is ready; re-read when
+  // the Documents sheet closes.
+  useEffect(() => {
+    if (documentsOpen) return;
+    let cancelled = false;
+    listKnowledgeCollections()
+      .then((list) => !cancelled && setCollectionCount(list.length))
+      .catch(() => !cancelled && setCollectionCount(0));
+    return () => {
+      cancelled = true;
+    };
+  }, [documentsOpen]);
+
+  const ideaCaps = useMemo(
+    () =>
+      resolveCapabilities({
+        settings,
+        provider: providers.find((p) => p.id === settings.activeProvider) ?? null,
+        collectionCount,
+      }),
+    [settings, providers, collectionCount],
+  );
+  // A capability that becomes ready joins the spotlight (a dot on Ideas).
+  // Only once everything it depends on has loaded, so startup is not "new".
+  useEffect(() => {
+    if (collectionCount == null || providers.length === 0) return;
+    observeReady(readyCapabilities(ideaCaps));
+  }, [ideaCaps, collectionCount, providers.length]);
+
+  const openIdeas = useCallback(() => {
+    setSettingsOpen(false);
+    setDocumentsOpen(false);
+    setIdeasOpen(true);
+  }, []);
+
+  /** Put an idea's prompt in the composer of an empty chat (new if needed). */
+  const tryIdea = useCallback(
+    async (idea: Idea) => {
+      setIdeasOpen(false);
+      const view = chatViewRef.current;
+      if (!view) {
+        setQueuedIdea(idea);
+        return;
+      }
+      if (!activeConversationId || !view.isEmpty()) await handleNewChat();
+      notePicked(idea.id);
+      // After the new chat renders.
+      requestAnimationFrame(() => chatViewRef.current?.replacePrompt(t(`ideas.item.${idea.id}.prompt`)));
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeConversationId, t],
+  );
+  // An idea picked during onboarding runs once the chat is on screen.
+  useEffect(() => {
+    if (!queuedIdea || !chatViewRef.current) return;
+    const idea = queuedIdea;
+    setQueuedIdea(null);
+    void tryIdea(idea);
+  });
+
+  const setupCapability = useCallback(
+    (target: SetupTarget) => {
+      setIdeasOpen(false);
+      if (target === 'documents') openDocuments();
+      else openSettings(target);
+    },
+    // openSettings is declared above and stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [openDocuments],
+  );
+
   const dropHovering = useKnowledgeDrop((paths) => {
     setDroppedPaths(paths);
     setSettingsOpen(false);
@@ -1564,6 +1647,10 @@ export default function App() {
           setDocumentsOpen(false);
           return;
         }
+        if (ideasOpen) {
+          setIdeasOpen(false);
+          return;
+        }
         if (confirmDeleteId != null || confirmDeleteAll) {
           setConfirmDeleteId(null);
           setConfirmDeleteAll(false);
@@ -1594,6 +1681,7 @@ export default function App() {
       paletteOpen,
       settingsOpen,
       documentsOpen,
+      ideasOpen,
       shortcutsOpen,
       toggleDocPanelView,
       toggleSidebarView,
@@ -1684,7 +1772,10 @@ export default function App() {
           onSettingsChange={setSettings}
           onStatus={setStatusMessage}
           status={status}
-          onComplete={() => void refreshOnboarding()}
+          onComplete={(idea) => {
+            if (idea) setQueuedIdea(idea);
+            void refreshOnboarding();
+          }}
           logoSrc={brandLogo ?? undefined}
         />
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -1722,6 +1813,11 @@ export default function App() {
             hideSidebarOverlay();
             openDocuments();
           }}
+          onOpenIdeas={() => {
+            hideSidebarOverlay();
+            openIdeas();
+          }}
+          ideasDot={ideaState.spotlight.length > 0 || newIdeas(ideaState).length > 0}
           onCollapse={toggleSidebarView}
           onRevealWorkspace={handleRevealWorkspace}
           onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
@@ -1798,6 +1894,14 @@ export default function App() {
             pendingSendText={pendingSendText}
             onPendingSendConsumed={consumePendingSend}
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
+            starterIdeas={
+              ideaState.rowHidden || ideaState.startsWithoutIdea >= ROW_GIVE_UP
+                ? []
+                : starterIdeas(ideaCaps, ideaState, activeConversationId ?? 'new')
+            }
+            onPickIdea={(idea) => void tryIdea(idea)}
+            onMoreIdeas={openIdeas}
+            onHideIdeas={() => setRowHidden(true)}
             convoProviders={convoProviders}
           />
         </main>
@@ -1845,6 +1949,7 @@ export default function App() {
           onBrandApplied={setBrandConfig}
           brandingEnabled={settings.brandingEnabled}
           networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
+          onOpenIdeas={openIdeas}
         />
       </div>
 
@@ -1873,6 +1978,16 @@ export default function App() {
         }}
       />
 
+      <IdeasSheet
+        open={ideasOpen}
+        onClose={() => setIdeasOpen(false)}
+        caps={ideaCaps}
+        onTry={(idea) => void tryIdea(idea)}
+        onSetup={setupCapability}
+        onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
+        onStatus={setStatusMessage}
+      />
+
       <DocumentsSheet
         open={documentsOpen}
         onClose={() => setDocumentsOpen(false)}
@@ -1898,6 +2013,7 @@ export default function App() {
         onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
         onToggleTheme={handleToggleTheme}
         onOpenShortcuts={openShortcuts}
+        onOpenIdeas={openIdeas}
         onToggleArtifactExpand={toggleArtifactExpand}
         onToggleDocPanel={toggleDocPanelView}
         onToggleSidebar={toggleSidebarView}

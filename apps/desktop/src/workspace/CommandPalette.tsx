@@ -38,6 +38,8 @@ interface CommandPaletteProps {
   onToggleTheme: () => void;
   /** Open the keyboard shortcuts sheet. */
   onOpenShortcuts?: () => void;
+  /** Open the Ideas page. */
+  onOpenIdeas?: () => void;
   onToggleDocPanel: () => void;
   /** Expand the artifact panel, or restore the layout. */
   onToggleArtifactExpand?: () => void;
@@ -130,6 +132,7 @@ export function CommandPalette({
   onOpenSettings,
   onToggleTheme,
   onOpenShortcuts,
+  onOpenIdeas,
   onToggleDocPanel,
   onToggleArtifactExpand,
   onToggleSidebar,
@@ -220,6 +223,9 @@ export function CommandPalette({
       { id: 'cmd-workspace', group, kind: 'cmd', label: t('workspace.commandPalette.command.workspaceDefaults'), run: () => { onOpenSettings('workspace'); close(); } },
       { id: 'cmd-connectors', group, kind: 'cmd', label: t('workspace.commandPalette.command.connectService'), run: () => { onOpenSettings('connectors'); close(); } },
       { id: 'cmd-prompts', group, kind: 'cmd', label: t('workspace.commandPalette.command.prompts'), run: () => { onOpenSettings('prompts'); close(); } },
+      ...(onOpenIdeas
+        ? [{ id: 'cmd-ideas', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.ideas'), run: () => { onOpenIdeas(); close(); } }]
+        : []),
       { id: 'cmd-skills', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageSkills'), run: () => { onOpenSettings('skills'); close(); } },
       { id: 'cmd-memory', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageMemory'), run: () => { onOpenSettings('memory'); close(); } },
       { id: 'cmd-knowledge', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageKnowledge'), run: () => { onOpenSettings('knowledge'); close(); } },
@@ -249,7 +255,7 @@ export function CommandPalette({
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
-    onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts, onToggleArtifactExpand,
+    onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts, onOpenIdeas, onToggleArtifactExpand,
   ]);
 
   const modelItems = useMemo((): PaletteItem[] => {

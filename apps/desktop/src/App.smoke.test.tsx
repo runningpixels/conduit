@@ -100,6 +100,8 @@ const SHAPES: Record<string, unknown> = {
   // there before setBoundaryOk ever runs, hanging the boot effect exactly
   // like a missing getBrandConfig/getBrandLogo shape does (see above).
   listUserThemes: [],
+  // Ideas: collections decide whether "Ask your documents" is ready.
+  listKnowledgeCollections: [],
 };
 
 /**
@@ -152,6 +154,8 @@ const IPC_EXPORTS = [
   // boot effect calls listUserThemes() unconditionally too (wrapped in its
   // own .catch, but still awaited in the same Promise.all).
   'listUserThemes', 'revealThemesDir', 'createExampleUserTheme',
+  // Ideas (App.tsx reads the collection count for "Ask your documents").
+  'listKnowledgeCollections',
 ] as const;
 
 afterEach(() => {

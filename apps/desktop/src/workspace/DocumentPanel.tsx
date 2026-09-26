@@ -130,6 +130,8 @@ interface DocumentPanelProps {
    * the panel re-reads whether a page's requests are blocked (ADR-010).
    */
   networkPolicyKey?: string;
+  /** Open the Ideas page from the empty panel. */
+  onOpenIdeas?: () => void;
 }
 
 /**
@@ -340,6 +342,7 @@ export function DocumentPanel({
   onBrandApplied,
   brandingEnabled = false,
   networkPolicyKey = '',
+  onOpenIdeas,
 }: DocumentPanelProps) {
   const t = useT();
   const tr = useRichT();
@@ -691,7 +694,7 @@ export function DocumentPanel({
   }
 
   if (!artifact) {
-    return <ArtifactEmptyState logoSrc={logoSrc} />;
+    return <ArtifactEmptyState logoSrc={logoSrc} onOpenIdeas={onOpenIdeas} />;
   }
 
   const name = artifact.title ?? t('workspace.documentPanel.untitledArtifact');

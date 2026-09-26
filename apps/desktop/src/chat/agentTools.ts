@@ -785,9 +785,12 @@ export function documentWritesHistoryNote(state: AssistantStreamState | undefine
     .join('\n');
 }
 
+/** Document calls that changed a document. Reads and exports used to count,
+ *  so a turn that only read the page (26 times, live) ended on "Document
+ *  updated" and reopened a document nothing had touched. */
 export function completedDocumentToolCalls(state: AssistantStreamState): ToolCallState[] {
   return state.toolCalls.filter(
-    (toolCall) => toolCall.status === 'completed' && DOCUMENT_TOOL_NAMES.has(toolCall.name),
+    (toolCall) => toolCall.status === 'completed' && DOCUMENT_CONTENT_TOOL_NAMES.has(toolCall.name),
   );
 }
 

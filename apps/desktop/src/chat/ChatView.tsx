@@ -1795,10 +1795,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   async function handleCancel() {
     const active = activeRequestRef.current;
     if (!active || active.conversationId !== conversationId) return;
-    await cancelChatStream({
-      requestId: active.requestId,
-      conversationId,
-    });
+    try {
+      await cancelChatStream({
+        requestId: active.requestId,
+        conversationId,
+      });
+    } catch (error) {
+      // The backend lets a stream go a moment before this side clears its
+      // request, and Escape in that moment surfaced as an unhandled
+      // "No active stream found". The turn has ended; its own completion
+      // tidies up.
+      if (/no active stream/i.test(error instanceof Error ? error.message : String(error))) return;
+      throw error;
+    }
     // Tear down the live stream state. The interrupted banner for the
     // persisted turn comes from the reloaded messages (the backend's cancel
     // path marks the assistant turn `interrupted`), so there's nothing to

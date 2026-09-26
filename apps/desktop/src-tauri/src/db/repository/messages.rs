@@ -351,32 +351,36 @@ pub async fn persist_request_messages(
 ) -> Result<(), DbError> {
     use tracing::warn;
 
-    // Count the request messages we actually intend to persist (everything but
-    // assistant/tool rows, which are owned by the event-log fold / MCP runtime).
-    // If the number of rows we end up inserting is lower, some were silently
-    // ignored by `INSERT OR IGNORE` — usually a cross-conversation id collision
-    // from non-unique client-generated ids. Surface it so a regression is
-    // visible instead of dropping user content with no log line.
-    let expected = messages
-        .iter()
-        .filter(|m| !matches!(m.role, MessageRole::Assistant | MessageRole::Tool))
-        .count();
-
-    let mut inserted = 0usize;
+    // An ignored insert is normally re-sent history: the row is already there,
+    // in this conversation. Only a row with the same id in a *different*
+    // conversation is a collision that drops the user's content, and only that
+    // is worth a warning — this used to fire on every follow-up turn, which
+    // taught everyone reading the log to ignore it.
+    let mut collisions: Vec<String> = Vec::new();
     let mut tx = pool.begin().await?;
     for msg in messages {
         if upsert_request_message_in_txn(&mut tx, msg).await? {
-            inserted += 1;
+            continue;
+        }
+        if matches!(msg.role, MessageRole::Assistant | MessageRole::Tool) {
+            continue;
+        }
+        let owner: Option<(String,)> =
+            sqlx::query_as("SELECT conversation_id FROM messages WHERE id = ?")
+                .bind(&msg.id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if owner.is_some_and(|(conversation_id,)| conversation_id != msg.conversation_id) {
+            collisions.push(msg.id.clone());
         }
     }
     tx.commit().await?;
 
-    if inserted < expected {
+    if !collisions.is_empty() {
         warn!(
-            expected,
-            inserted,
-            "persist_request_messages: INSERT OR IGNORE dropped request messages \
-             (likely a cross-conversation id collision from non-unique client ids)"
+            ids = ?collisions,
+            "persist_request_messages: request messages dropped — their ids already belong \
+             to another conversation"
         );
     }
     Ok(())

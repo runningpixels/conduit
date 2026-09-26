@@ -72,10 +72,17 @@ describe('findPromotedArtifact', () => {
 });
 
 describe('shouldRenderAsCard', () => {
-  it('collapses document kinds at any length', () => {
-    expect(shouldRenderAsCard(candidateFor('html', '<p>hi</p>'))).toBe(true);
-    expect(shouldRenderAsCard(candidateFor('json', '{"a":1}'))).toBe(true);
-    expect(shouldRenderAsCard(candidateFor('md', '# Title'))).toBe(true);
+  it('collapses document kinds once they are documents', () => {
+    expect(shouldRenderAsCard(candidateFor('html', `<main>${'<p>paragraph</p>'.repeat(20)}</main>`))).toBe(true);
+    expect(shouldRenderAsCard(candidateFor('json', JSON.stringify({ rules: Array(60).fill('x') })))).toBe(true);
+    expect(shouldRenderAsCard(candidateFor('md', `# Title\n${'Some prose.\n'.repeat(30)}`))).toBe(true);
+  });
+
+  // A 62-byte `<form …>` example inside a README became a card with no Open.
+  it('keeps a document-kind snippet below the promote floor inline', () => {
+    expect(shouldRenderAsCard(candidateFor('html', '<p>hi</p>'))).toBe(false);
+    expect(shouldRenderAsCard(candidateFor('json', '{"a":1}'))).toBe(false);
+    expect(shouldRenderAsCard(candidateFor('md', '# Title'))).toBe(false);
   });
 
   it('keeps short code snippets inline and collapses long ones', () => {

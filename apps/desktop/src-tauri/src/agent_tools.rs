@@ -26,6 +26,8 @@ pub const EDIT_MARKDOWN_TOOL: &str = "edit_markdown_document";
 pub const WRITE_TEXT_TOOL: &str = "write_text_document";
 pub const EDIT_TEXT_TOOL: &str = "edit_text_document";
 pub const EXPORT_DOCUMENT_TOOL: &str = "export_document";
+/// The kinds the write_*/edit_* tools produce; a rewrite may convert between them.
+const DOCUMENT_KINDS: [&str; 3] = ["html", "markdown", "text"];
 /// Exact-text replacements in an existing document of any kind.
 pub const PATCH_DOCUMENT_TOOL: &str = "patch_document";
 /// Current content of an existing document, so a patch can quote it exactly.
@@ -1166,7 +1168,21 @@ async fn edit_document(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("artifact '{artifact_id}' not found"))?;
-    ensure_kind(&existing, kind)?;
+    // A full rewrite may change the document's kind: "turn it into an HTML
+    // page" on a markdown resume. That used to be refused ("is 'markdown' not
+    // 'html'") — the model retried, gave up, and pasted the page into the chat
+    // while the panel kept the old markdown. Between document kinds it is a
+    // conversion of the same artifact; anything else is still refused.
+    let converting = existing.kind != kind
+        && DOCUMENT_KINDS.contains(&existing.kind.as_str())
+        && DOCUMENT_KINDS.contains(&kind);
+    if converting {
+        artifacts::set_kind(ctx.db, artifact_id, kind)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        ensure_kind(&existing, kind)?;
+    }
 
     let updated = artifacts::set_content(
         ctx.db,

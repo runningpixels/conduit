@@ -220,7 +220,7 @@ export function ChatProse({
     deduped.length > 0
       ? citedMarkdown(raw, deduped)
       : { source: raw, byId: new Map<string, CitationAnnotation>() };
-  const segments = parseMessageSegments(source);
+  const segments = parseMessageSegments(source, { streaming });
 
   const markdownOptions =
     byId.size > 0

@@ -387,7 +387,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'workspace_write',
     name: 'workspace_write',
     description:
-      'Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories. Use only for files the user wants in their project; to create a document for the user to view in the app, use write_html_document, write_markdown_document or write_text_document.',
+      // It used to send documents to write_*_document — tools a general turn
+      // is not offered. With only this one to hand, "tic tac toe" and "make
+      // flashcards" were saved into the user's project folder unasked, as
+      // well as shown in the reply.
+      'Create or overwrite a text file under the workspace folder. Path is relative to the workspace root. Set create_dirs=true to create parent directories. Use only when the user asks to create or change a file in their project. A page, app or document the user asked to see goes in your reply, not in a file — do not also save a copy unless they ask.',
     inputSchema: schema([
       { name: 'path', type: 'string', required: true },
       { name: 'content', type: 'string', required: true },

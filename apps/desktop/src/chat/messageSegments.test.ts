@@ -203,3 +203,34 @@ describe('salvageLeakedToolCall', () => {
     expect(salvageLeakedToolCall(snippet)).toBe(snippet);
   });
 });
+
+describe('fence nesting and titles (round-2 live findings)', () => {
+  it('keeps ```html examples inside a ```markdown README in the README', () => {
+    // Live: the README was cut at its first example's close, its tail became
+    // prose and the closing remark was auto-opened as "the document".
+    const src = [
+      '```html', '<form>…</form>', '```', '',
+      '```markdown', '# Embedding', '', 'Paste this:', '', '   ```html', '   <iframe src="form.html"></iframe>', '   ```', '', 'Done.', '```', '',
+      'A couple of things worth knowing.',
+    ].join(NL);
+    const fences = parseMessageSegments(src).filter((s) => s.type === 'fence');
+    expect(fences.map((f) => f.type === 'fence' && f.candidate.kind)).toEqual(['html', 'markdown']);
+    const readme = fences[1];
+    if (readme.type !== 'fence') throw new Error('unreachable');
+    expect(readme.candidate.body).toContain('<iframe');
+    expect(readme.candidate.body.trimEnd().endsWith('Done.')).toBe(true);
+  });
+
+  it('does not let a lone opener inside markdown swallow the rest of the reply', () => {
+    const src = ['```markdown', '# Notes', '```js', 'run()', '```', '', 'After the fence.'].join(NL);
+    const segs = parseMessageSegments(src);
+    expect(segs[segs.length - 1]).toEqual({ type: 'prose', text: '\nAfter the fence.' });
+  });
+
+  it('titles JSON by its keys and code without its comment marker', () => {
+    const json = parseMessageSegments('```json\n{\n  "root": true,\n  "parser": "x",\n  "plugins": [],\n  "rules": {}\n}\n```')[0];
+    expect(json.type === 'fence' && json.candidate.title).toBe('JSON · root, parser, plugins');
+    const js = parseMessageSegments('```javascript\n// server.js — Todo API\nconst x = 1;\n```')[0];
+    expect(js.type === 'fence' && js.candidate.title).toBe('server.js — Todo API');
+  });
+});

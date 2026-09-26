@@ -164,6 +164,21 @@ pub fn round_produced_nothing(
     !produced_text && runnable.is_empty() && !undeclared.is_empty()
 }
 
+/// Shown when a round ends on a tool call whose name is not a tool name.
+pub const MALFORMED_CALL_MESSAGE: &str = "The model's reply broke off in a malformed tool call, \
+     so it stopped before finishing. Retry to get the rest.";
+
+/// Whether `name` could be a tool name at all: letters, digits, `_`, `-`, `.`
+/// and `:` (MCP tools are namespaced). Markup or whitespace means the model's
+/// own call syntax leaked into the name.
+pub fn is_tool_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | ':'))
+}
+
 /// The message shown when a turn ends having produced nothing.
 ///
 /// Names the tools whose output was dropped, because "nothing happened" is not
@@ -2724,6 +2739,29 @@ impl StreamManager {
                     error: provider_core::schema::ProviderError {
                         provider_code: None,
                         message: empty_turn_message(&undeclared),
+                        retryable: false,
+                    },
+                });
+                break;
+            }
+
+            // A call whose name is not a tool name at all — markup from the
+            // model's own call syntax, as in
+            // `werkzeug\n</think><tool_call>current_time` — means the model
+            // broke mid-reply. Live, "tic tac
+            // toe" said "Here's a complete game…", made that call, and the
+            // turn ended there: no game, no error. Say so, so Retry is offered.
+            if runnable.is_empty() && undeclared.iter().any(|call| !is_tool_name(&call.name)) {
+                warn!(
+                    request_id = %request_id,
+                    step,
+                    "round ended on a malformed tool call; reporting instead of ending silently"
+                );
+                terminal = Some(ProviderEvent::Error {
+                    request_id: request_id.clone(),
+                    error: provider_core::schema::ProviderError {
+                        provider_code: None,
+                        message: MALFORMED_CALL_MESSAGE.to_string(),
                         retryable: false,
                     },
                 });

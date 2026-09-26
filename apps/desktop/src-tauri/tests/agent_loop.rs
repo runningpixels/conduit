@@ -1232,3 +1232,26 @@ fn tool_output_created_flag_detects_new_artifacts() {
     ));
     assert!(!tool_output_created_document(&json!({ "ok": true })));
 }
+
+/// Live: "tic tac toe" said "Here's a complete game…", then called a tool named
+/// `werkzeug\n</think><tool_call>current_time`, and the turn ended there — no
+/// game and no error. Such a name is not a tool name.
+#[test]
+fn a_tool_name_is_an_identifier_not_leaked_markup() {
+    use conduit_desktop::stream_manager::is_tool_name;
+    for ok in [
+        "write_html_document",
+        "current_time",
+        "mcp.github:list-issues",
+    ] {
+        assert!(is_tool_name(ok), "{ok}");
+    }
+    for bad in [
+        "werkzeug\n</think><tool_call>current_time",
+        "",
+        "call me",
+        "<tool_call>x",
+    ] {
+        assert!(!is_tool_name(bad), "{bad:?}");
+    }
+}

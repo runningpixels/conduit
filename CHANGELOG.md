@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.0-rc.8] - 2026-09-27
+
 ### Added
 
 - **The new layout in every language.** The side rail, the inspector, the
@@ -14,7 +16,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   translated into German, Spanish, French, Japanese, Brazilian Portuguese,
   Korean and Simplified Chinese. With **Side rail → Icons and labels**, a long
   label wraps onto a second line instead of being cut off.
-
 - **Let a page reach any public site.** The network dialog has a
   **Let this page reach any public site** option, for this time or always,
   for pages that use many services. Every request still goes out without your
@@ -409,7 +410,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.7...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.8...HEAD
+[0.1.0-rc.8]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.7...v0.1.0-rc.8
 [0.1.0-rc.7]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.6...v0.1.0-rc.7
 [0.1.0-rc.6]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.5...v0.1.0-rc.6
 [0.1.0-rc.5]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.4...v0.1.0-rc.5

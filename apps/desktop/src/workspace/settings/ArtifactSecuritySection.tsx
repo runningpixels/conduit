@@ -7,6 +7,7 @@ import {
   type ArtifactNetworkGrant,
 } from '../../ipc/client';
 import { hostLabel } from '../../artifacts/networkHosts';
+import { ANY_SITE } from '../useArtifactNetwork';
 import { useT } from '../../i18n';
 
 interface ArtifactSecuritySectionProps {
@@ -118,7 +119,7 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
                   style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-xl)' }}
                 >
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{hostLabel(grant.host)}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{grant.host === ANY_SITE ? t('artifacts.network.anySite') : hostLabel(grant.host)}</span>
                     <span style={{ color: 'var(--ink-3)' }}>
                       {' · '}
                       {grant.artifactTitle ?? t('settings.artifactSecurity.grants.untitled')}

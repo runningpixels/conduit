@@ -1,4 +1,8 @@
 [
+  "artifacts.network.anySite",
+  "artifacts.network.dialog.anySite",
+  "artifacts.network.dialog.anySiteHint",
+  "artifacts.network.dialog.redirected",
   "chat.activity.failed",
   "chat.activity.needsYou",
   "chat.activity.open",

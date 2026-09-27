@@ -38,16 +38,33 @@ pub async fn artifact_fetch(
         return Err(reason);
     }
     let host = artifact_network::grant_host(&request.url)?;
-    let always = grants::is_granted(&state.db, &request.artifact_id, &host)
-        .await
-        .map_err(|e| e.to_string())?;
-    if !always && !artifact_network::has_session_grant(&request.artifact_id, &host) {
+    // Everything this page may reach: its remembered and session grants, where
+    // ANY_SITE stands for every public https site.
+    let mut reachable: std::collections::HashSet<String> =
+        grants::list(&state.db, Some(&request.artifact_id))
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|g| g.host)
+            .collect();
+    let remembered = reachable.clone();
+    reachable.extend(artifact_network::session_hosts(&request.artifact_id));
+    let any_site = reachable.contains(artifact_network::ANY_SITE);
+    if !any_site && !reachable.contains(&host) {
         return Err(format!("This page has not been allowed to contact {host}."));
     }
     let _slot = artifact_network::reserve_slot(&request.artifact_id).await?;
-    let response = artifact_network::perform(&request, AddressPolicy::APP).await?;
-    if always {
-        let _ = grants::touch(&state.db, &request.artifact_id, &host).await;
+    let allowed = move |origin: &str| any_site || reachable.contains(origin);
+    let response = artifact_network::perform(&request, AddressPolicy::APP, &allowed).await?;
+    let grant = if remembered.contains(&host) {
+        Some(host.as_str())
+    } else if remembered.contains(artifact_network::ANY_SITE) {
+        Some(artifact_network::ANY_SITE)
+    } else {
+        None
+    };
+    if let Some(grant) = grant {
+        let _ = grants::touch(&state.db, &request.artifact_id, grant).await;
     }
     Ok(response)
 }

@@ -56,7 +56,10 @@ describe('MemoryPage', () => {
 
   it('shows the empty state and adds a memory from it', async () => {
     const onStatus = vi.fn();
-    ipc.listMemoryItems.mockResolvedValueOnce([]).mockResolvedValue([item({ kind: 'note' })]);
+    // Empty until the fact is saved, however many times the page reloads.
+    ipc.listMemoryItems.mockImplementation(async () =>
+      ipc.createMemoryItem.mock.calls.length > 0 ? [item({ kind: 'note' })] : [],
+    );
     renderPage({ onStatus });
     const empty = (await screen.findByText('Nothing remembered yet')).closest('.page-empty') as HTMLElement;
     fireEvent.click(within(empty).getByRole('button', { name: 'Add memory' }));

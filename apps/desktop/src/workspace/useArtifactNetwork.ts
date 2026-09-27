@@ -24,6 +24,28 @@ import {
 
 export type NetworkDecision = 'deny' | 'session' | 'page';
 
+/// The grant that lets a page reach any public site (Rust's `ANY_SITE`).
+export const ANY_SITE = '*';
+/// Rust's refusal of a redirect to a site the page may not reach:
+/// `redirect:<origin> <message>` (Rust's `REDIRECT_ERROR_PREFIX`).
+const REDIRECT_PREFIX = 'redirect:';
+
+/** Whether the state lets the page reach `origin` without asking. */
+export function isAllowed(state: ArtifactNetworkState | null, origin: string): boolean {
+  if (!state) return false;
+  const lists = [...state.always, ...state.session];
+  return lists.includes(origin) || lists.includes(ANY_SITE);
+}
+
+/** The target and message of a refused redirect, or null. */
+export function parseRedirect(error: string): { origin: string; message: string } | null {
+  if (!error.startsWith(REDIRECT_PREFIX)) return null;
+  const rest = error.slice(REDIRECT_PREFIX.length);
+  const space = rest.indexOf(' ');
+  if (space <= 0) return null;
+  return { origin: rest.slice(0, space), message: rest.slice(space + 1) };
+}
+
 export interface NetworkLogEntry {
   id: number;
   at: number;
@@ -43,10 +65,14 @@ export interface NetworkLogEntry {
 export interface PendingSite {
   origin: string;
   first: { method: string; url: string; body: ArrayBuffer | null; contentType?: string };
+  /// Set when the page asked for another site and was redirected here.
+  redirectFrom?: string;
 }
 
 interface Held {
   message: ArtifactFetchMessage;
+  /// Where the request itself goes (differs from the held site on a redirect).
+  origin: string;
   resolve: (result: ArtifactFetchResult) => void;
 }
 
@@ -92,7 +118,9 @@ export interface ArtifactNetwork {
   denied: ReadonlySet<string>;
   pending: PendingSite[];
   log: NetworkLogEntry[];
-  decide: (origins: string[], decision: NetworkDecision) => Promise<void>;
+  /** With `anySite`, an allow grants every public site and releases every
+   *  held request, not just those to `origins`. */
+  decide: (origins: string[], decision: NetworkDecision, anySite?: boolean) => Promise<void>;
   revoke: (origin: string) => Promise<void>;
 }
 
@@ -169,6 +197,32 @@ export function useArtifactNetwork(
     [artifactId],
   );
 
+  /** Hold a request until the reader decides on `site`. */
+  const hold = useCallback(
+    (site: string, message: ArtifactFetchMessage, origin: string, redirectFrom?: string) =>
+      new Promise<ArtifactFetchResult>((resolve) => {
+        const queue = held.current.get(site) ?? [];
+        queue.push({ message, origin, resolve });
+        held.current.set(site, queue);
+        if (queue.length === 1) {
+          const contentType = message.headers.find(([k]) => k.toLowerCase() === 'content-type')?.[1];
+          setPending((list) =>
+            list.some((p) => p.origin === site)
+              ? list
+              : [
+                  ...list,
+                  {
+                    origin: site,
+                    first: { method: message.method, url: message.url, body: message.body, contentType },
+                    ...(redirectFrom ? { redirectFrom } : {}),
+                  },
+                ],
+          );
+        }
+      }),
+    [],
+  );
+
   const execute = useCallback(
     async (message: ArtifactFetchMessage, origin: string): Promise<ArtifactFetchResult> => {
       if (!artifactId) return { ok: false, error: 'This page is not saved.' };
@@ -204,11 +258,18 @@ export function useArtifactNetwork(
         };
       } catch (error) {
         const text = errorText(error);
-        appendLog({ ...entry, error: text, ms: Date.now() - started });
-        return { ok: false, error: text };
+        const redirect = parseRedirect(text);
+        appendLog({ ...entry, error: redirect?.message ?? text, ms: Date.now() - started });
+        if (!redirect) return { ok: false, error: text };
+        // The server sent the page to another site: ask about that site rather
+        // than leave the page without its data. Allowing it re-sends the
+        // original request, which Rust then follows through the redirect.
+        const denied = deniedByArtifact.get(artifactId)?.has(redirect.origin);
+        if (denied || isAllowed(stateRef.current, redirect.origin)) return { ok: false, error: redirect.message };
+        return hold(redirect.origin, message, origin, origin);
       }
     },
-    [artifactId, appendLog],
+    [artifactId, appendLog, hold],
   );
 
   const denied = useMemo(
@@ -237,30 +298,41 @@ export function useArtifactNetwork(
         if (artifactId && deniedByArtifact.get(artifactId)?.has(origin)) {
           return { ok: false, error: `You didn't allow this page to contact ${new URL(origin).host}.` };
         }
-        if (current && (current.always.includes(origin) || current.session.includes(origin))) {
-          return execute(message, origin);
-        }
-        return new Promise<ArtifactFetchResult>((resolve) => {
-          const queue = held.current.get(origin) ?? [];
-          queue.push({ message, resolve });
-          held.current.set(origin, queue);
-          if (queue.length === 1) {
-            const contentType = message.headers.find(([k]) => k.toLowerCase() === 'content-type')?.[1];
-            setPending((list) =>
-              list.some((p) => p.origin === origin)
-                ? list
-                : [...list, { origin, first: { method: message.method, url: message.url, body: message.body, contentType } }],
-            );
-          }
-        });
+        if (isAllowed(current, origin)) return execute(message, origin);
+        return hold(origin, message, origin);
       },
     }),
-    [artifactId, execute],
+    [artifactId, execute, hold],
   );
 
   const decide = useCallback(
-    async (origins: string[], decision: NetworkDecision) => {
+    async (origins: string[], decision: NetworkDecision, anySite = false) => {
       if (!artifactId) return;
+      if (anySite && decision !== 'deny') {
+        const everything = [...held.current.keys()];
+        const queues = everything.flatMap((site) => held.current.get(site) ?? []);
+        held.current.clear();
+        try {
+          await grantArtifactNetwork(artifactId, ANY_SITE, decision);
+        } catch (error) {
+          for (const h of queues) h.resolve({ ok: false, error: errorText(error) });
+          setPending([]);
+          return;
+        }
+        deniedByArtifact.delete(artifactId);
+        baselineByArtifact.set(artifactId, contentRef.current);
+        const base = stateRef.current ?? { blockedReason: null, always: [], session: [] };
+        const next: ArtifactNetworkState =
+          decision === 'page'
+            ? { ...base, always: [...new Set([...base.always, ANY_SITE])] }
+            : { ...base, session: [...new Set([...base.session, ANY_SITE])] };
+        stateRef.current = next;
+        setState(next);
+        for (const h of queues) void execute(h.message, h.origin).then(h.resolve);
+        setDeniedVersion((v) => v + 1);
+        setPending([]);
+        return;
+      }
       for (const origin of origins) {
         const queue = held.current.get(origin) ?? [];
         held.current.delete(origin);
@@ -287,7 +359,7 @@ export function useArtifactNetwork(
             : { ...base, session: [...new Set([...base.session, origin])] };
         stateRef.current = next;
         setState(next);
-        for (const h of queue) void execute(h.message, origin).then(h.resolve);
+        for (const h of queue) void execute(h.message, h.origin).then(h.resolve);
       }
       setDeniedVersion((v) => v + 1);
       setPending((list) => list.filter((p) => !origins.includes(p.origin)));

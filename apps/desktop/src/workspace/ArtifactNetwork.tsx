@@ -10,7 +10,13 @@ import { useFormatters } from '../i18n/formatters';
 import { GlobeIcon } from '../icons';
 import { hostLabel, type DeclaredHost } from '../artifacts/networkHosts';
 import type { ArtifactNetworkState } from '../ipc/client';
-import type { NetworkDecision, NetworkLogEntry, PendingSite } from './useArtifactNetwork';
+import { ANY_SITE, type NetworkDecision, type NetworkLogEntry, type PendingSite } from './useArtifactNetwork';
+
+/** A site as the reader sees it; the any-site grant reads as words. */
+export function useSiteLabel(): (origin: string) => string {
+  const t = useT();
+  return (origin) => (origin === ANY_SITE ? t('artifacts.network.anySite') : hostLabel(origin));
+}
 
 // ── Banner ───────────────────────────────────────────────────────────────────
 
@@ -82,16 +88,18 @@ export function ArtifactNetworkDialog({
   title: string | null;
   sites: PendingSite[];
   declared: DeclaredHost[];
-  onDecide: (decision: NetworkDecision) => void;
+  onDecide: (decision: NetworkDecision, anySite: boolean) => void;
 }) {
   const t = useT();
   const fmt = useFormatters();
   const dialogRef = useRef<HTMLDivElement>(null);
   const denyRef = useRef<HTMLButtonElement>(null);
+  const [anySite, setAnySite] = useState(false);
   useFocusTrap(dialogRef, open);
 
   useEffect(() => {
     if (!open) return;
+    setAnySite(false);
     denyRef.current?.focus();
     // Capture phase: the panel's own Escape (close the document) must not see
     // this one.
@@ -99,7 +107,7 @@ export function ArtifactNetworkDialog({
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onDecide('deny');
+        onDecide('deny', false);
       }
     }
     document.addEventListener('keydown', onKeyDown, true);
@@ -134,6 +142,14 @@ export function ArtifactNetworkDialog({
                   <GlobeIcon />
                   <b>{hostLabel(site.origin)}</b>
                 </div>
+                {site.redirectFrom && (
+                  <div className="artifact-network-redirect">
+                    {t('artifacts.network.dialog.redirected', {
+                      from: hostLabel(site.redirectFrom),
+                      to: hostLabel(site.origin),
+                    })}
+                  </div>
+                )}
                 <div className={declaration ? 'artifact-network-declared' : 'artifact-network-undeclared'}>
                   {declaration
                     ? declaration.reason
@@ -161,14 +177,21 @@ export function ArtifactNetworkDialog({
         <p className="artifact-network-note">
           {sendsData ? t('artifacts.network.dialog.noteSends') : t('artifacts.network.dialog.note')}
         </p>
+        <label className="artifact-network-any">
+          <input type="checkbox" checked={anySite} onChange={(e) => setAnySite(e.target.checked)} />
+          <span>
+            <b>{t('artifacts.network.dialog.anySite')}</b>
+            <span className="artifact-network-muted">{t('artifacts.network.dialog.anySiteHint')}</span>
+          </span>
+        </label>
         <div className="artifact-network-actions">
-          <button ref={denyRef} type="button" className="btn ghost" onClick={() => onDecide('deny')}>
+          <button ref={denyRef} type="button" className="btn ghost" onClick={() => onDecide('deny', false)}>
             {t('artifacts.network.dialog.deny')}
           </button>
-          <button type="button" className="btn" onClick={() => onDecide('session')}>
+          <button type="button" className="btn" onClick={() => onDecide('session', anySite)}>
             {t('artifacts.network.dialog.allowSession')}
           </button>
-          <button type="button" className="btn primary" onClick={() => onDecide('page')}>
+          <button type="button" className="btn primary" onClick={() => onDecide('page', anySite)}>
             {t('artifacts.network.dialog.allowPage')}
           </button>
         </div>
@@ -206,6 +229,7 @@ export function ArtifactNetworkChip({
 }) {
   const t = useT();
   const fmt = useFormatters();
+  const siteLabel = useSiteLabel();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -230,10 +254,12 @@ export function ArtifactNetworkChip({
   }, [open]);
 
   const rows = useMemo<SiteRow[]>(() => {
+    // A site covered by the any-site grant shows that grant's status.
+    const has = (list: string[] | undefined, origin: string) => !!list && (list.includes(origin) || list.includes(ANY_SITE));
     const status = (origin: string): SiteStatus =>
-      state?.always.includes(origin)
+      has(state?.always, origin)
         ? 'always'
-        : state?.session.includes(origin)
+        : has(state?.session, origin)
           ? 'session'
           : denied.has(origin)
             ? 'denied'
@@ -279,7 +305,7 @@ export function ArtifactNetworkChip({
               {rows.map((row) => (
                 <li key={row.origin}>
                   <div className="artifact-network-row-head">
-                    <b>{hostLabel(row.origin)}</b>
+                    <b>{siteLabel(row.origin)}</b>
                     <span className="artifact-network-status" data-status={row.status}>
                       {t(`artifacts.network.status.${row.status}`)}
                     </span>
@@ -292,7 +318,7 @@ export function ArtifactNetworkChip({
                       : t(`artifacts.network.source.${row.source}`)}
                     {row.requests > 0 && ` · ${t('artifacts.network.popover.requests', { count: row.requests })}`}
                   </div>
-                  {(row.status === 'always' || row.status === 'session') && (
+                  {(state?.always.includes(row.origin) || state?.session.includes(row.origin)) && (
                     <button type="button" className="btn ghost artifact-network-remove" onClick={() => onRevoke(row.origin)}>
                       {t('artifacts.network.popover.remove')}
                     </button>

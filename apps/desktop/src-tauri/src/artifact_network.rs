@@ -90,10 +90,40 @@ pub struct ArtifactFetchResponse {
     pub url: String,
 }
 
+/// The grant that lets a page reach any public https site (the reader's
+/// blanket approval). Every other rule still holds for each request.
+pub const ANY_SITE: &str = "*";
+
+/// Prefix of the error `perform` returns when a server redirects to a site
+/// the page may not reach yet: `redirect:<origin> <message>`. The renderer
+/// asks the reader about `<origin>` and retries, instead of dead-ending.
+pub const REDIRECT_ERROR_PREFIX: &str = "redirect:";
+
 /// The origin a grant is keyed on: `https://host[:port]`, lowercased, default
-/// port elided. `Err` for anything a page may not reach at all.
+/// port elided — or [`ANY_SITE`]. `Err` for anything a page may not reach.
 pub fn grant_host(raw_url: &str) -> Result<String, String> {
+    if raw_url == ANY_SITE {
+        return Ok(ANY_SITE.to_string());
+    }
     origin_for(raw_url, AddressPolicy::APP)
+}
+
+/// A redirect that stays with the same owner: the same host give or take a
+/// leading `www.`, or a subdomain of the host the reader allowed. Anything
+/// else is a different site and needs the reader's say-so.
+fn same_site(allowed_origin: &str, target_origin: &str) -> bool {
+    let host = |origin: &str| {
+        url::Url::parse(origin)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+            .unwrap_or_default()
+    };
+    let (a, b) = (host(allowed_origin), host(target_origin));
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    let strip = |h: &str| h.strip_prefix("www.").unwrap_or(h).to_string();
+    strip(&a) == strip(&b) || b.ends_with(&format!(".{a}"))
 }
 
 fn origin_for(raw_url: &str, policy: AddressPolicy) -> Result<String, String> {
@@ -329,11 +359,15 @@ fn user_agent() -> String {
     )
 }
 
-/// Make `req` after the caller has checked the grant. Follows redirects on
-/// the same host only; every hop is resolved and pinned afresh.
+/// Make `req` after the caller has checked the grant. A redirect is followed
+/// when it stays on the same site (see [`same_site`]) or `allowed` says the
+/// reader allowed its origin; otherwise it ends with a
+/// [`REDIRECT_ERROR_PREFIX`] error naming the origin. Every hop is resolved
+/// and pinned afresh.
 pub async fn perform(
     req: &ArtifactFetchRequest,
     policy: AddressPolicy,
+    allowed: &(dyn Fn(&str) -> bool + Send + Sync),
 ) -> Result<ArtifactFetchResponse, String> {
     let method = req.method.to_ascii_uppercase();
     if !ALLOWED_METHODS.contains(&method.as_str()) {
@@ -362,9 +396,10 @@ pub async fn perform(
     let mut body = body;
 
     for hop in 0..=MAX_REDIRECTS {
-        if origin_for(url.as_str(), policy)? != granted {
+        let origin = origin_for(url.as_str(), policy)?;
+        if origin != granted && !same_site(&granted, &origin) && !allowed(&origin) {
             return Err(format!(
-                "The server redirected to {}, which is not the site you allowed.",
+                "{REDIRECT_ERROR_PREFIX}{origin} The server redirected to {}, which this page has not been allowed to contact.",
                 url.host_str().unwrap_or("another site")
             ));
         }
@@ -569,5 +604,23 @@ mod tests {
         assert!(!has_session_grant("a2", "https://example.com"));
         clear_session_grants(Some("a1"));
         assert!(!has_session_grant("a1", "https://example.com"));
+    }
+
+    #[test]
+    fn a_redirect_is_the_same_site_only_under_the_same_owner() {
+        assert!(same_site("https://example.com", "https://www.example.com"));
+        assert!(same_site("https://www.example.com", "https://example.com"));
+        assert!(same_site("https://example.com", "https://api.example.com"));
+        assert!(!same_site(
+            "https://api.frankfurter.app",
+            "https://api.frankfurter.dev"
+        ));
+        assert!(!same_site("https://foo.co.uk", "https://evil.co.uk"));
+        assert!(!same_site("https://api.example.com", "https://example.com"));
+    }
+
+    #[test]
+    fn any_site_is_a_valid_grant() {
+        assert_eq!(grant_host(ANY_SITE).unwrap(), ANY_SITE);
     }
 }

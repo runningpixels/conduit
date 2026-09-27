@@ -1016,17 +1016,23 @@ html[data-rail="labels"] .shell { --rail-current-w: var(--rail-w-labels); }
 .rail-label { display: none; }
 html[data-rail="labels"] .rail-btn {
   width: 80px;
-  height: 48px;
+  height: auto;
+  min-height: 48px;
+  padding: 5px 2px;
   grid-template-rows: auto auto;
   align-content: center;
   gap: 3px;
 }
+/* A long label (German "Gespeicherte Fakten") takes a second line rather
+ * than an ellipsis; the button grows to hold it. */
 html[data-rail="labels"] .rail-label {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   max-width: 76px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: center;
+  overflow-wrap: anywhere;
   font-size: var(--fs-sm);
   line-height: 1.1;
 }
@@ -1043,7 +1049,7 @@ html[data-rail="labels"] .rail-label {
   box-sizing: content-box;
 }
 html[data-density="compact"] .rail-btn { width: 36px; height: 36px; }
-html[data-density="compact"][data-rail="labels"] .rail-btn { width: 80px; height: 44px; }
+html[data-density="compact"][data-rail="labels"] .rail-btn { width: 80px; height: auto; min-height: 44px; }
 
 /* A destination page covers the body; the chat underneath stays mounted. */
 .body > .dest-page {

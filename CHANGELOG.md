@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **The new layout in every language.** The side rail, the inspector, the
+  composer's "+" menu, the redesigned pages and the network dialog are now
+  translated into German, Spanish, French, Japanese, Brazilian Portuguese,
+  Korean and Simplified Chinese. With **Side rail → Icons and labels**, a long
+  label wraps onto a second line instead of being cut off.
+
 - **Let a page reach any public site.** The network dialog has a
   **Let this page reach any public site** option, for this time or always,
   for pages that use many services. Every request still goes out without your

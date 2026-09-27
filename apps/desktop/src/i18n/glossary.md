@@ -41,6 +41,15 @@ choice, the entry says so.
 | parameters (generation) | Modellparameter | Parámetros | Paramètres du modèle | モデルパラメーター | Parâmetros do modelo | 모델 매개변수 | 模型参数 | Always qualified, so it does not collide with the screen above. |
 | composer | Eingabebereich | campo de mensaje | zone de saisie | 入力エリア | campo de mensagem | 입력 영역 | 输入区 | The region holding the input, the Chat settings chip, the skills and search icons and the folder binding. Never the calque: `Composer` reads as *Komponist*, and *compositor* / *compositeur* are people who write music. Spanish and French both took the name from the skip link, the one place the element names itself to a screen reader. |
 | sidebar | Seitenleiste | Barra lateral | Barre latérale | サイドバー | Barra lateral | 사이드바 | 侧边栏 | The `<aside>`. The `<nav>` inside it is the chat list and is named separately — they were briefly both "Chats", which a screen reader reads as "Chats region, Chats navigation". |
+| rail | Navigationsleiste | Barra de navegación | Barre de navigation | ナビゲーションバー | Barra de navegação | 탐색 모음 | 导航栏 | The icon strip at the far left (Chats, Ideas, Documents, …). Kept apart from *sidebar*, which is the chat list beside it. Settings names it in **Appearance → Side rail**. |
+| inspector | Inspektor | Inspector | Inspecteur | インスペクター | Inspetor | 인스펙터 | 检查器 | The panel beside the chat, with the tabs below. |
+| Page / Activity / Sources (inspector tabs) | Seite / Aktivität / Quellen | Página / Actividad / Fuentes | Page / Activité / Sources | ページ / アクティビティ / 出典 | Página / Atividade / Fontes | 페이지 / 활동 / 출처 | 页面 / 活动 / 来源 | *Sources* means citations, hence 出典 rather than ソース. |
+| Library | Bibliothek | Biblioteca | Bibliothèque | ライブラリ | Biblioteca | 라이브러리 | 资料库 | The rail page holding prompts and skills. |
+| turn | Runde | turno | tour | ターン | turno | 턴 | 轮 | One prompt and its reply. Established in the time-limit and queue strings; zh-CN writes 轮次 where a plural reads better. |
+| How this works | So funktioniert’s | Cómo funciona | Fonctionnement | 仕組み | Como funciona | 작동 방식 | 工作原理 | The toggle in every page header that reveals the longer explanation. |
+| Any public site | Jede öffentliche Website | Cualquier sitio público | N'importe quel site public | すべての公開サイト | Qualquer site público | 모든 공개 사이트 | 任意公开网站 | A page's network grant for every public site (ADR-010 §7). Same words in the chip, the dialog and Settings. |
+| needs you (status badge) | Braucht dich | Te necesita | À vous | 要対応 | Precisa de você | 확인 필요 | 待处理 | A chat or step waiting on the reader. Chinese avoids 你 in a badge. |
+| your computer / this computer | – | tu PC / este PC | – | – | – | – | – | Spanish: *PC*, not *equipo* or *ordenador*/*computadora* (the Spain/Latin America split). *equipos* stays only for machines in general ("equipos que no tienen uno"). Other locales keep their established word. |
 
 ## Name every screen before the work is split
 

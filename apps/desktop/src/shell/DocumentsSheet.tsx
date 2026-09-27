@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { AppSettings } from '../ipc/contracts';
-import { KnowledgeSection } from '../workspace/settings/KnowledgeSection';
+import { DocumentsPage } from '../pages/DocumentsPage';
 import { useT } from '../i18n';
 import { useFocusTrap } from './useFocusTrap';
 
@@ -28,7 +28,10 @@ interface DocumentsSheetProps {
  * for non-chat views, and every other summoned surface (Settings, the command
  * palette) is an overlay. Copying that keeps this one change instead of two.
  *
- * `onSettingsChange` receives settings that `KnowledgeSection` has already
+ * As a rail destination (`variant="page"`) it is just `DocumentsPage`; App
+ * can render that directly.
+ *
+ * `onSettingsChange` receives settings that the page has already
  * persisted, so it is a plain setter — not Settings' debounced auto-save,
  * which would write the same value a second time.
  */
@@ -72,34 +75,17 @@ export function DocumentsSheet({
 
   if (!open) return null;
 
-  const main = (
-        <div className="sheet-main scroll">
-          <div className="sheet-single-head">
-            <h2 className="sheet-h">{t('shell.documentsSheet.heading')}</h2>
-            {!isPage && (
-              <button className="btn ghost" type="button" onClick={onClose}>
-                {t('common.actions.close')}
-              </button>
-            )}
-          </div>
-          <p className="sheet-sub">{t('shell.documentsSheet.intro')}</p>
-          <KnowledgeSection
-            settings={settings}
-            onUpdate={onSettingsChange}
-            onStatus={onStatus}
-            pendingPaths={pendingPaths}
-            onPendingPathsHandled={onPendingPathsHandled}
-          />
-        </div>
+  const page = (
+    <DocumentsPage
+      settings={settings}
+      onSettingsChange={onSettingsChange}
+      onStatus={onStatus}
+      pendingPaths={pendingPaths}
+      onPendingPathsHandled={onPendingPathsHandled}
+    />
   );
 
-  if (isPage) {
-    return (
-      <section className="sheet sheet-single sheet-page" aria-label={t('shell.documentsSheet.ariaLabel')}>
-        {main}
-      </section>
-    );
-  }
+  if (isPage) return page;
 
   return (
     <div
@@ -116,7 +102,15 @@ export function DocumentsSheet({
         aria-modal="true"
         aria-label={t('shell.documentsSheet.ariaLabel')}
       >
-        {main}
+        <div className="sheet-main scroll">
+          <div className="sheet-single-head">
+            <h2 className="sheet-h">{t('shell.documentsSheet.heading')}</h2>
+            <button className="btn ghost" type="button" onClick={onClose}>
+              {t('common.actions.close')}
+            </button>
+          </div>
+          {page}
+        </div>
       </div>
     </div>
   );

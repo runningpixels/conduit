@@ -1,0 +1,98 @@
+/* Documents page (rail destination): collections list beside the selected
+   collection's documents. The frame itself (.page-*) lives in workspace.css;
+   the drop banner and import progress (.kb-*) in settings.css. */
+
+.docs-list-hint {
+  margin: 0;
+  padding: var(--sp-2) 10px;
+  font-size: var(--fs-2xl);
+  color: var(--ink-3);
+}
+
+/* Providers with consent that no collection uses any more. */
+.docs-consent-orphan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 2px 10px;
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+}
+
+.docs-detail { max-width: 880px; }
+.docs-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+.docs-detail-title {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-6xl);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.docs-detail-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.docs-detail-meta {
+  margin: 4px 0 var(--sp-5);
+  font-size: var(--fs-2xl);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.docs-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line-soft);
+}
+.docs-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.docs-row-main { display: grid; gap: 2px; min-width: 0; }
+.docs-row-title {
+  font-size: var(--fs-3xl);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-row-meta,
+.docs-row-state {
+  font-size: var(--fs-md);
+  color: var(--ink-3);
+}
+.docs-row-meta { overflow-wrap: anywhere; }
+.docs-row .kb-import-progress { margin-top: 2px; }
+
+.docs-empty,
+.docs-drop-hint {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-2xl);
+  color: var(--ink-3);
+}
+
+.docs-consent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--fs-2xl);
+  color: var(--ink-3);
+}
+
+.docs-page .kb-drop-banner { max-width: 880px; }
+
+html[data-density="compact"] .docs-row { padding: 4px 0; }
+html[data-density="compact"] .docs-detail-meta { margin-bottom: var(--sp-4); }

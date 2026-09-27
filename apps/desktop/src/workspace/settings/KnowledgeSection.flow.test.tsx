@@ -34,7 +34,7 @@ vi.mock('../../ipc/client', () => ({
   renameKnowledgeCollection: vi.fn(),
 }));
 
-const { KnowledgeSection } = await import('./KnowledgeSection');
+const { DocumentsPage } = await import('../../pages/DocumentsPage');
 
 function settingsWith(overrides: Partial<AppSettings>): AppSettings {
   return {
@@ -44,7 +44,7 @@ function settingsWith(overrides: Partial<AppSettings>): AppSettings {
   } as unknown as AppSettings;
 }
 
-describe('KnowledgeSection import flow', () => {
+describe('Documents page import flow', () => {
   beforeEach(() => {
     importKnowledgeDocument.mockClear();
     updateSettings.mockClear();
@@ -57,9 +57,9 @@ describe('KnowledgeSection import flow', () => {
     current = settingsWith({});
     const handled = vi.fn();
     render(
-      <KnowledgeSection
+      <DocumentsPage
         settings={current}
-        onUpdate={(next) => (current = next)}
+        onSettingsChange={(next) => (current = next)}
         onStatus={vi.fn()}
         pendingPaths={['C:/docs/manual.pdf', 'C:/docs/notes.md']}
         onPendingPathsHandled={handled}
@@ -87,9 +87,9 @@ describe('KnowledgeSection import flow', () => {
     current = settingsWith({ pdfImportNoticeAcknowledged: true });
     const onStatus = vi.fn();
     render(
-      <KnowledgeSection
+      <DocumentsPage
         settings={current}
-        onUpdate={vi.fn()}
+        onSettingsChange={vi.fn()}
         onStatus={onStatus}
         pendingPaths={['C:/docs/notes.md']}
         onPendingPathsHandled={vi.fn()}
@@ -103,17 +103,34 @@ describe('KnowledgeSection import flow', () => {
   });
 
   /** The backend always supported withdrawal (the patch is a full replace);
-   *  t1-6 shipped with no way to reach it. */
-  it('lists providers with consent and revokes one', async () => {
+   *  t1-6 shipped with no way to reach it. The selected collection's provider
+   *  is revoked from its consent line; a provider no collection uses any more
+   *  stays revocable from the list pane. */
+  it('revokes consent for the collection provider and for an unused one', async () => {
     current = settingsWith({ embeddingConsentProviders: ['openrouter', 'openai'] });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<KnowledgeSection settings={current} onUpdate={vi.fn()} onStatus={vi.fn()} />);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <DocumentsPage
+        settings={current}
+        onSettingsChange={vi.fn()}
+        onStatus={vi.fn()}
+        pendingPaths={[]}
+        onPendingPathsHandled={vi.fn()}
+      />,
+    );
 
-    expect(await screen.findByText('Providers that can receive document text')).toBeTruthy();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Revoke' })[0]);
-
+    expect(await screen.findByText('Document text is sent to openrouter for indexing.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke openrouter' }));
     await waitFor(() =>
       expect(updateSettings).toHaveBeenCalledWith({ embeddingConsentProviders: ['openai'] }),
     );
+
+    expect(screen.getByText('Other providers allowed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke openai' }));
+    await waitFor(() =>
+      // The first revoke already persisted, so both are now gone.
+      expect(updateSettings).toHaveBeenLastCalledWith({ embeddingConsentProviders: [] }),
+    );
+    confirmSpy.mockRestore();
   });
 });

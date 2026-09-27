@@ -38,14 +38,14 @@ vi.mock('../../ipc/client', () => ({
   updateSettings: vi.fn(),
 }));
 
-const { KnowledgeSection } = await import('./KnowledgeSection');
+const { DocumentsPage } = await import('../../pages/DocumentsPage');
 
 const settings = {
   embeddingConsentProviders: ['openrouter'],
   pdfImportNoticeAcknowledged: true,
 } as unknown as AppSettings;
 
-describe('KnowledgeSection import progress', () => {
+describe('Documents page import progress', () => {
   beforeEach(() => {
     releaseImport = null;
     emit = null;
@@ -58,7 +58,15 @@ describe('KnowledgeSection import progress', () => {
    * there and the app looks hung.
    */
   it('shows the reading phase, then a determinate bar, and clears when done', async () => {
-    render(<KnowledgeSection settings={settings} onUpdate={vi.fn()} onStatus={vi.fn()} />);
+    render(
+      <DocumentsPage
+        settings={settings}
+        onSettingsChange={vi.fn()}
+        onStatus={vi.fn()}
+        pendingPaths={[]}
+        onPendingPathsHandled={vi.fn()}
+      />,
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: /import document/i }));
 

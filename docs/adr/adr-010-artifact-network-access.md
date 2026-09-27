@@ -53,7 +53,8 @@ we own.
    **every** address must be public (IPv4/IPv6 private, loopback, link-local,
    CGNAT, multicast, documentation, IPv4-mapped/NAT64 forms refused), and the
    connection is pinned to the checked addresses (no DNS rebinding); no
-   proxy; redirects followed manually, same origin only, at most 5. Methods
+   proxy; redirects followed manually, at most 5, every hop checked again
+   (see 7). Methods
    GET, HEAD, POST, PUT, PATCH, DELETE. Request headers `authorization`,
    `cookie`, `origin`, `referer`, `user-agent`, `host`, `sec-*`, `proxy-*`
    and hop-by-hop headers are dropped; `set-cookie` and `www-authenticate`
@@ -73,6 +74,23 @@ we own.
    `requestSubmit()`. Nothing is submitted or navigated; the sandbox flags are
    unchanged. This applies to every page, with or without network access.
 
+7. **Redirects and "any public site"** (amended 2026-09-27). APIs move
+   (api.frankfurter.app now redirects to api.frankfurter.dev), and refusing a
+   cross-site redirect left the page with no data and no way to recover.
+   Rust follows a redirect to the same site (same host ignoring a leading
+   `www.`, or a subdomain of the allowed host; labels are never stripped, so
+   `a.co.uk` → `b.co.uk` is another site) or to a site the page may already
+   reach. Any other redirect fails with `redirect:<origin> <message>`; the
+   panel holds the request and asks about the target ("The page asked for X,
+   which sent it on to Y"), and allowing it re-sends the original request.
+   The dialog also offers **Let this page reach any public site**, which
+   grants the origin `*` for this session or always. Everything in 4 still
+   applies to every request — https, public addresses only, no credentials,
+   the caps, the log, local-only and the Settings switch — so `*` widens
+   which public sites, never what a request can carry or reach. It is per
+   page, shown as "Any public site" in the chip and in Settings, and removed
+   like any other grant.
+
 ## Consequences
 - Live pages work, and the reader sees and decides every site first.
 - The exfiltration guard moves from "no network" to "only sites the reader
@@ -88,7 +106,8 @@ we own.
 ## Testing
 `networkBridge.test.ts` runs the shim against a fake frame; the renderer tests
 assert the shim is injected only with a handler and the CSP is unchanged;
-`useArtifactNetwork.test.ts` covers hold/allow/deny/blocked;
+`useArtifactNetwork.test.ts` covers hold/allow/deny/blocked, a refused
+redirect held and re-sent, and the any-site grant;
 `src-tauri/tests/artifact_network.rs` runs `perform` against a scripted local
 server (redirects, caps, header stripping, the address policy) and the grant
 repository. The live check (Playwright over CDP) drives a weather page against

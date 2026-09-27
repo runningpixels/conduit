@@ -416,9 +416,9 @@ export function DocumentPanel({
   const networkPendingOrigins = useMemo(() => network.pending.map((p) => p.origin), [network.pending]);
   const { decide: decideNetwork } = network;
   const handleNetworkDecision = useCallback(
-    (decision: 'deny' | 'session' | 'page') => {
+    (decision: 'deny' | 'session' | 'page', anySite = false) => {
       setNetworkReviewOpen(false);
-      void decideNetwork(networkPendingOrigins, decision);
+      void decideNetwork(networkPendingOrigins, decision, anySite);
     },
     [decideNetwork, networkPendingOrigins],
   );

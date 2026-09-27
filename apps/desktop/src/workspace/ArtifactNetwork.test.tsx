@@ -48,7 +48,7 @@ describe('ArtifactNetworkDialog', () => {
     expect(dialog.textContent).toContain('{"notes":"secret"}');
     expect(dialog.textContent).toContain('This page will send data to the site.');
     fireEvent.click(screen.getByRole('button', { name: 'Always allow for this page' }));
-    expect(onDecide).toHaveBeenCalledWith('page');
+    expect(onDecide).toHaveBeenCalledWith('page', false);
   });
 
   it('treats Escape as "Don\'t allow" without letting the panel see it', () => {
@@ -58,8 +58,28 @@ describe('ArtifactNetworkDialog', () => {
     render(<ArtifactNetworkDialog open title={null} sites={[site('https://a.example')]} declared={[]} onDecide={onDecide} />);
     fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
     document.removeEventListener('keydown', panelEscape);
-    expect(onDecide).toHaveBeenCalledWith('deny');
+    expect(onDecide).toHaveBeenCalledWith('deny', false);
     expect(panelEscape).not.toHaveBeenCalled();
+  });
+});
+
+describe('ArtifactNetworkDialog on a redirect', () => {
+  it('says where a redirect came from and can allow any public site', () => {
+    const onDecide = vi.fn();
+    render(
+      <ArtifactNetworkDialog
+        open
+        title={null}
+        sites={[{ ...site('https://api.frankfurter.dev'), redirectFrom: 'https://api.frankfurter.app' }]}
+        declared={[]}
+        onDecide={onDecide}
+      />,
+    );
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog.textContent).toContain('The page asked for api.frankfurter.app, which sent it on to api.frankfurter.dev.');
+    fireEvent.click(screen.getByRole('checkbox', { name: /any public site/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow this time' }));
+    expect(onDecide).toHaveBeenCalledWith('session', true);
   });
 });
 

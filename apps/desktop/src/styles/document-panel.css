@@ -857,6 +857,17 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .artifact-network-request code { color: var(--ink); word-break: break-all; }
 .artifact-network-sends { word-break: break-word; }
 .artifact-network-note { margin: 0; color: var(--ink-2); font-size: var(--fs-xl); line-height: 1.5; }
+.artifact-network-redirect { color: var(--ink-2); }
+.artifact-network-any {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--fs-xl);
+  line-height: 1.4;
+  cursor: pointer;
+}
+.artifact-network-any input { margin-top: 3px; }
+.artifact-network-any > span { display: grid; gap: 2px; }
 .artifact-network-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
 /* ── Inspector ───────────────────────────────────────────────────────────────

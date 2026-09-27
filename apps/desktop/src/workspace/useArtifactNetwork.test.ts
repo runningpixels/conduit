@@ -108,6 +108,56 @@ describe('useArtifactNetwork', () => {
     expect(artifactFetch).not.toHaveBeenCalled();
   });
 
+  it('asks about the site a redirect leads to, then re-sends the request', async () => {
+    getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: ['https://api.frankfurter.app'], session: [] });
+    artifactFetch.mockRejectedValueOnce(
+      'redirect:https://api.frankfurter.dev The server redirected to api.frankfurter.dev, which this page has not been allowed to contact.',
+    );
+    const id = `page-${nextArtifact}`;
+    const { result } = renderHook(() => useArtifactNetwork(id, '<html>'));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
+    let settled: unknown = null;
+    act(() => {
+      void result.current.handler.request(message('https://api.frankfurter.app/latest')).then((r) => (settled = r));
+    });
+    await waitFor(() => expect(result.current.pending).toHaveLength(1));
+    expect(result.current.pending[0]).toMatchObject({
+      origin: 'https://api.frankfurter.dev',
+      redirectFrom: 'https://api.frankfurter.app',
+    });
+    expect(settled).toBeNull();
+    expect(result.current.log.at(-1)?.error).toMatch(/^The server redirected/);
+
+    await act(async () => {
+      await result.current.decide(['https://api.frankfurter.dev'], 'page');
+    });
+    expect(grantArtifactNetwork).toHaveBeenCalledWith(id, 'https://api.frankfurter.dev', 'page');
+    await waitFor(() => expect(settled).toMatchObject({ ok: true, status: 200 }));
+    expect(artifactFetch).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'https://api.frankfurter.app/latest' }));
+  });
+
+  it('allows any public site with one decision', async () => {
+    const id = `page-${nextArtifact}`;
+    const { result } = renderHook(() => useArtifactNetwork(id, '<html>'));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
+    const results: unknown[] = [];
+    act(() => {
+      void result.current.handler.request(message('https://a.example/1')).then((r) => results.push(r));
+      void result.current.handler.request(message('https://b.example/2')).then((r) => results.push(r));
+    });
+    await waitFor(() => expect(result.current.pending).toHaveLength(2));
+    await act(async () => {
+      await result.current.decide(['https://a.example'], 'session', true);
+    });
+    expect(grantArtifactNetwork).toHaveBeenCalledTimes(1);
+    expect(grantArtifactNetwork).toHaveBeenCalledWith(id, '*', 'session');
+    await waitFor(() => expect(results).toHaveLength(2));
+    expect(result.current.pending).toHaveLength(0);
+    // A new site goes straight through.
+    await expect(result.current.handler.request(message('https://c.example/'))).resolves.toMatchObject({ ok: true });
+    expect(result.current.pending).toHaveLength(0);
+  });
+
   it('refuses plain http without asking', async () => {
     const { result } = renderHook(() => useArtifactNetwork(`page-${nextArtifact}`, '<html>'));
     const res = await result.current.handler.request(message('http://example.com/'));

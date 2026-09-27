@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **A page whose site moved keeps working.** When a site a page was allowed
+  to use redirects to another one (api.frankfurter.app now sends requests to
+  api.frankfurter.dev), Conduit asks about the new site instead of leaving
+  the page without its data; allowing it resends the request. Redirects
+  within the same site are followed without asking.
+
+### Added
+
+- **Let a page reach any public site.** The network dialog has a
+  **Let this page reach any public site** option, for this time or always,
+  for pages that use many services. Every request still goes out without your
+  cookies or sign-ins, is logged, and can never reach your computer or local
+  network; local-only mode and the Settings switch still turn it off.
+
 ## [0.1.0-rc.7] - 2026-09-26
 
 ### Added

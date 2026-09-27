@@ -16,6 +16,12 @@ use tokio::net::TcpListener;
 
 const TEST_POLICY: AddressPolicy = AddressPolicy { public_only: false };
 
+/// No site allowed beyond the one requested.
+fn nothing_else(_: &str) -> bool {
+    false
+}
+const NOTHING_ELSE: fn(&str) -> bool = nothing_else;
+
 /// What the server saw: request line + headers, per request.
 type Seen = Arc<Mutex<Vec<String>>>;
 
@@ -24,7 +30,21 @@ async fn serve(respond: fn(&str, SocketAddr) -> Vec<u8>) -> (SocketAddr, Seen) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let seen: Seen = Arc::new(Mutex::new(Vec::new()));
-    let log = seen.clone();
+    accept_loop(listener, addr, respond, seen.clone());
+    // `localhost` may resolve to ::1 first: answer there too, on the same port,
+    // so a redirect to http://localhost:<port> reaches this server.
+    if let Ok(v6) = TcpListener::bind(format!("[::1]:{}", addr.port())).await {
+        accept_loop(v6, addr, respond, seen.clone());
+    }
+    (addr, seen)
+}
+
+fn accept_loop(
+    listener: TcpListener,
+    addr: SocketAddr,
+    respond: fn(&str, SocketAddr) -> Vec<u8>,
+    log: Seen,
+) {
     tokio::spawn(async move {
         loop {
             let Ok((mut socket, _)) = listener.accept().await else {
@@ -68,7 +88,6 @@ async fn serve(respond: fn(&str, SocketAddr) -> Vec<u8>) -> (SocketAddr, Seen) {
             });
         }
     });
-    (addr, seen)
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -127,9 +146,13 @@ fn routes(path: &str, addr: SocketAddr) -> Vec<u8> {
 #[tokio::test]
 async fn a_granted_get_returns_the_body_without_cookies() {
     let (addr, _) = serve(routes).await;
-    let res = artifact_network::perform(&get(format!("http://{addr}/forecast")), TEST_POLICY)
-        .await
-        .expect("request succeeds");
+    let res = artifact_network::perform(
+        &get(format!("http://{addr}/forecast")),
+        TEST_POLICY,
+        &NOTHING_ELSE,
+    )
+    .await
+    .expect("request succeeds");
     assert_eq!(res.status, 200);
     assert_eq!(B64.decode(res.body).unwrap(), br#"{"temp":21}"#);
     assert!(res.headers.iter().any(|(k, _)| k == "content-type"));
@@ -144,9 +167,13 @@ async fn a_granted_get_returns_the_body_without_cookies() {
 #[tokio::test]
 async fn a_redirect_on_the_same_host_is_followed() {
     let (addr, _) = serve(routes).await;
-    let res = artifact_network::perform(&get(format!("http://{addr}/moved")), TEST_POLICY)
-        .await
-        .expect("followed");
+    let res = artifact_network::perform(
+        &get(format!("http://{addr}/moved")),
+        TEST_POLICY,
+        &NOTHING_ELSE,
+    )
+    .await
+    .expect("followed");
     assert_eq!(res.status, 200);
     assert!(res.url.ends_with("/forecast"));
 }
@@ -154,18 +181,50 @@ async fn a_redirect_on_the_same_host_is_followed() {
 #[tokio::test]
 async fn a_redirect_to_another_host_is_refused() {
     let (addr, _) = serve(routes).await;
-    let error = artifact_network::perform(&get(format!("http://{addr}/elsewhere")), TEST_POLICY)
-        .await
-        .expect_err("another host");
-    assert!(error.contains("not the site you allowed"), "{error}");
+    let error = artifact_network::perform(
+        &get(format!("http://{addr}/elsewhere")),
+        TEST_POLICY,
+        &NOTHING_ELSE,
+    )
+    .await
+    .expect_err("another host");
+    // Not a dead end: the error names the site so the reader can be asked.
+    let origin = format!("http://localhost:{}", addr.port());
+    assert!(
+        error.starts_with(&format!(
+            "{}{origin} ",
+            artifact_network::REDIRECT_ERROR_PREFIX
+        )),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn a_redirect_to_an_allowed_site_is_followed() {
+    let (addr, _) = serve(routes).await;
+    let target = format!("http://localhost:{}", addr.port());
+    let allowed = move |origin: &str| origin == target;
+    let res = artifact_network::perform(
+        &get(format!("http://{addr}/elsewhere")),
+        TEST_POLICY,
+        &allowed,
+    )
+    .await
+    .expect("followed to the allowed site");
+    assert_eq!(res.status, 200);
+    assert!(res.url.contains("localhost"), "{}", res.url);
 }
 
 #[tokio::test]
 async fn a_response_over_the_cap_is_refused() {
     let (addr, _) = serve(routes).await;
-    let error = artifact_network::perform(&get(format!("http://{addr}/huge")), TEST_POLICY)
-        .await
-        .expect_err("too large");
+    let error = artifact_network::perform(
+        &get(format!("http://{addr}/huge")),
+        TEST_POLICY,
+        &NOTHING_ELSE,
+    )
+    .await
+    .expect_err("too large");
     assert!(error.contains("larger than"), "{error}");
 }
 
@@ -185,7 +244,7 @@ async fn credentials_and_identity_headers_are_stripped_and_the_body_is_sent() {
         ],
         body: Some(B64.encode(br#"{"city":"Paris"}"#)),
     };
-    artifact_network::perform(&request, TEST_POLICY)
+    artifact_network::perform(&request, TEST_POLICY, &NOTHING_ELSE)
         .await
         .expect("sent");
     let log = seen.lock().unwrap().join("\n").to_ascii_lowercase();
@@ -201,14 +260,18 @@ async fn credentials_and_identity_headers_are_stripped_and_the_body_is_sent() {
 #[tokio::test]
 async fn the_app_policy_refuses_loopback_and_plain_http() {
     let (addr, _) = serve(routes).await;
-    let http =
-        artifact_network::perform(&get(format!("http://{addr}/forecast")), AddressPolicy::APP)
-            .await
-            .expect_err("plain http");
+    let http = artifact_network::perform(
+        &get(format!("http://{addr}/forecast")),
+        AddressPolicy::APP,
+        &NOTHING_ELSE,
+    )
+    .await
+    .expect_err("plain http");
     assert!(http.contains("Only https"), "{http}");
     let loopback = artifact_network::perform(
         &get(format!("https://127.0.0.1:{}/forecast", addr.port())),
         AddressPolicy::APP,
+        &NOTHING_ELSE,
     )
     .await
     .expect_err("loopback");
@@ -220,14 +283,16 @@ async fn methods_outside_the_list_and_oversized_bodies_are_refused() {
     let (addr, _) = serve(routes).await;
     let mut trace = get(format!("http://{addr}/echo"));
     trace.method = "TRACE".into();
-    assert!(artifact_network::perform(&trace, TEST_POLICY)
-        .await
-        .unwrap_err()
-        .contains("not allowed"));
+    assert!(
+        artifact_network::perform(&trace, TEST_POLICY, &NOTHING_ELSE)
+            .await
+            .unwrap_err()
+            .contains("not allowed")
+    );
     let mut big = get(format!("http://{addr}/echo"));
     big.method = "POST".into();
     big.body = Some(B64.encode(vec![0u8; artifact_network::MAX_REQUEST_BYTES + 1]));
-    assert!(artifact_network::perform(&big, TEST_POLICY)
+    assert!(artifact_network::perform(&big, TEST_POLICY, &NOTHING_ELSE)
         .await
         .unwrap_err()
         .contains("limit"));

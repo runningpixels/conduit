@@ -49,6 +49,7 @@ choice, the entry says so.
 | How this works | So funktioniert’s | Cómo funciona | Fonctionnement | 仕組み | Como funciona | 작동 방식 | 工作原理 | The toggle in every page header that reveals the longer explanation. |
 | Any public site | Jede öffentliche Website | Cualquier sitio público | N'importe quel site public | すべての公開サイト | Qualquer site público | 모든 공개 사이트 | 任意公开网站 | A page's network grant for every public site (ADR-010 §7). Same words in the chip, the dialog and Settings. |
 | needs you (status badge) | Braucht dich | Te necesita | À vous | 要対応 | Precisa de você | 확인 필요 | 待处理 | A chat or step waiting on the reader. Chinese avoids 你 in a badge. |
+| your computer / this computer | – | tu PC / este PC | – | – | – | – | – | Spanish: *PC*, not *equipo* or *ordenador*/*computadora* (the Spain/Latin America split). *equipos* stays only for machines in general ("equipos que no tienen uno"). Other locales keep their established word. |
 
 ## Name every screen before the work is split
 

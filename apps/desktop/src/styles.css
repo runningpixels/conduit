@@ -30,3 +30,12 @@
 
 /* Mermaid diagrams + KaTeX math in chat prose and markdown artifacts */
 @import './styles/markdown-render.css';
+
+/* Documents page: collections list + the selected collection's documents */
+@import './styles/pages-documents.css';
+
+/* Library page: prompts and skills (list + detail) */
+@import './styles/pages-library.css';
+
+/* Connectors + Memory rail pages: pages/ConnectorsPage.tsx, pages/MemoryPage.tsx */
+@import './styles/pages-connectors.css';

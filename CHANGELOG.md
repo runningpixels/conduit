@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.0-rc.7] - 2026-09-26
+
 ### Added
 
 - **A new layout.** A side rail on the left takes you to Chats, Ideas,
@@ -15,7 +17,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   waiting on keeps running while you look. Settings keeps what you configure
   (providers, chat, web search, workspace, appearance, branding, privacy,
   about); the rest moved to the rail. **Settings → Appearance → Side rail**
-  shows labels under the icons.
+  shows labels under the icons. Text that is new in this layout is in English
+  for every language until the next translation pass.
 - **The inspector.** The panel beside the chat now has three tabs: **Page**
   (the document or page, as before), **Activity** (every tool call, web
   search and site a turn used, with how long each took) and **Sources**
@@ -30,7 +33,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Chat status.** The chat list shows which chat is running, or waiting on
   you, even while you are in another chat.
 
-- **Ideas.** A new page in the sidebar with things to try — a pomodoro timer,
+- **Ideas.** A new page on the side rail with things to try — a pomodoro timer,
   a live weather dashboard, flashcards, a Snake game, a logo — grouped by what
   you want to do. Each one starts a chat with the prompt filled in so you can
   change it before sending. Ideas that need something you haven't set up say
@@ -39,8 +42,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   greeting until you've found your feet, onboarding ends with three to try,
   and a follow-up suggestion now and then points at something the reply could
   become ("Make it a dashboard", "Use live data"). What you've tried is
-  remembered on this device only. Saved prompts are on the same page, under
-  **My prompts**.
+  remembered on this device only.
 
 - Pages that fetch live data. An HTML page can now call public web APIs — a
   weather dashboard can show today's forecast instead of a made-up sample. The
@@ -374,7 +376,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.6...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.7...HEAD
+[0.1.0-rc.7]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.6...v0.1.0-rc.7
 [0.1.0-rc.6]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.5...v0.1.0-rc.6
 [0.1.0-rc.5]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.4...v0.1.0-rc.5
 [0.1.0-rc.4]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.3...v0.1.0-rc.4

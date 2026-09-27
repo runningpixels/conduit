@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { AppSettings } from '../../ipc/contracts';
-import type { MemoryItem, MemoryKind } from '../../ipc/contracts';
-import {
-  acceptMemoryItem,
-  createMemoryItem,
-  deleteMemoryItem,
-  listMemoryItems,
-  updateMemoryItem,
-} from '../../ipc/client';
+/// The Settings sheet's compact Memory section. The Memory rail page
+/// (pages/MemoryPage.tsx) is the full layout; both share `useMemoryItems`.
+import { useState } from 'react';
+import type { AppSettings, MemoryKind } from '../../ipc/contracts';
+import { acceptMemoryItem, createMemoryItem, deleteMemoryItem, updateMemoryItem } from '../../ipc/client';
 import { useT } from '../../i18n';
+import { useMemoryItems } from './memory/useMemoryItems';
 
 interface MemorySectionProps {
   settings: AppSettings;
@@ -18,40 +14,11 @@ interface MemorySectionProps {
 
 export function MemorySection({ settings, onUpdate, onStatus }: MemorySectionProps) {
   const t = useT();
-  const [items, setItems] = useState<MemoryItem[]>([]);
+  const { pending, active, busy, run } = useMemoryItems(onStatus);
   const [draft, setDraft] = useState('');
   const [kind, setKind] = useState<MemoryKind>('core');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      setItems(await listMemoryItems());
-    } catch (e) {
-      onStatus(t('settings.memory.status.loadFailed', { error: String(e) }));
-    }
-  }, [onStatus, t]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const pending = items.filter((i) => i.status === 'pending');
-  const active = items.filter((i) => i.status === 'active');
-
-  async function run(label: string, action: () => Promise<unknown>) {
-    setBusy(true);
-    try {
-      await action();
-      onStatus(label);
-      await refresh();
-    } catch (e) {
-      onStatus(t('settings.memory.status.actionFailed', { label, error: String(e) }));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className="settings-section">

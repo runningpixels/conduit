@@ -8,11 +8,16 @@ import {
   updatePrompt,
 } from '../../ipc/client';
 import { useT, type Translate } from '../../i18n';
+import { useFormatters } from '../../i18n/formatters';
+import { PageEmpty, PageListItem } from '../../shell/PageFrame';
+import { embeddedLibraryFrame, type LibraryFrame } from './LibraryLayout';
 import { VariableFillDialog } from './VariableFillDialog';
 
 interface PromptsSectionProps {
   onStatus: (message: string) => void;
   onInsertPrompt: (body: string) => void;
+  /** How the parts are arranged; the Library page passes its PageFrame. */
+  frame?: LibraryFrame;
 }
 
 interface EditingPrompt {
@@ -48,24 +53,15 @@ function highlightVariables(body: string, t: Translate): React.ReactNode {
   });
 }
 
-/** Truncate body text for preview while preserving variable tokens. */
-function previewBody(body: string, maxLen = 120): string {
-  if (body.length <= maxLen) return body;
-  // Try to break at a token boundary
-  const truncated = body.slice(0, maxLen);
-  const lastToken = truncated.lastIndexOf('{{');
-  const closeToken = truncated.indexOf('}}', lastToken);
-  if (lastToken > maxLen - 40 && closeToken > lastToken) {
-    return body.slice(0, closeToken + 2) + '…';
-  }
-  return truncated + '…';
-}
-
-export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps) {
+export function PromptsSection({ onStatus, onInsertPrompt, frame = embeddedLibraryFrame }: PromptsSectionProps) {
   const t = useT();
+  const fmt = useFormatters();
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  /// The prompt shown in the detail pane. Null (or an id no longer in the
+  /// list) falls back to the first prompt, so there is always a selection.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingPrompt | null>(null);
   /// The prompt whose `{{variable}}` tokens are being filled in before insert.
   /// Null when nothing is waiting -- a prompt with no variables never gets here.
@@ -89,6 +85,8 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
     void refresh();
   }, [refresh]);
 
+  const selected = prompts.find((p) => p.id === selectedId) ?? prompts[0] ?? null;
+
   const handleSave = useCallback(async () => {
     if (!editing || !editing.title.trim() || !editing.body.trim()) {
       onStatus(t('settings.prompts.status.titleBodyRequired'));
@@ -102,8 +100,9 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
         await updatePrompt(editing.id, editing.title.trim(), editing.body.trim(), folder, tags);
         onStatus(t('settings.prompts.status.updated'));
       } else {
-        await createPrompt(editing.title.trim(), editing.body.trim(), folder, tags);
+        const created = await createPrompt(editing.title.trim(), editing.body.trim(), folder, tags);
         onStatus(t('settings.prompts.status.created'));
+        if (created?.id) setSelectedId(created.id);
       }
       setEditing(null);
       await refresh();
@@ -121,12 +120,13 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
         await deletePrompt(id);
         onStatus(t('settings.prompts.status.deleted'));
         if (editing?.id === id) setEditing(null);
+        if (selectedId === id) setSelectedId(null);
         await refresh();
       } catch (e) {
         onStatus(t('settings.prompts.status.deleteFailed', { error: String(e) }));
       }
     },
-    [editing, refresh, onStatus, t],
+    [editing, selectedId, refresh, onStatus, t],
   );
 
   const handleEdit = useCallback((p: Prompt) => {
@@ -146,192 +146,217 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
     });
   }, [selectedFolder]);
 
+  const handleInsert = useCallback(
+    (p: Prompt) => {
+      // A prompt with variables gets filled in first; inserting the raw body
+      // would drop `{{name}}` into the composer for the user to find and fix
+      // by hand.
+      if (p.variables && p.variables.length > 0) {
+        setFilling(p);
+        return;
+      }
+      onInsertPrompt(p.body);
+    },
+    [onInsertPrompt],
+  );
+
   const allFolders = [...new Set([...folders, ...(selectedFolder ? [selectedFolder] : [])])].sort();
 
-  return (
-    <div className="settings-section">
-      {/* Just the action: SettingsSheet already titles the pane "Prompts".
-          The button used to sit in the section header with `marginLeft: auto`,
-          which did nothing — that header is not a flex row — so it read as a
-          word jammed against a button. */}
-      <div className="settings-section-actions">
-        <button
-          className="btn primary"
-          type="button"
-          onClick={handleNew}
-          style={{ padding: '4px 12px', fontSize: 'var(--fs-xl)' }}
+  const updated = (p: Prompt) => fmt.timeAgo(p.updatedAt ?? p.createdAt);
+
+  const newButton = (
+    <button className="btn primary" type="button" onClick={handleNew}>
+      {t('shell.library.prompts.new')}
+    </button>
+  );
+
+  const listHeader =
+    allFolders.length > 0 ? (
+      <label className="library-filter">
+        <span className="library-filter-label">{t('shell.library.prompts.folderFilter')}</span>
+        <select
+          className="library-select"
+          value={selectedFolder ?? ''}
+          onChange={(e) => setSelectedFolder(e.target.value || null)}
         >
-          {t('settings.prompts.actions.newPrompt')}
-        </button>
-      </div>
-
-      {editing && (
-        <div className="prompts-editor" style={{ marginBottom: 16, padding: 12, borderRadius: 'var(--r-sm)', background: 'var(--card)' }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: 'var(--fs-3xl)' }}>
-            {editing.id ? t('settings.prompts.editor.editTitle') : t('settings.prompts.editor.newTitle')}
-          </h4>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <input
-              placeholder={t('settings.prompts.editor.titlePlaceholder')}
-              value={editing.title}
-              onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
-            />
-            <textarea
-              placeholder={t('settings.prompts.editor.bodyPlaceholder')}
-              value={editing.body}
-              onChange={(e) => setEditing({ ...editing, body: e.target.value })}
-              rows={6}
-              style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)', resize: 'vertical' }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                placeholder={t('settings.prompts.editor.folderPlaceholder')}
-                value={editing.folder}
-                onChange={(e) => setEditing({ ...editing, folder: e.target.value })}
-                list="prompt-folders"
-                style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
-              />
-              <datalist id="prompt-folders">
-                {allFolders.map((f) => (
-                  <option key={f} value={f} />
-                ))}
-              </datalist>
-              <input
-                placeholder={t('settings.prompts.editor.tagsPlaceholder')}
-                value={editing.tags}
-                onChange={(e) => setEditing({ ...editing, tags: e.target.value })}
-                style={{ flex: 1, borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '8px 10px' }}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn ghost" type="button" onClick={() => setEditing(null)} disabled={saving}>
-                {t('common.actions.cancel')}
-              </button>
-              <button className="btn primary" type="button" onClick={() => void handleSave()} disabled={saving}>
-                {saving ? t('settings.prompts.editor.saving') : t('common.actions.save')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
-        {/* Folder sidebar */}
-        <div className="prompts-folder-sidebar" style={{ borderRadius: 'var(--r-sm)', background: 'var(--card)', padding: 8 }}>
-          <button
-            className={`folder-btn${selectedFolder === null ? ' active' : ''}`}
-            type="button"
-            onClick={() => setSelectedFolder(null)}
-            aria-pressed={selectedFolder === null}
-          >
-            {t('settings.prompts.folder.all')}
-          </button>
+          <option value="">{t('settings.prompts.folder.all')}</option>
           {allFolders.map((f) => (
-            <button
-              key={f}
-              className={`folder-btn${selectedFolder === f ? ' active' : ''}`}
-              type="button"
-              onClick={() => setSelectedFolder(f)}
-              aria-pressed={selectedFolder === f}
-            >
+            <option key={f} value={f}>
               {f}
-            </button>
+            </option>
           ))}
-          {allFolders.length === 0 && (
-            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)', padding: '6px 8px', display: 'block' }}>
-              {t('settings.prompts.folder.none')}
-            </span>
-          )}
-        </div>
+        </select>
+      </label>
+    ) : undefined;
 
-        {/* Prompt list */}
-        <div className="prompts-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
-          {prompts.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', fontSize: 'var(--fs-3xl)', color: 'var(--ink-3)' }}>
-              {selectedFolder
-                ? t('settings.prompts.list.emptyFolder', { folder: selectedFolder })
-                : t('settings.prompts.list.emptyAll')}
-            </div>
-          )}
-          {prompts.map((p) => (
-            <div
-              key={p.id}
-              className="prompt-card"
-              style={{
-                padding: 12,
-                marginBottom: 8,
-                borderRadius: 'var(--r-sm)',
-                background: 'var(--card)',
-                cursor: 'pointer',
-                border: editing?.id === p.id ? '1px solid var(--hue)' : '1px solid transparent',
-              }}
-              onClick={() => handleEdit(p)}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <strong style={{ fontSize: 'var(--fs-3xl)' }}>{p.title}</strong>
-                  {p.folder && (
-                    <span style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)', marginLeft: 8 }}>
-                      {p.folder}
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    className="btn ghost"
-                    type="button"
-                    style={{ padding: '2px 8px', fontSize: 'var(--fs-md)' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // A prompt with variables gets filled in first; inserting
-                      // the raw body would drop `{{name}}` into the composer
-                      // for the user to find and fix by hand.
-                      if (p.variables && p.variables.length > 0) {
-                        setFilling(p);
-                        return;
-                      }
-                      onInsertPrompt(p.body);
-                    }}
-                    title={t('settings.prompts.actions.insertTitle')}
-                  >
-                    {t('common.actions.insert')}
-                  </button>
-                  <button
-                    className="btn ghost"
-                    type="button"
-                    style={{ padding: '2px 8px', fontSize: 'var(--fs-md)', color: 'var(--error)' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleDelete(p.id, p.title);
-                    }}
-                    title={t('settings.prompts.actions.deleteTitle')}
-                  >
-                    {t('common.actions.delete')}
-                  </button>
-                </div>
-              </div>
-              <div style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}>
-                {highlightVariables(previewBody(p.body), t)}
-              </div>
-              {p.tags && p.tags.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
-                  {p.tags.map((tag) => (
-                    <span key={tag} className="prompt-tag" style={{ fontSize: 'var(--fs-xs)', padding: '1px 6px', borderRadius: 'var(--r-sm)', background: 'var(--card-hi)', color: 'var(--ink-3)' }}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {p.variables && p.variables.length > 0 && (
-                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--hue)', marginTop: 4 }}>
-                  {t('settings.prompts.card.variablesLabel', { variables: p.variables.join(', ') })}
-                </div>
-              )}
-            </div>
-          ))}
+  const list =
+    prompts.length === 0 ? (
+      <p className="library-list-hint">
+        {selectedFolder
+          ? t('settings.prompts.list.emptyFolder', { folder: selectedFolder })
+          : t('shell.library.prompts.empty.title')}
+      </p>
+    ) : (
+      prompts.map((p) => (
+        <PageListItem
+          key={p.id}
+          selected={editing ? editing.id === p.id : selected?.id === p.id}
+          onSelect={() => {
+            setSelectedId(p.id);
+            setEditing(null);
+          }}
+          title={p.title}
+          meta={[p.folder, (p.tags ?? []).join(', '), updated(p)].filter(Boolean).join(' · ')}
+        />
+      ))
+    );
+
+  let detail: React.ReactNode;
+  if (editing) {
+    const heading = editing.id ? t('settings.prompts.editor.editTitle') : t('settings.prompts.editor.newTitle');
+    detail = (
+      <form
+        className="library-detail library-editor"
+        aria-label={heading}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSave();
+        }}
+      >
+        <header className="library-detail-head">
+          <h3 className="library-detail-title">{heading}</h3>
+        </header>
+        <label className="field">
+          <span className="field-label">{t('shell.library.prompts.field.title')}</span>
+          <input
+            className="library-input"
+            autoFocus
+            placeholder={t('settings.prompts.editor.titlePlaceholder')}
+            value={editing.title}
+            onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">{t('shell.library.prompts.field.body')}</span>
+          <textarea
+            className="library-input library-textarea"
+            placeholder={t('settings.prompts.editor.bodyPlaceholder')}
+            value={editing.body}
+            onChange={(e) => setEditing({ ...editing, body: e.target.value })}
+            rows={10}
+          />
+        </label>
+        <div className="library-editor-row">
+          <label className="field">
+            <span className="field-label">{t('shell.library.prompts.field.folder')}</span>
+            <input
+              className="library-input"
+              placeholder={t('settings.prompts.editor.folderPlaceholder')}
+              value={editing.folder}
+              onChange={(e) => setEditing({ ...editing, folder: e.target.value })}
+              list="prompt-folders"
+            />
+          </label>
+          <datalist id="prompt-folders">
+            {allFolders.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+          <label className="field">
+            <span className="field-label">{t('shell.library.prompts.field.tags')}</span>
+            <input
+              className="library-input"
+              placeholder={t('settings.prompts.editor.tagsPlaceholder')}
+              value={editing.tags}
+              onChange={(e) => setEditing({ ...editing, tags: e.target.value })}
+            />
+          </label>
         </div>
-      </div>
+        <div className="library-editor-actions">
+          <button className="btn ghost" type="button" onClick={() => setEditing(null)} disabled={saving}>
+            {t('common.actions.cancel')}
+          </button>
+          <button className="btn primary" type="submit" disabled={saving}>
+            {saving ? t('settings.prompts.editor.saving') : t('common.actions.save')}
+          </button>
+        </div>
+      </form>
+    );
+  } else if (selected) {
+    const p = selected;
+    detail = (
+      <article className="library-detail" aria-labelledby={`prompt-title-${p.id}`}>
+        <header className="library-detail-head">
+          <div className="library-detail-heading">
+            <h3 className="library-detail-title" id={`prompt-title-${p.id}`}>
+              {p.title}
+            </h3>
+            <p className="library-detail-meta">
+              {[p.folder, t('shell.library.prompts.updated', { when: updated(p) })].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <div className="library-detail-actions">
+            <button className="btn primary" type="button" onClick={() => handleInsert(p)}>
+              {t('shell.library.prompts.insert')}
+            </button>
+            <button className="btn ghost" type="button" onClick={() => handleEdit(p)}>
+              {t('common.actions.edit')}
+            </button>
+            <button
+              className="btn ghost"
+              type="button"
+              onClick={() => void handleDelete(p.id, p.title)}
+              title={t('settings.prompts.actions.deleteTitle')}
+            >
+              {t('common.actions.delete')}
+            </button>
+          </div>
+        </header>
+        <section className="grp">
+          <div className="grp-label">{t('shell.library.prompts.field.body')}</div>
+          <div className="library-prompt-body">{highlightVariables(p.body, t)}</div>
+        </section>
+        {p.variables && p.variables.length > 0 ? (
+          <section className="grp">
+            <div className="grp-label">{t('shell.library.prompts.variables')}</div>
+            <div className="library-chips">
+              {p.variables.map((v) => (
+                <span key={v} className="variable-token">
+                  {v}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {p.tags && p.tags.length > 0 ? (
+          <section className="grp">
+            <div className="grp-label">{t('shell.library.prompts.field.tags')}</div>
+            <div className="library-chips">
+              {p.tags.map((tag) => (
+                <span key={tag} className="library-chip">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+      </article>
+    );
+  } else {
+    detail = selectedFolder ? (
+      <PageEmpty title={t('settings.prompts.list.emptyFolder', { folder: selectedFolder })} action={newButton} />
+    ) : (
+      <PageEmpty
+        title={t('shell.library.prompts.empty.title')}
+        body={t('shell.library.prompts.empty.body')}
+        action={newButton}
+      />
+    );
+  }
+
+  const detailWithDialog = (
+    <>
+      {detail}
       {filling && (
         <VariableFillDialog
           prompt={filling}
@@ -342,6 +367,8 @@ export function PromptsSection({ onStatus, onInsertPrompt }: PromptsSectionProps
           onCancel={() => setFilling(null)}
         />
       )}
-    </div>
+    </>
   );
+
+  return <>{frame({ actions: newButton, listHeader, list, detail: detailWithDialog })}</>;
 }

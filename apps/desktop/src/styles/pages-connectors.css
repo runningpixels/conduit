@@ -1,0 +1,190 @@
+/* ── Connectors + Memory rail pages ─────────────────────────────────────────
+ * pages/ConnectorsPage.tsx, pages/MemoryPage.tsx and the pieces they share
+ * with the compact Settings/onboarding sections
+ * (workspace/settings/connectors/*). The frame itself (.page-*) lives in
+ * workspace.css; these are the contents of its panes. `cx-` is Connectors,
+ * `mem-` is Memory. Semantic tokens only. */
+
+/* ── Shared rows ─────────────────────────────────────────────────────────── */
+.cx-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--line-soft);
+}
+.cx-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.cx-row-text { flex: 1 1 16rem; min-width: 0; display: grid; gap: 2px; }
+.cx-row-text b { font-size: var(--fs-3xl); font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.cx-row-text small { font-size: var(--fs-lg); color: var(--ink-3); line-height: 1.45; overflow-wrap: anywhere; }
+.cx-inline-meta { font-weight: 400; }
+.cx-mono { font-family: var(--font-mono); }
+.cx-note { margin: 0; font-size: var(--fs-2xl); color: var(--ink-3); line-height: 1.5; }
+.cx-tag {
+  font-size: var(--fs-md);
+  color: var(--hue-text);
+  background: var(--hue-weak);
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* ── Add flows (ConnectorAddPanel) ───────────────────────────────────────── */
+.cx-add { display: grid; gap: var(--sp-5); max-width: 40rem; }
+.cx-add-block { display: grid; gap: var(--sp-2); }
+.cx-add-block .grp-label { margin-bottom: 0; }
+.cx-field-row { display: flex; gap: var(--sp-2); }
+.cx-field-row .cx-input { flex: 1 1 auto; }
+.cx-add-actions { display: flex; gap: var(--sp-2); }
+.cx-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--fs-2xl);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink);
+}
+textarea.cx-input { resize: vertical; }
+.cx-input.cx-mono { font-family: var(--font-mono); font-size: var(--fs-xl); }
+
+/* ── Detail pane ─────────────────────────────────────────────────────────── */
+.cx-detail { max-width: 52rem; }
+.cx-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+.cx-detail-heading { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.cx-detail-title {
+  margin: 0;
+  font-size: var(--fs-5xl);
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.cx-detail-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.cx-detail-meta { margin: 4px 0 var(--sp-5); font-size: var(--fs-2xl); color: var(--ink-3); }
+.cx-error {
+  margin: calc(var(--sp-5) * -0.5) 0 var(--sp-5);
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xl);
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--err) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
+  overflow-wrap: anywhere;
+}
+.cx-versions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.cx-version {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xl);
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.cx-version:hover { background: var(--card-hi); color: var(--ink); }
+.cx-version[aria-current="true"] { background: var(--hue-weak); color: var(--hue-text); border-color: transparent; }
+.cx-danger { padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); }
+.cx-danger .cx-row { border-bottom: 0; }
+.cx-list-hint { margin: 0; padding: var(--sp-2) 10px; font-size: var(--fs-xl); color: var(--ink-3); }
+
+/* ── Memory ──────────────────────────────────────────────────────────────── */
+.mem-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-right: var(--sp-2);
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.mem-page { max-width: 52rem; margin: 0 auto; display: grid; gap: var(--sp-5); }
+.mem-page .grp { margin-bottom: 0; }
+.mem-off {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--bg-side);
+  border: 1px solid var(--line-soft);
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+}
+.mem-composer,
+.mem-edit { display: grid; gap: var(--sp-2); }
+.mem-composer {
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+.mem-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--fs-3xl);
+  line-height: 1.5;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  resize: vertical;
+}
+.mem-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.mem-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--line-soft);
+}
+.mem-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.mem-row > .mem-edit { flex: 1 1 100%; }
+.mem-main { flex: 1 1 20rem; min-width: 0; }
+.mem-body { margin: 0; font-size: var(--fs-3xl); line-height: 1.5; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }
+.mem-meta { margin: 2px 0 0; font-size: var(--fs-lg); color: var(--ink-3); }
+.mem-flag {
+  margin-right: var(--sp-2);
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--hue-weak);
+  color: var(--hue-text);
+}
+
+/* Suggestions do nothing until accepted, so they sit first, tinted. */
+.mem-pending {
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, var(--bg));
+}
+.mem-pending-head { margin-bottom: var(--sp-2); }
+.mem-pending-title { margin: 0; font-size: var(--fs-3xl); font-weight: 600; color: var(--ink); }
+.mem-pending-hint { margin: 2px 0 0; font-size: var(--fs-xl); color: var(--ink-2); }
+.mem-pending .mem-list { border-top-color: color-mix(in srgb, var(--warn) 25%, transparent); }
+.mem-pending .mem-row:last-child { border-bottom: 0; }
+
+html[data-density="compact"] .cx-row,
+html[data-density="compact"] .mem-row { padding: 6px 0; }
+html[data-density="compact"] .cx-detail-meta { margin-bottom: var(--sp-4); }

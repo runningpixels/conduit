@@ -7,14 +7,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Fixed
-
-- **A page whose site moved keeps working.** When a site a page was allowed
-  to use redirects to another one (api.frankfurter.app now sends requests to
-  api.frankfurter.dev), Conduit asks about the new site instead of leaving
-  the page without its data; allowing it resends the request. Redirects
-  within the same site are followed without asking.
-
 ### Added
 
 - **Let a page reach any public site.** The network dialog has a
@@ -22,6 +14,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   for pages that use many services. Every request still goes out without your
   cookies or sign-ins, is logged, and can never reach your computer or local
   network; local-only mode and the Settings switch still turn it off.
+
+### Changed
+
+- **Ideas, Documents, Library, Connectors and Memory pages redesigned.** Each
+  has the same header — what the page is for, its main action on the right,
+  and the longer explanation behind **How this works** — and uses the whole
+  window. Documents lists your collections beside the one you picked, now
+  showing the files inside it; Library shows a prompt or skill in full
+  beside the list; Connectors shows a server's tools, prompts, resources and
+  permissions beside the list; Memory puts suggestions waiting for you first.
+  Ideas lists its categories on the left and fills the rest with ideas.
+
+### Fixed
+
+- **A page whose site moved keeps working.** When a site a page was allowed
+  to use redirects to another one (api.frankfurter.app now sends requests to
+  api.frankfurter.dev), Conduit asks about the new site instead of leaving
+  the page without its data; allowing it resends the request. Redirects
+  within the same site are followed without asking.
 
 ## [0.1.0-rc.7] - 2026-09-26
 

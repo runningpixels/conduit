@@ -1094,3 +1094,115 @@ html[data-density="compact"][data-rail="labels"] .rail-btn { width: 80px; height
 }
 @keyframes convo-spin { to { transform: rotate(360deg); } }
 html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
+
+/* ── Rail pages (shell/PageFrame.tsx) ──────────────────────────────────────── */
+:root {
+  --page-max-w: 1280px;
+  --page-list-w: 300px;
+}
+.page {
+  /* A column: header, the optional "How this works", then the body taking
+     the rest. (A three-row grid put the body in the about row's auto track
+     whenever about was closed.) */
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-6) var(--sp-4);
+  border-bottom: 1px solid var(--line-soft);
+}
+.page-head-text { min-width: 0; }
+.page-title { margin: 0; font-size: var(--fs-8xl); font-weight: 600; letter-spacing: -.01em; }
+.page-subtitle { margin: 4px 0 0; font-size: var(--fs-2xl); color: var(--ink-3); line-height: 1.5; max-width: 72ch; }
+.page-head-actions { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+.page-about {
+  padding: var(--sp-3) var(--sp-6);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-side);
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.page-about p { margin: 0 0 var(--sp-2); max-width: 80ch; }
+.page-about p:last-child { margin-bottom: 0; }
+.page-body { flex: 1; min-height: 0; }
+.page-body-single { overflow: auto; }
+.page-content {
+  max-width: var(--page-max-w);
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-6) calc(var(--sp-6) * 1.5);
+  box-sizing: border-box;
+}
+.page-split .page-body {
+  display: grid;
+  grid-template-columns: var(--page-list-w) minmax(0, 1fr);
+}
+.page-list {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-3) var(--sp-2);
+  border-right: 1px solid var(--line-soft);
+  background: var(--bg-side);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.page-list-head { padding: 0 var(--sp-1) var(--sp-2); display: grid; gap: var(--sp-2); }
+.page-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--sp-2);
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.page-list-item:hover { background: var(--card-hi); color: var(--ink); }
+.page-list-item[aria-current="true"] { background: var(--card); color: var(--ink); outline: 1px solid var(--line); outline-offset: -1px; }
+/* Titles wrap rather than clip: a list row may be two lines, never a riddle. */
+.page-list-item-title { font-size: var(--fs-3xl); font-weight: 500; overflow-wrap: anywhere; line-height: 1.35; }
+.page-list-item-status { font-size: var(--fs-md); color: var(--ink-3); align-self: center; }
+.page-list-item-meta { grid-column: 1 / -1; font-size: var(--fs-md); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-list-group {
+  padding: var(--sp-3) 10px 4px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.page-detail { min-height: 0; overflow: auto; padding: var(--sp-5) var(--sp-6); }
+.page-empty { padding: calc(var(--sp-6) * 1.5) var(--sp-4); text-align: center; color: var(--ink-3); }
+.page-empty-title { margin: 0 0 var(--sp-2); font-size: var(--fs-4xl); color: var(--ink-2); font-weight: 500; }
+.page-empty-body { margin: 0 auto var(--sp-3); max-width: 52ch; font-size: var(--fs-2xl); line-height: 1.5; }
+.page-empty-action { display: flex; justify-content: center; gap: var(--sp-2); }
+html[data-density="compact"] .page-head { padding: var(--sp-4) var(--sp-5) var(--sp-3); }
+html[data-density="compact"] .page-content,
+html[data-density="compact"] .page-detail { padding: var(--sp-4) var(--sp-5); }
+html[data-density="compact"] .page-list-item { padding: 6px 8px; }
+@media (max-width: 900px) {
+  .page-split .page-body { grid-template-columns: minmax(0, 220px) minmax(0, 1fr); }
+}
+/* Ideas as a rail page: the grid uses the detail pane's full width. */
+.ideas-page .page-detail .ideas-section:first-child { margin-top: 0; }
+.ideas-page .ideas-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.ideas-page-prefs {
+  margin-top: auto;
+  padding: var(--sp-4) 10px var(--sp-2);
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: start;
+  font-size: var(--fs-xl);
+  color: var(--ink-3);
+  border-top: 1px solid var(--line-soft);
+}
+.ideas-page-prefs p { margin: 0; line-height: 1.45; }

@@ -20,7 +20,21 @@ import { EmbeddingConsentDialog } from './EmbeddingConsentDialog';
 import { PdfImportNoticeDialog } from './PdfImportNoticeDialog';
 import { useT } from '../../i18n';
 
-interface KnowledgeSectionProps {
+/**
+ * The knowledge base's behaviour (t1-6), without its layout.
+ *
+ * This used to be `KnowledgeSection`, one component that both ran the flows
+ * and drew them as a stack of cards. The Documents page now draws them as a
+ * list of collections beside the selected one's documents, so the flows —
+ * CRUD, the one-time PDF notice, per-provider embedding consent, batch import
+ * of dropped files with progress, revoking consent — live here, and
+ * `DocumentsPage` only arranges them.
+ *
+ * `local_only` is enforced by the backend (`commands/knowledge.rs`): creating
+ * or embedding into a collection whose provider is not local is refused with
+ * an error naming the provider, which reaches the user through `onStatus`.
+ */
+export interface KnowledgeBaseOptions {
   settings: AppSettings;
   onUpdate: (next: AppSettings) => void;
   onStatus: (message: string) => void;
@@ -38,16 +52,9 @@ function isPdf(path: string): boolean {
 }
 
 /** The file name from an absolute path, on either separator. */
-function fileName(path: string): string {
+export function fileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 
 /** Progress for a running import.
  *
@@ -57,7 +64,7 @@ function formatBytes(bytes: number): string {
  *  region means a screen reader hears the phase change without the percentage
  *  being announced on every batch.
  */
-function ImportProgressBar({ progress }: { progress: KnowledgeImportProgress }) {
+export function ImportProgressBar({ progress }: { progress: KnowledgeImportProgress }) {
   const t = useT();
   const determinate = progress.phase === 'embedding' && progress.chunksTotal > 0;
   const percent = determinate
@@ -89,16 +96,23 @@ function ImportProgressBar({ progress }: { progress: KnowledgeImportProgress }) 
   );
 }
 
-/** Knowledge base collections + documents CRUD (t1-6). */
-export function KnowledgeSection({
+/** A running import: which collection, which file, how far. */
+export interface KnowledgeImporting {
+  collectionId: string;
+  path: string;
+  progress: KnowledgeImportProgress;
+}
+
+export function useKnowledgeBase({
   settings,
   onUpdate,
   onStatus,
   pendingPaths = [],
   onPendingPathsHandled,
-}: KnowledgeSectionProps) {
+}: KnowledgeBaseOptions) {
   const t = useT();
   const [collections, setCollections] = useState<KnowledgeCollection[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -117,37 +131,64 @@ export function KnowledgeSection({
   const [dropTargetId, setDropTargetId] = useState<string>('');
   // Non-null only while an import is running. Embedding a long document takes
   // tens of seconds against the provider, and a button that just sits there
-  // looks broken.
-  const [progress, setProgress] = useState<KnowledgeImportProgress | null>(null);
-  // Which collection the running import belongs to. Deliberately not
-  // `selectedId`: "Import document" acts on its own row without selecting it,
-  // so keying the bar off the selection hid it for every unselected row.
-  const [importingId, setImportingId] = useState<string | null>(null);
-  const selectedIdRef = useRef<string | null>(null);
-  selectedIdRef.current = selectedId;
+  // looks broken. Keyed by collection, not by the selection: a dropped batch
+  // can be running while the user looks at another collection.
+  const [importing, setImporting] = useState<KnowledgeImporting | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      setCollections(await listKnowledgeCollections());
-    } catch (e) {
-      onStatus(t('settings.knowledge.status.loadFailed', { error: String(e) }));
-    }
-    const sel = selectedIdRef.current;
-    if (sel) {
+  // The first collection is selected by default, and again when the selected
+  // one is deleted.
+  const selected = collections.find((c) => c.id === selectedId) ?? collections[0] ?? null;
+  const selectedKey = selected?.id ?? null;
+  const selectedKeyRef = useRef<string | null>(null);
+  selectedKeyRef.current = selectedKey;
+
+  // Which collection `documents` belongs to, so a selection change fetches
+  // once rather than again after `refresh` already did.
+  const documentsKeyRef = useRef<string | null | undefined>(undefined);
+
+  const loadDocuments = useCallback(
+    async (collectionId: string | null) => {
+      documentsKeyRef.current = collectionId;
+      if (!collectionId) {
+        setDocuments([]);
+        return;
+      }
       try {
-        setDocuments(await listKnowledgeDocuments(sel));
+        const docs = await listKnowledgeDocuments(collectionId);
+        // A slow answer for a collection the user has since left is dropped.
+        if (selectedKeyRef.current === collectionId) setDocuments(docs);
       } catch (e) {
         onStatus(t('settings.knowledge.status.loadDocumentsFailed', { error: String(e) }));
       }
-    } else {
-      setDocuments([]);
+    },
+    [onStatus, t],
+  );
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await listKnowledgeCollections();
+      setCollections(next);
+      const current = next.find((c) => c.id === selectedKeyRef.current) ?? next[0] ?? null;
+      selectedKeyRef.current = current?.id ?? null;
+      await loadDocuments(current?.id ?? null);
+    } catch (e) {
+      onStatus(t('settings.knowledge.status.loadFailed', { error: String(e) }));
+    } finally {
+      setLoaded(true);
     }
-  }, [onStatus, t]);
+  }, [loadDocuments, onStatus, t]);
 
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || documentsKeyRef.current === selectedKey) return;
+    setDocuments([]);
+    void loadDocuments(selectedKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey]);
 
   async function run(label: string, action: () => Promise<unknown>) {
     setBusy(true);
@@ -164,17 +205,18 @@ export function KnowledgeSection({
     }
   }
 
-  function handleCreateCollection() {
+  function createCollection() {
     const name = prompt(t('settings.knowledge.prompt.createName'))?.trim();
     if (!name) return;
     void run(t('settings.knowledge.status.created', { name }), async () => {
       const created = await createKnowledgeCollection(name);
       setSelectedId(created.id);
+      selectedKeyRef.current = created.id;
       return created;
     });
   }
 
-  function handleRenameCollection(collection: KnowledgeCollection) {
+  function renameCollection(collection: KnowledgeCollection) {
     const name = prompt(t('settings.knowledge.prompt.renameName'), collection.name)?.trim();
     if (!name || name === collection.name) return;
     void run(t('settings.knowledge.status.renamed', { name }), async () => {
@@ -183,16 +225,19 @@ export function KnowledgeSection({
     });
   }
 
-  function handleDeleteCollection(collection: KnowledgeCollection) {
+  function deleteCollection(collection: KnowledgeCollection) {
     if (!confirm(t('settings.knowledge.confirm.deleteCollection', { name: collection.name }))) return;
     void run(t('settings.knowledge.status.deletedCollection', { name: collection.name }), async () => {
       await deleteKnowledgeCollection(collection.id);
-      if (selectedIdRef.current === collection.id) setSelectedId(null);
+      if (selectedKeyRef.current === collection.id) {
+        setSelectedId(null);
+        selectedKeyRef.current = null;
+      }
       return true;
     });
   }
 
-  function handleDeleteDocument(doc: KnowledgeDocument) {
+  function deleteDocument(doc: KnowledgeDocument) {
     if (!confirm(t('settings.knowledge.confirm.deleteDocument', { title: doc.title }))) return;
     void run(t('settings.knowledge.status.deletedDocument', { title: doc.title }), async () => {
       await deleteKnowledgeDocument(doc.id);
@@ -206,10 +251,11 @@ export function KnowledgeSection({
    *  static label can't express. */
   async function proceedImport(collectionId: string, path: string) {
     setBusy(true);
-    setImportingId(collectionId);
-    setProgress({ phase: 'reading', chunksDone: 0, chunksTotal: 0 });
+    setImporting({ collectionId, path, progress: { phase: 'reading', chunksDone: 0, chunksTotal: 0 } });
     try {
-      const outcome = await importKnowledgeDocument(collectionId, path, setProgress);
+      const outcome = await importKnowledgeDocument(collectionId, path, (progress) =>
+        setImporting({ collectionId, path, progress }),
+      );
       onStatus(
         outcome.status === 'duplicate'
           ? t('settings.knowledge.status.duplicate', { title: outcome.title })
@@ -222,8 +268,7 @@ export function KnowledgeSection({
     } catch (e) {
       onStatus(t('settings.knowledge.status.importFailed', { error: String(e) }));
     } finally {
-      setProgress(null);
-      setImportingId(null);
+      setImporting(null);
       setBusy(false);
     }
   }
@@ -286,7 +331,7 @@ export function KnowledgeSection({
     }
   }
 
-  async function handleImport(collection: KnowledgeCollection) {
+  async function importDocument(collection: KnowledgeCollection) {
     let path: string | null;
     try {
       path = await pickKnowledgeDocument();
@@ -298,8 +343,12 @@ export function KnowledgeSection({
     await importPaths(collection, [path]);
   }
 
-  async function handleAddDropped() {
-    const target = collections.find((c) => c.id === dropTargetId) ?? collections[0];
+  /** The dropped files' target: the one picked in the banner, else the
+   *  collection being looked at. */
+  const dropTarget = collections.find((c) => c.id === dropTargetId) ?? selected;
+
+  async function addDropped() {
+    const target = dropTarget;
     if (!target) return;
     const paths = pendingPaths;
     onPendingPathsHandled?.();
@@ -309,7 +358,7 @@ export function KnowledgeSection({
 
   /** Withdraw consent for one provider. The list is a full replace, so sending
    *  it without this provider is the whole operation. */
-  function handleRevokeConsent(providerId: string) {
+  function revokeConsent(providerId: string) {
     if (!confirm(t('settings.knowledge.consentList.revokeConfirm', { provider: providerId }))) return;
     void persist({
       embeddingConsentProviders: settingsRef.current.embeddingConsentProviders.filter(
@@ -320,210 +369,9 @@ export function KnowledgeSection({
     });
   }
 
-  const selected = collections.find((c) => c.id === selectedId) ?? null;
-
-  return (
-    <div className="settings-section">
-      <p className="sheet-sub" style={{ marginTop: 0 }}>
-        {t('settings.knowledge.intro')}
-      </p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <button
-          className="btn primary"
-          type="button"
-          disabled={busy}
-          onClick={handleCreateCollection}
-        >
-          {t('settings.knowledge.actions.createCollection')}
-        </button>
-      </div>
-      {pendingPaths.length > 0 && (
-        <div className="kb-drop-banner" role="region" aria-label={t('settings.knowledge.drop.ariaLabel')}>
-          <p>
-            {t('settings.knowledge.drop.intro', { count: pendingPaths.length })}
-          </p>
-          <ul>
-            {pendingPaths.map((path) => (
-              <li key={path}>{fileName(path)}</li>
-            ))}
-          </ul>
-          {collections.length === 0 ? (
-            <p className="kb-drop-hint">{t('settings.knowledge.drop.needCollection')}</p>
-          ) : (
-            <div className="kb-drop-actions">
-              <label>
-                {t('settings.knowledge.drop.target')}{' '}
-                <select
-                  value={dropTargetId || collections[0].id}
-                  onChange={(e) => setDropTargetId(e.target.value)}
-                >
-                  {collections.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="btn primary"
-                type="button"
-                disabled={busy}
-                onClick={() => void handleAddDropped()}
-              >
-                {t('settings.knowledge.drop.add')}
-              </button>
-            </div>
-          )}
-          <button className="btn ghost" type="button" onClick={() => onPendingPathsHandled?.()}>
-            {t('common.actions.cancel')}
-          </button>
-        </div>
-      )}
-
-      {collections.length === 0 ? (
-        <p style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>
-          {t('settings.knowledge.empty.hint')}
-        </p>
-      ) : (
-        <ul className="skill-list">
-          {collections.map((collection) => (
-            <li key={collection.id} className="skill-row">
-              <div className="skill-row-main">
-                <div className="skill-row-title">
-                  <button
-                    type="button"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      font: 'inherit',
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      textDecoration: selectedId === collection.id ? 'underline' : 'none',
-                    }}
-                    aria-pressed={selectedId === collection.id}
-                    onClick={() =>
-                      setSelectedId(selectedId === collection.id ? null : collection.id)
-                    }
-                  >
-                    <b>{collection.name}</b>
-                  </button>
-                  <span className="skill-source">
-                    {t('settings.knowledge.collection.docCount', {
-                      count: collection.documentCount,
-                    })}
-                  </span>
-                </div>
-                <small>
-                  {t('settings.knowledge.collection.providerInfo', {
-                    provider: collection.providerId,
-                    model: collection.embeddingModel,
-                  })}
-                </small>
-                {progress && importingId === collection.id ? (
-                  <ImportProgressBar progress={progress} />
-                ) : null}
-              </div>
-              <div className="skill-row-actions">
-                <button
-                  className="btn ghost"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void handleImport(collection)}
-                >
-                  {t('settings.knowledge.actions.importDocument')}
-                </button>
-                <button
-                  className="btn ghost"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => handleRenameCollection(collection)}
-                >
-                  {t('common.actions.rename')}
-                </button>
-                <button
-                  className="btn ghost"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => handleDeleteCollection(collection)}
-                >
-                  {t('common.actions.delete')}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {selected && (
-        <div style={{ marginTop: 20 }}>
-          <h3 className="sheet-h" style={{ fontSize: 'var(--fs-5xl)' }}>
-            {t('settings.knowledge.documents.heading', { name: selected.name })}
-          </h3>
-          {documents.length === 0 ? (
-            <p style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>
-              {t('settings.knowledge.documents.empty')}
-            </p>
-          ) : (
-            <ul className="skill-list">
-              {documents.map((doc) => (
-                <li key={doc.id} className="skill-row">
-                  <div className="skill-row-main">
-                    <div className="skill-row-title">
-                      <b>{doc.title}</b>
-                    </div>
-                    <small>
-                      {t('settings.knowledge.documents.meta', {
-                        size: formatBytes(doc.byteSize),
-                        chunks: doc.chunkCount,
-                      })}
-                    </small>
-                  </div>
-                  <div className="skill-row-actions">
-                    <button
-                      className="btn ghost"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => handleDeleteDocument(doc)}
-                    >
-                      {t('common.actions.delete')}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {settings.embeddingConsentProviders.length > 0 && (
-        <section className="kb-consent-list" aria-labelledby="kb-consent-heading">
-          <h3 id="kb-consent-heading" className="sheet-h" style={{ fontSize: 'var(--fs-5xl)' }}>
-            {t('settings.knowledge.consentList.heading')}
-          </h3>
-          <p className="sheet-sub">{t('settings.knowledge.consentList.intro')}</p>
-          <ul className="skill-list">
-            {settings.embeddingConsentProviders.map((providerId) => (
-              <li key={providerId} className="skill-row">
-                <div className="skill-row-main">
-                  <b>{providerId}</b>
-                </div>
-                <div className="skill-row-actions">
-                  <button
-                    className="btn ghost"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => handleRevokeConsent(providerId)}
-                  >
-                    {t('settings.knowledge.consentList.revoke')}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
+  /** The one-time dialogs the import flow awaits. Render once, anywhere. */
+  const dialogs = (
+    <>
       <PdfImportNoticeDialog
         visible={pdfNoticeResolve != null}
         onContinue={() => {
@@ -537,7 +385,6 @@ export function KnowledgeSection({
           resolve?.(false);
         }}
       />
-
       <EmbeddingConsentDialog
         visible={consentRequest != null}
         providerId={consentRequest?.providerId ?? null}
@@ -552,6 +399,26 @@ export function KnowledgeSection({
           request?.resolve(false);
         }}
       />
-    </div>
+    </>
   );
+
+  return {
+    collections,
+    loaded,
+    documents,
+    selected,
+    select: setSelectedId,
+    busy,
+    importing,
+    dropTarget,
+    setDropTargetId,
+    createCollection,
+    renameCollection,
+    deleteCollection,
+    deleteDocument,
+    importDocument,
+    addDropped,
+    revokeConsent,
+    dialogs,
+  };
 }

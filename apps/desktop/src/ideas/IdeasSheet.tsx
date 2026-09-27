@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
+import { PageFrame, PageEmpty, PageListItem } from '../shell/PageFrame';
 import { useT } from '../i18n';
 import { PromptsSection } from '../workspace/settings/PromptsSection';
 import { IDEA_CATEGORIES, IDEAS, IDEAS_REVISION, type Capability, type Idea, type IdeaCategory } from './catalog';
@@ -240,10 +241,86 @@ export function IdeasSheet({
   );
 
   if (isPage) {
+    // A rail page: categories and search on the left, the grid using the
+    // whole width, "For you" and what is new shown once, above All.
+    const overview = category === 'all' && !query.trim();
+    const countIn = (c: IdeaCategory | 'all') =>
+      IDEAS.filter((idea) => (c === 'all' || idea.category === c) && (showAll || ideaStatus(idea, caps) !== 'off')).length;
     return (
-      <section className="sheet sheet-single sheet-page ideas-sheet" aria-label={t('ideas.sheet.heading')}>
-        {body}
-      </section>
+      <PageFrame
+        className="ideas-page"
+        title={t('ideas.sheet.heading')}
+        subtitle={t('ideas.sheet.intro')}
+        listLabel={t('ideas.sheet.categoriesAriaLabel')}
+        listHeader={
+          <input
+            type="search"
+            className="ideas-search"
+            value={query}
+            placeholder={t('ideas.sheet.searchPlaceholder')}
+            aria-label={t('ideas.sheet.searchPlaceholder')}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        }
+        list={
+          <>
+            {(['all', ...IDEA_CATEGORIES] as const).map((c) => (
+              <PageListItem
+                key={c}
+                selected={category === c}
+                onSelect={() => setCategory(c)}
+                title={t(`ideas.category.${c}`)}
+                status={countIn(c)}
+              />
+            ))}
+            <div className="ideas-page-prefs">
+              <p>{t('ideas.sheet.privacy')}</p>
+              <label className="ideas-check">
+                <input type="checkbox" checked={!state.rowHidden} onChange={(e) => setRowHidden(!e.target.checked)} />
+                {t('ideas.sheet.showInNewChats')}
+              </label>
+              {hiddenCount > 0 && (
+                <label className="ideas-check">
+                  <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+                  {t('ideas.sheet.showUnavailable', { count: hiddenCount })}
+                </label>
+              )}
+              <button className="btn ghost" type="button" onClick={() => resetIdeaState()}>
+                {t('ideas.sheet.reset')}
+              </button>
+            </div>
+          </>
+        }
+      >
+        {overview && spotlit.length > 0 && (
+          <section className="ideas-section ideas-spotlight" aria-label={t('ideas.sheet.spotlight')}>
+            <h3>{t('ideas.sheet.spotlight')}</h3>
+            <div className="ideas-grid">{spotlit.map(card)}</div>
+          </section>
+        )}
+        {overview && openedWith.fresh.length > 0 && (
+          <section className="ideas-section" aria-label={t('ideas.sheet.new')}>
+            <h3>{t('ideas.sheet.new')}</h3>
+            <div className="ideas-grid">{openedWith.fresh.map(card)}</div>
+          </section>
+        )}
+        {overview && picks.length > 0 && (
+          <section className="ideas-section" aria-label={t('ideas.sheet.forYou')}>
+            <h3>{t('ideas.sheet.forYou')}</h3>
+            <div className="ideas-grid">{picks.map(card)}</div>
+          </section>
+        )}
+        <section className="ideas-section" aria-label={t('ideas.sheet.all')}>
+          <h3>{category === 'all' ? t('ideas.sheet.all') : t(`ideas.category.${category}`)}</h3>
+          {visible.length === 0 ? (
+            <PageEmpty title={t('ideas.sheet.noMatch')} />
+          ) : (
+            <div className="ideas-grid">
+              {(overview ? visible.filter((idea) => !picks.includes(idea)) : visible).map(card)}
+            </div>
+          )}
+        </section>
+      </PageFrame>
     );
   }
   return (

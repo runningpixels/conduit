@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **Ideas, Documents, Library, Connectors and Memory pages redesigned.** Each
+  has the same header — what the page is for, its main action on the right,
+  and the longer explanation behind **How this works** — and uses the whole
+  window. Documents lists your collections beside the one you picked, now
+  showing the files inside it; Library shows a prompt or skill in full
+  beside the list; Connectors shows a server's tools, prompts, resources and
+  permissions beside the list; Memory puts suggestions waiting for you first.
+  Ideas lists its categories on the left and fills the rest with ideas.
+
 ## [0.1.0-rc.7] - 2026-09-26
 
 ### Added

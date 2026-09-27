@@ -13,6 +13,8 @@ interface DocumentsSheetProps {
   /** Files dropped onto the window, waiting for a collection. */
   pendingPaths: string[];
   onPendingPathsHandled: () => void;
+  /** `page`: the Documents rail destination (no scrim, no close). */
+  variant?: 'sheet' | 'page';
 }
 
 /**
@@ -38,13 +40,15 @@ export function DocumentsSheet({
   onStatus,
   pendingPaths,
   onPendingPathsHandled,
+  variant = 'sheet',
 }: DocumentsSheetProps) {
+  const isPage = variant === 'page';
   const t = useT();
   const sheetRef = useRef<HTMLDivElement>(null);
   const lastFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isPage) return;
     lastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     sheetRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     return () => {
@@ -53,7 +57,7 @@ export function DocumentsSheet({
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isPage) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -62,11 +66,40 @@ export function DocumentsSheet({
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, isPage]);
 
-  useFocusTrap(sheetRef, open);
+  useFocusTrap(sheetRef, open && !isPage);
 
   if (!open) return null;
+
+  const main = (
+        <div className="sheet-main scroll">
+          <div className="sheet-single-head">
+            <h2 className="sheet-h">{t('shell.documentsSheet.heading')}</h2>
+            {!isPage && (
+              <button className="btn ghost" type="button" onClick={onClose}>
+                {t('common.actions.close')}
+              </button>
+            )}
+          </div>
+          <p className="sheet-sub">{t('shell.documentsSheet.intro')}</p>
+          <KnowledgeSection
+            settings={settings}
+            onUpdate={onSettingsChange}
+            onStatus={onStatus}
+            pendingPaths={pendingPaths}
+            onPendingPathsHandled={onPendingPathsHandled}
+          />
+        </div>
+  );
+
+  if (isPage) {
+    return (
+      <section className="sheet sheet-single sheet-page" aria-label={t('shell.documentsSheet.ariaLabel')}>
+        {main}
+      </section>
+    );
+  }
 
   return (
     <div
@@ -83,22 +116,7 @@ export function DocumentsSheet({
         aria-modal="true"
         aria-label={t('shell.documentsSheet.ariaLabel')}
       >
-        <div className="sheet-main scroll">
-          <div className="sheet-single-head">
-            <h2 className="sheet-h">{t('shell.documentsSheet.heading')}</h2>
-            <button className="btn ghost" type="button" onClick={onClose}>
-              {t('common.actions.close')}
-            </button>
-          </div>
-          <p className="sheet-sub">{t('shell.documentsSheet.intro')}</p>
-          <KnowledgeSection
-            settings={settings}
-            onUpdate={onSettingsChange}
-            onStatus={onStatus}
-            pendingPaths={pendingPaths}
-            onPendingPathsHandled={onPendingPathsHandled}
-          />
-        </div>
+        {main}
       </div>
     </div>
   );

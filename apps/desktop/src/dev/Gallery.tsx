@@ -553,11 +553,6 @@ function StatusSection() {
         onToggleSidebar={noop}
         onNewChat={noop}
         onOpenPalette={noop}
-        onOpenSettings={noop}
-        onExportDiagnostics={noop}
-        onOpenShortcuts={noop}
-        providerCount={3}
-        connectorCount={2}
       />
 
       <SubHeading>StatusLine</SubHeading>

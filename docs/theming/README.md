@@ -17,8 +17,11 @@ independent attributes on `<html>`, plus a few behaviours CSS can't express:
 
 Other document attributes keep working across every theme:
 `data-provider` / `data-provider-colour` (accent per provider),
-`data-density`, `data-reduce-motion`, `data-reading-font` and brands
-(`data-palette="brand"` plus inline properties).
+`data-density`, `data-rail` (the side rail: `icons` or `labels`, UI revamp),
+`data-reduce-motion`, `data-reading-font` and brands (`data-palette="brand"`
+plus inline properties). Every surface the revamp added (rail, destination
+pages, inspector, composer chips, chat status) uses the semantic tokens only,
+so each look and palette styles them without new declarations.
 
 Themes are declared in `apps/desktop/src/themes/registry.ts`:
 

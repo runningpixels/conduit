@@ -1139,6 +1139,82 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   display: grid;
   gap: 6px;
 }
+.composer-workspace-path {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+/* The "+" slot: the one button that replaced the row of composer icons, and
+ * the anchor every composer popover opens upward from. */
+.composer-plus { position: relative; display: inline-flex; }
+.composer-plus-btn { width: 32px; justify-content: center; padding: 0; }
+.composer-plus-btn svg { width: 17px; height: 17px; }
+.composer-plus-btn[aria-expanded="true"] { background: var(--card-hi); }
+.composer-plus-menu,
+.composer-plus-menu[data-open="true"] { bottom: calc(100% + 6px); left: 0; }
+.composer-plus-menu .menu-item[aria-checked="true"] .tail { color: var(--hue-text); }
+.composer-plus-menu .menu-item:disabled { opacity: .5; cursor: default; }
+.composer-plus-menu .menu-item:disabled:hover { background: transparent; color: var(--ink-2); }
+
+/* Active context above the input: folder, documents, skills, web search.
+ * Same pill as an attachment chip, but the body is a button (opens the
+ * popover that owns it) and the × turns it off. */
+.composer-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+.composer-context + .composer-attachments { padding-top: 6px; }
+.composer-context-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: var(--r-pill);
+  border: 1px solid color-mix(in srgb, var(--hue) 30%, var(--line));
+  background: color-mix(in srgb, var(--hue) 6%, var(--card));
+  color: var(--ink-2);
+  font-size: var(--fs-lg);
+  transition: border-color var(--tap), background var(--tap);
+}
+.composer-context-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 4px 4px 9px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+.composer-context-open:only-child { padding-right: 9px; }
+.composer-context-open:disabled { cursor: default; }
+.composer-context-open:not(:disabled):hover { color: var(--ink); }
+.composer-context-open svg { width: 13px; height: 13px; flex: none; color: var(--hue-text); }
+.composer-context-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.composer-context-remove {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: var(--fs-remove-glyph);
+  line-height: 1;
+  padding: 0 8px 0 2px;
+  cursor: pointer;
+}
+.composer-context-remove:not(:disabled):hover { color: var(--ink); }
+.composer-context-remove:disabled { opacity: .5; cursor: default; }
 
 /* Composer bar buttons. Renamed from `.tool-btn`, which collided conceptually
  * with the `.tool-*` namespace of the tool-call card — these are composer

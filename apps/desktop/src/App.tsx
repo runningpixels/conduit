@@ -37,7 +37,7 @@ import {
   deleteConversationFolder,
   updateSettings,
 } from './ipc/client';
-import { ChatView, type ChatViewHandle } from './chat/ChatView';
+import { ChatView, type ChatTranscript, type ChatViewHandle, type RunStatus } from './chat/ChatView';
 import {
   documentToolArtifactKind,
   hadSuccessfulDocumentToolCalls,
@@ -65,6 +65,13 @@ import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
+import { Rail, type Destination } from './shell/Rail';
+import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
+import { ActivityView } from './inspector/ActivityView';
+import { SourcesView } from './inspector/SourcesView';
+import { turnActivity, turnSites } from './inspector/turnActivity';
+import { readArtifactNetworkLog } from './workspace/useArtifactNetwork';
+import { ConnectorsPage, LibraryPage, MemoryPage, type LibraryTab } from './shell/DestinationPages';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
@@ -226,12 +233,21 @@ export default function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [status, setStatus] = useState<StatusState | null>(makeStatus(t('app.status.booting'), 'active'));
   const [boundaryOk, setBoundaryOk] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  // t1-8: the knowledge base's own sheet, and files dropped onto the window
-  // that are waiting there for the user to pick a collection.
-  const [documentsOpen, setDocumentsOpen] = useState(false);
-  // Ideas (docs/plans/ideas-and-discovery.md).
-  const [ideasOpen, setIdeasOpen] = useState(false);
+  // UI revamp (docs/plans/ui-revamp.md): where the rail points. Chats is the
+  // chat sidebar and the chat; every other destination is a page over the
+  // body, with the chat kept mounted underneath so a running turn goes on.
+  const [destination, setDestination] = useState<Destination>('chats');
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>('prompts');
+  const settingsOpen = destination === 'settings';
+  // t1-8: files dropped onto the window wait on the Documents page for the
+  // user to pick a collection.
+  const documentsOpen = destination === 'documents';
+  const ideasOpen = destination === 'ideas';
+  /** Leave `from` for Chats, if it is where we are. */
+  const leave = useCallback(
+    (from: Destination) => setDestination((current) => (current === from ? 'chats' : current)),
+    [],
+  );
   const [collectionCount, setCollectionCount] = useState<number | null>(null);
   const [queuedIdea, setQueuedIdea] = useState<Idea | null>(null);
   const ideaState = useIdeaState();
@@ -347,6 +363,47 @@ export default function App() {
     hideSidebarOverlay();
     togglePanelOverlay();
   }, [panelOverlay.narrow, panelSuppressed, expandDocPanel, toggleDocPanel, hideSidebarOverlay, togglePanelOverlay]);
+  // ── Inspector (UI revamp): Page · Activity · Sources ──────────────────────
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('page');
+  const [focusTurnId, setFocusTurnId] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<ChatTranscript>({ turns: [], citations: {} });
+  const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
+  useEffect(() => {
+    setInspectorTab('page');
+    setFocusTurnId(null);
+  }, [activeConversationId]);
+  // Opening a page (or the model writing one) brings the Page tab forward.
+  useEffect(() => {
+    if (activeArtifact || pendingArtifact) setInspectorTab('page');
+  }, [activeArtifact?.id, pendingArtifact != null]);
+  const openInspector = useCallback(
+    (tab: InspectorTab, turnId?: string | null) => {
+      setInspectorTab(tab);
+      if (turnId !== undefined) setFocusTurnId(turnId);
+      if (!panelOverlay.narrow) {
+        setEmptyPanelRequested(true);
+        expandDocPanel();
+        return;
+      }
+      hideSidebarOverlay();
+      showPanelOverlay();
+    },
+    [panelOverlay.narrow, expandDocPanel, hideSidebarOverlay, showPanelOverlay],
+  );
+  const closeInspector = useCallback(() => {
+    setInspectorTab('page');
+    if (panelOverlay.narrow) hidePanelOverlay();
+    else collapseDocPanel();
+  }, [panelOverlay.narrow, hidePanelOverlay, collapseDocPanel]);
+  const inspectorCounts = useMemo(() => {
+    const latest = [...transcript.turns].reverse().find((x) => x.role === 'assistant');
+    const activity = latest ? turnActivity(latest).length : 0;
+    let sources = 0;
+    for (const turn of transcript.turns) sources += turnSites(turn.streamState).length;
+    for (const list of Object.values(transcript.citations)) sources += list.length;
+    return { activity, sources };
+  }, [transcript]);
+
   /** Bring the panel into view for something the user asked to see. */
   const showDocPanel = useCallback(() => {
     if (!panelOverlay.narrow) {
@@ -1441,21 +1498,30 @@ export default function App() {
   // Appearance while its own Ctrl+, hint opened Providers).
   const lastSettingsSectionRef = useRef<SettingsSection>('providers');
   const openSettings = useCallback((section?: SettingsSection) => {
-    // t1-8: the knowledge base moved out of Settings. Redirecting here catches
-    // every existing deep link (composer, command palette) in one place.
-    if (section === 'knowledge') {
-      setSettingsOpen(false);
-      setDocumentsOpen(true);
-      return;
+    // Sections that became rail destinations (the knowledge base first, t1-8;
+    // connectors, prompts, skills and memory with the revamp). Redirecting
+    // here catches every existing deep link (composer, palette, status line).
+    switch (section) {
+      case 'knowledge':
+        setDestination('documents');
+        return;
+      case 'connectors':
+        setDestination('connectors');
+        return;
+      case 'memory':
+        setDestination('memory');
+        return;
+      case 'prompts':
+      case 'skills':
+        setLibraryTab(section);
+        setDestination('library');
+        return;
     }
     setSettingsSection(section ?? lastSettingsSectionRef.current);
-    setSettingsOpen(true);
+    setDestination('settings');
   }, []);
 
-  const openDocuments = useCallback(() => {
-    setSettingsOpen(false);
-    setDocumentsOpen(true);
-  }, []);
+  const openDocuments = useCallback(() => setDestination('documents'), []);
 
   // ── Ideas ────────────────────────────────────────────────────────────────
   // Collections decide whether "Ask your documents" is ready; re-read when
@@ -1487,16 +1553,12 @@ export default function App() {
     observeReady(readyCapabilities(ideaCaps));
   }, [ideaCaps, collectionCount, providers.length]);
 
-  const openIdeas = useCallback(() => {
-    setSettingsOpen(false);
-    setDocumentsOpen(false);
-    setIdeasOpen(true);
-  }, []);
+  const openIdeas = useCallback(() => setDestination('ideas'), []);
 
   /** Put an idea's prompt in the composer of an empty chat (new if needed). */
   const tryIdea = useCallback(
     async (idea: Idea) => {
-      setIdeasOpen(false);
+      setDestination('chats');
       const view = chatViewRef.current;
       if (!view) {
         setQueuedIdea(idea);
@@ -1520,7 +1582,6 @@ export default function App() {
 
   const setupCapability = useCallback(
     (target: SetupTarget) => {
-      setIdeasOpen(false);
       if (target === 'documents') openDocuments();
       else openSettings(target);
     },
@@ -1531,8 +1592,7 @@ export default function App() {
 
   const dropHovering = useKnowledgeDrop((paths) => {
     setDroppedPaths(paths);
-    setSettingsOpen(false);
-    setDocumentsOpen(true);
+    setDestination('documents');
   });
   const rememberSettingsSection = useCallback((section: SettingsSection) => {
     lastSettingsSectionRef.current = section;
@@ -1639,16 +1699,15 @@ export default function App() {
           setPaletteOpen(false);
           return;
         }
-        if (settingsOpen) {
-          setSettingsOpen(false);
-          return;
-        }
-        if (documentsOpen) {
-          setDocumentsOpen(false);
-          return;
-        }
-        if (ideasOpen) {
-          setIdeasOpen(false);
+        // A destination page: Escape goes back to the chat, unless it is
+        // editing text there (or a menu inside it took the key).
+        if (destination !== 'chats') {
+          const el = document.activeElement;
+          const typing =
+            el instanceof HTMLTextAreaElement ||
+            el instanceof HTMLSelectElement ||
+            (el instanceof HTMLInputElement && !['checkbox', 'radio', 'button'].includes(el.type));
+          if (!typing && !event.defaultPrevented) setDestination('chats');
           return;
         }
         if (confirmDeleteId != null || confirmDeleteAll) {
@@ -1679,9 +1738,7 @@ export default function App() {
       openPalette,
       openSettings,
       paletteOpen,
-      settingsOpen,
-      documentsOpen,
-      ideasOpen,
+      destination,
       shortcutsOpen,
       toggleDocPanelView,
       toggleSidebarView,
@@ -1790,6 +1847,15 @@ export default function App() {
           (shellContract.test.ts pins this). */}
       <TitleBar />
 
+      <div className="shell">
+      <Rail
+        destination={destination}
+        onNavigate={(d) => {
+          if (d === 'settings') openSettings();
+          else setDestination(d);
+        }}
+        dots={{ ideas: ideaState.spotlight.length > 0 || newIdeas(ideaState).length > 0 }}
+      />
       <div className="body">
         <Sidebar
           conversations={conversations}
@@ -1809,15 +1875,6 @@ export default function App() {
             void handleNewChat();
           }}
           onOpenPalette={openPalette}
-          onOpenDocuments={() => {
-            hideSidebarOverlay();
-            openDocuments();
-          }}
-          onOpenIdeas={() => {
-            hideSidebarOverlay();
-            openIdeas();
-          }}
-          ideasDot={ideaState.spotlight.length > 0 || newIdeas(ideaState).length > 0}
           onCollapse={toggleSidebarView}
           onRevealWorkspace={handleRevealWorkspace}
           onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
@@ -1832,6 +1889,7 @@ export default function App() {
           onRenameFolder={(folderId, name) => void handleRenameFolder(folderId, name)}
           onDeleteFolder={(folderId) => void handleDeleteFolder(folderId)}
           logoSrc={brandLogo ?? undefined}
+          runStatus={runStatus}
         />
 
         {/* The sidebar's sash, laid over its border rather than given a grid
@@ -1868,16 +1926,13 @@ export default function App() {
             onToggleSidebar={toggleSidebarView}
             onNewChat={() => void handleNewChat()}
             onOpenPalette={openPalette}
-            onOpenSettings={openSettings}
-            onExportDiagnostics={() => void handleExportDiagnostics()}
-            onOpenShortcuts={openShortcuts}
-            providerCount={providers.length > 0 ? providers.length : undefined}
-            connectorCount={connectorCount}
           />
           <ChatView
             ref={chatViewRef}
             settings={settings}
-            settingsOpen={settingsOpen}
+            // Any rail page may add a connector, skill or collection; the
+            // composer re-reads them when you come back to the chat.
+            settingsOpen={destination !== 'chats'}
             documentsOpen={documentsOpen}
             onSelectModel={handleSelectModel}
             onStatus={setStatusMessage}
@@ -1894,6 +1949,9 @@ export default function App() {
             pendingSendText={pendingSendText}
             onPendingSendConsumed={consumePendingSend}
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
+            onOpenActivity={(turnId) => openInspector('activity', turnId)}
+            onTranscriptChange={setTranscript}
+            onRunStatusChange={setRunStatus}
             starterIdeas={
               ideaState.rowHidden || ideaState.startsWithoutIdea >= ROW_GIVE_UP
                 ? []
@@ -1905,6 +1963,74 @@ export default function App() {
             convoProviders={convoProviders}
           />
         </main>
+        {/* Rail destinations other than Chats: a page over the body. The chat
+            stays mounted underneath, so a turn in progress keeps running. */}
+        {destination !== 'chats' && (
+          <div className="dest-page" data-destination={destination}>
+            {destination === 'settings' && (
+              <SettingsSheet
+                variant="page"
+                open
+                initialSection={settingsSection}
+                onSectionChange={rememberSettingsSection}
+                onClose={() => leave('settings')}
+                settings={settings}
+                onSettingsChange={setSettings}
+                paths={paths}
+                onStatus={setStatusMessage}
+                connectionState={connectionState}
+                boundaryOk={boundaryOk}
+                hasCredential={hasCredential}
+                onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
+                onOpenDocuments={openDocuments}
+                onBrandChange={(config, logo) => {
+                  setBrandConfig(config);
+                  setBrandLogo(logo);
+                }}
+              />
+            )}
+            {destination === 'ideas' && (
+              <IdeasSheet
+                variant="page"
+                open
+                onClose={() => leave('ideas')}
+                caps={ideaCaps}
+                onTry={(idea) => void tryIdea(idea)}
+                onSetup={setupCapability}
+                onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
+                onStatus={setStatusMessage}
+              />
+            )}
+            {destination === 'documents' && (
+              <DocumentsSheet
+                variant="page"
+                open
+                onClose={() => leave('documents')}
+                settings={settings}
+                onSettingsChange={setSettings}
+                onStatus={setStatusMessage}
+                pendingPaths={droppedPaths}
+                onPendingPathsHandled={() => setDroppedPaths([])}
+              />
+            )}
+            {destination === 'library' && (
+              <LibraryPage
+                key={libraryTab}
+                initialTab={libraryTab}
+                settings={settings}
+                onStatus={setStatusMessage}
+                onInsertPrompt={(text) => {
+                  setDestination('chats');
+                  requestAnimationFrame(() => chatViewRef.current?.insertPrompt(text));
+                }}
+              />
+            )}
+            {destination === 'connectors' && <ConnectorsPage onStatus={setStatusMessage} />}
+            {destination === 'memory' && (
+              <MemoryPage settings={settings} onSettingsChange={setSettings} onStatus={setStatusMessage} />
+            )}
+          </div>
+        )}
 
         <div
           className="resize-handle"
@@ -1922,6 +2048,31 @@ export default function App() {
         />
 
         <DocumentPanel
+          inspectorTabs={
+            <InspectorTabs
+              tab={inspectorTab}
+              onTab={(tab) => openInspector(tab)}
+              counts={inspectorCounts}
+              hasPage={panelHasContent}
+              onClose={closeInspector}
+            />
+          }
+          inspectorView={
+            inspectorTab === 'activity' ? (
+              <ActivityView
+                turns={transcript.turns}
+                focusTurnId={focusTurnId}
+                onSelectTurn={setFocusTurnId}
+                networkLog={chatArtifacts.flatMap((a) => readArtifactNetworkLog(a.id))}
+              />
+            ) : inspectorTab === 'sources' ? (
+              <SourcesView
+                turns={transcript.turns}
+                knowledgeCitations={transcript.citations}
+                onStatus={setStatusMessage}
+              />
+            ) : undefined
+          }
           onAskToFix={(prompt) => chatViewRef.current?.insertPrompt(prompt)}
           artifact={activeArtifact}
           pendingArtifact={pendingArtifact}
@@ -1952,51 +2103,12 @@ export default function App() {
           onOpenIdeas={openIdeas}
         />
       </div>
+      </div>
 
       <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
 
       {/* Closes whichever side column is showing as an overlay (workspace.css). */}
       <div className="overlay-scrim" aria-hidden="true" onClick={closeOverlays} />
-
-      <SettingsSheet
-        open={settingsOpen}
-        initialSection={settingsSection}
-        onSectionChange={rememberSettingsSection}
-        onClose={() => setSettingsOpen(false)}
-        settings={settings}
-        onSettingsChange={setSettings}
-        paths={paths}
-        onStatus={setStatusMessage}
-        connectionState={connectionState}
-        boundaryOk={boundaryOk}
-        hasCredential={hasCredential}
-        onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
-        onOpenDocuments={openDocuments}
-        onBrandChange={(config, logo) => {
-          setBrandConfig(config);
-          setBrandLogo(logo);
-        }}
-      />
-
-      <IdeasSheet
-        open={ideasOpen}
-        onClose={() => setIdeasOpen(false)}
-        caps={ideaCaps}
-        onTry={(idea) => void tryIdea(idea)}
-        onSetup={setupCapability}
-        onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
-        onStatus={setStatusMessage}
-      />
-
-      <DocumentsSheet
-        open={documentsOpen}
-        onClose={() => setDocumentsOpen(false)}
-        settings={settings}
-        onSettingsChange={setSettings}
-        onStatus={setStatusMessage}
-        pendingPaths={droppedPaths}
-        onPendingPathsHandled={() => setDroppedPaths([])}
-      />
 
       {dropHovering && (
         <div className="kb-drop-overlay" aria-hidden="true">

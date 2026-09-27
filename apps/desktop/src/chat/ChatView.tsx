@@ -174,6 +174,7 @@ import { getIdeaState, noteChipOffered, noteChipUsed, noteFirstMessage, useIdeaS
 import { ideaById } from '../ideas/catalog';
 import { capabilityChip } from '../ideas/capabilityChips';
 import { resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
+import { summarizeStreamState } from '../inspector/turnActivity';
 import { IdeaStarterRow } from '../ideas/IdeaStarterRow';
 import { useRichT, useT, type Translate } from '../i18n';
 
@@ -207,6 +208,16 @@ export interface ChatViewHandle {
   replacePrompt: (text: string) => void;
   /// The thread has no messages yet.
   isEmpty: () => boolean;
+}
+
+export interface RunStatus {
+  conversationId: string;
+  needsYou: boolean;
+}
+
+export interface ChatTranscript {
+  turns: ChatTurn[];
+  citations: Record<string, KnowledgeCitation[]>;
 }
 
 interface ChatViewProps {
@@ -251,6 +262,16 @@ interface ChatViewProps {
   /// Ideas for an empty thread (docs/plans/ideas-and-discovery.md); empty
   /// hides the row.
   starterIdeas?: readonly Idea[];
+  /// UI revamp: a turn's step line was clicked — open Activity on it.
+  onOpenActivity?: (turnId: string) => void;
+  /// The transcript for the inspector's Activity and Sources tabs: persisted
+  /// turns plus the live one, and document citations per turn. Sent when the
+  /// turns or their steps change, not on every streamed token.
+  onTranscriptChange?: (transcript: ChatTranscript) => void;
+  /// The one live request's chat and whether it is running or waiting on the
+  /// user (an approval or a question) — for the chat list's status. `null`
+  /// when nothing runs. Reported on change, also while another chat is open.
+  onRunStatusChange?: (status: RunStatus | null) => void;
   onPickIdea?: (idea: Idea) => void;
   onMoreIdeas?: () => void;
   onHideIdeas?: () => void;
@@ -683,6 +704,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     paneActive = true,
     onOpenSettings,
     starterIdeas = [],
+    onOpenActivity,
+    onTranscriptChange,
+    onRunStatusChange,
     onPickIdea,
     onMoreIdeas,
     onHideIdeas,
@@ -900,6 +924,22 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }
   const maybeDrainNextRef = useRef(maybeDrainNext);
   maybeDrainNextRef.current = maybeDrainNext;
+
+  // Chat-list status (UI revamp): report the live request's chat and whether
+  // it waits on the user, only when that changes.
+  const onRunStatusChangeRef = useRef(onRunStatusChange);
+  onRunStatusChangeRef.current = onRunStatusChange;
+  const lastRunStatusRef = useRef('');
+  function reportRunStatus() {
+    const active = activeRequestRef.current;
+    const status: RunStatus | null = active?.conversationId
+      ? { conversationId: active.conversationId, needsYou: summarizeStreamState(streamStateRef.current ?? undefined).needsYou }
+      : null;
+    const key = status ? `${status.conversationId}:${status.needsYou}` : '';
+    if (key === lastRunStatusRef.current) return;
+    lastRunStatusRef.current = key;
+    onRunStatusChangeRef.current?.(status);
+  }
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId;
@@ -1219,6 +1259,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const next = applyConnectorRuntimeEvent(base, event);
     streamStateRef.current = next;
     renderStreamNow();
+    reportRunStatus();
 
     // A document write that failed at runtime ends the panel's generating state
     // now rather than at end of turn — otherwise the skeleton keeps shimmering
@@ -1527,6 +1568,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       isAgent: toolDefinitions.length > 0,
     };
     streamStateRef.current = initialStream;
+    reportRunStatus();
     setActiveRequestId(request.requestId);
     renderStreamNow();
     // Track the provider/model that produced this turn so the conditional
@@ -1567,6 +1609,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             streamStateRef.current ?? createAssistantStreamState(request.requestId, searchBackend),
             event,
           );
+          reportRunStatus();
           if (event.kind === 'messageComplete' || event.kind === 'error') {
             if (event.kind === 'error') terminalError = event.error.message;
             finish();
@@ -1582,6 +1625,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           createAssistantStreamState(request.requestId, searchBackend);
         const next = applyProviderEvent(base, event);
         streamStateRef.current = next;
+        reportRunStatus();
         if (event.kind === 'contentDelta' || event.kind === 'reasoningDelta' || event.kind === 'toolCallDelta') {
           renderStreamNextFrame();
         } else {
@@ -1810,6 +1854,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         activeRequestRef.current = null;
       }
       streamStateRef.current = null;
+      reportRunStatus();
       cancelStreamFrame();
       if (currentConversationIdRef.current === conversationId) {
         setActiveStream(null);
@@ -1863,6 +1908,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (cancelledState) onChatTurnComplete?.(markInterrupted(cancelledState));
     activeRequestRef.current = null;
     streamStateRef.current = null;
+    reportRunStatus();
     cancelStreamFrame();
     setActiveStream(null);
     setActiveRequestId(null);
@@ -2231,6 +2277,27 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // showInlineSuggestions is declared further down; read at effect time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capChip, ideaChipTurn, turns.length, activeStream, activeRequestId, prompt]);
+
+  // The inspector's view of this chat. Keyed on step shape so a streaming
+  // reply reports each new tool call and status change, not every token.
+  const liveStepKey = activeStream
+    ? `${activeStream.requestId}:${activeStream.streaming}:${activeStream.toolCalls
+        .map((tc) => `${tc.toolCallId}.${tc.complete}.${tc.status ?? ''}.${tc.consent ?? ''}`)
+        .join(',')}:${activeStream.searchSources.length}`
+    : '';
+  const activeStreamRef = useRef(activeStream);
+  activeStreamRef.current = activeStream;
+  useEffect(() => {
+    if (!onTranscriptChange) return;
+    const live = activeStreamRef.current;
+    const liveTurn: ChatTurn[] =
+      live && !turns.some((x) => x.streamState?.requestId === live.requestId)
+        ? [{ id: live.requestId, role: 'assistant', content: '', streamState: live }]
+        : [];
+    onTranscriptChange({ turns: [...turns, ...liveTurn], citations: turnCitations });
+    // liveStepKey stands in for activeStream (see above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns, turnCitations, liveStepKey, onTranscriptChange]);
 
   const suggestedPrompts = useMemo(() => {
     const derived = deriveSuggestedPrompts({ turns, artifacts });
@@ -2731,6 +2798,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               return withDay(
                 <AssistantMessage
                   key={turn.id}
+                  turnId={turn.id}
+                  onOpenActivity={onOpenActivity}
                   state={turn.streamState}
                   provider={provider}
                   modelId={model}
@@ -2832,6 +2901,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           })}
           {activeStream && (
             <AssistantMessage
+              turnId={activeStream.requestId}
+              onOpenActivity={onOpenActivity}
               state={{
                 ...activeStream,
                 agentPhase: (() => {

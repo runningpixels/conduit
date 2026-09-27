@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
 import {
+  applyRailStyle,
   applyUiReadability,
+  readRailStyle,
   readUiDensity,
+  type RailStyle,
   readUiFontSize,
   type UiDensity,
   type UiFontSize,
@@ -54,6 +57,7 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
   const t = useT();
   const [fontSize, setFontSize] = useState<UiFontSize>(() => readUiFontSize());
   const [density, setDensity] = useState<UiDensity>(() => readUiDensity());
+  const [railStyle, setRailStyle] = useState<RailStyle>(() => readRailStyle());
   const [look, setLook] = useState<LookPref>(() => readLook());
   const [palette, setPalette] = useState<PalettePref>(() => readPalette());
   const [modes, setModes] = useState<readonly Mode[]>(() => supportedModes());
@@ -266,6 +270,20 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
           >
             <option value="default">{t('settings.appearance.density.optionDefault')}</option>
             <option value="compact">{t('settings.appearance.density.optionCompact')}</option>
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">{t('settings.appearance.rail.label')}</span>
+          <select
+            value={railStyle}
+            onChange={(e) => {
+              const next = e.target.value as RailStyle;
+              setRailStyle(next);
+              applyRailStyle(next);
+            }}
+          >
+            <option value="icons">{t('settings.appearance.rail.optionIcons')}</option>
+            <option value="labels">{t('settings.appearance.rail.optionLabels')}</option>
           </select>
         </label>
         <label className="field">

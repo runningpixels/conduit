@@ -161,23 +161,37 @@ async function measureEveryScreen(
   await open(page, locale);
   byScreen.set('shell', await clippedElements(page));
 
-  /* The workspace chip's menu is the way in. Selected structurally rather than
-   * by text, because the text is accented under `en-XA` — and it is the only
-   * item in that menu carrying a keyboard hint, which makes `:has(kbd)` both
-   * stable and language-independent. */
-  await page.locator('.wschip').click();
-  await page.locator('.menu-item:has(kbd)').click();
-  await page.waitForSelector('.sheet[role="dialog"]', { timeout: 10_000 });
+  /* Settings is a page now, reached from the activity rail. Selected by the
+   * button's `data-destination` rather than its label, because the label is
+   * accented under `en-XA` and translated everywhere else. */
+  await page.locator('.rail-btn[data-destination="settings"]').click();
+  await page.waitForSelector('.sheet.sheet-page[role="region"]', { timeout: 10_000 });
 
   const navItems = page.locator('.sheet-nav button');
   const paneCount = await navItems.count();
-  expect(paneCount, 'the settings sheet rendered no navigation').toBeGreaterThan(5);
+  expect(paneCount, 'the settings page rendered no navigation').toBeGreaterThan(5);
 
   for (let index = 0; index < paneCount; index += 1) {
     await navItems.nth(index).click();
-    // The pane swaps synchronously; this settles the sheet's own transition.
+    // The pane swaps synchronously; this settles the page's own transition.
     await page.waitForTimeout(100);
     byScreen.set(`settings/pane${index}`, await clippedElements(page));
+  }
+
+  /* The other rail destinations — Ideas, Documents, Library, Connectors,
+   * Memory — are pages too, and several of them used to be settings panes.
+   * Each renders its empty state without a backend, so measure every one the
+   * rail offers. Keyed by destination, not position, so a destination hidden
+   * in one locale cannot shift the comparison. */
+  const destinations = await page
+    .locator('.rail-btn')
+    .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.destination ?? ''));
+  for (const destination of destinations) {
+    if (destination === 'chats' || destination === 'settings' || !destination) continue;
+    await page.locator(`.rail-btn[data-destination="${destination}"]`).click();
+    await page.waitForSelector(`.dest-page[data-destination="${destination}"]`, { timeout: 10_000 });
+    await page.waitForTimeout(100);
+    byScreen.set(`page/${destination}`, await clippedElements(page));
   }
 
   return byScreen;
@@ -251,7 +265,7 @@ for (const viewport of VIEWPORTS) {
 
       /* A walk that silently failed to navigate would compare two empty maps
        * and pass forever. The shell plus every settings pane is a dozen-odd
-       * screens; anything less means the menu or the nav stopped working. */
+       * screens; anything less means the rail or the nav stopped working. */
       expect(
         pseudo.size,
         'the walk did not reach the settings panes',

@@ -56,6 +56,9 @@ interface SidebarProps {
   onOpenPalette: () => void;
   /** t1-8: open the Documents sheet (the knowledge base's own home). */
   onOpenDocuments?: () => void;
+  /** The chat whose turn is running, and whether it waits on the user
+   *  (UI revamp: status in the list). */
+  runStatus?: { conversationId: string; needsYou: boolean } | null;
   /** Open the Ideas page; `ideasDot` marks something new there. */
   onOpenIdeas?: () => void;
   ideasDot?: boolean;
@@ -134,6 +137,7 @@ export function Sidebar({
   onOpenDocuments,
   onOpenIdeas,
   ideasDot = false,
+  runStatus = null,
   onCollapse,
   onRevealWorkspace,
   onOpenSettings,
@@ -321,7 +325,14 @@ export function Sidebar({
             </span>
           ) : null}
           <span className="convo-name">{label}</span>
-          <span className="convo-meta">{fmt.timeAgoTerse(row.updatedAt)}</span>
+          {runStatus?.conversationId === row.id ? (
+            <span className="convo-status" data-status={runStatus.needsYou ? 'needs-you' : 'running'}>
+              <i className="convo-status-mark" aria-hidden="true" />
+              {runStatus.needsYou ? t('shell.sidebar.status.needsYou') : t('shell.sidebar.status.running')}
+            </span>
+          ) : (
+            <span className="convo-meta">{fmt.timeAgoTerse(row.updatedAt)}</span>
+          )}
         </button>
         <button
           className="convo-more"

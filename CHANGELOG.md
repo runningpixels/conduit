@@ -9,6 +9,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **A new layout.** A side rail on the left takes you to Chats, Ideas,
+  Documents, Library (your prompts and skills), Connectors, Memory and
+  Settings; each is a full page instead of a pop-up, and a reply you are
+  waiting on keeps running while you look. Settings keeps what you configure
+  (providers, chat, web search, workspace, appearance, branding, privacy,
+  about); the rest moved to the rail. **Settings → Appearance → Side rail**
+  shows labels under the icons.
+- **The inspector.** The panel beside the chat now has three tabs: **Page**
+  (the document or page, as before), **Activity** (every tool call, web
+  search and site a turn used, with how long each took) and **Sources**
+  (web sources and document citations). Instead of a card per tool call, a
+  reply shows one line — "2 steps · 1 site" — that opens its Activity;
+  anything that needs you, like an approval or a question, still appears in
+  the chat.
+- **One "+" in the composer.** Attach, web search, the workspace folder,
+  documents, skills, connector prompts and resources, and chat settings are
+  behind a single button; what is on for the chat shows as chips above the
+  message, each removable.
+- **Chat status.** The chat list shows which chat is running, or waiting on
+  you, even while you are in another chat.
+
 - **Ideas.** A new page in the sidebar with things to try — a pomodoro timer,
   a live weather dashboard, flashcards, a Snake game, a logo — grouped by what
   you want to do. Each one starts a chat with the prompt filled in so you can

@@ -84,8 +84,16 @@ export type SettingsSection =
   | 'privacy'
   | 'about';
 
+/** Sections that moved to their own rail destination (docs/plans/ui-revamp.md).
+ *  The page variant leaves them out of its list; deep links to them are
+ *  routed to the destination by App. */
+export const RAIL_SECTIONS: readonly SettingsSection[] = ['connectors', 'prompts', 'skills', 'memory', 'knowledge'];
+
 interface SettingsSheetProps {
   open: boolean;
+  /** `page`: Settings as a rail destination in the main area — no scrim,
+   *  no focus trap, Escape does not close it. `sheet` (default): the modal. */
+  variant?: 'sheet' | 'page';
   initialSection?: SettingsSection;
   /** Reports the section on screen, so the app can reopen the sheet there. */
   onSectionChange?: (section: SettingsSection) => void;
@@ -226,7 +234,9 @@ export function SettingsSheet({
   onInsertPrompt,
   onOpenDocuments,
   onBrandChange,
+  variant = 'sheet',
 }: SettingsSheetProps) {
+  const isPage = variant === 'page';
   const t = useT();
   const tr = useRichT();
   const [section, setSection] = useState<SettingsSection>(initialSection ?? 'providers');
@@ -249,7 +259,9 @@ export function SettingsSheet({
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState<string | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
-  const visibleNav = NAV_ITEMS.filter((item) => item.id !== 'branding' || allowUserBranding);
+  const visibleNav = NAV_ITEMS.filter(
+    (item) => (item.id !== 'branding' || allowUserBranding) && !(isPage && RAIL_SECTIONS.includes(item.id)),
+  );
   const matches = query.trim() ? searchSettings(query, t, visibleNav) : null;
   const shownNav = matches ? visibleNav.filter((item) => matches.has(item.id)) : visibleNav;
 
@@ -284,7 +296,11 @@ export function SettingsSheet({
     // A stale deep link into 'branding' (a saved shortcut, a prior session)
     // must not land on the empty pane a disabled Mode B build renders for
     // it -- fall back the same way the retired 'advanced' id would.
-    setSection(requested === 'branding' && !allowUserBranding ? 'providers' : requested);
+    setSection(
+      (requested === 'branding' && !allowUserBranding) || (isPage && RAIL_SECTIONS.includes(requested))
+        ? 'providers'
+        : requested,
+    );
     lastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     navRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     return () => {
@@ -315,7 +331,7 @@ export function SettingsSheet({
   // Escape + scrim click close the sheet (App's own escape handler also
   // closes it; the two paths are idempotent).
   useEffect(() => {
-    if (!open) return;
+    if (!open || isPage) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -324,16 +340,29 @@ export function SettingsSheet({
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, isPage]);
 
-  // V7 §9.2: Tab cannot escape the sheet while it is open.
-  useFocusTrap(sheetRef, open);
+  // V7 §9.2: Tab cannot escape the sheet while it is open. A page is part of
+  // the window, so it traps nothing.
+  useFocusTrap(sheetRef, open && !isPage);
 
   if (!open) return null;
 
-  return (
-    <div className="scrim" data-open="true" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={sheetRef} className="sheet" role="dialog" aria-label={t('shell.settingsSheet.ariaLabel')} aria-modal="true">
+  const frame = (children: ReactNode) =>
+    isPage ? (
+      <div ref={sheetRef} className="sheet sheet-page" role="region" aria-label={t('shell.settingsSheet.ariaLabel')}>
+        {children}
+      </div>
+    ) : (
+      <div className="scrim" data-open="true" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div ref={sheetRef} className="sheet" role="dialog" aria-label={t('shell.settingsSheet.ariaLabel')} aria-modal="true">
+          {children}
+        </div>
+      </div>
+    );
+
+  return frame(
+      <>
         <nav ref={navRef} className="sheet-nav scroll" aria-label={t('shell.settingsSheet.nav.ariaLabel')}>
           <div className="sheet-nav-title">{t('shell.settingsSheet.nav.title')}</div>
           <input
@@ -744,7 +773,6 @@ export function SettingsSheet({
             {t('shell.settingsSheet.footnote')}
           </div>
         </div>
-      </div>
-    </div>
+      </>,
   );
 }

@@ -32,6 +32,17 @@ import type { KnowledgeCollection, SkillSummary } from '../ipc/contracts';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
 import { Menu } from '../workspace/Menu';
+import { ComposerPlusMenu, type PlusMenuItem } from './ComposerPlusMenu';
+import { ComposerContextChips, type ContextChip } from './ComposerContextChips';
+import { sameResource, toResourceRef } from './connectorCapabilities';
+
+type ComposerPopover =
+  | 'workspace'
+  | 'chatSettings'
+  | 'skills'
+  | 'collections'
+  | 'mcpPrompts'
+  | 'mcpResources';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -150,17 +161,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<ComposerModelPickerHandle>(null);
-  const workspaceBtnRef = useRef<HTMLButtonElement>(null);
+  const plusBtnRef = useRef<HTMLButtonElement>(null);
   const [credentialRef, setCredentialRef] = useState<string | null>(null);
   const [credentialMode, setCredentialMode] = useState<CredentialMode>('loading');
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [dropActive, setDropActive] = useState(false);
-  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
-  const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
-  const [skillsOpen, setSkillsOpen] = useState(false);
-  const [collectionsOpen, setCollectionsOpen] = useState(false);
-  const [mcpPromptsOpen, setMcpPromptsOpen] = useState(false);
-  const [mcpResourcesOpen, setMcpResourcesOpen] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  // One popover at a time, all anchored at the "+" button. Opened from the
+  // menu, from a context chip, or (chat settings) from the imperative handle.
+  const [openPop, setOpenPop] = useState<ComposerPopover | null>(null);
+  // Skills turned off in bulk from their chip, one per render: the parent's
+  // toggle reads its current list from a ref updated on render, so two
+  // toggles in one tick would each see the other's skill still on.
+  const [skillRemovalQueue, setSkillRemovalQueue] = useState<string[]>([]);
 
   useComposerAutosize(textareaRef, prompt);
 
@@ -169,9 +182,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       textareaRef.current?.focus();
     },
     openChatSettings: () => {
-      if (streaming || !conversationId) return;
-      setWorkspaceMenuOpen(false);
-      setChatSettingsOpen(true);
+      if (streaming || !conversationId || !onSaveChatSettings) return;
+      setPlusOpen(false);
+      setOpenPop('chatSettings');
     },
   }));
 
@@ -200,11 +213,31 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   useEffect(() => {
     setPendingAttachments([]);
-    setWorkspaceMenuOpen(false);
-    setChatSettingsOpen(false);
+    setPlusOpen(false);
+    setOpenPop(null);
+    setSkillRemovalQueue([]);
   }, [conversationId]);
 
-  const closeWorkspaceMenu = () => setWorkspaceMenuOpen(false);
+  useEffect(() => {
+    if (skillRemovalQueue.length === 0) return;
+    const [head, ...rest] = skillRemovalQueue;
+    setSkillRemovalQueue(rest);
+    if (head && enabledSkillIds.includes(head)) onToggleSkill?.(head, false);
+  }, [skillRemovalQueue, enabledSkillIds, onToggleSkill]);
+
+  // Popovers and the menu are not usable mid-turn (their controls were hidden
+  // while streaming before the "+" menu, too), so a turn starting closes them.
+  useEffect(() => {
+    if (!streaming) return;
+    setPlusOpen(false);
+    setOpenPop(null);
+  }, [streaming]);
+
+  const togglePop = (pop: ComposerPopover) => {
+    setPlusOpen(false);
+    setOpenPop((current) => (current === pop ? null : pop));
+  };
+  const closePop = () => setOpenPop(null);
 
   const workspaceBound = Boolean(workspaceRoot?.trim());
   const workspaceLabel = workspaceBound ? workspaceFolderLabel(workspaceRoot!) : null;
@@ -221,15 +254,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     { backend: localLabel },
   );
   const searchOffTitle = t('chat.composer.webSearch.offTitle');
-  const searchAria = webSearchOn
-    ? t(
-        searchBackend === 'local'
-          ? 'chat.composer.webSearch.ariaOnLocal'
-          : 'chat.composer.webSearch.ariaOnProvider',
-        { backend: localLabel },
-      )
-    : t('chat.composer.webSearch.ariaOff');
-
   async function uploadAttachment(file: File) {
     if (!conversationId) return;
 
@@ -375,6 +399,184 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const queueCount = queuedMessages.length;
 
+  // Availability of each "+" item. These are the gates the separate bar
+  // buttons had; only what is available is listed.
+  const webSearchAvailable = settings.webSearchEnabled && !settings.localOnly;
+  const collectionsAvailable = Boolean(onToggleCollection) && collections.length > 0;
+  const mcpPromptsAvailable = Boolean(onPickMcpPrompt) && mcpPrompts.length > 0;
+  const mcpResourcesAvailable = Boolean(onToggleMcpResource) && mcpResources.length > 0;
+
+  function selectWorkspace() {
+    if (!onWorkspacePick) return;
+    if (!workspaceBound) {
+      setOpenPop(null);
+      onWorkspacePick();
+      return;
+    }
+    togglePop('workspace');
+  }
+
+  const plusItems: PlusMenuItem[] = [
+    {
+      id: 'attach',
+      label: t('chat.composer.plus.attach'),
+      icon: <AttachIcon />,
+      title: attachDisabled ? t('chat.composer.attach.titleDisabled') : undefined,
+      disabled: attachDisabled,
+      onSelect: () => {
+        setOpenPop(null);
+        fileInputRef.current?.click();
+      },
+    },
+  ];
+  if (webSearchAvailable) {
+    plusItems.push({
+      id: 'webSearch',
+      label: t('chat.composer.plus.webSearch'),
+      icon: <SearchIcon />,
+      title: webSearchOn ? searchOnTitle : searchOffTitle,
+      checked: webSearchOn,
+      onSelect: onWebSearchToggle,
+    });
+  }
+  if (onWorkspacePick) {
+    plusItems.push({
+      id: 'workspace',
+      label: t('chat.composer.plus.workspace'),
+      icon: <FolderIcon />,
+      title: workspaceBound ? workspaceRoot! : t('chat.composer.workspace.unbound'),
+      disabled: !conversationId,
+      onSelect: selectWorkspace,
+    });
+  }
+  if (collectionsAvailable) {
+    plusItems.push({
+      id: 'collections',
+      label: t('chat.composer.plus.documents'),
+      icon: <KnowledgeIcon />,
+      title: t('chat.composer.knowledge.title'),
+      disabled: !conversationId,
+      onSelect: () => togglePop('collections'),
+    });
+  }
+  if (onToggleSkill) {
+    plusItems.push({
+      id: 'skills',
+      label: t('chat.composer.plus.skills'),
+      icon: <SkillIcon />,
+      title: t('chat.composer.skills.title'),
+      disabled: !conversationId,
+      onSelect: () => togglePop('skills'),
+    });
+  }
+  if (mcpPromptsAvailable) {
+    plusItems.push({
+      id: 'mcpPrompts',
+      label: t('chat.composer.plus.connectorPrompts'),
+      icon: <ConnectorsIcon />,
+      onSelect: () => togglePop('mcpPrompts'),
+    });
+  }
+  if (mcpResourcesAvailable) {
+    plusItems.push({
+      id: 'mcpResources',
+      label: t('chat.composer.plus.connectorResources'),
+      icon: <FilesIcon />,
+      onSelect: () => togglePop('mcpResources'),
+    });
+  }
+  if (onSaveChatSettings) {
+    plusItems.push({
+      id: 'chatSettings',
+      label: t('chat.composer.plus.chatSettings'),
+      icon: <SlidersIcon />,
+      title: t('chat.composer.chatSettings.title'),
+      disabled: !conversationId,
+      onSelect: () => togglePop('chatSettings'),
+    });
+  }
+
+  // Active context, shown above the input. Each chip's remove goes through the
+  // same handler its popover uses; its body opens that popover.
+  const chips: ContextChip[] = [];
+  if (onWorkspacePick && workspaceBound) {
+    chips.push({
+      id: 'workspace',
+      label: workspaceLabel!,
+      icon: <FolderIcon />,
+      title: workspaceRoot!,
+      onOpen: conversationId ? () => togglePop('workspace') : undefined,
+      onRemove: onWorkspaceClear,
+      removeLabel: t('chat.composer.chips.removeWorkspace', { label: workspaceLabel }),
+    });
+  }
+  if (collectionsAvailable) {
+    for (const id of enabledCollectionIds) {
+      const collection = collections.find((c) => c.id === id);
+      if (!collection) continue;
+      chips.push({
+        id: `collection:${id}`,
+        label: collection.name,
+        icon: <KnowledgeIcon />,
+        title: t('chat.composer.knowledge.title'),
+        onOpen: conversationId ? () => togglePop('collections') : undefined,
+        onRemove: () => onToggleCollection!(id, false),
+        removeLabel: t('chat.composer.chips.removeCollection', { name: collection.name }),
+      });
+    }
+  }
+  if (onToggleSkill && enabledSkillIds.length > 0) {
+    const count = enabledSkillIds.length;
+    const names = skills
+      .filter((skill) => enabledSkillIds.includes(skill.id))
+      .map((skill) => skill.name)
+      .join(', ');
+    chips.push({
+      id: 'skills',
+      label: t('chat.composer.chips.skills', { count }),
+      icon: <SkillIcon />,
+      title: names || undefined,
+      onOpen: conversationId ? () => togglePop('skills') : undefined,
+      onRemove: () => setSkillRemovalQueue([...enabledSkillIds]),
+      removeLabel: t('chat.composer.chips.removeSkills', { count }),
+    });
+  }
+  if (webSearchAvailable && webSearchOn) {
+    chips.push({
+      id: 'webSearch',
+      label: t('chat.composer.chips.webSearch'),
+      icon: <SearchIcon />,
+      title: searchOnTitle,
+      onRemove: onWebSearchToggle,
+      removeLabel: t('chat.composer.chips.removeWebSearch'),
+    });
+  }
+  if (mcpResourcesAvailable) {
+    for (const resourceRef of attachedResources) {
+      const resource = mcpResources.find((r) => sameResource(resourceRef, toResourceRef(r)));
+      chips.push({
+        id: `resource:${resourceRef.connectorVersionId}:${resourceRef.uri}`,
+        label: resourceRef.name,
+        icon: <FilesIcon />,
+        title: resourceRef.uri,
+        onOpen: () => togglePop('mcpResources'),
+        onRemove: resource ? () => onToggleMcpResource!(resource, false) : undefined,
+        removeLabel: t('chat.composer.chips.removeResource', { name: resourceRef.name }),
+      });
+    }
+  }
+  if (onSaveChatSettings && (generationControls || userInstructions)) {
+    chips.push({
+      id: 'chatSettings',
+      label: t('chat.composer.chatSettings.ariaLabel'),
+      icon: <SlidersIcon />,
+      title: t('chat.composer.chatSettings.title'),
+      onOpen: conversationId ? () => togglePop('chatSettings') : undefined,
+      onRemove: () => onSaveChatSettings(null, null),
+      removeLabel: t('chat.composer.chips.removeChatSettings'),
+    });
+  }
+
   return (
     <div className="composer-wrap">
       {queueCount > 0 && (
@@ -417,6 +619,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
+        <ComposerContextChips chips={chips} disabled={streaming} />
         {pendingAttachments.length > 0 && (
           <div className="composer-attachments" aria-label={t('chat.composer.attachments.ariaLabel')}>
             {pendingAttachments.map((item) => (
@@ -489,86 +692,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             accept={COMPOSER_IMAGE_ACCEPT}
             onChange={(event) => void handleFileInputChange(event)}
           />
-          <button
-            className="cbtn attach-btn"
-            type="button"
-            aria-label={t('chat.composer.attach.label')}
-            title={attachDisabled ? t('chat.composer.attach.titleDisabled') : t('chat.composer.attach.label')}
-            disabled={attachDisabled}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <AttachIcon />
-          </button>
-          {settings.webSearchEnabled && !settings.localOnly && !streaming && (
-            <button
-              className={`cbtn${webSearchOn ? ' armed' : ''}`}
-              type="button"
-              aria-label={searchAria}
-              title={webSearchOn ? searchOnTitle : searchOffTitle}
-              aria-pressed={webSearchOn}
-              onClick={onWebSearchToggle}
-            >
-              <SearchIcon />
-            </button>
-          )}
-          {onWorkspacePick && !streaming && (
-            <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <button
-                ref={workspaceBtnRef}
-                className={`cbtn${workspaceBound ? ' armed' : ''}`}
-                type="button"
-                aria-label={
-                  workspaceBound
-                    ? t('chat.composer.workspace.ariaBound', { label: workspaceLabel })
-                    : t('chat.composer.workspace.unbound')
-                }
-                title={workspaceBound ? workspaceRoot! : t('chat.composer.workspace.unbound')}
-                aria-pressed={workspaceBound}
-                aria-haspopup={workspaceBound ? 'menu' : undefined}
-                aria-expanded={workspaceBound ? workspaceMenuOpen : undefined}
-                disabled={!conversationId}
-                onClick={() => {
-                  if (!workspaceBound) {
-                    onWorkspacePick();
-                    return;
-                  }
-                  setWorkspaceMenuOpen((open) => !open);
-                }}
-              >
-                <FolderIcon />
-                {workspaceLabel ? (
-                  <span
-                    style={{
-                      maxWidth: 88,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      fontSize: 'var(--fs-md)',
-                      marginLeft: 4,
-                    }}
-                  >
-                    {workspaceLabel}
-                  </span>
-                ) : null}
-              </button>
+          {/* Every popover opens upward from the "+" button, whichever of the
+              menu or a context chip asked for it. */}
+          <span className="composer-plus">
+            <ComposerPlusMenu
+              ref={plusBtnRef}
+              open={plusOpen}
+              onOpenChange={(next) => {
+                if (next) setOpenPop(null);
+                setPlusOpen(next);
+              }}
+              items={plusItems}
+              disabled={streaming}
+              title={streaming ? t('chat.composer.plus.titleStreaming') : undefined}
+            />
+            {!streaming && onWorkspacePick && workspaceBound ? (
               <Menu
-                open={workspaceMenuOpen && workspaceBound}
-                onClose={closeWorkspaceMenu}
-                triggerRef={workspaceBtnRef}
+                open={openPop === 'workspace'}
+                onClose={closePop}
+                triggerRef={plusBtnRef}
                 className="menu composer-workspace-menu"
                 label={t('chat.composer.workspace.ariaBound', { label: workspaceLabel ?? '' })}
                 dismissOnOutsidePress
               >
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 'var(--fs-md)',
-                    color: 'var(--ink-3)',
-                    fontFamily: 'var(--font-mono)',
-                    wordBreak: 'break-all',
-                  }}
-                  title={workspaceRoot!}
-                >
+                <p className="composer-workspace-path" title={workspaceRoot!}>
                   {workspaceRoot}
                 </p>
                 <button
@@ -576,7 +723,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setWorkspaceMenuOpen(false);
+                    closePop();
                     onWorkspacePick();
                   }}
                 >
@@ -588,7 +735,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      setWorkspaceMenuOpen(false);
+                      closePop();
                       onWorkspaceClear();
                     }}
                   >
@@ -601,7 +748,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      setWorkspaceMenuOpen(false);
+                      closePop();
                       onOpenSettings('workspace');
                     }}
                   >
@@ -609,172 +756,76 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   </button>
                 ) : null}
               </Menu>
-            </span>
-          )}
-          {onSaveChatSettings && !streaming && (
-            <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <button
-                className={`cbtn${generationControls || userInstructions ? ' armed' : ''}${chatSettingsOpen ? ' armed' : ''}`}
-                type="button"
-                aria-label={t('chat.composer.chatSettings.ariaLabel')}
-                title={t('chat.composer.chatSettings.title')}
-                aria-haspopup="dialog"
-                aria-expanded={chatSettingsOpen}
-                disabled={!conversationId}
-                onClick={() => {
-                  setWorkspaceMenuOpen(false);
-                  setSkillsOpen(false);
-                  setCollectionsOpen(false);
-                  setChatSettingsOpen((open) => !open);
-                }}
-              >
-                <SlidersIcon />
-              </button>
+            ) : null}
+            {onSaveChatSettings && !streaming ? (
               <ComposerChatSettings
-                open={chatSettingsOpen}
+                open={openPop === 'chatSettings'}
                 streaming={streaming}
                 defaults={{
                   generationControls: settings.generationControls,
                   userInstructions: settings.userInstructions,
                 }}
                 override={{ generationControls, userInstructions }}
-                onClose={() => setChatSettingsOpen(false)}
+                onClose={closePop}
                 onSave={onSaveChatSettings}
                 onOpenSettingsDefaults={
                   onOpenSettings ? () => onOpenSettings('chat') : undefined
                 }
               />
-            </span>
-          )}
-          {onToggleSkill && !streaming && (
-            <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <button
-                className={`cbtn${enabledSkillIds.length > 0 ? ' armed' : ''}${skillsOpen ? ' armed' : ''}`}
-                type="button"
-                aria-label={t('chat.composer.skills.ariaLabel')}
-                title={t('chat.composer.skills.title')}
-                aria-haspopup="dialog"
-                aria-expanded={skillsOpen}
-                disabled={!conversationId}
-                onClick={() => {
-                  setWorkspaceMenuOpen(false);
-                  setChatSettingsOpen(false);
-                  setCollectionsOpen(false);
-                  setSkillsOpen((open) => !open);
-                }}
-              >
-                <SkillIcon />
-              </button>
+            ) : null}
+            {onToggleSkill && !streaming ? (
               <ComposerSkills
-                open={skillsOpen}
+                open={openPop === 'skills'}
                 streaming={streaming}
                 skills={skills}
                 enabledIds={enabledSkillIds}
-                onClose={() => setSkillsOpen(false)}
+                onClose={closePop}
                 onToggle={onToggleSkill}
                 onOpenSettings={onOpenSettings ? () => onOpenSettings('skills') : undefined}
               />
-            </span>
-          )}
-          {/* `collections.length > 0` is load-bearing, not a tidy-up: a user who
-              has never made a collection must see no new composer button at all
-              (t1-6 acceptance criterion 13). Same shape as the MCP prompt button
-              below, which hides itself when the server offers no prompts. */}
-          {onToggleCollection && collections.length > 0 && !streaming && (
-            <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <button
-                className={`cbtn${enabledCollectionIds.length > 0 ? ' armed' : ''}${collectionsOpen ? ' armed' : ''}`}
-                type="button"
-                aria-label={t('chat.composer.knowledge.ariaLabel')}
-                title={t('chat.composer.knowledge.title')}
-                aria-haspopup="dialog"
-                aria-expanded={collectionsOpen}
-                disabled={!conversationId}
-                onClick={() => {
-                  setWorkspaceMenuOpen(false);
-                  setChatSettingsOpen(false);
-                  setSkillsOpen(false);
-                  setCollectionsOpen((open) => !open);
-                }}
-              >
-                <KnowledgeIcon />
-              </button>
+            ) : null}
+            {/* `collections.length > 0` (in collectionsAvailable) is
+                load-bearing, not a tidy-up: a user who has never made a
+                collection must see no Documents item at all (t1-6 acceptance
+                criterion 13). Same shape as the connector prompt item, which
+                hides itself when the server offers no prompts. */}
+            {collectionsAvailable && !streaming ? (
               <ComposerCollections
-                open={collectionsOpen}
+                open={openPop === 'collections'}
                 streaming={streaming}
                 collections={collections}
                 enabledIds={enabledCollectionIds}
-                onClose={() => setCollectionsOpen(false)}
-                onToggle={onToggleCollection}
+                onClose={closePop}
+                onToggle={onToggleCollection!}
                 onOpenSettings={onOpenSettings ? () => onOpenSettings('knowledge') : undefined}
                 onRefresh={
                   onRefreshKnowledgeCapabilities ? () => onRefreshKnowledgeCapabilities() : undefined
                 }
               />
-            </span>
-          )}
-          {onPickMcpPrompt && mcpPrompts.length > 0 && !streaming && (
-            <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <button
-                className={`cbtn${mcpPromptsOpen ? ' armed' : ''}`}
-                type="button"
-                aria-label={t('chat.mcpPrompts.ariaLabel')}
-                title={t('chat.mcpPrompts.ariaLabel')}
-                aria-haspopup="dialog"
-                aria-expanded={mcpPromptsOpen}
-                onClick={() => {
-                  setWorkspaceMenuOpen(false);
-                  setChatSettingsOpen(false);
-                  setSkillsOpen(false);
-                  setCollectionsOpen(false);
-                  setMcpResourcesOpen(false);
-                  setMcpPromptsOpen((open) => !open);
-                }}
-              >
-                <ConnectorsIcon />
-              </button>
+            ) : null}
+            {mcpPromptsAvailable && !streaming ? (
               <ComposerMcpPrompts
-                open={mcpPromptsOpen}
+                open={openPop === 'mcpPrompts'}
                 prompts={mcpPrompts}
-                onClose={() => setMcpPromptsOpen(false)}
-                onPick={(prompt) => {
-                  setMcpPromptsOpen(false);
-                  onPickMcpPrompt(prompt);
+                onClose={closePop}
+                onPick={(picked) => {
+                  closePop();
+                  onPickMcpPrompt!(picked);
                 }}
                 onRefresh={() => onRefreshMcpCapabilities?.()}
               />
-            </span>
-          )}
-          {onToggleMcpResource && mcpResources.length > 0 && !streaming && (
-            <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <button
-                className={`cbtn${attachedResources.length > 0 ? ' armed' : ''}${mcpResourcesOpen ? ' armed' : ''}`}
-                type="button"
-                aria-label={t('chat.mcpResources.ariaLabel')}
-                title={t('chat.mcpResources.ariaLabel')}
-                aria-haspopup="dialog"
-                aria-expanded={mcpResourcesOpen}
-                onClick={() => {
-                  setWorkspaceMenuOpen(false);
-                  setChatSettingsOpen(false);
-                  setSkillsOpen(false);
-                  setCollectionsOpen(false);
-                  setMcpPromptsOpen(false);
-                  setMcpResourcesOpen((open) => !open);
-                }}
-              >
-                <FilesIcon />
-              </button>
+            ) : null}
+            {mcpResourcesAvailable && !streaming ? (
               <ComposerMcpResources
-                open={mcpResourcesOpen}
+                open={openPop === 'mcpResources'}
                 resources={mcpResources}
                 attached={attachedResources}
-                onClose={() => setMcpResourcesOpen(false)}
-                onToggle={onToggleMcpResource}
+                onClose={closePop}
+                onToggle={onToggleMcpResource!}
                 onRefresh={() => onRefreshMcpCapabilities?.()}
               />
-            </span>
-          )}
+            ) : null}
+          </span>
           {/* Everything before the spacer acts on the message; everything after
               it says who will answer and sends. */}
           <span className="spacer" />

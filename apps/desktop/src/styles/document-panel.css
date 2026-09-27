@@ -858,3 +858,182 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .artifact-network-sends { word-break: break-word; }
 .artifact-network-note { margin: 0; color: var(--ink-2); font-size: var(--fs-xl); line-height: 1.5; }
 .artifact-network-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* ── Inspector ───────────────────────────────────────────────────────────────
+ * The right-hand inspector's tab strip (InspectorTabs), its Activity and
+ * Sources views (src/inspector/), and the transcript's compact step line
+ * (`.turn-steps`, AssistantMessage). Semantic tokens only, so every look and
+ * palette dresses it; `[data-density="compact"]` tightens the rows. */
+
+.inspector-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-soft);
+}
+.inspector-tablist { display: flex; gap: var(--sp-1); flex: 1 1 auto; min-width: 0; }
+.inspector-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--tap), color var(--tap);
+}
+.inspector-tab:hover { color: var(--ink-2); background: var(--card-hi); }
+.inspector-tab[aria-selected="true"] { color: var(--ink); background: var(--card); }
+.inspector-tab:focus-visible,
+.inspector-close:focus-visible,
+.turn-steps:focus-visible,
+.activity-turn-head:focus-visible,
+.source-link:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+.inspector-tab-count {
+  min-width: var(--space-14);
+  padding: 0 var(--space-2);
+  border-radius: var(--r-pill);
+  background: var(--hue-a12);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  text-align: center;
+}
+.inspector-close {
+  display: grid;
+  place-items: center;
+  width: var(--space-24);
+  height: var(--space-24);
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background var(--tap), color var(--tap);
+}
+.inspector-close:hover { color: var(--ink); background: var(--card-hi); }
+.inspector-close svg { width: var(--space-12); height: var(--space-12); }
+
+.inspector-view {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  overflow-y: auto;
+  font-size: var(--fs-3xl);
+  color: var(--ink-2);
+}
+.inspector-empty,
+.inspector-note { margin: 0; color: var(--ink-3); line-height: var(--leading-normal); }
+.inspector-empty { padding: var(--sp-5) var(--sp-2); text-align: center; }
+.inspector-section { display: grid; gap: var(--sp-2); }
+.inspector-heading {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: var(--fs-md);
+  font-weight: var(--label-weight);
+  text-transform: var(--label-case);
+  letter-spacing: .06em;
+  color: var(--ink-3);
+}
+.inspector-subheading { margin: var(--sp-1) 0 0; font-size: var(--fs-xl); font-weight: 500; color: var(--ink-2); }
+.inspector-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.inspector-row { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; }
+.inspector-row-main { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.inspector-row-meta { flex: 0 0 auto; color: var(--ink-3); font-size: var(--fs-xl); }
+
+/* Activity timeline: status glyph · mono tool name over its detail · duration. */
+.activity-steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.activity-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: start;
+  padding: var(--space-4) 0;
+}
+/* The rule joining one glyph to the next — the "timeline". */
+.activity-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-12) / 2);
+  top: calc(var(--space-4) + var(--space-14));
+  bottom: 0;
+  border-left: 1px solid var(--line-soft);
+}
+.activity-step-body { display: grid; gap: var(--space-1); min-width: 0; }
+.activity-step-name { font-family: var(--font-mono); font-size: var(--fs-xl); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-step-detail { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-step-dur { font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-3); white-space: nowrap; }
+.activity-usage { font-family: var(--font-mono); font-size: var(--fs-xl); }
+
+.activity-turn { border: 1px solid var(--line-soft); border-radius: var(--r-sm); }
+.activity-turn-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--space-4) var(--space-8);
+  text-align: left;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background var(--tap);
+}
+.activity-turn-head:hover { background: var(--card-hi); }
+.activity-turn-chev { width: var(--space-12); height: var(--space-12); color: var(--ink-3); transition: transform var(--tap); }
+.activity-turn[data-open="true"] .activity-turn-chev { transform: rotate(90deg); }
+.activity-turn-body { display: grid; gap: var(--sp-2); padding: 0 var(--space-8) var(--space-8); justify-items: start; }
+
+/* Status glyphs, shared by the timeline and the transcript line. */
+.step-status { width: var(--space-12); height: var(--space-12); flex: 0 0 auto; margin-top: var(--space-1); color: var(--ink-3); }
+.step-status[data-status="done"] { color: var(--ok); }
+.step-status[data-status="failed"] { color: var(--err); }
+.step-status[data-status="waiting"] { color: var(--warn); }
+.step-status[data-status="running"] { color: var(--hue-text); animation: inspector-spin calc(var(--duration-slow) * 3) linear infinite; }
+@keyframes inspector-spin { to { transform: rotate(360deg); } }
+
+/* Sources */
+.source-row { min-width: 0; }
+.source-link {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background var(--tap);
+}
+.source-link:hover { background: var(--card-hi); }
+.source-link-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-link-host { font-family: var(--font-mono); font-size: var(--fs-md); color: var(--link); }
+
+/* Transcript: one compact line per assistant turn instead of tool cards. */
+.turn-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  max-width: 100%;
+  margin: 0 0 var(--sp-3);
+  padding: var(--space-3) var(--space-8);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  font-size: var(--fs-2xl);
+  cursor: pointer;
+  transition: background var(--tap), color var(--tap);
+}
+.turn-steps:hover { background: var(--card-hi); color: var(--ink-2); }
+.turn-steps .step-status { margin-top: 0; }
+.turn-steps-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-steps-chev { width: var(--space-12); height: var(--space-12); flex: 0 0 auto; transition: transform var(--tap); }
+.turn-steps[data-open="true"] .turn-steps-chev { transform: rotate(90deg); }
+
+[data-density="compact"] .inspector-view { gap: var(--sp-3); padding: var(--sp-3); }
+[data-density="compact"] .activity-step { padding: var(--space-2) 0; }
+[data-density="compact"] .turn-steps { margin-bottom: var(--sp-2); padding: var(--space-2) var(--space-6); }
+
+@media (prefers-reduced-motion: reduce) {
+  .step-status[data-status="running"] { animation: none; }
+  .activity-turn-chev,
+  .turn-steps-chev { transition: none; }
+}

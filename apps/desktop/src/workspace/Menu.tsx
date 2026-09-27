@@ -7,6 +7,10 @@ import {
   type ReactNode,
 } from 'react';
 
+/** Items the arrow keys move between: plain, checkbox and radio items. */
+const ITEM_SELECTOR =
+  '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
+
 export interface MenuProps {
   open: boolean;
   onClose: () => void;
@@ -61,11 +65,14 @@ export function Menu({
   useEffect(() => {
     if (!open) return;
     const menu = menuRef.current;
-    const items = menu?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])');
+    const items = menu?.querySelectorAll<HTMLElement>(ITEM_SELECTOR);
     items?.[0]?.focus();
-
+    const trigger = triggerRef.current;
     return () => {
-      triggerRef.current?.focus();
+      // Reclaim focus only from inside the menu (or from nowhere): an item
+      // that opened a popover or dialog keeps focus where that put it.
+      const active = document.activeElement;
+      if (!active || active === document.body || menu?.contains(active)) trigger?.focus();
     };
   }, [open, triggerRef]);
 
@@ -81,7 +88,7 @@ export function Menu({
       // pattern). Also what reaches items that arrive after opening, such as
       // a model list still loading when the first-item focus ran.
       if (event.key === 'ArrowDown' && document.activeElement === triggerRef.current) {
-        const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])');
+        const first = menuRef.current?.querySelector<HTMLElement>(ITEM_SELECTOR);
         if (first) {
           event.preventDefault();
           first.focus();
@@ -121,7 +128,7 @@ export function Menu({
     // own Home, End and arrows.
     if (isEditable(event.target)) return;
     const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [],
+      menuRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? [],
     );
     if (items.length === 0) return;
     const index = items.indexOf(document.activeElement as HTMLElement);
@@ -137,6 +144,9 @@ export function Menu({
     } else if (event.key === 'End') {
       event.preventDefault();
       items[items.length - 1]?.focus();
+    } else if (event.key === 'Tab') {
+      // Tab leaves the menu (WAI-ARIA menu button): close it on the way out.
+      onClose();
     }
   }
 

@@ -60,6 +60,12 @@ const baselineByArtifact = new Map<string, string>();
 let logSeq = 0;
 const LOG_LIMIT = 200;
 
+/** This session's requests for one page, oldest first (the inspector's
+ *  Activity lists them). */
+export function readArtifactNetworkLog(artifactId: string): readonly NetworkLogEntry[] {
+  return logByArtifact.get(artifactId) ?? [];
+}
+
 function bytesToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';

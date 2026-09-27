@@ -37,8 +37,9 @@ test.describe('the artifact panel on an empty chat', () => {
     await expect(page.locator('.panel-toggle')).toHaveAttribute('aria-pressed', 'false');
     const thread = await page.locator('.center').boundingBox();
     const sidebar = await page.locator('.body > .sidebar').boundingBox();
-    // Everything but the sidebar and the 12px handle track.
-    expect(Math.round(thread!.width)).toBe(WIDE.width - Math.round(sidebar!.width) - 12);
+    const rail = await page.locator('.rail').boundingBox();
+    // Everything but the activity rail, the sidebar and the 12px handle track.
+    expect(Math.round(thread!.width)).toBe(WIDE.width - Math.round(rail!.width) - Math.round(sidebar!.width) - 12);
   });
 
   test('still opens from its toggle, without changing the saved preference', async ({ page }) => {

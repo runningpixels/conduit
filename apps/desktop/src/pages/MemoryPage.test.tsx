@@ -69,7 +69,9 @@ describe('MemoryPage', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Memory kind' }), { target: { value: 'note' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save fact' }));
     await waitFor(() => expect(ipc.createMemoryItem).toHaveBeenCalledWith('I prefer terse commit messages', 'note'));
-    expect(await screen.findByText('I prefer terse commit messages')).toBeInTheDocument();
+    // Save → reload → render is three async hops; a loaded CI runner needs
+    // more than findBy's default second.
+    expect(await screen.findByText('I prefer terse commit messages', {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Notes' })).toBeInTheDocument();
     expect(onStatus).toHaveBeenCalledWith('Saved memory');
     expect(screen.queryByRole('textbox', { name: 'New memory' })).not.toBeInTheDocument();

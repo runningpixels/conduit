@@ -37,7 +37,7 @@ rich documents (styled text, diagrams, small interactive widgets) for the user.
    blocks `<base>` URL rewriting.
 3. **No Tauri bridge injected** into the iframe → no `__TAURI__`, no filesystem,
    shell, or IPC surface.
-4. **`srcdoc` delivery** (null origin). A dedicated origin is the future
+4. **`srcdoc` delivery** (null origin); superseded 2026-09-28, see the addendum. A dedicated origin is the future
    defense-in-depth upgrade.
 5. **`referrerpolicy="no-referrer"`.**
 6. **Trusted link interceptor (Conduit-owned inline script).** Because the
@@ -144,6 +144,51 @@ to model-authored HTML that happens to include its own KaTeX/Mermaid scripts.
    convenience so half-written scripts do not run, **not** a security boundary
    (the sandbox and CSP are). One Conduit-owned line scrolls to the end so the
    view follows the writing. Previewing stops past 1,000,000 characters.
+## Addendum (2026-09-28): artifacts load from their own scheme, not `srcdoc`
+
+**The bug:** in release builds, no artifact script ever ran. Tauri serves the main page
+with the app CSP (`script-src 'self'` plus hashes of its own scripts). A `srcdoc` frame
+inherits the embedding page's policy, so every inline script in the artifact was
+blocked: the model's code, and Conduit's injected link, form, shortcut, error and fetch
+scripts. Interactive artifacts rendered as static markup. Dev builds never showed it,
+because Vite serves the page and Tauri injects no CSP there. Every earlier live test ran
+in dev.
+
+**The fix:** layer 4 changes. The renderer still assembles the same document (CSP meta
+first in `<head>`, then the injected scripts). It hands that document to Rust
+(`put_artifact_frame`), which keeps it in memory under a random token and serves it from
+the `conduit-artifact` scheme:
+
+- the URL is `http://conduit-artifact.localhost/<token>` on Windows, and
+  `conduit-artifact://localhost/<token>` elsewhere
+- the handler is `artifact_frames.rs`, which serves GET only
+- responses are `no-store` and `nosniff`
+- the store is capped by count and bytes
+- the renderer drops a token when its frame goes away
+
+A real navigation gets a fresh policy container, so the document's own CSP meta is the
+policy that applies, as the ADR always intended.
+
+**What stays the same:**
+
+- The frame keeps `sandbox="allow-scripts"`, so its origin is still opaque. It can't read
+  the app, other frames or the scheme's other documents; tokens are unguessable.
+- No Tauri bridge is injected. Requests to the custom scheme are handled in-process, never
+  on the network.
+
+**Other changes:**
+
+- The app CSP's `frame-src` goes from `'none'` to that scheme only.
+- Outside Tauri (unit tests), or if the IPC call fails, the renderer falls back to
+  `srcdoc`. That fails safe: scripts are blocked, never widened.
+- **Follow-up:** the live preview while a document streams still uses `srcdoc`. It strips
+  model scripts anyway, but Conduit's helpers injected there (scroll-to-end, shortcut
+  forwarding) stay blocked in release until it moves to the scheme too.
+
+**Verified in a release build:** an existing interactive artifact loads from the scheme,
+its scripts run (it fetched live rates through the ADR-010 bridge), the WebRTC removal
+(ADR-010 addendum) applies, `origin` is `null`, and access to the parent is blocked.
+
 ## Related
 - Supersedes the interactive-rendering deferral in ADR 002 (which modeled
   artifacts as static payload records). ADR 002's append-only **versioning** is

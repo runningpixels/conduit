@@ -32,6 +32,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Interactive HTML artifacts work in installed builds.** Released builds
+  blocked every script inside an HTML artifact, so calculators, charts,
+  games and live-data pages showed only their static layout. Artifacts now
+  load from their own sandboxed address, and their scripts run as intended.
 - **Dropping a file on the message box attaches it on Windows.** Dropping
   anywhere else on the window still adds it to Documents. Conduit reads
   only files that were actually dropped on the window.

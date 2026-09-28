@@ -818,7 +818,7 @@
   "settings.appearance.userThemes.toastCleared": "No se pudo cargar el archivo de tema \"{fileName}\"; en Apariencia se restableció un tema integrado.",
   "settings.artifactSecurity.actions.add": "Añadir",
   "settings.artifactSecurity.allowlist.empty": "No hay orígenes en la lista de permitidos: las páginas no cargan imágenes, fuentes ni estilos remotos.",
-  "settings.artifactSecurity.allowlist.hint": "Orígenes de confianza desde los que los artefactos HTML renderizados pueden cargar imágenes, fuentes y estilos. Los scripts se bloquean siempre; las solicitudes de una página a sitios web se preguntan por separado. Vacío = sin imágenes, fuentes ni estilos remotos.",
+  "settings.artifactSecurity.allowlist.hint": "Orígenes de confianza desde los que los artefactos HTML renderizados pueden cargar imágenes, fuentes y estilos. Los scripts se bloquean siempre; las solicitudes de una página a sitios web se preguntan por separado. Vacío = sin imágenes, fuentes ni estilos remotos. Los cambios se aplican tras reiniciar.",
   "settings.artifactSecurity.allowlist.inputPlaceholder": "https://fonts.example.com",
   "settings.artifactSecurity.allowlist.label": "Orígenes remotos permitidos",
   "settings.artifactSecurity.allowlist.validationHint": "Rust rechaza los orígenes no válidos al guardar.",

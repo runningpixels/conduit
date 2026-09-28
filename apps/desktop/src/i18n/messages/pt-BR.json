@@ -818,7 +818,7 @@
   "settings.appearance.userThemes.toastCleared": "Não foi possível carregar o arquivo de tema \"{fileName}\"; em Aparência, um tema integrado foi restaurado.",
   "settings.artifactSecurity.actions.add": "Adicionar",
   "settings.artifactSecurity.allowlist.empty": "Nenhuma origem na lista de permissões — as páginas não carregam imagens, fontes ou estilos remotos.",
-  "settings.artifactSecurity.allowlist.hint": "Origens confiáveis das quais os artefatos HTML renderizados podem carregar imagens, fontes e estilos. Scripts são bloqueados de qualquer forma; as solicitações de uma página a sites são perguntadas separadamente. Vazio = sem imagens, fontes ou estilos remotos.",
+  "settings.artifactSecurity.allowlist.hint": "Origens confiáveis das quais os artefatos HTML renderizados podem carregar imagens, fontes e estilos. Scripts são bloqueados de qualquer forma; as solicitações de uma página a sites são perguntadas separadamente. Vazio = sem imagens, fontes ou estilos remotos. As alterações entram em vigor após reiniciar.",
   "settings.artifactSecurity.allowlist.inputPlaceholder": "https://fonts.example.com",
   "settings.artifactSecurity.allowlist.label": "Lista de permissões remota de artefatos",
   "settings.artifactSecurity.allowlist.validationHint": "Origens inválidas são rejeitadas pelo Rust ao salvar.",

@@ -32,6 +32,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildArtifactCsp, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
+import { ARTIFACT_WEBRTC_BLOCK_SCRIPT } from './webrtcBlock';
 import {
   buildShortcutForwarderScript,
   parseArtifactShortcutMessage,
@@ -211,7 +212,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}</script>` +
+    `<script>${ARTIFACT_WEBRTC_BLOCK_SCRIPT}${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}</script>` +
     `</head><body>${html}</body></html>`
   );
 }

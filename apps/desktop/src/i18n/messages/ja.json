@@ -818,7 +818,7 @@
   "settings.appearance.userThemes.toastCleared": "テーマファイル「{fileName}」を読み込めなかったため、外観設定は組み込みのテーマに戻りました。",
   "settings.artifactSecurity.actions.add": "追加",
   "settings.artifactSecurity.allowlist.empty": "許可されたオリジンがありません。ページは外部の画像・フォント・スタイルを読み込みません。",
-  "settings.artifactSecurity.allowlist.hint": "レンダリングされた HTML アーティファクトが画像・フォント・スタイルを読み込める、信頼済みのオリジンです。スクリプトはいずれの場合もブロックされます。ページからウェブサイトへのリクエストは別途確認されます。空欄の場合、外部の画像・フォント・スタイルは読み込まれません。",
+  "settings.artifactSecurity.allowlist.hint": "レンダリングされた HTML アーティファクトが画像・フォント・スタイルを読み込める、信頼済みのオリジンです。スクリプトはいずれの場合もブロックされます。ページからウェブサイトへのリクエストは別途確認されます。空欄の場合、外部の画像・フォント・スタイルは読み込まれません。変更は再起動後に反映されます。",
   "settings.artifactSecurity.allowlist.inputPlaceholder": "https://fonts.example.com",
   "settings.artifactSecurity.allowlist.label": "アーティファクトのリモート許可リスト",
   "settings.artifactSecurity.allowlist.validationHint": "無効なオリジンは、保存時に Rust 側で拒否されます。",

@@ -17,7 +17,8 @@
         "width": 1360,
         "height": 900,
         "resizable": true,
-        "decorations": false
+        "decorations": false,
+        "create": false
       }
     ],
     "security": {

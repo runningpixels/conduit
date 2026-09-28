@@ -18,6 +18,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the documents you picked, even from collections the chat hasn't attached,
   and the sent message keeps showing what it referenced.
 
+### Security
+
+- **HTML artifacts can no longer send data out through WebRTC.** The page's
+  content security policy never covered WebRTC, so a page could reach any
+  host through STUN/TURN even with network access off. On Windows this is
+  now blocked in the webview itself, and pages can no longer create WebRTC
+  connections. If you allow remote images, fonts or styles from specific
+  sites (Settings → Artifacts), changes to that list now apply after a
+  restart.
+
 ### Fixed
 
 - **Dropping a file on the message box attaches it on Windows.** Dropping

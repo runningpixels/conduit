@@ -6,8 +6,9 @@
 /// (per page, per site), has Rust make the request, and posts the answer back;
 /// the script turns it into an ordinary `Response`. A refused or failed request
 /// rejects the way a network error would, so the page's own error handling
-/// runs. `XMLHttpRequest`, `WebSocket`, `EventSource` and WebRTC stay blocked by
-/// the unchanged CSP.
+/// runs. `XMLHttpRequest`, `WebSocket` and `EventSource` stay blocked by the
+/// unchanged CSP. WebRTC isn't governed by CSP at all; it is closed at the
+/// WebView level (`webview_args.rs`) and removed in the frame (`webrtcBlock.ts`).
 ///
 /// Only the finished preview gets this script; the live preview of a document
 /// still being written has no network.

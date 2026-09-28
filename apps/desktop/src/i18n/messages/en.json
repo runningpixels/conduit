@@ -818,7 +818,7 @@
   "settings.appearance.userThemes.toastCleared": "Your custom theme file \"{fileName}\" couldn't be loaded, so Appearance reverted to a built-in theme.",
   "settings.artifactSecurity.actions.add": "Add",
   "settings.artifactSecurity.allowlist.empty": "No origins allowlisted — pages load no remote images, fonts, or styles.",
-  "settings.artifactSecurity.allowlist.hint": "Trusted origins rendered HTML artifacts may load images, fonts, and styles from. Scripts are blocked regardless; a page's requests to websites are asked about separately. Empty = no remote images, fonts, or styles.",
+  "settings.artifactSecurity.allowlist.hint": "Trusted origins rendered HTML artifacts may load images, fonts, and styles from. Scripts are blocked regardless; a page's requests to websites are asked about separately. Empty = no remote images, fonts, or styles. Changes take effect after a restart.",
   "settings.artifactSecurity.allowlist.inputPlaceholder": "https://fonts.example.com",
   "settings.artifactSecurity.allowlist.label": "Artifact remote allowlist",
   "settings.artifactSecurity.allowlist.validationHint": "Invalid origins are rejected by Rust on save.",

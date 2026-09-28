@@ -34,8 +34,9 @@ describe('LiveDocumentPreview', () => {
       />,
     );
     await act(async () => {});
+    // Only the buffer holding a document renders; the empty one waits.
     const frames = document.querySelectorAll('iframe');
-    expect(frames.length).toBe(2);
+    expect(frames.length).toBe(1);
     for (const frame of frames) {
       expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
       expect(frame.getAttribute('referrerpolicy')).toBe('no-referrer');

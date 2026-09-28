@@ -12,10 +12,13 @@
 /// sandbox is) — because a script cut off mid-statement is noise, and they run
 /// once the document is done. Each update loads into a hidden frame and swaps
 /// in on load, so the preview does not flash white every second, and a trusted
-/// line at the end keeps the view on the part being written.
+/// line at the end keeps the view on the part being written. Frames load from
+/// the `conduit-artifact` scheme like the finished preview, so Conduit's own
+/// injected lines run in release builds too (see `artifactFrameSource.ts`).
 
 import { useEffect, useMemo, useState } from 'react';
 import { assembleArtifactDoc, type ArtifactColorScheme } from './HtmlArtifactRenderer';
+import { useArtifactFrameSource } from './artifactFrameSource';
 import { MarkdownRenderer } from './renderers';
 import { decodePartialContent } from '../chat/documentWriteScan';
 import { useNow } from '../lib/useNow';
@@ -37,6 +40,36 @@ export function withoutScripts(html: string): string {
 }
 
 const FOLLOW_END_SCRIPT = '<script>scrollTo(0,document.documentElement.scrollHeight)</script>';
+
+/// One of the two buffered frames. Renders nothing until it has a document,
+/// and only once that document has a source (see `useArtifactFrameSource`).
+function PreviewFrame({
+  doc,
+  shown,
+  title,
+  onLoad,
+}: {
+  doc: string;
+  shown: boolean;
+  title: string;
+  onLoad: () => void;
+}) {
+  const source = useArtifactFrameSource(doc);
+  if (!doc || (!source.src && source.srcDoc == null)) return null;
+  return (
+    <iframe
+      className="artifact-html-frame live-preview-frame"
+      data-shown={shown ? 'true' : 'false'}
+      title={title}
+      // Same containment as the finished preview; never widen.
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
+      src={source.src}
+      srcDoc={source.srcDoc}
+      onLoad={onLoad}
+    />
+  );
+}
 
 function PeekHtmlFrames({
   html,
@@ -65,15 +98,11 @@ function PeekHtmlFrames({
   }, [doc]);
 
   const frame = (name: 'a' | 'b') => (
-    <iframe
+    <PreviewFrame
       key={name}
-      className="artifact-html-frame live-preview-frame"
-      data-shown={frames.shown === name ? 'true' : 'false'}
+      doc={frames[name]}
+      shown={frames.shown === name}
       title={t('artifacts.html.previewTitle')}
-      // Same containment as the finished preview; never widen.
-      sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
-      srcDoc={frames[name]}
       onLoad={() =>
         setFrames((current) => (current.shown !== name && current[name] ? { ...current, shown: name } : current))
       }

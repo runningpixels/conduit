@@ -181,9 +181,9 @@ policy that applies, as the ADR always intended.
 - The app CSP's `frame-src` goes from `'none'` to that scheme only.
 - Outside Tauri (unit tests), or if the IPC call fails, the renderer falls back to
   `srcdoc`. That fails safe: scripts are blocked, never widened.
-- **Follow-up:** the live preview while a document streams still uses `srcdoc`. It strips
-  model scripts anyway, but Conduit's helpers injected there (scroll-to-end, shortcut
-  forwarding) stay blocked in release until it moves to the scheme too.
+- The live preview while a document streams uses the scheme too, one token per buffered
+  frame. It still strips model scripts. Only Conduit's own helpers there (scroll-to-end,
+  shortcut forwarding) are affected, and they now run in release as well.
 
 **Verified in a release build:** an existing interactive artifact loads from the scheme,
 its scripts run (it fetched live rates through the ADR-010 bridge), the WebRTC removal

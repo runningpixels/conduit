@@ -567,3 +567,80 @@ export interface KnowledgeContext {
    *  a whole collection went unsearched, not one document's text blocked. */
   unavailableCollections: string[];
 }
+
+/** A saved workflow (Rust `db::repository::workflows::WorkflowRecord`). */
+export interface WorkflowRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  /** The stored definition (Rust `workflows::definition::WorkflowDefinition`). */
+  definition: WorkflowDefinition;
+  version: number;
+  conversationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  version: number;
+  updatedAt: string;
+  lastRunStatus: WorkflowRunStatus | null;
+  lastRunAt: string | null;
+}
+
+export interface WorkflowDefinition {
+  inputs?: WorkflowInput[];
+  steps: WorkflowStep[];
+}
+
+export interface WorkflowInput {
+  id: string;
+  label: string;
+  default?: string | null;
+}
+
+export type WorkflowStep = {
+  id: string;
+  onError?: 'fail' | 'skip';
+} & (
+  | { type: 'fetch_page'; urls: string[] }
+  | { type: 'web_search'; query: string; maxResults?: number | null }
+  | { type: 'summarize'; prompt: string; input: string; schema?: Record<string, unknown> | null }
+  | { type: 'template'; template: string }
+  | { type: 'for_each'; items: string; steps: WorkflowStep[] }
+  | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
+);
+
+export type WorkflowRunStatus = 'running' | 'completed' | 'failed';
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  version: number;
+  trigger: string;
+  status: WorkflowRunStatus;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface WorkflowRunStep {
+  id: string;
+  runId: string;
+  stepId: string;
+  iteration: number | null;
+  status: 'running' | 'completed' | 'failed';
+  input: unknown;
+  output: unknown;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface WorkflowRunDetail {
+  run: WorkflowRun;
+  steps: WorkflowRunStep[];
+}

@@ -15,15 +15,25 @@ import {
   MemoryIcon,
   SettingsIcon,
   SkillIcon,
+  WorkflowIcon,
 } from '../icons';
 
-export type Destination = 'chats' | 'ideas' | 'documents' | 'library' | 'connectors' | 'memory' | 'settings';
+export type Destination =
+  | 'chats'
+  | 'ideas'
+  | 'documents'
+  | 'library'
+  | 'workflows'
+  | 'connectors'
+  | 'memory'
+  | 'settings';
 
 export const DESTINATIONS: readonly Destination[] = [
   'chats',
   'ideas',
   'documents',
   'library',
+  'workflows',
   'connectors',
   'memory',
   'settings',
@@ -34,6 +44,7 @@ const ICONS: Record<Destination, ReactNode> = {
   ideas: <IdeaIcon />,
   documents: <KnowledgeIcon />,
   library: <SkillIcon />,
+  workflows: <WorkflowIcon />,
   connectors: <ConnectorsIcon />,
   memory: <MemoryIcon />,
   settings: <SettingsIcon />,

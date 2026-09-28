@@ -1,8 +1,9 @@
+import { createRef, type RefObject } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { AppSettings } from '@conduit/config-schema';
+import type { AppSettings, Message, MessagePart } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
-import { ChatView, describeInvokeError } from './ChatView';
+import { ChatView, describeInvokeError, type ChatViewHandle } from './ChatView';
 
 const baseSettings: AppSettings = {
   activeProvider: 'anthropic',
@@ -98,6 +99,19 @@ vi.mock('../ipc/client', () => ({
   setConversationSkills: vi.fn().mockResolvedValue([]),
   getSkillPromptBlock: vi.fn().mockResolvedValue(''),
   getMemoryPromptBlock: vi.fn().mockResolvedValue(''),
+  listKnowledgeCollections: vi.fn().mockResolvedValue([]),
+  listConversationCollections: vi.fn().mockResolvedValue([]),
+  listConversationExcludedDocuments: vi.fn().mockResolvedValue([]),
+  setConversationDocumentExcluded: vi.fn().mockResolvedValue([]),
+  listKnowledgeDocuments: vi.fn().mockResolvedValue([]),
+  retrieveKnowledgeContext: vi.fn().mockResolvedValue({
+    text: '',
+    citations: [],
+    refusedTitles: [],
+    unavailableCollections: [],
+  }),
+  saveDroppedAttachment: vi.fn(),
+  prepareMessageEdit: vi.fn(),
 }));
 
 import {
@@ -109,6 +123,7 @@ import {
 
 function renderChatView(overrides: {
   artifacts?: Artifact[];
+  ref?: RefObject<ChatViewHandle | null>;
 } = {}) {
   const onStatus = vi.fn();
   const onSelectModel = vi.fn();
@@ -117,6 +132,7 @@ function renderChatView(overrides: {
 
   render(
     <ChatView
+      ref={overrides.ref}
       settings={baseSettings}
       onSelectModel={onSelectModel}
       onStatus={onStatus}
@@ -637,5 +653,199 @@ describe('ChatView failed turn cleanup', () => {
     expect(state.toolCalls).toHaveLength(1);
     expect(state.toolCalls[0].status).toBe('failed');
     expect(state.toolCalls[0].endedAt).toBeTypeOf('number');
+  });
+});
+
+describe('ChatView M1: native window drop routes through the composer (D13)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getConversationCompaction).mockResolvedValue(null);
+  });
+
+  it('handleComposerDrop attaches the dropped path the way an HTML5 drop would', async () => {
+    const { saveDroppedAttachment } = await import('../ipc/client');
+    vi.mocked(saveDroppedAttachment).mockResolvedValue({
+      id: 'att-drop-1',
+      conversationId: 'conv-1',
+      path: 'ab/cd',
+      mimeType: 'text/plain',
+      sizeBytes: 3,
+      retentionState: 'active',
+      createdAt: '2026-01-01T00:00:00Z',
+      origin: 'dropped.txt',
+    });
+    const ref = createRef<ChatViewHandle>();
+    renderChatView({ ref });
+    await screen.findByLabelText('Message the active provider');
+
+    act(() => ref.current?.handleComposerDrop(['C:\\notes\\dropped.txt']));
+
+    expect(await screen.findByText('dropped.txt')).toBeInTheDocument();
+    expect(saveDroppedAttachment).toHaveBeenCalledWith('conv-1', 'C:\\notes\\dropped.txt');
+  });
+});
+
+describe('ChatView M2: document exclusion toggle (D1/D2)', () => {
+  const collection = {
+    id: 'c1',
+    name: 'Greenhouse',
+    providerId: 'openrouter',
+    embeddingModel: 'openai/text-embedding-3-small',
+    embeddingDimensions: 1536,
+    documentCount: 2,
+    createdAt: '2026-09-20T00:00:00Z',
+    updatedAt: '2026-09-20T00:00:00Z',
+  };
+  function knowledgeDoc(id: string, title: string) {
+    return {
+      id,
+      collectionId: 'c1',
+      source: `/greenhouse/${title}`,
+      title,
+      mimeType: 'text/plain',
+      byteSize: 10,
+      chunkCount: 1,
+      importedAt: '2026-09-20T00:00:00Z',
+    };
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getConversationCompaction).mockResolvedValue(null);
+    const {
+      listKnowledgeCollections,
+      listConversationCollections,
+      listConversationExcludedDocuments,
+      listKnowledgeDocuments,
+    } = await import('../ipc/client');
+    vi.mocked(listKnowledgeCollections).mockResolvedValue([collection]);
+    vi.mocked(listConversationCollections).mockResolvedValue(['c1']);
+    vi.mocked(listConversationExcludedDocuments).mockResolvedValue([]);
+    vi.mocked(listKnowledgeDocuments).mockResolvedValue([
+      knowledgeDoc('d1', 'notes.md'),
+      knowledgeDoc('d2', 'stale.md'),
+    ]);
+  });
+
+  async function openDocumentsList() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to this message' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Documents…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show documents in Greenhouse' }));
+  }
+
+  it('unchecking a document excludes it, with an optimistic update reconciled to the canonical result', async () => {
+    const { setConversationDocumentExcluded } = await import('../ipc/client');
+    vi.mocked(setConversationDocumentExcluded).mockResolvedValue(['d2']);
+    renderChatView();
+    await screen.findByLabelText('Message the active provider');
+
+    await openDocumentsList();
+    const stale = await screen.findByRole('checkbox', { name: 'stale.md' });
+    expect(stale).toBeChecked();
+
+    fireEvent.click(stale);
+    // Optimistic: unchecked immediately, before the write resolves.
+    expect(screen.getByRole('checkbox', { name: 'stale.md' })).not.toBeChecked();
+    await waitFor(() => expect(setConversationDocumentExcluded).toHaveBeenCalledWith('conv-1', 'd2', true));
+    expect(screen.getByRole('checkbox', { name: 'stale.md' })).not.toBeChecked();
+  });
+
+  it('rolls back the optimistic state and reports a status when the write fails', async () => {
+    const { setConversationDocumentExcluded } = await import('../ipc/client');
+    vi.mocked(setConversationDocumentExcluded).mockRejectedValue(new Error('offline'));
+    const { onStatus } = renderChatView();
+    await screen.findByLabelText('Message the active provider');
+
+    await openDocumentsList();
+    const stale = await screen.findByRole('checkbox', { name: 'stale.md' });
+    fireEvent.click(stale);
+
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'stale.md' })).toBeChecked());
+    expect(onStatus).toHaveBeenCalled();
+  });
+});
+
+describe('ChatView M3: edit-and-resend keeps knowledge references (D9)', () => {
+  function knowledgeRefPart(): MessagePart {
+    return {
+      id: 'u1-kref-doc-1',
+      messageId: 'u1',
+      index: 1,
+      kind: 'knowledgeReference',
+      metadata: {
+        documentId: 'doc-1',
+        title: 'greenhouse.md',
+        collectionId: 'c1',
+        collectionName: 'Research',
+      },
+      createdAt: '2026-01-01T00:00:00Z',
+    };
+  }
+
+  function originalMessages(): Message[] {
+    return [
+      {
+        id: 'u1',
+        conversationId: 'conv-1',
+        role: 'user',
+        parts: [
+          {
+            id: 'u1-part-0',
+            messageId: 'u1',
+            index: 0,
+            kind: 'text',
+            content: 'what does it say?',
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+          knowledgeRefPart(),
+        ],
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ];
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationCompaction).mockResolvedValue(null);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+  });
+
+  it('editing and resending a referenced turn keeps its knowledgeReference part on the new request', async () => {
+    const { prepareMessageEdit } = await import('../ipc/client');
+    vi.mocked(prepareMessageEdit).mockResolvedValue({
+      mode: 'in_place',
+      conversation: { id: 'conv-1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    });
+    // First call is the initial hydrate; the second is commitMessageEdit's
+    // reload after `prepareMessageEdit` truncates the conversation at the
+    // edited message (an "in place" edit leaves nothing after it to reload).
+    vi.mocked(getConversationMessages).mockResolvedValueOnce(originalMessages()).mockResolvedValueOnce([]);
+
+    let capturedRequest: Parameters<typeof startChatStream>[0] | undefined;
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      capturedRequest = request;
+      onEvent({ kind: 'messageComplete', requestId: request.requestId, index: 0, finishReason: 'stop' });
+      return { requestId: request.requestId };
+    });
+
+    renderChatView();
+
+    // The original turn renders with its reference chip.
+    await screen.findByText('what does it say?');
+    expect(await screen.findByText('greenhouse.md · Research')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editBox = screen.getByLabelText('Edit message');
+    fireEvent.change(editBox, { target: { value: 'what does it say, exactly?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(startChatStream).toHaveBeenCalled());
+    const resentUser = capturedRequest!.messages.find((m) => m.role === 'user')!;
+    const kref = resentUser.parts.find((p) => p.kind === ('knowledgeReference' as unknown as MessagePart['kind']));
+    expect(kref).toMatchObject({
+      metadata: { documentId: 'doc-1', title: 'greenhouse.md', collectionId: 'c1', collectionName: 'Research' },
+    });
   });
 });

@@ -1663,7 +1663,19 @@
     "shell.sidebar.nav.documents": "687c82861c956e47456186f6522cfc8dbadb8ef6",
     "shell.sidebar.status.needsYou": "0d9d0df1102b90724a527e6df38c6f4e712b1abc",
     "shell.sidebar.status.running": "73989d9c59264da08a15dba21c7d58237a91f08f",
-    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75"
+    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75",
+    "chat.composer.chips.removeKnowledgeRef": "2bfe95c8c0dfe33d4bcce3127b19c47e16318a85",
+    "chat.composer.knowledgeRef.chipTitle": "c3fe34bdd8f000878f763a6443c7506a127b1e4a",
+    "chat.composer.knowledgeRef.noMatches": "f5d969454ba18c247b2925e6212fe193928c7965",
+    "chat.composer.knowledgeRef.pickerAriaLabel": "c36f2f4fca6eeeef63c4a3792bb5c71c46d0e680",
+    "chat.knowledge.citations.chipSectionsCollection": "2d7803345047efba6ad5c678d0cea388be239fd4",
+    "chat.knowledge.documentsIncludedCount": "910234d6e739c99741d77560853204e77bcc966a",
+    "chat.knowledge.documentsLoadFailed": "7a13228de9113c0fff4ea4ff0114af3c83e0c0bf",
+    "chat.knowledge.documentsLoading": "b52dee401e95254482545fad275d6ca02e609089",
+    "chat.knowledge.expandAriaLabel": "5f64528c86bf0e638094176c7680be350dae5513",
+    "chat.knowledge.reference.chipLabel": "99abc5dc018d62cda2c15b624268903c9e60186b",
+    "chat.knowledge.reference.turnAriaLabel": "f3391cb3b746e46f480eaf7b473d56a31fef0e8b",
+    "chat.view.status.couldNotUpdateDocuments": "e200c60405e3e69a375653884d7bd4e46a73d63a"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3329,7 +3341,19 @@
     "shell.sidebar.nav.documents": "687c82861c956e47456186f6522cfc8dbadb8ef6",
     "shell.sidebar.status.needsYou": "0d9d0df1102b90724a527e6df38c6f4e712b1abc",
     "shell.sidebar.status.running": "73989d9c59264da08a15dba21c7d58237a91f08f",
-    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75"
+    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75",
+    "chat.composer.chips.removeKnowledgeRef": "2bfe95c8c0dfe33d4bcce3127b19c47e16318a85",
+    "chat.composer.knowledgeRef.chipTitle": "c3fe34bdd8f000878f763a6443c7506a127b1e4a",
+    "chat.composer.knowledgeRef.noMatches": "f5d969454ba18c247b2925e6212fe193928c7965",
+    "chat.composer.knowledgeRef.pickerAriaLabel": "c36f2f4fca6eeeef63c4a3792bb5c71c46d0e680",
+    "chat.knowledge.citations.chipSectionsCollection": "2d7803345047efba6ad5c678d0cea388be239fd4",
+    "chat.knowledge.documentsIncludedCount": "910234d6e739c99741d77560853204e77bcc966a",
+    "chat.knowledge.documentsLoadFailed": "7a13228de9113c0fff4ea4ff0114af3c83e0c0bf",
+    "chat.knowledge.documentsLoading": "b52dee401e95254482545fad275d6ca02e609089",
+    "chat.knowledge.expandAriaLabel": "5f64528c86bf0e638094176c7680be350dae5513",
+    "chat.knowledge.reference.chipLabel": "99abc5dc018d62cda2c15b624268903c9e60186b",
+    "chat.knowledge.reference.turnAriaLabel": "f3391cb3b746e46f480eaf7b473d56a31fef0e8b",
+    "chat.view.status.couldNotUpdateDocuments": "e200c60405e3e69a375653884d7bd4e46a73d63a"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -4995,7 +5019,19 @@
     "shell.sidebar.nav.documents": "687c82861c956e47456186f6522cfc8dbadb8ef6",
     "shell.sidebar.status.needsYou": "0d9d0df1102b90724a527e6df38c6f4e712b1abc",
     "shell.sidebar.status.running": "73989d9c59264da08a15dba21c7d58237a91f08f",
-    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75"
+    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75",
+    "chat.composer.chips.removeKnowledgeRef": "2bfe95c8c0dfe33d4bcce3127b19c47e16318a85",
+    "chat.composer.knowledgeRef.chipTitle": "c3fe34bdd8f000878f763a6443c7506a127b1e4a",
+    "chat.composer.knowledgeRef.noMatches": "f5d969454ba18c247b2925e6212fe193928c7965",
+    "chat.composer.knowledgeRef.pickerAriaLabel": "c36f2f4fca6eeeef63c4a3792bb5c71c46d0e680",
+    "chat.knowledge.citations.chipSectionsCollection": "2d7803345047efba6ad5c678d0cea388be239fd4",
+    "chat.knowledge.documentsIncludedCount": "910234d6e739c99741d77560853204e77bcc966a",
+    "chat.knowledge.documentsLoadFailed": "7a13228de9113c0fff4ea4ff0114af3c83e0c0bf",
+    "chat.knowledge.documentsLoading": "b52dee401e95254482545fad275d6ca02e609089",
+    "chat.knowledge.expandAriaLabel": "5f64528c86bf0e638094176c7680be350dae5513",
+    "chat.knowledge.reference.chipLabel": "99abc5dc018d62cda2c15b624268903c9e60186b",
+    "chat.knowledge.reference.turnAriaLabel": "f3391cb3b746e46f480eaf7b473d56a31fef0e8b",
+    "chat.view.status.couldNotUpdateDocuments": "e200c60405e3e69a375653884d7bd4e46a73d63a"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6661,7 +6697,19 @@
     "shell.sidebar.nav.documents": "687c82861c956e47456186f6522cfc8dbadb8ef6",
     "shell.sidebar.status.needsYou": "0d9d0df1102b90724a527e6df38c6f4e712b1abc",
     "shell.sidebar.status.running": "73989d9c59264da08a15dba21c7d58237a91f08f",
-    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75"
+    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75",
+    "chat.composer.chips.removeKnowledgeRef": "2bfe95c8c0dfe33d4bcce3127b19c47e16318a85",
+    "chat.composer.knowledgeRef.chipTitle": "c3fe34bdd8f000878f763a6443c7506a127b1e4a",
+    "chat.composer.knowledgeRef.noMatches": "f5d969454ba18c247b2925e6212fe193928c7965",
+    "chat.composer.knowledgeRef.pickerAriaLabel": "c36f2f4fca6eeeef63c4a3792bb5c71c46d0e680",
+    "chat.knowledge.citations.chipSectionsCollection": "2d7803345047efba6ad5c678d0cea388be239fd4",
+    "chat.knowledge.documentsIncludedCount": "910234d6e739c99741d77560853204e77bcc966a",
+    "chat.knowledge.documentsLoadFailed": "7a13228de9113c0fff4ea4ff0114af3c83e0c0bf",
+    "chat.knowledge.documentsLoading": "b52dee401e95254482545fad275d6ca02e609089",
+    "chat.knowledge.expandAriaLabel": "5f64528c86bf0e638094176c7680be350dae5513",
+    "chat.knowledge.reference.chipLabel": "99abc5dc018d62cda2c15b624268903c9e60186b",
+    "chat.knowledge.reference.turnAriaLabel": "f3391cb3b746e46f480eaf7b473d56a31fef0e8b",
+    "chat.view.status.couldNotUpdateDocuments": "e200c60405e3e69a375653884d7bd4e46a73d63a"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8327,7 +8375,19 @@
     "shell.sidebar.nav.documents": "687c82861c956e47456186f6522cfc8dbadb8ef6",
     "shell.sidebar.status.needsYou": "0d9d0df1102b90724a527e6df38c6f4e712b1abc",
     "shell.sidebar.status.running": "73989d9c59264da08a15dba21c7d58237a91f08f",
-    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75"
+    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75",
+    "chat.composer.chips.removeKnowledgeRef": "2bfe95c8c0dfe33d4bcce3127b19c47e16318a85",
+    "chat.composer.knowledgeRef.chipTitle": "c3fe34bdd8f000878f763a6443c7506a127b1e4a",
+    "chat.composer.knowledgeRef.noMatches": "f5d969454ba18c247b2925e6212fe193928c7965",
+    "chat.composer.knowledgeRef.pickerAriaLabel": "c36f2f4fca6eeeef63c4a3792bb5c71c46d0e680",
+    "chat.knowledge.citations.chipSectionsCollection": "2d7803345047efba6ad5c678d0cea388be239fd4",
+    "chat.knowledge.documentsIncludedCount": "910234d6e739c99741d77560853204e77bcc966a",
+    "chat.knowledge.documentsLoadFailed": "7a13228de9113c0fff4ea4ff0114af3c83e0c0bf",
+    "chat.knowledge.documentsLoading": "b52dee401e95254482545fad275d6ca02e609089",
+    "chat.knowledge.expandAriaLabel": "5f64528c86bf0e638094176c7680be350dae5513",
+    "chat.knowledge.reference.chipLabel": "99abc5dc018d62cda2c15b624268903c9e60186b",
+    "chat.knowledge.reference.turnAriaLabel": "f3391cb3b746e46f480eaf7b473d56a31fef0e8b",
+    "chat.view.status.couldNotUpdateDocuments": "e200c60405e3e69a375653884d7bd4e46a73d63a"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -9993,7 +10053,19 @@
     "shell.sidebar.nav.documents": "687c82861c956e47456186f6522cfc8dbadb8ef6",
     "shell.sidebar.status.needsYou": "0d9d0df1102b90724a527e6df38c6f4e712b1abc",
     "shell.sidebar.status.running": "73989d9c59264da08a15dba21c7d58237a91f08f",
-    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75"
+    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75",
+    "chat.composer.chips.removeKnowledgeRef": "2bfe95c8c0dfe33d4bcce3127b19c47e16318a85",
+    "chat.composer.knowledgeRef.chipTitle": "c3fe34bdd8f000878f763a6443c7506a127b1e4a",
+    "chat.composer.knowledgeRef.noMatches": "f5d969454ba18c247b2925e6212fe193928c7965",
+    "chat.composer.knowledgeRef.pickerAriaLabel": "c36f2f4fca6eeeef63c4a3792bb5c71c46d0e680",
+    "chat.knowledge.citations.chipSectionsCollection": "2d7803345047efba6ad5c678d0cea388be239fd4",
+    "chat.knowledge.documentsIncludedCount": "910234d6e739c99741d77560853204e77bcc966a",
+    "chat.knowledge.documentsLoadFailed": "7a13228de9113c0fff4ea4ff0114af3c83e0c0bf",
+    "chat.knowledge.documentsLoading": "b52dee401e95254482545fad275d6ca02e609089",
+    "chat.knowledge.expandAriaLabel": "5f64528c86bf0e638094176c7680be350dae5513",
+    "chat.knowledge.reference.chipLabel": "99abc5dc018d62cda2c15b624268903c9e60186b",
+    "chat.knowledge.reference.turnAriaLabel": "f3391cb3b746e46f480eaf7b473d56a31fef0e8b",
+    "chat.view.status.couldNotUpdateDocuments": "e200c60405e3e69a375653884d7bd4e46a73d63a"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11659,6 +11731,18 @@
     "shell.sidebar.nav.documents": "687c82861c956e47456186f6522cfc8dbadb8ef6",
     "shell.sidebar.status.needsYou": "0d9d0df1102b90724a527e6df38c6f4e712b1abc",
     "shell.sidebar.status.running": "73989d9c59264da08a15dba21c7d58237a91f08f",
-    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75"
+    "workspace.commandPalette.command.manageKnowledge": "eda89ce6cb6c6d2103e5ea1edcd56a187b368f75",
+    "chat.composer.chips.removeKnowledgeRef": "2bfe95c8c0dfe33d4bcce3127b19c47e16318a85",
+    "chat.composer.knowledgeRef.chipTitle": "c3fe34bdd8f000878f763a6443c7506a127b1e4a",
+    "chat.composer.knowledgeRef.noMatches": "f5d969454ba18c247b2925e6212fe193928c7965",
+    "chat.composer.knowledgeRef.pickerAriaLabel": "c36f2f4fca6eeeef63c4a3792bb5c71c46d0e680",
+    "chat.knowledge.citations.chipSectionsCollection": "2d7803345047efba6ad5c678d0cea388be239fd4",
+    "chat.knowledge.documentsIncludedCount": "910234d6e739c99741d77560853204e77bcc966a",
+    "chat.knowledge.documentsLoadFailed": "7a13228de9113c0fff4ea4ff0114af3c83e0c0bf",
+    "chat.knowledge.documentsLoading": "b52dee401e95254482545fad275d6ca02e609089",
+    "chat.knowledge.expandAriaLabel": "5f64528c86bf0e638094176c7680be350dae5513",
+    "chat.knowledge.reference.chipLabel": "99abc5dc018d62cda2c15b624268903c9e60186b",
+    "chat.knowledge.reference.turnAriaLabel": "f3391cb3b746e46f480eaf7b473d56a31fef0e8b",
+    "chat.view.status.couldNotUpdateDocuments": "e200c60405e3e69a375653884d7bd4e46a73d63a"
   }
 }

@@ -10,6 +10,9 @@ interface KnowledgeCitationsProps {
 interface DocumentGroup {
   documentId: string;
   title: string;
+  /** D14: which collection the document belongs to, when the citation carries
+   *  it — absent for citations built before that field existed. */
+  collectionName?: string;
   /** Citations for this document, in retrieval rank order. */
   cited: KnowledgeCitation[];
 }
@@ -45,7 +48,13 @@ export function KnowledgeCitations({ citations }: KnowledgeCitationsProps) {
   for (const c of citations) {
     const group = groups.get(c.documentId);
     if (group) group.cited.push(c);
-    else groups.set(c.documentId, { documentId: c.documentId, title: c.documentTitle, cited: [c] });
+    else
+      groups.set(c.documentId, {
+        documentId: c.documentId,
+        title: c.documentTitle,
+        collectionName: c.collectionName,
+        cited: [c],
+      });
   }
 
   return (
@@ -59,11 +68,18 @@ export function KnowledgeCitations({ citations }: KnowledgeCitationsProps) {
             title={t('chat.knowledge.citations.open', { title: group.title })}
             onClick={() => setOpen({ group, chunkId: group.cited[0].chunkId })}
           >
-            {t('chat.knowledge.citations.chipSections', {
-              title: group.title,
-              count: new Set(group.cited.map((c) => c.ordinal)).size,
-              sections: sectionList(group.cited),
-            })}
+            {group.collectionName
+              ? t('chat.knowledge.citations.chipSectionsCollection', {
+                  title: group.title,
+                  collectionName: group.collectionName,
+                  count: new Set(group.cited.map((c) => c.ordinal)).size,
+                  sections: sectionList(group.cited),
+                })
+              : t('chat.knowledge.citations.chipSections', {
+                  title: group.title,
+                  count: new Set(group.cited.map((c) => c.ordinal)).size,
+                  sections: sectionList(group.cited),
+                })}
           </button>
         ))}
       </div>

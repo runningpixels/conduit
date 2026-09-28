@@ -25,19 +25,53 @@ function landsOnComposer(position: { x: number; y: number }): boolean {
 }
 
 /**
- * Files dragged onto the window from the OS, offered to the knowledge base.
+ * Route one native window drop (t1-8 M1, D13): a drop on the composer attaches
+ * to the message, exactly as-is (no `knowledgeDropPaths` filter -- the
+ * composer takes any file, the way its own HTML5 handler already does), and a
+ * drop anywhere else goes to Documents (filtered to what the knowledge base
+ * can read, as today). Exported so the routing decision itself is unit
+ * tested directly, without a Tauri window to drive it through.
+ */
+export function routeNativeDrop(
+  paths: string[],
+  onComposer: boolean,
+  onDrop: (paths: string[]) => void,
+  onComposerDrop?: (paths: string[]) => void,
+): void {
+  if (onComposer) {
+    if (paths.length > 0) onComposerDrop?.(paths);
+    return;
+  }
+  const droppable = knowledgeDropPaths(paths);
+  if (droppable.length > 0) onDrop(droppable);
+}
+
+/**
+ * Files dragged onto the window from the OS -- one router for both
+ * destinations (t1-8 M1, D13). `onDrop` is Documents, as before; `onComposerDrop`
+ * (new) is a drop that lands on the composer, which attaches to the message
+ * being written instead.
  *
  * Uses Tauri's native drag-drop event rather than HTML5 `dataTransfer`,
  * because only the native event carries real filesystem paths — a browser
  * `File` has none, and the import reads from disk. The native event is on by
- * default (`dragDropEnabled` is unset in `tauri.conf.json`).
+ * default (`dragDropEnabled` is unset in `tauri.conf.json`), which per
+ * Tauri's docs also means WebView2 never fires HTML5 `drop` on Windows — so
+ * the composer's own HTML5 handler needs this native path too, and whichever
+ * of the two fires first for one physical drop wins (the composer dedupes).
  *
- * Returns whether a droppable file is currently hovering, for the overlay.
+ * Returns whether a droppable file is currently hovering, for the overlay
+ * (Documents only -- hovering over the composer shows no overlay of its own).
  */
-export function useKnowledgeDrop(onDrop: (paths: string[]) => void): boolean {
+export function useKnowledgeDrop(
+  onDrop: (paths: string[]) => void,
+  onComposerDrop?: (paths: string[]) => void,
+): boolean {
   const [hovering, setHovering] = useState(false);
   const onDropRef = useRef(onDrop);
   onDropRef.current = onDrop;
+  const onComposerDropRef = useRef(onComposerDrop);
+  onComposerDropRef.current = onComposerDrop;
 
   useEffect(() => {
     // Not in Tauri (vitest, `pnpm dev:web`): there is no native window to listen to.
@@ -68,9 +102,12 @@ export function useKnowledgeDrop(onDrop: (paths: string[]) => void): boolean {
             case 'drop': {
               readable = false;
               setHovering(false);
-              if (landsOnComposer(payload.position)) return;
-              const paths = knowledgeDropPaths(payload.paths);
-              if (paths.length > 0) onDropRef.current(paths);
+              routeNativeDrop(
+                payload.paths,
+                landsOnComposer(payload.position),
+                onDropRef.current,
+                onComposerDropRef.current,
+              );
               break;
             }
           }

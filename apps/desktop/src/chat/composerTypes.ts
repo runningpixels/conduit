@@ -35,6 +35,16 @@ export interface TurnAttachment {
   fileName?: string;
 }
 
+/** A `#`-picked document reference (t1-8 M3, D7/D8). Carried on a chat turn as
+ *  a `knowledgeReference` message part; the title/collection name are copied
+ *  at pick time so a reference to a since-deleted document still reads right. */
+export interface KnowledgeRef {
+  documentId: string;
+  title: string;
+  collectionId: string;
+  collectionName: string;
+}
+
 export function isForwardableImageMime(mimeType: string | null | undefined): boolean {
   if (!mimeType) return false;
   const normalized = mimeType.trim().toLowerCase();

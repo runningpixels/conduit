@@ -145,6 +145,59 @@ describe('messageToDisplayTurn', () => {
     });
   });
 
+  it('hydrates knowledgeReference parts into ChatTurn.knowledgeRefs (D8/D9 round trip)', () => {
+    const turn = messageToDisplayTurn(
+      makeMessage({
+        role: 'user',
+        parts: [
+          textPart('what does the greenhouse doc say?'),
+          {
+            id: 'part-kref',
+            messageId: 'msg-1',
+            index: 1,
+            kind: 'knowledgeReference',
+            metadata: {
+              documentId: 'doc-1',
+              title: 'greenhouse.md',
+              collectionId: 'c1',
+              collectionName: 'Research',
+            },
+            createdAt: now,
+          },
+        ],
+      }),
+    );
+
+    expect(turn).toMatchObject({
+      id: 'msg-1',
+      role: 'user',
+      content: 'what does the greenhouse doc say?',
+      knowledgeRefs: [
+        { documentId: 'doc-1', title: 'greenhouse.md', collectionId: 'c1', collectionName: 'Research' },
+      ],
+    });
+  });
+
+  it('ignores a knowledgeReference part with no documentId', () => {
+    const turn = messageToDisplayTurn(
+      makeMessage({
+        role: 'user',
+        parts: [
+          textPart('hi'),
+          {
+            id: 'part-kref',
+            messageId: 'msg-1',
+            index: 1,
+            kind: 'knowledgeReference' as unknown as MessagePart['kind'],
+            metadata: { title: 'orphaned' },
+            createdAt: now,
+          },
+        ],
+      }),
+    );
+    expect(turn?.knowledgeRefs).toBeUndefined();
+  });
+
   it('maps assistant messages to assistant turns', () => {
     const turn = messageToDisplayTurn(
       makeMessage({

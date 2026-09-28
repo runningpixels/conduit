@@ -118,6 +118,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "327712ab373167e8e203cebd6ab43c0802bee12b0dccb1c02f7479fcd0be970d065f418792eeac9f4d39796429c89bcc",
         "conversation excluded documents",
     ),
+    (
+        20,
+        "db9894503ebe5b0ef09730496006da63470d53d1bb59922069dd6c71a64691a42ca398212fa3ff93c92b2e4d43268d98",
+        "workflows",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

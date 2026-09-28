@@ -96,8 +96,9 @@ pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversati
     })
 }
 
-/// List all conversations newest-first, with message count and a preview of the
-/// last text part for the history rail.
+/// List all chats newest-first, with message count and a preview of the last
+/// text part for the history rail. A workflow's own conversation
+/// (`kind = 'automation'`) is not a chat and is left out.
 pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError> {
     let rows: Vec<ConversationSummaryRow> = sqlx::query_as(
         "SELECT c.id, c.title, c.updated_at, \
@@ -118,6 +119,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
                 f.name AS folder_name \
          FROM conversations c \
          LEFT JOIN conversation_folders f ON f.id = c.folder_id \
+         WHERE c.kind = 'chat' \
          ORDER BY c.updated_at DESC",
     )
     .fetch_all(pool)
@@ -566,6 +568,17 @@ pub async fn ensure_exists(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
     .bind(&now)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+/// Mark what a conversation is: `'chat'` (the default, listed in the history
+/// rail) or `'automation'` (a workflow's own conversation, not listed).
+pub async fn set_kind(pool: &SqlitePool, id: &str, kind: &str) -> Result<(), DbError> {
+    sqlx::query("UPDATE conversations SET kind = ? WHERE id = ?")
+        .bind(kind)
+        .bind(id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

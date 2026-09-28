@@ -1,0 +1,93 @@
+/* Workflows page: pages/WorkflowsPage.tsx — saved routines, their steps, runs. */
+
+.wf-detail,
+.wf-edit { max-width: 52rem; display: grid; gap: var(--sp-5); }
+.wf-detail .grp,
+.wf-edit .grp { margin-bottom: 0; }
+
+.wf-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.wf-name { margin: 0; font-size: var(--fs-4xl); color: var(--ink); }
+.wf-description { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--fs-2xl); }
+.wf-muted { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); }
+
+.wf-steps { margin: 0; padding-left: 1.4em; display: grid; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-2xl); }
+.wf-steps .wf-steps { margin-top: var(--sp-2); }
+.wf-flag {
+  margin-left: var(--sp-2);
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--bg-side);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-size: var(--fs-lg);
+}
+
+.wf-field { display: grid; gap: var(--sp-1); font-size: var(--fs-xl); color: var(--ink-2); }
+.wf-run-box { display: grid; gap: var(--sp-3); }
+.wf-json { font-family: var(--font-mono); font-size: var(--fs-xl); min-height: 16rem; }
+.wf-error { margin: 0; color: var(--err); font-size: var(--fs-2xl); white-space: pre-wrap; }
+
+.wf-runs,
+.wf-run-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.wf-run-row,
+.wf-run-step summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-2xl);
+  text-align: left;
+  cursor: pointer;
+}
+.wf-run-row:hover,
+.wf-run-step summary:hover { background: var(--bg-side); }
+.wf-run-row[aria-current="true"] { background: var(--hue-weak); color: var(--hue-text); }
+.wf-run-step-nested { padding-left: var(--sp-5); }
+.wf-step-name { font-family: var(--font-mono); font-size: var(--fs-xl); }
+
+.wf-status { min-width: 6.5em; font-size: var(--fs-xl); }
+.wf-status-completed { color: var(--ok); }
+.wf-status-failed { color: var(--err); }
+.wf-status-running { color: var(--warn); }
+
+.wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-lg); }
+.wf-io {
+  margin: 0 10px;
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 16rem;
+  overflow: auto;
+  border-radius: var(--r-sm);
+  background: var(--bg-side);
+  border: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wf-starters {
+  margin: var(--sp-3) 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  text-align: left;
+}
+.wf-starter {
+  display: grid;
+  gap: var(--sp-2);
+  align-content: start;
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-side);
+}
+.wf-starter-name { margin: 0; color: var(--ink); font-size: var(--fs-2xl); font-weight: 600; }
+.wf-starter .btn { justify-self: start; }

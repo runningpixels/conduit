@@ -55,6 +55,11 @@ import type {
   Prompt,
   SkillSummary,
   MemoryItem,
+  WorkflowDefinition,
+  WorkflowRecord,
+  WorkflowRun,
+  WorkflowRunDetail,
+  WorkflowSummary,
   ConversationFolder,
   KnowledgeCollection,
   KnowledgeContext,
@@ -1274,4 +1279,46 @@ export async function getAttachmentBytes(attachmentId: string): Promise<number[]
 // left in place but are no longer indexed.
 export async function resetLocalDatabase(): Promise<{ backupPath: string }> {
   return invokeCommand<{ backupPath: string }>('reset_local_database');
+}
+
+export async function listWorkflows(): Promise<WorkflowSummary[]> {
+  return invokeCommand<WorkflowSummary[]>('list_workflows');
+}
+
+export async function getWorkflow(id: string): Promise<WorkflowRecord> {
+  return invokeCommand<WorkflowRecord>('get_workflow', { id });
+}
+
+export async function createWorkflow(
+  name: string,
+  description: string | null,
+  definition: WorkflowDefinition,
+): Promise<WorkflowRecord> {
+  return invokeCommand<WorkflowRecord>('create_workflow', { name, description, definition });
+}
+
+export async function updateWorkflow(
+  id: string,
+  name: string,
+  description: string | null,
+  definition: WorkflowDefinition,
+): Promise<WorkflowRecord> {
+  return invokeCommand<WorkflowRecord>('update_workflow', { id, name, description, definition });
+}
+
+export async function deleteWorkflow(id: string): Promise<void> {
+  return invokeCommand('delete_workflow', { id });
+}
+
+/** Runs the workflow now; resolves when the whole run has finished. */
+export async function runWorkflow(id: string, inputs: Record<string, string>): Promise<WorkflowRunDetail> {
+  return invokeCommand<WorkflowRunDetail>('run_workflow', { id, inputs });
+}
+
+export async function listWorkflowRuns(id: string, limit?: number): Promise<WorkflowRun[]> {
+  return invokeCommand<WorkflowRun[]>('list_workflow_runs', { id, limit: limit ?? null });
+}
+
+export async function getWorkflowRun(runId: string): Promise<WorkflowRunDetail> {
+  return invokeCommand<WorkflowRunDetail>('get_workflow_run', { runId });
 }

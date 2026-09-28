@@ -328,6 +328,15 @@ export const MemoryIcon = (p: IconProps) => (
     <path d="M12 4v16" />
   </Svg>
 );
+/** Workflows: three steps in a row, the last one done. */
+export const WorkflowIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="6" height="6" rx="1.5" />
+    <rect x="15" y="14" width="6" height="6" rx="1.5" />
+    <path d="M9 7h3a3 3 0 0 1 3 3v4" />
+    <path d="M6 10v4a3 3 0 0 0 3 3h6" />
+  </Svg>
+);
 export const IdeaIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 18h6M10 21h4" />

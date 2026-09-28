@@ -74,6 +74,7 @@ import { readArtifactNetworkLog } from './workspace/useArtifactNetwork';
 import { LibraryPage, type LibraryTab } from './pages/LibraryPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
 import { MemoryPage } from './pages/MemoryPage';
+import { WorkflowsPage } from './pages/WorkflowsPage';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
@@ -2036,6 +2037,7 @@ export default function App() {
             {destination === 'memory' && (
               <MemoryPage settings={settings} onSettingsChange={setSettings} onStatus={setStatusMessage} />
             )}
+            {destination === 'workflows' && <WorkflowsPage onStatus={setStatusMessage} />}
           </div>
         )}
 
@@ -2133,6 +2135,7 @@ export default function App() {
         onToggleTheme={handleToggleTheme}
         onOpenShortcuts={openShortcuts}
         onOpenIdeas={openIdeas}
+        onOpenWorkflows={() => setDestination('workflows')}
         onToggleArtifactExpand={toggleArtifactExpand}
         onToggleDocPanel={toggleDocPanelView}
         onToggleSidebar={toggleSidebarView}

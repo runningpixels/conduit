@@ -40,6 +40,7 @@ interface CommandPaletteProps {
   onOpenShortcuts?: () => void;
   /** Open the Ideas page. */
   onOpenIdeas?: () => void;
+  onOpenWorkflows?: () => void;
   onToggleDocPanel: () => void;
   /** Expand the artifact panel, or restore the layout. */
   onToggleArtifactExpand?: () => void;
@@ -133,6 +134,7 @@ export function CommandPalette({
   onToggleTheme,
   onOpenShortcuts,
   onOpenIdeas,
+  onOpenWorkflows,
   onToggleDocPanel,
   onToggleArtifactExpand,
   onToggleSidebar,
@@ -226,6 +228,9 @@ export function CommandPalette({
       ...(onOpenIdeas
         ? [{ id: 'cmd-ideas', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.ideas'), run: () => { onOpenIdeas(); close(); } }]
         : []),
+      ...(onOpenWorkflows
+        ? [{ id: 'cmd-workflows', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.workflows'), run: () => { onOpenWorkflows(); close(); } }]
+        : []),
       { id: 'cmd-skills', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageSkills'), run: () => { onOpenSettings('skills'); close(); } },
       { id: 'cmd-memory', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageMemory'), run: () => { onOpenSettings('memory'); close(); } },
       { id: 'cmd-knowledge', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageKnowledge'), run: () => { onOpenSettings('knowledge'); close(); } },
@@ -255,7 +260,7 @@ export function CommandPalette({
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
-    onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts, onOpenIdeas, onToggleArtifactExpand,
+    onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts, onOpenIdeas, onOpenWorkflows, onToggleArtifactExpand,
   ]);
 
   const modelItems = useMemo((): PaletteItem[] => {

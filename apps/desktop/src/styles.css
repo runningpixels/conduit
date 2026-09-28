@@ -39,3 +39,6 @@
 
 /* Connectors + Memory rail pages: pages/ConnectorsPage.tsx, pages/MemoryPage.tsx */
 @import './styles/pages-connectors.css';
+
+/* Workflows page: saved routines, their steps and runs */
+@import './styles/pages-workflows.css';

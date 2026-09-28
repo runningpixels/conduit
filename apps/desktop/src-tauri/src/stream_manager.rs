@@ -1,3 +1,4 @@
+use crate::event_sink::EventSink;
 use crate::{
     agent_tools,
     db::repository::{connectors, conversations, event_log, messages, tool_calls, usage_summary},
@@ -17,7 +18,6 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -928,8 +928,9 @@ impl StreamManager {
         &self,
         state: &AppState,
         request: ProviderRequest,
-        channel: Channel<ProviderEvent>,
+        channel: impl Into<EventSink<ProviderEvent>>,
     ) -> Result<StreamHandle, String> {
+        let channel: EventSink<ProviderEvent> = channel.into();
         let settings = state.settings()?;
         let provider_id = settings.active_provider.clone();
         let conversation_id = request.conversation_id.clone();
@@ -1145,7 +1146,7 @@ impl StreamManager {
         &self,
         state: &AppState,
         request: ProviderRequest,
-        channel: Channel<ProviderEvent>,
+        channel: EventSink<ProviderEvent>,
         cancel: CancellationToken,
         completion: CompletionDelivery,
         bind: ProviderRoundBind<'_>,
@@ -1472,8 +1473,8 @@ impl StreamManager {
         calls: &[CompletedToolCall],
         request_id: &str,
         conversation_id: &str,
-        runtime_channel: Option<&Channel<ConnectorRuntimeEvent>>,
-        provider_channel: Option<&Channel<ProviderEvent>>,
+        runtime_channel: Option<&EventSink<ConnectorRuntimeEvent>>,
+        provider_channel: Option<&EventSink<ProviderEvent>>,
         successful_creates_so_far: &mut u32,
         web_search_so_far: &mut u32,
         web_fetch_so_far: &mut u32,
@@ -1848,7 +1849,7 @@ impl StreamManager {
         tool_call_id: &str,
         request_id: &str,
         arguments: &serde_json::Value,
-        provider_channel: Option<&Channel<ProviderEvent>>,
+        provider_channel: Option<&EventSink<ProviderEvent>>,
         cancel: &CancellationToken,
     ) -> Result<agent_tools::AgentToolExecution, String> {
         let title = arguments
@@ -2383,7 +2384,7 @@ impl StreamManager {
         turn_request_id: &str,
         current_request: &mut ProviderRequest,
         text: &str,
-        channel: &Channel<ProviderEvent>,
+        channel: &EventSink<ProviderEvent>,
         round: u32,
         total_rounds: u32,
     ) -> Result<(), String> {
@@ -2446,9 +2447,11 @@ impl StreamManager {
         state: &AppState,
         runtime: &crate::connector_runtime::ConnectorRuntimeManager,
         initial_request: ProviderRequest,
-        channel: Channel<ProviderEvent>,
-        runtime_channel: Channel<ConnectorRuntimeEvent>,
+        channel: impl Into<EventSink<ProviderEvent>>,
+        runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
     ) -> Result<StreamHandle, String> {
+        let channel: EventSink<ProviderEvent> = channel.into();
+        let runtime_channel: EventSink<ConnectorRuntimeEvent> = runtime_channel.into();
         let request_id = if initial_request.request_id.trim().is_empty() {
             uuid::Uuid::new_v4().to_string()
         } else {

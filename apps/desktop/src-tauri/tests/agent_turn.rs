@@ -15,8 +15,13 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use conduit_desktop::{
-    connector_runtime::ConnectorRuntimeManager, credentials, db::repository::conversations,
-    paths::AppPaths, state::AppState, stream_manager::StreamManager,
+    connector_runtime::ConnectorRuntimeManager,
+    credentials,
+    db::repository::conversations,
+    event_sink::{self, EventSink},
+    paths::AppPaths,
+    state::AppState,
+    stream_manager::StreamManager,
 };
 use futures::stream::{Stream, StreamExt};
 use provider_core::schema::{
@@ -399,6 +404,40 @@ async fn run_turn_configured(
     provider: Provider,
     local_only: bool,
 ) -> (Result<(), String>, Turn) {
+    run_turn_via(
+        rounds,
+        agent,
+        max_tokens,
+        extra_tools,
+        provider,
+        local_only,
+        Sink::Webview,
+    )
+    .await
+}
+
+/// How the turn's events leave `run_agent_turn`.
+#[derive(Clone, Copy)]
+enum Sink {
+    /// A `tauri::ipc::Channel`, as the chat window passes.
+    Webview,
+    /// A headless `EventSink` collector, as a workflow run will pass.
+    Headless,
+    /// A headless sink whose listener is already gone.
+    Closed,
+    /// A webview `Channel` whose window is already gone.
+    ClosedWebview,
+}
+
+async fn run_turn_via(
+    rounds: Vec<Round>,
+    agent: AgentGuardrails,
+    max_tokens: Option<u32>,
+    extra_tools: &[&str],
+    provider: Provider,
+    local_only: bool,
+    sink_kind: Sink,
+) -> (Result<(), String>, Turn) {
     let pool = common::setup_pool().await;
     let conversation = conversations::create(&pool, None).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -495,12 +534,40 @@ async fn run_turn_configured(
         web_search: None,
     };
 
-    let result = manager
-        .run_agent_turn(&state, &runtime, request, channel, runtime_channel)
-        .await
-        .map(|_| ());
-
-    let events = events.lock().unwrap().clone();
+    let (result, events) = match sink_kind {
+        Sink::Webview => {
+            let result = manager
+                .run_agent_turn(&state, &runtime, request, channel, runtime_channel)
+                .await
+                .map(|_| ());
+            (result, events.lock().unwrap().clone())
+        }
+        Sink::Headless => {
+            let (sink, collected) = event_sink::collector::<ProviderEvent>();
+            let result = manager
+                .run_agent_turn(&state, &runtime, request, sink, EventSink::discard())
+                .await
+                .map(|_| ());
+            let collected = collected.lock().unwrap().clone();
+            (result, collected)
+        }
+        Sink::ClosedWebview => {
+            let gone: Channel<ProviderEvent> = Channel::new(|_| Err(tauri::Error::WebviewNotFound));
+            let result = manager
+                .run_agent_turn(&state, &runtime, request, gone, runtime_channel)
+                .await
+                .map(|_| ());
+            (result, Vec::new())
+        }
+        Sink::Closed => {
+            let closed = EventSink::<ProviderEvent>::from_fn(|_| Err(event_sink::SinkClosed));
+            let result = manager
+                .run_agent_turn(&state, &runtime, request, closed, EventSink::discard())
+                .await
+                .map(|_| ());
+            (result, Vec::new())
+        }
+    };
     let requests = script.requests.lock().unwrap().clone();
     (
         result,
@@ -1381,4 +1448,98 @@ async fn a_round_ending_on_a_malformed_tool_name_says_so() {
         "got {:?}",
         turn.terminal()
     );
+}
+
+/// The same event with its per-run values (ids, timestamps, durations) blanked,
+/// so two runs of one script can be compared.
+fn comparable(event: &ProviderEvent) -> Value {
+    fn blank(value: &mut Value) {
+        match value {
+            Value::Object(map) => {
+                for (key, v) in map.iter_mut() {
+                    let per_run = key == "id"
+                        || key.ends_with("Id")
+                        || key.ends_with("At")
+                        || key.ends_with("Ms");
+                    if per_run {
+                        *v = Value::Null;
+                    } else {
+                        blank(v);
+                    }
+                }
+            }
+            Value::Array(items) => items.iter_mut().for_each(blank),
+            _ => {}
+        }
+    }
+    let mut value = serde_json::to_value(event).expect("event serializes");
+    blank(&mut value);
+    value
+}
+
+#[tokio::test]
+async fn a_headless_sink_sees_exactly_what_the_webview_sees() {
+    let script = || {
+        vec![
+            tool_round(vec![("current_time", json!({}))], Duration::ZERO),
+            text_round("It is noon."),
+        ]
+    };
+    let (webview_result, webview) = run_turn_via(
+        script(),
+        guardrails(25, 300),
+        None,
+        &[],
+        Provider::Local,
+        true,
+        Sink::Webview,
+    )
+    .await;
+    let (headless_result, headless) = run_turn_via(
+        script(),
+        guardrails(25, 300),
+        None,
+        &[],
+        Provider::Local,
+        true,
+        Sink::Headless,
+    )
+    .await;
+    webview_result.expect("webview turn runs");
+    headless_result.expect("headless turn runs");
+
+    assert!(!webview.events.is_empty());
+    assert_eq!(
+        webview.events.iter().map(comparable).collect::<Vec<_>>(),
+        headless.events.iter().map(comparable).collect::<Vec<_>>(),
+    );
+    assert_eq!(webview.rounds_started, headless.rounds_started);
+    assert_eq!(
+        headless.tool_executions(),
+        vec![("current_time".to_string(), false)]
+    );
+}
+
+#[tokio::test]
+async fn a_closed_headless_sink_behaves_like_a_closed_window() {
+    let script = || {
+        vec![
+            tool_round(vec![("current_time", json!({}))], Duration::ZERO),
+            text_round("never reached"),
+        ]
+    };
+    let run = |sink| {
+        run_turn_via(
+            script(),
+            guardrails(25, 300),
+            None,
+            &[],
+            Provider::Local,
+            true,
+            sink,
+        )
+    };
+    let (_, webview) = run(Sink::ClosedWebview).await;
+    let (_, headless) = run(Sink::Closed).await;
+    assert_eq!(headless.rounds_started, webview.rounds_started);
 }

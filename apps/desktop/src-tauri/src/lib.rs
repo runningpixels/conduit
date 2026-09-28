@@ -23,6 +23,7 @@ pub mod db;
 pub mod diagnostics;
 pub mod drop_grant;
 pub mod encryption;
+pub mod event_sink;
 pub mod knowledge;
 pub mod local_data;
 pub mod logo;

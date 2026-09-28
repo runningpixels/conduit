@@ -36,6 +36,16 @@ fn checked_definition(definition: &Value) -> Result<(), String> {
     definition::validate(&parsed).map_err(|problems| problems.join("\n"))
 }
 
+/// Everything wrong with a definition, in plain English; empty when it can
+/// be saved and run. The editor calls this as the user edits.
+#[tauri::command]
+pub fn validate_workflow(definition: Value) -> Vec<String> {
+    match checked_definition(&definition) {
+        Ok(()) => Vec::new(),
+        Err(problems) => problems.lines().map(str::to_string).collect(),
+    }
+}
+
 #[tauri::command]
 pub async fn list_workflows(state: State<'_, AppState>) -> Result<Vec<WorkflowSummary>, String> {
     repo::list(&state.db).await.map_err(|e| e.to_string())
@@ -151,4 +161,23 @@ pub async fn get_workflow_run(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "That run no longer exists.".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn validate_workflow_lists_each_problem_or_nothing() {
+        let ok = json!({ "steps": [{ "id": "a", "type": "template", "template": "hi" }] });
+        assert!(validate_workflow(ok).is_empty());
+        let bad = json!({ "steps": [
+            { "id": "a", "type": "template", "template": "{{steps.b.text}}" },
+            { "id": "a", "type": "template", "template": "x" }
+        ]});
+        let problems = validate_workflow(bad);
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(validate_workflow(json!({ "steps": "nope" }))[0].contains("can't be read"));
+    }
 }

@@ -13,6 +13,7 @@ const ipc = vi.hoisted(() => ({
   runWorkflow: vi.fn(),
   listWorkflowRuns: vi.fn(),
   getWorkflowRun: vi.fn(),
+  validateWorkflow: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -96,6 +97,7 @@ describe('WorkflowsPage', () => {
     ipc.deleteWorkflow.mockResolvedValue(undefined);
     ipc.runWorkflow.mockResolvedValue(finishedRun);
     ipc.getWorkflowRun.mockResolvedValue(finishedRun);
+    ipc.validateWorkflow.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -158,23 +160,65 @@ describe('WorkflowsPage', () => {
   it('edits the definition as JSON and shows what is wrong with it', async () => {
     render(<WorkflowsPage onStatus={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit as JSON' }));
     const box = screen.getByRole('textbox', { name: 'Steps (JSON)' });
+    const save = () => screen.getByRole('button', { name: 'Save' });
 
+    // Unreadable JSON is reported as you type, and saving waits for a fix.
     fireEvent.change(box, { target: { value: '{ not json' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/That isn't valid JSON/);
-    expect(ipc.updateWorkflow).not.toHaveBeenCalled();
+    expect(await screen.findByText(/That isn't valid JSON/)).toBeInTheDocument();
+    expect(save()).toBeDisabled();
 
-    ipc.updateWorkflow.mockRejectedValueOnce(new Error('Step "a" reads steps.b.text, which doesn\'t exist at that point.'));
+    // The backend's validation is shown too.
+    ipc.validateWorkflow.mockResolvedValueOnce(['Step "a" reads steps.b.text, which doesn\'t exist at that point.']);
     fireEvent.change(box, { target: { value: '{"steps":[{"id":"a","type":"template","template":"{{steps.b.text}}"}]}' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('reads steps.b.text');
+    expect(await screen.findByText(/reads steps.b.text/)).toBeInTheDocument();
+    expect(save()).toBeDisabled();
 
     const good = { steps: [{ id: 'a', type: 'template', template: 'hello' }] };
     fireEvent.change(box, { target: { value: JSON.stringify(good) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save()).toBeEnabled());
+    fireEvent.click(save());
     await waitFor(() => expect(ipc.updateWorkflow).toHaveBeenLastCalledWith('w1', 'Morning briefing', 'Two sites, one briefing', good));
     expect(await screen.findByText('Put the text together')).toBeInTheDocument();
+  });
+
+  it('switches between the step editor and JSON without losing edits', async () => {
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name of value 1' }), { target: { value: 'Main site' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit as JSON' }));
+    const box = screen.getByRole('textbox', { name: 'Steps (JSON)' }) as HTMLTextAreaElement;
+    expect(box.value).toContain('"label": "Main site"');
+    fireEvent.change(box, { target: { value: box.value.replace('Main site', 'Front page') } });
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the step editor' }));
+    expect(screen.getByRole('textbox', { name: 'Name of value 1' })).toHaveValue('Front page');
+  });
+
+  it('builds a new workflow from scratch in the step editor', async () => {
+    ipc.listWorkflows.mockResolvedValueOnce([]).mockResolvedValue([summary]);
+    const onStatus = vi.fn();
+    render(<WorkflowsPage onStatus={onStatus} />);
+    const empty = (await screen.findByText('No workflows yet')).closest('.page-empty') as HTMLElement;
+    fireEvent.click(within(empty).getByRole('button', { name: 'Build it' }));
+
+    // It starts with one empty fetch step; saving waits until it is valid.
+    ipc.validateWorkflow.mockResolvedValue(['Step "fetch" has no pages to fetch.']);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Read one page' } });
+    expect(await screen.findByText('Step "fetch" has no pages to fetch.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+    ipc.validateWorkflow.mockResolvedValue([]);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Page 1' }), { target: { value: 'https://example.com' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(ipc.createWorkflow).toHaveBeenCalledWith('Read one page', null, {
+        inputs: [],
+        steps: [{ id: 'fetch', type: 'fetch_page', urls: ['https://example.com'] }],
+      }),
+    );
+    expect(onStatus).toHaveBeenCalledWith('Created Morning briefing');
   });
 
   it('deletes only after confirmation', async () => {

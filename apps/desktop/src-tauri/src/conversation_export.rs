@@ -228,6 +228,24 @@ fn render_message_markdown(message: &Message) -> Option<String> {
             }
             MessagePartKind::Image => extras.push("[image]".to_string()),
             MessagePartKind::File => extras.push("[file]".to_string()),
+            MessagePartKind::KnowledgeReference => {
+                // D8: rendered as a line naming the document and its
+                // collection, not the raw metadata blob -- the export reads
+                // like the chat did.
+                let title = part
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("title"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("document");
+                let collection_name = part
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("collectionName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("collection");
+                extras.push(format!("Referenced document: {title} ({collection_name})"));
+            }
         }
     }
 
@@ -312,6 +330,7 @@ fn export_message_json(message: &Message) -> serde_json::Value {
                 MessagePartKind::Reasoning => "reasoning",
                 MessagePartKind::Image => "image",
                 MessagePartKind::File => "file",
+                MessagePartKind::KnowledgeReference => "knowledgeReference",
             };
             serde_json::json!({
                 "kind": kind,
@@ -320,6 +339,11 @@ fn export_message_json(message: &Message) -> serde_json::Value {
                 "artifactId": part.artifact_id,
                 "attachmentId": part.attachment_id,
                 "mimeType": part.mime_type,
+                // A knowledgeReference part's whole payload lives in
+                // `metadata` (D8) rather than `content`/`attachmentId`, so
+                // the JSON export keeps it here -- Markdown renders it as a
+                // line instead (see `render_message_markdown`).
+                "metadata": part.metadata,
             })
         })
         .collect();
@@ -565,6 +589,49 @@ mod tests {
         assert!(!json.contains("C:\\\\secret\\\\project"));
         assert!(json.contains("\"schemaVersion\": 1"));
         assert!(json.contains("\"role\": \"user\""));
+    }
+
+    fn knowledge_reference_part() -> MessagePart {
+        let mut p = part(MessagePartKind::KnowledgeReference, "");
+        p.content = None;
+        p.metadata = Some(serde_json::json!({
+            "documentId": "doc-1",
+            "title": "notes.md",
+            "collectionId": "col-1",
+            "collectionName": "Research",
+        }));
+        p
+    }
+
+    #[test]
+    fn markdown_renders_knowledge_reference_as_a_named_line() {
+        let user = msg(
+            MessageRole::User,
+            vec![
+                part(MessagePartKind::Text, "What does it say?"),
+                knowledge_reference_part(),
+            ],
+        );
+        let md = render_markdown(&conv(Some("Refs")), &[&user]);
+        assert!(
+            md.contains("Referenced document: notes.md (Research)"),
+            "got {md}"
+        );
+    }
+
+    #[test]
+    fn json_keeps_knowledge_reference_metadata() {
+        let user = msg(MessageRole::User, vec![knowledge_reference_part()]);
+        let json = render_json(&conv(Some("Refs")), &[&user]).unwrap();
+        assert!(
+            json.contains("\"kind\": \"knowledgeReference\""),
+            "got {json}"
+        );
+        assert!(json.contains("\"documentId\": \"doc-1\""), "got {json}");
+        assert!(
+            json.contains("\"collectionName\": \"Research\""),
+            "got {json}"
+        );
     }
 
     #[test]

@@ -421,6 +421,128 @@ where
 }
 
 #[cfg(test)]
+mod knowledge_reference_drop_tests {
+    //! D8: a `knowledgeReference` part must never reach a provider. These
+    //! build a user message with one Text part and one KnowledgeReference
+    //! part through each adapter's shared content builder and assert the
+    //! rendered payload has no trace of the reference — no `"knowledge"`
+    //! substring, no `documentId`/`title` from its metadata.
+    use super::*;
+    use crate::schema::{Message, MessagePart, MessageRole};
+
+    fn message_with_reference() -> Message {
+        Message {
+            id: "msg-1".to_string(),
+            conversation_id: "conv-1".to_string(),
+            role: MessageRole::User,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts: vec![
+                MessagePart {
+                    id: "part-1".to_string(),
+                    message_id: "msg-1".to_string(),
+                    index: 0,
+                    kind: MessagePartKind::Text,
+                    content: Some("What does the doc say?".to_string()),
+                    mime_type: None,
+                    tool_call_id: None,
+                    artifact_id: None,
+                    attachment_id: None,
+                    blob_ref: None,
+                    metadata: None,
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                },
+                MessagePart {
+                    id: "part-2".to_string(),
+                    message_id: "msg-1".to_string(),
+                    index: 1,
+                    kind: MessagePartKind::KnowledgeReference,
+                    content: None,
+                    mime_type: None,
+                    tool_call_id: None,
+                    artifact_id: None,
+                    attachment_id: None,
+                    blob_ref: None,
+                    metadata: Some(serde_json::json!({
+                        "documentId": "doc-secret-id",
+                        "title": "notes.md",
+                        "collectionId": "col-1",
+                        "collectionName": "Research",
+                    })),
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                },
+                // A hydrated image part so `message_has_images` is true and
+                // every builder below walks its full per-part match arm
+                // (rather than short-circuiting to a plain-text payload),
+                // actually exercising the `_ => {}` arm the KnowledgeReference
+                // part must fall into.
+                MessagePart {
+                    id: "part-3".to_string(),
+                    message_id: "msg-1".to_string(),
+                    index: 2,
+                    kind: MessagePartKind::Image,
+                    content: Some("aGVsbG8=".to_string()),
+                    mime_type: Some("image/png".to_string()),
+                    tool_call_id: None,
+                    artifact_id: None,
+                    attachment_id: None,
+                    blob_ref: None,
+                    metadata: None,
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                },
+            ],
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn assert_no_reference_trace(rendered: &str) {
+        assert!(rendered.contains("What does the doc say?"));
+        assert!(!rendered.to_lowercase().contains("knowledge"));
+        assert!(!rendered.contains("doc-secret-id"));
+        assert!(!rendered.contains("notes.md"));
+        assert!(!rendered.contains("col-1"));
+        assert!(!rendered.contains("Research"));
+    }
+
+    #[test]
+    fn message_text_ignores_knowledge_reference() {
+        let message = message_with_reference();
+        assert_eq!(message_text(&message), "What does the doc say?");
+    }
+
+    #[test]
+    fn openai_user_content_drops_knowledge_reference() {
+        let message = message_with_reference();
+        let rendered = openai_user_content(&message).to_string();
+        assert_no_reference_trace(&rendered);
+    }
+
+    #[test]
+    fn anthropic_user_content_drops_knowledge_reference() {
+        let message = message_with_reference();
+        let rendered = anthropic_user_content(&message).to_string();
+        assert_no_reference_trace(&rendered);
+    }
+
+    #[test]
+    fn gemini_user_parts_drops_knowledge_reference() {
+        let message = message_with_reference();
+        let rendered = serde_json::to_string(&gemini_user_parts(&message)).unwrap();
+        assert_no_reference_trace(&rendered);
+    }
+
+    #[test]
+    fn ollama_user_message_drops_knowledge_reference() {
+        let message = message_with_reference();
+        let rendered = ollama_user_message(&message).to_string();
+        assert_no_reference_trace(&rendered);
+    }
+}
+
+#[cfg(test)]
 mod line_buffer_tests {
     use super::*;
     use crate::adapter::StreamParser;

@@ -550,12 +550,26 @@ pub struct ChunkVectorRow {
     pub char_end: i64,
 }
 
+/// Serialize a set of ids as a JSON array string for a `json_each(?)`
+/// parameter (D4). `serde_json::to_string` over `&[String]` cannot fail, so
+/// this never needs to surface an error to its callers.
+fn only_json(ids: &[String]) -> String {
+    serde_json::to_string(ids).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Every chunk with a non-NULL embedding across `collection_ids`. Brute-force
 /// vector search (`knowledge::search::vector_search`) scans this in memory —
 /// see 0017's doc comment for why that's fine at this scale.
+///
+/// `filter` (D4/D6) narrows the rows returned: `only`, when set, restricts to
+/// exactly those document ids (a `#` reference); otherwise `exclude` removes
+/// the conversation's excluded documents (D1). Both go through `json_each(?)`
+/// rather than one `IN (?, ?, …)` per id, so a collection with thousands of
+/// documents needs one bound parameter, not thousands.
 pub async fn list_chunk_vectors(
     pool: &SqlitePool,
     collection_ids: &[String],
+    filter: &crate::knowledge::search::DocumentFilter,
 ) -> Result<Vec<ChunkVectorRow>, DbError> {
     if collection_ids.is_empty() {
         return Ok(Vec::new());
@@ -565,13 +579,19 @@ pub async fn list_chunk_vectors(
         .map(|_| "?")
         .collect::<Vec<_>>()
         .join(", ");
-    let sql = format!(
+    let mut sql = format!(
         "SELECT c.id, c.document_id, d.collection_id, c.content, c.embedding, \
                 c.ordinal, c.char_start, c.char_end \
          FROM knowledge_chunks c \
          JOIN knowledge_documents d ON d.id = c.document_id \
          WHERE d.collection_id IN ({placeholders}) AND c.embedding IS NOT NULL"
     );
+    if filter.only.is_some() {
+        sql.push_str(" AND d.id IN (SELECT value FROM json_each(?))");
+    }
+    if !filter.exclude.is_empty() {
+        sql.push_str(" AND d.id NOT IN (SELECT value FROM json_each(?))");
+    }
     let mut query = sqlx::query_as::<
         _,
         (
@@ -587,6 +607,12 @@ pub async fn list_chunk_vectors(
     >(&sql);
     for id in collection_ids {
         query = query.bind(id);
+    }
+    if let Some(only) = &filter.only {
+        query = query.bind(only_json(only));
+    }
+    if !filter.exclude.is_empty() {
+        query = query.bind(only_json(&filter.exclude));
     }
     let rows = query.fetch_all(pool).await?;
     Ok(rows
@@ -634,11 +660,15 @@ pub struct ChunkKeywordRow {
 /// `collection_ids`, ordered by relevance. `sanitized_query` must already be
 /// a safe FTS5 match expression (see `knowledge::search::sanitize_fts_query`)
 /// — this function does not sanitize, only sanitized queries reach it.
+///
+/// `filter` mirrors [`list_chunk_vectors`]'s (D4/D6), applied on `f.document_id`
+/// since this query's FROM list has no `knowledge_documents` row to filter on.
 pub async fn keyword_match(
     pool: &SqlitePool,
     collection_ids: &[String],
     sanitized_query: &str,
     limit: i64,
+    filter: &crate::knowledge::search::DocumentFilter,
 ) -> Result<Vec<ChunkKeywordRow>, DbError> {
     if collection_ids.is_empty() {
         return Ok(Vec::new());
@@ -648,18 +678,30 @@ pub async fn keyword_match(
         .map(|_| "?")
         .collect::<Vec<_>>()
         .join(", ");
-    let sql = format!(
+    let mut sql = format!(
         "SELECT f.chunk_id, f.document_id, f.collection_id, c.content, \
                 c.ordinal, c.char_start, c.char_end \
          FROM knowledge_chunk_fts f \
          JOIN knowledge_chunks c ON c.id = f.chunk_id \
-         WHERE knowledge_chunk_fts MATCH ? AND f.collection_id IN ({placeholders}) \
-         ORDER BY rank LIMIT ?"
+         WHERE knowledge_chunk_fts MATCH ? AND f.collection_id IN ({placeholders})"
     );
+    if filter.only.is_some() {
+        sql.push_str(" AND f.document_id IN (SELECT value FROM json_each(?))");
+    }
+    if !filter.exclude.is_empty() {
+        sql.push_str(" AND f.document_id NOT IN (SELECT value FROM json_each(?))");
+    }
+    sql.push_str(" ORDER BY rank LIMIT ?");
     let mut query = sqlx::query_as::<_, (String, String, String, String, i64, i64, i64)>(&sql)
         .bind(sanitized_query);
     for id in collection_ids {
         query = query.bind(id);
+    }
+    if let Some(only) = &filter.only {
+        query = query.bind(only_json(only));
+    }
+    if !filter.exclude.is_empty() {
+        query = query.bind(only_json(&filter.exclude));
     }
     let rows = query.bind(limit).fetch_all(pool).await?;
     Ok(rows
@@ -746,4 +788,68 @@ pub async fn set_enabled(
     }
     tx.commit().await?;
     Ok(unique)
+}
+
+// ---------------------------------------------------------------------------
+// conversation_excluded_documents — per-conversation exclusions (t1-8 P2 M2)
+// ---------------------------------------------------------------------------
+
+/// List the document ids this conversation leaves out. Absence of a row means
+/// "included" — migration 0019's doc comment (D1) explains why this is an
+/// exclusion list rather than an inclusion list.
+pub async fn list_excluded_documents(
+    pool: &SqlitePool,
+    conversation_id: &str,
+) -> Result<Vec<String>, DbError> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT document_id FROM conversation_excluded_documents \
+         WHERE conversation_id = ? ORDER BY document_id",
+    )
+    .bind(conversation_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Toggle one document's exclusion for one conversation (D2: a toggle, not a
+/// full-set replace — two quick clicks racing under an optimistic UI must not
+/// let the second write clobber the first; a toggle is idempotent). Returns
+/// the canonical excluded set afterward so the caller reconciles against it
+/// rather than trusting its own optimistic guess.
+///
+/// D3: validates that the document exists, not that its collection is
+/// attached to this conversation — detaching a collection must leave this
+/// conversation's exclusions of its documents intact, so re-attaching
+/// restores them. The foreign keys (cascading on both the conversation and
+/// the document) already prevent an orphan row from lingering, so "the
+/// document exists" is the only check needed here.
+pub async fn set_document_excluded(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    document_id: &str,
+    excluded: bool,
+) -> Result<Vec<String>, DbError> {
+    if get_document(pool, document_id).await?.is_none() {
+        return Err(DbError::Query("document not found".into()));
+    }
+    if excluded {
+        sqlx::query(
+            "INSERT OR IGNORE INTO conversation_excluded_documents \
+             (conversation_id, document_id) VALUES (?, ?)",
+        )
+        .bind(conversation_id)
+        .bind(document_id)
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query(
+            "DELETE FROM conversation_excluded_documents \
+             WHERE conversation_id = ? AND document_id = ?",
+        )
+        .bind(conversation_id)
+        .bind(document_id)
+        .execute(pool)
+        .await?;
+    }
+    list_excluded_documents(pool, conversation_id).await
 }

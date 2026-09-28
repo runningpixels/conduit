@@ -15,10 +15,12 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use conduit_desktop::{
-    db::repository::knowledge as repo,
+    db::repository::{conversations, knowledge as repo},
     knowledge::{
         ingest::{ingest_text, EmbeddingConfig, IngestOutcome},
-        search::{hybrid_search, keyword_search, sanitize_fts_query, vector_search},
+        search::{
+            hybrid_search, keyword_search, sanitize_fts_query, vector_search, DocumentFilter,
+        },
     },
 };
 use futures::stream::Stream;
@@ -280,6 +282,7 @@ async fn vector_search_finds_the_semantically_closest_chunk() {
         std::slice::from_ref(&collection.id),
         &query_vector,
         5,
+        &DocumentFilter::unrestricted(),
     )
     .await
     .unwrap();
@@ -351,6 +354,7 @@ async fn keyword_search_finds_an_exact_term() {
         std::slice::from_ref(&collection.id),
         "qubit",
         5,
+        &DocumentFilter::unrestricted(),
     )
     .await
     .unwrap();
@@ -392,6 +396,7 @@ async fn hybrid_search_returns_results_from_both_signals() {
         &query_vector,
         "qubit physics",
         5,
+        &DocumentFilter::unrestricted(),
     )
     .await
     .unwrap();
@@ -571,8 +576,15 @@ async fn malformed_fts_query_does_not_error_the_search() {
     // Unbalanced quote, a leading NOT-like dash, and a bare operator keyword
     // -- all of these are FTS5 syntax errors if passed through raw.
     for raw in ["what is \"foo", "-leading-dash", "NEAR", "***", ""] {
-        let result =
-            keyword_search(&pool, &enc, std::slice::from_ref(&collection.id), raw, 5).await;
+        let result = keyword_search(
+            &pool,
+            &enc,
+            std::slice::from_ref(&collection.id),
+            raw,
+            5,
+            &DocumentFilter::unrestricted(),
+        )
+        .await;
         assert!(
             result.is_ok(),
             "keyword_search({raw:?}) should not error, got {result:?}"
@@ -592,6 +604,7 @@ async fn malformed_fts_query_does_not_error_the_search() {
         &query_vector,
         "what is \"foo",
         5,
+        &DocumentFilter::unrestricted(),
     )
     .await;
     assert!(hybrid.is_ok());
@@ -732,5 +745,231 @@ async fn get_chunk_returns_the_passage_and_none_after_delete() {
             .unwrap()
             .is_none(),
         "a deleted document's chunks are gone, and that is not an error"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// t1-8 P2 M2: conversation_excluded_documents (D1-D5)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn excluded_documents_round_trip_through_list_and_set() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let collection = create_test_collection(&pool).await;
+    let embedding = embedding_config();
+    let conversation = conversations::create(&pool, None).await.unwrap();
+
+    let document_id = match ingest_text(
+        &pool,
+        &enc,
+        &embedding,
+        &collection.id,
+        "test://doc-1.md",
+        "Doc",
+        &gardening_paragraph(),
+    )
+    .await
+    .unwrap()
+    {
+        IngestOutcome::Imported { document_id, .. } => document_id,
+        other => panic!("expected Imported, got {other:?}"),
+    };
+
+    assert!(repo::list_excluded_documents(&pool, &conversation.id)
+        .await
+        .unwrap()
+        .is_empty());
+
+    let after_exclude = repo::set_document_excluded(&pool, &conversation.id, &document_id, true)
+        .await
+        .unwrap();
+    assert_eq!(after_exclude, vec![document_id.clone()]);
+    assert_eq!(
+        repo::list_excluded_documents(&pool, &conversation.id)
+            .await
+            .unwrap(),
+        vec![document_id.clone()]
+    );
+
+    // D2: the toggle is idempotent -- excluding an already-excluded document
+    // again does not duplicate the row or error.
+    let after_exclude_again =
+        repo::set_document_excluded(&pool, &conversation.id, &document_id, true)
+            .await
+            .unwrap();
+    assert_eq!(after_exclude_again, vec![document_id.clone()]);
+
+    let after_include = repo::set_document_excluded(&pool, &conversation.id, &document_id, false)
+        .await
+        .unwrap();
+    assert!(after_include.is_empty());
+    assert!(repo::list_excluded_documents(&pool, &conversation.id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn excluding_an_unknown_document_is_refused() {
+    let pool = common::setup_pool().await;
+    let conversation = conversations::create(&pool, None).await.unwrap();
+
+    let err = repo::set_document_excluded(&pool, &conversation.id, "not-a-real-document", true)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("document not found"));
+}
+
+#[tokio::test]
+async fn deleting_the_document_cascades_its_exclusion() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let collection = create_test_collection(&pool).await;
+    let embedding = embedding_config();
+    let conversation = conversations::create(&pool, None).await.unwrap();
+
+    let document_id = match ingest_text(
+        &pool,
+        &enc,
+        &embedding,
+        &collection.id,
+        "test://doc-1.md",
+        "Doc",
+        &gardening_paragraph(),
+    )
+    .await
+    .unwrap()
+    {
+        IngestOutcome::Imported { document_id, .. } => document_id,
+        other => panic!("expected Imported, got {other:?}"),
+    };
+    repo::set_document_excluded(&pool, &conversation.id, &document_id, true)
+        .await
+        .unwrap();
+
+    repo::delete_document(&pool, &document_id).await.unwrap();
+
+    assert!(
+        repo::list_excluded_documents(&pool, &conversation.id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the exclusion row cascades away with the document it referenced"
+    );
+}
+
+#[tokio::test]
+async fn deleting_the_conversation_cascades_its_exclusions() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let collection = create_test_collection(&pool).await;
+    let embedding = embedding_config();
+    let conversation = conversations::create(&pool, None).await.unwrap();
+
+    let document_id = match ingest_text(
+        &pool,
+        &enc,
+        &embedding,
+        &collection.id,
+        "test://doc-1.md",
+        "Doc",
+        &gardening_paragraph(),
+    )
+    .await
+    .unwrap()
+    {
+        IngestOutcome::Imported { document_id, .. } => document_id,
+        other => panic!("expected Imported, got {other:?}"),
+    };
+    repo::set_document_excluded(&pool, &conversation.id, &document_id, true)
+        .await
+        .unwrap();
+
+    conversations::delete(&pool, &conversation.id)
+        .await
+        .unwrap();
+
+    assert!(
+        repo::list_excluded_documents(&pool, &conversation.id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the exclusion row cascades away with the conversation it referenced"
+    );
+}
+
+#[tokio::test]
+async fn excluded_documents_rare_token_no_longer_ranks_in_keyword_or_hybrid_search() {
+    // t1-6's own regression shape, reused here for exclusion (D1): a rare,
+    // unmistakable token in one document must not surface once that
+    // document is excluded, in either keyword or hybrid search.
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let collection = create_test_collection(&pool).await;
+    let embedding = embedding_config();
+
+    let excluded_id = match ingest_text(
+        &pool,
+        &enc,
+        &embedding,
+        &collection.id,
+        "test://excluded.md",
+        "Excluded",
+        "This document mentions the rare token ZQXW9981 exactly once.",
+    )
+    .await
+    .unwrap()
+    {
+        IngestOutcome::Imported { document_id, .. } => document_id,
+        other => panic!("expected Imported, got {other:?}"),
+    };
+
+    ingest_text(
+        &pool,
+        &enc,
+        &embedding,
+        &collection.id,
+        "test://other.md",
+        "Other",
+        &gardening_paragraph(),
+    )
+    .await
+    .unwrap();
+
+    let filter = DocumentFilter::excluding(vec![excluded_id]);
+
+    let keyword_results = keyword_search(
+        &pool,
+        &enc,
+        std::slice::from_ref(&collection.id),
+        "ZQXW9981",
+        5,
+        &filter,
+    )
+    .await
+    .unwrap();
+    assert!(
+        keyword_results.is_empty(),
+        "an excluded document's rare token must not rank in keyword search"
+    );
+
+    let query_vector = fake_embed("ZQXW9981");
+    let hybrid_results = hybrid_search(
+        &pool,
+        &enc,
+        std::slice::from_ref(&collection.id),
+        &query_vector,
+        "ZQXW9981",
+        5,
+        &filter,
+    )
+    .await
+    .unwrap();
+    assert!(
+        hybrid_results
+            .iter()
+            .all(|r| !r.content.contains("ZQXW9981")),
+        "an excluded document's rare token must not rank in hybrid search either"
     );
 }

@@ -20,6 +20,7 @@ pub mod conversation_export;
 pub mod credentials;
 pub mod db;
 pub mod diagnostics;
+pub mod drop_grant;
 pub mod encryption;
 pub mod knowledge;
 pub mod local_data;

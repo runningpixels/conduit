@@ -108,3 +108,78 @@ async fn persist_request_messages_is_idempotent_within_a_conversation() {
         .unwrap();
     assert_eq!(loaded.len(), 2, "no duplicate row for re-sent history");
 }
+
+#[tokio::test]
+async fn knowledge_reference_part_persists_and_hydrates_its_metadata() {
+    // t1-8 P2 D8: a `#` reference is a message part like any other -- no new
+    // table, no new command. Persisting it and reading it back must keep its
+    // whole metadata shape (documentId/title/collectionId/collectionName).
+    let pool = common::setup_pool().await;
+    let convo = conversations::create(&pool, None).await.unwrap();
+
+    let message = Message {
+        id: "uuid-1".to_string(),
+        conversation_id: convo.id.clone(),
+        role: MessageRole::User,
+        author_label: None,
+        provider_message_id: None,
+        request_id: None,
+        interrupted_at: None,
+        metadata: None,
+        parts: vec![
+            MessagePart {
+                id: "uuid-1-part-0".to_string(),
+                message_id: "uuid-1".to_string(),
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some("What does notes.md say?".to_string()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: "2026-09-27T10:00:00Z".to_string(),
+            },
+            MessagePart {
+                id: "uuid-1-part-1".to_string(),
+                message_id: "uuid-1".to_string(),
+                index: 1,
+                kind: MessagePartKind::KnowledgeReference,
+                content: None,
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: Some(serde_json::json!({
+                    "documentId": "doc-1",
+                    "title": "notes.md",
+                    "collectionId": "col-1",
+                    "collectionName": "Research",
+                })),
+                created_at: "2026-09-27T10:00:00Z".to_string(),
+            },
+        ],
+        created_at: "2026-09-27T10:00:00Z".to_string(),
+    };
+
+    messages::persist_request_messages(&pool, std::slice::from_ref(&message))
+        .await
+        .unwrap();
+
+    let loaded = messages::load_conversation_messages(&pool, &convo.id)
+        .await
+        .unwrap();
+    assert_eq!(loaded.len(), 1);
+    let parts = &loaded[0].parts;
+    let reference = parts
+        .iter()
+        .find(|p| p.kind == MessagePartKind::KnowledgeReference)
+        .expect("the knowledgeReference part round-trips");
+    let metadata = reference.metadata.as_ref().expect("metadata round-trips");
+    assert_eq!(metadata["documentId"], "doc-1");
+    assert_eq!(metadata["title"], "notes.md");
+    assert_eq!(metadata["collectionId"], "col-1");
+    assert_eq!(metadata["collectionName"], "Research");
+}

@@ -121,6 +121,13 @@ pub enum MessagePartKind {
     Reasoning,
     Image,
     File,
+    /// A `#` reference to a document in the local knowledge base (t1-8 P2 D8).
+    /// Carries `{ documentId, title, collectionId, collectionName }` in
+    /// `metadata`; `content` and `attachmentId` are absent. Persisted with the
+    /// message and hydrated back (so it survives reload, retry, edit-and-
+    /// resend, and fork), but never sent to a provider — every adapter drops
+    /// it the same way it keeps only what that provider accepts.
+    KnowledgeReference,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

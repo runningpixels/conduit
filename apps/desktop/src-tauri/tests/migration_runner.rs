@@ -69,7 +69,7 @@ async fn all_tables_created_by_initial_migration() {
     // + 0012 conversation organization + 0013 tool approval memory
     // + 0014 conversation compactions + 0015 conversation skills
     // + 0016 memory items + 0017 knowledge base + 0018 artifact network
-    // grants).
+    // grants + 0019 conversation excluded documents).
     let (public,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
         .fetch_one(&pool)
         .await
@@ -80,7 +80,7 @@ async fn all_tables_created_by_initial_migration() {
             .await
             .unwrap();
     assert_eq!(public, internal, "schema_migrations out of sync");
-    assert_eq!(public, 16, "expected all shipped migrations applied");
+    assert_eq!(public, 17, "expected all shipped migrations applied");
 }
 
 #[tokio::test]

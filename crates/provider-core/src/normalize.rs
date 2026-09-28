@@ -111,6 +111,19 @@ fn validate_message(message: &Message) -> Result<(), ProviderError> {
                     ));
                 }
             }
+            MessagePartKind::KnowledgeReference => {
+                let has_document_id = part
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("documentId"))
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty());
+                if !has_document_id {
+                    return Err(fatal(
+                        "knowledge reference parts require metadata.documentId",
+                    ));
+                }
+            }
         }
     }
 
@@ -223,6 +236,93 @@ mod tests {
             conversation_id: "conv-1".to_string(),
             model_id: "".to_string(),
             messages: vec![sample_message(MessageRole::User)],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+
+        assert!(validate(request).is_err());
+    }
+
+    fn knowledge_reference_part(metadata: Option<serde_json::Value>) -> MessagePart {
+        MessagePart {
+            id: "part-2".to_string(),
+            message_id: "msg-1".to_string(),
+            index: 1,
+            kind: MessagePartKind::KnowledgeReference,
+            content: None,
+            mime_type: None,
+            tool_call_id: None,
+            artifact_id: None,
+            attachment_id: None,
+            blob_ref: None,
+            metadata,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn accepts_knowledge_reference_with_document_id() {
+        let mut message = sample_message(MessageRole::User);
+        message.parts.push(knowledge_reference_part(Some(
+            serde_json::json!({ "documentId": "doc-1", "title": "notes.md" }),
+        )));
+
+        let request = ProviderRequest {
+            request_id: "req-1".to_string(),
+            conversation_id: "conv-1".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
+            messages: vec![message],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+
+        assert!(validate(request).is_ok());
+    }
+
+    #[test]
+    fn rejects_knowledge_reference_missing_document_id() {
+        let mut message = sample_message(MessageRole::User);
+        message.parts.push(knowledge_reference_part(None));
+
+        let request = ProviderRequest {
+            request_id: "req-1".to_string(),
+            conversation_id: "conv-1".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
+            messages: vec![message],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+
+        assert!(validate(request).is_err());
+    }
+
+    #[test]
+    fn rejects_knowledge_reference_with_empty_document_id() {
+        let mut message = sample_message(MessageRole::User);
+        message.parts.push(knowledge_reference_part(Some(
+            serde_json::json!({ "documentId": "" }),
+        )));
+
+        let request = ProviderRequest {
+            request_id: "req-1".to_string(),
+            conversation_id: "conv-1".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
+            messages: vec![message],
             system_prompt: None,
             developer_prompt: None,
             attachments: None,

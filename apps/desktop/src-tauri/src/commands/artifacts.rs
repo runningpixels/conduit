@@ -45,6 +45,118 @@ pub async fn save_attachment(
     .map_err(|e| e.to_string())
 }
 
+/// Best-effort MIME from a file extension, for the (common) case where
+/// `infer`'s magic-byte sniff finds nothing — plain text formats like `.txt`
+/// or `.md` have no header to sniff. Mirrors the fallback the renderer's own
+/// `uploadAttachment` uses (`file.type || 'application/octet-stream'`): a
+/// best guess, never a refusal.
+fn guess_mime_from_extension(path: &std::path::Path) -> Option<&'static str> {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("txt" | "text") => Some("text/plain"),
+        Some("md" | "markdown" | "mdown") => Some("text/markdown"),
+        Some("csv") => Some("text/csv"),
+        Some("json") => Some("application/json"),
+        Some("pdf") => Some("application/pdf"),
+        Some("docx") => {
+            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        }
+        _ => None,
+    }
+}
+
+/// D13's MIME gate for a native drop. Unlike a browser `File` from an
+/// `<input type=file>` selection or an HTML5 drop — where the browser already
+/// resolved a `File` object from a user gesture — this command reads bytes
+/// from a path the renderer merely *named*. `uploadAttachment` itself accepts
+/// any file type up to the size cap, so this does not narrow that; it only
+/// refuses what sniffs as a native executable, installer, or other "app"
+/// binary (`infer::MatcherType::App`) — the one category a renderer-supplied
+/// path can smuggle in that a real file picker or an HTML5 drop's `File`
+/// object never would have offered as attachable content in the first place.
+fn refused_native_drop_mime(bytes: &[u8]) -> Option<&'static str> {
+    let kind = infer::get(bytes)?;
+    if kind.matcher_type() == infer::MatcherType::App {
+        Some(kind.mime_type())
+    } else {
+        None
+    }
+}
+
+/// M1 (D13): store a file the OS just dropped onto the window, once Rust has
+/// independently verified it was actually part of a recent native drop.
+///
+/// `path` is never trusted on its own — a command that reads any path the
+/// renderer names would be a read-any-file-on-disk primitive. `AppState`
+/// only claims it if `on_window_event` recorded that exact path from a
+/// `WindowEvent::DragDrop(DragDropEvent::Drop { .. })` within the last
+/// [`crate::drop_grant::DROP_GRANT_TTL`] and it has not already been used.
+///
+/// From there this mirrors [`save_attachment`]: a size check (here, from the
+/// file's metadata, *before* the whole file is read into memory — a dropped
+/// file has no inline-IPC size limit imposed by the browser the way a
+/// `<input type=file>` selection does), a MIME sniff from the actual bytes
+/// (never the extension, which a rendered drop target never even sees), and
+/// the same `attachments::save` storage path.
+#[tauri::command]
+pub async fn save_dropped_attachment(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    path: String,
+) -> Result<Attachment, String> {
+    let path_buf = std::path::PathBuf::from(&path);
+    if !state.claim_dropped_path(&path_buf, std::time::Instant::now()) {
+        return Err(
+            "That file wasn't part of a recent drop onto this window, so it can't be attached."
+                .to_string(),
+        );
+    }
+
+    let metadata = tokio::fs::metadata(&path_buf)
+        .await
+        .map_err(|e| format!("Could not read {}: {e}", path_buf.display()))?;
+    if metadata.len() > ATTACHMENT_INLINE_CAP_BYTES as u64 {
+        return Err(format!(
+            "Attachment too large for inline IPC ({} > {} bytes); use a file-path protocol",
+            metadata.len(),
+            ATTACHMENT_INLINE_CAP_BYTES
+        ));
+    }
+
+    let bytes = tokio::fs::read(&path_buf)
+        .await
+        .map_err(|e| format!("Could not read {}: {e}", path_buf.display()))?;
+
+    if let Some(mime) = refused_native_drop_mime(&bytes) {
+        return Err(format!("{mime} files can't be attached."));
+    }
+
+    let mime_type = infer::get(&bytes)
+        .map(|kind| kind.mime_type().to_string())
+        .or_else(|| guess_mime_from_extension(&path_buf).map(String::from))
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+
+    let origin = path_buf
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned());
+
+    attachments::save(
+        &state.db,
+        &state.paths.attachments,
+        &state.encryption,
+        &conversation_id,
+        &bytes,
+        &mime_type,
+        origin.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn list_attachments(
     state: State<'_, AppState>,

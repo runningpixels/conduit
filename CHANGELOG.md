@@ -20,11 +20,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Security
 
-- **HTML artifacts can no longer send data out through WebRTC.** The page's
-  content security policy never covered WebRTC, so a page could reach any
-  host through STUN/TURN even with network access off. On Windows this is
-  now blocked in the webview itself, and pages can no longer create WebRTC
-  connections. If you allow remote images, fonts or styles from specific
+- **HTML artifacts can't send data out through WebRTC.** The page's content
+  security policy never covered WebRTC, so a page's script could reach any
+  host through STUN/TURN even with network access off. Release builds
+  weren't exposed, because they currently block artifact scripts entirely
+  (a separate bug). This closes the hole before artifact scripts are
+  re-enabled: on Windows it is blocked in the webview itself, and pages can
+  no longer create WebRTC connections. If you allow remote images, fonts or styles from specific
   sites (Settings → Artifacts), changes to that list now apply after a
   restart.
 

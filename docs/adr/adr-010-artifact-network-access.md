@@ -121,7 +121,14 @@ wrong. Chromium doesn't apply CSP to WebRTC. A live test on Windows (WebView2)
 showed the problem: an artifact rendered with the offline CSP
 (`connect-src 'none'`) and no grants opened an `RTCPeerConnection`, reached a
 LAN STUN/TURN listener over UDP and TCP, and put a string it chose into the
-TURN `USERNAME`. That's an exfiltration channel from every HTML artifact.
+TURN `USERNAME`. That's an exfiltration channel from any HTML artifact whose
+scripts run.
+
+Scope: this was reproduced in dev builds. Release builds weren't exposed only
+because of a separate bug. There, Tauri serves the main page with the app CSP
+(`script-src 'self'` plus hashes), and the artifact's `srcdoc` frame inherits
+it, so no artifact script runs at all. Fixing that bug would have made this
+hole live in release, so it had to be closed first.
 
 Fixed in two layers:
 

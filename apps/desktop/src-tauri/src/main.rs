@@ -7,7 +7,7 @@
 // integration tests (`tests/`) can reach the migration runner and repositories.
 use conduit_desktop::{
     brand, commands::*, connector_runtime::ConnectorRuntimeManager, state::AppState,
-    stream_manager::StreamManager, updater::*,
+    stream_manager::StreamManager, updater::*, webview_args,
 };
 use tauri::{Manager, RunEvent};
 
@@ -224,7 +224,26 @@ fn main() {
             restart_app,
         ])
         .setup(|app| {
-            let _ = app.handle();
+            // The main window is built here, not from tauri.conf.json, so its
+            // WebView2 gets browser arguments computed from settings: WebRTC
+            // egress closed, remote-allowlist origins exempt (see
+            // `webview_args`). The config entry has `create: false`.
+            let allowlist = app
+                .state::<AppState>()
+                .settings()
+                .map(|s| s.artifact_remote_allowlist)
+                .unwrap_or_default();
+            let config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+                .ok_or("tauri.conf.json has no \"main\" window")?;
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+                .additional_browser_args(&webview_args::main_webview_browser_args(&allowlist))
+                .build()?;
             Ok(())
         })
         // t1-8 P2 M1 (D13): record every path a native window drop carries, so

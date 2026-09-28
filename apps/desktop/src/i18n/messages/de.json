@@ -818,7 +818,7 @@
   "settings.appearance.userThemes.toastCleared": "Die Design-Datei „{fileName}“ konnte nicht geladen werden — im Erscheinungsbild wurde wieder ein integriertes Design aktiviert.",
   "settings.artifactSecurity.actions.add": "Hinzufügen",
   "settings.artifactSecurity.allowlist.empty": "Keine Ursprünge in der Allowlist — Seiten laden keine externen Bilder, Schriften oder Stile.",
-  "settings.artifactSecurity.allowlist.hint": "Vertrauenswürdige Origins, von denen gerenderte HTML-Artefakte Bilder, Schriften und Stile laden dürfen. Skripte werden in jedem Fall blockiert; Anfragen einer Seite an Websites werden separat abgefragt. Leer = keine externen Bilder, Schriften oder Stile.",
+  "settings.artifactSecurity.allowlist.hint": "Vertrauenswürdige Origins, von denen gerenderte HTML-Artefakte Bilder, Schriften und Stile laden dürfen. Skripte werden in jedem Fall blockiert; Anfragen einer Seite an Websites werden separat abgefragt. Leer = keine externen Bilder, Schriften oder Stile. Änderungen werden nach einem Neustart wirksam.",
   "settings.artifactSecurity.allowlist.inputPlaceholder": "https://fonts.example.com",
   "settings.artifactSecurity.allowlist.label": "Externe Allowlist für Artefakte",
   "settings.artifactSecurity.allowlist.validationHint": "Ungültige Ursprünge werden von Rust beim Speichern abgelehnt.",

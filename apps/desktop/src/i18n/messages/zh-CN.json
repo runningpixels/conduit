@@ -818,7 +818,7 @@
   "settings.appearance.userThemes.toastCleared": "无法加载主题文件 \"{fileName}\"，外观设置已恢复为内置主题。",
   "settings.artifactSecurity.actions.add": "添加",
   "settings.artifactSecurity.allowlist.empty": "没有任何来源在允许列表中——页面不会加载远程图片、字体或样式。",
-  "settings.artifactSecurity.allowlist.hint": "渲染的 HTML 构件可以从中加载图片、字体和样式的受信任来源。脚本始终会被阻止；页面对网站的请求会单独询问。留空 = 不加载远程图片、字体或样式。",
+  "settings.artifactSecurity.allowlist.hint": "渲染的 HTML 构件可以从中加载图片、字体和样式的受信任来源。脚本始终会被阻止；页面对网站的请求会单独询问。留空 = 不加载远程图片、字体或样式。更改将在重启后生效。",
   "settings.artifactSecurity.allowlist.inputPlaceholder": "https://fonts.example.com",
   "settings.artifactSecurity.allowlist.label": "工件远程允许列表",
   "settings.artifactSecurity.allowlist.validationHint": "无效的来源会在保存时被 Rust 拒绝。",

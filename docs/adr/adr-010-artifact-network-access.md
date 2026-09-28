@@ -30,7 +30,8 @@ we own.
    (`conduit:artifact-fetch-result`) into a real `Response`; a refusal
    rejects with `TypeError`, as a network error would. `AbortSignal` posts
    `conduit:artifact-fetch-abort`. `XMLHttpRequest`, `WebSocket`,
-   `EventSource`, WebRTC and remote scripts stay blocked by the CSP.
+   `EventSource` and remote scripts stay blocked by the CSP. WebRTC is **not**
+   governed by CSP; see the 2026-09-28 addendum.
 2. **Host.** The renderer accepts request messages only when `event.source` is
    that frame's `contentWindow`, validates their shape, and hands them to the
    document panel's broker. A request to a site already allowed goes to Rust;
@@ -112,3 +113,46 @@ redirect held and re-sent, and the any-site grant;
 server (redirects, caps, header stripping, the address policy) and the grant
 repository. The live check (Playwright over CDP) drives a weather page against
 Open-Meteo.
+
+## Addendum (2026-09-28): WebRTC was never blocked by the CSP
+
+The statement in "How it works" §1 that WebRTC stays blocked by the CSP was
+wrong. Chromium doesn't apply CSP to WebRTC. A live test on Windows (WebView2)
+showed the problem: an artifact rendered with the offline CSP
+(`connect-src 'none'`) and no grants opened an `RTCPeerConnection`, reached a
+LAN STUN/TURN listener over UDP and TCP, and put a string it chose into the
+TURN `USERNAME`. That's an exfiltration channel from any HTML artifact whose
+scripts run.
+
+Scope: this was reproduced in dev builds. Release builds weren't exposed only
+because of a separate bug. There, Tauri serves the main page with the app CSP
+(`script-src 'self'` plus hashes), and the artifact's `srcdoc` frame inherits
+it, so no artifact script runs at all. Fixing that bug would have made this
+hole live in release, so it had to be closed first.
+
+Fixed in two layers:
+
+1. **WebView level (the boundary).** The main window is now built in Rust
+   (`main.rs` setup, `webview_args.rs`) with
+   `--webrtc-ip-handling-policy=disable_non_proxied_udp` and a proxy that
+   accepts nothing (`--proxy-server=http://127.0.0.1:9`).
+   - The policy switch on its own still allowed TURN over TCP. The dead proxy
+     closes that. (`--force-webrtc-ip-handling-policy` was ignored by WebView2.)
+   - Loopback and Tauri's own schemes are unaffected.
+   - Origins on the artifact remote allowlist go on `--proxy-bypass-list`, so
+     their images, fonts and styles still load. That makes WebRTC to those
+     hosts possible, but adds no new risk: an image URL to the same host can
+     already carry data out.
+   - The list is read at startup, so allowlist edits apply after a restart.
+2. **Artifact document (defence in depth).** The first injected head script
+   removes the WebRTC constructors (`webrtcBlock.ts`) before any model script
+   runs. A removal inside the page's own realm is not a boundary by itself.
+
+Verified live against the same listener: zero packets on UDP and TCP, with the
+network layer alone and with both layers. An allowlisted origin's image still
+loads, and the same image is refused when its origin isn't exempted.
+
+**Not yet covered:** macOS (WKWebView) and Linux (WebKitGTK) don't take these
+arguments, so there only the head-script layer applies. They need their own
+live check and a platform-level fix.
+

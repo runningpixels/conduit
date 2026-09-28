@@ -818,7 +818,7 @@
   "settings.appearance.userThemes.toastCleared": "Le fichier de thème « {fileName} » n'a pas pu être chargé ; Apparence est revenu à un thème intégré.",
   "settings.artifactSecurity.actions.add": "Ajouter",
   "settings.artifactSecurity.allowlist.empty": "Aucune origine autorisée — les pages ne chargent aucune image, police ni style distant.",
-  "settings.artifactSecurity.allowlist.hint": "Origines de confiance depuis lesquelles les artefacts HTML rendus peuvent charger des images, polices et styles. Les scripts sont bloqués dans tous les cas ; les requêtes d'une page vers des sites web font l'objet d'une demande séparée. Vide = aucune image, police ni style distant.",
+  "settings.artifactSecurity.allowlist.hint": "Origines de confiance depuis lesquelles les artefacts HTML rendus peuvent charger des images, polices et styles. Les scripts sont bloqués dans tous les cas ; les requêtes d'une page vers des sites web font l'objet d'une demande séparée. Vide = aucune image, police ni style distant. Les modifications prennent effet après un redémarrage.",
   "settings.artifactSecurity.allowlist.inputPlaceholder": "https://fonts.example.com",
   "settings.artifactSecurity.allowlist.label": "Origines distantes autorisées",
   "settings.artifactSecurity.allowlist.validationHint": "Rust rejette les origines non valides lors de l'enregistrement.",

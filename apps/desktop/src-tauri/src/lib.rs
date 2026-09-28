@@ -39,4 +39,5 @@ pub mod updater;
 pub mod user_themes;
 pub mod validation;
 pub mod vision;
+pub mod webview_args;
 pub mod workspace_tools;

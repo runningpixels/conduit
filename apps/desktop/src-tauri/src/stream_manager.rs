@@ -1,3 +1,4 @@
+use crate::event_sink::EventSink;
 use crate::{
     agent_tools,
     db::repository::{connectors, conversations, event_log, messages, tool_calls, usage_summary},
@@ -17,7 +18,6 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -97,6 +97,12 @@ pub struct RoundOutcome {
     /// or steer soft-interrupt). Not a provider error — the agent loop decides
     /// whether to end the turn or inject a steering message.
     pub aborted: bool,
+    /// True when an event could not be delivered because the listener is gone
+    /// (the window closed, or a headless caller stopped listening). Nothing
+    /// more can be shown, so the loop must not start another round: it used to
+    /// treat this like a steer and keep going until `max_steps`, sending a
+    /// provider request every round.
+    pub listener_closed: bool,
     /// True when the round's `MessageComplete` reported that the response
     /// stopped at its output-token limit.
     pub hit_output_limit: bool,
@@ -928,8 +934,9 @@ impl StreamManager {
         &self,
         state: &AppState,
         request: ProviderRequest,
-        channel: Channel<ProviderEvent>,
+        channel: impl Into<EventSink<ProviderEvent>>,
     ) -> Result<StreamHandle, String> {
+        let channel: EventSink<ProviderEvent> = channel.into();
         let settings = state.settings()?;
         let provider_id = settings.active_provider.clone();
         let conversation_id = request.conversation_id.clone();
@@ -1145,7 +1152,7 @@ impl StreamManager {
         &self,
         state: &AppState,
         request: ProviderRequest,
-        channel: Channel<ProviderEvent>,
+        channel: EventSink<ProviderEvent>,
         cancel: CancellationToken,
         completion: CompletionDelivery,
         bind: ProviderRoundBind<'_>,
@@ -1241,6 +1248,7 @@ impl StreamManager {
         let mut tool_start_info: HashMap<String, (Option<String>, String)> = HashMap::new();
         let mut completed_tool_calls: Vec<CompletedToolCall> = Vec::new();
         let mut finished_normally = false;
+        let mut listener_closed = false;
         let mut error_message: Option<String> = None;
         let mut round_usage: Option<provider_core::schema::ProviderUsage> = None;
         let mut completion_event: Option<ProviderEvent> = None;
@@ -1394,6 +1402,7 @@ impl StreamManager {
             if withhold {
                 completion_event = Some(event.clone());
             } else if channel.send(event.clone()).is_err() {
+                listener_closed = true;
                 cancel.cancel();
                 let _ = messages::mark_interrupted_by_request(&pool, &persist_id).await;
                 break;
@@ -1449,6 +1458,7 @@ impl StreamManager {
             completion_event,
             round_text,
             aborted: cancel.is_cancelled(),
+            listener_closed,
             hit_output_limit,
             output_limit,
         }
@@ -1472,8 +1482,8 @@ impl StreamManager {
         calls: &[CompletedToolCall],
         request_id: &str,
         conversation_id: &str,
-        runtime_channel: Option<&Channel<ConnectorRuntimeEvent>>,
-        provider_channel: Option<&Channel<ProviderEvent>>,
+        runtime_channel: Option<&EventSink<ConnectorRuntimeEvent>>,
+        provider_channel: Option<&EventSink<ProviderEvent>>,
         successful_creates_so_far: &mut u32,
         web_search_so_far: &mut u32,
         web_fetch_so_far: &mut u32,
@@ -1848,7 +1858,7 @@ impl StreamManager {
         tool_call_id: &str,
         request_id: &str,
         arguments: &serde_json::Value,
-        provider_channel: Option<&Channel<ProviderEvent>>,
+        provider_channel: Option<&EventSink<ProviderEvent>>,
         cancel: &CancellationToken,
     ) -> Result<agent_tools::AgentToolExecution, String> {
         let title = arguments
@@ -2383,7 +2393,7 @@ impl StreamManager {
         turn_request_id: &str,
         current_request: &mut ProviderRequest,
         text: &str,
-        channel: &Channel<ProviderEvent>,
+        channel: &EventSink<ProviderEvent>,
         round: u32,
         total_rounds: u32,
     ) -> Result<(), String> {
@@ -2446,9 +2456,11 @@ impl StreamManager {
         state: &AppState,
         runtime: &crate::connector_runtime::ConnectorRuntimeManager,
         initial_request: ProviderRequest,
-        channel: Channel<ProviderEvent>,
-        runtime_channel: Channel<ConnectorRuntimeEvent>,
+        channel: impl Into<EventSink<ProviderEvent>>,
+        runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
     ) -> Result<StreamHandle, String> {
+        let channel: EventSink<ProviderEvent> = channel.into();
+        let runtime_channel: EventSink<ConnectorRuntimeEvent> = runtime_channel.into();
         let request_id = if initial_request.request_id.trim().is_empty() {
             uuid::Uuid::new_v4().to_string()
         } else {
@@ -2621,6 +2633,15 @@ impl StreamManager {
                 );
             }
 
+            if outcome.listener_closed {
+                info!(
+                    request_id = %request_id,
+                    step,
+                    "the turn's listener is gone; no further rounds will start"
+                );
+                break;
+            }
+
             if let Some(text) = steered_during_round.take() {
                 if let Err(e) = Self::apply_steer_message(
                     state,
@@ -2644,8 +2665,9 @@ impl StreamManager {
             }
 
             if outcome.aborted {
-                // Soft abort without a steer message (e.g. channel closed) —
-                // treat like cancel if the parent fired; otherwise continue.
+                // Soft abort without a steer message. A closed listener is
+                // handled above; treat this like cancel if the parent fired,
+                // otherwise continue.
                 if cancel.is_cancelled() {
                     break;
                 }

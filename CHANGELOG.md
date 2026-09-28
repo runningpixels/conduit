@@ -23,6 +23,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Dropping a file on the message box attaches it on Windows.** Dropping
   anywhere else on the window still adds it to Documents. Conduit reads
   only files that were actually dropped on the window.
+- **Retry retries.** The Retry button under a reply used to only delete it.
+  It now asks again with the same question, attachments and referenced
+  documents, and replaces the reply. It appears on the last reply only.
 - **Japanese, Korean and Chinese input:** the Enter that confirms a
   conversion no longer sends the message.
 

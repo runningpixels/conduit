@@ -280,12 +280,14 @@ user's own data is left untouched.
 
 ## Follow-ups (not in this card)
 
-- **The assistant's "Retry" only deletes the response.** Found during the
-  live test: `onRetry` calls `handleRemoveLastAssistantTurn`, which has done
-  this since the initial commit, although the button says "Retry this
-  response". Retrying should re-run the turn, keeping its attachments and
-  references, the way edit-and-resend does.
-
+- ~~**The assistant's "Retry" only deletes the response.**~~ **Fixed on this
+  branch.** Retry now re-sends the last question as edit-and-resend with
+  nothing edited, keeping its text, attachments and `#` references, and
+  replaces the reply in place. The button for reloaded replies was also
+  shown on *every* reply and deleted the last one whichever was clicked.
+  Retry is now offered on the last reply only, with its own icon, not the
+  pencil. Verified live: one new request with the same question and the same
+  referenced document, and one reply before and after a reload.
 - MCP resources are dropped on retry/edit/fork (t0-9; see D9).
 - `import_knowledge_document` accepts any renderer-supplied path; give it the
   D13 drop/picker grant.

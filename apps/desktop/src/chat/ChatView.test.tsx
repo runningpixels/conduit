@@ -112,6 +112,7 @@ vi.mock('../ipc/client', () => ({
   }),
   saveDroppedAttachment: vi.fn(),
   prepareMessageEdit: vi.fn(),
+  removeLastTurn: vi.fn().mockResolvedValue(1),
 }));
 
 import {
@@ -846,6 +847,89 @@ describe('ChatView M3: edit-and-resend keeps knowledge references (D9)', () => {
     const kref = resentUser.parts.find((p) => p.kind === ('knowledgeReference' as unknown as MessagePart['kind']));
     expect(kref).toMatchObject({
       metadata: { documentId: 'doc-1', title: 'greenhouse.md', collectionId: 'c1', collectionName: 'Research' },
+    });
+  });
+});
+
+describe('ChatView: Retry re-sends the last question', () => {
+  function messages(): Message[] {
+    return [
+      {
+        id: 'u1',
+        conversationId: 'conv-1',
+        role: 'user',
+        parts: [
+          { id: 'u1-part-0', messageId: 'u1', index: 0, kind: 'text', content: 'what does it say?', createdAt: '2026-01-01T00:00:00Z' },
+          {
+            id: 'u1-kref-doc-1',
+            messageId: 'u1',
+            index: 1,
+            kind: 'knowledgeReference',
+            metadata: { documentId: 'doc-1', title: 'greenhouse.md', collectionId: 'c1', collectionName: 'Research' },
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'a1',
+        conversationId: 'conv-1',
+        role: 'assistant',
+        parts: [{ id: 'a1-part-0', messageId: 'a1', index: 0, kind: 'text', content: 'The first answer.', createdAt: '2026-01-01T00:00:01Z' }],
+        createdAt: '2026-01-01T00:00:01Z',
+      },
+    ];
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationCompaction).mockResolvedValue(null);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+  });
+
+  it('offers Retry on the last reply only', async () => {
+    const two: Message[] = [
+      ...messages(),
+      {
+        id: 'u2', conversationId: 'conv-1', role: 'user', createdAt: '2026-01-01T00:00:02Z',
+        parts: [{ id: 'u2-part-0', messageId: 'u2', index: 0, kind: 'text', content: 'and then?', createdAt: '2026-01-01T00:00:02Z' }],
+      },
+      {
+        id: 'a2', conversationId: 'conv-1', role: 'assistant', createdAt: '2026-01-01T00:00:03Z',
+        parts: [{ id: 'a2-part-0', messageId: 'a2', index: 0, kind: 'text', content: 'The second answer.', createdAt: '2026-01-01T00:00:03Z' }],
+      },
+    ];
+    vi.mocked(getConversationMessages).mockResolvedValueOnce(two);
+    renderChatView();
+    await screen.findByText('The second answer.');
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+  });
+
+  it('replaces the reply by re-sending the question with its references, not by only deleting it', async () => {
+    const { prepareMessageEdit, removeLastTurn } = await import('../ipc/client');
+    vi.mocked(prepareMessageEdit).mockResolvedValue({
+      mode: 'in_place',
+      conversation: { id: 'conv-1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    });
+    vi.mocked(getConversationMessages).mockResolvedValueOnce(messages()).mockResolvedValueOnce([]);
+    let captured: Parameters<typeof startChatStream>[0] | undefined;
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      captured = request;
+      onEvent({ kind: 'messageComplete', requestId: request.requestId, index: 0, finishReason: 'stop' });
+      return { requestId: request.requestId };
+    });
+
+    renderChatView();
+    await screen.findByText('The first answer.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(startChatStream).toHaveBeenCalled());
+    expect(prepareMessageEdit).toHaveBeenCalledWith('conv-1', 'u1');
+    expect(removeLastTurn).not.toHaveBeenCalled();
+    const resent = captured!.messages.filter((m) => m.role === 'user').at(-1)!;
+    expect(resent.parts.find((p) => p.kind === 'text')?.content).toBe('what does it say?');
+    expect(resent.parts.find((p) => p.kind === 'knowledgeReference')).toMatchObject({
+      metadata: { documentId: 'doc-1' },
     });
   });
 });

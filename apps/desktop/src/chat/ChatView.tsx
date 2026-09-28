@@ -66,7 +66,7 @@ import type {
 import { ConfirmDialog } from '@conduit/ui';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
-import { BotGlyph, CopyIcon, ForkIcon, PencilIcon } from '../icons';
+import { BotGlyph, CopyIcon, ForkIcon, PencilIcon, RetryIcon } from '../icons';
 import { TurnModelLine, shouldShowModelLine } from './TurnModelLine';
 import { InterruptedBanner } from './InterruptedBanner';
 import { providerHueId } from '../lib/providerIdentity';
@@ -2590,6 +2590,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   )?.maxTokens;
 
   /** Send the last prompt again with Max tokens cleared for this one request. */
+  /** Retry the last response: re-send the last question as it was sent —
+   *  same text, attachments and `#` references — replacing the reply. This
+   *  is edit-and-resend with nothing edited, so the tip is truncated in
+   *  place rather than forked. (Retry used to only delete the reply.) */
+  async function retryLastPrompt() {
+    const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
+    if (!lastUser) return;
+    await commitMessageEdit(lastUser.id, lastUser.content);
+  }
+
   async function retryLastPromptWithoutLimit() {
     const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
     if (!lastUser) return;
@@ -2917,7 +2927,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   onOpenArtifact={onOpenArtifact}
                   onStatus={onStatus}
                   isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
-                  onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onRetry={() => void retryLastPrompt()}
                   onRetryWithoutLimit={effectiveMaxTokens ? () => void retryLastPromptWithoutLimit() : undefined}
                   onContinueBuilding={() =>
                     void handleSend({
@@ -2960,7 +2970,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 />
                 <InterruptedBanner
                   visible={Boolean(turn.interrupted)}
-                  onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onRetry={() => void retryLastPrompt()}
                 />
                 <AssistantArtifactStrip
                   messageId={turn.id}
@@ -2983,14 +2993,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     <CopyIcon />
                     {t('common.actions.copy')}
                   </button>
-                  <button
-                    type="button"
-                    className="act"
-                    onClick={() => void handleRemoveLastAssistantTurn()}
-                  >
-                    <PencilIcon />
-                    {t('common.actions.retry')}
-                  </button>
+                  {/* Retry re-runs the *last* question, so it is offered on
+                      the last reply only (it used to show on every reply
+                      and delete the last one whichever was clicked). */}
+                  {turn.id === visibleTurns[visibleTurns.length - 1]?.id && !activeRequestId && (
+                    <button
+                      type="button"
+                      className="act"
+                      title={t('chat.assistant.actions.retryTitle')}
+                      onClick={() => void retryLastPrompt()}
+                    >
+                      <RetryIcon />
+                      {t('common.actions.retry')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="act"

@@ -6,8 +6,14 @@
 // All modules live in the `conduit_desktop` library crate so Phase 3
 // integration tests (`tests/`) can reach the migration runner and repositories.
 use conduit_desktop::{
-    brand, commands::*, connector_runtime::ConnectorRuntimeManager, state::AppState,
-    stream_manager::StreamManager, updater::*, webview_args,
+    artifact_frames::{self, ArtifactFrames},
+    brand,
+    commands::*,
+    connector_runtime::ConnectorRuntimeManager,
+    state::AppState,
+    stream_manager::StreamManager,
+    updater::*,
+    webview_args,
 };
 use tauri::{Manager, RunEvent};
 
@@ -44,6 +50,12 @@ fn main() {
         .manage(state)
         .manage(StreamManager::new())
         .manage(ConnectorRuntimeManager::new())
+        // HTML artifacts load from their own origin so they don't inherit the
+        // app CSP (which blocks every inline script); see `artifact_frames`.
+        .manage(ArtifactFrames::default())
+        .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
+            ctx.app_handle().state::<ArtifactFrames>().respond(&request)
+        })
         .manage(StagedUpdate::new())
         .invoke_handler(tauri::generate_handler![
             get_app_paths,
@@ -222,6 +234,8 @@ fn main() {
             request_local_data_wipe,
             cancel_local_data_wipe,
             restart_app,
+            put_artifact_frame,
+            drop_artifact_frame,
         ])
         .setup(|app| {
             // The main window is built here, not from tauri.conf.json, so its

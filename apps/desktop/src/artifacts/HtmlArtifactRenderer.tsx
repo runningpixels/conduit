@@ -15,8 +15,10 @@
 ///    `navigate-to 'none'`, `frame-ancestors 'none'`. Additional CSP metas in
 ///    model content can only further RESTRICT, never relax (CSP is monotonic).
 /// 3. No Tauri bridge is injected → no `__TAURI__` / filesystem / shell / IPC.
-/// 4. `srcdoc` delivery (in-memory, null origin). A dedicated origin is the
-///    future defense-in-depth upgrade.
+/// 4. Served from the `conduit-artifact` scheme, not `srcdoc`, so the frame
+///    doesn't inherit the app's CSP (which blocks every inline script in
+///    release builds). Still sandboxed, so the origin stays opaque. Outside
+///    Tauri it falls back to `srcdoc`; see `artifactFrameSource.ts`.
 /// 5. `referrerpolicy="no-referrer"`.
 /// 6. A trusted inline click interceptor posts http(s) link clicks to the
 ///    parent via `postMessage` so the app can confirm and open them in the
@@ -33,6 +35,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildArtifactCsp, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import { ARTIFACT_WEBRTC_BLOCK_SCRIPT } from './webrtcBlock';
+import { useArtifactFrameSource } from './artifactFrameSource';
 import {
   buildShortcutForwarderScript,
   parseArtifactShortcutMessage,
@@ -247,6 +250,7 @@ export function HtmlArtifactRenderer({
       ),
     [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork],
   );
+  const frameSource = useArtifactFrameSource(srcdoc);
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const onExternalLinkRef = useRef(onExternalLink);
@@ -306,18 +310,23 @@ export function HtmlArtifactRenderer({
       {!loaded && (
         <div className="artifact-skeleton" style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
       )}
-      <iframe
-        ref={iframeRef}
-        className="artifact-html-frame"
-        title={t('artifacts.html.previewTitle')}
-        // `allow-scripts` only. NEVER add allow-same-origin / allow-top-navigation /
-        // allow-popups / allow-forms / allow-modals — those would break containment.
-        sandbox="allow-scripts"
-        referrerPolicy="no-referrer"
-        srcDoc={srcdoc}
-        onLoad={handleLoad}
-        style={{ position: 'relative', zIndex: 2 }}
-      />
+      {/* Mounted once there is a document: an empty frame would load
+          about:blank and fire onLoad, hiding the skeleton too early. */}
+      {(frameSource.src || frameSource.srcDoc != null) && (
+        <iframe
+          ref={iframeRef}
+          className="artifact-html-frame"
+          title={t('artifacts.html.previewTitle')}
+          // `allow-scripts` only. NEVER add allow-same-origin / allow-top-navigation /
+          // allow-popups / allow-forms / allow-modals — those would break containment.
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
+          src={frameSource.src}
+          srcDoc={frameSource.srcDoc}
+          onLoad={handleLoad}
+          style={{ position: 'relative', zIndex: 2 }}
+        />
+      )}
       {runtimeError && (
         <div className="artifact-runtime-error" role="status">
           <span className="artifact-runtime-error-text" title={runtimeError.message}>

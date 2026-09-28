@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Leave a document out of a chat.** In the composer's Documents menu, an
+  attached collection expands to list its documents; untick one and that
+  chat stops searching it, without deleting it. Documents added to the
+  collection later are included automatically.
+- **Point at a document with `#`.** Type `#` in the message box to pick any
+  document by name, shown with its collection. That message searches only
+  the documents you picked, even from collections the chat hasn't attached,
+  and the sent message keeps showing what it referenced.
+
+### Fixed
+
+- **Dropping a file on the message box attaches it on Windows.** Dropping
+  anywhere else on the window still adds it to Documents. Conduit reads
+  only files that were actually dropped on the window.
+- **Japanese, Korean and Chinese input:** the Enter that confirms a
+  conversion no longer sends the message.
+
 ## [0.1.0-rc.8] - 2026-09-27
 
 ### Added

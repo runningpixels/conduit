@@ -1281,6 +1281,11 @@ export async function resetLocalDatabase(): Promise<{ backupPath: string }> {
   return invokeCommand<{ backupPath: string }>('reset_local_database');
 }
 
+/** Everything wrong with a definition, in plain English; empty when it can be saved. */
+export async function validateWorkflow(definition: WorkflowDefinition): Promise<string[]> {
+  return invokeCommand<string[]>('validate_workflow', { definition });
+}
+
 export async function listWorkflows(): Promise<WorkflowSummary[]> {
   return invokeCommand<WorkflowSummary[]>('list_workflows');
 }

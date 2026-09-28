@@ -13,8 +13,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   search the web, have the model summarize, and save the result as a
   document. Start from a ready-made one (a morning briefing, a page
   summary, a topic watch), change what it fetches each time you run it,
-  and open any run to see what each step did. Only the summarize step
-  uses the model, and it can't use tools. Runs are started by hand for now.
+  and open any run to see what each step did. Build your own in the step
+  editor: add steps, reorder them, and pick what each step reads from a
+  menu of earlier results, with problems shown before you save. Only the
+  summarize step uses the model, and it can't use tools. Runs are started
+  by hand for now.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the

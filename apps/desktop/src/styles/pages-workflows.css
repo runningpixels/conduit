@@ -91,3 +91,37 @@
 }
 .wf-starter-name { margin: 0; color: var(--ink); font-size: var(--fs-2xl); font-weight: 600; }
 .wf-starter .btn { justify-self: start; }
+
+/* ── Editor ──────────────────────────────────────────────────────────────── */
+.wf-editor { display: grid; gap: var(--sp-5); }
+.wf-editor .grp { margin-bottom: 0; display: grid; gap: var(--sp-3); }
+.wf-input-row { display: flex; gap: var(--sp-2); align-items: flex-end; }
+.wf-input-row > .wf-field,
+.wf-input-row > .wf-text-field,
+.wf-input-row > input { flex: 1; min-width: 0; }
+.wf-narrow { max-width: 8rem; }
+.wf-add { justify-self: start; }
+
+.wf-cards { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-3); }
+.wf-card {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-side);
+}
+.wf-card-head { display: flex; align-items: center; gap: var(--sp-2); }
+.wf-card-title { color: var(--ink); font-size: var(--fs-2xl); font-weight: 600; }
+.wf-card-id { color: var(--ink-3); font-family: var(--font-mono); font-size: var(--fs-lg); }
+.wf-card-actions { margin-left: auto; display: flex; gap: var(--sp-1); }
+.wf-card-body { display: grid; gap: var(--sp-3); }
+.wf-nested { padding-left: var(--sp-3); border-left: 2px solid var(--line-soft); display: grid; gap: var(--sp-3); }
+.wf-check { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-3); font-size: var(--fs-xl); }
+
+.wf-text-field { display: grid; gap: var(--sp-1); }
+.wf-insert { justify-self: start; }
+
+.wf-problems { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
+.wf-problems ul { margin: 0; padding-left: 1.2em; color: var(--warn); font-size: var(--fs-xl); }
+.wf-json-toggle { margin-left: auto; }

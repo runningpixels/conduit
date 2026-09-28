@@ -21,6 +21,7 @@ import {
   listWorkflows,
   runWorkflow,
   updateWorkflow,
+  validateWorkflow,
 } from '../ipc/client';
 import type {
   WorkflowDefinition,
@@ -33,7 +34,9 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
+import { newStep } from '../workflows/editorModel';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
+import { WorkflowEditor, type WorkflowDraft } from '../workflows/WorkflowEditor';
 
 /** Written out, not built from the status, so the stylesheet's dead-rule check sees them. */
 const STATUS_CLASS: Record<string, string> = {
@@ -42,7 +45,12 @@ const STATUS_CLASS: Record<string, string> = {
   running: 'wf-status wf-status-running',
 };
 
-type Mode = { kind: 'view' } | { kind: 'new' } | { kind: 'edit'; name: string; description: string; json: string };
+/// `draft` is the editor, for a new workflow (`workflowId: null`) or an
+/// existing one. `json` is set while the JSON view is open.
+type Mode =
+  | { kind: 'view' }
+  | { kind: 'new' }
+  | { kind: 'draft'; workflowId: string | null; draft: WorkflowDraft; json: string | null };
 
 function errorText(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
@@ -69,6 +77,40 @@ export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => voi
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [problems, setProblems] = useState<string[]>([]);
+
+  // Check the draft as it changes, so problems show before saving.
+  const draftDefinition = mode.kind === 'draft' ? mode.draft.definition : null;
+  const draftJson = mode.kind === 'draft' ? mode.json : null;
+  useEffect(() => {
+    if (!draftDefinition) {
+      setProblems([]);
+      return;
+    }
+    let definition = draftDefinition;
+    if (draftJson != null) {
+      try {
+        definition = JSON.parse(draftJson) as WorkflowDefinition;
+      } catch (e) {
+        setProblems([t('workspace.workflows.edit.invalidJson', { error: errorText(e) })]);
+        return;
+      }
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void validateWorkflow(definition).then(
+        (next) => {
+          if (!cancelled) setProblems(next);
+        },
+        () => {},
+      );
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftDefinition, draftJson]);
 
   const refreshList = useCallback(async () => {
     try {
@@ -160,28 +202,69 @@ export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => voi
     }
   }
 
-  async function saveEdit() {
-    if (mode.kind !== 'edit' || !record) return;
-    let definition: WorkflowDefinition;
+  /// The definition being edited, from whichever view is open.
+  function currentDefinition(m: Extract<Mode, { kind: 'draft' }>): WorkflowDefinition | null {
+    if (m.json == null) return m.draft.definition;
     try {
-      definition = JSON.parse(mode.json) as WorkflowDefinition;
+      return JSON.parse(m.json) as WorkflowDefinition;
     } catch (e) {
       setEditError(t('workspace.workflows.edit.invalidJson', { error: errorText(e) }));
-      return;
+      return null;
     }
+  }
+
+  async function saveDraft() {
+    if (mode.kind !== 'draft') return;
+    const definition = currentDefinition(mode);
+    if (!definition) return;
+    const { name, description } = mode.draft;
     setBusy(true);
     try {
-      const saved = await updateWorkflow(record.id, mode.name, mode.description.trim() || null, definition);
-      setRecord(saved);
+      const saved = mode.workflowId
+        ? await updateWorkflow(mode.workflowId, name, description.trim() || null, definition)
+        : await createWorkflow(name, description.trim() || null, definition);
       setMode({ kind: 'view' });
       setEditError(null);
-      onStatus(t('workspace.workflows.status.saved', { name: saved.name }));
+      onStatus(
+        t(mode.workflowId ? 'workspace.workflows.status.saved' : 'workspace.workflows.status.created', {
+          name: saved.name,
+        }),
+      );
       await refreshList();
+      if (mode.workflowId) setRecord(saved);
+      else setSelectedId(saved.id);
     } catch (e) {
       setEditError(errorText(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  /// Switch between the visual editor and the JSON view, keeping the draft.
+  function toggleJson() {
+    if (mode.kind !== 'draft') return;
+    if (mode.json == null) {
+      setMode({ ...mode, json: JSON.stringify(mode.draft.definition, null, 2) });
+      return;
+    }
+    const definition = currentDefinition(mode);
+    if (!definition) return;
+    setEditError(null);
+    setMode({ ...mode, draft: { ...mode.draft, definition }, json: null });
+  }
+
+  function startBlank() {
+    setEditError(null);
+    setMode({
+      kind: 'draft',
+      workflowId: null,
+      draft: {
+        name: t('workspace.workflows.editor.newName'),
+        description: '',
+        definition: { inputs: [], steps: [newStep('fetch_page', new Set())] },
+      },
+      json: null,
+    });
   }
 
   async function remove() {
@@ -209,7 +292,7 @@ export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => voi
   const list = summaries.map((w) => (
     <PageListItem
       key={w.id}
-      selected={mode.kind !== 'new' && w.id === selectedId}
+      selected={mode.kind === 'view' && w.id === selectedId}
       onSelect={() => {
         setMode({ kind: 'view' });
         setSelectedId(w.id);
@@ -232,53 +315,55 @@ export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => voi
   let detail;
   if (!loaded) {
     detail = <div className="artifact-skeleton" aria-hidden="true" />;
-  } else if (mode.kind === 'new' || summaries.length === 0) {
+  } else if (mode.kind === 'new' || (summaries.length === 0 && mode.kind !== 'draft')) {
     detail = (
       <StarterPicker
         empty={summaries.length === 0}
         busy={busy}
         onPick={(starter) => void startFrom(starter)}
+        onBlank={startBlank}
         onCancel={summaries.length > 0 ? () => setMode({ kind: 'view' }) : undefined}
       />
     );
-  } else if (!record) {
-    detail = <div className="artifact-skeleton" aria-hidden="true" />;
-  } else if (mode.kind === 'edit') {
+  } else if (mode.kind === 'draft') {
     detail = (
       <section className="wf-edit" aria-label={t('workspace.workflows.edit.title')}>
-        <label className="wf-field">
-          <span>{t('workspace.workflows.edit.name')}</span>
-          <input
-            className="mem-input"
-            value={mode.name}
-            onChange={(e) => setMode({ ...mode, name: e.target.value })}
-          />
-        </label>
-        <label className="wf-field">
-          <span>{t('workspace.workflows.edit.description')}</span>
-          <input
-            className="mem-input"
-            value={mode.description}
-            onChange={(e) => setMode({ ...mode, description: e.target.value })}
-          />
-        </label>
-        <label className="wf-field">
-          <span>{t('workspace.workflows.edit.definition')}</span>
-          <textarea
-            className="mem-input wf-json"
-            spellCheck={false}
-            rows={18}
-            value={mode.json}
-            onChange={(e) => setMode({ ...mode, json: e.target.value })}
-          />
-        </label>
+        {mode.json == null ? (
+          <WorkflowEditor draft={mode.draft} onChange={(draft) => setMode({ ...mode, draft })} />
+        ) : (
+          <label className="wf-field">
+            <span>{t('workspace.workflows.edit.definition')}</span>
+            <textarea
+              className="mem-input wf-json"
+              spellCheck={false}
+              rows={18}
+              value={mode.json}
+              onChange={(e) => setMode({ ...mode, json: e.target.value })}
+            />
+          </label>
+        )}
+        {problems.length > 0 ? (
+          <div className="wf-problems" role="status">
+            <p className="wf-io-label">{t('workspace.workflows.editor.problems')}</p>
+            <ul>
+              {problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {editError ? (
           <p className="wf-error" role="alert">
             {editError}
           </p>
         ) : null}
         <div className="mem-actions">
-          <button type="button" className="btn primary" onClick={() => void saveEdit()} disabled={busy}>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => void saveDraft()}
+            disabled={busy || problems.length > 0 || !mode.draft.name.trim()}
+          >
             {t('workspace.workflows.edit.save')}
           </button>
           <button
@@ -291,9 +376,14 @@ export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => voi
           >
             {t('common.actions.cancel')}
           </button>
+          <button type="button" className="btn ghost wf-json-toggle" onClick={toggleJson}>
+            {mode.json == null ? t('workspace.workflows.editor.showJson') : t('workspace.workflows.editor.showVisual')}
+          </button>
         </div>
       </section>
     );
+  } else if (!record) {
+    detail = <div className="artifact-skeleton" aria-hidden="true" />;
   } else {
     const workflowInputs = record.definition.inputs ?? [];
     detail = (
@@ -311,10 +401,10 @@ export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => voi
               onClick={() => {
                 setEditError(null);
                 setMode({
-                  kind: 'edit',
-                  name: record.name,
-                  description: record.description ?? '',
-                  json: JSON.stringify(record.definition, null, 2),
+                  kind: 'draft',
+                  workflowId: record.id,
+                  draft: { name: record.name, description: record.description ?? '', definition: record.definition },
+                  json: null,
                 });
               }}
             >
@@ -405,11 +495,13 @@ function StarterPicker({
   empty,
   busy,
   onPick,
+  onBlank,
   onCancel,
 }: {
   empty: boolean;
   busy: boolean;
   onPick: (starter: StarterWorkflow) => void;
+  onBlank: () => void;
   onCancel?: () => void;
 }) {
   const t = useT();
@@ -424,6 +516,13 @@ function StarterPicker({
           </button>
         </li>
       ))}
+      <li className="wf-starter">
+        <p className="wf-starter-name">{t('workspace.workflows.starter.blank.name')}</p>
+        <p className="wf-muted">{t('workspace.workflows.starter.blank.blurb')}</p>
+        <button type="button" className="btn ghost" disabled={busy} onClick={onBlank}>
+          {t('workspace.workflows.starter.blank.use')}
+        </button>
+      </li>
     </ul>
   );
   if (empty) {

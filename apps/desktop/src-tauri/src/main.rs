@@ -237,6 +237,7 @@ fn main() {
             put_artifact_frame,
             drop_artifact_frame,
             // Workflows v1: saved routines, run by hand.
+            validate_workflow,
             list_workflows,
             get_workflow,
             create_workflow,

@@ -69,10 +69,13 @@ describe('MemoryPage', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Memory kind' }), { target: { value: 'note' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save fact' }));
     await waitFor(() => expect(ipc.createMemoryItem).toHaveBeenCalledWith('I prefer terse commit messages', 'note'));
-    // Save → reload → render is three async hops; a loaded CI runner needs
-    // more than findBy's default second.
-    expect(await screen.findByText('I prefer terse commit messages', {}, { timeout: 5000 })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Notes' })).toBeInTheDocument();
+    // Look for the saved fact in the Notes list, not anywhere on the page:
+    // until the save lands, the same text is still in the composer's textarea
+    // (which getByText matches), and the composer closing detaches it. Save →
+    // reload → render is three async hops; a loaded CI runner needs more than
+    // findBy's default second.
+    const notes = await screen.findByRole('region', { name: 'Notes' }, { timeout: 5000 });
+    expect(within(notes).getByText('I prefer terse commit messages')).toBeInTheDocument();
     expect(onStatus).toHaveBeenCalledWith('Saved memory');
     expect(screen.queryByRole('textbox', { name: 'New memory' })).not.toBeInTheDocument();
   });

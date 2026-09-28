@@ -236,6 +236,15 @@ fn main() {
             restart_app,
             put_artifact_frame,
             drop_artifact_frame,
+            // Workflows v1: saved routines, run by hand.
+            list_workflows,
+            get_workflow,
+            create_workflow,
+            update_workflow,
+            delete_workflow,
+            run_workflow,
+            list_workflow_runs,
+            get_workflow_run,
         ])
         .setup(|app| {
             // The main window is built here, not from tauri.conf.json, so its

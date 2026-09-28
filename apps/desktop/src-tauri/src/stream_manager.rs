@@ -97,6 +97,12 @@ pub struct RoundOutcome {
     /// or steer soft-interrupt). Not a provider error — the agent loop decides
     /// whether to end the turn or inject a steering message.
     pub aborted: bool,
+    /// True when an event could not be delivered because the listener is gone
+    /// (the window closed, or a headless caller stopped listening). Nothing
+    /// more can be shown, so the loop must not start another round: it used to
+    /// treat this like a steer and keep going until `max_steps`, sending a
+    /// provider request every round.
+    pub listener_closed: bool,
     /// True when the round's `MessageComplete` reported that the response
     /// stopped at its output-token limit.
     pub hit_output_limit: bool,
@@ -1242,6 +1248,7 @@ impl StreamManager {
         let mut tool_start_info: HashMap<String, (Option<String>, String)> = HashMap::new();
         let mut completed_tool_calls: Vec<CompletedToolCall> = Vec::new();
         let mut finished_normally = false;
+        let mut listener_closed = false;
         let mut error_message: Option<String> = None;
         let mut round_usage: Option<provider_core::schema::ProviderUsage> = None;
         let mut completion_event: Option<ProviderEvent> = None;
@@ -1395,6 +1402,7 @@ impl StreamManager {
             if withhold {
                 completion_event = Some(event.clone());
             } else if channel.send(event.clone()).is_err() {
+                listener_closed = true;
                 cancel.cancel();
                 let _ = messages::mark_interrupted_by_request(&pool, &persist_id).await;
                 break;
@@ -1450,6 +1458,7 @@ impl StreamManager {
             completion_event,
             round_text,
             aborted: cancel.is_cancelled(),
+            listener_closed,
             hit_output_limit,
             output_limit,
         }
@@ -2624,6 +2633,15 @@ impl StreamManager {
                 );
             }
 
+            if outcome.listener_closed {
+                info!(
+                    request_id = %request_id,
+                    step,
+                    "the turn's listener is gone; no further rounds will start"
+                );
+                break;
+            }
+
             if let Some(text) = steered_during_round.take() {
                 if let Err(e) = Self::apply_steer_message(
                     state,
@@ -2647,8 +2665,9 @@ impl StreamManager {
             }
 
             if outcome.aborted {
-                // Soft abort without a steer message (e.g. channel closed) —
-                // treat like cancel if the parent fired; otherwise continue.
+                // Soft abort without a steer message. A closed listener is
+                // handled above; treat this like cancel if the parent fired,
+                // otherwise continue.
                 if cancel.is_cancelled() {
                     break;
                 }

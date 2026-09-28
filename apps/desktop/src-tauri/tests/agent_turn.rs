@@ -1542,4 +1542,7 @@ async fn a_closed_headless_sink_behaves_like_a_closed_window() {
     let (_, webview) = run(Sink::ClosedWebview).await;
     let (_, headless) = run(Sink::Closed).await;
     assert_eq!(headless.rounds_started, webview.rounds_started);
+    // Once nobody is listening, no further round (and no further provider
+    // request) starts. It used to run until `max_steps`: 25 requests here.
+    assert_eq!(webview.rounds_started, 1);
 }

@@ -27,8 +27,9 @@ function dropFrame(token: string) {
   void invokeCommand('drop_artifact_frame', { token }).catch(() => {});
 }
 
+/// An empty document has nothing to serve and comes back as an empty `srcDoc`.
 export function useArtifactFrameSource(doc: string): ArtifactFrameSource {
-  const served = isTauri();
+  const served = isTauri() && doc !== '';
   const [state, setState] = useState<{ src?: string; failed: boolean }>({ failed: false });
 
   useEffect(() => {

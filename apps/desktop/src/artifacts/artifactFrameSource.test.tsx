@@ -61,6 +61,12 @@ describe('useArtifactFrameSource', () => {
     expect(ipc.invokeCommand).not.toHaveBeenCalled();
   });
 
+  it('does not serve an empty document', () => {
+    const { result } = renderHook(() => useArtifactFrameSource(''));
+    expect(result.current).toEqual({ srcDoc: '' });
+    expect(ipc.invokeCommand).not.toHaveBeenCalled();
+  });
+
   it('falls back to srcdoc when the document cannot be served', async () => {
     ipc.invokeCommand.mockRejectedValueOnce(new Error('too large'));
     const { result } = renderHook(() => useArtifactFrameSource('<p>x</p>'));

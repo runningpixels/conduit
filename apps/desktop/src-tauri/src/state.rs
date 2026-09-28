@@ -1,6 +1,7 @@
 use crate::{
     credentials,
     db::{self, backfill, migrations::MigrationRecovery, reconcile, recover, DbPool},
+    drop_grant::DropGrants,
     encryption::{self, Encryption, EncryptionTier},
     paths::{resolve, AppPaths},
 };
@@ -42,6 +43,11 @@ pub struct AppState {
     /// reload re-read the same `Some(..)`, and the dialog came straight back
     /// with no way through to the app.
     migration_recovery: Arc<Mutex<Option<MigrationRecovery>>>,
+    /// t1-8 P2 M1 (D13): paths seen in a native window drop recently enough
+    /// (and not yet claimed) for `save_dropped_attachment` to read them. See
+    /// `drop_grant` for why this exists instead of trusting any path the
+    /// renderer names.
+    drop_grants: Arc<Mutex<DropGrants>>,
 }
 
 impl AppState {
@@ -65,6 +71,24 @@ impl AppState {
         if let Ok(mut guard) = self.migration_recovery.lock() {
             *guard = None;
         }
+    }
+
+    /// Record the paths of one native window `Drop` event (D13). Called from
+    /// `main.rs`'s `on_window_event`.
+    pub fn record_dropped_paths(&self, paths: Vec<std::path::PathBuf>, now: std::time::Instant) {
+        if let Ok(mut guard) = self.drop_grants.lock() {
+            guard.record(paths, now);
+        }
+    }
+
+    /// Claim `path` if a native drop recorded it recently enough and it has
+    /// not already been claimed (D13). Used by `save_dropped_attachment`
+    /// before it reads anything from disk.
+    pub fn claim_dropped_path(&self, path: &std::path::Path, now: std::time::Instant) -> bool {
+        self.drop_grants
+            .lock()
+            .map(|mut guard| guard.claim(path, now))
+            .unwrap_or(false)
     }
 
     /// Initialize paths, settings, HTTP client, and the SQLite pool (running
@@ -201,6 +225,7 @@ impl AppState {
             db,
             encryption: Arc::new(encryption),
             migration_recovery: Arc::new(Mutex::new(migration_recovery)),
+            drop_grants: Arc::new(Mutex::new(DropGrants::new())),
         })
     }
 
@@ -224,6 +249,7 @@ impl AppState {
             db,
             encryption: Arc::new(Encryption::off()),
             migration_recovery: Arc::new(Mutex::new(None)),
+            drop_grants: Arc::new(Mutex::new(DropGrants::new())),
         }
     }
 

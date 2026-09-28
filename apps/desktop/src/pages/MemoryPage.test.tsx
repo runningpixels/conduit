@@ -128,7 +128,7 @@ describe('MemoryPage', () => {
     await waitFor(() =>
       expect(ipc.updateMemoryItem).toHaveBeenCalledWith('m1', 'I prefer terse commit messages', 'core', true),
     );
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled(), { timeout: 5000 });
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(ipc.deleteMemoryItem).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));

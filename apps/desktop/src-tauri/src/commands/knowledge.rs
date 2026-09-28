@@ -224,6 +224,11 @@ pub struct KnowledgePassage {
 pub struct KnowledgeCitation {
     pub document_id: String,
     pub document_title: String,
+    /// D14: which collection the cited document lives in, so a citation under
+    /// a reply can say which `notes.md` it means when more than one
+    /// collection has one.
+    pub collection_id: String,
+    pub collection_name: String,
     pub chunk_id: String,
     pub ordinal: i64,
     pub char_start: i64,
@@ -668,6 +673,36 @@ pub async fn set_conversation_collections(
 }
 
 // ---------------------------------------------------------------------------
+// Per-conversation document exclusions (t1-8 P2 M2, D1-D5)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn list_conversation_excluded_documents(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Vec<String>, AppError> {
+    repo::list_excluded_documents(&state.db, &conversation_id)
+        .await
+        .map_err(db_err)
+}
+
+#[tauri::command]
+pub async fn set_conversation_document_excluded(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    document_id: String,
+    excluded: bool,
+) -> Result<Vec<String>, AppError> {
+    // D2: a toggle, not a full-set replace (two quick clicks racing under an
+    // optimistic UI must not let the second write clobber the first).
+    // Returns the canonical excluded set afterward, same reconciliation shape
+    // as `set_conversation_collections`.
+    repo::set_document_excluded(&state.db, &conversation_id, &document_id, excluded)
+        .await
+        .map_err(db_err)
+}
+
+// ---------------------------------------------------------------------------
 // Retrieval
 // ---------------------------------------------------------------------------
 
@@ -676,77 +711,159 @@ pub async fn retrieve_knowledge_context(
     state: State<'_, AppState>,
     conversation_id: String,
     query: String,
+    document_ids: Option<Vec<String>>,
 ) -> Result<KnowledgeContext, AppError> {
-    let enabled = repo::list_enabled(&state.db, &conversation_id)
-        .await
-        .map_err(db_err)?;
-    if enabled.is_empty() || query.trim().is_empty() {
+    if query.trim().is_empty() {
         return Ok(KnowledgeContext::default());
     }
 
-    // Vectors are only comparable within one embedding model, so attached
-    // collections are grouped by the model that built them and each group is
-    // searched with a query embedded by *that* model. Searching across groups
-    // with one vector would silently return nonsense — the numbers would
-    // compare fine and mean nothing.
-    let mut groups: BTreeMap<(String, String), Vec<(String, String)>> = BTreeMap::new();
-    for id in &enabled {
-        let Some(c) = repo::get_collection(&state.db, id).await.map_err(db_err)? else {
-            continue;
-        };
-        groups
-            .entry((c.provider_id, c.embedding_model))
-            .or_default()
-            .push((c.id, c.name));
-    }
+    let references: Vec<String> = document_ids
+        .unwrap_or_default()
+        .into_iter()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect();
+
+    // D6: a `#` reference narrows retrieval to exactly the named documents —
+    // they can come from a collection this chat never attached, and naming
+    // one outranks excluding it. Without references, D1 applies: search the
+    // chat's attached collections, minus whatever it has excluded.
+    let (groups, filter) = if references.is_empty() {
+        let enabled = repo::list_enabled(&state.db, &conversation_id)
+            .await
+            .map_err(db_err)?;
+        if enabled.is_empty() {
+            return Ok(KnowledgeContext::default());
+        }
+        let excluded = repo::list_excluded_documents(&state.db, &conversation_id)
+            .await
+            .map_err(db_err)?;
+
+        // Vectors are only comparable within one embedding model, so attached
+        // collections are grouped by the model that built them and each
+        // group is searched with a query embedded by *that* model. Searching
+        // across groups with one vector would silently return nonsense — the
+        // numbers would compare fine and mean nothing.
+        let mut groups: Vec<((String, String), Vec<search::GroupMember>)> = Vec::new();
+        for id in &enabled {
+            let Some(c) = repo::get_collection(&state.db, id).await.map_err(db_err)? else {
+                continue;
+            };
+            let document_ids = repo::list_documents_by_collection(&state.db, &c.id)
+                .await
+                .map_err(db_err)?
+                .into_iter()
+                .map(|d| d.id)
+                .collect();
+            let key = (c.provider_id, c.embedding_model);
+            let member = search::GroupMember {
+                collection_id: c.id,
+                collection_name: c.name,
+                document_ids,
+            };
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, members)) => members.push(member),
+                None => groups.push((key, vec![member])),
+            }
+        }
+        (groups, search::DocumentFilter::excluding(excluded))
+    } else {
+        // Resolve each referenced id to its document + (possibly unattached)
+        // collection. Unknown ids are ignored (D6) rather than erroring —
+        // a document deleted after the message box picked it should not
+        // sink the whole turn.
+        let mut groups: Vec<((String, String), Vec<search::GroupMember>)> = Vec::new();
+        let mut found_ids: Vec<String> = Vec::new();
+        for id in &references {
+            let Some(doc) = repo::get_document(&state.db, id).await.map_err(db_err)? else {
+                continue;
+            };
+            let Some(collection) = repo::get_collection(&state.db, &doc.collection_id)
+                .await
+                .map_err(db_err)?
+            else {
+                continue;
+            };
+            found_ids.push(doc.id.clone());
+            let key = (collection.provider_id, collection.embedding_model);
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, members)) => match members
+                    .iter_mut()
+                    .find(|m: &&mut search::GroupMember| m.collection_id == collection.id)
+                {
+                    Some(member) => member.document_ids.push(doc.id),
+                    None => members.push(search::GroupMember {
+                        collection_id: collection.id,
+                        collection_name: collection.name,
+                        document_ids: vec![doc.id],
+                    }),
+                },
+                None => groups.push((
+                    key,
+                    vec![search::GroupMember {
+                        collection_id: collection.id,
+                        collection_name: collection.name,
+                        document_ids: vec![doc.id],
+                    }],
+                )),
+            }
+        }
+        if found_ids.is_empty() {
+            return Ok(KnowledgeContext::default());
+        }
+        (groups, search::DocumentFilter::only(found_ids))
+    };
+
+    // D5: a group left with nothing searchable (references that named none of
+    // its documents, or an exclusion set covering all of them) makes no
+    // embedding call and is not reported — nothing is wrong with it.
+    let plan = search::plan_retrieval_groups(groups, &filter);
 
     let mut scored: Vec<search::Scored> = Vec::new();
     let mut unavailable_collections: Vec<String> = Vec::new();
 
-    for ((provider_id, model_id), members) in groups {
-        let names = || members.iter().map(|(_, n)| n.clone()).collect::<Vec<_>>();
-
+    for group in plan {
         // A group whose provider is no longer usable is skipped rather than
         // failing the turn — but it is recorded, so the user is told which
         // part of their library went quiet instead of inferring it from a
         // worse answer.
-        if ensure_provider_allowed_offline(&state, &provider_id).is_err()
-            || ensure_consented(&state, &provider_id).is_err()
+        if ensure_provider_allowed_offline(&state, &group.provider_id).is_err()
+            || ensure_consented(&state, &group.provider_id).is_err()
         {
-            unavailable_collections.extend(names());
+            unavailable_collections.extend(group.collection_names.clone());
             continue;
         }
-        let Ok(config) = embedding_config(&state, &provider_id, &model_id) else {
-            unavailable_collections.extend(names());
+        let Ok(config) = embedding_config(&state, &group.provider_id, &group.model_id) else {
+            unavailable_collections.extend(group.collection_names.clone());
             continue;
         };
         let embedded = config
             .adapter
             .generate_embeddings(
                 provider_core::schema::EmbeddingRequest {
-                    model_id: model_id.clone(),
+                    model_id: group.model_id.clone(),
                     inputs: vec![query.clone()],
                 },
                 &config.adapter_ctx,
             )
             .await;
         let Ok(result) = embedded else {
-            unavailable_collections.extend(names());
+            unavailable_collections.extend(group.collection_names.clone());
             continue;
         };
         let Some(query_vector) = result.vectors.into_iter().next() else {
-            unavailable_collections.extend(names());
+            unavailable_collections.extend(group.collection_names.clone());
             continue;
         };
 
-        let collection_ids: Vec<String> = members.iter().map(|(id, _)| id.clone()).collect();
         let hits = search::hybrid_search(
             &state.db,
             &state.encryption,
-            &collection_ids,
+            &group.collection_ids,
             &query_vector,
             &query,
             RETRIEVAL_TOP_K,
+            &filter,
         )
         .await
         .map_err(db_err)?;
@@ -770,6 +887,9 @@ async fn build_context(
     scored: Vec<search::Scored>,
 ) -> Result<KnowledgeContext, AppError> {
     let mut titles: BTreeMap<String, String> = BTreeMap::new();
+    // D14: collection id -> name, resolved once per collection per call
+    // rather than once per hit, the same caching shape as `titles`.
+    let mut collection_names: BTreeMap<String, String> = BTreeMap::new();
     let mut citations = Vec::new();
     let mut refused_titles: Vec<String> = Vec::new();
     let mut blocks: Vec<String> = Vec::new();
@@ -784,6 +904,19 @@ async fn build_context(
                 let t = doc.map(|d| d.title).unwrap_or_else(|| "document".into());
                 titles.insert(hit.document_id.clone(), t.clone());
                 t
+            }
+        };
+        let collection_name = match collection_names.get(&hit.collection_id) {
+            Some(n) => n.clone(),
+            None => {
+                let collection = repo::get_collection(&state.db, &hit.collection_id)
+                    .await
+                    .map_err(db_err)?;
+                let n = collection
+                    .map(|c| c.name)
+                    .unwrap_or_else(|| "collection".into());
+                collection_names.insert(hit.collection_id.clone(), n.clone());
+                n
             }
         };
 
@@ -803,6 +936,8 @@ async fn build_context(
         citations.push(KnowledgeCitation {
             document_id: hit.document_id,
             document_title: title,
+            collection_id: hit.collection_id,
+            collection_name,
             chunk_id: hit.chunk_id,
             ordinal: hit.ordinal,
             char_start: hit.char_start,

@@ -82,6 +82,7 @@ fn part_kind_to_str(kind: &MessagePartKind) -> &'static str {
         MessagePartKind::Reasoning => "reasoning",
         MessagePartKind::Image => "image",
         MessagePartKind::File => "file",
+        MessagePartKind::KnowledgeReference => "knowledgeReference",
     }
 }
 
@@ -95,6 +96,7 @@ fn part_kind_from_str(s: &str) -> Result<MessagePartKind, DbError> {
         "reasoning" => MessagePartKind::Reasoning,
         "image" => MessagePartKind::Image,
         "file" => MessagePartKind::File,
+        "knowledgeReference" => MessagePartKind::KnowledgeReference,
         other => return Err(DbError::Query(format!("unknown part kind: {other}"))),
     })
 }

@@ -148,6 +148,9 @@ describe('MemorySection', () => {
         true,
       );
     });
+    // Pinning keeps every action disabled until its save and reload finish;
+    // a click on a still-disabled Delete does nothing on a slow runner.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled(), { timeout: 5000 });
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => {
       expect(deleteMemoryItem).toHaveBeenCalledWith('m1');

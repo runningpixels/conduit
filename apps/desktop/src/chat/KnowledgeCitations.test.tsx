@@ -9,8 +9,14 @@ vi.mock('../ipc/client', () => ({
 
 const { KnowledgeCitations } = await import('./KnowledgeCitations');
 
-function cite(chunkId: string, ordinal: number, documentId = 'd1', title = 'greenhouse.md'): KnowledgeCitation {
-  return { documentId, documentTitle: title, chunkId, ordinal, charStart: 0, charEnd: 10 };
+function cite(
+  chunkId: string,
+  ordinal: number,
+  documentId = 'd1',
+  title = 'greenhouse.md',
+  collectionName?: string,
+): KnowledgeCitation {
+  return { documentId, documentTitle: title, chunkId, ordinal, charStart: 0, charEnd: 10, collectionName };
 }
 
 function passage(chunkId: string, ordinal: number, content: string): KnowledgePassage {
@@ -37,6 +43,18 @@ describe('KnowledgeCitations', () => {
     render(<KnowledgeCitations citations={[cite('a', 6), cite('b', 2), cite('c', 0, 'd2', 'inventory.csv')]} />);
     expect(screen.getByRole('button', { name: /greenhouse\.md · sections 3, 7/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /inventory\.csv · section 1/ })).toBeTruthy();
+  });
+
+  /** D14: a citation names its collection when the retrieval provided one. */
+  it('names the collection alongside the document when the citation carries one', () => {
+    render(
+      <KnowledgeCitations
+        citations={[cite('a', 0, 'd1', 'greenhouse.md', 'Garden'), cite('b', 0, 'd2', 'inventory.csv')]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /greenhouse\.md · Garden · section 1/ })).toBeTruthy();
+    // No collection on this one — falls back to the plain (no-collection) label.
+    expect(screen.getByRole('button', { name: /^inventory\.csv · section 1$/ })).toBeTruthy();
   });
 
   it('opens the passage as plain text, and switches between cited sections', async () => {

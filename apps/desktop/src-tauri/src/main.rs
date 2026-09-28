@@ -209,6 +209,10 @@ fn main() {
             set_conversation_collections,
             retrieve_knowledge_context,
             get_knowledge_passage,
+            // t1-8 P2: documents control (M1-M3)
+            list_conversation_excluded_documents,
+            set_conversation_document_excluded,
+            save_dropped_attachment,
             // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
             reset_local_database,
             // Migration-recovery escape hatches: dismiss the notice, delete the
@@ -222,6 +226,21 @@ fn main() {
         .setup(|app| {
             let _ = app.handle();
             Ok(())
+        })
+        // t1-8 P2 M1 (D13): record every path a native window drop carries, so
+        // `save_dropped_attachment` can later verify a path it's asked to read
+        // actually came from a real, recent drop rather than trusting whatever
+        // the renderer names. The native drop handler (Tauri's default; see
+        // `dragDropEnabled` in tauri.conf.json) is what fires on Windows even
+        // for a drop that lands on the composer, where WebView2 delivers no
+        // HTML5 `drop` event at all — this is the one place Rust ever sees
+        // those paths.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if let Some(state) = window.try_state::<AppState>() {
+                    state.record_dropped_paths(paths.clone(), std::time::Instant::now());
+                }
+            }
         })
         .build(tauri::generate_context!())
         .expect("failed to build Conduit desktop shell");

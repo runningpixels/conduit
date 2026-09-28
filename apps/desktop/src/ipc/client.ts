@@ -1155,8 +1155,35 @@ export async function setConversationCollections(
 export async function retrieveKnowledgeContext(
   conversationId: string,
   query: string,
+  documentIds?: string[],
 ): Promise<KnowledgeContext> {
-  return invokeCommand<KnowledgeContext>('retrieve_knowledge_context', { conversationId, query });
+  return invokeCommand<KnowledgeContext>('retrieve_knowledge_context', {
+    conversationId,
+    query,
+    documentIds,
+  });
+}
+
+/** M2 (t1-8): documents this conversation leaves out of retrieval (D1). */
+export async function listConversationExcludedDocuments(
+  conversationId: string,
+): Promise<string[]> {
+  return invokeCommand<string[]>('list_conversation_excluded_documents', { conversationId });
+}
+
+/** Toggle one document's exclusion (D2). Returns the canonical excluded set
+ *  actually stored, for the UI to reconcile against rather than trust its own
+ *  optimistic guess. */
+export async function setConversationDocumentExcluded(
+  conversationId: string,
+  documentId: string,
+  excluded: boolean,
+): Promise<string[]> {
+  return invokeCommand<string[]>('set_conversation_document_excluded', {
+    conversationId,
+    documentId,
+    excluded,
+  });
 }
 
 /// Fetch a single payload-bearing artifact (inline content decrypted).
@@ -1217,6 +1244,16 @@ export async function saveAttachment(
   origin?: string,
 ): Promise<Attachment> {
   return invokeCommand<Attachment>('save_attachment', { conversationId, bytes, mimeType, origin });
+}
+
+/** M1 (D13): attach a file the OS just dropped on the composer. Rust accepts
+ *  only a path it recorded from a native `Drop` in the last 60s, once — never
+ *  an arbitrary renderer-supplied path. */
+export async function saveDroppedAttachment(
+  conversationId: string,
+  path: string,
+): Promise<Attachment> {
+  return invokeCommand<Attachment>('save_dropped_attachment', { conversationId, path });
 }
 
 export async function listAttachments(conversationId: string): Promise<Attachment[]> {

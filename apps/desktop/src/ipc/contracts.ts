@@ -550,6 +550,11 @@ export interface KnowledgeCitation {
   ordinal: number;
   charStart: number;
   charEnd: number;
+  /** D14: which collection the cited document belongs to, so a citation names
+   *  which `notes.md` it means. Absent for citations built before this field
+   *  existed (never surfaced by a current backend, kept optional defensively). */
+  collectionId?: string;
+  collectionName?: string;
 }
 
 export interface KnowledgeContext {

@@ -3,6 +3,8 @@ import { buildProviderRequest } from './ChatView';
 import type { AppSettings } from '@conduit/config-schema';
 import type { ChatTurn } from './ChatView';
 
+const isKnowledgeRefPart = (kind: string) => kind === 'knowledgeReference';
+
 const baseSettings = {
   activeProvider: 'openai',
   activeModel: 'gpt-test',
@@ -158,6 +160,50 @@ describe('buildProviderRequest message id uniqueness (regression: saved user tur
       mimeType: 'image/png',
     });
     expect(req.attachments).toEqual(['att-png']);
+  });
+
+  it('emits a knowledgeReference part per reference, carrying its metadata (D8)', () => {
+    const history: ChatTurn[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'what does it say?',
+        knowledgeRefs: [
+          { documentId: 'doc-1', title: 'notes.md', collectionId: 'c1', collectionName: 'Research' },
+          { documentId: 'doc-2', title: 'plan.md', collectionId: 'c2', collectionName: 'Garden' },
+        ],
+      },
+    ];
+    const req = buildProviderRequest(baseSettings, 'what does it say?', history, 'c1', []);
+    const user = req.messages.find((m) => m.role === 'user')!;
+    const krefs = user.parts.filter((p) => isKnowledgeRefPart(p.kind));
+    expect(krefs).toHaveLength(2);
+    expect(krefs[0]).toMatchObject({
+      kind: 'knowledgeReference',
+      metadata: { documentId: 'doc-1', title: 'notes.md', collectionId: 'c1', collectionName: 'Research' },
+    });
+    expect(krefs[0].content).toBeUndefined();
+    expect(krefs[0].attachmentId).toBeUndefined();
+    expect(krefs[1]).toMatchObject({
+      kind: 'knowledgeReference',
+      metadata: { documentId: 'doc-2', title: 'plan.md', collectionId: 'c2', collectionName: 'Garden' },
+    });
+  });
+
+  it('gives each knowledgeReference part a stable id derived from the turn and document', () => {
+    const history: ChatTurn[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'hi',
+        knowledgeRefs: [{ documentId: 'doc-1', title: 'notes.md', collectionId: 'c1', collectionName: 'Research' }],
+      },
+    ];
+    const req = buildProviderRequest(baseSettings, 'hi', history, 'c1', []);
+    const user = req.messages.find((m) => m.role === 'user')!;
+    const kref = user.parts.find((p) => isKnowledgeRefPart(p.kind))!;
+    expect(kref.id).toBe('u1-kref-doc-1');
+    expect(kref.messageId).toBe('u1');
   });
 
   it('allows image-only user turns', () => {

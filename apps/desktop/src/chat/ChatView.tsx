@@ -45,6 +45,8 @@ import {
   listKnowledgeCollections,
   listConversationCollections,
   setConversationCollections,
+  listConversationExcludedDocuments,
+  setConversationDocumentExcluded,
   retrieveKnowledgeContext,
   acknowledgeConnectorResources,
   getConnectorPrompt,
@@ -64,7 +66,7 @@ import type {
 import { ConfirmDialog } from '@conduit/ui';
 import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
-import { BotGlyph, CopyIcon, ForkIcon, PencilIcon } from '../icons';
+import { BotGlyph, CopyIcon, ForkIcon, PencilIcon, RetryIcon } from '../icons';
 import { TurnModelLine, shouldShowModelLine } from './TurnModelLine';
 import { InterruptedBanner } from './InterruptedBanner';
 import { providerHueId } from '../lib/providerIdentity';
@@ -77,8 +79,9 @@ import {
   looksLikeArtifactCreationRequest,
 } from './artifactPrompt';
 import { composeSystemPrompt, joinExtraSystemSections, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
-import type { TurnAttachment } from './composerTypes';
+import type { KnowledgeRef, TurnAttachment } from './composerTypes';
 import { UserTurnAttachments } from './UserTurnAttachments';
+import { UserTurnKnowledgeRefs } from './UserTurnKnowledgeRefs';
 import { KnowledgeCitations } from './KnowledgeCitations';
 import { modelAcceptsImages } from './modelAcceptsImages';
 import {
@@ -208,6 +211,9 @@ export interface ChatViewHandle {
   replacePrompt: (text: string) => void;
   /// The thread has no messages yet.
   isEmpty: () => boolean;
+  /// M1 (t1-8, D13): a native window drop landed on the composer; forwarded
+  /// so it attaches the paths the same way an HTML5 drop's files would.
+  handleComposerDrop: (paths: string[]) => void;
 }
 
 export interface RunStatus {
@@ -359,10 +365,15 @@ export function buildProviderRequest(
         id: string;
         messageId: string;
         index: number;
-        kind: 'text' | 'attachmentReference';
+        // D8: `knowledgeReference` rides in this same local part shape
+        // (Rust's `MessagePartKind` gains the literal in parallel — see
+        // docs/plans/documents-control.md D8). Never sent to a provider: the
+        // Rust normaliser drops it before building the actual request.
+        kind: 'text' | 'attachmentReference' | 'knowledgeReference';
         content?: string;
         mimeType?: string;
         attachmentId?: string;
+        metadata?: Record<string, unknown>;
         createdAt: string;
       }> = [];
       if (turn.content.trim() !== '') {
@@ -383,6 +394,21 @@ export function buildProviderRequest(
           kind: 'attachmentReference',
           attachmentId: att.id,
           mimeType: att.mimeType,
+          createdAt: now,
+        });
+      }
+      for (const ref of turn.knowledgeRefs ?? []) {
+        parts.push({
+          id: `${turn.id}-kref-${ref.documentId}`,
+          messageId: turn.id,
+          index: parts.length,
+          kind: 'knowledgeReference',
+          metadata: {
+            documentId: ref.documentId,
+            title: ref.title,
+            collectionId: ref.collectionId,
+            collectionName: ref.collectionName,
+          },
           createdAt: now,
         });
       }
@@ -550,8 +576,11 @@ const EMPTY_KNOWLEDGE_CONTEXT: KnowledgeContext = {
  * would inject the wrong ones into a later, unrelated turn.
  *
  * Skips the IPC call entirely when the conversation has no collections
- * attached: a user who never opens the knowledge base must see zero calls
- * and zero behavior change (acceptance criterion 13). Survives the call
+ * attached AND no `#` references were picked for this turn: a user who never
+ * opens the knowledge base must see zero calls and zero behavior change
+ * (acceptance criterion 13). With references, D6 says the call goes ahead
+ * even for a chat with no attached collections at all -- a reference can name
+ * a document from a collection this chat never attached. Survives the call
  * failing outright the same way `readAttachedResources` does -- an empty
  * context, never a lost turn.
  */
@@ -559,10 +588,16 @@ async function readKnowledgeContext(
   conversationId: string | null,
   collectionIds: string[],
   query: string,
+  documentIds: string[],
 ): Promise<KnowledgeContext> {
-  if (!conversationId || collectionIds.length === 0) return EMPTY_KNOWLEDGE_CONTEXT;
+  if (!conversationId) return EMPTY_KNOWLEDGE_CONTEXT;
+  if (collectionIds.length === 0 && documentIds.length === 0) return EMPTY_KNOWLEDGE_CONTEXT;
   try {
-    return await retrieveKnowledgeContext(conversationId, query);
+    return await retrieveKnowledgeContext(
+      conversationId,
+      query,
+      documentIds.length > 0 ? documentIds : undefined,
+    );
   } catch {
     return EMPTY_KNOWLEDGE_CONTEXT;
   }
@@ -670,6 +705,9 @@ interface HandleSendOverride {
   text: string;
   history: ChatTurn[];
   attachments?: TurnAttachment[];
+  /** M3 (t1-8, D9): retry / edit-and-resend keep the original turn's `#`
+   *  references rather than dropping them. */
+  knowledgeRefs?: KnowledgeRef[];
   /** Document intent for an app-authored prompt, whatever language it is in. */
   intent?: DocumentTurnIntent;
   /** One-off generation controls for this send, over the conversation's own
@@ -787,6 +825,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [enabledCollectionIds, setEnabledCollectionIds] = useState<string[]>([]);
   const enabledCollectionIdsRef = useRef<string[]>([]);
   enabledCollectionIdsRef.current = enabledCollectionIds;
+  /** M2 (t1-8, D1/D2): documents this chat leaves out of retrieval. */
+  const [excludedDocumentIds, setExcludedDocumentIds] = useState<string[]>([]);
+  const excludedDocumentIdsRef = useRef<string[]>([]);
+  excludedDocumentIdsRef.current = excludedDocumentIds;
+  /** M3 (t1-8, D6/D7): `#`-picked document references for the next message,
+   *  cleared on send like `attachedResources`. */
+  const [composerKnowledgeRefs, setComposerKnowledgeRefs] = useState<KnowledgeRef[]>([]);
+  const composerKnowledgeRefsRef = useRef<KnowledgeRef[]>([]);
+  composerKnowledgeRefsRef.current = composerKnowledgeRefs;
   const [knowledgeReloadToken, setKnowledgeReloadToken] = useState(0);
   // Named documents/collections a just-sent turn's retrieval could not use --
   // refused by the reinjection gate, or a whole collection unsearchable this
@@ -1084,13 +1131,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     let cancelled = false;
     void (async () => {
       try {
-        const [listed, enabled] = await Promise.all([
+        const [listed, enabled, excludedDocs] = await Promise.all([
           listKnowledgeCollections(),
           listConversationCollections(conversationId),
+          listConversationExcludedDocuments(conversationId),
         ]);
         if (!cancelled) {
           setDiscoveredCollections(listed);
           setEnabledCollectionIds(enabled);
+          setExcludedDocumentIds(excludedDocs);
         }
       } catch (error) {
         if (!cancelled) {
@@ -1456,11 +1505,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       }
     }
 
+    // D9: an override (retry / edit-and-resend) carries the original turn's
+    // references; a fresh send reads whatever the `#` picker has queued.
+    const knowledgeRefs = override?.knowledgeRefs ?? composerKnowledgeRefsRef.current;
     const userTurn: ChatTurn = {
       id: crypto.randomUUID(),
       role: 'user',
       content: trimmed,
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(knowledgeRefs.length > 0 ? { knowledgeRefs } : {}),
     };
     const history = [...(override?.history ?? turns), userTurn];
     // The first message of a new chat: was it an idea? (on this device only)
@@ -1515,12 +1568,18 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ),
       getMemoryPromptBlock().catch(() => memoryPromptBlock),
       readAttachedResources(attachedResourcesRef.current),
-      readKnowledgeContext(conversationId, enabledCollectionIdsRef.current, trimmed),
+      readKnowledgeContext(
+        conversationId,
+        enabledCollectionIdsRef.current,
+        trimmed,
+        knowledgeRefs.map((ref) => ref.documentId),
+      ),
     ]);
     // Surface anything the gate refused or truncated, then clear the chips:
     // the content belongs to this turn only.
     setSkippedResources(resourceBlock.skipped);
     if (attachedResourcesRef.current.length > 0) setAttachedResources([]);
+    if (composerKnowledgeRefsRef.current.length > 0) setComposerKnowledgeRefs([]);
     // Same "belongs to this turn only" rule for knowledge retrieval: named
     // documents the reinjection gate refused, and whole collections that
     // could not be searched, are two different problems (one document's text
@@ -1973,6 +2032,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       });
     },
     isEmpty: () => turns.length === 0,
+    handleComposerDrop: (paths: string[]) => {
+      composerRef.current?.addDroppedPaths(paths);
+    },
     toggleWebSearch: () => {
       // Only reachable when the composer's web toggle would be visible.
       if (settings.webSearchEnabled && !settings.localOnly) {
@@ -2209,6 +2271,42 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         error instanceof Error ? error.message : t('chat.view.status.couldNotUpdateCollections'),
       );
     }
+  }
+
+  /** M2 (t1-8, D2): flip one document's exclusion for this chat. Optimistic,
+   *  with rollback on failure -- mirrors `handleToggleCollection`, because
+   *  leaving the optimistic state in place would silently drop (or keep) a
+   *  document from every turn's retrieval when the write never landed. */
+  async function handleToggleDocumentExcluded(documentId: string, excluded: boolean) {
+    if (!conversationId) return;
+    const previous = excludedDocumentIdsRef.current;
+    const next = excluded
+      ? [...new Set([...previous, documentId])]
+      : previous.filter((id) => id !== documentId);
+    setExcludedDocumentIds(next);
+    try {
+      // The canonical excluded set actually stored, like
+      // `setConversationCollections` returns for attachments.
+      const stored = await setConversationDocumentExcluded(conversationId, documentId, excluded);
+      setExcludedDocumentIds(stored);
+    } catch (error) {
+      setExcludedDocumentIds(previous);
+      onStatus(
+        error instanceof Error ? error.message : t('chat.view.status.couldNotUpdateDocuments'),
+      );
+    }
+  }
+
+  /** M3 (t1-8, D6/D7): add a `#`-picked document reference for the next
+   *  message, ignoring a document already referenced. */
+  function handleAddKnowledgeRef(ref: KnowledgeRef) {
+    setComposerKnowledgeRefs((current) =>
+      current.some((r) => r.documentId === ref.documentId) ? current : [...current, ref],
+    );
+  }
+
+  function handleRemoveKnowledgeRef(documentId: string) {
+    setComposerKnowledgeRefs((current) => current.filter((r) => r.documentId !== documentId));
   }
 
   function handleSuggestionSelect(text: string) {
@@ -2492,6 +2590,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   )?.maxTokens;
 
   /** Send the last prompt again with Max tokens cleared for this one request. */
+  /** Retry the last response: re-send the last question as it was sent —
+   *  same text, attachments and `#` references — replacing the reply. This
+   *  is edit-and-resend with nothing edited, so the tip is truncated in
+   *  place rather than forked. (Retry used to only delete the reply.) */
+  async function retryLastPrompt() {
+    const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
+    if (!lastUser) return;
+    await commitMessageEdit(lastUser.id, lastUser.content);
+  }
+
   async function retryLastPromptWithoutLimit() {
     const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
     if (!lastUser) return;
@@ -2506,6 +2614,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (!conversationId || activeRequestId) return;
     const editedTurn = turns.find((t) => t.id === messageId);
     const preservedAttachments = editedTurn?.attachments;
+    // D9: retry / edit-and-resend reuse the stored references.
+    const preservedKnowledgeRefs = editedTurn?.knowledgeRefs;
     setEditBusy(true);
     setEditConfirm(null);
     try {
@@ -2526,6 +2636,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         text,
         history: nextTurns,
         attachments: preservedAttachments,
+        knowledgeRefs: preservedKnowledgeRefs,
         generationControls,
       });
     } catch (error) {
@@ -2750,6 +2861,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                         {turn.attachments && turn.attachments.length > 0 ? (
                           <UserTurnAttachments attachments={turn.attachments} />
                         ) : null}
+                        {turn.knowledgeRefs && turn.knowledgeRefs.length > 0 ? (
+                          <UserTurnKnowledgeRefs refs={turn.knowledgeRefs} />
+                        ) : null}
                         {turn.content.trim() ? (
                           <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
                         ) : null}
@@ -2813,7 +2927,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   onOpenArtifact={onOpenArtifact}
                   onStatus={onStatus}
                   isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
-                  onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onRetry={() => void retryLastPrompt()}
                   onRetryWithoutLimit={effectiveMaxTokens ? () => void retryLastPromptWithoutLimit() : undefined}
                   onContinueBuilding={() =>
                     void handleSend({
@@ -2856,7 +2970,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 />
                 <InterruptedBanner
                   visible={Boolean(turn.interrupted)}
-                  onRetry={() => void handleRemoveLastAssistantTurn()}
+                  onRetry={() => void retryLastPrompt()}
                 />
                 <AssistantArtifactStrip
                   messageId={turn.id}
@@ -2879,14 +2993,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     <CopyIcon />
                     {t('common.actions.copy')}
                   </button>
-                  <button
-                    type="button"
-                    className="act"
-                    onClick={() => void handleRemoveLastAssistantTurn()}
-                  >
-                    <PencilIcon />
-                    {t('common.actions.retry')}
-                  </button>
+                  {/* Retry re-runs the *last* question, so it is offered on
+                      the last reply only (it used to show on every reply
+                      and delete the last one whichever was clicked). */}
+                  {turn.id === visibleTurns[visibleTurns.length - 1]?.id && !activeRequestId && (
+                    <button
+                      type="button"
+                      className="act"
+                      title={t('chat.assistant.actions.retryTitle')}
+                      onClick={() => void retryLastPrompt()}
+                    >
+                      <RetryIcon />
+                      {t('common.actions.retry')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="act"
@@ -3115,6 +3235,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         collections={discoveredCollections}
         enabledCollectionIds={enabledCollectionIds}
         onToggleCollection={(id, on) => void handleToggleCollection(id, on)}
+        excludedDocumentIds={excludedDocumentIds}
+        onToggleDocumentExcluded={(id, excluded) => void handleToggleDocumentExcluded(id, excluded)}
+        knowledgeRefs={composerKnowledgeRefs}
+        onAddKnowledgeRef={handleAddKnowledgeRef}
+        onRemoveKnowledgeRef={handleRemoveKnowledgeRef}
         onRefreshKnowledgeCapabilities={() => setKnowledgeReloadToken((n) => n + 1)}
         mcpPrompts={mcpPrompts}
         mcpResources={mcpResources}

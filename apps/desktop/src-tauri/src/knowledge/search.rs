@@ -32,6 +32,116 @@ const RRF_K: f32 = 60.0;
 /// rather than being cut before RRF ever sees it.
 const CANDIDATE_POOL_FLOOR: usize = 20;
 
+/// Document-level narrowing applied to a search, on top of the collection
+/// scope (t1-8 P2 "documents control").
+///
+/// - `only`, when `Some`, restricts to exactly those document ids: a `#`
+///   reference (D6). It overrides `exclude` — naming a document outranks
+///   excluding it.
+/// - `exclude` removes the conversation's excluded documents (D1), and is
+///   ignored when `only` is set.
+///
+/// `Default` is the no-op filter: no restriction, nothing excluded — today's
+/// behavior before this feature existed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DocumentFilter {
+    pub only: Option<Vec<String>>,
+    pub exclude: Vec<String>,
+}
+
+impl DocumentFilter {
+    /// An unrestricted filter: every document is searchable. Same as
+    /// `Default::default()`, named for readability at call sites that build a
+    /// filter from `document_ids: None`.
+    pub fn unrestricted() -> Self {
+        Self::default()
+    }
+
+    /// Restrict to exactly `ids` (D6). Exclusions are meaningless once a
+    /// reference is named, so this constructor has no `exclude` parameter.
+    pub fn only(ids: Vec<String>) -> Self {
+        Self {
+            only: Some(ids),
+            exclude: Vec::new(),
+        }
+    }
+
+    /// Exclude `ids`, searching everything else (D1).
+    pub fn excluding(ids: Vec<String>) -> Self {
+        Self {
+            only: None,
+            exclude: ids,
+        }
+    }
+
+    /// Whether `document_id` survives this filter.
+    pub fn allows(&self, document_id: &str) -> bool {
+        match &self.only {
+            Some(only) => only.iter().any(|id| id == document_id),
+            None => !self.exclude.iter().any(|id| id == document_id),
+        }
+    }
+}
+
+/// One collection contributing to a (provider, embedding_model) retrieval
+/// group, along with the document ids it owns — enough for
+/// [`plan_retrieval_groups`] to decide, without touching the database again,
+/// whether anything in it survives `filter`.
+#[derive(Debug, Clone)]
+pub struct GroupMember {
+    pub collection_id: String,
+    pub collection_name: String,
+    pub document_ids: Vec<String>,
+}
+
+/// A (provider, embedding_model) group that survived planning: at least one
+/// document across its collections passes the filter, so it is worth an
+/// embedding call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupPlan {
+    pub provider_id: String,
+    pub model_id: String,
+    pub collection_ids: Vec<String>,
+    pub collection_names: Vec<String>,
+}
+
+/// D5: decide which (provider, embedding_model) groups deserve an embedding
+/// call, given `filter`. Pure — no I/O, no embedding call — so a group left
+/// with nothing to search (every one of its documents excluded, or none of
+/// them named by a `#` reference) is dropped for free, before anything
+/// expensive runs, and is unit-testable without a database or a provider.
+///
+/// A dropped group is not reported anywhere: nothing is wrong with it (D5),
+/// it simply has nothing left to contribute this turn.
+pub fn plan_retrieval_groups(
+    groups: Vec<((String, String), Vec<GroupMember>)>,
+    filter: &DocumentFilter,
+) -> Vec<GroupPlan> {
+    groups
+        .into_iter()
+        .filter_map(|((provider_id, model_id), members)| {
+            let has_searchable = members
+                .iter()
+                .any(|m| m.document_ids.iter().any(|id| filter.allows(id)));
+            if !has_searchable {
+                return None;
+            }
+            let mut collection_ids = Vec::with_capacity(members.len());
+            let mut collection_names = Vec::with_capacity(members.len());
+            for member in members {
+                collection_ids.push(member.collection_id);
+                collection_names.push(member.collection_name);
+            }
+            Some(GroupPlan {
+                provider_id,
+                model_id,
+                collection_ids,
+                collection_names,
+            })
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scored {
     pub chunk_id: String,
@@ -58,12 +168,13 @@ pub async fn vector_search(
     collection_ids: &[String],
     query_vector: &[f32],
     k: usize,
+    filter: &DocumentFilter,
 ) -> Result<Vec<Scored>, DbError> {
     if collection_ids.is_empty() || query_vector.is_empty() || k == 0 {
         return Ok(Vec::new());
     }
 
-    let rows = repo::list_chunk_vectors(pool, collection_ids).await?;
+    let rows = repo::list_chunk_vectors(pool, collection_ids, filter).await?;
     let mut scored = Vec::with_capacity(rows.len());
     for row in rows {
         // A row whose embedding blob is malformed (wrong length, corrupt)
@@ -144,6 +255,7 @@ pub async fn keyword_search(
     collection_ids: &[String],
     query: &str,
     k: usize,
+    filter: &DocumentFilter,
 ) -> Result<Vec<Scored>, DbError> {
     if collection_ids.is_empty() || k == 0 {
         return Ok(Vec::new());
@@ -152,7 +264,7 @@ pub async fn keyword_search(
         return Ok(Vec::new());
     };
 
-    let rows = match repo::keyword_match(pool, collection_ids, &sanitized, k as i64).await {
+    let rows = match repo::keyword_match(pool, collection_ids, &sanitized, k as i64, filter).await {
         Ok(rows) => rows,
         // Belt-and-braces: sanitize_fts_query is built to never produce a
         // malformed expression, but if SQLite/FTS5 rejects it for a reason
@@ -198,13 +310,16 @@ pub async fn hybrid_search(
     query_vector: &[f32],
     query_text: &str,
     k: usize,
+    filter: &DocumentFilter,
 ) -> Result<Vec<Scored>, DbError> {
     if k == 0 {
         return Ok(Vec::new());
     }
     let pool_size = k.max(CANDIDATE_POOL_FLOOR);
-    let vector_results = vector_search(pool, enc, collection_ids, query_vector, pool_size).await?;
-    let keyword_results = keyword_search(pool, enc, collection_ids, query_text, pool_size).await?;
+    let vector_results =
+        vector_search(pool, enc, collection_ids, query_vector, pool_size, filter).await?;
+    let keyword_results =
+        keyword_search(pool, enc, collection_ids, query_text, pool_size, filter).await?;
 
     let mut fused: HashMap<String, (f32, Scored)> = HashMap::new();
     for (rank, item) in vector_results.into_iter().enumerate() {
@@ -273,5 +388,101 @@ mod tests {
     fn sanitize_preserves_unicode_words() {
         let sanitized = sanitize_fts_query("知識ベース").unwrap();
         assert_eq!(sanitized, "\"知識ベース\"");
+    }
+
+    // -- DocumentFilter / plan_retrieval_groups (t1-8 P2 M2, D1/D5/D6) --
+
+    fn member(collection_id: &str, name: &str, docs: &[&str]) -> GroupMember {
+        GroupMember {
+            collection_id: collection_id.to_string(),
+            collection_name: name.to_string(),
+            document_ids: docs.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn unrestricted_filter_allows_everything() {
+        let filter = DocumentFilter::unrestricted();
+        assert!(filter.allows("doc-1"));
+        assert!(filter.allows("anything"));
+    }
+
+    #[test]
+    fn exclude_filter_blocks_only_the_excluded_ids() {
+        let filter = DocumentFilter::excluding(vec!["doc-1".to_string()]);
+        assert!(!filter.allows("doc-1"));
+        assert!(filter.allows("doc-2"));
+    }
+
+    #[test]
+    fn only_filter_blocks_everything_not_named() {
+        let filter = DocumentFilter::only(vec!["doc-2".to_string()]);
+        assert!(!filter.allows("doc-1"));
+        assert!(filter.allows("doc-2"));
+    }
+
+    #[test]
+    fn only_filter_overrides_exclude_d6() {
+        // D6: naming a document outranks excluding it. `only` alone decides;
+        // `exclude` is meaningless once a reference is named.
+        let filter = DocumentFilter {
+            only: Some(vec!["doc-1".to_string()]),
+            exclude: vec!["doc-1".to_string()],
+        };
+        assert!(filter.allows("doc-1"));
+    }
+
+    #[test]
+    fn plan_skips_a_group_whose_documents_are_all_excluded() {
+        // D5: a group left with nothing searchable makes no embedding call —
+        // it is silently absent from the plan, not reported.
+        let groups = vec![(
+            ("ollama".to_string(), "nomic-embed-text".to_string()),
+            vec![member("c1", "Notes", &["doc-1", "doc-2"])],
+        )];
+        let filter = DocumentFilter::excluding(vec!["doc-1".to_string(), "doc-2".to_string()]);
+        let plan = plan_retrieval_groups(groups, &filter);
+        assert!(plan.is_empty(), "every document in the group is excluded");
+    }
+
+    #[test]
+    fn plan_keeps_a_group_with_at_least_one_searchable_document() {
+        let groups = vec![(
+            ("ollama".to_string(), "nomic-embed-text".to_string()),
+            vec![member("c1", "Notes", &["doc-1", "doc-2"])],
+        )];
+        let filter = DocumentFilter::excluding(vec!["doc-1".to_string()]);
+        let plan = plan_retrieval_groups(groups, &filter);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].collection_ids, vec!["c1".to_string()]);
+    }
+
+    #[test]
+    fn plan_keeps_only_the_group_owning_a_referenced_document() {
+        // D6: a reference can point at an unattached collection's document —
+        // the plan is built from "which collections own the referenced ids",
+        // not from "which collections are attached".
+        let groups = vec![
+            (
+                ("ollama".to_string(), "nomic-embed-text".to_string()),
+                vec![member("attached", "Attached", &["doc-1"])],
+            ),
+            (
+                ("openai".to_string(), "text-embedding-3-small".to_string()),
+                vec![member("unattached", "Unattached", &["doc-2"])],
+            ),
+        ];
+        let filter = DocumentFilter::only(vec!["doc-2".to_string()]);
+        let plan = plan_retrieval_groups(groups, &filter);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].collection_ids, vec!["unattached".to_string()]);
+    }
+
+    #[test]
+    fn plan_over_empty_groups_makes_no_embedding_call() {
+        // No enabled collections at all -- the plan (and therefore the
+        // caller's embedding loop) has nothing to iterate.
+        let plan = plan_retrieval_groups(Vec::new(), &DocumentFilter::unrestricted());
+        assert!(plan.is_empty());
     }
 }

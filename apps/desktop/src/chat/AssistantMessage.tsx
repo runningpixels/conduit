@@ -13,7 +13,7 @@ import type {
 import type { Artifact, FileState } from '../ipc/contracts';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
-import { CheckIcon, ChevronRight, CopyIcon, ForkIcon, PencilIcon, TrashIcon } from '../icons';
+import { CheckIcon, ChevronRight, CopyIcon, ForkIcon, RetryIcon, TrashIcon } from '../icons';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ToolCallBlock } from './ToolCallBlock';
 import { AskUserBlock } from './AskUserBlock';
@@ -668,7 +668,7 @@ export function AssistantMessage({
             title={t('chat.assistant.actions.retryTitle')}
             onClick={onRetry}
           >
-            <PencilIcon />
+            <RetryIcon />
             {t('common.actions.retry')}
           </button>
         )}

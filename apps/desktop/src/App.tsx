@@ -1592,10 +1592,15 @@ export default function App() {
     [openDocuments],
   );
 
-  const dropHovering = useKnowledgeDrop((paths) => {
-    setDroppedPaths(paths);
-    setDestination('documents');
-  });
+  const dropHovering = useKnowledgeDrop(
+    (paths) => {
+      setDroppedPaths(paths);
+      setDestination('documents');
+    },
+    // t1-8 M1 (D13): a native drop that landed on the composer attaches to
+    // the message instead of going to Documents.
+    (paths) => chatViewRef.current?.handleComposerDrop(paths),
+  );
   const rememberSettingsSection = useCallback((section: SettingsSection) => {
     lastSettingsSectionRef.current = section;
   }, []);

@@ -2059,6 +2059,95 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   font-size: var(--fs-md);
 }
 
+/* t1-8 M2: an attached collection's row expands into its documents. The list
+ * item stacks the row and (when expanded) the document list, so it opts out
+ * of the plain skill list's side-by-side grid above. */
+.composer-collection-list > li { display: block; }
+.composer-collection-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: start;
+}
+.composer-collection-expand {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  padding: 2px;
+  cursor: pointer;
+  align-self: center;
+}
+.composer-collection-expand:hover { color: var(--ink); }
+.composer-collection-expand svg { width: 14px; height: 14px; display: block; }
+.composer-doc-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 26px;
+  display: grid;
+  gap: 4px;
+}
+.composer-doc-list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+}
+.composer-doc-list-note {
+  font-size: var(--fs-md);
+  color: var(--ink-3);
+}
+
+/* t1-8 M3: the `#` document-reference popover, anchored above the composer
+ * like its sibling popovers (`.chat-settings-pop`), but never focused — the
+ * textarea keeps focus the whole time it is open. */
+.composer-doc-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 12px;
+  right: 12px;
+  z-index: 40;
+  max-height: min(50vh, 260px);
+  overflow: auto;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-settings-pop);
+}
+.composer-doc-picker ul { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; }
+.composer-doc-picker li[role="option"] {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.composer-doc-picker li[role="option"] b { color: var(--ink); font-weight: 600; }
+.composer-doc-picker li[role="option"] small { color: var(--ink-3); }
+.composer-doc-picker li[data-active="true"] { background: var(--card-hi); }
+.composer-doc-picker-empty {
+  padding: 8px;
+  color: var(--ink-3);
+  font-size: var(--fs-md);
+}
+
+/* t1-8 M3: read-only chips under a sent user message naming what it referenced. */
+.turn-knowledge-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.turn-knowledge-ref-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+}
+
 /* An HTML preview whose own script threw (`HtmlArtifactRenderer`): pinned to
  * the bottom of the frame, above it, so a blank chart has a reason on screen
  * and a way to ask for the fix. */

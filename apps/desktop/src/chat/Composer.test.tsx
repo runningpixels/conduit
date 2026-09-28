@@ -104,6 +104,17 @@ vi.mock('../ipc/client', () => ({
     origin: 'notes.txt',
   }),
   deleteAttachment: vi.fn().mockResolvedValue(undefined),
+  saveDroppedAttachment: vi.fn().mockResolvedValue({
+    id: 'att-dropped-1',
+    conversationId: 'conv-1',
+    path: 'ab/dropped',
+    mimeType: 'text/plain',
+    sizeBytes: 5,
+    retentionState: 'active',
+    createdAt: '2026-01-01T00:00:00Z',
+    origin: 'dropped.txt',
+  }),
+  listKnowledgeDocuments: vi.fn().mockResolvedValue([]),
 }));
 
 const collection = {
@@ -326,6 +337,26 @@ describe('Composer', () => {
 
     expect(await screen.findByText('Failed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry broken.txt' })).toBeInTheDocument();
+  });
+
+  /** D12: the scout found `Composer.handleKeyDown` had no `isComposing`
+   *  guard, so the Enter that confirms a Japanese/Korean/Chinese IME
+   *  conversion sent the message. */
+  it('does not send on the Enter that confirms an IME composition', () => {
+    const { onSend } = renderComposer({ prompt: 'こんにちは' });
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: true });
+    expect(onSend).not.toHaveBeenCalled();
+    // An ordinary Enter afterwards still sends.
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('also honours the keyCode 229 IME fallback', () => {
+    const { onSend } = renderComposer({ prompt: 'hello' });
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.keyDown(textarea, { key: 'Enter', keyCode: 229 });
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it('exposes focusPrompt via ref', () => {
@@ -678,5 +709,222 @@ describe('Composer "+" menu', () => {
       expect(screen.getByRole('button', { name: 'Detach Greenhouse' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Greenhouse' })).toBeDisabled();
     });
+  });
+});
+
+/** t1-8 M3: the `#` document-reference picker. Typing through a controlled
+ * textarea needs the prompt fed back, so these use a small stateful harness
+ * rather than `renderComposer`'s fixed `prompt` prop. */
+function renderDocPickerHarness(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+  const onAddKnowledgeRef = vi.fn();
+  const onSend = vi.fn();
+
+  function Harness() {
+    const [prompt, setPrompt] = useState('');
+    return (
+      <Composer
+        settings={baseSettings}
+        onSelectModel={vi.fn()}
+        conversationId="conv-1"
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onSend={onSend}
+        onStop={vi.fn()}
+        streaming={false}
+        webSearchOn={false}
+        onWebSearchToggle={vi.fn()}
+        collections={[collection]}
+        onAddKnowledgeRef={onAddKnowledgeRef}
+        {...overrides}
+      />
+    );
+  }
+  render(<Harness />);
+  return { onAddKnowledgeRef, onSend };
+}
+
+function knowledgeDoc(id: string, title: string) {
+  return {
+    id,
+    collectionId: 'c1',
+    source: `/greenhouse/${title}`,
+    title,
+    mimeType: 'text/plain',
+    byteSize: 10,
+    chunkCount: 1,
+    importedAt: '2026-09-20T00:00:00Z',
+  };
+}
+
+describe('Composer # document picker', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { listKnowledgeDocuments } = await import('../ipc/client');
+    vi.mocked(listKnowledgeDocuments).mockResolvedValue([
+      knowledgeDoc('d1', 'notes.md'),
+      knowledgeDoc('d2', 'stale.md'),
+    ]);
+  });
+
+  it('opens on #, filters by title, and Enter picks the active option', async () => {
+    const { onAddKnowledgeRef } = renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+
+    fireEvent.change(textarea, { target: { value: '#not' } });
+    expect(await screen.findByRole('option', { name: 'notes.md · Greenhouse' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /stale/ })).toBeNull();
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onAddKnowledgeRef).toHaveBeenCalledWith({
+      documentId: 'd1',
+      title: 'notes.md',
+      collectionId: 'c1',
+      collectionName: 'Greenhouse',
+    });
+    // The "#not" query is removed from the text.
+    await waitFor(() => expect(textarea).toHaveValue(''));
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('picking the same document twice is ignored', async () => {
+    const { onAddKnowledgeRef } = renderDocPickerHarness({
+      knowledgeRefs: [{ documentId: 'd1', title: 'notes.md', collectionId: 'c1', collectionName: 'Greenhouse' }],
+    });
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: '#not' } });
+    await screen.findByRole('option', { name: 'notes.md · Greenhouse' });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onAddKnowledgeRef).not.toHaveBeenCalled();
+  });
+
+  it('Enter on a bare # the reader never navigated closes the picker and sends', async () => {
+    const { onAddKnowledgeRef, onSend } = renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: '#' } });
+    await screen.findByRole('listbox');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onAddKnowledgeRef).not.toHaveBeenCalled();
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(onSend).toHaveBeenCalled();
+  });
+
+  it('a bare # still picks once the reader moves through the list', async () => {
+    const { onAddKnowledgeRef } = renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: '#' } });
+    await screen.findByRole('option', { name: 'stale.md · Greenhouse' });
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onAddKnowledgeRef).toHaveBeenCalledWith(expect.objectContaining({ documentId: 'd2' }));
+  });
+
+  it('with no matching document, Enter sends the text as typed ("#1 priority")', async () => {
+    const { onAddKnowledgeRef, onSend } = renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: '#1' } });
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeNull());
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onAddKnowledgeRef).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalled();
+  });
+
+  it('Shift+Enter inserts a line break instead of picking', async () => {
+    const { onAddKnowledgeRef, onSend } = renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: '#not' } });
+    await screen.findByRole('listbox');
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
+    expect(onAddKnowledgeRef).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('Escape closes the picker and leaves the text as typed', async () => {
+    renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: '#not' } });
+    await screen.findByRole('listbox');
+    fireEvent.keyDown(textarea, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(textarea).toHaveValue('#not');
+  });
+
+  it('never opens for a chat with no collections at all (criterion 13)', async () => {
+    const { listKnowledgeDocuments } = await import('../ipc/client');
+    renderDocPickerHarness({ collections: [] });
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: '#not' } });
+    await Promise.resolve();
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(listKnowledgeDocuments).not.toHaveBeenCalled();
+  });
+
+  it('does not open while an IME composition is in progress, and re-evaluates once it ends', async () => {
+    renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.compositionStart(textarea);
+    fireEvent.change(textarea, { target: { value: '#not' } });
+    await Promise.resolve();
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    fireEvent.compositionEnd(textarea);
+    expect(await screen.findByRole('listbox')).toBeInTheDocument();
+  });
+
+  it('Enter during an IME composition does not send even with a query typed', () => {
+    const { onSend } = renderDocPickerHarness();
+    const textarea = screen.getByLabelText('Message the active provider');
+    fireEvent.change(textarea, { target: { value: 'hello' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: true });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('Composer native window drop (M1, D13)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('exposes addDroppedPaths that attaches the way an HTML5 drop would', async () => {
+    const { saveDroppedAttachment } = await import('../ipc/client');
+    const ref = createRef<ComposerHandle>();
+    renderComposer({ ref });
+
+    act(() => ref.current?.addDroppedPaths(['C:\\notes\\dropped.txt']));
+    await waitFor(() => expect(saveDroppedAttachment).toHaveBeenCalledWith('conv-1', 'C:\\notes\\dropped.txt'));
+    expect(await screen.findByText('dropped.txt')).toBeInTheDocument();
+  });
+
+  it('ignores a native drop within the dedup window of an HTML5 drop that already fired', async () => {
+    const { saveAttachment, saveDroppedAttachment } = await import('../ipc/client');
+    const ref = createRef<ComposerHandle>();
+    renderComposer({ ref });
+
+    const composerBox = document.querySelector('.composer') as HTMLElement;
+    const file = new File(['hi'], 'from-html5.txt', { type: 'text/plain' });
+    fireEvent.drop(composerBox, { dataTransfer: { files: [file] } });
+    await waitFor(() => expect(saveAttachment).toHaveBeenCalledTimes(1));
+
+    act(() => ref.current?.addDroppedPaths(['C:\\notes\\dropped.txt']));
+    expect(saveDroppedAttachment).not.toHaveBeenCalled();
+  });
+
+  it('ignores an HTML5 drop within the dedup window of a native drop that already fired', async () => {
+    const { saveAttachment, saveDroppedAttachment } = await import('../ipc/client');
+    const ref = createRef<ComposerHandle>();
+    renderComposer({ ref });
+
+    act(() => ref.current?.addDroppedPaths(['C:\\notes\\dropped.txt']));
+    await waitFor(() => expect(saveDroppedAttachment).toHaveBeenCalledTimes(1));
+
+    const composerBox = document.querySelector('.composer') as HTMLElement;
+    const file = new File(['hi'], 'from-html5.txt', { type: 'text/plain' });
+    fireEvent.drop(composerBox, { dataTransfer: { files: [file] } });
+    expect(saveAttachment).not.toHaveBeenCalled();
+  });
+
+  it('does nothing without a conversation', () => {
+    const ref = createRef<ComposerHandle>();
+    renderComposer({ ref, conversationId: null });
+    expect(() => ref.current?.addDroppedPaths(['C:\\notes\\dropped.txt'])).not.toThrow();
   });
 });

@@ -2,9 +2,11 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import type { AppSettings, GenerationControls, ProviderUsage } from '@conduit/config-schema';
 import {
   deleteAttachment,
+  listKnowledgeDocuments,
   listProviderDescriptors,
   loadProviderCredentialReference,
   saveAttachment,
+  saveDroppedAttachment,
 } from '../ipc/client';
 import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, KnowledgeIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
@@ -18,6 +20,7 @@ import {
   COMPOSER_IMAGE_ACCEPT,
   isForwardableImageMime,
   turnAttachmentsFromPending,
+  type KnowledgeRef,
   type PendingAttachment,
   type TurnAttachment,
 } from './composerTypes';
@@ -28,6 +31,8 @@ import { localSearchBackendLabel, resolveSearchBackend } from './webSearchIntent
 import { ComposerChatSettings } from './ComposerChatSettings';
 import { ComposerSkills } from './ComposerSkills';
 import { ComposerCollections } from './ComposerCollections';
+import { ComposerDocumentPicker, documentOptionId, type DocumentPickerOption } from './ComposerDocumentPicker';
+import { findHashTrigger, type HashTrigger } from './hashTrigger';
 import type { KnowledgeCollection, SkillSummary } from '../ipc/contracts';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
@@ -47,6 +52,10 @@ type ComposerPopover =
 export interface ComposerHandle {
   focusPrompt: () => void;
   openChatSettings: () => void;
+  /** M1 (t1-8, D13): a native window drop landed on the composer; attach each
+   *  path the way an HTML5 drop's files would be. Ignored if an HTML5 drop
+   *  already claimed this same drop (or vice versa) within the dedup window. */
+  addDroppedPaths: (paths: string[]) => void;
 }
 
 export interface ComposerProps {
@@ -90,6 +99,14 @@ export interface ComposerProps {
   collections?: KnowledgeCollection[];
   enabledCollectionIds?: string[];
   onToggleCollection?: (collectionId: string, enabled: boolean) => void;
+  /** M2 (t1-8, D1/D2): documents this chat leaves out of retrieval, and the
+   *  toggle that flips one (ComposerCollections' expand rows). */
+  excludedDocumentIds?: string[];
+  onToggleDocumentExcluded?: (documentId: string, excluded: boolean) => void;
+  /** M3 (t1-8, D6/D7): `#`-picked document references for the next message. */
+  knowledgeRefs?: KnowledgeRef[];
+  onAddKnowledgeRef?: (ref: KnowledgeRef) => void;
+  onRemoveKnowledgeRef?: (documentId: string) => void;
   onRefreshKnowledgeCapabilities?: () => void;
   /** Prompts and resources advertised by the running connectors (t0-9). */
   mcpPrompts?: ConnectorPromptInfo[];
@@ -145,6 +162,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   collections = [],
   enabledCollectionIds = [],
   onToggleCollection,
+  excludedDocumentIds = [],
+  onToggleDocumentExcluded,
+  knowledgeRefs = [],
+  onAddKnowledgeRef,
+  onRemoveKnowledgeRef,
   onRefreshKnowledgeCapabilities,
   mcpPrompts = [],
   mcpResources = [],
@@ -174,8 +196,143 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // toggle reads its current list from a ref updated on render, so two
   // toggles in one tick would each see the other's skill still on.
   const [skillRemovalQueue, setSkillRemovalQueue] = useState<string[]>([]);
+  // t1-8 M3: the `#` document-reference trigger (D11) and its picker.
+  const [hashTrigger, setHashTrigger] = useState<HashTrigger | null>(null);
+  const [docPickerActiveIndex, setDocPickerActiveIndex] = useState(0);
+  // True once the reader has moved through the picker with the arrow keys:
+  // only then does Enter pick for a bare `#` (D11).
+  const docPickerNavigatedRef = useRef(false);
+  const [allDocuments, setAllDocuments] = useState<DocumentPickerOption[]>([]);
+  // True while an IME composition is in progress (D12): the trigger and the
+  // Enter-to-send guard both go quiet until it ends.
+  const composingRef = useRef(false);
+  // t1-8 M1 (D13): whichever of an HTML5 drop and a native composer drop
+  // fires first for one physical drop wins; the other is ignored.
+  const lastDropAtRef = useRef(0);
 
   useComposerAutosize(textareaRef, prompt);
+
+  // D6: at least one collection with at least one document must exist before
+  // `#` does anything at all -- same "zero cost, zero UI" gate as the
+  // Documents button itself (acceptance criterion 13).
+  const docPickerFeatureAvailable = collections.some((c) => c.documentCount > 0);
+
+  const DROP_DEDUP_WINDOW_MS = 500;
+  function claimDrop(): boolean {
+    const now = Date.now();
+    if (now - lastDropAtRef.current < DROP_DEDUP_WINDOW_MS) return false;
+    lastDropAtRef.current = now;
+    return true;
+  }
+
+  async function uploadDroppedPath(path: string) {
+    if (!conversationId) return;
+    const localId = crypto.randomUUID();
+    const fileName = path.split(/[\\/]/).pop() || path;
+    const pending: PendingAttachment = {
+      localId,
+      fileName,
+      mimeType: 'application/octet-stream',
+      sizeBytes: 0,
+      status: 'uploading',
+    };
+    setPendingAttachments((current) => [...current, pending]);
+    try {
+      const attachment = await saveDroppedAttachment(conversationId, path);
+      const note = isForwardableImageMime(attachment.mimeType)
+        ? undefined
+        : t('chat.composer.attachment.notSentNote');
+      setPendingAttachments((current) =>
+        current.map((item) =>
+          item.localId === localId
+            ? {
+                ...item,
+                status: 'uploaded',
+                attachment,
+                mimeType: attachment.mimeType,
+                sizeBytes: attachment.sizeBytes,
+                error: note,
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPendingAttachments((current) =>
+        current.map((item) =>
+          item.localId === localId ? { ...item, status: 'failed', error: message } : item,
+        ),
+      );
+    }
+  }
+
+  /** Every document across every collection, attached or not (D6): the `#`
+   *  picker's corpus. Cached while the composer is mounted, refreshed each
+   *  time the picker opens (not on every keystroke). */
+  async function loadAllDocuments() {
+    try {
+      const lists = await Promise.all(
+        collections.map((c) => listKnowledgeDocuments(c.id).catch(() => [])),
+      );
+      const docs: DocumentPickerOption[] = [];
+      collections.forEach((collection, index) => {
+        for (const doc of lists[index] ?? []) {
+          docs.push({
+            documentId: doc.id,
+            title: doc.title,
+            collectionId: collection.id,
+            collectionName: collection.name,
+          });
+        }
+      });
+      setAllDocuments(docs);
+    } catch {
+      // Keep whatever the cache already had; the picker just shows that.
+    }
+  }
+
+  function updateHashTrigger(text: string, caret: number) {
+    if (!docPickerFeatureAvailable || composingRef.current) {
+      if (hashTrigger) setHashTrigger(null);
+      return;
+    }
+    const next = findHashTrigger(text, caret);
+    const wasOpen = hashTrigger != null;
+    setHashTrigger(next);
+    setDocPickerActiveIndex(0);
+    docPickerNavigatedRef.current = false;
+    if (next && !wasOpen) void loadAllDocuments();
+  }
+
+  const filteredDocumentOptions = hashTrigger
+    ? allDocuments.filter((doc) => doc.title.toLowerCase().includes(hashTrigger.query.toLowerCase()))
+    : [];
+
+  function pickDocument(option: DocumentPickerOption) {
+    const trigger = hashTrigger;
+    if (!trigger) return;
+    const caret = textareaRef.current?.selectionStart ?? trigger.start + 1 + trigger.query.length;
+    const before = prompt.slice(0, trigger.start);
+    const after = prompt.slice(caret);
+    setHashTrigger(null);
+    onPromptChange(before + after);
+    // The same document twice is ignored rather than added again.
+    if (!knowledgeRefs.some((ref) => ref.documentId === option.documentId)) {
+      onAddKnowledgeRef?.({
+        documentId: option.documentId,
+        title: option.title,
+        collectionId: option.collectionId,
+        collectionName: option.collectionName,
+      });
+    }
+    const caretAfter = before.length;
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(caretAfter, caretAfter);
+    });
+  }
 
   useImperativeHandle(ref, () => ({
     focusPrompt: () => {
@@ -185,6 +342,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (streaming || !conversationId || !onSaveChatSettings) return;
       setPlusOpen(false);
       setOpenPop('chatSettings');
+    },
+    addDroppedPaths: (paths: string[]) => {
+      if (!conversationId || streaming) return;
+      if (!claimDrop()) return;
+      for (const path of paths) void uploadDroppedPath(path);
     },
   }));
 
@@ -216,6 +378,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setPlusOpen(false);
     setOpenPop(null);
     setSkillRemovalQueue([]);
+    setHashTrigger(null);
   }, [conversationId]);
 
   useEffect(() => {
@@ -231,6 +394,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!streaming) return;
     setPlusOpen(false);
     setOpenPop(null);
+    setHashTrigger(null);
   }, [streaming]);
 
   const togglePop = (pop: ComposerPopover) => {
@@ -347,6 +511,55 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // D12: never act on the Enter (or any other key) that belongs to an IME
+    // composition -- `keyCode === 229` is the same fallback `useHotkeys.ts`
+    // documents for browsers that don't set `isComposing` reliably.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+
+    if (hashTrigger) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        docPickerNavigatedRef.current = true;
+        setDocPickerActiveIndex((i) =>
+          filteredDocumentOptions.length === 0 ? 0 : (i + 1) % filteredDocumentOptions.length,
+        );
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        docPickerNavigatedRef.current = true;
+        setDocPickerActiveIndex((i) =>
+          filteredDocumentOptions.length === 0
+            ? 0
+            : (i - 1 + filteredDocumentOptions.length) % filteredDocumentOptions.length,
+        );
+        return;
+      }
+      const isPlainEnter = event.key === 'Enter' && !event.shiftKey;
+      if (isPlainEnter || event.key === 'Tab') {
+        const picked = filteredDocumentOptions[docPickerActiveIndex] ?? filteredDocumentOptions[0];
+        // Enter on a bare `#` the reader never navigated is not a choice --
+        // it is someone finishing a line ("#" heading, "#1 priority").
+        const chose = event.key === 'Tab' || hashTrigger.query !== '' || docPickerNavigatedRef.current;
+        if (picked && chose) {
+          event.preventDefault();
+          pickDocument(picked);
+          return;
+        }
+        // Nothing chosen: close the picker and let the key do what it always
+        // does (Enter sends or breaks the line; Tab moves focus). A `#` is
+        // ordinary text far more often than it is a reference.
+        setHashTrigger(null);
+      }
+      if (event.key === 'Escape') {
+        // D11: closes and leaves the text exactly as typed.
+        event.preventDefault();
+        setHashTrigger(null);
+        return;
+      }
+      // Any other key edits the query text; onChange recomputes the trigger.
+    }
+
     const sendWith = readSendWith();
     const isEnter = event.key === 'Enter' && !event.shiftKey;
     const isCmdEnter =
@@ -355,6 +568,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       event.preventDefault();
       sendWithAttachments();
     }
+  }
+
+  function handleCompositionStart() {
+    composingRef.current = true;
+  }
+
+  function handleCompositionEnd(event: React.CompositionEvent<HTMLTextAreaElement>) {
+    composingRef.current = false;
+    updateHashTrigger(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length);
   }
 
   function handleDragOver(event: React.DragEvent) {
@@ -373,6 +595,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     event.preventDefault();
     setDropActive(false);
     if (attachDisabled) return;
+    // M1 (D13): whichever of this HTML5 drop and a native composer drop
+    // fires first for one physical drop wins; ignore the loser.
+    if (!claimDrop()) return;
     const files = Array.from(event.dataTransfer.files);
     for (const file of files) void uploadAttachment(file);
   }
@@ -525,6 +750,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       });
     }
   }
+  if (knowledgeRefs.length > 0) {
+    for (const ref of knowledgeRefs) {
+      chips.push({
+        id: `knowledgeRef:${ref.documentId}`,
+        label: `${ref.title} · ${ref.collectionName}`,
+        icon: <KnowledgeIcon />,
+        title: t('chat.composer.knowledgeRef.chipTitle', { title: ref.title, collection: ref.collectionName }),
+        onRemove: onRemoveKnowledgeRef ? () => onRemoveKnowledgeRef(ref.documentId) : undefined,
+        removeLabel: t('chat.composer.chips.removeKnowledgeRef', { title: ref.title }),
+      });
+    }
+  }
   if (onToggleSkill && enabledSkillIds.length > 0) {
     const count = enabledSkillIds.length;
     const names = skills
@@ -646,7 +883,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           : t('chat.composer.attachment.status.notSent')
                         : formatBytes(item.sizeBytes)}
                 </span>
-                {item.status === 'failed' ? (
+                {item.status === 'failed' && item.file ? (
                   <button
                     className="composer-attachment-action"
                     type="button"
@@ -675,13 +912,38 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           ref={textareaRef}
           className="composer-textarea scroll"
           value={prompt}
-          onChange={(event) => onPromptChange(event.target.value)}
+          onChange={(event) => {
+            onPromptChange(event.target.value);
+            updateHashTrigger(event.target.value, event.target.selectionStart ?? event.target.value.length);
+          }}
+          onSelect={(event) => {
+            const target = event.currentTarget;
+            updateHashTrigger(target.value, target.selectionStart ?? 0);
+          }}
           onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           onPaste={(event) => void handlePaste(event)}
           placeholder={brand().tagline ?? t('chat.composer.placeholder')}
           rows={1}
           aria-label={t('chat.composer.prompt.ariaLabel')}
+          aria-expanded={hashTrigger ? true : undefined}
+          aria-controls={hashTrigger ? 'composer-doc-picker-list' : undefined}
+          aria-activedescendant={
+            hashTrigger && filteredDocumentOptions[docPickerActiveIndex]
+              ? documentOptionId(filteredDocumentOptions[docPickerActiveIndex].documentId)
+              : undefined
+          }
         />
+        {docPickerFeatureAvailable && hashTrigger ? (
+          <ComposerDocumentPicker
+            id="composer-doc-picker-list"
+            options={filteredDocumentOptions}
+            activeIndex={docPickerActiveIndex}
+            onHover={setDocPickerActiveIndex}
+            onPick={pickDocument}
+          />
+        ) : null}
         <div className="composer-bar">
           <input
             ref={fileInputRef}
@@ -795,6 +1057,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 streaming={streaming}
                 collections={collections}
                 enabledIds={enabledCollectionIds}
+                excludedDocumentIds={excludedDocumentIds}
+                onToggleDocument={onToggleDocumentExcluded}
                 onClose={closePop}
                 onToggle={onToggleCollection!}
                 onOpenSettings={onOpenSettings ? () => onOpenSettings('knowledge') : undefined}

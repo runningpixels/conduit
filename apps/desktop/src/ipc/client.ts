@@ -1347,3 +1347,17 @@ export async function setWorkflowSchedule(
 export async function notifyWorkflowRun(title: string, body: string): Promise<void> {
   return invokeCommand('notify_workflow_run', { title, body });
 }
+
+/** The tray menu's labels, translated (Rust has no locale). */
+export async function setTrayLabels(open: string, quit: string, tooltip: string): Promise<void> {
+  return invokeCommand('set_tray_labels', { open, quit, tooltip });
+}
+
+export async function getStartAtLogin(): Promise<boolean> {
+  return invokeCommand<boolean>('get_start_at_login');
+}
+
+/** Start at sign-in, into the tray; resolves to whether it is now on. */
+export async function setStartAtLogin(enabled: boolean): Promise<boolean> {
+  return invokeCommand<boolean>('set_start_at_login', { enabled });
+}

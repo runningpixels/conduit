@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { getWorkflowSchedule, setWorkflowSchedule } from '../ipc/client';
 import type { ScheduleSpec, WorkflowSchedule } from '../ipc/contracts';
+import { BackgroundSection } from './BackgroundSection';
 
 /// What a schedule starts as when it is first switched on.
 export const DEFAULT_TIME = '08:00';
@@ -156,7 +157,7 @@ export function ScheduleSection({
           ) : null}
         </>
       ) : null}
-      <p className="wf-muted">{t('workspace.workflows.schedule.hint')}</p>
+      <BackgroundSection scheduleEnabled={enabled} onStatus={onStatus} />
     </section>
   );
 }

@@ -16,6 +16,7 @@ pub mod prompts;
 pub mod settings;
 pub mod skills;
 pub mod themes;
+pub mod tray;
 pub mod workflows;
 
 pub use artifact_frames::*;
@@ -30,4 +31,5 @@ pub use prompts::*;
 pub use settings::*;
 pub use skills::*;
 pub use themes::*;
+pub use tray::*;
 pub use workflows::*;

@@ -166,3 +166,14 @@
 .wf-chip-remove:hover { opacity: 1; background: var(--bg-side); }
 .wf-schedule { display: grid; gap: var(--sp-3); }
 .wf-next-run { margin: 0; color: var(--ink); font-size: var(--fs-2xl); }
+.wf-background { display: grid; gap: var(--sp-2); }
+.wf-offer {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-side);
+}
+.wf-offer b { color: var(--ink); font-size: var(--fs-2xl); }
+.wf-offer-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }

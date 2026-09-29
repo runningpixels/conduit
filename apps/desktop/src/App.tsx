@@ -78,6 +78,7 @@ import { ConnectorsPage } from './pages/ConnectorsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
 import { notificationFor, useWorkflowRunEvents } from './workflows/workflowRunEvents';
+import { useTrayLabels } from './shell/useTrayLabels';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
@@ -160,6 +161,8 @@ const defaultSettings: AppSettings = {
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,
+  closeToTray: false,
+  closeToTrayOffered: false,
   updateChannel: 'stable',
   updateCheckEnabled: true,
   updatePolicy: 'manual',
@@ -1007,6 +1010,7 @@ export default function App() {
     const note = notificationFor(event, t);
     if (note) void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
+  useTrayLabels(t);
 
   const openWorkflowDocument = useCallback(
     (conversationId: string, artifactId: string) => {

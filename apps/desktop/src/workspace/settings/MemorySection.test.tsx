@@ -37,6 +37,8 @@ const settings: AppSettings = {
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,
+  closeToTray: false,
+  closeToTrayOffered: false,
   updateChannel: 'stable',
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,

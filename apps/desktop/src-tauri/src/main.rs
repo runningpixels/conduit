@@ -12,6 +12,7 @@ use conduit_desktop::{
     connector_runtime::ConnectorRuntimeManager,
     state::AppState,
     stream_manager::StreamManager,
+    tray::{self, TrayState},
     updater::*,
     webview_args,
     workflows::scheduler::{scheduler_loop, RunningWorkflows, SchedulerWake},
@@ -40,6 +41,16 @@ fn main() {
         .expect("failed to initialize desktop state");
 
     let app = tauri::Builder::default()
+        // First, so a second launch hands off before anything else starts: it
+        // exits, and the running one shows its window (it may be in the tray).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_main_window(app);
+        }))
+        // Start at sign-in (opt-in, off by default), straight into the tray.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![tray::BACKGROUND_ARG]),
+        ))
         // Phase 6 plugins (registered before `.manage(state)`):
         // - updater: signature-verified auto-update; commands in `updater.rs`.
         // - dialog: first-run onboarding + the one-time diagnostics disclosure.
@@ -61,6 +72,7 @@ fn main() {
         // and a way to wake the scheduler when a schedule changes.
         .manage(std::sync::Arc::new(RunningWorkflows::default()))
         .manage(SchedulerWake::default())
+        .manage(TrayState::default())
         .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
             ctx.app_handle().state::<ArtifactFrames>().respond(&request)
         })
@@ -257,15 +269,19 @@ fn main() {
             get_workflow_schedule,
             set_workflow_schedule,
             notify_workflow_run,
+            // Keep running in the tray + start at sign-in.
+            set_tray_labels,
+            get_start_at_login,
+            set_start_at_login,
         ])
         .setup(|app| {
             // The main window is built here, not from tauri.conf.json, so its
             // WebView2 gets browser arguments computed from settings: WebRTC
             // egress closed, remote-allowlist origins exempt (see
             // `webview_args`). The config entry has `create: false`.
-            let allowlist = app
-                .state::<AppState>()
-                .settings()
+            let settings = app.state::<AppState>().settings().ok();
+            let close_to_tray = settings.as_ref().is_some_and(|s| s.close_to_tray);
+            let allowlist = settings
                 .map(|s| s.artifact_remote_allowlist)
                 .unwrap_or_default();
             let config = app
@@ -276,9 +292,13 @@ fn main() {
                 .find(|w| w.label == "main")
                 .cloned()
                 .ok_or("tauri.conf.json has no \"main\" window")?;
+            // Started at sign-in with the tray on: stay hidden in the tray.
+            let visible = config.visible && !tray::start_hidden(std::env::args(), close_to_tray);
             tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
                 .additional_browser_args(&webview_args::main_webview_browser_args(&allowlist))
+                .visible(visible)
                 .build()?;
+            tray::ensure_tray(app.handle(), close_to_tray)?;
             // Scheduled workflows run from here, independent of the window.
             tauri::async_runtime::spawn(scheduler_loop(app.handle().clone()));
             Ok(())
@@ -291,12 +311,25 @@ fn main() {
         // for a drop that lands on the composer, where WebView2 delivers no
         // HTML5 `drop` event at all — this is the one place Rust ever sees
         // those paths.
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
                 if let Some(state) = window.try_state::<AppState>() {
                     state.record_dropped_paths(paths.clone(), std::time::Instant::now());
                 }
             }
+            // Keep running in the tray: closing the main window hides it, so
+            // scheduled workflows keep running. Quit is in the tray menu.
+            tauri::WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
+                let keep = window
+                    .try_state::<AppState>()
+                    .and_then(|s| s.settings().ok())
+                    .is_some_and(|s| s.close_to_tray);
+                if keep && window.app_handle().tray_by_id(tray::TRAY_ID).is_some() {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("failed to build Conduit desktop shell");

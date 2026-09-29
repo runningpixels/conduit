@@ -69,6 +69,8 @@ describe('buildProviderRequest web search prompts', () => {
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,
     artifactNetworkEnabled: true,
+    closeToTray: false,
+    closeToTrayOffered: false,
     updateChannel: 'stable' as const,
     updateCheckEnabled: true,
     updatePolicy: 'manual' as const,

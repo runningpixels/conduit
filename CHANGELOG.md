@@ -19,8 +19,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   shown before you save. Open the document a run saved straight from the
   run. Schedule a workflow to run every day or on weekdays at a set time,
   or every few hours, and get a notification when it finishes; a run
-  missed while Conduit was closed happens once when you open it. Only the
-  summarize step uses the model, and it can't use tools.
+  missed while Conduit was closed happens once when you open it. To keep
+  schedules running with the window closed, Conduit can stay in the tray
+  (offered once, the first time you switch a schedule on) and start in the
+  tray when you sign in; both are off by default. Opening Conduit again
+  while it's in the tray brings the window back. Only the summarize step
+  uses the model, and it can't use tools.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the

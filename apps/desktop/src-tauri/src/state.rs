@@ -370,6 +370,12 @@ impl AppState {
         if let Some(value) = patch.artifact_network_enabled {
             settings.artifact_network_enabled = value;
         }
+        if let Some(value) = patch.close_to_tray {
+            settings.close_to_tray = value;
+        }
+        if let Some(value) = patch.close_to_tray_offered {
+            settings.close_to_tray_offered = value;
+        }
         if let Some(value) = patch.artifact_styled_preview {
             settings.artifact_styled_preview = value;
         }

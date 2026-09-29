@@ -13,7 +13,7 @@ export type SettingsPatch = { activeProvider?: string, activeModel?: string, loc
  * Replace the artifact remote allowlist. Each entry must be an absolute
  * http(s) URL or the whole update is rejected.
  */
-artifactRemoteAllowlist?: Array<string>, artifactStyledPreview?: boolean, artifactNetworkEnabled?: boolean, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, updatePolicy?: UpdatePolicy, onboardingCompleted?: boolean, 
+artifactRemoteAllowlist?: Array<string>, artifactStyledPreview?: boolean, artifactNetworkEnabled?: boolean, closeToTray?: boolean, closeToTrayOffered?: boolean, updateChannel?: RolloutChannel, updateCheckEnabled?: boolean, updatePolicy?: UpdatePolicy, onboardingCompleted?: boolean, 
 /**
  * Phase 7: master web search toggle. The renderer also enforces UI
  * gating on `local_only` and provider capability.

@@ -16,6 +16,10 @@ const ipc = vi.hoisted(() => ({
   validateWorkflow: vi.fn(),
   getWorkflowSchedule: vi.fn(),
   setWorkflowSchedule: vi.fn(),
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+  getStartAtLogin: vi.fn(),
+  setStartAtLogin: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -86,6 +90,8 @@ const finishedRun: WorkflowRunDetail = {
 describe('WorkflowsPage', () => {
   beforeEach(() => {
     for (const fn of Object.values(ipc)) fn.mockReset();
+    ipc.getSettings.mockRejectedValue(new Error('not in tests'));
+    ipc.getStartAtLogin.mockRejectedValue(new Error('not in tests'));
     ipc.listWorkflows.mockResolvedValue([summary]);
     ipc.getWorkflow.mockResolvedValue(record);
     ipc.listWorkflowRuns.mockResolvedValue([]);

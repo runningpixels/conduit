@@ -2189,6 +2189,14 @@ pub struct AppSettings {
     /// them regardless.
     #[serde(default = "default_true")]
     pub artifact_network_enabled: bool,
+    /// Keep running in the tray when the main window is closed, so scheduled
+    /// workflows still run. Off by default: closing the window quits, as it
+    /// always did. Offered once, the first time a schedule is switched on.
+    #[serde(default)]
+    pub close_to_tray: bool,
+    /// Whether that one-time offer has been made (whatever the answer).
+    #[serde(default)]
+    pub close_to_tray_offered: bool,
     /// Phase 6: which update channel the client checks. Consumer UI only offers
     /// `Stable`/`Beta`; `Pinned`/`TenantSpecific` are reserved for Phase 7/8/9.
     /// Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.
@@ -2324,6 +2332,8 @@ impl Default for AppSettings {
             artifact_remote_allowlist: Vec::new(),
             artifact_styled_preview: true,
             artifact_network_enabled: true,
+            close_to_tray: false,
+            close_to_tray_offered: false,
             update_channel: RolloutChannel::Stable,
             update_check_enabled: true,
             update_policy: UpdatePolicy::Manual,
@@ -2390,6 +2400,10 @@ pub struct SettingsPatch {
     pub artifact_styled_preview: Option<bool>,
     #[ts(optional)]
     pub artifact_network_enabled: Option<bool>,
+    #[ts(optional)]
+    pub close_to_tray: Option<bool>,
+    #[ts(optional)]
+    pub close_to_tray_offered: Option<bool>,
     #[ts(optional)]
     pub update_channel: Option<RolloutChannel>,
     #[ts(optional)]

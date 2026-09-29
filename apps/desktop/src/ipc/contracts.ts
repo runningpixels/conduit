@@ -613,7 +613,7 @@ export interface WorkflowRunFinished {
   workflowId: string;
   workflowName: string;
   runId: string | null;
-  status: 'completed' | 'failed' | 'skipped' | 'running';
+  status: 'completed' | 'failed' | 'stopped' | 'skipped' | 'running';
   error: string | null;
   trigger: 'schedule' | 'catch_up';
   documents: { artifactId: string; conversationId: string; title: string }[];
@@ -642,7 +642,7 @@ export type WorkflowStep = {
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
 );
 
-export type WorkflowRunStatus = 'running' | 'completed' | 'failed';
+export type WorkflowRunStatus = 'running' | 'completed' | 'failed' | 'stopped';
 
 export interface WorkflowRun {
   id: string;
@@ -660,7 +660,7 @@ export interface WorkflowRunStep {
   runId: string;
   stepId: string;
   iteration: number | null;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'stopped';
   input: unknown;
   output: unknown;
   error: string | null;

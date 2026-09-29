@@ -55,6 +55,7 @@
 .wf-status-completed { color: var(--ok); }
 .wf-status-failed { color: var(--err); }
 .wf-status-running { color: var(--warn); }
+.wf-status-stopped { color: var(--ink-3); }
 
 .wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-lg); }
 .wf-io {

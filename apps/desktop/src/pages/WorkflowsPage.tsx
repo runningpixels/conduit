@@ -20,6 +20,7 @@ import {
   listWorkflowRuns,
   listWorkflows,
   runWorkflow,
+  stopWorkflowRun,
   updateWorkflow,
   validateWorkflow,
 } from '../ipc/client';
@@ -44,6 +45,7 @@ const STATUS_CLASS: Record<string, string> = {
   completed: 'wf-status wf-status-completed',
   failed: 'wf-status wf-status-failed',
   running: 'wf-status wf-status-running',
+  stopped: 'wf-status wf-status-stopped',
 };
 
 /// `draft` is the editor, for a new workflow (`workflowId: null`) or an
@@ -86,6 +88,7 @@ export function WorkflowsPage({
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<Mode>({ kind: 'view' });
   const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -195,6 +198,7 @@ export function WorkflowsPage({
   async function run() {
     if (!record) return;
     setRunning(true);
+    setStopping(false);
     setOpenRun(null);
     try {
       const detail = await runWorkflow(record.id, inputs);
@@ -202,7 +206,9 @@ export function WorkflowsPage({
       onStatus(
         detail.run.status === 'completed'
           ? t('workspace.workflows.status.runCompleted', { name: record.name })
-          : t('workspace.workflows.status.runFailed', { name: record.name }),
+          : detail.run.status === 'stopped'
+            ? t('workspace.workflows.status.runStopped', { name: record.name })
+            : t('workspace.workflows.status.runFailed', { name: record.name }),
       );
       setRuns(await listWorkflowRuns(record.id, 20));
       await refreshList();
@@ -210,6 +216,19 @@ export function WorkflowsPage({
       onStatus(t('workspace.workflows.status.actionFailed', { error: errorText(e) }));
     } finally {
       setRunning(false);
+      setStopping(false);
+    }
+  }
+
+  /// Ask the run to stop; `run()` hears it end, after the step it is on.
+  async function stop() {
+    if (!record) return;
+    setStopping(true);
+    try {
+      await stopWorkflowRun(record.id);
+    } catch (e) {
+      setStopping(false);
+      onStatus(t('workspace.workflows.status.actionFailed', { error: errorText(e) }));
     }
   }
 
@@ -306,7 +325,9 @@ export function WorkflowsPage({
       ? t('workspace.workflows.run.completed')
       : status === 'failed'
         ? t('workspace.workflows.run.failed')
-        : t('workspace.workflows.run.running');
+        : status === 'stopped'
+          ? t('workspace.workflows.run.stopped')
+          : t('workspace.workflows.run.running');
 
   const list = summaries.map((w) => (
     <PageListItem
@@ -467,6 +488,11 @@ export function WorkflowsPage({
             <button type="button" className="btn primary" onClick={() => void run()} disabled={running || busy}>
               {running ? t('workspace.workflows.run.running') : t('workspace.workflows.run.now')}
             </button>
+            {running ? (
+              <button type="button" className="btn" onClick={() => void stop()} disabled={stopping}>
+                {stopping ? t('workspace.workflows.run.stopping') : t('workspace.workflows.run.stop')}
+              </button>
+            ) : null}
           </div>
         </section>
 
@@ -638,7 +664,8 @@ function RunDetail({
       <div className="grp-label">
         {t('workspace.workflows.runDetail.heading', { status: statusLabel(detail.run.status), when: started })}
       </div>
-      {detail.run.error ? (
+      {/* A stop is the user's choice, not an error; the heading already says it. */}
+      {detail.run.error && detail.run.status !== 'stopped' ? (
         <p className="wf-error" role="status">
           {detail.run.error}
         </p>

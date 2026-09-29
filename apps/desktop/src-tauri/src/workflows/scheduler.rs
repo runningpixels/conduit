@@ -17,14 +17,19 @@
 //!   that slot.
 //! - The loop wakes at least once a minute, which covers the computer sleeping
 //!   past a due time, and at once when a schedule changes ([`SchedulerWake`]).
+//! - Every run can be stopped: [`RunningWorkflows`] holds each run's stop
+//!   token ("Stop", "Stop all workflows" in the tray, quitting mid-run).
+//! - A run still marked running at launch was cut off when Conduit closed; the
+//!   loop marks it failed before anything else runs.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Duration as ChronoDuration, Local, TimeZone, Utc};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 use super::runner::Runner;
 use super::schedule::ScheduleSpec;
@@ -35,40 +40,111 @@ use crate::stream_manager::StreamManager;
 
 /// Event the renderer listens for.
 pub const RUN_FINISHED_EVENT: &str = "workflow-run-finished";
+/// Emitted with the number of runs in progress whenever it changes.
+pub const RUNS_CHANGED_EVENT: &str = "workflow-runs-changed";
 /// Longest the loop sleeps without looking again.
 const HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 /// A due time further in the past than this is a catch-up run.
 const LATE_AFTER: ChronoDuration = ChronoDuration::minutes(2);
 
-/// Workflows running right now, shared by the scheduler and "Run now".
+type CountListener = Box<dyn Fn(usize) + Send + Sync>;
+
+/// Workflows running right now, shared by the scheduler and "Run now", each
+/// with the token that stops it.
 #[derive(Default)]
-pub struct RunningWorkflows(Mutex<HashSet<String>>);
+pub struct RunningWorkflows {
+    runs: Mutex<HashMap<String, CancellationToken>>,
+    on_change: Mutex<Option<CountListener>>,
+}
 
 impl RunningWorkflows {
     /// Mark `workflow_id` as running, or `None` if it already is. The mark is
     /// cleared when the guard is dropped.
     pub fn try_start(self: &Arc<Self>, workflow_id: &str) -> Option<RunGuard> {
-        let mut running = self.0.lock().ok()?;
-        if !running.insert(workflow_id.to_string()) {
-            return None;
-        }
+        let stop = CancellationToken::new();
+        let count = {
+            let mut runs = self.runs.lock().ok()?;
+            if runs.contains_key(workflow_id) {
+                return None;
+            }
+            runs.insert(workflow_id.to_string(), stop.clone());
+            runs.len()
+        };
+        self.changed(count);
         Some(RunGuard {
             owner: self.clone(),
             workflow_id: workflow_id.to_string(),
+            stop,
         })
+    }
+
+    /// How many runs are in progress.
+    pub fn count(&self) -> usize {
+        self.runs.lock().map(|r| r.len()).unwrap_or(0)
+    }
+
+    /// Ask one workflow's run to stop. `false` when it isn't running.
+    pub fn stop(&self, workflow_id: &str) -> bool {
+        let Ok(runs) = self.runs.lock() else {
+            return false;
+        };
+        match runs.get(workflow_id) {
+            Some(token) => {
+                token.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Ask every run to stop; returns how many were asked.
+    pub fn stop_all(&self) -> usize {
+        let Ok(runs) = self.runs.lock() else { return 0 };
+        for token in runs.values() {
+            token.cancel();
+        }
+        runs.len()
+    }
+
+    /// Called with the new count whenever a run starts or ends (the tray).
+    pub fn set_listener(&self, listener: impl Fn(usize) + Send + Sync + 'static) {
+        if let Ok(mut slot) = self.on_change.lock() {
+            *slot = Some(Box::new(listener));
+        }
+    }
+
+    fn changed(&self, count: usize) {
+        if let Ok(slot) = self.on_change.lock() {
+            if let Some(listener) = slot.as_ref() {
+                listener(count);
+            }
+        }
     }
 }
 
 pub struct RunGuard {
     owner: Arc<RunningWorkflows>,
     workflow_id: String,
+    stop: CancellationToken,
+}
+
+impl RunGuard {
+    /// The token that stops this run; give it to the [`Runner`].
+    pub fn stop_token(&self) -> CancellationToken {
+        self.stop.clone()
+    }
 }
 
 impl Drop for RunGuard {
     fn drop(&mut self) {
-        if let Ok(mut running) = self.owner.0.lock() {
-            running.remove(&self.workflow_id);
-        }
+        let count = match self.owner.runs.lock() {
+            Ok(mut runs) => {
+                runs.remove(&self.workflow_id);
+                runs.len()
+            }
+            Err(_) => return,
+        };
+        self.owner.changed(count);
     }
 }
 
@@ -98,7 +174,7 @@ pub struct RunFinished {
     pub workflow_id: String,
     pub workflow_name: String,
     pub run_id: Option<String>,
-    /// `completed`, `failed`, or `skipped` (still running from before).
+    /// `completed`, `failed`, `stopped`, or `skipped` (still running from before).
     pub status: String,
     pub error: Option<String>,
     /// `schedule`, or `catch_up` for a run that was due while Conduit was closed.
@@ -203,7 +279,7 @@ pub async fn run_due<Tz: TimeZone>(
             continue;
         }
 
-        let Some(_guard) = running.try_start(&id) else {
+        let Some(guard) = running.try_start(&id) else {
             finished.push(RunFinished {
                 workflow_id: id,
                 workflow_name: name,
@@ -219,8 +295,10 @@ pub async fn run_due<Tz: TimeZone>(
             state,
             streams,
             fetch_policy,
+            stop: guard.stop_token(),
         };
         let outcome = runner.run(&id, &HashMap::new(), &trigger).await;
+        drop(guard);
         finished.push(match outcome {
             Ok(detail) => RunFinished {
                 workflow_id: id,
@@ -264,6 +342,11 @@ async fn sleep_for(state: &AppState) -> std::time::Duration {
 pub async fn scheduler_loop(app: AppHandle) {
     let wake = app.state::<SchedulerWake>().inner().clone();
     let running = app.state::<Arc<RunningWorkflows>>().inner().clone();
+    match repo::fail_interrupted_runs(&app.state::<AppState>().db).await {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(runs = n, "marked workflow runs cut off by a quit as failed"),
+        Err(e) => tracing::warn!(error = %e, "could not tidy workflow runs left running"),
+    }
     loop {
         let state = app.state::<AppState>();
         let streams = app.state::<StreamManager>();

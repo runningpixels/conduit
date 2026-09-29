@@ -11,6 +11,9 @@
 //! - `summarize` is one model call with no tools, through
 //!   `StreamManager::start_chat_stream` and a headless `EventSink`, so it
 //!   honours local-only mode and lands in the workflow's own conversation.
+//! - A run can be stopped (`Runner::stop`): a fetch or search is dropped, a
+//!   model reply is cancelled through the stream manager, and no further step
+//!   starts. The run ends as `stopped`, whatever the steps' `on_error` says.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -21,6 +24,7 @@ use provider_core::schema::{
     Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
 };
 use serde_json::{json, Map, Value};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::definition::{self, ArtifactFormat, OnError, SaveMode, Step, StepAction};
@@ -40,6 +44,8 @@ pub const MAX_ITEMS: usize = 50;
 const MAX_PAGE_CHARS: usize = 50_000;
 /// Results a `web_search` step keeps when it doesn't say.
 const DEFAULT_SEARCH_RESULTS: u32 = 5;
+/// The error a stopped run and its interrupted step record.
+pub const STOPPED: &str = "Stopped before it finished.";
 
 /// Standing instruction for every `summarize` call. The input is often web
 /// text, which must not be able to redirect the model.
@@ -53,6 +59,8 @@ pub struct Runner<'a> {
     pub streams: &'a StreamManager,
     /// `AddressPolicy::APP` in the app; tests allow a local server.
     pub fetch_policy: AddressPolicy,
+    /// Cancelled to stop the run (from `RunningWorkflows`).
+    pub stop: CancellationToken,
 }
 
 impl Runner<'_> {
@@ -105,6 +113,7 @@ impl Runner<'_> {
         let result = exec.steps(&def.steps, &mut ctx, None).await;
         let (status, error) = match &result {
             Ok(()) => ("completed", None),
+            Err(_) if self.stop.is_cancelled() => ("stopped", Some(STOPPED)),
             Err(e) => ("failed", Some(e.as_str())),
         };
         repo::finish_run(pool, &run.id, status, error)
@@ -163,6 +172,9 @@ impl Exec<'_> {
     ) -> StepFuture<'f> {
         Box::pin(async move {
             for step in steps {
+                if self.runner.stop.is_cancelled() {
+                    return Err(STOPPED.to_string());
+                }
                 self.step(step, ctx, iteration).await?;
             }
             Ok(())
@@ -198,6 +210,12 @@ impl Exec<'_> {
                 set_step_output(ctx, &step.id, output);
                 Ok(())
             }
+            Err(_) if self.runner.stop.is_cancelled() => {
+                repo::finish_step(pool, enc, &row, "stopped", None, Some(STOPPED))
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Err(STOPPED.to_string())
+            }
             Err(error) => {
                 repo::finish_step(pool, enc, &row, "failed", None, Some(&error))
                     .await
@@ -225,12 +243,14 @@ impl Exec<'_> {
                             .collect()
                     })
                     .unwrap_or_default();
-                self.fetch_pages(&urls).await
+                self.unless_stopped(self.fetch_pages(&urls)).await
             }
             StepAction::WebSearch { max_results, .. } => {
                 let query = filled["query"].as_str().unwrap_or_default();
-                self.web_search(query, max_results.unwrap_or(DEFAULT_SEARCH_RESULTS))
-                    .await
+                self.unless_stopped(
+                    self.web_search(query, max_results.unwrap_or(DEFAULT_SEARCH_RESULTS)),
+                )
+                .await
             }
             StepAction::Summarize { schema, .. } => {
                 let prompt = filled["prompt"].as_str().unwrap_or_default();
@@ -270,6 +290,17 @@ impl Exec<'_> {
                 }
                 Ok(json!({ "items": results }))
             }
+        }
+    }
+
+    /// `work`, abandoned as soon as the run is stopped.
+    async fn unless_stopped(
+        &self,
+        work: impl Future<Output = Result<Value, String>>,
+    ) -> Result<Value, String> {
+        tokio::select! {
+            result = work => result,
+            _ = self.runner.stop.cancelled() => Err(STOPPED.to_string()),
         }
     }
 
@@ -439,11 +470,31 @@ impl Exec<'_> {
             response_format: None,
             web_search: None,
         };
+        let request_id = request.request_id.clone();
         let (sink, events) = event_sink::collector::<ProviderEvent>();
-        self.runner
-            .streams
-            .start_chat_stream(state, request, sink)
-            .await?;
+        let stream = self.runner.streams.start_chat_stream(state, request, sink);
+        tokio::pin!(stream);
+        // Stopping cancels the reply the proper way (the stream manager ends
+        // it and records it), then waits for the stream to wind down.
+        tokio::select! {
+            result = &mut stream => { result?; }
+            _ = self.runner.stop.cancelled() => {
+                // Retried: a stop in the first moment can land before the
+                // stream is registered, when there is nothing to cancel yet.
+                loop {
+                    let _ = self
+                        .runner
+                        .streams
+                        .cancel_stream(state, &request_id, Some(self.conversation_id))
+                        .await;
+                    tokio::select! {
+                        _ = &mut stream => break,
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
+                    }
+                }
+                return Err(STOPPED.to_string());
+            }
+        }
         let events = events
             .lock()
             .map_err(|_| "the reply could not be read".to_string())?;

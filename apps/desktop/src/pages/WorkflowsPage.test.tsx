@@ -20,6 +20,7 @@ const ipc = vi.hoisted(() => ({
   updateSettings: vi.fn(),
   getStartAtLogin: vi.fn(),
   setStartAtLogin: vi.fn(),
+  stopWorkflowRun: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -178,6 +179,29 @@ describe('WorkflowsPage', () => {
     const detail = await screen.findByRole('region', { name: 'What this run did' });
     fireEvent.click(within(detail).getByRole('button', { name: 'Open “Morning briefing”' }));
     expect(onOpenDocument).toHaveBeenCalledWith('c1', 'a1');
+  });
+
+  it('stops a run in progress, and says it stopped', async () => {
+    let finish: (detail: WorkflowRunDetail) => void = () => {};
+    ipc.runWorkflow.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    ipc.stopWorkflowRun.mockResolvedValue(true);
+    const onStatus = vi.fn();
+    render(<WorkflowsPage onStatus={onStatus} />);
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+    await waitFor(() => expect(ipc.stopWorkflowRun).toHaveBeenCalledWith('w1'));
+    expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDisabled();
+
+    finish({
+      ...finishedRun,
+      run: { ...finishedRun.run, status: 'stopped', error: 'Stopped before it finished.' },
+    });
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Morning briefing stopped'));
+    expect(screen.queryByRole('button', { name: /^Stop/ })).not.toBeInTheDocument();
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(within(detail).getByText(/^Stopped/)).toBeInTheDocument();
+    expect(within(detail).queryByText('Stopped before it finished.')).not.toBeInTheDocument();
   });
 
   it('shows when a scheduled workflow runs next, in the list', async () => {

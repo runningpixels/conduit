@@ -140,15 +140,23 @@ pub async fn run_workflow(
     id: String,
     inputs: Option<HashMap<String, String>>,
 ) -> Result<WorkflowRunDetail, String> {
-    let _guard = running
+    let guard = running
         .try_start(&id)
         .ok_or_else(|| "This workflow is already running.".to_string())?;
     let runner = Runner {
         state: state.inner(),
         streams: stream_manager.inner(),
         fetch_policy: AddressPolicy::APP,
+        stop: guard.stop_token(),
     };
     runner.run(&id, &inputs.unwrap_or_default(), "manual").await
+}
+
+/// Stop a workflow's run in progress. The run ends as `stopped` after the
+/// step it is on; `false` when it wasn't running.
+#[tauri::command]
+pub fn stop_workflow_run(running: State<'_, Arc<RunningWorkflows>>, id: String) -> bool {
+    running.stop(&id)
 }
 
 #[tauri::command]

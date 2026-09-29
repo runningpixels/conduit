@@ -1052,6 +1052,12 @@ html[data-density="compact"] .rail-btn { width: 36px; height: 36px; }
 html[data-density="compact"][data-rail="labels"] .rail-btn { width: 80px; height: auto; min-height: 44px; }
 
 /* A destination page covers the body; the chat underneath stays mounted. */
+/* The chat's sashes sit above everything (z-index 25) so a drag never loses
+   them, which also lifted them over a page covering the chat: an invisible
+   line lit up mid-page on hover and dragged the hidden sidebar. While a page
+   is showing they are hidden (and out of the tab order). */
+.body[data-page] > .sidebar-resize,
+.body[data-page] > .resize-handle { visibility: hidden; }
 .body > .dest-page {
   grid-column: 1 / -1;
   grid-row: 1;

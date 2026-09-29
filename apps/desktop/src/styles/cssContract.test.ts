@@ -255,6 +255,9 @@ describe('turn footer reserves height (no hover layout shift)', () => {
  * flush prose, so the rule is the only per-turn mark of which provider produced
  * it, and a mid-thread switch is legible from the left edge alone.
  *
+ * ADR-011 decided it a third time: the rule is the design's activity line
+ * (accent into signal), and provider identity moved to the model line's dot.
+ *
  * Pinned because the argument is genuinely balanced and the next reviewer will
  * meet it cold. A failure here is not "you broke a rule" — it is "this was
  * decided twice, go read why before deciding it a third time."
@@ -270,10 +273,12 @@ describe('assistant turn provider rule', () => {
     expect(rule, 'no `.turn.assistant { … }` rule found in chat.css').not.toBeNull();
   });
 
-  it('carries a 2px left border in the provider hue', () => {
+  it('carries a 2px left border drawn as the activity line (ADR-011)', () => {
     const decls = rule?.[2] ?? '';
     expect(decls).toMatch(/border-left\s*:\s*2px\s+solid/);
-    expect(decls, 'the rule must be hue-derived, not a neutral line').toMatch(/--hue/);
+    expect(decls, 'the line runs from the accent through the signal colour').toMatch(
+      /border-image\s*:\s*linear-gradient\([^;]*var\(--hue\)[^;]*var\(--signal\)/,
+    );
   });
 
   it('insets the prose to clear the border', () => {

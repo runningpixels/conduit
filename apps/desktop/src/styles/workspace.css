@@ -358,7 +358,7 @@ html[data-resizing] * { cursor: col-resize !important; user-select: none; }
   width: 5px;
   height: 5px;
   border-radius: var(--r-round);
-  background: var(--hue);
+  background: var(--provider-hue);
   flex: 0 0 auto;
   opacity: .85;
 }

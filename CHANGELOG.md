@@ -34,8 +34,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   site or model that fails for a moment is tried again (twice for pages
   and searches, once for the model; choose per step), and a reply that
   should be JSON but isn't gets one more ask. A new step shows a desktop
-  notification with text from earlier steps. Only the summarize step uses
-  the model, and it can't use tools.
+  notification with text from earlier steps. Fixed a later step? Rerun
+  from it: the steps before it aren't run again, their earlier results are
+  reused, and the run keeps the values it started with. Only the summarize
+  step uses the model, and it can't use tools.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the

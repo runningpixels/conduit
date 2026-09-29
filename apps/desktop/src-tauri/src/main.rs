@@ -269,6 +269,7 @@ fn main() {
             update_workflow,
             delete_workflow,
             run_workflow,
+            rerun_workflow_from,
             list_workflow_runs,
             get_workflow_run,
             get_workflow_schedule,

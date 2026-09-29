@@ -21,6 +21,10 @@
 //!   for a fetch or search and once for a model call), waiting 0.5 s, 1 s, 2 s…
 //!   between tries. A page that answers 4xx isn't retried. A model reply that
 //!   should be JSON and isn't gets one more ask to fix it.
+//! - A run can start partway (`run_from`): the top-level steps before the
+//!   chosen one aren't run again; their outputs come from an earlier run and
+//!   are recorded as `reused`, so fixing a template doesn't re-fetch pages or
+//!   ask the model again.
 //! - Every run has a budget (`RunBudget`): time spent running (not waiting
 //!   for an answer) and model tokens. Going over fails the run with the
 //!   reason, whatever the steps' `on_error` says; it never truncates quietly.
@@ -45,7 +49,9 @@ use super::{extract, template};
 use crate::artifact_network::{self, AddressPolicy, ArtifactFetchRequest};
 use crate::db::repository::artifacts::{self, ArtifactContent};
 use crate::db::repository::conversations;
-use crate::db::repository::workflows::{self as repo, WorkflowRecord, WorkflowRunDetail};
+use crate::db::repository::workflows::{
+    self as repo, WorkflowRecord, WorkflowRunDetail, WorkflowRunStep,
+};
 use crate::event_sink;
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
@@ -112,6 +118,14 @@ impl<'a> Unattended<'a> {
     }
 }
 
+/// Where a run starts partway, and the earlier run whose outputs it reuses.
+pub struct Resume {
+    /// The top-level step to start from; the steps before it are reused.
+    pub from_step: String,
+    /// The earlier run's step records.
+    pub earlier: Vec<WorkflowRunStep>,
+}
+
 /// How long a paused run waits for an answer.
 pub const REVIEW_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -143,6 +157,19 @@ impl Runner<'_> {
         inputs: &HashMap<String, String>,
         trigger: &str,
     ) -> Result<WorkflowRunDetail, String> {
+        self.run_from(workflow_id, inputs, trigger, None).await
+    }
+
+    /// [`Runner::run`], starting at `resume.from_step` when given. `Err`
+    /// before anything is recorded when the earlier run can't stand in for
+    /// the steps before it (one didn't run or didn't finish).
+    pub async fn run_from(
+        &self,
+        workflow_id: &str,
+        inputs: &HashMap<String, String>,
+        trigger: &str,
+        resume: Option<&Resume>,
+    ) -> Result<WorkflowRunDetail, String> {
         let pool = &self.state.db;
         let enc = &self.state.encryption;
         let workflow = repo::get(pool, enc, workflow_id)
@@ -153,6 +180,10 @@ impl Runner<'_> {
             serde_json::from_value(workflow.definition.clone())
                 .map_err(|e| format!("The workflow definition can't be read: {e}"))?;
         definition::validate(&def).map_err(|problems| problems.join(" "))?;
+        let (start, reused) = match resume {
+            Some(resume) => reusable(&def.steps, resume)?,
+            None => (0, Vec::new()),
+        };
 
         let conversation_id = self.conversation_for(&workflow).await?;
         let run = repo::start_run(pool, &workflow.id, workflow.version, trigger)
@@ -168,6 +199,9 @@ impl Runner<'_> {
                 .unwrap_or_default();
             input_values.insert(input.id.clone(), Value::String(value));
         }
+        repo::set_run_inputs(pool, enc, &run.id, &Value::Object(input_values.clone()))
+            .await
+            .map_err(|e| e.to_string())?;
         let now = now_iso8601();
         let mut ctx = json!({
             "inputs": input_values,
@@ -186,7 +220,21 @@ impl Runner<'_> {
             tokens: Mutex::new(0),
             over_budget: Mutex::new(None),
         };
-        let result = exec.steps(&def.steps, &mut ctx, None).await;
+        for Reused {
+            step_id,
+            input,
+            output,
+        } in reused
+        {
+            let row = repo::start_step(pool, enc, &run.id, &step_id, None, &input)
+                .await
+                .map_err(|e| e.to_string())?;
+            repo::finish_step(pool, enc, &row, "reused", Some(&output), None)
+                .await
+                .map_err(|e| e.to_string())?;
+            set_step_output(&mut ctx, &step_id, output);
+        }
+        let result = exec.steps(&def.steps[start..], &mut ctx, None).await;
         let over_budget = exec.over_budget();
         let (status, error) = match (&result, &over_budget) {
             (Ok(()), _) => ("completed", None),
@@ -1022,6 +1070,57 @@ fn parse_json_reply(reply: &str) -> Option<Value> {
         }
     }
     None
+}
+
+/// An earlier step's record, standing in for running it again.
+struct Reused {
+    step_id: String,
+    input: Value,
+    output: Value,
+}
+
+/// Where `resume` starts in `steps`, and the earlier steps to reuse.
+fn reusable(steps: &[Step], resume: &Resume) -> Result<(usize, Vec<Reused>), String> {
+    let start = steps
+        .iter()
+        .position(|s| s.id == resume.from_step)
+        .ok_or_else(|| {
+            format!(
+                "Step \"{}\" isn't in the workflow any more.",
+                resume.from_step
+            )
+        })?;
+    let mut reused = Vec::with_capacity(start);
+    for step in &steps[..start] {
+        let row = resume
+            .earlier
+            .iter()
+            .find(|r| r.step_id == step.id && r.iteration.is_none())
+            .ok_or_else(|| {
+                format!(
+                    "Step \"{}\" didn't run last time, so the run can't start after it.",
+                    step.id
+                )
+            })?;
+        let output = match (row.status.as_str(), &row.output) {
+            ("completed" | "reused", Some(output)) => output.clone(),
+            // A step allowed to fail carried on with its error as its output.
+            ("failed", _) if step.on_error == OnError::Skip => json!({ "error": row.error }),
+            _ => {
+                return Err(format!(
+                    "Step \"{}\" didn't finish last time, so the run can't start after it.",
+                    step.id
+                ))
+            }
+        };
+        let input = row.input.clone().unwrap_or(Value::Null);
+        reused.push(Reused {
+            step_id: step.id.clone(),
+            input,
+            output,
+        });
+    }
+    Ok((start, reused))
 }
 
 /// Retries for `step`: what it says, or its kind's default.

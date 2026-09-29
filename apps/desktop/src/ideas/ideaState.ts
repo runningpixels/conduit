@@ -14,8 +14,9 @@ export interface IdeaState {
   tried: string[];
   /// The idea whose prompt is in the composer, until the first message goes.
   pending: string | null;
-  /// New chats started without the idea row, in a row. The row stops showing
-  /// after `ROW_GIVE_UP` — the user knows what they want.
+  /// New chats started without picking an idea, in a row. The starter row
+  /// used to give up after five; the gallery (ADR-011) is the new-chat page's
+  /// content, so only `rowHidden` hides it now.
   startsWithoutIdea: number;
   /// The user turned the empty-chat row off.
   rowHidden: boolean;
@@ -31,7 +32,6 @@ export interface IdeaState {
   chipUsed: string[];
 }
 
-export const ROW_GIVE_UP = 5;
 /// A capability chip offered this many times without use is not offered again.
 export const CHIP_GIVE_UP = 3;
 

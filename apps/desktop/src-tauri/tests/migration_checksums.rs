@@ -138,6 +138,16 @@ const PINNED: &[(i64, &str, &str)] = &[
         "4f9975e774a6d3751279637e3da598ccc476091264138dbdf203dc9acc31b835a4247b0a7ee6fd8f1b0f497ee90473a0",
         "workflow run inputs",
     ),
+    (
+        24,
+        "bd28417d935dd55e23fc1e50d5961c4b97c4448f4b20825b2025cfa189f9c65f2e9baf35f586463754271bd43c3bb9cb",
+        "principal grants",
+    ),
+    (
+        25,
+        "c28ad2ea21cb69c5a2c5f25a832cf5289066dfa8078393f59a8562038f957319a9955edc08755ad168b99caa0ce1f30f",
+        "apps",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

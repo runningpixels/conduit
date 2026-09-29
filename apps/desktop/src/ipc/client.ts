@@ -4,7 +4,10 @@ import type {
   AddLocalConnectorRequest,
   AddLocalConnectorResult,
   AddRemoteConnectorRequest,
+  AppCategory,
+  AppDetail,
   AppPaths,
+  AppSummary,
   AppSettings,
   Artifact,
   ArtifactContent,
@@ -534,8 +537,19 @@ export async function openExternalUrl(url: string): Promise<void> {
 // Artifact network access (ADR-010)
 // =============================================================================
 
+/** Who a page belongs to, for network grants: `artifact:<id>` or `app:<id>`. */
+export type PagePrincipal = `artifact:${string}` | `app:${string}`;
+
+export function artifactPrincipal(artifactId: string): PagePrincipal {
+  return `artifact:${artifactId}`;
+}
+
+export function appPrincipal(appId: string): PagePrincipal {
+  return `app:${appId}`;
+}
+
 export interface ArtifactFetchRequest {
-  artifactId: string;
+  principal: PagePrincipal;
   url: string;
   method: string;
   headers: Array<[string, string]>;
@@ -562,11 +576,11 @@ export async function artifactFetch(request: ArtifactFetchRequest): Promise<Arti
 export type ArtifactNetworkGrantScope = 'session' | 'page';
 
 export async function grantArtifactNetwork(
-  artifactId: string,
+  principal: PagePrincipal,
   host: string,
   scope: ArtifactNetworkGrantScope,
 ): Promise<void> {
-  await invokeCommand('grant_artifact_network', { artifactId, host, scope });
+  await invokeCommand('grant_artifact_network', { principal, host, scope });
 }
 
 export interface ArtifactNetworkState {
@@ -576,28 +590,31 @@ export interface ArtifactNetworkState {
   session: string[];
 }
 
-export async function getArtifactNetworkState(artifactId: string): Promise<ArtifactNetworkState> {
-  return invokeCommand<ArtifactNetworkState>('get_artifact_network_state', { artifactId });
+export async function getArtifactNetworkState(principal: PagePrincipal): Promise<ArtifactNetworkState> {
+  return invokeCommand<ArtifactNetworkState>('get_artifact_network_state', { principal });
 }
 
 export interface ArtifactNetworkGrant {
-  artifactId: string;
+  principal: PagePrincipal;
+  /** Whether the page is an artifact in a chat or a saved app. */
+  kind: 'artifact' | 'app';
   host: string;
   createdAt: string;
   lastUsedAt: string | null;
-  artifactTitle: string | null;
+  /** The artifact's title or the app's name; null when untitled. */
+  title: string | null;
 }
 
 export async function listArtifactNetworkGrants(): Promise<ArtifactNetworkGrant[]> {
   return invokeCommand<ArtifactNetworkGrant[]>('list_artifact_network_grants');
 }
 
-export async function revokeArtifactNetworkGrant(artifactId: string, host: string): Promise<void> {
-  await invokeCommand('revoke_artifact_network_grant', { artifactId, host });
+export async function revokeArtifactNetworkGrant(principal: PagePrincipal, host: string): Promise<void> {
+  await invokeCommand('revoke_artifact_network_grant', { principal, host });
 }
 
-export async function clearArtifactNetworkGrants(artifactId?: string): Promise<void> {
-  await invokeCommand('clear_artifact_network_grants', { artifactId: artifactId ?? null });
+export async function clearArtifactNetworkGrants(principal?: PagePrincipal): Promise<void> {
+  await invokeCommand('clear_artifact_network_grants', { principal: principal ?? null });
 }
 
 // =============================================================================
@@ -1261,6 +1278,49 @@ export async function resetLocalDatabase(): Promise<{ backupPath: string }> {
 /** Everything wrong with a definition, in plain English; empty when it can be saved. */
 export async function validateWorkflow(definition: WorkflowDefinition): Promise<string[]> {
   return invokeCommand<string[]>('validate_workflow', { definition });
+}
+
+// ── Apps (saved mini-apps) ────────────────────────────────────────────────────
+
+/** What the user fills in when saving or editing an app. */
+export interface AppMetaInput {
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  category: AppCategory;
+}
+
+/** Save an HTML artifact as an app. `declaredHosts` come from the page's
+ *  `conduit-network` meta tags; `keepHosts` are the page's remembered grants
+ *  the user chose to carry over (Rust refuses any it doesn't have). */
+export async function saveApp(
+  artifactId: string,
+  meta: AppMetaInput,
+  declaredHosts: string[],
+  keepHosts: string[],
+): Promise<AppSummary> {
+  return invokeCommand<AppSummary>('save_app', { artifactId, meta, declaredHosts, keepHosts });
+}
+
+export async function listApps(): Promise<AppSummary[]> {
+  return invokeCommand<AppSummary[]>('list_apps');
+}
+
+/** An app with its page; also records when it was opened. */
+export async function openApp(id: string): Promise<AppDetail> {
+  return invokeCommand<AppDetail>('open_app', { id });
+}
+
+export async function updateApp(id: string, meta: AppMetaInput): Promise<AppSummary> {
+  return invokeCommand<AppSummary>('update_app', { id, meta });
+}
+
+export async function updateAppFromArtifact(id: string, declaredHosts: string[]): Promise<AppSummary> {
+  return invokeCommand<AppSummary>('update_app_from_artifact', { id, declaredHosts });
+}
+
+export async function deleteApp(id: string): Promise<void> {
+  await invokeCommand('delete_app', { id });
 }
 
 export async function listWorkflows(): Promise<WorkflowSummary[]> {

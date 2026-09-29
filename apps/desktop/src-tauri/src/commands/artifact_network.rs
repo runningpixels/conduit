@@ -1,13 +1,16 @@
-//! Network access for HTML artifacts (ADR-010): the request itself, and the
-//! user's grants. The renderer's consent state only decides whether to *ask*;
-//! every check that matters is repeated here.
+//! Network access for HTML pages (ADR-010) — an artifact in a chat or a saved
+//! mini-app: the request itself, and the user's grants. The renderer's consent
+//! state only decides whether to *ask*; every check that matters is repeated
+//! here.
+//!
+//! Every command names its page by principal: `artifact:<id>` or `app:<id>`.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
     artifact_network::{self, AddressPolicy, ArtifactFetchRequest, ArtifactFetchResponse},
-    db::repository::artifact_network::{self as grants, ArtifactNetworkGrant},
+    db::repository::artifact_network::{self as grants, NetworkGrant, Principal},
     state::AppState,
 };
 
@@ -28,7 +31,22 @@ fn network_blocked_reason(state: &AppState) -> Result<Option<String>, String> {
     Ok(None)
 }
 
-/// Make a request for an artifact, to a host the user granted it.
+/// Whether the artifact or app behind `principal` exists — so a remembered
+/// grant is never written for nothing.
+async fn principal_exists(state: &AppState, principal: &Principal) -> Result<bool, String> {
+    let (sql, id) = match principal {
+        Principal::Artifact(id) => ("SELECT 1 FROM artifacts WHERE id = ?", id),
+        Principal::App(id) => ("SELECT 1 FROM apps WHERE id = ?", id),
+    };
+    let row: Option<(i64,)> = sqlx::query_as(sql)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.is_some())
+}
+
+/// Make a request for a page, to a host the user granted it.
 #[tauri::command]
 pub async fn artifact_fetch(
     state: State<'_, AppState>,
@@ -37,23 +55,25 @@ pub async fn artifact_fetch(
     if let Some(reason) = network_blocked_reason(&state)? {
         return Err(reason);
     }
+    let principal = Principal::parse(&request.principal)?;
+    let key = principal.key();
     let host = artifact_network::grant_host(&request.url)?;
     // Everything this page may reach: its remembered and session grants, where
     // ANY_SITE stands for every public https site.
     let mut reachable: std::collections::HashSet<String> =
-        grants::list(&state.db, Some(&request.artifact_id))
+        grants::list(&state.db, Some(&principal))
             .await
             .map_err(|e| e.to_string())?
             .into_iter()
             .map(|g| g.host)
             .collect();
     let remembered = reachable.clone();
-    reachable.extend(artifact_network::session_hosts(&request.artifact_id));
+    reachable.extend(artifact_network::session_hosts(&key));
     let any_site = reachable.contains(artifact_network::ANY_SITE);
     if !any_site && !reachable.contains(&host) {
         return Err(format!("This page has not been allowed to contact {host}."));
     }
-    let _slot = artifact_network::reserve_slot(&request.artifact_id).await?;
+    let _slot = artifact_network::reserve_slot(&key).await?;
     let allowed = move |origin: &str| any_site || reachable.contains(origin);
     let response = artifact_network::perform(&request, AddressPolicy::APP, &allowed).await?;
     let grant = if remembered.contains(&host) {
@@ -64,7 +84,7 @@ pub async fn artifact_fetch(
         None
     };
     if let Some(grant) = grant {
-        let _ = grants::touch(&state.db, &request.artifact_id, grant).await;
+        let _ = grants::touch(&state.db, &principal, grant).await;
     }
     Ok(response)
 }
@@ -78,20 +98,26 @@ pub enum GrantScope {
     Page,
 }
 
-/// Allow `host` (an https origin) for `artifact_id`.
+/// Allow `host` (an https origin) for `principal`.
 #[tauri::command]
 pub async fn grant_artifact_network(
     state: State<'_, AppState>,
-    artifact_id: String,
+    principal: String,
     host: String,
     scope: GrantScope,
 ) -> Result<(), String> {
+    let principal = Principal::parse(&principal)?;
     let host = artifact_network::grant_host(&host)?;
     match scope {
-        GrantScope::Session => artifact_network::grant_for_session(&artifact_id, &host),
-        GrantScope::Page => grants::grant(&state.db, &artifact_id, &host)
-            .await
-            .map_err(|e| e.to_string())?,
+        GrantScope::Session => artifact_network::grant_for_session(&principal.key(), &host),
+        GrantScope::Page => {
+            if !principal_exists(&state, &principal).await? {
+                return Err("This page no longer exists.".to_string());
+            }
+            grants::grant(&state.db, &principal, &host)
+                .await
+                .map_err(|e| e.to_string())?
+        }
     }
     Ok(())
 }
@@ -109,9 +135,10 @@ pub struct ArtifactNetworkState {
 #[tauri::command]
 pub async fn get_artifact_network_state(
     state: State<'_, AppState>,
-    artifact_id: String,
+    principal: String,
 ) -> Result<ArtifactNetworkState, String> {
-    let always = grants::list(&state.db, Some(&artifact_id))
+    let principal = Principal::parse(&principal)?;
+    let always = grants::list(&state.db, Some(&principal))
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
@@ -120,7 +147,7 @@ pub async fn get_artifact_network_state(
     Ok(ArtifactNetworkState {
         blocked_reason: network_blocked_reason(&state)?,
         always,
-        session: artifact_network::session_hosts(&artifact_id),
+        session: artifact_network::session_hosts(&principal.key()),
     })
 }
 
@@ -128,7 +155,7 @@ pub async fn get_artifact_network_state(
 #[tauri::command]
 pub async fn list_artifact_network_grants(
     state: State<'_, AppState>,
-) -> Result<Vec<ArtifactNetworkGrant>, String> {
+) -> Result<Vec<NetworkGrant>, String> {
     grants::list(&state.db, None)
         .await
         .map_err(|e| e.to_string())
@@ -137,11 +164,12 @@ pub async fn list_artifact_network_grants(
 #[tauri::command]
 pub async fn revoke_artifact_network_grant(
     state: State<'_, AppState>,
-    artifact_id: String,
+    principal: String,
     host: String,
 ) -> Result<(), String> {
-    artifact_network::revoke_session_grant(&artifact_id, &host);
-    grants::revoke(&state.db, &artifact_id, &host)
+    let principal = Principal::parse(&principal)?;
+    artifact_network::revoke_session_grant(&principal.key(), &host);
+    grants::revoke(&state.db, &principal, &host)
         .await
         .map_err(|e| e.to_string())
 }
@@ -150,10 +178,12 @@ pub async fn revoke_artifact_network_grant(
 #[tauri::command]
 pub async fn clear_artifact_network_grants(
     state: State<'_, AppState>,
-    artifact_id: Option<String>,
+    principal: Option<String>,
 ) -> Result<(), String> {
-    artifact_network::clear_session_grants(artifact_id.as_deref());
-    grants::clear(&state.db, artifact_id.as_deref())
+    let principal = principal.as_deref().map(Principal::parse).transpose()?;
+    let key = principal.as_ref().map(Principal::key);
+    artifact_network::clear_session_grants(key.as_deref());
+    grants::clear(&state.db, principal.as_ref())
         .await
         .map_err(|e| e.to_string())
 }

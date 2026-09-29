@@ -68,7 +68,9 @@ const BLOCKED_RESPONSE_HEADERS: [&str; 3] = ["set-cookie", "set-cookie2", "www-a
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactFetchRequest {
-    pub artifact_id: String,
+    /// Whose request this is: `artifact:<id>` or `app:<id>` from the renderer
+    /// (parsed by the command), or a workflow run's own key.
+    pub principal: String,
     pub url: String,
     pub method: String,
     #[serde(default)]
@@ -205,11 +207,11 @@ fn is_public_v4(ip: Ipv4Addr) -> bool {
 
 #[derive(Default)]
 struct Session {
-    /// Hosts allowed for this run of the app only, per artifact.
+    /// Hosts allowed for this run of the app only, per page.
     once: HashMap<String, HashSet<String>>,
-    /// Recent request instants per artifact, for the rate cap.
+    /// Recent request instants per page, for the rate cap.
     recent: HashMap<String, Vec<Instant>>,
-    /// `MAX_IN_FLIGHT` permits per artifact.
+    /// `MAX_IN_FLIGHT` permits per page.
     in_flight: HashMap<String, Arc<Semaphore>>,
 }
 
@@ -218,20 +220,20 @@ fn session() -> &'static Mutex<Session> {
     SESSION.get_or_init(|| Mutex::new(Session::default()))
 }
 
-/// Allow `host` for `artifact_id` until the app quits.
-pub fn grant_for_session(artifact_id: &str, host: &str) {
+/// Allow `host` for the page `key` (a principal key) until the app quits.
+pub fn grant_for_session(key: &str, host: &str) {
     if let Ok(mut s) = session().lock() {
         s.once
-            .entry(artifact_id.to_string())
+            .entry(key.to_string())
             .or_default()
             .insert(host.to_string());
     }
 }
 
 /// Drop every session grant (e.g. "Clear all" in Settings).
-pub fn clear_session_grants(artifact_id: Option<&str>) {
+pub fn clear_session_grants(key: Option<&str>) {
     if let Ok(mut s) = session().lock() {
-        match artifact_id {
+        match key {
             Some(id) => {
                 s.once.remove(id);
             }
@@ -240,14 +242,14 @@ pub fn clear_session_grants(artifact_id: Option<&str>) {
     }
 }
 
-/// Hosts allowed for `artifact_id` for this run of the app.
-pub fn session_hosts(artifact_id: &str) -> Vec<String> {
+/// Hosts allowed for the page `key` (a principal key) for this run of the app.
+pub fn session_hosts(key: &str) -> Vec<String> {
     session()
         .lock()
         .map(|s| {
             let mut hosts: Vec<String> = s
                 .once
-                .get(artifact_id)
+                .get(key)
                 .map(|h| h.iter().cloned().collect())
                 .unwrap_or_default();
             hosts.sort();
@@ -256,35 +258,31 @@ pub fn session_hosts(artifact_id: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub fn revoke_session_grant(artifact_id: &str, host: &str) {
+pub fn revoke_session_grant(key: &str, host: &str) {
     if let Ok(mut s) = session().lock() {
-        if let Some(hosts) = s.once.get_mut(artifact_id) {
+        if let Some(hosts) = s.once.get_mut(key) {
             hosts.remove(host);
         }
     }
 }
 
-pub fn has_session_grant(artifact_id: &str, host: &str) -> bool {
+pub fn has_session_grant(key: &str, host: &str) -> bool {
     session()
         .lock()
-        .map(|s| {
-            s.once
-                .get(artifact_id)
-                .is_some_and(|hosts| hosts.contains(host))
-        })
+        .map(|s| s.once.get(key).is_some_and(|hosts| hosts.contains(host)))
         .unwrap_or(false)
 }
 
-/// Take a request slot for `artifact_id`: refused over the rate cap, otherwise
+/// Take a request slot for the page `key` (a principal key): refused over the rate cap, otherwise
 /// waits until fewer than [`MAX_IN_FLIGHT`] of its requests are running. The
 /// returned guard frees the slot when dropped.
-pub async fn reserve_slot(artifact_id: &str) -> Result<SlotGuard, String> {
+pub async fn reserve_slot(key: &str) -> Result<SlotGuard, String> {
     let permits = {
         let mut s = session()
             .lock()
             .map_err(|_| "Network state unavailable.".to_string())?;
         let now = Instant::now();
-        let recent = s.recent.entry(artifact_id.to_string()).or_default();
+        let recent = s.recent.entry(key.to_string()).or_default();
         recent.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
         if recent.len() >= MAX_REQUESTS_PER_MINUTE {
             return Err(format!(
@@ -293,7 +291,7 @@ pub async fn reserve_slot(artifact_id: &str) -> Result<SlotGuard, String> {
         }
         recent.push(now);
         s.in_flight
-            .entry(artifact_id.to_string())
+            .entry(key.to_string())
             .or_insert_with(|| Arc::new(Semaphore::new(MAX_IN_FLIGHT)))
             .clone()
     };

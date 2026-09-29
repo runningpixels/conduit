@@ -56,6 +56,14 @@ export type { ToolCallRecord } from './generated/tool_call_record';
 // Artifacts
 export type { ArtifactKind } from './generated/artifact_kind';
 export type { Artifact } from './generated/artifact';
+export type { AppCategory } from './generated/app_category';
+export type { AppOrigin } from './generated/app_origin';
+export type { AppNetwork } from './generated/app_network';
+export type { AppCapabilities } from './generated/app_capabilities';
+export type { AppCreatedWith } from './generated/app_created_with';
+export type { AppManifest } from './generated/app_manifest';
+export type { AppSummary } from './generated/app_summary';
+export type { AppDetail } from './generated/app_detail';
 
 // Attachments
 export type { RetentionState } from './generated/retention_state';

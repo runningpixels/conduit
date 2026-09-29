@@ -786,7 +786,7 @@ impl Exec<'_> {
 
     async fn fetch_page(&self, url: &str) -> Result<Value, Failed> {
         let request = ArtifactFetchRequest {
-            artifact_id: format!("workflow-run:{}", self.run_id),
+            principal: format!("workflow-run:{}", self.run_id),
             url: url.to_string(),
             method: "GET".to_string(),
             headers: vec![(

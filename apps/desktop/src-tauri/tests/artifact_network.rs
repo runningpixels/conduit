@@ -110,7 +110,7 @@ fn response(status: &str, headers: &[(&str, String)], body: &[u8]) -> Vec<u8> {
 
 fn get(url: String) -> ArtifactFetchRequest {
     ArtifactFetchRequest {
-        artifact_id: "art-1".into(),
+        principal: "artifact:art-1".into(),
         url,
         method: "GET".into(),
         headers: vec![],
@@ -232,7 +232,7 @@ async fn a_response_over_the_cap_is_refused() {
 async fn credentials_and_identity_headers_are_stripped_and_the_body_is_sent() {
     let (addr, seen) = serve(routes).await;
     let request = ArtifactFetchRequest {
-        artifact_id: "art-1".into(),
+        principal: "artifact:art-1".into(),
         url: format!("http://{addr}/echo"),
         method: "POST".into(),
         headers: vec![
@@ -303,7 +303,10 @@ async fn methods_outside_the_list_and_oversized_bodies_are_refused() {
 #[path = "common/mod.rs"]
 mod common;
 
-use conduit_desktop::db::repository::{artifact_network as grants, artifacts, conversations};
+use conduit_desktop::db::repository::{
+    artifact_network::{self as grants, Principal},
+    artifacts, conversations,
+};
 
 #[tokio::test]
 async fn remembered_grants_list_revoke_and_go_with_their_conversation() {
@@ -315,24 +318,28 @@ async fn remembered_grants_list_revoke_and_go_with_their_conversation() {
     let other = artifacts::create(&pool, &conv.id, "html", Some("Other"), None)
         .await
         .unwrap();
+    let (page_p, other_p) = (
+        Principal::artifact(&page.id),
+        Principal::artifact(&other.id),
+    );
 
-    grants::grant(&pool, &page.id, "https://api.open-meteo.com")
+    grants::grant(&pool, &page_p, "https://api.open-meteo.com")
         .await
         .unwrap();
-    grants::grant(&pool, &page.id, "https://api.open-meteo.com")
+    grants::grant(&pool, &page_p, "https://api.open-meteo.com")
         .await
         .unwrap(); // idempotent
-    grants::grant(&pool, &other.id, "https://api.github.com")
+    grants::grant(&pool, &other_p, "https://api.github.com")
         .await
         .unwrap();
 
     assert!(
-        grants::is_granted(&pool, &page.id, "https://api.open-meteo.com")
+        grants::is_granted(&pool, &page_p, "https://api.open-meteo.com")
             .await
             .unwrap()
     );
     assert!(
-        !grants::is_granted(&pool, &other.id, "https://api.open-meteo.com")
+        !grants::is_granted(&pool, &other_p, "https://api.open-meteo.com")
             .await
             .unwrap(),
         "a grant is per page, never global"
@@ -341,9 +348,9 @@ async fn remembered_grants_list_revoke_and_go_with_their_conversation() {
     assert_eq!(listed.len(), 2);
     assert!(listed
         .iter()
-        .any(|g| g.artifact_title.as_deref() == Some("Paris Weather")));
+        .any(|g| g.title.as_deref() == Some("Paris Weather") && g.kind == "artifact"));
 
-    grants::revoke(&pool, &other.id, "https://api.github.com")
+    grants::revoke(&pool, &other_p, "https://api.github.com")
         .await
         .unwrap();
     assert_eq!(grants::list(&pool, None).await.unwrap().len(), 1);

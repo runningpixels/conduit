@@ -11,9 +11,10 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AccentOverride, AgentGuardrails, AppError, AppSettings, Artifact, ArtifactKind, AskUserField,
-    Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette,
-    BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
+    AccentOverride, AgentGuardrails, AppCapabilities, AppCategory, AppCreatedWith, AppDetail,
+    AppError, AppManifest, AppNetwork, AppOrigin, AppSettings, AppSummary, Artifact, ArtifactKind,
+    AskUserField, Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo,
+    BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
     ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
     ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
     ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
@@ -71,6 +72,16 @@ fn main() {
     // Artifacts
     ArtifactKind::export().expect("export ArtifactKind");
     Artifact::export().expect("export Artifact");
+
+    // Apps
+    AppCategory::export().expect("export AppCategory");
+    AppOrigin::export().expect("export AppOrigin");
+    AppNetwork::export().expect("export AppNetwork");
+    AppCapabilities::export().expect("export AppCapabilities");
+    AppCreatedWith::export().expect("export AppCreatedWith");
+    AppManifest::export().expect("export AppManifest");
+    AppSummary::export().expect("export AppSummary");
+    AppDetail::export().expect("export AppDetail");
 
     // Attachments
     RetentionState::export().expect("export RetentionState");

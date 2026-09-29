@@ -110,6 +110,7 @@ import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
 import {
+  artifactPrincipal,
   exportConversationDialog,
   exportDiagnostics,
   forkConversation,
@@ -2138,7 +2139,7 @@ export default function App() {
                 turns={transcript.turns}
                 focusTurnId={focusTurnId}
                 onSelectTurn={setFocusTurnId}
-                networkLog={chatArtifacts.flatMap((a) => readArtifactNetworkLog(a.id))}
+                networkLog={chatArtifacts.flatMap((a) => readArtifactNetworkLog(artifactPrincipal(a.id)))}
               />
             ) : inspectorTab === 'sources' ? (
               <SourcesView

@@ -8,6 +8,7 @@ import {
   readArtifactFileBytes,
   revealPath,
   setBrandConfig,
+  artifactPrincipal,
 } from '../ipc/client';
 import { buildPreviewProps, resolveKind, selectRenderer } from '../artifacts/selectRenderer';
 import { declaredHosts, scriptedHosts } from '../artifacts/networkHosts';
@@ -405,7 +406,11 @@ export function DocumentPanel({
     effectiveArtifact && resolveKind(effectiveArtifact.kind, effectiveArtifact.mimeType) === 'html'
       ? effectiveArtifact.id
       : null;
-  const network = useArtifactNetwork(networkArtifactId, sourceText, networkPolicyKey);
+  const network = useArtifactNetwork(
+    networkArtifactId ? artifactPrincipal(networkArtifactId) : null,
+    sourceText,
+    networkPolicyKey,
+  );
   const networkDeclared = useMemo(() => (networkArtifactId ? declaredHosts(sourceText) : []), [networkArtifactId, sourceText]);
   const networkScripted = useMemo(() => {
     if (!networkArtifactId) return [];

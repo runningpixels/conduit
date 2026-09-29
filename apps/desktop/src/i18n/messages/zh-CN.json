@@ -631,7 +631,6 @@
   "ideas.sheet.tabsAriaLabel": "创意和已保存的提示词",
   "ideas.starters.ariaLabel": "可以试试的创意",
   "ideas.starters.hide": "在新聊天中隐藏创意",
-  "ideas.starters.label": "试试：",
   "ideas.starters.more": "更多创意",
   "inspector.activity.ariaLabel": "活动",
   "inspector.activity.callCount": "{count, plural, other {# 次调用}}",

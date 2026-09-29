@@ -631,7 +631,6 @@
   "ideas.sheet.tabsAriaLabel": "아이디어 및 저장한 프롬프트",
   "ideas.starters.ariaLabel": "시도해 볼 아이디어",
   "ideas.starters.hide": "새 채팅에서 아이디어 숨기기",
-  "ideas.starters.label": "시도:",
   "ideas.starters.more": "다른 아이디어",
   "inspector.activity.ariaLabel": "활동",
   "inspector.activity.callCount": "{count, plural, other {호출 #회}}",

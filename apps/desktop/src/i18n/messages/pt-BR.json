@@ -631,7 +631,6 @@
   "ideas.sheet.tabsAriaLabel": "Ideias e prompts salvos",
   "ideas.starters.ariaLabel": "Ideias para tentar",
   "ideas.starters.hide": "Ocultar ideias em novos chats",
-  "ideas.starters.label": "Tente:",
   "ideas.starters.more": "Mais ideias",
   "inspector.activity.ariaLabel": "Atividade",
   "inspector.activity.callCount": "{count, plural, one {# chamada} other {# chamadas}}",

@@ -89,7 +89,6 @@ import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
 import { notePicked, observeReady, ROW_GIVE_UP, setRowHidden, useIdeaState } from './ideas/ideaState';
-import { starterIdeas } from './ideas/selectIdeas';
 import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
 import { applyUiPrefs, migrateRetiredThemePrefs, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
@@ -2025,10 +2024,10 @@ export default function App() {
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
-            starterIdeas={
+            ideaGallery={
               ideaState.rowHidden || ideaState.startsWithoutIdea >= ROW_GIVE_UP
-                ? []
-                : starterIdeas(ideaCaps, ideaState, activeConversationId ?? 'new')
+                ? null
+                : { caps: ideaCaps, state: ideaState }
             }
             onPickIdea={(idea) => void tryIdea(idea)}
             onMoreIdeas={openIdeas}

@@ -631,7 +631,6 @@
   "ideas.sheet.tabsAriaLabel": "アイデアと保存したプロンプト",
   "ideas.starters.ariaLabel": "試せるアイデア",
   "ideas.starters.hide": "新しいチャットでアイデアを非表示にする",
-  "ideas.starters.label": "試す：",
   "ideas.starters.more": "ほかのアイデア",
   "inspector.activity.ariaLabel": "アクティビティ",
   "inspector.activity.callCount": "{count, plural, other {# 回の呼び出し}}",

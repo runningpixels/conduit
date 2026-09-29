@@ -1922,7 +1922,8 @@ export default function App() {
         }}
         dots={{ ideas: ideaState.spotlight.length > 0 || newIdeas(ideaState).length > 0 }}
       />
-      <div className="body">
+      {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}
+      <div className="body" data-page={destination !== 'chats' ? destination : undefined}>
         <Sidebar
           conversations={conversations}
           folders={conversationFolders}

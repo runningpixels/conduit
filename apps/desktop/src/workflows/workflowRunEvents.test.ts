@@ -33,9 +33,10 @@ describe('notificationFor', () => {
     });
   });
 
-  it('marks a catch-up run and stays quiet for a skipped slot', () => {
+  it('marks a catch-up run and stays quiet for a skipped slot or a stopped run', () => {
     expect(notificationFor({ ...base, trigger: 'catch_up' }, t)?.title).toBe('caughtUpTitle {"name":"Morning briefing"}');
     expect(notificationFor({ ...base, status: 'skipped' }, t)).toBeNull();
+    expect(notificationFor({ ...base, status: 'stopped' }, t)).toBeNull();
     expect(notificationFor({ ...base, workflowName: '' }, t)?.title).toBe('unnamed');
   });
 });

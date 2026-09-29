@@ -300,6 +300,37 @@ pub async fn finish_run(
     Ok(())
 }
 
+/// Mark runs (and their steps) still `running` as failed: at launch nothing is
+/// running, so they were cut off when Conduit closed. Returns how many runs.
+pub async fn fail_interrupted_runs(pool: &SqlitePool) -> Result<u64, DbError> {
+    let now = now_iso8601();
+    let error = interrupted();
+    sqlx::query(
+        "UPDATE workflow_run_steps SET status = 'failed', error = ?, finished_at = ? \
+         WHERE status = 'running'",
+    )
+    .bind(&error)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    let runs = sqlx::query(
+        "UPDATE workflow_runs SET status = 'failed', error = ?, finished_at = ? \
+         WHERE status = 'running'",
+    )
+    .bind(&error)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(runs.rows_affected())
+}
+
+fn interrupted() -> String {
+    format!(
+        "{} closed before this run finished.",
+        crate::brand::app_name()
+    )
+}
+
 /// Record that a step started; returns the row id to finish it with.
 pub async fn start_step(
     pool: &SqlitePool,

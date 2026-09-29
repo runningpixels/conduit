@@ -23,8 +23,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   schedules running with the window closed, Conduit can stay in the tray
   (offered once, the first time you switch a schedule on) and start in the
   tray when you sign in; both are off by default. Opening Conduit again
-  while it's in the tray brings the window back. Only the summarize step
-  uses the model, and it can't use tools.
+  while it's in the tray brings the window back. Stop a run in progress
+  from its page, or every run from the tray menu, which shows how many are
+  running; quitting mid-run asks first, and a stopped run is kept, marked
+  as stopped. Only the summarize step uses the model, and it can't use
+  tools.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the
@@ -48,6 +51,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Workflows and other pages no longer show a stray line on hover.** The
+  chat's resize handles sat above pages drawn over the chat, so hovering
+  lit an invisible line mid-page and dragging it resized the hidden
+  sidebar.
+- **A workflow run cut off by quitting no longer stays "running" forever.**
+  On the next launch it's marked failed, with the reason.
 - **Text boxes and dropdowns stand out from the page.** Their outline was
   barely darker than the background, so in the dark themes a field could
   look like empty space. Every theme now draws them with a clearly visible

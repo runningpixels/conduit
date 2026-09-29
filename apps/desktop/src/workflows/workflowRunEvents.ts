@@ -14,9 +14,10 @@ import type { WorkflowRunFinished } from '../ipc/contracts';
 export const RUN_FINISHED_EVENT = 'workflow-run-finished';
 
 /// The notification for a finished run, or `null` when there is nothing to say
-/// (a slot skipped because the workflow was still running).
+/// (a slot skipped because the workflow was still running, or a run the user
+/// stopped).
 export function notificationFor(event: WorkflowRunFinished, t: Translate): { title: string; body: string } | null {
-  if (event.status === 'skipped') return null;
+  if (event.status === 'skipped' || event.status === 'stopped') return null;
   const name = event.workflowName || t('workspace.workflows.notify.unnamed');
   const title = event.trigger === 'catch_up' ? t('workspace.workflows.notify.caughtUpTitle', { name }) : name;
   if (event.status === 'failed') {

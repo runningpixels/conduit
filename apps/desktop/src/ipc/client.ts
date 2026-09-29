@@ -1348,9 +1348,32 @@ export async function notifyWorkflowRun(title: string, body: string): Promise<vo
   return invokeCommand('notify_workflow_run', { title, body });
 }
 
-/** The tray menu's labels, translated (Rust has no locale). */
-export async function setTrayLabels(open: string, quit: string, tooltip: string): Promise<void> {
-  return invokeCommand('set_tray_labels', { open, quit, tooltip });
+/** Everything the tray and the quit prompt say, translated (Rust has no locale). */
+export interface TrayLabels {
+  open: string;
+  quit: string;
+  tooltip: string;
+  /** The run count `running` and `confirmBody` are formatted for. */
+  count: number;
+  running: string;
+  stopAll: string;
+  confirmTitle: string;
+  confirmBody: string;
+  confirmQuit: string;
+  confirmCancel: string;
+}
+
+export async function setTrayLabels(labels: TrayLabels): Promise<void> {
+  return invokeCommand('set_tray_labels', { labels });
+}
+
+export async function getRunningWorkflowCount(): Promise<number> {
+  return invokeCommand<number>('get_running_workflow_count');
+}
+
+/** Ask a workflow's run in progress to stop; resolves `false` if it wasn't running. */
+export async function stopWorkflowRun(id: string): Promise<boolean> {
+  return invokeCommand<boolean>('stop_workflow_run', { id });
 }
 
 export async function getStartAtLogin(): Promise<boolean> {

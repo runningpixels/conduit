@@ -35,6 +35,8 @@ use tokio_util::sync::CancellationToken;
 struct EchoModel {
     requests: Arc<Mutex<Vec<ProviderRequest>>>,
     reply_json: Option<&'static str>,
+    /// Start replying, then say nothing more until the reply is cancelled.
+    hang: bool,
 }
 
 impl EchoModel {
@@ -83,11 +85,29 @@ impl ProviderAdapter for EchoModel {
         &self,
         request: ProviderRequest,
         _ctx: AdapterContext,
-        _cancel: CancellationToken,
+        cancel: CancellationToken,
     ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
         let reply = self.reply_for(&request);
         self.requests.lock().unwrap().push(request.clone());
         let r = request.request_id;
+        if self.hang {
+            use futures::StreamExt;
+            let start = ProviderEvent::MessageStart {
+                request_id: r.clone(),
+                index: 0,
+            };
+            let end = async move {
+                cancel.cancelled().await;
+                ProviderEvent::MessageComplete {
+                    request_id: r,
+                    index: 1,
+                    finish_reason: "cancelled".into(),
+                }
+            };
+            return Ok(Box::pin(
+                futures::stream::iter(vec![start]).chain(futures::stream::once(end)),
+            ));
+        }
         let events = vec![
             ProviderEvent::MessageStart {
                 request_id: r.clone(),
@@ -121,6 +141,19 @@ impl ProviderAdapter for EchoModel {
 }
 
 // ── A local web server ───────────────────────────────────────────────────────
+
+/// Accepts connections and never answers, like a site that hangs.
+async fn serve_hanging() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut open = Vec::new();
+        while let Ok((socket, _)) = listener.accept().await {
+            open.push(socket);
+        }
+    });
+    format!("http://{addr}")
+}
 
 /// Serves `pages` (path → HTML) on loopback; anything else is a 404.
 async fn serve(pages: Vec<(&'static str, &'static str)>) -> String {
@@ -225,6 +258,7 @@ impl Harness {
             state: &self.state,
             streams: &self.streams,
             fetch_policy: AddressPolicy { public_only: false },
+            stop: Default::default(),
         };
         runner
             .run(id, &HashMap::new(), "manual")
@@ -423,6 +457,7 @@ async fn an_invalid_definition_does_not_start_a_run() {
         state: &h.state,
         streams: &h.streams,
         fetch_policy: AddressPolicy { public_only: false },
+        stop: Default::default(),
     };
     let err = runner
         .run(&id, &HashMap::new(), "manual")
@@ -638,4 +673,157 @@ async fn deleting_a_workflow_deletes_its_schedule() {
         .unwrap()
         .is_none());
     assert_eq!(repo::earliest_next_run(&h.state.db).await.unwrap(), None);
+}
+
+// ── Stopping a run ───────────────────────────────────────────────────────────
+
+impl Harness {
+    /// Run `id` with `stop`, stopping it after `after`; the run must end soon.
+    async fn run_and_stop(&self, id: &str, after: std::time::Duration) -> repo::WorkflowRunDetail {
+        let stop = CancellationToken::new();
+        let runner = Runner {
+            state: &self.state,
+            streams: &self.streams,
+            fetch_policy: AddressPolicy { public_only: false },
+            stop: stop.clone(),
+        };
+        let no_inputs = HashMap::new();
+        let stopper = async {
+            tokio::time::sleep(after).await;
+            stop.cancel();
+        };
+        let (detail, ()) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            tokio::join!(runner.run(id, &no_inputs, "manual"), stopper)
+        })
+        .await
+        .expect("a stopped run ends promptly");
+        detail.expect("the run starts")
+    }
+}
+
+#[tokio::test]
+async fn stopping_a_run_mid_fetch_ends_it_as_stopped_even_when_the_step_may_fail() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve_hanging().await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/slow")], "onError": "skip" },
+            { "id": "after", "type": "template", "template": "never" },
+        ]}))
+        .await;
+    let detail = h
+        .run_and_stop(&id, std::time::Duration::from_millis(300))
+        .await;
+    assert_eq!(detail.run.status, "stopped");
+    assert_eq!(
+        detail.run.error.as_deref(),
+        Some("Stopped before it finished.")
+    );
+    let steps: Vec<(&str, &str)> = detail
+        .steps
+        .iter()
+        .map(|s| (s.step_id.as_str(), s.status.as_str()))
+        .collect();
+    assert_eq!(
+        steps,
+        vec![("fetch", "stopped")],
+        "onError: skip doesn't swallow a stop, and nothing runs after it"
+    );
+}
+
+#[tokio::test]
+async fn stopping_a_run_mid_reply_cancels_the_model_call() {
+    let model = EchoModel {
+        hang: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "sum", "type": "summarize", "prompt": "Sum up", "input": "text" },
+        ]}))
+        .await;
+    let detail = h
+        .run_and_stop(&id, std::time::Duration::from_millis(300))
+        .await;
+    assert_eq!(detail.run.status, "stopped");
+    assert_eq!(detail.steps[0].status, "stopped");
+    assert_eq!(
+        h.model.requests.lock().unwrap().len(),
+        1,
+        "the model was asked once"
+    );
+}
+
+#[tokio::test]
+async fn a_stop_before_the_run_starts_runs_no_step() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    let detail = h.run_and_stop(&id, std::time::Duration::ZERO).await;
+    // The stop can land before or during the first step; either way nothing
+    // after it runs and nothing is saved.
+    assert_eq!(detail.run.status, "stopped");
+    assert!(detail.steps.iter().all(|s| s.status == "stopped"));
+}
+
+#[tokio::test]
+async fn runs_left_running_by_a_quit_are_marked_failed_at_launch() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    let run = repo::start_run(&h.state.db, &id, 1, "schedule")
+        .await
+        .unwrap();
+    let step = repo::start_step(
+        &h.state.db,
+        &h.state.encryption,
+        &run.id,
+        "fetch",
+        None,
+        &json!({}),
+    )
+    .await
+    .unwrap();
+    let _ = step;
+    assert_eq!(repo::fail_interrupted_runs(&h.state.db).await.unwrap(), 1);
+    let detail = repo::get_run(&h.state.db, &h.state.encryption, &run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.run.error.as_deref(),
+        Some("Conduit closed before this run finished.")
+    );
+    assert!(detail.run.finished_at.is_some());
+    assert_eq!(detail.steps[0].status, "failed");
+    assert_eq!(
+        repo::fail_interrupted_runs(&h.state.db).await.unwrap(),
+        0,
+        "only once"
+    );
+}
+
+#[test]
+fn running_workflows_count_stop_and_report_changes() {
+    let running = Arc::new(RunningWorkflows::default());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    running.set_listener(move |n| log.lock().unwrap().push(n));
+
+    let a = running.try_start("a").unwrap();
+    let b = running.try_start("b").unwrap();
+    assert!(running.try_start("a").is_none());
+    assert_eq!(running.count(), 2);
+
+    assert!(running.stop("a"));
+    assert!(a.stop_token().is_cancelled());
+    assert!(!b.stop_token().is_cancelled());
+    assert!(!running.stop("nope"));
+    assert_eq!(running.stop_all(), 2);
+    assert!(b.stop_token().is_cancelled());
+
+    drop(a);
+    drop(b);
+    assert_eq!(running.count(), 0);
+    assert_eq!(*seen.lock().unwrap(), vec![1, 2, 1, 0]);
 }

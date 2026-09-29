@@ -15,9 +15,9 @@ use conduit_desktop::{
     tray::{self, TrayState},
     updater::*,
     webview_args,
-    workflows::scheduler::{scheduler_loop, RunningWorkflows, SchedulerWake},
+    workflows::scheduler::{scheduler_loop, RunningWorkflows, SchedulerWake, RUNS_CHANGED_EVENT},
 };
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 
 fn main() {
     let app_name = brand::app_name();
@@ -271,6 +271,8 @@ fn main() {
             notify_workflow_run,
             // Keep running in the tray + start at sign-in.
             set_tray_labels,
+            get_running_workflow_count,
+            stop_workflow_run,
             get_start_at_login,
             set_start_at_login,
         ])
@@ -299,6 +301,13 @@ fn main() {
                 .visible(visible)
                 .build()?;
             tray::ensure_tray(app.handle(), close_to_tray)?;
+            // The tray menu shows the running count; the page hears it too.
+            let handle = app.handle().clone();
+            app.state::<std::sync::Arc<RunningWorkflows>>()
+                .set_listener(move |count| {
+                    let _ = handle.emit(RUNS_CHANGED_EVENT, count);
+                    let _ = tray::refresh(&handle);
+                });
             // Scheduled workflows run from here, independent of the window.
             tauri::async_runtime::spawn(scheduler_loop(app.handle().clone()));
             Ok(())
@@ -327,6 +336,13 @@ fn main() {
                 if keep && window.app_handle().tray_by_id(tray::TRAY_ID).is_some() {
                     api.prevent_close();
                     let _ = window.hide();
+                } else if window
+                    .try_state::<std::sync::Arc<RunningWorkflows>>()
+                    .is_some_and(|r| r.count() > 0)
+                {
+                    // Closing quits: ask first, then stop the runs cleanly.
+                    api.prevent_close();
+                    tray::request_quit(window.app_handle());
                 }
             }
             _ => {}

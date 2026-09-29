@@ -49,7 +49,7 @@
   font: inherit;
   font-size: var(--fs-2xl);
   padding: 6px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: var(--r-sm);
   background: var(--card);
   color: var(--ink);
@@ -138,9 +138,9 @@ textarea.cx-input { resize: vertical; }
   font-size: var(--fs-3xl);
   line-height: 1.5;
   padding: 8px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: var(--r-sm);
-  background: var(--bg);
+  background: var(--card);
   color: var(--ink);
   resize: vertical;
 }

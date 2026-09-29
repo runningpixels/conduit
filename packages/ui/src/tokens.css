@@ -176,6 +176,13 @@
   /* Raised border weight: the step up from --line that carries a hovered or
    * active edge on its own. */
   --line-hi: #4d4d49;
+  /* Text-field and dropdown border. --line (~1.2-1.4:1) is for dividers; a
+   * field needs a boundary that reads at 3:1 against every surface (WCAG
+   * 1.4.11) or it looks like a gap in the page. Mixed from each palette's own
+   * ink and page colour, so one declaration serves every palette and both
+   * modes (80% is the least that clears --card-hi in the dark palettes);
+   * tokenContrast.test.ts measures it per palette x mode. */
+  --field-line: color-mix(in srgb, var(--ink-3) 80%, var(--bg));
   /* Three-step ink ramp. Every step clears WCAG AA (4.5:1) against every
    * surface, including --card-hi; tokenContrast.test.ts asserts it.
    * --ink-3 carries real copy (composer placeholder, sidebar group headers,
@@ -1251,7 +1258,9 @@ button {
 /* Achromatic, matching the composer (§8.6). Focus is not provenance, so it does
  * not take the provider hue — and a glow that changes colour with the model,
  * then greys out entirely under `provider-colour: off`, was reporting nothing. */
-textarea:focus-visible { outline: none; border-color: var(--line-hi); }
+/* A focused textarea's border steps up from --field-line to --ink-2, so the
+ * change is visible; --line-hi, the old value, was fainter than a resting field. */
+textarea:focus-visible { outline: none; border-color: var(--ink-2); }
 ::selection { background: var(--hue-weak); }
 /* The one scrollbar treatment in the product. Apply `.scroll` to anything that
  * scrolls; it sets no `overflow`, so it is purely additive.

@@ -189,8 +189,8 @@
   height: 28px;
   padding: 0 8px;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  background: var(--bg);
+  border: 1px solid var(--field-line);
+  background: var(--card);
   font-size: var(--fs-2xl);
   color: var(--ink-2);
 }
@@ -1027,7 +1027,7 @@
 .brand-text-input {
   width: 100%;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   background: var(--card);
   color: var(--ink);
   padding: 8px 10px;

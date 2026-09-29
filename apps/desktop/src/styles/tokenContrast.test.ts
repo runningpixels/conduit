@@ -437,6 +437,43 @@ describe.each(PINNED_PALETTES)('%s palette hue (pinned via [data-provider])', (i
  * `paper`) has no separate dark block for its light block to cover, so this
  * check does not apply to it (see the THEMES-building comment above).
  */
+
+/**
+ * `--field-line` (text-field and dropdown border) is a `color-mix` of each
+ * palette's `--ink-3` into its `--bg`, not a literal, so every palette gets it
+ * without a value of its own. Resolve it the way the browser does (sRGB, by the
+ * declared share) and hold it to the non-text minimum on every surface a field
+ * sits on or is filled with.
+ */
+function fieldLineShare(layers: readonly string[]): number {
+  for (let i = layers.length - 1; i >= 0; i -= 1) {
+    const hit = blockFor(layers[i]).match(
+      /--field-line\s*:\s*color-mix\(in srgb,\s*var\(--ink-3\)\s*(\d+)%,\s*var\(--bg\)\)/,
+    );
+    if (hit) return Number(hit[1]) / 100;
+  }
+  throw new Error(`--field-line is not a color-mix of --ink-3 into --bg in any of [${layers.join(', ')}]`);
+}
+
+function mixHex(a: string, b: string, share: number): string {
+  const rgb = (hex: string) => {
+    const h = hex.replace('#', '');
+    const full = h.length === 3 ? h.replace(/./g, (c) => c + c) : h;
+    return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  };
+  const [x, y] = [rgb(a), rgb(b)];
+  return `#${x
+    .map((v, i) => Math.round(v * share + y[i] * (1 - share)).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+describe.each(Object.entries(THEMES))('%s: field border', (_look, layers) => {
+  const line = mixHex(resolve(layers, 'ink-3'), resolve(layers, 'bg'), fieldLineShare(layers));
+  it.each(SURFACES)('--field-line on --%s clears 3:1', (surface) => {
+    expect(contrast(line, resolve(layers, surface))).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+});
+
 const LIGHT_CAPABLE_PALETTES = PALETTE_IDS.filter(
   (id) => id !== 'terra' && modesForPalette(id).includes('light') && modesForPalette(id).includes('dark'),
 );

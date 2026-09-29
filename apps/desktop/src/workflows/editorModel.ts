@@ -22,6 +22,7 @@ export const STEP_TYPES: readonly StepType[] = [
   'template',
   'for_each',
   'save_artifact',
+  'ask',
   'notify',
 ];
 
@@ -53,6 +54,7 @@ const ID_PREFIX: Record<StepType, string> = {
   template: 'text',
   for_each: 'each',
   save_artifact: 'save',
+  ask: 'ask',
   notify: 'notify',
 };
 
@@ -91,6 +93,8 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, items: '', steps: [] };
     case 'save_artifact':
       return { id, type, title: '', content: '', format: 'markdown', mode: 'update' };
+    case 'ask':
+      return { id, type, question: '', choices: [] };
     case 'notify':
       return { id, type, title: '', body: '' };
   }
@@ -236,6 +240,8 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [{ field: 'items', list: true }];
     case 'save_artifact':
       return [{ field: 'artifactId', list: false }];
+    case 'ask':
+      return [{ field: 'answer', list: false }];
     case 'notify':
       return [];
   }

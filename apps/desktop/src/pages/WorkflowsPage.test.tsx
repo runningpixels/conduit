@@ -26,6 +26,8 @@ const ipc = vi.hoisted(() => ({
   listWorkflowReviews: vi.fn(),
   answerWorkflowReview: vi.fn(),
   rerunWorkflowFrom: vi.fn(),
+  listWorkflowQuestions: vi.fn(),
+  answerWorkflowQuestion: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -100,6 +102,7 @@ describe('WorkflowsPage', () => {
     ipc.getStartAtLogin.mockRejectedValue(new Error('not in tests'));
     ipc.getWorkflowPermissions.mockResolvedValue({ required: [], missing: [], approvedAt: null });
     ipc.listWorkflowReviews.mockResolvedValue([]);
+    ipc.listWorkflowQuestions.mockResolvedValue([]);
     ipc.listWorkflows.mockResolvedValue([summary]);
     ipc.getWorkflow.mockResolvedValue(record);
     ipc.listWorkflowRuns.mockResolvedValue([]);
@@ -253,6 +256,40 @@ describe('WorkflowsPage', () => {
     await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Morning briefing finished'));
     const after = await screen.findByRole('region', { name: 'What this run did' });
     expect(within(after).getByText('Reused')).toBeInTheDocument();
+  });
+
+  it('answers a question with a choice, or with typed text', async () => {
+    const base = {
+      runId: 'r7',
+      workflowId: 'w1',
+      workflowName: 'Morning briefing',
+      stepId: 'ask',
+      requestedAt: '2026-09-29T06:00:00.000Z',
+      expiresAt: '2026-09-30T06:00:00.000Z',
+    };
+    ipc.listWorkflowQuestions
+      .mockResolvedValueOnce([{ ...base, question: 'Which topic?', choices: ['Rust', 'Go'], default: 'Rust' }])
+      .mockResolvedValue([]);
+    ipc.answerWorkflowQuestion.mockResolvedValue(true);
+    const { unmount } = render(<WorkflowsPage onStatus={vi.fn()} />);
+    const panel = await screen.findByRole('group', { name: 'Waiting for you' });
+    expect(panel).toHaveTextContent('Which topic?');
+    expect(panel).toHaveTextContent(/the answer is “Rust”/);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Go' }));
+    await waitFor(() => expect(ipc.answerWorkflowQuestion).toHaveBeenCalledWith('r7', 'Go'));
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument());
+    unmount();
+
+    ipc.listWorkflowQuestions
+      .mockResolvedValueOnce([{ ...base, question: 'Anything to add?', choices: [], default: null }])
+      .mockResolvedValue([]);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const typed = await screen.findByRole('group', { name: 'Waiting for you' });
+    const send = within(typed).getByRole('button', { name: 'Send answer' });
+    expect(send).toBeDisabled();
+    fireEvent.change(within(typed).getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Cover Go too' } });
+    fireEvent.click(send);
+    await waitFor(() => expect(ipc.answerWorkflowQuestion).toHaveBeenLastCalledWith('r7', 'Cover Go too'));
   });
 
   it('shows when a scheduled workflow runs next, in the list', async () => {

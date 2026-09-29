@@ -35,6 +35,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+use super::ask::Questions;
 use super::permissions::Reviews;
 use super::runner::{Notifier, RunBudget, Runner, Unattended};
 use super::schedule::ScheduleSpec;
@@ -49,6 +50,8 @@ pub const RUN_FINISHED_EVENT: &str = "workflow-run-finished";
 pub const RUNS_CHANGED_EVENT: &str = "workflow-runs-changed";
 /// Emitted with a `PendingReview` when a scheduled run pauses to ask.
 pub const RUN_PAUSED_EVENT: &str = "workflow-run-paused";
+/// Emitted with a `PendingQuestion` when a run stops at an "Ask me" step.
+pub const RUN_QUESTION_EVENT: &str = "workflow-run-question";
 /// Longest the loop sleeps without looking again.
 const HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 /// A due time further in the past than this is a catch-up run.
@@ -313,6 +316,7 @@ pub struct RunContext<'a> {
     pub streams: &'a StreamManager,
     pub running: &'a Arc<RunningWorkflows>,
     pub reviews: &'a Reviews,
+    pub questions: &'a Questions,
     /// `AddressPolicy::APP` in the app; tests allow a local server.
     pub fetch_policy: AddressPolicy,
     /// Shows `notify` steps; `None` in tests.
@@ -345,6 +349,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         streams,
         running,
         reviews,
+        questions,
         fetch_policy,
         notify,
     } = *ctx;
@@ -385,6 +390,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         unattended: Some(Unattended::new(reviews, approved)),
         budget: RunBudget::default(),
         notify,
+        questions: Some(questions),
     };
     let outcome = runner.run(&workflow_id, &HashMap::new(), &trigger).await;
     drop(guard);
@@ -412,11 +418,13 @@ pub async fn run_due<Tz: TimeZone>(
     tz: &Tz,
 ) -> Vec<RunFinished> {
     let claimed = claim_due(state, now, tz).await;
+    let questions = Questions::default();
     let ctx = RunContext {
         state,
         streams,
         running,
         reviews,
+        questions: &questions,
         fetch_policy,
         notify: None,
     };
@@ -465,6 +473,7 @@ pub async fn scheduler_loop(app: AppHandle) {
                     streams: &app.state::<StreamManager>(),
                     running: &app.state::<Arc<RunningWorkflows>>(),
                     reviews: &app.state::<Reviews>(),
+                    questions: &app.state::<Questions>(),
                     fetch_policy: AddressPolicy::APP,
                     notify: Some(&notify),
                 };

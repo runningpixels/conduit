@@ -43,6 +43,7 @@ use serde_json::{json, Map, Value};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use super::ask::{PendingQuestion, Questions};
 use super::definition::{self, ArtifactFormat, OnError, SaveMode, Step, StepAction};
 use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
 use super::{extract, template};
@@ -97,6 +98,9 @@ pub struct Runner<'a> {
     pub budget: RunBudget,
     /// Shows `notify` steps; `None` where there's no desktop (the step fails).
     pub notify: Option<&'a Notifier<'a>>,
+    /// Where "Ask me" steps wait for an answer; `None` where nobody could
+    /// answer (the step fails).
+    pub questions: Option<&'a Questions>,
 }
 
 /// What an unattended run may do, and where it asks for more.
@@ -439,6 +443,18 @@ impl Exec<'_> {
                 let content = filled["content"].as_str().unwrap_or_default();
                 self.save_artifact(title, content, *format, *mode).await
             }
+            StepAction::Ask {
+                choices, default, ..
+            } => {
+                let question = filled["question"].as_str().unwrap_or_default().trim();
+                if question.is_empty() {
+                    return Err("The question came out empty.".to_string());
+                }
+                let answer = self
+                    .ask(&step.id, question, choices, default.as_deref())
+                    .await?;
+                Ok(json!({ "answer": answer }))
+            }
             StepAction::Notify { .. } => {
                 let clip = |s: &str, max: usize| s.trim().chars().take(max).collect::<String>();
                 let title = clip(
@@ -574,6 +590,65 @@ impl Exec<'_> {
             }
             Some(Decision::Deny) => Err("You didn't allow this.".to_string()),
             None => Err("Nobody answered within a day, so this didn't go ahead.".to_string()),
+        }
+    }
+
+    /// Ask the user `question` and wait for the answer; nobody answering in
+    /// time takes `default`, or fails without one.
+    async fn ask(
+        &self,
+        step_id: &str,
+        question: &str,
+        choices: &[String],
+        default: Option<&str>,
+    ) -> Result<String, String> {
+        let questions = self
+            .runner
+            .questions
+            .ok_or("Questions can't be asked here.")?;
+        let wait = self
+            .runner
+            .unattended
+            .as_ref()
+            .map_or(REVIEW_WAIT, |u| u.wait);
+        let pool = &self.runner.state.db;
+        let now = chrono::Utc::now();
+        let expires = now + chrono::Duration::from_std(wait).unwrap_or_default();
+        let pending = PendingQuestion {
+            run_id: self.run_id.to_string(),
+            workflow_id: self.workflow_id.to_string(),
+            workflow_name: self.workflow_name.to_string(),
+            step_id: step_id.to_string(),
+            question: question.to_string(),
+            choices: choices.to_vec(),
+            default: default.map(str::to_string),
+            requested_at: super::scheduler::to_iso(now),
+            expires_at: super::scheduler::to_iso(expires),
+        };
+        repo::set_run_status(pool, self.run_id, "paused")
+            .await
+            .map_err(|e| e.to_string())?;
+        let answer = questions.ask(pending);
+        let asked = Instant::now();
+        let answer = tokio::select! {
+            answer = answer => answer.ok(),
+            _ = self.runner.stop.cancelled() => None,
+            _ = tokio::time::sleep(wait) => None,
+        };
+        questions.clear(self.run_id);
+        if let Ok(mut waited) = self.waited.lock() {
+            *waited += asked.elapsed();
+        }
+        repo::set_run_status(pool, self.run_id, "running")
+            .await
+            .map_err(|e| e.to_string())?;
+        if self.runner.stop.is_cancelled() {
+            return Err(STOPPED.to_string());
+        }
+        match (answer, default) {
+            (Some(answer), _) => Ok(answer),
+            (None, Some(default)) => Ok(default.to_string()),
+            (None, None) => Err("Nobody answered in time.".to_string()),
         }
     }
 
@@ -1014,6 +1089,13 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "format": format, "mode": mode,
         }),
         StepAction::ForEach { items, .. } => json!({ "type": "for_each", "items": items }),
+        StepAction::Ask {
+            question,
+            choices,
+            default,
+        } => json!({
+            "type": "ask", "question": render(question)?, "choices": choices, "default": default,
+        }),
         StepAction::Notify { title, body } => json!({
             "type": "notify", "title": render(title)?, "body": render(body)?,
         }),
@@ -1028,6 +1110,7 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Template { .. } => "template",
         StepAction::ForEach { .. } => "for_each",
         StepAction::SaveArtifact { .. } => "save_artifact",
+        StepAction::Ask { .. } => "ask",
         StepAction::Notify { .. } => "notify",
     }
 }

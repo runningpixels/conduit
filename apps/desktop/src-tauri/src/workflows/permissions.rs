@@ -17,13 +17,12 @@
 //! Approving compares sets, not a hash of the definition: an edit that only
 //! narrows what the workflow does needs no new approval.
 
-use std::collections::{BTreeSet, HashMap};
-use std::sync::Mutex;
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
 
 use super::definition::{Step, StepAction, WorkflowDefinition};
+use super::waiting::{Pending, Waiting};
 
 /// One thing a workflow may do unattended.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -164,7 +163,7 @@ fn collect(steps: &[Step], ctx: &Context, set: &mut BTreeSet<Permission>) {
                 });
             }
             // Notifications stay on this computer.
-            StepAction::Template { .. } | StepAction::Notify { .. } => {}
+            StepAction::Template { .. } | StepAction::Notify { .. } | StepAction::Ask { .. } => {}
             StepAction::SaveArtifact { .. } => {
                 set.insert(Permission::SaveDocuments);
             }
@@ -206,63 +205,17 @@ pub struct PendingReview {
     pub expires_at: String,
 }
 
-type ReviewListener = Box<dyn Fn(&PendingReview) + Send + Sync>;
-
-/// Runs waiting for an answer, by run id.
-#[derive(Default)]
-pub struct Reviews {
-    waiting: Mutex<HashMap<String, (PendingReview, oneshot::Sender<Decision>)>>,
-    on_pause: Mutex<Option<ReviewListener>>,
-}
-
-impl Reviews {
-    /// Register `review` and return where its answer arrives.
-    pub fn ask(&self, review: PendingReview) -> oneshot::Receiver<Decision> {
-        let (tx, rx) = oneshot::channel();
-        if let Ok(slot) = self.on_pause.lock() {
-            if let Some(listener) = slot.as_ref() {
-                listener(&review);
-            }
-        }
-        if let Ok(mut waiting) = self.waiting.lock() {
-            waiting.insert(review.run_id.clone(), (review, tx));
-        }
-        rx
+impl Pending for PendingReview {
+    fn run_id(&self) -> &str {
+        &self.run_id
     }
-
-    /// Answer the review for `run_id`. `false` when nothing is waiting.
-    pub fn answer(&self, run_id: &str, decision: Decision) -> bool {
-        let entry = self.waiting.lock().ok().and_then(|mut w| w.remove(run_id));
-        match entry {
-            Some((_, tx)) => tx.send(decision).is_ok(),
-            None => false,
-        }
-    }
-
-    /// Forget `run_id`'s review (it was answered, stopped or timed out).
-    pub fn clear(&self, run_id: &str) {
-        if let Ok(mut waiting) = self.waiting.lock() {
-            waiting.remove(run_id);
-        }
-    }
-
-    pub fn list(&self) -> Vec<PendingReview> {
-        let mut list: Vec<PendingReview> = self
-            .waiting
-            .lock()
-            .map(|w| w.values().map(|(r, _)| r.clone()).collect())
-            .unwrap_or_default();
-        list.sort_by(|a, b| a.requested_at.cmp(&b.requested_at));
-        list
-    }
-
-    /// Called whenever a run starts waiting (the notification).
-    pub fn set_listener(&self, listener: impl Fn(&PendingReview) + Send + Sync + 'static) {
-        if let Ok(mut slot) = self.on_pause.lock() {
-            *slot = Some(Box::new(listener));
-        }
+    fn requested_at(&self) -> &str {
+        &self.requested_at
     }
 }
+
+/// Scheduled runs waiting for a permission answer, by run id.
+pub type Reviews = Waiting<PendingReview, Decision>;
 
 #[cfg(test)]
 mod tests {
@@ -402,7 +355,7 @@ mod tests {
     #[tokio::test]
     async fn a_review_is_answered_once_and_listed_until_then() {
         let reviews = Reviews::default();
-        let seen = std::sync::Arc::new(Mutex::new(0));
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(0));
         let count = seen.clone();
         reviews.set_listener(move |_| *count.lock().unwrap() += 1);
         let review = PendingReview {

@@ -43,6 +43,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Text boxes and dropdowns stand out from the page.** Their outline was
+  barely darker than the background, so in the dark themes a field could
+  look like empty space. Every theme now draws them with a clearly visible
+  border, and a focused text box is easier to spot.
 - **Interactive HTML artifacts work in installed builds.** Released builds
   blocked every script inside an HTML artifact, so calculators, charts,
   games and live-data pages showed only their static layout. Artifacts now

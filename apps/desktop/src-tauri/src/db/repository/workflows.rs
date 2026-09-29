@@ -655,3 +655,35 @@ pub async fn set_permissions(
     .await?;
     Ok(())
 }
+
+/// Remember what a run was started with (see migration 0023).
+pub async fn set_run_inputs(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+    inputs: &Value,
+) -> Result<(), DbError> {
+    sqlx::query("UPDATE workflow_runs SET inputs = ? WHERE id = ?")
+        .bind(encrypt_json(enc, inputs)?)
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// What a run was started with; `None` for runs from before inputs were kept.
+pub async fn get_run_inputs(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+) -> Result<Option<Value>, DbError> {
+    let stored: Option<Option<String>> =
+        sqlx::query_scalar("SELECT inputs FROM workflow_runs WHERE id = ?")
+            .bind(run_id)
+            .fetch_optional(pool)
+            .await?;
+    stored
+        .flatten()
+        .map(|text| decrypt_json(enc, &text))
+        .transpose()
+}

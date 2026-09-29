@@ -21,6 +21,7 @@ import {
   listWorkflowReviews,
   listWorkflowRuns,
   listWorkflows,
+  rerunWorkflowFrom,
   runWorkflow,
   stopWorkflowRun,
   updateWorkflow,
@@ -51,6 +52,7 @@ const STATUS_CLASS: Record<string, string> = {
   failed: 'wf-status wf-status-failed',
   running: 'wf-status wf-status-running',
   paused: 'wf-status wf-status-paused',
+  reused: 'wf-status wf-status-reused',
   stopped: 'wf-status wf-status-stopped',
 };
 
@@ -229,13 +231,15 @@ export function WorkflowsPage({
     }
   }
 
-  async function run() {
+  /// Run it (`start` begins the run and resolves when it ends), then show
+  /// what it did.
+  async function run(start: () => Promise<WorkflowRunDetail> = () => runWorkflow(record!.id, inputs)) {
     if (!record) return;
     setRunning(true);
     setStopping(false);
     setOpenRun(null);
     try {
-      const detail = await runWorkflow(record.id, inputs);
+      const detail = await start();
       setOpenRun(detail);
       onStatus(
         detail.run.status === 'completed'
@@ -363,7 +367,9 @@ export function WorkflowsPage({
           ? t('workspace.workflows.run.stopped')
           : status === 'paused'
             ? t('workspace.workflows.run.paused')
-            : t('workspace.workflows.run.running');
+            : status === 'reused'
+              ? t('workspace.workflows.run.reused')
+              : t('workspace.workflows.run.running');
 
   const list = summaries.map((w) => (
     <PageListItem
@@ -597,7 +603,15 @@ export function WorkflowsPage({
           )}
         </section>
 
-        {openRun ? <RunDetail detail={openRun} statusLabel={statusLabel} onOpenDocument={onOpenDocument} /> : null}
+        {openRun ? (
+          <RunDetail
+            detail={openRun}
+            statusLabel={statusLabel}
+            onOpenDocument={onOpenDocument}
+            canRerun={!running && !busy}
+            onRerunFrom={(stepId) => void run(() => rerunWorkflowFrom(openRun.run.id, stepId))}
+          />
+        ) : null}
       </div>
     );
   }
@@ -717,10 +731,15 @@ function RunDetail({
   detail,
   statusLabel,
   onOpenDocument,
+  canRerun = false,
+  onRerunFrom,
 }: {
   detail: WorkflowRunDetail;
   statusLabel: (s: string) => string;
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
+  canRerun?: boolean;
+  /// Run the workflow again from this top-level step, reusing what came before.
+  onRerunFrom?: (stepId: string) => void;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -754,14 +773,31 @@ function RunDetail({
       ) : null}
       <ul className="wf-run-steps">
         {detail.steps.map((step) => (
-          <RunStepRow key={step.id} step={step} statusLabel={statusLabel} />
+          <RunStepRow
+            key={step.id}
+            step={step}
+            statusLabel={statusLabel}
+            onRerun={onRerunFrom && step.iteration == null ? () => onRerunFrom(step.stepId) : undefined}
+            canRerun={canRerun}
+          />
         ))}
       </ul>
     </section>
   );
 }
 
-function RunStepRow({ step, statusLabel }: { step: WorkflowRunStep; statusLabel: (s: string) => string }) {
+function RunStepRow({
+  step,
+  statusLabel,
+  onRerun,
+  canRerun = false,
+}: {
+  step: WorkflowRunStep;
+  statusLabel: (s: string) => string;
+  /// Offered on top-level steps: run again from here.
+  onRerun?: () => void;
+  canRerun?: boolean;
+}) {
   const t = useT();
   const fmt = useFormatters();
   const ms = durationMs(step.startedAt, step.finishedAt);
@@ -778,6 +814,17 @@ function RunStepRow({ step, statusLabel }: { step: WorkflowRunStep; statusLabel:
           {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
         </summary>
         {step.error ? <p className="wf-error">{step.error}</p> : null}
+        {onRerun ? (
+          <button
+            type="button"
+            className="btn ghost wf-rerun"
+            disabled={!canRerun}
+            aria-label={t('workspace.workflows.runDetail.rerunFromStep', { step: step.stepId })}
+            onClick={onRerun}
+          >
+            {t('workspace.workflows.runDetail.rerunFrom')}
+          </button>
+        ) : null}
         <p className="wf-io-label">{t('workspace.workflows.runDetail.input')}</p>
         <pre className="wf-io">{JSON.stringify(step.input, null, 2)}</pre>
         {step.output != null ? (

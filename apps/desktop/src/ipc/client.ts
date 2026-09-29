@@ -1325,6 +1325,11 @@ export async function runWorkflow(id: string, inputs: Record<string, string>): P
   return invokeCommand<WorkflowRunDetail>('run_workflow', { id, inputs });
 }
 
+/** Run a workflow again from `stepId`, reusing what run `runId` did before it; resolves when the run has finished. */
+export async function rerunWorkflowFrom(runId: string, stepId: string): Promise<WorkflowRunDetail> {
+  return invokeCommand<WorkflowRunDetail>('rerun_workflow_from', { runId, stepId });
+}
+
 export async function listWorkflowRuns(id: string, limit?: number): Promise<WorkflowRun[]> {
   return invokeCommand<WorkflowRun[]>('list_workflow_runs', { id, limit: limit ?? null });
 }

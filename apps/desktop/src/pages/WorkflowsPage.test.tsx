@@ -25,6 +25,7 @@ const ipc = vi.hoisted(() => ({
   approveWorkflowPermissions: vi.fn(),
   listWorkflowReviews: vi.fn(),
   answerWorkflowReview: vi.fn(),
+  rerunWorkflowFrom: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -230,6 +231,28 @@ describe('WorkflowsPage', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Always allow' }));
     await waitFor(() => expect(ipc.answerWorkflowReview).toHaveBeenCalledWith('r9', 'alwaysAllow'));
     expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument();
+  });
+
+  it('reruns an earlier run from a top-level step', async () => {
+    ipc.listWorkflowRuns.mockResolvedValue([finishedRun.run]);
+    const rerun: WorkflowRunDetail = {
+      run: { ...finishedRun.run, id: 'r2', trigger: 'rerun', status: 'completed', error: null },
+      steps: [{ ...finishedRun.steps[0], id: 's9', runId: 'r2', status: 'reused', error: null, output: { text: 'x' } }],
+    };
+    ipc.rerunWorkflowFrom.mockResolvedValue(rerun);
+    const onStatus = vi.fn();
+    render(<WorkflowsPage onStatus={onStatus} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Failed/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    // Offered on top-level steps only, not on a loop's iterations.
+    const buttons = within(detail).getAllByRole('button', { name: /^Rerun from step / });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(within(detail).getByRole('button', { name: 'Rerun from step fetch, reusing the steps before it' }));
+    await waitFor(() => expect(ipc.rerunWorkflowFrom).toHaveBeenCalledWith('r1', 'fetch'));
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Morning briefing finished'));
+    const after = await screen.findByRole('region', { name: 'What this run did' });
+    expect(within(after).getByText('Reused')).toBeInTheDocument();
   });
 
   it('shows when a scheduled workflow runs next, in the list', async () => {

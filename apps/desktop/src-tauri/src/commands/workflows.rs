@@ -18,7 +18,7 @@ use crate::stream_manager::StreamManager;
 use crate::workflows::{
     definition,
     permissions::{self, Decision, PendingReview, PermissionView, Reviews},
-    runner::{search_backend, RunBudget, Runner},
+    runner::{search_backend, Resume, RunBudget, Runner},
     schedule::ScheduleSpec,
     scheduler::{next_run, show_notification, RunningWorkflows, SchedulerWake},
 };
@@ -157,6 +157,49 @@ pub async fn run_workflow(
         notify: Some(&|title: &str, body: &str| show_notification(&app, title, body)),
     };
     runner.run(&id, &inputs.unwrap_or_default(), "manual").await
+}
+
+/// Run a workflow again from `step_id`, reusing what an earlier run did
+/// before that step (and the values it was started with). Waits for the run.
+#[tauri::command]
+pub async fn rerun_workflow_from(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    stream_manager: State<'_, StreamManager>,
+    running: State<'_, Arc<RunningWorkflows>>,
+    run_id: String,
+    step_id: String,
+) -> Result<WorkflowRunDetail, String> {
+    let earlier = repo::get_run(&state.db, &state.encryption, &run_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "That run no longer exists.".to_string())?;
+    let inputs: HashMap<String, String> =
+        repo::get_run_inputs(&state.db, &state.encryption, &run_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_default();
+    let workflow_id = earlier.run.workflow_id.clone();
+    let guard = running
+        .try_start(&workflow_id)
+        .ok_or_else(|| "This workflow is already running.".to_string())?;
+    let runner = Runner {
+        state: state.inner(),
+        streams: stream_manager.inner(),
+        fetch_policy: AddressPolicy::APP,
+        stop: guard.stop_token(),
+        unattended: None,
+        budget: RunBudget::default(),
+        notify: Some(&|title: &str, body: &str| show_notification(&app, title, body)),
+    };
+    let resume = Resume {
+        from_step: step_id,
+        earlier: earlier.steps,
+    };
+    runner
+        .run_from(&workflow_id, &inputs, "rerun", Some(&resume))
+        .await
 }
 
 /// Stop a workflow's run in progress. The run ends as `stopped` after the

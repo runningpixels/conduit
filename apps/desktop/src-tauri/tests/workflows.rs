@@ -18,7 +18,7 @@ use conduit_desktop::{
     stream_manager::StreamManager,
     workflows::definition::WorkflowDefinition,
     workflows::permissions::{self, Decision, Permission, Reviews},
-    workflows::runner::{RunBudget, Runner, Unattended},
+    workflows::runner::{Resume, RunBudget, Runner, Unattended},
     workflows::scheduler::{claim_due, run_claimed, run_due, to_iso, RunContext, RunningWorkflows},
 };
 use futures::stream::Stream;
@@ -1455,4 +1455,171 @@ async fn a_notify_step_shows_its_filled_in_text() {
         .as_deref()
         .unwrap()
         .contains("Notifications aren't available"));
+}
+
+// ── Rerun from a step ───────────────────────────────────────────────────────
+
+impl Harness {
+    fn manual_runner(&self) -> Runner<'_> {
+        Runner {
+            state: &self.state,
+            streams: &self.streams,
+            fetch_policy: AddressPolicy { public_only: false },
+            stop: CancellationToken::new(),
+            unattended: None,
+            budget: RunBudget::default(),
+            notify: None,
+        }
+    }
+
+    async fn rerun(
+        &self,
+        earlier: &repo::WorkflowRunDetail,
+        from: &str,
+    ) -> Result<repo::WorkflowRunDetail, String> {
+        let inputs: HashMap<String, String> =
+            repo::get_run_inputs(&self.state.db, &self.state.encryption, &earlier.run.id)
+                .await
+                .unwrap()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+        let resume = Resume {
+            from_step: from.to_string(),
+            earlier: earlier.steps.clone(),
+        };
+        self.manual_runner()
+            .run_from(&earlier.run.workflow_id, &inputs, "rerun", Some(&resume))
+            .await
+    }
+}
+
+#[tokio::test]
+async fn a_rerun_from_a_step_reuses_what_came_before_it() {
+    let h = Harness::new(EchoModel::default()).await;
+    let (base, count) = serve_statuses(vec![200]).await;
+    let steps = |template: &str| {
+        json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/weather")] },
+            { "id": "sum", "type": "summarize", "prompt": "Sum up", "input": "{{steps.fetch.text}}" },
+            { "id": "doc", "type": "template", "template": template },
+        ]})
+    };
+    let id = h.save(steps("Old: {{steps.sum.text}}")).await;
+    let first = h.run(&id).await;
+    assert_eq!(first.run.status, "completed");
+    assert_eq!(
+        (hits(&count), h.model.requests.lock().unwrap().len()),
+        (1, 1)
+    );
+
+    // Fix the template, then rerun from it.
+    let workflow = repo::get(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    repo::update(
+        &h.state.db,
+        &h.state.encryption,
+        &id,
+        &workflow.name,
+        None,
+        &steps("New: {{steps.sum.text}}"),
+    )
+    .await
+    .unwrap();
+    let again = h.rerun(&first, "doc").await.unwrap();
+    assert_eq!(again.run.status, "completed");
+    assert_eq!(again.run.trigger, "rerun");
+    assert_eq!(hits(&count), 1, "no page fetched again");
+    assert_eq!(
+        h.model.requests.lock().unwrap().len(),
+        1,
+        "the model wasn't asked again"
+    );
+    let statuses: Vec<(&str, &str)> = again
+        .steps
+        .iter()
+        .map(|s| (s.step_id.as_str(), s.status.as_str()))
+        .collect();
+    assert_eq!(
+        statuses,
+        vec![("fetch", "reused"), ("sum", "reused"), ("doc", "completed")]
+    );
+    assert_eq!(
+        again.steps[2].output.as_ref().unwrap()["text"],
+        "New: SUMMARY: ## Weather"
+    );
+    // A rerun of a rerun reuses the reused steps too.
+    let third = h.rerun(&again, "doc").await.unwrap();
+    assert_eq!(third.run.status, "completed");
+    assert_eq!(hits(&count), 1);
+}
+
+#[tokio::test]
+async fn a_rerun_keeps_the_values_the_run_started_with() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({
+            "inputs": [ { "id": "topic", "label": "Topic", "default": "news" } ],
+            "steps": [
+                { "id": "first", "type": "template", "template": "start" },
+                { "id": "doc", "type": "template", "template": "About {{inputs.topic}}" },
+            ]
+        }))
+        .await;
+    let inputs = HashMap::from([("topic".to_string(), "rust".to_string())]);
+    let first = h.manual_runner().run(&id, &inputs, "manual").await.unwrap();
+    assert_eq!(
+        first.steps[1].output.as_ref().unwrap()["text"],
+        "About rust"
+    );
+    let again = h.rerun(&first, "doc").await.unwrap();
+    assert_eq!(
+        again.steps[1].output.as_ref().unwrap()["text"],
+        "About rust"
+    );
+}
+
+#[tokio::test]
+async fn a_rerun_cannot_start_after_a_step_that_did_not_finish() {
+    let h = Harness::new(EchoModel::default()).await;
+    let (base, _) = serve_statuses(vec![404]).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/gone")] },
+            { "id": "doc", "type": "template", "template": "x" },
+        ]}))
+        .await;
+    let first = h.run(&id).await;
+    assert_eq!(first.run.status, "failed");
+    let runs_before = repo::list_runs(&h.state.db, &id, 10).await.unwrap().len();
+    let err = h.rerun(&first, "doc").await.unwrap_err();
+    assert!(err.contains("didn't finish last time"), "{err}");
+    assert_eq!(
+        repo::list_runs(&h.state.db, &id, 10).await.unwrap().len(),
+        runs_before,
+        "nothing is recorded"
+    );
+    let err = h.rerun(&first, "nope").await.unwrap_err();
+    assert!(err.contains("isn't in the workflow"), "{err}");
+}
+
+#[tokio::test]
+async fn a_step_allowed_to_fail_is_reused_with_its_error() {
+    let h = Harness::new(EchoModel::default()).await;
+    let (base, _) = serve_statuses(vec![404]).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/gone")], "onError": "skip" },
+            { "id": "doc", "type": "template", "template": "Fetch said: {{steps.fetch.error}}" },
+        ]}))
+        .await;
+    let first = h.run(&id).await;
+    assert_eq!(first.run.status, "completed");
+    let again = h.rerun(&first, "doc").await.unwrap();
+    assert_eq!(again.run.status, "completed");
+    assert!(again.steps[1].output.as_ref().unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("Fetch said: None of the pages could be fetched."));
 }

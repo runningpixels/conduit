@@ -663,7 +663,7 @@ export interface WorkflowRunStep {
   runId: string;
   stepId: string;
   iteration: number | null;
-  status: 'running' | 'completed' | 'failed' | 'stopped';
+  status: 'running' | 'completed' | 'failed' | 'stopped' | 'reused';
   input: unknown;
   output: unknown;
   error: string | null;

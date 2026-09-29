@@ -633,6 +633,8 @@ export interface WorkflowInput {
 export type WorkflowStep = {
   id: string;
   onError?: 'fail' | 'skip';
+  /** Tries again after a failure; unset takes the step kind's default (`defaultRetries`). */
+  retries?: number | null;
 } & (
   | { type: 'fetch_page'; urls: string[] }
   | { type: 'web_search'; query: string; maxResults?: number | null }
@@ -640,6 +642,7 @@ export type WorkflowStep = {
   | { type: 'template'; template: string }
   | { type: 'for_each'; items: string; steps: WorkflowStep[] }
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
+  | { type: 'notify'; title: string; body?: string }
 );
 
 export type WorkflowRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';

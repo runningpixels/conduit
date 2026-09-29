@@ -36,7 +36,7 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use super::permissions::Reviews;
-use super::runner::{RunBudget, Runner, Unattended};
+use super::runner::{Notifier, RunBudget, Runner, Unattended};
 use super::schedule::ScheduleSpec;
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::workflows as repo;
@@ -226,6 +226,22 @@ fn saved_documents(detail: &repo::WorkflowRunDetail) -> Vec<SavedDocument> {
     docs
 }
 
+/// Show a desktop notification. Only Rust shows them; the webview has no
+/// notification permission.
+pub fn show_notification<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    title: &str,
+    body: &str,
+) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
 /// A due schedule, claimed: its slot is used up and its next time saved.
 pub struct Claimed {
     pub workflow_id: String,
@@ -291,21 +307,29 @@ pub async fn claim_due<Tz: TimeZone>(
     claimed
 }
 
+/// What scheduled runs run with.
+pub struct RunContext<'a> {
+    pub state: &'a AppState,
+    pub streams: &'a StreamManager,
+    pub running: &'a Arc<RunningWorkflows>,
+    pub reviews: &'a Reviews,
+    /// `AddressPolicy::APP` in the app; tests allow a local server.
+    pub fetch_policy: AddressPolicy,
+    /// Shows `notify` steps; `None` in tests.
+    pub notify: Option<&'a Notifier<'a>>,
+}
+
 /// Run what was claimed, all at once, so a run waiting for the user holds up
 /// no other; `on_finished` hears each as it ends. Returns them in the order
 /// they finished.
 pub async fn run_claimed(
-    state: &AppState,
-    streams: &StreamManager,
-    running: &Arc<RunningWorkflows>,
-    reviews: &Reviews,
-    fetch_policy: AddressPolicy,
+    ctx: &RunContext<'_>,
     claimed: Vec<Claimed>,
     on_finished: &(dyn Fn(&RunFinished) + Sync),
 ) -> Vec<RunFinished> {
     let finished = Mutex::new(Vec::new());
     let runs = claimed.into_iter().map(|claim| async {
-        let event = run_one(state, streams, running, reviews, fetch_policy, claim).await;
+        let event = run_one(ctx, claim).await;
         on_finished(&event);
         if let Ok(mut finished) = finished.lock() {
             finished.push(event);
@@ -315,14 +339,15 @@ pub async fn run_claimed(
     finished.into_inner().unwrap_or_default()
 }
 
-async fn run_one(
-    state: &AppState,
-    streams: &StreamManager,
-    running: &Arc<RunningWorkflows>,
-    reviews: &Reviews,
-    fetch_policy: AddressPolicy,
-    claim: Claimed,
-) -> RunFinished {
+async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
+    let RunContext {
+        state,
+        streams,
+        running,
+        reviews,
+        fetch_policy,
+        notify,
+    } = *ctx;
     let Claimed {
         workflow_id,
         workflow_name,
@@ -359,6 +384,7 @@ async fn run_one(
         stop: guard.stop_token(),
         unattended: Some(Unattended::new(reviews, approved)),
         budget: RunBudget::default(),
+        notify,
     };
     let outcome = runner.run(&workflow_id, &HashMap::new(), &trigger).await;
     drop(guard);
@@ -386,16 +412,15 @@ pub async fn run_due<Tz: TimeZone>(
     tz: &Tz,
 ) -> Vec<RunFinished> {
     let claimed = claim_due(state, now, tz).await;
-    run_claimed(
+    let ctx = RunContext {
         state,
         streams,
         running,
         reviews,
         fetch_policy,
-        claimed,
-        &|_| {},
-    )
-    .await
+        notify: None,
+    };
+    run_claimed(&ctx, claimed, &|_| {}).await
 }
 
 /// How long to sleep before looking again: until the next due time, at most
@@ -434,16 +459,16 @@ pub async fn scheduler_loop(app: AppHandle) {
                         tracing::warn!(error = %e, "could not announce a finished workflow run");
                     }
                 };
-                run_claimed(
-                    &app.state::<AppState>(),
-                    &app.state::<StreamManager>(),
-                    &app.state::<Arc<RunningWorkflows>>(),
-                    &app.state::<Reviews>(),
-                    AddressPolicy::APP,
-                    claimed,
-                    &announce,
-                )
-                .await;
+                let notify = |title: &str, body: &str| show_notification(&app, title, body);
+                let ctx = RunContext {
+                    state: &app.state::<AppState>(),
+                    streams: &app.state::<StreamManager>(),
+                    running: &app.state::<Arc<RunningWorkflows>>(),
+                    reviews: &app.state::<Reviews>(),
+                    fetch_policy: AddressPolicy::APP,
+                    notify: Some(&notify),
+                };
+                run_claimed(&ctx, claimed, &announce).await;
             });
         }
         let wait = sleep_for(&state).await;

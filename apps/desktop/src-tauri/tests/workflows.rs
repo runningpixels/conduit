@@ -19,7 +19,7 @@ use conduit_desktop::{
     workflows::definition::WorkflowDefinition,
     workflows::permissions::{self, Decision, Permission, Reviews},
     workflows::runner::{RunBudget, Runner, Unattended},
-    workflows::scheduler::{claim_due, run_claimed, run_due, to_iso, RunningWorkflows},
+    workflows::scheduler::{claim_due, run_claimed, run_due, to_iso, RunContext, RunningWorkflows},
 };
 use futures::stream::Stream;
 use provider_core::schema::{AppSettings, ProviderError, ProviderEvent, ProviderRequest};
@@ -41,6 +41,11 @@ struct EchoModel {
     hang: bool,
     /// Report this many tokens used (input + output) with each reply.
     usage: Option<u64>,
+    /// Answer with prose the first time JSON is asked for (the repair pass
+    /// then gets `reply_json`).
+    bad_json_first: bool,
+    /// Fail this many replies with a provider error before answering.
+    failures: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl EchoModel {
@@ -51,7 +56,13 @@ impl EchoModel {
             .and_then(|m| m.parts.first())
             .and_then(|p| p.content.clone())
             .unwrap_or_default();
+        if let (Some(json), true) = (self.reply_json, text.contains("wasn't valid JSON")) {
+            return json.to_string();
+        }
         if let (Some(json), true) = (self.reply_json, text.contains("JSON Schema")) {
+            if self.bad_json_first {
+                return "Sure! Here is what I found, as JSON-ish text.".to_string();
+            }
             return format!("```json\n{json}\n```");
         }
         let input = text
@@ -94,6 +105,26 @@ impl ProviderAdapter for EchoModel {
         let reply = self.reply_for(&request);
         self.requests.lock().unwrap().push(request.clone());
         let r = request.request_id;
+        let failing = self
+            .failures
+            .fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |n| n.checked_sub(1),
+            )
+            .is_ok();
+        if failing {
+            return Ok(Box::pin(futures::stream::iter(vec![
+                ProviderEvent::Error {
+                    request_id: r,
+                    error: ProviderError {
+                        provider_code: None,
+                        retryable: true,
+                        message: "The model is busy.".into(),
+                    },
+                },
+            ])));
+        }
         if self.hang {
             use futures::StreamExt;
             let start = ProviderEvent::MessageStart {
@@ -153,6 +184,32 @@ impl ProviderAdapter for EchoModel {
 }
 
 // ── A local web server ───────────────────────────────────────────────────────
+
+/// Answers every request with the next status in `statuses` (the last one
+/// repeats) and counts the requests.
+async fn serve_statuses(statuses: Vec<u16>) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = hits.clone();
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let status = statuses[n.min(statuses.len() - 1)];
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let _ = socket.read(&mut buf).await;
+                let body = if status == 200 { PAGE_B } else { "nope" };
+                let response = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+    (format!("http://{addr}"), hits)
+}
 
 /// Accepts connections and never answers, like a site that hangs.
 async fn serve_hanging() -> String {
@@ -275,6 +332,7 @@ impl Harness {
             stop: Default::default(),
             unattended: None,
             budget: RunBudget::default(),
+            notify: None,
         };
         runner
             .run(id, &HashMap::new(), "manual")
@@ -476,6 +534,7 @@ async fn an_invalid_definition_does_not_start_a_run() {
         stop: Default::default(),
         unattended: None,
         budget: RunBudget::default(),
+        notify: None,
     };
     let err = runner
         .run(&id, &HashMap::new(), "manual")
@@ -728,6 +787,7 @@ impl Harness {
             stop: stop.clone(),
             unattended: None,
             budget: RunBudget::default(),
+            notify: None,
         };
         let no_inputs = HashMap::new();
         let stopper = async {
@@ -884,6 +944,7 @@ impl Harness {
             stop,
             unattended: Some(unattended),
             budget: RunBudget::default(),
+            notify: None,
         }
     }
 
@@ -1104,6 +1165,7 @@ async fn going_over_the_time_budget_fails_the_run_even_when_the_step_may_fail() 
             wall_clock: std::time::Duration::from_millis(300),
             ..RunBudget::default()
         },
+        notify: None,
     };
     let detail = tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -1148,6 +1210,7 @@ async fn going_over_the_token_budget_fails_the_run() {
             max_tokens: 1000,
             ..RunBudget::default()
         },
+        notify: None,
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "failed");
@@ -1203,15 +1266,15 @@ async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
     let record = |event: &conduit_desktop::workflows::scheduler::RunFinished| {
         order.lock().unwrap().push(event.workflow_id.clone());
     };
-    let runs = run_claimed(
-        &h.state,
-        &h.streams,
-        &running,
-        &h.reviews,
-        AddressPolicy { public_only: false },
-        claimed,
-        &record,
-    );
+    let ctx = RunContext {
+        state: &h.state,
+        streams: &h.streams,
+        running: &running,
+        reviews: &h.reviews,
+        fetch_policy: AddressPolicy { public_only: false },
+        notify: None,
+    };
+    let runs = run_claimed(&ctx, claimed, &record);
     let answer = async {
         let review = h.next_review().await;
         assert_eq!(review.workflow_id, asks);
@@ -1246,4 +1309,150 @@ async fn a_run_left_waiting_by_a_quit_is_marked_failed_at_launch() {
         .unwrap()
         .unwrap();
     assert_eq!(detail.run.status, "failed");
+}
+
+// ── Retries and notifications ───────────────────────────────────────────────
+
+fn hits(counter: &Arc<std::sync::atomic::AtomicUsize>) -> usize {
+    counter.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn a_page_that_fails_for_a_moment_is_fetched_on_a_retry() {
+    let h = Harness::new(EchoModel::default()).await;
+    let (base, count) = serve_statuses(vec![503, 503, 200]).await;
+    let id = h
+        .save(json!({ "steps": [ { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/p")] } ]}))
+        .await;
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "completed");
+    assert_eq!(hits(&count), 3, "two retries by default");
+    assert_eq!(
+        detail.steps[0].output.as_ref().unwrap()["pages"][0]["title"],
+        "Weather"
+    );
+}
+
+#[tokio::test]
+async fn a_missing_page_is_not_retried_and_retries_can_be_turned_off() {
+    let h = Harness::new(EchoModel::default()).await;
+    let (base, count) = serve_statuses(vec![404]).await;
+    let id = h
+        .save(json!({ "steps": [ { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/p")] } ]}))
+        .await;
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(hits(&count), 1, "404 won't change on a retry");
+
+    let (base, count) = serve_statuses(vec![503, 200]).await;
+    let id = h
+        .save(json!({ "steps": [ { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/p")], "retries": 0 } ]}))
+        .await;
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(hits(&count), 1);
+}
+
+#[tokio::test]
+async fn a_model_error_is_retried_once() {
+    let model = EchoModel {
+        failures: Arc::new(std::sync::atomic::AtomicUsize::new(1)),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(json!({ "steps": [ { "id": "sum", "type": "summarize", "prompt": "Sum up", "input": "Rust ships" } ]}))
+        .await;
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "completed");
+    assert_eq!(
+        detail.steps[0].output.as_ref().unwrap()["text"],
+        "SUMMARY: Rust ships"
+    );
+    assert_eq!(h.model.requests.lock().unwrap().len(), 2);
+
+    // Two failures in a row outlast the one retry.
+    h.model
+        .failures
+        .store(2, std::sync::atomic::Ordering::SeqCst);
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "failed");
+    assert!(detail.steps[0]
+        .error
+        .as_deref()
+        .unwrap()
+        .contains("The model is busy."));
+}
+
+#[tokio::test]
+async fn a_reply_that_should_be_json_gets_one_more_ask() {
+    let model = EchoModel {
+        reply_json: Some(r#"{"topics": ["rust"]}"#),
+        bad_json_first: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(json!({ "steps": [ {
+            "id": "sum", "type": "summarize", "prompt": "List topics", "input": "Rust ships",
+            "schema": { "type": "object" }
+        } ]}))
+        .await;
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "completed");
+    assert_eq!(
+        detail.steps[0].output.as_ref().unwrap()["data"],
+        json!({ "topics": ["rust"] })
+    );
+    let requests = h.model.requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[1].messages.len(),
+        3,
+        "the repair ask carries the bad reply"
+    );
+}
+
+#[tokio::test]
+async fn a_notify_step_shows_its_filled_in_text() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "doc", "type": "template", "template": "3 new posts" },
+            { "id": "ping", "type": "notify", "title": "Briefing ready", "body": "{{steps.doc.text}}" },
+        ]}))
+        .await;
+    let shown = Mutex::new(Vec::new());
+    let notify = |title: &str, body: &str| {
+        shown
+            .lock()
+            .unwrap()
+            .push((title.to_string(), body.to_string()));
+        Ok(())
+    };
+    let runner = Runner {
+        state: &h.state,
+        streams: &h.streams,
+        fetch_policy: AddressPolicy { public_only: false },
+        stop: CancellationToken::new(),
+        unattended: None,
+        budget: RunBudget::default(),
+        notify: Some(&notify),
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed");
+    assert_eq!(
+        *shown.lock().unwrap(),
+        vec![("Briefing ready".to_string(), "3 new posts".to_string())]
+    );
+    assert_eq!(detail.steps[1].output.as_ref().unwrap()["delivered"], true);
+
+    // Without a desktop to show it on, the step says so.
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "failed");
+    assert!(detail.steps[1]
+        .error
+        .as_deref()
+        .unwrap()
+        .contains("Notifications aren't available"));
 }

@@ -48,7 +48,14 @@ pub struct Step {
     pub action: StepAction,
     #[serde(default)]
     pub on_error: OnError,
+    /// How many times to try again after a failure; `None` takes the step's
+    /// default ([`StepAction::default_retries`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retries: Option<u32>,
 }
+
+/// Most retries a step may ask for.
+pub const MAX_RETRIES: u32 = 5;
 
 /// What a step does. Each field that holds text is a template.
 ///
@@ -61,6 +68,7 @@ pub struct Step {
 /// - `for_each`: `items`, one object per element holding that iteration's step
 ///   outputs by step id
 /// - `save_artifact`: `artifactId`
+/// - `notify`: `delivered`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -102,6 +110,24 @@ pub enum StepAction {
         #[serde(default)]
         mode: SaveMode,
     },
+    /// A desktop notification.
+    Notify {
+        title: String,
+        #[serde(default)]
+        body: String,
+    },
+}
+
+impl StepAction {
+    /// Retries when the step doesn't say: a network step twice (sites and
+    /// search backends fail for a moment), a model call once, nothing else.
+    pub fn default_retries(&self) -> u32 {
+        match self {
+            StepAction::FetchPage { .. } | StepAction::WebSearch { .. } => 2,
+            StepAction::Summarize { .. } => 1,
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -207,6 +233,11 @@ fn check_steps(
         if !all_ids.insert(step.id.clone()) {
             problems.push(format!("Two steps are called \"{}\".", step.id));
         }
+        if step.retries.is_some_and(|r| r > MAX_RETRIES) {
+            problems.push(format!(
+                "Step \"{name}\" retries too often; the limit is {MAX_RETRIES}."
+            ));
+        }
         let mut texts: Vec<&str> = Vec::new();
         match &step.action {
             StepAction::FetchPage { urls } => {
@@ -245,6 +276,15 @@ fn check_steps(
                 }
                 texts.push(title);
                 texts.push(content);
+            }
+            StepAction::Notify { title, body } => {
+                if title.trim().is_empty() {
+                    problems.push(format!(
+                        "Step \"{name}\" needs a title for the notification."
+                    ));
+                }
+                texts.push(title);
+                texts.push(body);
             }
             StepAction::ForEach { items, steps: body } => {
                 check_path(items, &scope, name, problems);
@@ -411,6 +451,34 @@ mod tests {
             );
         }
         assert!(validate(&def(json!({ "steps": [] }))).is_err());
+    }
+
+    #[test]
+    fn retries_have_defaults_and_a_limit_and_notify_needs_a_title() {
+        let d = def(json!({ "steps": [
+            { "id": "a", "type": "fetch_page", "urls": ["https://x.com"], "retries": 6 },
+            { "id": "n", "type": "notify", "title": " ", "body": "{{steps.a.text}}" },
+        ]}));
+        let problems = validate(&d).unwrap_err();
+        assert!(
+            problems.iter().any(|p| p.contains("retries too often")),
+            "{problems:?}"
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("needs a title for the notification")),
+            "{problems:?}"
+        );
+        assert_eq!(d.steps[0].retries, Some(6));
+        assert_eq!(d.steps[1].retries, None);
+        assert_eq!(d.steps[0].action.default_retries(), 2);
+        assert_eq!(d.steps[1].action.default_retries(), 0);
+        let round_trip = serde_json::to_value(&d.steps[1]).unwrap();
+        assert!(
+            round_trip.get("retries").is_none(),
+            "an unset retries isn't written back"
+        );
     }
 
     #[test]

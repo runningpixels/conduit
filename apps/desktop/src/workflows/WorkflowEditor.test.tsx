@@ -121,6 +121,42 @@ describe('WorkflowEditor', () => {
     expect(out.draft.definition.steps[1]).toMatchObject({ id: 'a', onError: 'skip' });
   });
 
+  it('sets how often a step tries again, writing only a change from the usual', () => {
+    const out = renderEditor({
+      inputs: [],
+      steps: [{ id: 'fetch', type: 'fetch_page', urls: ['https://example.com'] }],
+    });
+    const retries = within(card(/^1\. Fetch pages/)).getByRole('combobox', { name: 'If it fails, try again' });
+    expect(retries).toHaveValue('2');
+    expect(within(retries).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'No',
+      'Once',
+      '2 times',
+      '3 times',
+      '4 times',
+      '5 times',
+    ]);
+    fireEvent.change(retries, { target: { value: '0' } });
+    expect(out.draft.definition.steps[0].retries).toBe(0);
+    fireEvent.change(retries, { target: { value: '2' } });
+    expect(out.draft.definition.steps[0].retries).toBeUndefined();
+  });
+
+  it('adds a notification step with its title and message, and no retry choice', () => {
+    const out = renderEditor({ inputs: [], steps: [] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'notify' } });
+    const notify = card(/^1\. Show a notification/);
+    typeInto(within(notify).getByRole('textbox', { name: 'Title' }), 'Briefing ready');
+    typeInto(within(notify).getByRole('textbox', { name: 'Message' }), 'Have a look');
+    expect(out.draft.definition.steps[0]).toEqual({
+      id: 'notify',
+      type: 'notify',
+      title: 'Briefing ready',
+      body: 'Have a look',
+    });
+    expect(within(notify).queryByRole('combobox', { name: 'If it fails, try again' })).not.toBeInTheDocument();
+  });
+
   it('keeps a summarize schema it cannot edit', () => {
     const schema = { type: 'object' };
     const out = renderEditor({ steps: [{ id: 's', type: 'summarize', prompt: 'p', input: 'i', schema }] });

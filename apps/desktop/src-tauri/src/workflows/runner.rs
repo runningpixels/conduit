@@ -17,6 +17,10 @@
 //! - A run nobody is watching (`Runner::unattended`, the scheduler's) checks
 //!   each fetch, search, model call and save against what the user approved,
 //!   and pauses to ask about anything else (see `permissions`).
+//! - Failures that may pass are tried again (`Step::retries`, by default twice
+//!   for a fetch or search and once for a model call), waiting 0.5 s, 1 s, 2 s…
+//!   between tries. A page that answers 4xx isn't retried. A model reply that
+//!   should be JSON and isn't gets one more ask to fix it.
 //! - Every run has a budget (`RunBudget`): time spent running (not waiting
 //!   for an answer) and model tokens. Going over fails the run with the
 //!   reason, whatever the steps' `on_error` says; it never truncates quietly.
@@ -55,6 +59,17 @@ const MAX_PAGE_CHARS: usize = 50_000;
 const DEFAULT_SEARCH_RESULTS: u32 = 5;
 /// The error a stopped run and its interrupted step record.
 pub const STOPPED: &str = "Stopped before it finished.";
+/// The wait before the first retry; each one after doubles it.
+const RETRY_BASE: Duration = Duration::from_millis(500);
+/// The follow-up when a reply should have been JSON and wasn't.
+const JSON_REPAIR: &str = "That reply wasn't valid JSON. Reply again with only the JSON value, \
+and no other text.";
+/// Longest notification title and body a `notify` step shows.
+const MAX_NOTIFY_TITLE: usize = 120;
+const MAX_NOTIFY_BODY: usize = 400;
+
+/// Shows a desktop notification (title, body).
+pub type Notifier<'a> = dyn Fn(&str, &str) -> Result<(), String> + Sync + 'a;
 
 /// Standing instruction for every `summarize` call. The input is often web
 /// text, which must not be able to redirect the model.
@@ -74,6 +89,8 @@ pub struct Runner<'a> {
     /// now", which isn't gated.
     pub unattended: Option<Unattended<'a>>,
     pub budget: RunBudget,
+    /// Shows `notify` steps; `None` where there's no desktop (the step fails).
+    pub notify: Option<&'a Notifier<'a>>,
 }
 
 /// What an unattended run may do, and where it asks for more.
@@ -333,16 +350,28 @@ impl Exec<'_> {
                         self.allow(&step.id, permission, Some(url.trim())).await?;
                     }
                 }
-                self.unless_stopped(self.fetch_pages(&urls)).await
+                self.unless_stopped(self.fetch_pages(&urls, retries_of(step)))
+                    .await
             }
             StepAction::WebSearch { max_results, .. } => {
                 let backend = search_backend(&self.runner.state.settings()?);
                 self.allow(&step.id, Permission::WebSearch { backend }, None)
                     .await?;
                 let query = filled["query"].as_str().unwrap_or_default();
-                self.unless_stopped(
-                    self.web_search(query, max_results.unwrap_or(DEFAULT_SEARCH_RESULTS)),
-                )
+                let max = max_results.unwrap_or(DEFAULT_SEARCH_RESULTS);
+                self.unless_stopped(async {
+                    let mut retry = 0;
+                    loop {
+                        match self.web_search(query, max).await {
+                            Err(e) if retry < retries_of(step) && self.may_retry() => {
+                                retry += 1;
+                                tracing::info!(step = %step.id, retry, error = %e, "retrying a web search");
+                                self.backoff(retry).await?;
+                            }
+                            result => break result,
+                        }
+                    }
+                })
                 .await
             }
             StepAction::Summarize { schema, .. } => {
@@ -351,7 +380,8 @@ impl Exec<'_> {
                     .await?;
                 let prompt = filled["prompt"].as_str().unwrap_or_default();
                 let input = filled["input"].as_str().unwrap_or_default();
-                self.summarize(prompt, input, schema.as_ref()).await
+                self.summarize(&step.id, prompt, input, schema.as_ref(), retries_of(step))
+                    .await
             }
             StepAction::Template { .. } => Ok(json!({ "text": filled["template"] })),
             StepAction::SaveArtifact { format, mode, .. } => {
@@ -360,6 +390,23 @@ impl Exec<'_> {
                 let title = filled["title"].as_str().unwrap_or_default().trim();
                 let content = filled["content"].as_str().unwrap_or_default();
                 self.save_artifact(title, content, *format, *mode).await
+            }
+            StepAction::Notify { .. } => {
+                let clip = |s: &str, max: usize| s.trim().chars().take(max).collect::<String>();
+                let title = clip(
+                    filled["title"].as_str().unwrap_or_default(),
+                    MAX_NOTIFY_TITLE,
+                );
+                let body = clip(filled["body"].as_str().unwrap_or_default(), MAX_NOTIFY_BODY);
+                if title.is_empty() {
+                    return Err("The notification's title came out empty.".to_string());
+                }
+                let notify = self
+                    .runner
+                    .notify
+                    .ok_or("Notifications aren't available here.")?;
+                notify(&title, &body)?;
+                Ok(json!({ "delivered": true }))
             }
             StepAction::ForEach { items, steps } => {
                 let list = lookup(ctx, items)
@@ -539,12 +586,23 @@ impl Exec<'_> {
         })
     }
 
-    async fn fetch_pages(&self, urls: &[String]) -> Result<Value, String> {
+    async fn fetch_pages(&self, urls: &[String], retries: u32) -> Result<Value, String> {
         let mut pages = Vec::new();
         let mut joined = String::new();
         let mut failures = Vec::new();
         for url in urls.iter().map(|u| u.trim()).filter(|u| !u.is_empty()) {
-            match self.fetch_page(url).await {
+            let mut retry = 0;
+            let outcome = loop {
+                match self.fetch_page(url).await {
+                    Err(failed) if failed.transient && retry < retries && self.may_retry() => {
+                        retry += 1;
+                        tracing::info!(%url, retry, error = %failed.message, "retrying a page");
+                        self.backoff(retry).await?;
+                    }
+                    result => break result.map_err(|failed| failed.message),
+                }
+            };
+            match outcome {
                 Ok(page) => {
                     let heading = page["title"]
                         .as_str()
@@ -577,7 +635,7 @@ impl Exec<'_> {
         Ok(json!({ "pages": pages, "text": joined.trim_end() }))
     }
 
-    async fn fetch_page(&self, url: &str) -> Result<Value, String> {
+    async fn fetch_page(&self, url: &str) -> Result<Value, Failed> {
         let request = ArtifactFetchRequest {
             artifact_id: format!("workflow-run:{}", self.run_id),
             url: url.to_string(),
@@ -588,17 +646,24 @@ impl Exec<'_> {
             )],
             body: None,
         };
-        let response =
-            artifact_network::perform(&request, self.runner.fetch_policy, &|_| true).await?;
+        let response = artifact_network::perform(&request, self.runner.fetch_policy, &|_| true)
+            .await
+            .map_err(Failed::transient)?;
         if response.status >= 400 {
-            return Err(format!(
+            let message = format!(
                 "the site answered {} {}",
                 response.status, response.status_text
-            ));
+            );
+            // A server error or "slow down" may pass; "not found" won't.
+            return Err(if response.status >= 500 || response.status == 429 {
+                Failed::transient(message)
+            } else {
+                Failed::lasting(message)
+            });
         }
         let bytes = B64
             .decode(&response.body)
-            .map_err(|_| "the page could not be read".to_string())?;
+            .map_err(|_| Failed::lasting("the page could not be read"))?;
         let body = String::from_utf8_lossy(&bytes);
         let content_type = response
             .headers
@@ -616,7 +681,9 @@ impl Exec<'_> {
         {
             (None, body.trim().to_string(), Vec::new())
         } else {
-            return Err(format!("it is not a web page ({content_type})"));
+            return Err(Failed::lasting(format!(
+                "it is not a web page ({content_type})"
+            )));
         };
         let text: String = text.chars().take(MAX_PAGE_CHARS).collect();
         Ok(json!({
@@ -654,49 +721,87 @@ impl Exec<'_> {
 
     async fn summarize(
         &self,
+        step_id: &str,
         prompt: &str,
         input: &str,
         schema: Option<&Value>,
+        retries: u32,
     ) -> Result<Value, String> {
-        let state = self.runner.state;
-        let settings = state.settings()?;
         let mut text = format!("{prompt}\n\n<input>\n{input}\n</input>");
         if let Some(schema) = schema {
             text.push_str(&format!(
                 "\n\nReply with only a JSON value matching this JSON Schema, and no other text:\n{schema}"
             ));
         }
+        let mut turns = vec![(MessageRole::User, text)];
+        let mut retry = 0;
+        let reply = loop {
+            match self.complete(&turns).await {
+                Err(e) if retry < retries && self.may_retry() => {
+                    retry += 1;
+                    tracing::info!(step = %step_id, retry, error = %e, "retrying a model call");
+                    self.backoff(retry).await?;
+                }
+                result => break result?,
+            }
+        };
+        let Some(_) = schema else {
+            return Ok(json!({ "text": reply }));
+        };
+        if let Some(data) = parse_json_reply(&reply) {
+            return Ok(json!({ "text": reply, "data": data }));
+        }
+        // Small models often wrap JSON in prose; asking once more usually fixes it.
+        turns.push((MessageRole::Assistant, reply));
+        turns.push((MessageRole::User, JSON_REPAIR.to_string()));
+        let repaired = self.complete(&turns).await?;
+        let data = parse_json_reply(&repaired)
+            .ok_or("The model's reply wasn't valid JSON, even when asked again.")?;
+        Ok(json!({ "text": repaired, "data": data }))
+    }
+
+    /// One model call with no tools, in the workflow's conversation; the
+    /// reply's text.
+    async fn complete(&self, turns: &[(MessageRole, String)]) -> Result<String, String> {
+        let state = self.runner.state;
+        let settings = state.settings()?;
         let now = now_iso8601();
-        let message_id = Uuid::new_v4().to_string();
+        let messages = turns
+            .iter()
+            .map(|(role, text)| {
+                let message_id = Uuid::new_v4().to_string();
+                Message {
+                    id: message_id.clone(),
+                    conversation_id: self.conversation_id.to_string(),
+                    role: role.clone(),
+                    author_label: None,
+                    provider_message_id: None,
+                    request_id: None,
+                    interrupted_at: None,
+                    metadata: None,
+                    parts: vec![MessagePart {
+                        id: format!("{message_id}/p0"),
+                        message_id: message_id.clone(),
+                        index: 0,
+                        kind: MessagePartKind::Text,
+                        content: Some(text.clone()),
+                        mime_type: None,
+                        tool_call_id: None,
+                        artifact_id: None,
+                        attachment_id: None,
+                        blob_ref: None,
+                        metadata: None,
+                        created_at: now.clone(),
+                    }],
+                    created_at: now.clone(),
+                }
+            })
+            .collect();
         let request = ProviderRequest {
             request_id: Uuid::new_v4().to_string(),
             conversation_id: self.conversation_id.to_string(),
             model_id: settings.active_model.clone(),
-            messages: vec![Message {
-                id: message_id.clone(),
-                conversation_id: self.conversation_id.to_string(),
-                role: MessageRole::User,
-                author_label: None,
-                provider_message_id: None,
-                request_id: None,
-                interrupted_at: None,
-                metadata: None,
-                parts: vec![MessagePart {
-                    id: format!("{message_id}/p0"),
-                    message_id: message_id.clone(),
-                    index: 0,
-                    kind: MessagePartKind::Text,
-                    content: Some(text),
-                    mime_type: None,
-                    tool_call_id: None,
-                    artifact_id: None,
-                    attachment_id: None,
-                    blob_ref: None,
-                    metadata: None,
-                    created_at: now.clone(),
-                }],
-                created_at: now,
-            }],
+            messages,
             system_prompt: Some(SUMMARIZE_SYSTEM.to_string()),
             developer_prompt: None,
             attachments: None,
@@ -761,12 +866,23 @@ impl Exec<'_> {
         if reply.is_empty() {
             return Err("The model returned nothing.".to_string());
         }
-        match schema {
-            None => Ok(json!({ "text": reply })),
-            Some(_) => {
-                let data =
-                    parse_json_reply(&reply).ok_or("The model's reply wasn't valid JSON.")?;
-                Ok(json!({ "text": reply, "data": data }))
+        Ok(reply)
+    }
+
+    /// A failed try may be repeated: not once the run is stopped or out of budget.
+    fn may_retry(&self) -> bool {
+        !self.runner.stop.is_cancelled() && self.over_budget().is_none()
+    }
+
+    /// Wait before retry number `retry` (0.5 s, 1 s, 2 s…); given up if the run
+    /// is stopped or out of time.
+    async fn backoff(&self, retry: u32) -> Result<(), String> {
+        let wait = RETRY_BASE * 2u32.pow(retry.saturating_sub(1).min(4));
+        tokio::select! {
+            _ = tokio::time::sleep(wait) => Ok(()),
+            _ = self.runner.stop.cancelled() => Err(STOPPED.to_string()),
+            _ = tokio::time::sleep(self.time_left()) => {
+                Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()))
             }
         }
     }
@@ -850,6 +966,9 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "format": format, "mode": mode,
         }),
         StepAction::ForEach { items, .. } => json!({ "type": "for_each", "items": items }),
+        StepAction::Notify { title, body } => json!({
+            "type": "notify", "title": render(title)?, "body": render(body)?,
+        }),
     })
 }
 
@@ -861,6 +980,7 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Template { .. } => "template",
         StepAction::ForEach { .. } => "for_each",
         StepAction::SaveArtifact { .. } => "save_artifact",
+        StepAction::Notify { .. } => "notify",
     }
 }
 
@@ -902,6 +1022,35 @@ fn parse_json_reply(reply: &str) -> Option<Value> {
         }
     }
     None
+}
+
+/// Retries for `step`: what it says, or its kind's default.
+fn retries_of(step: &Step) -> u32 {
+    step.retries
+        .unwrap_or_else(|| step.action.default_retries())
+        .min(definition::MAX_RETRIES)
+}
+
+/// Why a page couldn't be fetched, and whether trying again may help.
+struct Failed {
+    message: String,
+    transient: bool,
+}
+
+impl Failed {
+    fn transient(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            transient: true,
+        }
+    }
+
+    fn lasting(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            transient: false,
+        }
+    }
 }
 
 /// The configured search backend's id (`duckduckgo`, `brave`, ...).

@@ -22,7 +22,26 @@ export const STEP_TYPES: readonly StepType[] = [
   'template',
   'for_each',
   'save_artifact',
+  'notify',
 ];
+
+/// Most retries a step may ask for (the backend's `MAX_RETRIES`).
+export const MAX_RETRIES = 5;
+
+/// Retries when a step doesn't say (the backend's `default_retries`): a
+/// network step twice, a model call once, nothing else. `null` for steps
+/// where trying again means nothing.
+export function defaultRetries(type: StepType): number | null {
+  switch (type) {
+    case 'fetch_page':
+    case 'web_search':
+      return 2;
+    case 'summarize':
+      return 1;
+    default:
+      return null;
+  }
+}
 
 /// Most pages one fetch step may list (the backend's `MAX_URLS_PER_FETCH`).
 export const MAX_URLS = 10;
@@ -34,6 +53,7 @@ const ID_PREFIX: Record<StepType, string> = {
   template: 'text',
   for_each: 'each',
   save_artifact: 'save',
+  notify: 'notify',
 };
 
 /// Every step id in the definition, nested ones included.
@@ -71,6 +91,8 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, items: '', steps: [] };
     case 'save_artifact':
       return { id, type, title: '', content: '', format: 'markdown', mode: 'update' };
+    case 'notify':
+      return { id, type, title: '', body: '' };
   }
 }
 
@@ -214,6 +236,8 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [{ field: 'items', list: true }];
     case 'save_artifact':
       return [{ field: 'artifactId', list: false }];
+    case 'notify':
+      return [];
   }
 }
 

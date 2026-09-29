@@ -11,9 +11,6 @@ vi.mock('../ipc/client', () => ({
   getOnboardingState: vi.fn(),
   updateSettings: vi.fn(),
   // Theming Phase 5: the Appearance step's ThemePicker fetches this on mount.
-  listUserThemes: vi.fn().mockResolvedValue([]),
-  revealThemesDir: vi.fn().mockResolvedValue(undefined),
-  createExampleUserTheme: vi.fn(),
   listProviderModels: vi.fn().mockResolvedValue([]),
   listProviderDescriptors: vi.fn().mockResolvedValue([
     { id: 'anthropic', displayName: 'Anthropic', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null },
@@ -94,6 +91,7 @@ const baseSettings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 function renderOnboarding(overrides: Partial<Parameters<typeof Onboarding>[0]> = {}) {
@@ -373,7 +371,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
       // effect and re-mounts nothing, so making the user wait on IPC to see a
       // colour change would be latency for its own sake.
       const { onSettingsChange } = renderOnboarding();
-      fireEvent.change(screen.getByLabelText('Mode'), { target: { value: 'light' } });
+      fireEvent.click(screen.getByRole('radio', { name: 'Light' }));
       expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
     });
   });

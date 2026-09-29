@@ -504,6 +504,20 @@ impl AppState {
         if let Some(value) = patch.memory_enabled {
             settings.memory_enabled = value;
         }
+        if let Some(accent) = patch.accent {
+            let normalize = |mode: &str, value: Option<String>| -> Result<Option<String>, String> {
+                match value {
+                    None => Ok(None),
+                    Some(raw) => crate::validation::normalize_accent_hex(&raw)
+                        .map(Some)
+                        .ok_or_else(|| format!("accent.{mode} must be a #rrggbb colour")),
+                }
+            };
+            settings.accent = provider_core::schema::AccentOverride {
+                dark: normalize("dark", accent.dark)?,
+                light: normalize("light", accent.light)?,
+            };
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())
@@ -623,7 +637,6 @@ mod tests {
             connectors: root.join("connectors"),
             exports: root.join("exports"),
             branding: root.join("branding"),
-            themes: root.join("themes"),
         }
     }
 

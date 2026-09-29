@@ -23,8 +23,17 @@ import { UsageSummary } from './UsageSummary';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { providerHueId } from '../lib/providerIdentity';
 import { useT } from '../i18n';
-import { summarizeStreamState, type ActivityStepStatus, type TurnSummary } from '../inspector/turnActivity';
-import { StepStatusIcon } from '../inspector/stepPresentation';
+import {
+  deriveActivitySteps,
+  summarizeStreamState,
+  type ActivityStepStatus,
+  type TurnSummary,
+} from '../inspector/turnActivity';
+import { StepStatusIcon, formatStepDuration, stepDetail, stepStatusLabel } from '../inspector/stepPresentation';
+import { useFormatters } from '../i18n/formatters';
+
+/** Steps shown as rows in the reply before the rest fold into the summary line. */
+const INLINE_STEP_ROWS = 3;
 
 interface AssistantMessageProps {
   state: AssistantStreamState;
@@ -320,6 +329,14 @@ export function AssistantMessage({
   const [copied, setCopied] = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
   const activity = useMemo(() => summarizeStreamState(state), [state]);
+  // The first few steps show as rows in the reply (ADR-011); the rest are
+  // behind the summary line, which opens the full activity. Errors are
+  // excluded, as in the summary: they already show inline.
+  const shownSteps = useMemo(
+    () => deriveActivitySteps(state).filter((step) => step.kind !== 'error').slice(0, INLINE_STEP_ROWS),
+    [state],
+  );
+  const fmt = useFormatters();
   const text = state.blocks
     .filter((b) => b.blockKind !== 'thinking' && b.blockKind !== 'reasoning')
     .map((b) => b.content)
@@ -412,7 +429,11 @@ export function AssistantMessage({
     .filter(Boolean)
     .join(' · ');
   const activityTurnId = turnId ?? messageId ?? state.requestId;
-  const stepLine = (
+  const openSteps = () => {
+    if (onOpenActivity) onOpenActivity(activityTurnId);
+    else setStepsOpen((v) => !v);
+  };
+  const summaryLine = (
     <button
       key="turn-steps"
       type="button"
@@ -421,10 +442,7 @@ export function AssistantMessage({
       data-open={!onOpenActivity && stepsOpen ? 'true' : 'false'}
       title={onOpenActivity ? t('chat.activity.open') : undefined}
       {...(onOpenActivity ? {} : { 'aria-expanded': stepsOpen })}
-      onClick={() => {
-        if (onOpenActivity) onOpenActivity(activityTurnId);
-        else setStepsOpen((v) => !v);
-      }}
+      onClick={openSteps}
     >
       <StepStatusIcon status={lineStatus} />
       <span className="turn-steps-label" title={stepLineText}>
@@ -432,6 +450,44 @@ export function AssistantMessage({
       </span>
       <ChevronRight className="turn-steps-chev" />
     </button>
+  );
+  const stepLine = (
+    <div key="turn-steps-block" className="turn-step-block">
+      <ol className="turn-step-rows">
+        {shownSteps.map((step) => {
+          const detail = stepDetail(step, t, fmt);
+          return (
+            <li key={step.id}>
+              <button
+                type="button"
+                className="turn-step-row"
+                data-status={step.status}
+                title={onOpenActivity ? t('chat.activity.open') : undefined}
+                {...(onOpenActivity ? {} : { 'aria-expanded': stepsOpen })}
+                onClick={openSteps}
+              >
+                <StepStatusIcon status={step.status} />
+                <span className="sr-only">{stepStatusLabel(step.status, t)}</span>
+                <span className="turn-step-name" title={step.name || undefined}>
+                  {step.name || t('inspector.activity.errorName')}
+                </span>
+                {detail && (
+                  <span className="turn-step-detail" title={detail}>
+                    {detail}
+                  </span>
+                )}
+                <span className="turn-step-dur">
+                  {step.status === 'running' ? '…' : formatStepDuration(step.durationMs)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      {/* The summary line is how to reach the rest, and it carries "needs
+          you", which must not vanish on a short turn. */}
+      {(activity.steps > shownSteps.length || activity.needsYou) && summaryLine}
+    </div>
   );
   let stepLineShown = false;
 

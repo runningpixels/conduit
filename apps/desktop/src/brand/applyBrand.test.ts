@@ -34,7 +34,6 @@ import {
   writeBrandCache,
 } from './applyBrand';
 import { appName, brand, resetBrand } from './index';
-import { readPalette, writePalette } from '../shell/uiPrefs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CACHE_KEY = 'conduit:v1-brand';
@@ -338,19 +337,15 @@ describe('clearBrand — full revert', () => {
     expect(readBrandCache()).toBeNull();
   });
 
-  it('restores the user\'s stored palette preference rather than a hardcoded default', () => {
-    // This is the one that matters most for correctness: the palette pref
-    // (terra / orange-charcoal) is a user choice that predates and outlives
-    // any brand. If clearBrand() reset it, turning branding off would also
-    // silently discard the user's own look — a second, unrelated regression
-    // hiding inside the brand feature.
-    writePalette('orange-charcoal');
+  it('removes the data-palette attribute entirely rather than restoring a stored palette (ADR-011)', () => {
+    // ADR-011 retired the look x palette system: there is no palette
+    // underneath "brand" to fall back to any more, so clearing a brand must
+    // leave no data-palette attribute at all rather than reinstating one.
     applyBrand(makeConfig(), 'dark');
     expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
 
     clearBrand();
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
-    expect(readPalette()).toBe('orange-charcoal'); // localStorage itself was never touched
+    expect(document.documentElement.getAttribute('data-palette')).toBeNull();
   });
 });
 

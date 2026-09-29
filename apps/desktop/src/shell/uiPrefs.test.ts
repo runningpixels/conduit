@@ -1,8 +1,5 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { describe, expect, it, beforeEach } from 'vitest';
 import {
-  readProviderColour,
-  writeProviderColour,
   readReduceMotion,
   writeReduceMotion,
   readShowReasoning,
@@ -12,36 +9,21 @@ import {
   applyUiPrefs,
   readExpandedStatus,
   writeExpandedStatus,
-  readPalette,
-  writePalette,
   readMermaidScale,
   writeMermaidScale,
   mermaidScaleFactor,
-  readLook,
-  writeLook,
-  selectTheme,
-  readThemeId,
-  THEME_CHANGED_EVENT,
+  isBrandActive,
+  retiredForcedMode,
+  migrateRetiredThemePrefs,
 } from './uiPrefs';
 
 describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-palette');
-    document.documentElement.removeAttribute('data-look');
-    document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
     document.documentElement.removeAttribute('data-mermaid-scale');
-  });
-
-  it('provider colour defaults on and applies the html attribute', () => {
-    expect(readProviderColour()).toBe('on');
-    writeProviderColour('off');
-    expect(readProviderColour()).toBe('off');
-    expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
-    writeProviderColour('on');
-    expect(document.documentElement.getAttribute('data-provider-colour')).toBe('on');
   });
 
   it('reduce motion defaults off and applies the html attribute', () => {
@@ -64,62 +46,24 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
   });
 
   it('falls back to defaults when storage holds garbage', () => {
-    localStorage.setItem('conduit:v7-provider-colour', 'maybe');
     localStorage.setItem('conduit:v7-reduce-motion', '1');
     localStorage.setItem('conduit:v7-show-reasoning', 'true');
     localStorage.setItem('conduit:v7-send-with', 'shift');
-    localStorage.setItem('conduit:v9-palette', 'anthropic');
     localStorage.setItem('conduit:v9-mermaid-scale', 'huge');
-    expect(readPalette()).toBe('orange-charcoal');
-    expect(readProviderColour()).toBe('on');
     expect(readReduceMotion()).toBe('off');
     expect(readShowReasoning()).toBe('on');
     expect(readSendWith()).toBe('enter');
     expect(readMermaidScale()).toBe('default');
   });
 
-  it('palette defaults to orange-charcoal and applies the html attribute', () => {
-    expect(readPalette()).toBe('orange-charcoal');
-    writePalette('terra');
-    expect(readPalette()).toBe('terra');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
-    writePalette('orange-charcoal');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
-    writePalette('orange-dark');
-    expect(readPalette()).toBe('orange-dark');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
-  });
-
-  it('migrates stored conduit palette to terra', () => {
-    localStorage.setItem('conduit:v9-palette', 'conduit');
-    expect(readPalette()).toBe('terra');
-  });
-
-  /* The rename's one real hazard: `claude` no longer validates, so without the
-   * migration it would fall through to the default — which is this same look,
-   * making the lost preference invisible until the user chose terra. */
-  it('migrates the stored claude palette to orange-charcoal', () => {
-    localStorage.setItem('conduit:v9-palette', 'claude');
-    expect(readPalette()).toBe('orange-charcoal');
-  });
-
   it('applyUiPrefs sets every document attribute idempotently', () => {
-    writeLook('soft');
-    writePalette('orange-charcoal');
-    writeProviderColour('off');
     writeReduceMotion('on');
     writeExpandedStatus('on');
     writeMermaidScale('compact');
-    document.documentElement.removeAttribute('data-look');
-    document.documentElement.removeAttribute('data-palette');
-    document.documentElement.removeAttribute('data-provider-colour');
     document.documentElement.removeAttribute('data-reduce-motion');
     document.documentElement.removeAttribute('data-expanded-status');
     document.documentElement.removeAttribute('data-mermaid-scale');
     applyUiPrefs();
-    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
-    expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
     expect(document.documentElement.getAttribute('data-expanded-status')).toBe('on');
     expect(document.documentElement.getAttribute('data-mermaid-scale')).toBe('compact');
@@ -141,163 +85,150 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(readExpandedStatus()).toBe('on');
     expect(localStorage.getItem('conduit:v9-expanded-status')).toBe('on');
   });
+});
 
-  it('provider-colour off neutralizes per-element data-provider hue (CSS rule exists after the hue selectors)', () => {
-    // jsdom does not load tokens.css, so computed custom properties cannot be
-    // verified there; assert the rule text in the real stylesheet instead.
-    // (vitest rewrites import.meta.url to an http dev-server URL and returns
-    // empty modules for CSS, so resolve the file from the process cwd.)
-    const css = readFileSync(
-      `${process.cwd()}/../../packages/ui/src/tokens.css`,
-      'utf8',
-    );
-    const hueSelector = '[data-provider="anthropic"]';
-    const neutralize = 'html[data-provider-colour="off"] [data-provider]';
-    expect(css).toContain(hueSelector);
-    expect(css).toContain(neutralize);
-    // The neutralizer must come after the hue selectors so it wins the cascade.
-    expect(css.indexOf(neutralize)).toBeGreaterThan(css.indexOf(hueSelector));
-    // And the main rule pins --hue to the neutral ink scale (the first
-    // occurrence may be the no-color-mix fallback, so match the full rule).
-    const normalized = css.replace(/\r\n/g, '\n');
-    expect(normalized).toContain(
-      'html[data-provider-colour="off"] [data-provider] {\n  --hue: var(--ink-2);',
-    );
+describe('isBrandActive', () => {
+  beforeEach(() => {
+    document.documentElement.removeAttribute('data-palette');
   });
 
-  /**
-   * Three rules now compete for --hue at near-equal specificity, and two of the
-   * three pairings are settled by source order alone. Order is therefore a
-   * contract, not a formatting detail.
-   */
-  it('orders the orange-charcoal pin after the provider hues and before the off switch', () => {
-    const css = readFileSync(`${process.cwd()}/../../packages/ui/src/tokens.css`, 'utf8');
-    const hue = css.indexOf('[data-provider="anthropic"]');
-    const pin = css.indexOf('html[data-palette="orange-charcoal"] [data-provider]');
-    const odPin = css.indexOf('html[data-palette="orange-dark"] [data-provider]');
-    const off = css.indexOf('html[data-provider-colour="off"] [data-provider]');
-    expect(pin).toBeGreaterThan(-1);
-    expect(odPin).toBeGreaterThan(-1);
-    // (0,2,1) beats the provider rules' (0,1,0)/(0,2,0) outright, but the rule
-    // still has to exist after them to read as intentional.
-    expect(pin).toBeGreaterThan(hue);
-    expect(odPin).toBeGreaterThan(hue);
-    // Equal specificity with the off switch, so this ordering is the only thing
-    // making "provider colour: off" beat the palette's accent.
-    expect(off).toBeGreaterThan(pin);
-    expect(off).toBeGreaterThan(odPin);
+  it('is false with no data-palette attribute', () => {
+    expect(isBrandActive()).toBe(false);
   });
 
-  /**
-   * <html> carries data-theme, data-provider and data-provider-colour at once.
-   * With only the single-member selector, [data-theme="light"][data-provider=x]
-   * at (0,2,0) outranked the off switch at (0,1,1), so in light mode everything
-   * reading --hue from <html> — composer focus ring, .btn.primary, the focus
-   * outline via --ring-color — stayed tinted with the toggle off.
-   */
-  it('neutralizes the html-level hue at a specificity light mode cannot beat', () => {
-    const css = readFileSync(`${process.cwd()}/../../packages/ui/src/tokens.css`, 'utf8')
-      .replace(/\r\n/g, '\n');
-    expect(css).toContain('html[data-provider-colour="off"][data-provider]');
+  it('is true only when data-palette is exactly "brand"', () => {
+    document.documentElement.setAttribute('data-palette', 'terra');
+    expect(isBrandActive()).toBe(false);
+    document.documentElement.setAttribute('data-palette', 'brand');
+    expect(isBrandActive()).toBe(true);
   });
 });
 
-describe('look (theming Phase 2, structural axis)', () => {
+/**
+ * ADR-011 retired the look x palette theme system. These retired keys used to
+ * hold the look, the palette, the provider-colour switch, the reading font,
+ * and the selected user theme. A dark-only palette (Amber Terminal, Green
+ * Phosphor) or light-only palette (Amber Paper) used to force the mode
+ * without ever writing AppSettings.theme, so someone on one of those needs
+ * that forced mode carried over on the one-time migration; everything else
+ * about the retired system is simply discarded.
+ */
+describe('migrateRetiredThemePrefs (ADR-011 one-time migration)', () => {
+  const RETIRED_KEYS = [
+    'conduit:v9-palette',
+    'conduit:v10-look',
+    'conduit:v7-provider-colour',
+    'conduit:v10-reading-font',
+    'conduit:v10-user-theme',
+    'conduit:v10-user-theme-cache',
+  ] as const;
+
   beforeEach(() => {
     localStorage.clear();
-    document.documentElement.removeAttribute('data-look');
-    document.documentElement.removeAttribute('data-palette');
+    for (const attr of [
+      'data-look',
+      'data-palette',
+      'data-provider-colour',
+      'data-reading-font',
+      'data-user-palette',
+      'data-user-labels',
+    ]) {
+      document.documentElement.removeAttribute(attr);
+    }
   });
 
-  it('defaults to soft and falls back to soft on garbage', () => {
-    expect(readLook()).toBe('soft');
-    localStorage.setItem('conduit:v10-look', 'brutalist');
-    expect(readLook()).toBe('soft');
-  });
-
-  it('writeLook persists the value, applies data-look, and fires THEME_CHANGED_EVENT once', () => {
-    const handler = vi.fn();
-    window.addEventListener(THEME_CHANGED_EVENT, handler);
-    writeLook('soft');
-    expect(readLook()).toBe('soft');
-    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
-    expect(handler).toHaveBeenCalledTimes(1);
-    window.removeEventListener(THEME_CHANGED_EVENT, handler);
-  });
-
-  it('selectTheme writes both axes, applies both attributes, and fires the change event once', () => {
-    const handler = vi.fn();
-    window.addEventListener(THEME_CHANGED_EVENT, handler);
-    selectTheme('conduit-orange-dark');
-    expect(readLook()).toBe('soft');
-    expect(readPalette()).toBe('orange-dark');
-    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
-    expect(handler).toHaveBeenCalledTimes(1);
-    window.removeEventListener(THEME_CHANGED_EVENT, handler);
-  });
-
-  it('selectTheme is a no-op for an id no manifest carries', () => {
-    writePalette('terra');
-    selectTheme('does-not-exist');
-    expect(readPalette()).toBe('terra');
-  });
-
-  it('selectTheme does not overwrite data-palette="brand" while a brand is active', () => {
-    document.documentElement.setAttribute('data-palette', 'brand');
-    selectTheme('conduit-orange-dark');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
-    // The preference underneath still updates, so it is what re-applies once
-    // the brand clears.
-    expect(readPalette()).toBe('orange-dark');
-    document.documentElement.removeAttribute('data-palette');
-  });
-
-  it('writePalette does not overwrite data-palette="brand" while a brand is active, but still persists', () => {
-    document.documentElement.setAttribute('data-palette', 'brand');
-    writePalette('orange-dark');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
-    expect(readPalette()).toBe('orange-dark');
-    document.documentElement.removeAttribute('data-palette');
-  });
-
-  it('readThemeId derives the id from the stored look × palette pair', () => {
-    selectTheme('conduit-terra');
-    expect(readThemeId()).toBe('conduit-terra');
-    selectTheme('conduit-orange-charcoal');
-    expect(readThemeId()).toBe('conduit-orange-charcoal');
-    selectTheme('conduit-orange-dark');
-    expect(readThemeId()).toBe('conduit-orange-dark');
-  });
-
-  it('applyUiPrefs applies data-look', () => {
-    writeLook('soft');
-    document.documentElement.removeAttribute('data-look');
-    applyUiPrefs();
-    expect(document.documentElement.getAttribute('data-look')).toBe('soft');
-  });
-
-  describe('readThemeId for a pair no manifest names', () => {
-    afterEach(() => {
-      vi.doUnmock('../themes/registry');
-      vi.resetModules();
+  describe('retiredForcedMode', () => {
+    it('returns null with nothing stored', () => {
+      expect(retiredForcedMode()).toBeNull();
     });
 
-    it('falls back to the custom pseudo-theme id', async () => {
-      vi.resetModules();
-      vi.doMock('../themes/registry', async () => {
-        const actual =
-          await vi.importActual<typeof import('../themes/registry')>('../themes/registry');
-        // Every real look × palette pair is named today (LOOK_IDS has only
-        // `soft`, and every PALETTE_ID has a `soft` manifest) — so the only
-        // way to exercise "no manifest names this pair" is to mock the
-        // lookup itself, exactly as the task note anticipates.
-        return { ...actual, themeForPair: () => undefined };
-      });
-      const mod = await import('./uiPrefs');
-      localStorage.setItem('conduit:v10-look', 'soft');
+    it('amber and phosphor (dark-only palettes) force dark', () => {
+      localStorage.setItem('conduit:v9-palette', 'amber');
+      expect(retiredForcedMode()).toBe('dark');
+      localStorage.setItem('conduit:v9-palette', 'phosphor');
+      expect(retiredForcedMode()).toBe('dark');
+    });
+
+    it('paper (light-only palette) forces light', () => {
+      localStorage.setItem('conduit:v9-palette', 'paper');
+      expect(retiredForcedMode()).toBe('light');
+    });
+
+    it('terra and orange-charcoal (dual-mode palettes) force nothing', () => {
+      localStorage.setItem('conduit:v9-palette', 'terra');
+      expect(retiredForcedMode()).toBeNull();
       localStorage.setItem('conduit:v9-palette', 'orange-charcoal');
-      expect(mod.readThemeId()).toBe('custom');
+      expect(retiredForcedMode()).toBeNull();
     });
+
+    it('a selected user theme whose cache names a single mode forces that mode', () => {
+      localStorage.setItem('conduit:v10-user-theme', 'my-theme');
+      localStorage.setItem('conduit:v10-user-theme-cache', JSON.stringify({ modes: ['light'] }));
+      expect(retiredForcedMode()).toBe('light');
+    });
+
+    it('a user theme cache is ignored unless a user theme is actually selected', () => {
+      localStorage.setItem('conduit:v10-user-theme-cache', JSON.stringify({ modes: ['light'] }));
+      expect(retiredForcedMode()).toBeNull();
+    });
+
+    it('a two-mode user theme cache forces nothing', () => {
+      localStorage.setItem('conduit:v10-user-theme', 'my-theme');
+      localStorage.setItem('conduit:v10-user-theme-cache', JSON.stringify({ modes: ['dark', 'light'] }));
+      expect(retiredForcedMode()).toBeNull();
+    });
+
+    it('a corrupt cache is treated as "nothing to carry over" rather than throwing', () => {
+      localStorage.setItem('conduit:v10-user-theme', 'my-theme');
+      localStorage.setItem('conduit:v10-user-theme-cache', '{not json');
+      expect(() => retiredForcedMode()).not.toThrow();
+      expect(retiredForcedMode()).toBeNull();
+    });
+  });
+
+  it('clears all six retired keys', () => {
+    localStorage.setItem('conduit:v9-palette', 'amber');
+    localStorage.setItem('conduit:v10-look', 'brutalist');
+    localStorage.setItem('conduit:v7-provider-colour', 'off');
+    localStorage.setItem('conduit:v10-reading-font', 'serif');
+    localStorage.setItem('conduit:v10-user-theme', 'my-theme');
+    localStorage.setItem('conduit:v10-user-theme-cache', JSON.stringify({ modes: ['dark'] }));
+
+    migrateRetiredThemePrefs();
+
+    for (const key of RETIRED_KEYS) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+  });
+
+  it('removes data-look, data-provider-colour, and data-reading-font attributes', () => {
+    const html = document.documentElement;
+    html.setAttribute('data-look', 'brutalist');
+    html.setAttribute('data-provider-colour', 'off');
+    html.setAttribute('data-reading-font', 'serif');
+
+    migrateRetiredThemePrefs();
+
+    expect(html.getAttribute('data-look')).toBeNull();
+    expect(html.getAttribute('data-provider-colour')).toBeNull();
+    expect(html.getAttribute('data-reading-font')).toBeNull();
+  });
+
+  it('removes data-palette unless it is "brand"', () => {
+    document.documentElement.setAttribute('data-palette', 'terra');
+    migrateRetiredThemePrefs();
+    expect(document.documentElement.getAttribute('data-palette')).toBeNull();
+
+    document.documentElement.setAttribute('data-palette', 'brand');
+    migrateRetiredThemePrefs();
+    expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
+  });
+
+  it('returns the forced mode boot should persist, or null', () => {
+    localStorage.setItem('conduit:v9-palette', 'amber');
+    expect(migrateRetiredThemePrefs()).toBe('dark');
+
+    localStorage.setItem('conduit:v9-palette', 'terra');
+    expect(migrateRetiredThemePrefs()).toBeNull();
   });
 });

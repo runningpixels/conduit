@@ -1,5 +1,4 @@
-/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look
-   (html[data-look]) may retarget them. */
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. */
 :root {
   --fs-sheet-heading: 15px;
   --fs-pal-input: 15px;
@@ -306,11 +305,11 @@
 }
 .theme-picker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-3);
 }
 .theme-picker--onboarding .theme-picker-grid {
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
 }
 .theme-card {
@@ -331,6 +330,14 @@
   height: 52px;
   border-radius: var(--r-4);
   display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+}
+/* "System": light and dark previews side by side. */
+.theme-card-preview--split > .theme-card-preview-ground { flex: 1 1 50%; }
+.theme-card-preview-ground {
+  flex: 1 1 auto;
+  display: flex;
   align-items: flex-end;
   padding: var(--sp-1);
 }
@@ -346,84 +353,62 @@
 }
 .theme-card-preview-ink { width: 55%; height: 2px; border-radius: var(--r-1); }
 .theme-card-preview-accent { width: 10px; height: 10px; border-radius: var(--r-round); }
-.theme-card-body { display: grid; gap: 2px; }
 .theme-card-name {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2);
   font-size: var(--fs-3xl);
   font-weight: 500;
   color: var(--ink);
 }
-.theme-card-description { font-size: var(--fs-lg); color: var(--ink-3); line-height: 1.4; }
-.theme-card-badge {
-  font-size: var(--fs-xs);
-  padding: 1px 6px;
-  border-radius: var(--r-pill);
-  background: var(--bg);
-  border: 1px solid var(--line-soft);
-  color: var(--ink-3);
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-.theme-picker-note { margin: 0; font-size: var(--fs-lg); color: var(--ink-3); }
 
-/* ── User themes (theming Phase 5) ───────────────────────────────────────── */
-.theme-picker-usersection {
+/* ── Main colour (ADR-011) ─────────────────────────────────────────────── */
+.appearance-form > .accent-picker {
   display: grid;
   gap: var(--sp-2);
   padding: 10px 0;
   border-bottom: 1px solid var(--line-soft);
 }
-.theme-picker-usersection-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
+.accent-picker > small { color: var(--ink-3); font-size: var(--fs-lg); }
+.accent-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  padding-top: var(--sp-1);
 }
-.theme-picker-user-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-/* Same card as a built-in theme; the name/description need a width-bounded
-   clamp a built-in never does, because a file's `name`/`description` are
-   author-supplied text with no length the picker controls (Rust bounds them
-   to 48/160 chars, still enough to overflow a 220px card). */
-/* Badges wrap under a long name before the name truncates; the ellipsis is
- * only for a name longer than the whole card. */
-.theme-card-name-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  max-width: 100%;
-}
-.theme-card-description--clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.theme-picker-user-error { margin: 0; font-size: var(--fs-lg); color: var(--err); }
-.theme-picker-invalid-list { display: grid; gap: var(--sp-1); }
-.theme-picker-invalid-row {
-  margin: 0;
-  font-size: var(--fs-lg);
-  color: var(--ink-3);
-  overflow-wrap: anywhere;
-}
-
-/* ── Appearance → Advanced (look x palette, theming Phase 2) ────────────── */
-.appearance-advanced { padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
-.appearance-advanced summary {
+.accent-row-label { font-size: var(--fs-3xl); color: var(--ink-2); }
+.accent-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.accent-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-round);
+  border: 2px solid var(--line-hi);
   cursor: pointer;
-  font-size: var(--fs-3xl);
-  font-weight: 500;
-  color: var(--ink-2);
+  transition: transform var(--tap), border-color var(--tap);
 }
-.appearance-advanced summary::-webkit-details-marker { color: var(--ink-3); }
-.appearance-advanced[open] summary { color: var(--ink); }
-.appearance-advanced-body { margin-top: var(--sp-3); display: grid; gap: 0; }
-.appearance-advanced-body .field:last-child { border-bottom: 0; }
+.accent-swatch:hover { transform: scale(1.08); }
+.accent-swatch--selected { border-color: var(--ink); }
+.accent-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 4px;
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.accent-custom--selected { border-color: var(--ink); color: var(--ink); }
+.accent-custom input {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-round);
+  background: none;
+  cursor: pointer;
+}
+.accent-error { grid-column: 2; margin: 0; font-size: var(--fs-lg); color: var(--err); }
 
 /* ── Onboarding (full-screen route) ────────────────────────────────────── */
 /* Fills the second `.app` row rather than the viewport: the caption row takes

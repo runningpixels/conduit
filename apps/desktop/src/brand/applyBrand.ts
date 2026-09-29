@@ -76,7 +76,6 @@
 
 import type { BrandConfig, BrandPalette } from '@conduit/config-schema';
 import { resetBrand, setBrand } from './index';
-import { applyPalette, readPalette } from '../shell/uiPrefs';
 
 /**
  * The pre-paint cache's own shape — deliberately narrower than
@@ -196,11 +195,9 @@ export function isValidHexColor(value: unknown): value is string {
  * anywhere outside its own definitions in tokens.css, so there is nothing
  * for a brand to override.)
  *
- * Exported (alongside `deriveHueWeak` below) for `themes/userThemes.ts`
- * (theming Phase 5): a user theme file's palette override goes through the
- * same allowlist + hex-grammar + derived-`--hue-weak` pipeline a brand does —
- * S7's whole point is that user theme files reuse the brand pipeline's
- * validation model rather than inventing a second one.
+ * Exported (alongside `deriveHueWeak` below): user theme files (retired by
+ * ADR-011) reused this allowlist + hex-grammar + derived-`--hue-weak`
+ * pipeline, and a future brand-on-Nocturne hook is expected to as well.
  */
 export const HUE_WEAK_PROPERTY = '--hue-weak';
 
@@ -289,10 +286,8 @@ function applyBrandIdentity(config: Pick<BrandConfig, 'identity'>): void {
 /**
  * Revert everything `applyBrand` can have set: remove every allowlisted
  * custom property plus the derived `--hue-weak` (back to whatever the
- * stylesheet says), restore the `data-palette` attribute to the user's
- * *stored* preference rather than a hardcoded default (branding must not
- * clobber that preference — it only suspends it while active), reset the
- * identity singleton, and drop the pre-paint cache so the next launch
+ * stylesheet says), drop the `data-palette="brand"` sentinel (ADR-011: no
+ * palette sits underneath it any more), reset the identity singleton, and drop the pre-paint cache so the next launch
  * doesn't replay a cleared brand.
  */
 export function clearBrand(): void {
@@ -301,7 +296,7 @@ export function clearBrand(): void {
     root.removeProperty(PALETTE_PROPERTY_MAP[key]);
   }
   root.removeProperty(HUE_WEAK_PROPERTY);
-  applyPalette(readPalette());
+  document.documentElement.removeAttribute('data-palette');
   resetBrand();
   clearBrandCache();
 }

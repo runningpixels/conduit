@@ -225,12 +225,16 @@ describe('Mode A / Mode B equivalence (white-label plan §6)', () => {
       expect(resolve(rules, [htmlEl, descendant], '--hue', { rootInline })).toBe(darkFixture.hue);
       expect(resolve(rules, [htmlEl, descendant], '--hue-weak', { rootInline })).toBe(rootInline['--hue-weak']);
 
-      // Sanity: this is a real assertion, not a tautology -- without the
-      // neutralization rule, the descendant keeps the provider's own
-      // literal instead, which is the bug this whole test exists to catch.
-      const withoutFix = resolve([anthropicProviderRule], [htmlEl, descendant], '--hue', { rootInline });
-      expect(withoutFix).toBe(anthropicProviderRule.declarations['--hue']);
-      expect(withoutFix).not.toBe(darkFixture.hue);
+      // ADR-011 decoupled --hue from provider identity: the [data-provider]
+      // rule this suite reads off the real tokens.css now only declares
+      // --provider-hue* (for the few places that still name a model), never
+      // --hue itself -- so there is no longer a competing literal for the
+      // neutralization rule to beat, and the old "without the fix, the
+      // descendant keeps the provider's own --hue literal" sanity check no
+      // longer has a bug to demonstrate. What is still real to assert is that
+      // the provider rule truly has nothing to say about --hue any more --
+      // if it ever regained one, this would catch it.
+      expect(anthropicProviderRule.declarations['--hue']).toBeUndefined();
     });
 
     it('Mode B: the descendant resolves to the brand hue, not the provider literal', () => {
@@ -246,9 +250,10 @@ describe('Mode A / Mode B equivalence (white-label plan §6)', () => {
         `color-mix(in srgb, ${darkFixture.hue} 14%, transparent)`,
       );
 
-      const withoutFix = resolve([modeBDarkRule, anthropicProviderRule], [htmlEl, descendant], '--hue');
-      expect(withoutFix).toBe(anthropicProviderRule.declarations['--hue']);
-      expect(withoutFix).not.toBe(darkFixture.hue);
+      // See the matching comment in the Mode A test above: ADR-011 means the
+      // provider rule no longer declares --hue at all, so there is no
+      // competing literal left for this neutralization rule to beat.
+      expect(anthropicProviderRule.declarations['--hue']).toBeUndefined();
     });
 
     it('Mode A and Mode B resolve the SAME descendant --hue -- the equivalence this whole suite exists to protect', () => {

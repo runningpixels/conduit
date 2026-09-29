@@ -112,32 +112,12 @@ document to the next message, checked before it reaches the model.
 
 ![Two MCP tool calls, uuid and calculator, with their results shown inline](./docs/assets/screenshot-connectors.png)
 
-### Themes
+### Appearance
 
-A theme sets the type, corner radii, borders, elevation and motion as well as
-the colours. Nine are built in — Orange Charcoal (the default, shown at the
-top), Orange-Dark, Terra, Amber Terminal, Green Phosphor, Amber Paper,
-Graphite, Editorial and High Contrast (AAA contrast) — chosen in
-Settings → Appearance or during first-run setup. A Reading font setting picks
-the face for assistant replies.
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Amber Terminal theme: black background, amber accent, monospace everywhere"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Green Phosphor theme: CRT green on black, monospace everywhere"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Amber Paper theme: the terminal look printed on warm paper"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Editorial theme in light mode: serif reading, wide margins, rules instead of boxes"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![The theme picker in Settings → Appearance, showing all nine built-in themes](./docs/assets/screenshot-theme-picker.png)
-
-You can also write your own: a `.theme.md` file in the app's `themes` folder
-extends a built-in theme with your colours. Theme files take hex colours and a
-fixed set of structural choices only — no CSS, no URLs. See
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md).
+One design in two modes: dark, light, or following your system. You can pick
+the main colour — the accent on buttons, selection and the active item —
+separately for each mode in Settings → Appearance; a colour that would be
+hard to read is refused.
 
 ### Eight languages
 
@@ -331,6 +311,6 @@ apply to normal use. See [`LICENSING.md`](./LICENSING.md) for scope, the section
 Built with [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx) and
 [rustls](https://github.com/rustls/rustls). Typeset in
-[Geist](https://github.com/vercel/geist-font) and
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), both OFL-1.1.
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) and
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), both OFL-1.1.
 Syntax highlighting by [Prism](https://prismjs.com).

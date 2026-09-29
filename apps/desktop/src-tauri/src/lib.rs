@@ -39,7 +39,6 @@ pub mod stream_persistence;
 pub mod time;
 pub mod tray;
 pub mod updater;
-pub mod user_themes;
 pub mod validation;
 pub mod vision;
 pub mod webview_args;

@@ -188,3 +188,19 @@ textarea.cx-input { resize: vertical; }
 html[data-density="compact"] .cx-row,
 html[data-density="compact"] .mem-row { padding: 6px 0; }
 html[data-density="compact"] .cx-detail-meta { margin-bottom: var(--sp-4); }
+
+/* ── ADR-011: row lists sit on a card ──────────────────────────────────── */
+.cx-rows,
+.mem-list {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--soft-lift);
+  overflow: hidden;
+}
+.cx-row,
+.mem-row { padding: 12px 16px; }
+.cx-row:last-child,
+.mem-row:last-child { border-bottom: 0; }
+/* Detail titles match the other pages' (ADR-011). */
+.cx-detail-title { font-size: var(--fs-10xl); font-weight: 700; letter-spacing: -.02em; }

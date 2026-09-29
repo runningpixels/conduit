@@ -10,7 +10,6 @@ vi.mock('../ipc/client', () => ({
 }));
 
 import { IdeasSheet } from './IdeasSheet';
-import { IdeaStarterRow } from './IdeaStarterRow';
 import { resolveCapabilities } from './capabilities';
 import { IDEAS, IDEAS_REVISION } from './catalog';
 import { __resetIdeaStateForTests, getIdeaState, notePicked, noteFirstMessage, updateIdeaState } from './ideaState';
@@ -115,20 +114,5 @@ describe('IdeasSheet', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'My prompts' }));
     });
     expect(screen.getByText('Prompts you saved. Insert one into the chat, or save a new one.')).toBeTruthy();
-  });
-});
-
-describe('IdeaStarterRow', () => {
-  it('offers ideas, more ideas, and a way to hide the row', () => {
-    const onPick = vi.fn();
-    const onMore = vi.fn();
-    const onHide = vi.fn();
-    render(<IdeaStarterRow ideas={IDEAS.slice(0, 3)} onPick={onPick} onMore={onMore} onHide={onHide} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Pomodoro timer' }));
-    fireEvent.click(screen.getByRole('button', { name: 'More ideas' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Hide ideas in new chats' }));
-    expect(onPick).toHaveBeenCalledWith(IDEAS[0]);
-    expect(onMore).toHaveBeenCalled();
-    expect(onHide).toHaveBeenCalled();
   });
 });

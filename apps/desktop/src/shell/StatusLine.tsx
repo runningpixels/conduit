@@ -14,7 +14,6 @@
  */
 
 import { useRef, useState } from 'react';
-import { useFlashKey } from './useFlashKey';
 import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
 import { providerDisplayName } from '../lib/providerIdentity';
 import {
@@ -108,11 +107,6 @@ export function StatusLine({
    */
   const expanded = readExpandedStatus() === 'on';
 
-  // Live-updating figures replay the terminal look's `.value-flash` animation
-  // on change (useFlashKey.ts) — a no-op className under every other look.
-  const contextFlashKey = useFlashKey(expanded ? contextFull : contextBrief);
-  const spendFlashKey = useFlashKey(spendLabel ?? '');
-  const flashClass = (key: number) => (key > 0 ? ' value-flash' : '');
 
   return (
     <div className="status-wrap">
@@ -148,18 +142,13 @@ export function StatusLine({
             <span className="ctx-meter-fill" style={{ width: `${meterFill}%` }} />
           </span>
         )}
-        <span
-          key={contextFlashKey}
-          className={`${nearLimit ? 'warn' : ''}${flashClass(contextFlashKey)}`.trim() || undefined}
-        >
+        <span className={nearLimit ? 'warn' : undefined}>
           {expanded ? contextFull : contextBrief}
         </span>
         {spendLabel != null && (
           <>
             {sep}
-            <span key={spendFlashKey} className={flashClass(spendFlashKey).trim() || undefined}>
-              {spendLabel}
-            </span>
+            <span>{spendLabel}</span>
           </>
         )}
         {keyMissing && (
@@ -224,7 +213,7 @@ export function StatusLine({
           <ContextIcon />
           {t('shell.statusLine.menu.contextRow', { full: contextFull })}
           {percent != null && (
-            <span key={contextFlashKey} className={`tail${flashClass(contextFlashKey)}`}>
+            <span className="tail">
               {percent}%
             </span>
           )}
@@ -234,7 +223,7 @@ export function StatusLine({
           <span className="menu-item">
             <SpendIcon />
             {t('shell.statusLine.menu.spendThisChat')}
-            <span key={spendFlashKey} className={`tail${flashClass(spendFlashKey)}`}>
+            <span className="tail">
               {spendLabel}
             </span>
           </span>

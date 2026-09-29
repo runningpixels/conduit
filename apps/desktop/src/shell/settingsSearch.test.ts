@@ -72,12 +72,12 @@ describe('the settings search index', () => {
   });
 
   /**
-   * Theming Phase 2 added the theme picker, the look/palette Advanced
-   * disclosure, and a "dark only" badge — each has to be findable by the word
-   * a reader would actually type, not only by the catalog key it happens to
-   * live under.
+   * ADR-011 retired the look x palette theme picker in favour of a plain
+   * Dark/Light/System mode picker — each of these still has to be findable by
+   * the word a reader would actually type, not only by the catalog key it
+   * happens to live under.
    */
-  it.each(['theme', 'look', 'palette', 'dark only', 'reading font'])(
+  it.each(['mode', 'density', 'diagram size', 'main colour', 'font size'])(
     'finds the appearance section for "%s"',
     (query) => {
       expect([...searchSettings(query, tEn, SECTIONS).keys()]).toContain('appearance');

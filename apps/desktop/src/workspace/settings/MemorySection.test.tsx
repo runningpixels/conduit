@@ -69,6 +69,7 @@ const settings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 function item(overrides: Partial<MemoryItem>): MemoryItem {

@@ -26,7 +26,6 @@ import {
   listProviderDescriptors,
   listProviderModels,
   listKnowledgeCollections,
-  listUserThemes,
   revealArtifactsDir,
   searchMessages,
   setArtifactContent,
@@ -55,10 +54,10 @@ import {
   type PendingArtifact,
 } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
+import { applyAccent } from './themes/accent';
 import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
-import { applyCachedUserTheme, reconcileUserThemes } from './themes/userThemes';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -89,10 +88,9 @@ import { useTrayLabels } from './shell/useTrayLabels';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
-import { notePicked, observeReady, ROW_GIVE_UP, setRowHidden, useIdeaState } from './ideas/ideaState';
-import { newIdeas, starterIdeas } from './ideas/selectIdeas';
+import { notePicked, observeReady, setRowHidden, useIdeaState } from './ideas/ideaState';
 import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
-import { applyUiPrefs, supportedModes, THEME_CHANGED_EVENT } from './shell/uiPrefs';
+import { applyUiPrefs, migrateRetiredThemePrefs, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
   useColumnOverlay,
   useColumnResize,
@@ -203,6 +201,7 @@ const defaultSettings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';
@@ -726,18 +725,23 @@ export default function App() {
         // not-yet-registered `get_brand_logo` command degrades to `null`
         // rather than failing this whole Promise.all, same as every other
         // brand-optional load here.
-        const [loadedPaths, loadedSettings, onboardingState, loadedBrand, loadedLogo, userThemeEntries] =
-          await Promise.all([
-            getAppPaths(),
-            getSettings(),
-            getOnboardingState(),
-            getBrandConfig(),
-            fetchBrandLogo(),
-            // Theming Phase 5: `dev:web` has no backend, so this rejects there —
-            // degrade to "no user themes" rather than failing the whole boot,
-            // same as `fetchBrandLogo`'s own never-rejects wrapper above.
-            listUserThemes().catch(() => []),
-          ]);
+        const [loadedPaths, fetchedSettings, onboardingState, loadedBrand, loadedLogo] = await Promise.all([
+          getAppPaths(),
+          getSettings(),
+          getOnboardingState(),
+          getBrandConfig(),
+          fetchBrandLogo(),
+        ]);
+        // ADR-011: the looks and palettes are gone. A single-mode theme (Amber
+        // Terminal, Green Phosphor, Amber Paper) used to force its mode without
+        // writing AppSettings.theme; carry that forced mode over once, so
+        // nobody's app flips light or dark on upgrade, then drop the old keys.
+        const forcedMode = migrateRetiredThemePrefs();
+        const loadedSettings =
+          forcedMode && fetchedSettings.theme !== forcedMode
+            ? { ...fetchedSettings, theme: forcedMode }
+            : fetchedSettings;
+        if (loadedSettings !== fetchedSettings) void updateSettingsPersisted(loadedSettings);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
         setSettingsLoaded(true);
@@ -759,15 +763,6 @@ export default function App() {
           setBrandLogo(null);
         }
         setBrandConfig(loadedBrand);
-        // Theming Phase 5 — reconcile the persisted user-theme selection
-        // against the authoritative file list, ordered after the brand
-        // reconcile above so `isBrandActive()` (which reads `data-palette`)
-        // reflects Rust's answer rather than the pre-paint replay's guess.
-        const userThemeOutcome = reconcileUserThemes(
-          userThemeEntries,
-          resolveTheme(loadedSettings.theme),
-          t,
-        );
         void listProviderDescriptors()
           .then(setProviders)
           .catch(() => setProviders([]));
@@ -784,19 +779,6 @@ export default function App() {
         } else {
           setBoundaryOk(true);
           setStatus(null);
-        }
-        // Theming Phase 5: after the null above, not before it — a toast set
-        // earlier in this effect would just be clobbered by that
-        // unconditional clear.
-        if (userThemeOutcome.cleared) {
-          setStatus(
-            makeStatus(
-              t('settings.appearance.userThemes.toastCleared', {
-                fileName: userThemeOutcome.fileName ?? '',
-              }),
-              'error',
-            ),
-          );
         }
       } catch (error) {
         setBoundaryOk(false);
@@ -1012,6 +994,12 @@ export default function App() {
   // Scheduled workflow runs: a notification in the user's language, and a
   // refresh of the Workflows page if it is open.
   const [workflowRunsVersion, setWorkflowRunsVersion] = useState(0);
+  // A run waiting on the user (a review or an "Ask me" step) puts a dot on
+  // the rail's Workflows button until the page is opened.
+  const [workflowsNeedYou, setWorkflowsNeedYou] = useState(false);
+  useEffect(() => {
+    if (destination === 'workflows') setWorkflowsNeedYou(false);
+  }, [destination]);
   useWorkflowRunEvents((event) => {
     setWorkflowRunsVersion((v) => v + 1);
     const note = notificationFor(event, t);
@@ -1020,12 +1008,14 @@ export default function App() {
   // A scheduled run paused to ask: say so, and show it on the Workflows page.
   useWorkflowReviewEvents((review) => {
     setWorkflowRunsVersion((v) => v + 1);
+    setWorkflowsNeedYou(true);
     const note = notificationForReview(review, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   // A run stopped at an "Ask me" step: show it, and say so if nobody is looking.
   useWorkflowQuestionEvents((question) => {
     setWorkflowRunsVersion((v) => v + 1);
+    setWorkflowsNeedYou(true);
     if (document.hasFocus()) return;
     const note = notificationForQuestion(question, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
@@ -1486,17 +1476,14 @@ export default function App() {
   }, [activeConversationId]);
 
   const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>(() => resolveTheme(settings.theme));
-  /* A single-mode theme (Amber Terminal is dark-only) has nothing to toggle. */
-  const [modeLocked, setModeLocked] = useState(() => supportedModes().length < 2);
   useEffect(() => {
     const eff = applyTheme(settings.theme);
     setEffectiveTheme(eff);
     const stopWatching = watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
-    /* A theme change can narrow the renderable modes (a dark-only palette), so
-     * the effective mode is re-resolved whenever the look or palette moves. */
+    /* A brand or accent change re-resolves the effective mode for anything
+     * keyed on it (the brand re-apply below). */
     const onThemeChanged = () => {
       setEffectiveTheme(applyTheme(settings.theme));
-      setModeLocked(supportedModes().length < 2);
     };
     window.addEventListener(THEME_CHANGED_EVENT, onThemeChanged);
     return () => {
@@ -1542,14 +1529,14 @@ export default function App() {
     if (brandConfig) applyBrandTheme(brandConfig, effectiveTheme);
   }, [brandConfig, effectiveTheme]);
 
-  // Theming Phase 5 — same reasoning as the brand effect above: a user
-  // theme's palette override is also inline CSS on <html>, so it has to be
-  // re-applied for the resolved theme on every mode flip, not just when the
-  // theme picker changes it. A no-op when no user theme is selected
-  // (`applyCachedUserTheme` reads its own storage and returns `null`).
+  // ADR-011 main colour: same reasoning as the brand effect above — inline
+  // on <html>, so it is re-derived for the resolved mode on every flip. It
+  // stands down while a brand is active (applyAccent checks), which is why
+  // brandConfig is a dependency too.
   useEffect(() => {
-    applyCachedUserTheme(effectiveTheme);
-  }, [effectiveTheme]);
+    applyAccent(settings.accent, effectiveTheme);
+  }, [settings.accent, effectiveTheme, brandConfig]);
+
 
   // V7 — the active provider's identity tints the app (spec §5.4).
   useEffect(() => {
@@ -1837,7 +1824,6 @@ export default function App() {
   useHotkeys(hotkeyHandlers);
 
   const handleToggleTheme = useCallback(() => {
-    if (supportedModes().length < 2) return;
     setSettings((current) => {
       const next: AppSettings = {
         ...current,
@@ -1940,7 +1926,10 @@ export default function App() {
           if (d === 'settings') openSettings();
           else setDestination(d);
         }}
-        dots={{ ideas: ideaState.spotlight.length > 0 || newIdeas(ideaState).length > 0 }}
+        dots={{ workflows: workflowsNeedYou && destination !== 'workflows' }}
+        effectiveTheme={effectiveTheme}
+        onToggleTheme={handleToggleTheme}
+        logoSrc={brandLogo ?? undefined}
       />
       {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}
       <div className="body" data-page={destination !== 'chats' ? destination : undefined}>
@@ -1975,7 +1964,6 @@ export default function App() {
           onCreateFolder={handleCreateFolder}
           onRenameFolder={(folderId, name) => void handleRenameFolder(folderId, name)}
           onDeleteFolder={(folderId) => void handleDeleteFolder(folderId)}
-          logoSrc={brandLogo ?? undefined}
           runStatus={runStatus}
         />
 
@@ -2003,9 +1991,6 @@ export default function App() {
         <main className="center">
           <MainHead
             title={activeConversationSummary?.displayTitle}
-            effectiveTheme={effectiveTheme}
-            onToggleTheme={handleToggleTheme}
-            modeLocked={modeLocked}
             panelOpen={panelVisible}
             onTogglePanel={toggleDocPanelView}
             hiddenArtifactCount={hiddenArtifactCount}
@@ -2039,11 +2024,7 @@ export default function App() {
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
-            starterIdeas={
-              ideaState.rowHidden || ideaState.startsWithoutIdea >= ROW_GIVE_UP
-                ? []
-                : starterIdeas(ideaCaps, ideaState, activeConversationId ?? 'new')
-            }
+            ideaGallery={ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
             onPickIdea={(idea) => void tryIdea(idea)}
             onMoreIdeas={openIdeas}
             onHideIdeas={() => setRowHidden(true)}

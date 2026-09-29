@@ -10,26 +10,6 @@
  * tokens.css / styles.css can react without React re-rendering.
  */
 
-import {
-  CUSTOM_THEME_ID,
-  LOOK_IDS,
-  PALETTE_IDS,
-  modesForPalette,
-  themeById,
-  themeForPair,
-  type LookId,
-  type Mode,
-  type PaletteId,
-} from '../themes/registry';
-import {
-  readSelectedUserThemeId,
-  readUserThemeCache,
-  USER_THEME_PREFIX,
-} from '../themes/userThemeStorage';
-
-const PALETTE_KEY = 'conduit:v9-palette';
-const LOOK_KEY = 'conduit:v10-look';
-const PROVIDER_COLOUR_KEY = 'conduit:v7-provider-colour';
 const REDUCE_MOTION_KEY = 'conduit:v7-reduce-motion';
 const SHOW_REASONING_KEY = 'conduit:v7-show-reasoning';
 const SEND_WITH_KEY = 'conduit:v7-send-with';
@@ -37,9 +17,6 @@ const EXPORT_METADATA_KEY = 'conduit:v7-export-metadata';
 const EXPANDED_STATUS_KEY = 'conduit:v9-expanded-status';
 const MERMAID_SCALE_KEY = 'conduit:v9-mermaid-scale';
 
-export type PalettePref = PaletteId;
-export type LookPref = LookId;
-export type ProviderColourPref = 'on' | 'off';
 export type ReduceMotionPref = 'on' | 'off';
 export type ShowReasoningPref = 'on' | 'off';
 export type SendWithPref = 'enter' | 'cmd-enter';
@@ -72,77 +49,16 @@ function writePref(key: string, value: string): void {
   }
 }
 
-/* ── Palette ─────────────────────────────────────────────────────────────────────
- * A look, orthogonal to `data-theme`: `orange-charcoal` is the darker
- * near-neutral charcoal with terracotta pinned and serif prose; `orange-dark`
- * is Claude's live canvas (warmer, two steps lighter) with the same terracotta
- * and serif; `terra` is the V9 warm-charcoal register that keeps provider
- * colour as the only hue. Six combinations, since every palette runs in either
- * theme.
- *
- * `orange-charcoal` is the default look. It suspends what V9 §3 called the
- * product's signature — provider identity as the only hue — in favour of one
- * calmer identity out of the box; `terra` stays one selection away for anyone
- * who wants provider colour back, and `orange-dark` for anyone who wants the
- * Claude match.
- *
- * Stored values migrate: `conduit` → `terra` (the rename of the old default
- * look), `claude` → `orange-charcoal` (the rename of this one). Both preserve an
- * explicit choice across the rename rather than silently resetting it — and the
- * `claude` migration matters more than it looks: without it, everyone who had
- * chosen this palette would land back on the fallback, which is now the same
- * look, so the bug would be invisible until they picked `terra`. `orange-dark`
- * is a new look, not a rename of `claude`.
- *
- * Renderer-only for the same reason the prefs below are: AppSettings.theme is a
- * Rust enum crossing the IPC boundary, and a look preset does not need to be.
- */
-
-export function readPalette(): PalettePref {
-  try {
-    const v = localStorage.getItem(PALETTE_KEY);
-    if (v === 'conduit') return 'terra';
-    if (v === 'claude') return 'orange-charcoal';
-  } catch {
-    /* storage unavailable */
-  }
-  return readPref(PALETTE_KEY, PALETTE_IDS, 'orange-charcoal');
-}
-
-export function writePalette(value: PalettePref): void {
-  writePref(PALETTE_KEY, value);
-  if (!isBrandActive()) applyPalette(value);
-  notifyThemeChanged();
-}
-
-/** `html[data-palette]` swaps surfaces, hue, and (for the terracotta looks) the prose face. */
-export function applyPalette(value: PalettePref): void {
-  document.documentElement.setAttribute('data-palette', value);
-}
-
-/* ── Look (theming, docs/theming/README.md) ─────────────────────────────────
- * The structural axis beside the palette: type, radii, borders, elevation,
- * motion. `soft` is the product's own look and the default. A look and a
- * palette together are a theme (themes/registry.ts); the two are stored
- * separately so Appearance → Advanced can mix them, and so the palette key
- * keeps meaning exactly what it meant before looks existed (applyBrand.ts
- * restores it on clearBrand). */
-
-/** Fired on `window` whenever the look or palette changes, so the mode can be
- *  re-resolved (a dark-only palette forces dark) and renderers that cannot read
- *  CSS variables (Mermaid, the artifact iframe) can repaint. */
+/* ── Theme events and white-label detection ───────────────────────────────
+ * ADR-011 retired the look × palette themes: the only appearance choices left
+ * are the mode (AppSettings.theme, Rust-canonical) and, later, the accent.
+ * The event stays for anything that restyles tokens without touching
+ * data-theme (a brand, an accent override), so renderers that cannot read CSS
+ * variables live (Mermaid, the artifact iframe) can repaint. */
 export const THEME_CHANGED_EVENT = 'conduit:theme-changed';
 
-function notifyThemeChanged(): void {
-  try {
-    window.dispatchEvent(new CustomEvent(THEME_CHANGED_EVENT));
-  } catch {
-    /* non-browser environments */
-  }
-}
-
 /** A white-label brand owns the palette while active (applyBrand.ts sets
- *  `data-palette="brand"`); the user's stored palette waits underneath. */
+ *  `data-palette="brand"` on <html>); nothing else sets that attribute now. */
 export function isBrandActive(): boolean {
   try {
     return document.documentElement.getAttribute('data-palette') === 'brand';
@@ -151,111 +67,65 @@ export function isBrandActive(): boolean {
   }
 }
 
-export function readLook(): LookPref {
-  return readPref(LOOK_KEY, LOOK_IDS, 'soft');
-}
+/* ── One-time migration off the retired theme prefs (ADR-011) ──────────────
+ * These keys held the look, the palette, the provider-colour switch, the
+ * reading font and the user theme selection. A dark-only palette (Amber
+ * Terminal, Green Phosphor) or light-only one (Amber Paper) used to force the
+ * mode without writing AppSettings.theme, so someone on Amber Terminal with a
+ * saved "light" saw dark. That forced mode is returned so boot can persist it,
+ * and the keys are cleared so this runs once. */
+const RETIRED_KEYS = [
+  'conduit:v9-palette',
+  'conduit:v10-look',
+  'conduit:v7-provider-colour',
+  'conduit:v10-reading-font',
+  'conduit:v10-user-theme',
+  'conduit:v10-user-theme-cache',
+  // The rail is always labeled now (ADR-011 shell).
+  'conduit:v11-rail',
+] as const;
 
-export function writeLook(value: LookPref): void {
-  writePref(LOOK_KEY, value);
-  applyLook(value);
-  notifyThemeChanged();
-}
+const DARK_ONLY_PALETTES = ['amber', 'phosphor'];
+const LIGHT_ONLY_PALETTES = ['paper'];
 
-/** `html[data-look]` retargets structural tokens and enables the look's sheet. */
-export function applyLook(value: LookPref): void {
-  document.documentElement.setAttribute('data-look', value);
-}
-
-/** The theme the stored look × palette pairing names, or `custom`. Derived,
- *  never stored, so it cannot drift from the two prefs it describes.
- *
- *  A user theme (theming Phase 5) is checked first: its id is stored
- *  separately (`conduit:v10-user-theme`, `themes/userThemeStorage.ts`) from
- *  the look/palette pair, which stay pointed at the theme it extends so a
- *  reader that only knows about built-ins still renders something sane. Only
- *  reported here when the pre-paint cache still names the same id — a
- *  selected-but-now-invalid user theme (its file deleted, its cache cleared)
- *  must fall back to `custom`/the pair, not claim an id `themeById` cannot
- *  resolve; `App.tsx`'s boot reconcile is what actually clears the stale
- *  pref once it can ask Rust. */
-export function readThemeId(): string {
-  const userId = readSelectedUserThemeId();
-  if (userId !== null) {
-    const cached = readUserThemeCache();
-    if (cached && cached.id === userId) return `${USER_THEME_PREFIX}${userId}`;
+/** The mode a retired single-mode theme was forcing, if any. Pure: reads only. */
+export function retiredForcedMode(): 'dark' | 'light' | null {
+  try {
+    const cache = localStorage.getItem('conduit:v10-user-theme-cache');
+    if (cache && localStorage.getItem('conduit:v10-user-theme')) {
+      const modes = (JSON.parse(cache) as { modes?: unknown }).modes;
+      if (Array.isArray(modes) && modes.length === 1 && (modes[0] === 'dark' || modes[0] === 'light')) {
+        return modes[0];
+      }
+    }
+    const palette = localStorage.getItem('conduit:v9-palette');
+    if (palette && DARK_ONLY_PALETTES.includes(palette)) return 'dark';
+    if (palette && LIGHT_ONLY_PALETTES.includes(palette)) return 'light';
+  } catch {
+    /* storage unavailable, or a corrupt cache: nothing to carry over */
   }
-  return themeForPair(readLook(), readPalette())?.id ?? CUSTOM_THEME_ID;
+  return null;
 }
 
-/** Select a named theme: writes both axes at once and notifies once. */
-export function selectTheme(id: string): void {
-  const theme = themeById(id);
-  if (!theme) return;
-  writePref(LOOK_KEY, theme.look);
-  writePref(PALETTE_KEY, theme.palette);
-  applyLook(theme.look);
-  if (!isBrandActive()) applyPalette(theme.palette);
-  notifyThemeChanged();
-}
-
-/**
- * Modes the active look × palette can render. A brand declares both a dark
- * and a light palette (the brand schema requires it), so it never narrows.
- *
- * A selected user theme (theming Phase 5) answers this itself — its modes
- * are whichever palette modes its file overrides, or its base theme's modes
- * when it overrides none (`themes/userThemes.ts`'s `resolveUserTheme`) — read
- * straight from the pre-paint cache rather than re-resolving, so this stays
- * as cheap as the built-in path and does not need IPC. Falls through to the
- * ordinary look × palette answer once the cache no longer names the selected
- * id, same as `readThemeId` above.
- */
-export function supportedModes(): readonly Mode[] {
-  if (isBrandActive()) return ['dark', 'light'];
-  const userId = readSelectedUserThemeId();
-  if (userId !== null) {
-    const cached = readUserThemeCache();
-    if (cached && cached.id === userId) return cached.modes;
+/** Read the forced mode, then clear every retired key and attribute. Returns
+ *  the mode boot should persist to AppSettings.theme, or null. */
+export function migrateRetiredThemePrefs(): 'dark' | 'light' | null {
+  const forced = retiredForcedMode();
+  try {
+    for (const key of RETIRED_KEYS) localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
   }
-  return modesForPalette(readPalette());
-}
-
-/* ── Reading font ────────────────────────────────────────────────────────
- * Overrides the face of assistant prose (--font-prose) regardless of theme.
- * `theme` defers to whatever the look and palette chose — which for the
- * terminal look is mono, and for long answers some people want out of that.
- * Applied as `html[data-reading-font]` (chat.css). */
-
-const READING_FONT_KEY = 'conduit:v10-reading-font';
-export type ReadingFontPref = 'theme' | 'sans' | 'serif';
-
-export function readReadingFont(): ReadingFontPref {
-  return readPref(READING_FONT_KEY, ['theme', 'sans', 'serif'], 'theme');
-}
-
-export function writeReadingFont(value: ReadingFontPref): void {
-  writePref(READING_FONT_KEY, value);
-  applyReadingFont(value);
-}
-
-export function applyReadingFont(value: ReadingFontPref): void {
-  document.documentElement.setAttribute('data-reading-font', value);
-}
-
-/* ── Provider colour ──────────────────────────────────────────────────── */
-
-export function readProviderColour(): ProviderColourPref {
-  return readPref(PROVIDER_COLOUR_KEY, ['on', 'off'], 'on');
-}
-
-export function writeProviderColour(value: ProviderColourPref): void {
-  writePref(PROVIDER_COLOUR_KEY, value);
-  applyProviderColour(value);
-}
-
-/** `html[data-provider-colour="off"]` pins --hue to the neutral ink scale. */
-export function applyProviderColour(value: ProviderColourPref): void {
-  document.documentElement.setAttribute('data-provider-colour', value);
+  try {
+    const html = document.documentElement;
+    for (const attr of ['data-look', 'data-provider-colour', 'data-reading-font', 'data-user-palette', 'data-user-labels', 'data-rail']) {
+      html.removeAttribute(attr);
+    }
+    if (!isBrandActive()) html.removeAttribute('data-palette');
+  } catch {
+    /* non-browser environments */
+  }
+  return forced;
 }
 
 /* ── Reduce motion ────────────────────────────────────────────────────── */
@@ -354,7 +224,7 @@ export function applyExpandedStatus(value: ExpandedStatusPref): void {
 /* ── Mermaid diagram scale ───────────────────────────────────────────────
  * Mermaid's natural viewBox size reads large next to chat prose. We stamp a
  * display multiplier onto the SVG width/height (not a CSS transform) so the
- * layout box matches what you see. Renderer-only — same rationale as palette. */
+ * layout box matches what you see. Renderer-only — renderer-only. */
 
 export function readMermaidScale(): MermaidScalePref {
   return readPref(MERMAID_SCALE_KEY, ['compact', 'default', 'full'], 'default');
@@ -376,13 +246,6 @@ export function applyMermaidScale(value: MermaidScalePref): void {
 
 /** Apply every document-level pref on boot (idempotent). */
 export function applyUiPrefs(): void {
-  applyLook(readLook());
-  /* Unconditional, unlike the writers: App's boot calls this before it knows
-   * whether the Rust-side brand still exists, then re-applies the brand if it
-   * does — so a cached brand that has since been removed is cleared here. */
-  applyPalette(readPalette());
-  applyReadingFont(readReadingFont());
-  applyProviderColour(readProviderColour());
   applyReduceMotion(readReduceMotion());
   applyExpandedStatus(readExpandedStatus());
   applyMermaidScale(readMermaidScale());

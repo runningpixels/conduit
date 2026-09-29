@@ -132,34 +132,12 @@ document au message suivant, vérifié avant qu'il n'atteigne le modèle.
 
 ![Deux appels d'outils MCP, uuid et calculator, avec leurs résultats affichés en ligne](./docs/assets/screenshot-connectors.png)
 
-### Thèmes
+### Apparence
 
-Un thème définit la typographie, les rayons d'angle, les bordures, l'élévation
-et les animations, en plus des couleurs. Neuf sont intégrés — Orange Charcoal
-(celui par défaut, illustré en haut de page), Orange-Dark, Terra, Amber
-Terminal, Green Phosphor, Amber Paper, Graphite, Editorial et High Contrast
-(contraste AAA) — choisis dans Paramètres → Apparence ou pendant la
-configuration initiale. Le réglage Police de lecture choisit la police des
-réponses de l'assistant.
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Thème Amber Terminal : fond noir, accent ambre, tout en monospace"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Thème Green Phosphor : vert CRT sur noir, tout en monospace"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Thème Amber Paper : le style terminal imprimé sur papier chaud"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Thème Editorial en mode clair : lecture en serif, marges larges, filets plutôt que cadres"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![Le sélecteur de thème dans Paramètres → Apparence, montrant les neuf thèmes intégrés](./docs/assets/screenshot-theme-picker.png)
-
-Vous pouvez aussi écrire le vôtre : un fichier `.theme.md` dans le dossier
-`themes` de l'application étend un thème intégré avec vos propres couleurs.
-Les fichiers de thème n'acceptent que des couleurs hexadécimales et un
-ensemble fixe de choix structurels — pas de CSS, pas d'URL. Voir
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md).
+Un seul design en deux modes : sombre, clair ou selon le système. La couleur
+principale — l’accent des boutons, de la sélection et de l’élément actif —
+se choisit séparément pour chaque mode dans Réglages → Apparence ; une
+couleur difficile à lire est refusée.
 
 ### Huit langues
 
@@ -359,6 +337,6 @@ pour les attributions de tiers.
 Réalisé avec [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx) et
 [rustls](https://github.com/rustls/rustls). Composé en
-[Geist](https://github.com/vercel/geist-font) et
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), toutes deux
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) et
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), toutes deux
 OFL-1.1. Coloration syntaxique par [Prism](https://prismjs.com).

@@ -1,12 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
-import { THEMES } from '../src/themes/registry';
 
 /**
  * Visual baselines for the theming project (Phase 0 — `docs/theming/decisions.md`
  * P0.1). Screenshots `?route=gallery&section=<name>` (`src/dev/Gallery.tsx`)
- * for every palette x colour-scheme combination, plus a few bare routes, so the
- * coming CSS-to-tokens refactor can be checked against these under a
- * "zero visual change" contract.
+ * in both modes of the one design (ADR-011), plus a few bare routes, so CSS
+ * changes can be checked against these under a "zero visual change" contract.
  *
  * Local-only and opt-in (`pnpm test:visual`): baselines live in
  * `visual/__screenshots__/`, gitignored, because font rasterisation differs
@@ -17,12 +15,6 @@ import { THEMES } from '../src/themes/registry';
  * against.
  */
 
-/** Mirrors `PALETTE_KEY` in `src/shell/uiPrefs.ts` — `applyPalette(readPalette())`
- *  runs synchronously in `main.tsx` before first paint, straight off this key,
- *  so setting it via `addInitScript` (which runs before any page script) is
- *  enough to pin the palette for the whole test. */
-const PALETTE_KEY = 'conduit:v9-palette';
-const LOOK_KEY = 'conduit:v10-look';
 const MODES = ['dark', 'light'] as const;
 
 /** Mirrors `SECTION_IDS` in `src/dev/Gallery.tsx`. Not imported from there —
@@ -164,23 +156,11 @@ async function pinTheme(page: Page, mode: 'dark' | 'light'): Promise<void> {
 }
 
 /**
- * Pin the palette (localStorage, read pre-paint), the theme (`pinTheme`), the
- * frozen clock, and the OS colour-scheme + reduced-motion media query the
- * app's own `resolveTheme('system')` / `prefers-reduced-motion` CSS both key
- * off, before any navigation.
+ * Pin the theme (`pinTheme`), the frozen clock, and the OS colour-scheme +
+ * reduced-motion media query the app's own `resolveTheme('system')` /
+ * `prefers-reduced-motion` CSS both key off, before any navigation.
  */
-async function preparePage(page: Page, palette: string, mode: 'dark' | 'light', look: string) {
-  await page.addInitScript(
-    ([paletteKey, paletteValue, lookKey, lookValue]) => {
-      try {
-        window.localStorage.setItem(paletteKey, paletteValue);
-        window.localStorage.setItem(lookKey, lookValue);
-      } catch {
-        /* storage may be unavailable in some contexts; the app degrades fine */
-      }
-    },
-    [PALETTE_KEY, palette, LOOK_KEY, look] as const,
-  );
+async function preparePage(page: Page, mode: 'dark' | 'light') {
   await pinTheme(page, mode);
   await installFixedClock(page);
   await page.emulateMedia({ colorScheme: mode, reducedMotion: 'reduce' });
@@ -271,23 +251,14 @@ async function settle(page: Page, { mermaid = false }: { mermaid?: boolean } = {
   await page.waitForTimeout(100);
 }
 
-/* One describe per registered theme x each mode it renders. Soft-look themes
- * keep the palette-only snapshot names the suite started with, so their
- * baselines survive the registry refactor; other looks prefix the look. */
-const MATRIX = THEMES.flatMap((theme) =>
-  MODES.filter((mode) => theme.modes.includes(mode)).map((mode) => ({
-    look: theme.look,
-    palette: theme.palette,
-    mode,
-    name: theme.look === 'soft' ? theme.palette : `${theme.look}-${theme.palette}`,
-  })),
-);
+/* One describe per mode (ADR-011: one design, two modes). */
+const MATRIX = MODES.map((mode) => ({ mode, name: 'nocturne' }));
 
-for (const { look, palette: themePalette, mode, name: palette } of MATRIX) {
+for (const { mode, name: palette } of MATRIX) {
   {
     test.describe(`${palette} / ${mode}`, () => {
       test.beforeEach(async ({ page }) => {
-        await preparePage(page, themePalette, mode, look);
+        await preparePage(page, mode);
       });
 
       for (const section of SECTIONS) {

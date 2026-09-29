@@ -1,4 +1,5 @@
 import type {
+  AccentOverride,
   AppSettings,
   BrandConfig,
   ConsentDecision,
@@ -28,7 +29,6 @@ import type {
   ToolCallStatus,
   Transport,
   UpdatePolicy,
-  UserThemeEntry,
   PromptArguments,
   ResourceBlock,
   ResourceRef,
@@ -181,6 +181,7 @@ export type StreamEvent =
   | { kind: 'error'; requestId: string; index: number; message: string };
 
 export type {
+  AccentOverride,
   AppSettings,
   BrandConfig,
   Conversation,
@@ -193,7 +194,6 @@ export type {
   ProviderRequest,
   SettingsPatch,
   ModelInfo,
-  UserThemeEntry,
 };
 
 // =============================================================================

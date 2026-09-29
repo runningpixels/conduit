@@ -125,33 +125,12 @@ mensagem, verificado antes de chegar ao modelo.
 
 ![Duas chamadas de ferramentas MCP, uuid e calculator, com seus resultados exibidos em linha](./docs/assets/screenshot-connectors.png)
 
-### Temas
+### Aparência
 
-Um tema define a tipografia, os raios de canto, as bordas, a elevação e as
-animações, além das cores. Nove vêm prontos — Orange Charcoal (o padrão,
-mostrado no topo), Orange-Dark, Terra, Amber Terminal, Green Phosphor, Amber
-Paper, Graphite, Editorial e High Contrast (contraste AAA) — escolhidos em
-Configurações → Aparência ou durante a configuração inicial. A opção Fonte de
-leitura escolhe a fonte das respostas do assistente.
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Tema Amber Terminal: fundo preto, acento âmbar, tudo em fonte monoespaçada"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Tema Green Phosphor: verde CRT sobre preto, tudo em fonte monoespaçada"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Tema Amber Paper: o visual de terminal impresso em papel quente"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Tema Editorial no modo claro: leitura em fonte serifada, margens largas, linhas em vez de caixas"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![O seletor de temas em Configurações → Aparência, mostrando os nove temas prontos](./docs/assets/screenshot-theme-picker.png)
-
-Você também pode escrever o seu: um arquivo `.theme.md` na pasta `themes` do
-aplicativo estende um tema pronto com suas próprias cores. Os arquivos de tema
-aceitam apenas cores em hexadecimal e um conjunto fixo de opções estruturais —
-sem CSS, sem URLs. Veja
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md).
+Um design em dois modos: escuro, claro ou seguindo o sistema. A cor
+principal — o destaque dos botões, da seleção e do item ativo — é escolhida
+separadamente para cada modo em Configurações → Aparência; uma cor difícil
+de ler é recusada.
 
 ### Oito idiomas
 
@@ -347,6 +326,6 @@ atribuições de terceiros.
 Construído com [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx) e
 [rustls](https://github.com/rustls/rustls). Composto em
-[Geist](https://github.com/vercel/geist-font) e
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), ambas OFL-1.1.
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) e
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), ambas OFL-1.1.
 Realce de sintaxe por [Prism](https://prismjs.com).

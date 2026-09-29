@@ -545,8 +545,6 @@ function StatusSection() {
       <SubHeading>MainHead</SubHeading>
       <MainHead
         title="Migration plan review"
-        effectiveTheme="dark"
-        onToggleTheme={noop}
         panelOpen
         onTogglePanel={noop}
         hiddenArtifactCount={2}

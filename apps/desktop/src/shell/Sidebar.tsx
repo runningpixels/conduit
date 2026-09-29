@@ -17,13 +17,11 @@ import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
 import { organizeConversations } from '../lib/conversationOrganization';
 import { modShortcutHint } from '../lib/shortcuts';
-import { appName } from '../brand';
 import { useRichT, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { Menu } from '../workspace/Menu';
 import {
   ArchiveIcon,
-  BrandMark,
   ConnectorsIcon,
   FolderIcon,
   KnowledgeIcon,
@@ -82,9 +80,6 @@ interface SidebarProps {
   onCreateFolder?: (name: string) => Promise<ConversationFolder | void> | ConversationFolder | void;
   onRenameFolder?: (folderId: string, name: string) => void;
   onDeleteFolder?: (folderId: string) => void;
-  /** Validated `data:image/...` brand logo URI, or omitted/undefined for the
-   *  built-in wordmark glyph. See `brand/logo.ts`. */
-  logoSrc?: string;
 }
 
 const DRAG_TYPE = 'text/conduit-conversation-id';
@@ -151,7 +146,6 @@ export function Sidebar({
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
-  logoSrc,
 }: SidebarProps) {
   const t = useT();
   const tr = useRichT();
@@ -376,10 +370,9 @@ export function Sidebar({
   return (
     <aside className="sidebar" id="sidebar" aria-label={t('shell.sidebar.aria.root')}>
       <div className="sb-head sidebar-inner">
-        <span className="mark">
-          <BrandMark className="mark-glyph" src={logoSrc} />
-          <b>{appName()}</b>
-        </span>
+        {/* The product mark lives in the rail (ADR-011 shell); this column is
+            the Chats destination's own list, so it says so. */}
+        <h2 className="sb-title">{t('shell.rail.chats')}</h2>
         <button
           className="sb-collapse"
           type="button"

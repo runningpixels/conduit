@@ -112,7 +112,7 @@ pub enum BrandError {
 /// reconstructed from parts that may have been normalized along the way.
 ///
 /// `file_label` names the file in the "not terminated" message only --
-/// `crate::user_theme::parse_user_theme` reuses this exact splitter for
+/// (User theme files, retired by ADR-011, reused this exact splitter for
 /// `*.theme.md` files, which are not `brand.md`, so the message cannot
 /// hardcode that name.
 pub(crate) fn split_frontmatter<'a>(

@@ -44,7 +44,6 @@ const cssFiles = [
   // them here, a class only ever styled from a look sheet (`.value-flash`,
   // the terminal look's live-value flash) would read as an unstyled orphan,
   // and a class a look sheet stops using would never register as dead.
-  ...walk(join(repoRoot, 'packages', 'ui', 'src', 'looks')).filter((f) => f.endsWith('.css')),
 ];
 
 /**
@@ -256,6 +255,9 @@ describe('turn footer reserves height (no hover layout shift)', () => {
  * flush prose, so the rule is the only per-turn mark of which provider produced
  * it, and a mid-thread switch is legible from the left edge alone.
  *
+ * ADR-011 decided it a third time: the rule is the design's activity line
+ * (accent into signal), and provider identity moved to the model line's dot.
+ *
  * Pinned because the argument is genuinely balanced and the next reviewer will
  * meet it cold. A failure here is not "you broke a rule" — it is "this was
  * decided twice, go read why before deciding it a third time."
@@ -271,10 +273,12 @@ describe('assistant turn provider rule', () => {
     expect(rule, 'no `.turn.assistant { … }` rule found in chat.css').not.toBeNull();
   });
 
-  it('carries a 2px left border in the provider hue', () => {
+  it('carries a 2px left border drawn as the activity line (ADR-011)', () => {
     const decls = rule?.[2] ?? '';
     expect(decls).toMatch(/border-left\s*:\s*2px\s+solid/);
-    expect(decls, 'the rule must be hue-derived, not a neutral line').toMatch(/--hue/);
+    expect(decls, 'the line runs from the accent through the signal colour').toMatch(
+      /border-image\s*:\s*linear-gradient\([^;]*var\(--hue\)[^;]*var\(--signal\)/,
+    );
   });
 
   it('insets the prose to clear the border', () => {
@@ -306,7 +310,7 @@ const NOT_IN_MARKUP: Record<string, string> = {
   constant: 'prismjs token class',
   operator: 'prismjs token class',
   prolog: 'prismjs token class',
-  // Matched out of `url("…/Geist-Regular.woff2")`, not a selector at all.
+  // Matched out of `url("…/SchibstedGrotesk-Latin-Variable.woff2")`, not a selector at all.
   woff2: 'font filename extension inside url()',
   // Composed as `kind-${toast.kind}` in ToastStack.tsx, so the literal never
   // appears. These three are live; the pair that used to sit beside them
@@ -314,10 +318,10 @@ const NOT_IN_MARKUP: Record<string, string> = {
   'kind-error': 'built from a template literal in ToastStack.tsx',
   'kind-success': 'built from a template literal in ToastStack.tsx',
   'kind-warning': 'built from a template literal in ToastStack.tsx',
-  // Composed as `theme-picker--${variant}` in ThemePicker.tsx; the `settings`
+  // Composed as `theme-picker--${variant}` in ModePicker.tsx; the `settings`
   // variant has no rule of its own (the base `.theme-picker` covers it), so
   // only the `onboarding` override needs registering here.
-  'theme-picker--onboarding': 'built from a template literal in ThemePicker.tsx',
+  'theme-picker--onboarding': 'built from a template literal in ModePicker.tsx',
 };
 
 describe('no dead rules', () => {
@@ -350,7 +354,7 @@ describe('no dead rules', () => {
 /**
  * Guard G8 — the fonts stay bundled.
  *
- * Decision D3 keeps Geist local so the CSP stays `'self'` and the app launches
+ * Decision D3 (and ADR-011) keeps the fonts local so the CSP stays `'self'` and the app launches
  * offline with identical metrics on every OS. That is one `url()` away from
  * being undone by someone "just adding a webfont", and the failure is invisible
  * in development, where the network is always there.
@@ -418,32 +422,19 @@ describe('bundled fonts', () => {
   });
 
   /**
-   * There is one serif in the product, and it is one *token*, not two stacks
-   * that happen to agree. `--font-serif` dresses artifact document titles and
-   * the Orange Charcoal palette's prose, and those two render 18px apart in the
-   * same view — when this was a system stack and the palette named Source Serif
-   * directly, a title fell back to Georgia on Windows and Charter on macOS
-   * beside prose that did neither. Restating the stack here would let them
-   * drift apart again silently, so the override has to be the reference.
+   * ADR-011 drops the bundled serif: one face for the interface and prose.
+   * `--font-serif` survives as a token (artifact titles still read it), so it
+   * has to name the product face — a platform serif here would bring back the
+   * Georgia-vs-Charter split the bundled serif once existed to prevent.
    */
-  it('the palette dresses prose in the product serif, by reference', () => {
-    const decls = [...tokens.matchAll(/--font-prose:\s*([^;]+);/g)].map((m) => m[1].trim());
-    expect(decls.length, 'the palette never overrides --font-prose').toBeGreaterThan(1);
-    for (const decl of decls.slice(1)) {
-      expect(decl).toBe('var(--font-serif)');
-    }
+  it('--font-serif leads with the bundled product face', () => {
+    const decl = tokens.match(/--font-serif:\s*([^;]+);/);
+    expect(decl![1].trim()).toMatch(/^"Schibsted Grotesk"/);
   });
 
-  /**
-   * The serif is bundled now, so the fallbacks only catch a failed load — but
-   * that is exactly when a missing generic family leaves prose on the UA
-   * default. The `--font-serif` assertion above covers the palette too, by
-   * reference; this pins the other half of the trade: bundling it means it has
-   * to resolve on disk, which the url() test already enforces.
-   */
-  it('the product serif leads with the bundled face', () => {
-    const decl = tokens.match(/--font-serif:\s*([^;]+);/);
-    expect(decl![1].trim()).toMatch(/^"Source Serif 4"/);
+  it('the UI and mono stacks lead with the bundled faces', () => {
+    expect(tokens.match(/--font-ui:\s*([^;]+);/)![1].trim()).toMatch(/^"Schibsted Grotesk"/);
+    expect(tokens.match(/--font-mono:\s*([^;]+);/)![1].trim()).toMatch(/^"JetBrains Mono"/);
   });
 });
 

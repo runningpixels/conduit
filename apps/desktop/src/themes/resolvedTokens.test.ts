@@ -13,13 +13,7 @@ import {
   useThemeRevision,
 } from './resolvedTokens';
 import { renderHook, act } from '@testing-library/react';
-import {
-  readLook,
-  selectTheme,
-  THEME_CHANGED_EVENT,
-  writeLook,
-  writePalette,
-} from '../shell/uiPrefs';
+import { THEME_CHANGED_EVENT } from '../shell/uiPrefs';
 
 function resetHtml() {
   const el = document.documentElement;
@@ -102,38 +96,19 @@ describe('readResolvedTokens', () => {
   });
 });
 
-describe('activeRendererTheming', () => {
+describe('activeRendererTheming (ADR-011: kind-based, brand overrides)', () => {
   beforeEach(resetHtml);
   afterEach(resetHtml);
 
-  it('returns the named manifest field for a registered theme', () => {
-    selectTheme('amber-terminal');
+  it('mermaid is themed from tokens so a diagram sits in the conversation in either mode', () => {
     expect(activeRendererTheming('mermaid')).toBe('tokens');
-    expect(activeRendererTheming('iframe')).toBe('tokens');
   });
 
-  it('returns native for the default (soft, orange-charcoal) theme', () => {
-    selectTheme('conduit-orange-charcoal');
-    expect(activeRendererTheming('mermaid')).toBe('native');
+  it('the html artifact iframe stays native — it is the user\'s content, not restyled by the app', () => {
     expect(activeRendererTheming('iframe')).toBe('native');
   });
 
-  it('custom pairing (no manifest) with a non-soft look defers to tokens', () => {
-    writeLook('terminal');
-    writePalette('terra'); // terminal x terra names no manifest -> custom
-    expect(readLook()).toBe('terminal');
-    expect(activeRendererTheming('mermaid')).toBe('tokens');
-    expect(activeRendererTheming('iframe')).toBe('tokens');
-  });
-
-  it('custom pairing with the soft look stays native', () => {
-    writeLook('soft');
-    writePalette('amber'); // soft x amber names no manifest -> custom, but soft
-    expect(activeRendererTheming('mermaid')).toBe('native');
-  });
-
-  it('a brand always wins native, even over a tokens-theming manifest', () => {
-    selectTheme('amber-terminal');
+  it('a brand always wins native, even for mermaid', () => {
     document.documentElement.setAttribute('data-palette', 'brand');
     expect(activeRendererTheming('mermaid')).toBe('native');
     expect(activeRendererTheming('iframe')).toBe('native');

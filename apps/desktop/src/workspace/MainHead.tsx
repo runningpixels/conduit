@@ -1,10 +1,8 @@
 import {
-  MoonIcon,
   PanelIcon,
   PlusIcon,
   SearchIcon,
   SidebarIcon,
-  SunIcon,
 } from '../icons';
 import { modShortcutHint } from '../lib/shortcuts';
 import { useT } from '../i18n';
@@ -12,10 +10,6 @@ import { useT } from '../i18n';
 interface MainHeadProps {
   /** Current chat's name. Undefined before a conversation is selected. */
   title?: string;
-  effectiveTheme: 'dark' | 'light';
-  onToggleTheme: () => void;
-  /** The active theme renders a single mode, so the toggle is disabled. */
-  modeLocked?: boolean;
   panelOpen: boolean;
   onTogglePanel: () => void;
   /**
@@ -57,9 +51,6 @@ interface MainHeadProps {
  */
 export function MainHead({
   title,
-  effectiveTheme,
-  onToggleTheme,
-  modeLocked = false,
   panelOpen,
   onTogglePanel,
   hiddenArtifactCount = 0,
@@ -110,20 +101,6 @@ export function MainHead({
       </span>
 
       <div className="head-actions">
-        <button
-          className="iconbtn"
-          type="button"
-          aria-label={t('workspace.mainHead.themeToggleAriaLabel')}
-          title={
-            modeLocked
-              ? t(effectiveTheme === 'dark' ? 'settings.appearance.themes.darkOnlyLabel' : 'settings.appearance.themes.lightOnlyLabel')
-              : t('workspace.mainHead.themeToggleTitle')
-          }
-          disabled={modeLocked}
-          onClick={onToggleTheme}
-        >
-          {effectiveTheme === 'light' ? <SunIcon /> : <MoonIcon />}
-        </button>
         <button
           className="iconbtn panel-toggle"
           type="button"

@@ -16,9 +16,6 @@ vi.mock('../ipc/client', () => ({
   getOnboardingState: vi.fn(),
   updateSettings: vi.fn(),
   // Theming Phase 5: the Appearance step's ThemePicker fetches this on mount.
-  listUserThemes: vi.fn().mockResolvedValue([]),
-  revealThemesDir: vi.fn().mockResolvedValue(undefined),
-  createExampleUserTheme: vi.fn(),
   acknowledgeMigrationRecovery: vi.fn().mockResolvedValue(undefined),
   discardMigrationBackup: vi.fn().mockResolvedValue({ removedPaths: [], freedBytes: 0 }),
   requestLocalDataWipe: vi.fn().mockResolvedValue({ requiresRestart: true, estimatedBytes: 0 }),
@@ -90,6 +87,7 @@ const settings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 } as AppSettings;
 
 const recovery: MigrationRecoveryInfo = {

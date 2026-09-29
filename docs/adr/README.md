@@ -13,3 +13,4 @@ These decision records lock the open Phase 0 questions before implementation exp
 - `adr-008-tauri-capability-surface.md`
 - `adr-009-file-backed-credential-store.md`
 - `adr-010-artifact-network-access.md`
+- `adr-011-single-design-language.md`

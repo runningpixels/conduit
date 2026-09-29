@@ -88,6 +88,7 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
   };
 
   it('omits the brand appendix on an ordinary turn', () => {

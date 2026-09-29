@@ -61,6 +61,7 @@ const settings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 const baseProps = {

@@ -12,18 +12,18 @@ machine-generated dependency inventory is in THIRD-PARTY-NOTICES.md.
 Bundled fonts (SIL Open Font License 1.1)
 ================================================================================
 
-Geist and Geist Mono
-  Copyright 2024 The Geist Project Authors
-  https://github.com/vercel/geist-font
-  License text: packages/ui/src/fonts/OFL-Geist.txt
+Schibsted Grotesk
+  Copyright 2023 The Schibsted-Grotesk Project Authors
+  https://github.com/schibsted/schibsted-grotesk
+  License text: packages/ui/src/fonts/OFL-SchibstedGrotesk.txt
 
-Source Serif 4
-  Copyright 2014-2023 Adobe (http://www.adobe.com/)
-  https://github.com/adobe-fonts/source-serif
-  License text: packages/ui/src/fonts/OFL-SourceSerif4.txt
+JetBrains Mono
+  Copyright 2020 The JetBrains Mono Project Authors
+  https://github.com/JetBrains/JetBrainsMono
+  License text: packages/ui/src/fonts/OFL-JetBrainsMono.txt
 
-Both are Reserved Font Name families: a modified version may not be distributed
-under the original name.
+Both ship as the Fontsource variable builds, subset to Latin and Latin Extended.
+Neither family declares a Reserved Font Name.
 
 ================================================================================
 SQLite (public domain)

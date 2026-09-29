@@ -20,8 +20,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { themeById, type RendererTheming } from './registry';
-import { isBrandActive, readLook, readThemeId, THEME_CHANGED_EVENT } from '../shell/uiPrefs';
+import { isBrandActive, THEME_CHANGED_EVENT } from '../shell/uiPrefs';
+
+/** 'native': the renderer keeps its own light/dark theme. 'tokens': it is
+ *  themed from the resolved design tokens below. */
+export type RendererTheming = 'native' | 'tokens';
 
 export interface ResolvedTokens {
   bg?: string;
@@ -112,22 +115,18 @@ export function readResolvedTokens(): ResolvedTokens {
 }
 
 /**
- * How the given renderer should get its colours right now:
+ * How the given renderer should get its colours right now (ADR-011):
  *   - a brand always wins ('native'): white-labelling replaces the palette
  *     wholesale and Mermaid/iframe should keep rendering with whatever their
  *     own native theme resolves to, not a half-applied brand.
- *   - a named theme (`themes/registry.ts`) says so explicitly per-renderer.
- *   - an Advanced "custom" look × palette pairing (no manifest names it) has
- *     no explicit answer, so it defers to the look: `soft` behaves like
- *     today (native), any other look (currently only `terminal`) opts into
- *     tokens theming, since a structural look this different from `soft` is
- *     exactly the case tokens theming exists for.
+ *   - Mermaid diagrams are drawn in the design's own tokens, so a diagram sits
+ *     in the conversation like the rest of it, in either mode.
+ *   - HTML artifact frames stay native: they are the user's content, styled by
+ *     their own light/dark rules, and are not restyled by the app.
  */
 export function activeRendererTheming(kind: 'mermaid' | 'iframe'): RendererTheming {
   if (isBrandActive()) return 'native';
-  const manifest = themeById(readThemeId());
-  if (manifest) return manifest[kind];
-  return readLook() === 'soft' ? 'native' : 'tokens';
+  return kind === 'mermaid' ? 'tokens' : 'native';
 }
 
 /**

@@ -81,16 +81,6 @@ export type { BrandConfig } from './generated/brand_config';
 
 // User theme files (<appDataLocal>/themes/*.theme.md): colour overrides in the
 // brand palette's hex grammar plus structural choices as closed enums.
-export type { ThemeCorners } from './generated/theme_corners';
-export type { ThemeFace } from './generated/theme_face';
-export type { ThemeLabels } from './generated/theme_labels';
-export type { ThemeShadows } from './generated/theme_shadows';
-export type { ThemeMotion } from './generated/theme_motion';
-export type { ThemeIconStroke } from './generated/theme_icon_stroke';
-export type { UserThemeStructure } from './generated/user_theme_structure';
-export type { UserThemePalettes } from './generated/user_theme_palettes';
-export type { UserTheme } from './generated/user_theme';
-export type { UserThemeEntry } from './generated/user_theme_entry';
 
 export type { Transport } from './generated/transport';
 export type { ConnectorDefinition } from './generated/connector_definition';
@@ -125,6 +115,7 @@ export type { LanguageSetting } from './generated/language_setting';
 export type { ProviderEndpointConfig } from './generated/provider_endpoint_config';
 export type { AgentGuardrails } from './generated/agent_guardrails';
 export type { AppSettings } from './generated/app_settings';
+export type { AccentOverride } from './generated/accent_override';
 // The shape every command's `Err` arrives in (D9): a catalog key plus an
 // English fallback, so the renderer translates and Rust does not.
 export type { AppError } from './generated/app_error';

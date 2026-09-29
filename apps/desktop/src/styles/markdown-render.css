@@ -95,7 +95,8 @@ html[data-reduce-motion="on"] .fence-promote-incoming.is-shown {
 }
 
 /* Source is shown to be read character by character: `-->` is two characters
- * and an angle bracket, not an arrow glyph. Geist Mono ligates them, which
+ * and an angle bracket, not an arrow glyph. JetBrains Mono ligates them
+ * (contextual alternates, which `none` also turns off), which
  * makes a copied line and a displayed line disagree. */
 .chat-prose .md-pre,
 .md-code,

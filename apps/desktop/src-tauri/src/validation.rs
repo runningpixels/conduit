@@ -120,6 +120,20 @@ pub fn validate_user_instructions(text: &str) -> Result<(), String> {
     validate_user_instructions_coded(text).map_err(|e| e.fallback)
 }
 
+/// ADR-011 main colour: exactly `#rrggbb` (no shorthand, no alpha — the
+/// renderer derives transparency itself). Returns the colour lowercased, or
+/// `None` if it is not one. Legibility is checked by the renderer, which owns
+/// the surfaces the colour is measured against.
+pub fn normalize_accent_hex(raw: &str) -> Option<String> {
+    let v = raw.trim();
+    let digits = v.strip_prefix('#')?;
+    if digits.len() == 6 && digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+        Some(format!("#{}", digits.to_ascii_lowercase()))
+    } else {
+        None
+    }
+}
+
 /// True when every GenerationControls field is unset — treat as inherit/default.
 pub fn generation_controls_is_empty(controls: &provider_core::schema::GenerationControls) -> bool {
     controls.temperature.is_none()
@@ -362,6 +376,31 @@ pub fn validate_external_open_url(raw: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn accent_hex_accepts_six_digits_and_lowercases() {
+        assert_eq!(normalize_accent_hex("#FF7A59").as_deref(), Some("#ff7a59"));
+        assert_eq!(
+            normalize_accent_hex("  #4b4ded ").as_deref(),
+            Some("#4b4ded")
+        );
+    }
+
+    #[test]
+    fn accent_hex_rejects_everything_else() {
+        for bad in [
+            "",
+            "#fff",
+            "#ff7a59aa",
+            "ff7a59",
+            "#gg7a59",
+            "red",
+            "#ff7a5",
+            "url(x)",
+        ] {
+            assert_eq!(normalize_accent_hex(bad), None, "{bad}");
+        }
+    }
+
     use super::*;
 
     // -----------------------------------------------------------------

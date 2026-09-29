@@ -1,5 +1,4 @@
-/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look
- * (html[data-look]) may retarget them. */
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. */
 :root {
   --shadow-health-live: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
   --shadow-health-warn: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent);

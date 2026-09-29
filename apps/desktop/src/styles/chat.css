@@ -1,5 +1,4 @@
-/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look
- * (html[data-look]) may retarget them. */
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. */
 :root {
   --fs-bubble: 15px;
   --fs-prose: 15.5px;
@@ -14,13 +13,6 @@
   --shadow-composer-focus-spread: 3px;
 }
 
-/* Reading font (Appearance; uiPrefs.ts `data-reading-font`). Overrides the
- * prose face whatever the look or palette chose, so `:root` is doubled to
- * outrank html[data-look] and html[data-palette] (both (0,1,1)) without
- * depending on stylesheet order. `theme` declares nothing. --face-* are the
- * original stacks, locale-aware (tokens.css), untouched by any look. */
-html:root[data-reading-font="sans"] { --font-prose: var(--face-sans); }
-html:root[data-reading-font="serif"] { --font-prose: var(--face-serif); }
 
 /* ── Chat thread ───────────────────────────────────────────────────────── */
 /* `overflow-x: hidden` is load-bearing, not tidiness: a computed `visible` next
@@ -66,10 +58,9 @@ html:root[data-reading-font="serif"] { --font-prose: var(--face-serif); }
   /* 72%, not 82%: at 82% a long message spans nearly the full column and the
      left/right rhythm that carries the speaker distinction disappears. */
   max-width: 72%;
-  /* --card-hi rather than --card: it moves away from --bg in both themes
-     (lighter in dark, darker in light), so the bubble reads as raised in each.
-     --card is only ~12/255 off --bg in dark, which was invisible. */
-  background: var(--card-hi);
+  /* The design's own bubble surface (ADR-011): lifted off --bg in dark, a
+     white card in light. */
+  background: var(--bubble);
   border: 1px solid var(--line);
   /* Evenly rounded at --r-lg (V9 §7). V7's asymmetric corner was a speech-bubble
      tail; the right alignment already says who is speaking, so the tail was a
@@ -86,20 +77,8 @@ html:root[data-reading-font="serif"] { --font-prose: var(--face-serif); }
   font-size: var(--fs-bubble);
   line-height: 1.6;
 }
-/* Under Orange Charcoal the user message is a fill without an outline. The
-   border is what makes
-   the bubble read as a card; dropping it leaves the same shape sitting
-   in the prose column rather than on top of it. No size bump: the 16.5px on
-   `.prose` is optical compensation for the serif's smaller x-height, and the
-   bubble is not serif. */
-html[data-palette="orange-charcoal"] .bubble,
-html[data-palette="orange-dark"] .bubble {
-  border-color: transparent;
-  border-radius: var(--r-bubble-accent);
-  padding: 12px 18px;
-}
 /* `font-variant-ligatures` because the bubble shows what was typed, verbatim.
- * Geist ligates arrows, so a pasted `-->` in a diagram or a shell line was
+ * Fonts can ligate arrows, so a pasted `-->` in a diagram or a shell line was
  * drawn as a single glyph and the transcript read back as text nobody wrote. */
 .bubble p {
   margin: 0;
@@ -241,14 +220,14 @@ html[data-palette="orange-dark"] .bubble {
  * It is 55% hue rather than solid so it reads as a margin, not a highlight.
  *
  * Pinned by cssContract.test.ts so a third pass cannot flip it silently. */
+/* ADR-011 decides it a third time: the rule is the design's activity line,
+ * accent at the top fading through the signal colour, the same line workflow
+ * runs are drawn on. Which provider produced a turn is now the model line's
+ * dot (--provider-hue, below), not the rule. */
 .turn.assistant {
-  border-left: 2px solid color-mix(in srgb, var(--hue) 55%, transparent);
+  border-left: 2px solid var(--hue);
+  border-image: linear-gradient(to bottom, var(--hue), var(--signal) 70%, transparent) 1;
   padding-left: 18px;
-  transition: border-color var(--dur-provider-rule);
-}
-/* No color-mix: fall back to the flat hue rather than to no rule at all. */
-@supports not (color: color-mix(in srgb, red 10%, transparent)) {
-  .turn.assistant { border-left-color: var(--hue); }
 }
 
 /* the model line appears only when provider/model differs from the previous turn */
@@ -261,9 +240,9 @@ html[data-palette="orange-dark"] .bubble {
   font-size: var(--fs-sm);
   color: var(--ink-3);
 }
-.turn-model .pdot { width: 6px; height: 6px; background: var(--hue); }
+.turn-model .pdot { width: 6px; height: 6px; background: var(--provider-hue); }
 .turn-model b { font-weight: 500; color: var(--ink-2); }
-.turn-model .switched { color: var(--hue-text); }
+.turn-model .switched { color: var(--provider-hue-text, var(--ink-2)); }
 .turn-model-time { color: var(--ink-3); }
 
 /* transient live meta + agent phase (streaming / agent loop only) */
@@ -320,11 +299,6 @@ html[data-palette="orange-dark"] .bubble {
   color: var(--ink);
   overflow-wrap: anywhere;
 }
-/* Source Serif 4's x-height runs smaller than Geist's, so the same px reads a
- * step down. The bump is optical compensation, not a size preference — the
- * measure and leading are tuned together. */
-html[data-palette="orange-charcoal"] .prose,
-html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line-height: 1.7; }
 
 /* Links had no rule anywhere in the product, so every one rendered in
  * Chromium's UA colour. The first fix — ink with a `--line-hi` underline —
@@ -1027,7 +1001,7 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
   background: var(--card);
-  box-shadow: var(--soft-lift);
+  box-shadow: var(--lift);
   transition: border-color var(--tap), box-shadow var(--tap);
   position: relative;
   --composer-max-height: 180px;
@@ -1245,7 +1219,7 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
 /* Capped by its own slot, not the window: `42vw` let the label outgrow a
    composer narrowed by the document panel and run under the send button. */
 .cbtn.model { max-width: min(220px, 100%); min-width: 0; color: var(--ink-2); font-weight: 500; gap: 5px; }
-.cbtn.model .pdot { width: 6px; height: 6px; background: var(--hue); }
+.cbtn.model .pdot { width: 6px; height: 6px; background: var(--provider-hue); }
 .cbtn.model .model-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cbtn.model svg { width: 13px; height: 13px; color: var(--ink-3); }
 
@@ -1261,7 +1235,7 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   max-height: min(420px, 52vh);
   overflow-y: auto;
 }
-.model-menu .menu-item .pdot { width: 7px; height: 7px; background: var(--hue); }
+.model-menu .menu-item .pdot { width: 7px; height: 7px; background: var(--provider-hue); }
 .model-menu .menu-item[aria-current="true"] { background: var(--card-hi); color: var(--ink); }
 .menu-empty { padding: 14px 11px; font-size: var(--fs-2xl); color: var(--ink-3); text-align: center; }
 
@@ -1352,7 +1326,7 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
    "not configured" moves down intact — instead of breaking inside them into
    "not" / "configured" stacked under every item. */
 .status > span { white-space: nowrap; }
-.status .pdot { width: 5px; height: 5px; background: var(--hue); }
+.status .pdot { width: 5px; height: 5px; background: var(--provider-hue); }
 /* The separators are punctuation, not data: dimmer than the facts they part. */
 .status .sep { opacity: .45; }
 .status .local { color: var(--ok); }
@@ -1843,8 +1817,8 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
   align-items: center;
   gap: 14px;
   font-size: var(--fs-hero);
-  font-weight: 400;
-  letter-spacing: -.02em;
+  font-weight: 700;
+  letter-spacing: -.03em;
 }
 /* The one accent on this screen, and the only decorative-looking hue in the
  * product — sanctioned in §6.2 on the grounds that it is exactly one mark in
@@ -1865,6 +1839,129 @@ html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line
  * state and its focusPrompt ref. */
 .tab-pane[data-pane="chat"][data-empty="true"] { justify-content: center; }
 .tab-pane[data-pane="chat"][data-empty="true"] .thread { flex: 0 1 auto; }
+
+/* ADR-011 — the new-chat idea gallery, under the composer. Category chips on
+ * the left, "More ideas" / hide on the right, then up to six ready ideas as
+ * cards. Each card's tile carries its category's tint so the grid reads as a
+ * set of different things to make, not six copies of one button. */
+.idea-gallery {
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: calc(var(--measure) + 2 * var(--sp-5));
+  margin: var(--sp-4) auto 0;
+  padding: 0 var(--sp-5) var(--sp-5);
+  animation: pane-in var(--duration-normal) var(--ease-emphasized) both;
+}
+.idea-gallery-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+.idea-gallery-label {
+  margin: 0;
+  color: var(--ink-3);
+  font: 500 var(--fs-md)/1 var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.idea-gallery-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.idea-gallery-filter {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--fs-xl);
+  cursor: pointer;
+  transition: background var(--tap), border-color var(--tap), color var(--tap);
+}
+.idea-gallery-filter:hover { border-color: var(--line-hi); color: var(--ink); }
+.idea-gallery-filter[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--ink);
+}
+.idea-gallery-links { display: flex; gap: 4px; margin-left: auto; }
+.idea-gallery-link {
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: var(--fs-xl);
+  cursor: pointer;
+}
+.idea-gallery-link:hover { color: var(--ink); }
+.idea-gallery-grid {
+  display: grid;
+  /* Three across at the composer's width, fewer as the pane narrows. The
+     gallery sits outside the thread's size container, so auto-fill rather
+     than a container query. */
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.idea-gallery-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--tap), border-color var(--tap), transform var(--tap);
+}
+.idea-gallery-card:hover { background: var(--card-hi); border-color: var(--accent-line); transform: translateY(-1px); }
+.idea-gallery-tile {
+  --tile: var(--accent);
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--tile) 14%, transparent);
+  color: var(--tile);
+  font: 600 var(--fs-md)/1 var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.idea-gallery-card[data-category="live"] .idea-gallery-tile { --tile: var(--signal); }
+.idea-gallery-card[data-category="learn"] .idea-gallery-tile { --tile: var(--ok); }
+.idea-gallery-card[data-category="play"] .idea-gallery-tile { --tile: var(--warn); }
+.idea-gallery-card[data-category="write"] .idea-gallery-tile { --tile: var(--ink-2); }
+.idea-gallery-card[data-category="files"] .idea-gallery-tile { --tile: var(--signal); }
+.idea-gallery-card[data-category="images"] .idea-gallery-tile { --tile: var(--err); }
+.idea-gallery-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.idea-gallery-title { font-size: var(--fs-2xl); font-weight: 600; }
+.idea-gallery-blurb {
+  color: var(--ink-2);
+  font-size: var(--fs-xl);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.idea-gallery-meta {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font: var(--fs-md)/1.3 var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.idea-gallery-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); }
 
 /* P2.4 — pane cross-fade */
 @keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

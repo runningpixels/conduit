@@ -102,6 +102,7 @@ const baseSettings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 function renderSheet(overrides: { initialSection?: SettingsSection } = {}) {
@@ -273,16 +274,6 @@ describe('SettingsSheet', () => {
     expect(screen.queryByTestId('web-search-section')).toBeNull();
     expect(screen.queryByTestId('workspace-section')).toBeNull();
   });
-  it('provider colour toggle persists to localStorage and applies the html attribute', () => {
-    renderSheet();
-    fireEvent.click(screen.getByText('Appearance'));
-    const toggle = screen.getByRole('switch', { name: 'Provider colour' });
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(toggle);
-    expect(localStorage.getItem('conduit:v7-provider-colour')).toBe('off');
-    expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
-  });
-
   /** V9 §10.1's escape hatch for the collapsed status line (plan D6). */
   it('expanded status toggle persists to localStorage and applies the html attribute', () => {
     renderSheet();

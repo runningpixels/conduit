@@ -178,7 +178,9 @@ import { ideaById } from '../ideas/catalog';
 import { capabilityChip } from '../ideas/capabilityChips';
 import { resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
 import { summarizeStreamState } from '../inspector/turnActivity';
-import { IdeaStarterRow } from '../ideas/IdeaStarterRow';
+import { IdeaGallery } from '../ideas/IdeaGallery';
+import type { Capabilities } from '../ideas/capabilities';
+import type { IdeaState } from '../ideas/ideaState';
 import { useRichT, useT, type Translate } from '../i18n';
 
 export type { ChatTurn } from './conversationHydration';
@@ -265,9 +267,8 @@ interface ChatViewProps {
   paneActive?: boolean;
   /// Open a settings section ('providers' | 'privacy' …) from the status line.
   onOpenSettings?: (tab?: string) => void;
-  /// Ideas for an empty thread (docs/plans/ideas-and-discovery.md); empty
-  /// hides the row.
-  starterIdeas?: readonly Idea[];
+  /// What the new-chat idea gallery draws from (ADR-011); absent hides it.
+  ideaGallery?: { caps: Capabilities; state: IdeaState } | null;
   /// UI revamp: a turn's step line was clicked — open Activity on it.
   onOpenActivity?: (turnId: string) => void;
   /// The transcript for the inspector's Activity and Sources tabs: persisted
@@ -741,7 +742,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onPendingSendConsumed,
     paneActive = true,
     onOpenSettings,
-    starterIdeas = [],
+    ideaGallery,
     onOpenActivity,
     onTranscriptChange,
     onRunStatusChange,
@@ -2766,14 +2767,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   })}
                 </p>
               ) : null}
-              {starterIdeas.length > 0 && onPickIdea && (
-                <IdeaStarterRow
-                  ideas={starterIdeas}
-                  onPick={onPickIdea}
-                  onMore={onMoreIdeas}
-                  onHide={onHideIdeas}
-                />
-              )}
             </div>
           )}
           {!threadLoading && compactedTurns.length > 0 && (
@@ -3252,6 +3245,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         contextTokens={contextTokens}
         compactThresholdPercent={compactThresholdPercent}
       />
+      {threadEmpty && ideaGallery && onPickIdea && (
+        <IdeaGallery
+          caps={ideaGallery.caps}
+          state={ideaGallery.state}
+          onPick={onPickIdea}
+          onMore={onMoreIdeas}
+          onHide={onHideIdeas}
+        />
+      )}
       <div id="composer-anchor" tabIndex={-1} />
     </section>
       {/* Phase 7 / M-WebSearch: first-use consent dialog for the chat-bar toggle. */}

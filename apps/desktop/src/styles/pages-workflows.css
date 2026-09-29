@@ -125,3 +125,42 @@
 .wf-problems { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
 .wf-problems ul { margin: 0; padding-left: 1.2em; color: var(--warn); font-size: var(--fs-xl); }
 .wf-json-toggle { margin-left: auto; }
+.wf-saved { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+/* ── Chip fields (workflows/ChipField.tsx) ───────────────────────────────── */
+.wf-chip-field {
+  min-height: 2.25em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  line-height: 1.8;
+}
+.wf-chip-field-multi { min-height: 5em; }
+.wf-chip-field:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.wf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 1px;
+  padding: 0 2px 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--hue-weak);
+  color: var(--hue-text);
+  font-size: var(--fs-xl);
+  line-height: 1.5;
+  white-space: nowrap;
+  user-select: all;
+  vertical-align: baseline;
+}
+.wf-chip-unknown { background: var(--bg-side); color: var(--err); border: 1px dashed var(--err); }
+.wf-chip-remove {
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.wf-chip-remove:hover { opacity: 1; background: var(--bg-side); }

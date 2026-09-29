@@ -18,12 +18,16 @@ function renderEditor(definition: WorkflowDefinition) {
 
 const card = (name: RegExp) => screen.getByRole('listitem', { name }) as HTMLElement;
 
+/// Type into a chip field (a contenteditable box): replace its text and fire
+/// the input event the browser would.
+function typeInto(field: HTMLElement, text: string) {
+  field.textContent = text;
+  fireEvent.input(field);
+}
+
+
 describe('WorkflowEditor', () => {
   it('builds fetch → ask the model → save, inserting values at the cursor', () => {
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    });
     const out = renderEditor({ inputs: [], steps: [] });
 
     // An input asked each run.
@@ -41,10 +45,14 @@ describe('WorkflowEditor', () => {
     // Ask the model about it; the value goes where the cursor is.
     fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'summarize' } });
     const askCard = card(/^2\. Ask the model/);
-    fireEvent.change(within(askCard).getByRole('textbox', { name: 'Instruction' }), { target: { value: 'Summarize this' } });
-    const input = within(askCard).getByRole('textbox', { name: 'Text to work on' }) as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: 'Page: ' } });
-    input.setSelectionRange(6, 6);
+    typeInto(within(askCard).getByRole('textbox', { name: 'Instruction' }), 'Summarize this');
+    const input = within(askCard).getByRole('textbox', { name: 'Text to work on' });
+    typeInto(input, 'Page: ');
+    const caret = document.createRange();
+    caret.setStart(input.firstChild!, 6);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(caret);
+    fireEvent.keyUp(input);
     const insert = within(askCard).getByRole('combobox', { name: 'Insert a value into Text to work on' });
     // Only earlier steps are offered.
     const offered = within(insert).getAllByRole('option').map((o) => o.textContent);
@@ -55,7 +63,7 @@ describe('WorkflowEditor', () => {
     // Save the answer.
     fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'save_artifact' } });
     const saveCard = card(/^3\. Save a document/);
-    fireEvent.change(within(saveCard).getByRole('textbox', { name: 'Title' }), { target: { value: 'Summary' } });
+    typeInto(within(saveCard).getByRole('textbox', { name: 'Title' }), 'Summary');
     fireEvent.change(within(saveCard).getByRole('combobox', { name: 'Insert a value into Content' }), {
       target: { value: 'steps.summary.text' },
     });
@@ -69,7 +77,8 @@ describe('WorkflowEditor', () => {
         { id: 'save', type: 'save_artifact', title: 'Summary', content: '{{steps.summary.text}}', format: 'markdown', mode: 'create' },
       ],
     });
-    vi.unstubAllGlobals();
+    // The inserted values show as chips with readable labels.
+    expect(within(askCard).getByRole('textbox', { name: 'Text to work on' })).toHaveTextContent('Page: fetch · text×');
   });
 
   it('repeats steps for each item, offering the item fields inside', () => {
@@ -116,7 +125,7 @@ describe('WorkflowEditor', () => {
     const schema = { type: 'object' };
     const out = renderEditor({ steps: [{ id: 's', type: 'summarize', prompt: 'p', input: 'i', schema }] });
     expect(screen.getByText(/Change the shape of that data in the JSON view/)).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instruction' }), { target: { value: 'new prompt' } });
+    typeInto(screen.getByRole('textbox', { name: 'Instruction' }), 'new prompt');
     expect(out.draft.definition.steps[0]).toMatchObject({ prompt: 'new prompt', schema });
   });
 });

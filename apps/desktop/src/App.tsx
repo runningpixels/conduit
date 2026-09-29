@@ -19,6 +19,7 @@ import {
   getOnboardingState,
   getSettings,
   listConversations,
+  getConversation,
   listConversationFolders,
   listConnectorGrants,
   listProviderDescriptors,
@@ -573,7 +574,25 @@ export default function App() {
     }
     try {
       const conversationsList = await listConversations();
-      setActiveConversationSummary(conversationsList.find((c) => c.id === conversationId) ?? null);
+      const listed = conversationsList.find((c) => c.id === conversationId);
+      if (listed) {
+        setActiveConversationSummary(listed);
+        return;
+      }
+      // Not a chat in the list: a workflow's own conversation, opened from a
+      // run's "Open document". Show its title (the workflow's name) anyway.
+      const conversation = await getConversation(conversationId);
+      setActiveConversationSummary(
+        conversation
+          ? {
+              id: conversation.id,
+              title: conversation.title,
+              displayTitle: conversation.title,
+              updatedAt: conversation.updatedAt,
+              messageCount: 0,
+            }
+          : null,
+      );
     } catch {
       setActiveConversationSummary(null);
     }
@@ -973,6 +992,30 @@ export default function App() {
     },
     [addOpenArtifactId, showDocPanel, devRoute, artifacts],
   );
+
+  /// A document a workflow saved, to open once its conversation is showing.
+  /// Switching conversations clears the document panel and reloads the
+  /// artifact list, so the open waits until that list has arrived.
+  const pendingWorkflowDocRef = useRef<{ conversationId: string; artifactId: string } | null>(null);
+  const openWorkflowDocument = useCallback(
+    (conversationId: string, artifactId: string) => {
+      setDestination('chats');
+      if (conversationId === activeConversationId && artifactsConversationId === conversationId) {
+        void handleOpenArtifact(artifactId);
+        return;
+      }
+      pendingWorkflowDocRef.current = { conversationId, artifactId };
+      handleSelectConversation(conversationId);
+    },
+    [activeConversationId, artifactsConversationId, handleOpenArtifact, handleSelectConversation],
+  );
+  useEffect(() => {
+    const pending = pendingWorkflowDocRef.current;
+    if (!pending || pending.conversationId !== activeConversationId) return;
+    if (artifactsConversationId !== activeConversationId) return;
+    pendingWorkflowDocRef.current = null;
+    void handleOpenArtifact(pending.artifactId);
+  }, [activeConversationId, artifactsConversationId, handleOpenArtifact]);
 
   const handleChatTurnComplete = useCallback(
     async (streamState: AssistantStreamState) => {
@@ -2037,7 +2080,9 @@ export default function App() {
             {destination === 'memory' && (
               <MemoryPage settings={settings} onSettingsChange={setSettings} onStatus={setStatusMessage} />
             )}
-            {destination === 'workflows' && <WorkflowsPage onStatus={setStatusMessage} />}
+            {destination === 'workflows' && (
+              <WorkflowsPage onStatus={setStatusMessage} onOpenDocument={openWorkflowDocument} />
+            )}
           </div>
         )}
 

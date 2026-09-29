@@ -512,7 +512,8 @@ impl Exec<'_> {
         )
         .await
         .map_err(|e| e.to_string())?;
-        Ok(json!({ "artifactId": id, "title": title }))
+        // The conversation too, so a run can open the document where it lives.
+        Ok(json!({ "artifactId": id, "title": title, "conversationId": self.conversation_id }))
     }
 }
 

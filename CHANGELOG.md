@@ -15,7 +15,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   summary, a topic watch), change what it fetches each time you run it,
   and open any run to see what each step did. Build your own in the step
   editor: add steps, reorder them, and pick what each step reads from a
-  menu of earlier results, with problems shown before you save. Only the
+  menu of earlier results (shown as chips in the text), with problems
+  shown before you save. Open the document a run saved straight from the
+  run. Only the
   summarize step uses the model, and it can't use tools. Runs are started
   by hand for now.
 - **Leave a document out of a chat.** In the composer's Documents menu, an

@@ -23,9 +23,9 @@ use provider_core::schema::{
     PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
     ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
     ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
-    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
-    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, WebSearchDefaults,
-    WebSearchFilters, WebSearchMode, WebSearchRequest,
+    StarterAppInfo, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
+    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation,
+    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -82,6 +82,7 @@ fn main() {
     AppManifest::export().expect("export AppManifest");
     AppSummary::export().expect("export AppSummary");
     AppDetail::export().expect("export AppDetail");
+    StarterAppInfo::export().expect("export StarterAppInfo");
 
     // Attachments
     RetentionState::export().expect("export RetentionState");

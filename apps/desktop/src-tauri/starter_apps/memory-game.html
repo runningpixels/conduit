@@ -1,0 +1,369 @@
+<style>
+  html[data-theme="dark"],
+  html:not([data-theme]) {
+    --bg:#0b0d12; --surface:#11141b; --surface-hi:#161a23; --line:#1c2130; --line-hi:#262c3c;
+    --ink:#e8eaf0; --ink-2:#b8becc; --ink-3:#8990a2; --accent:#ff7a59; --accent-ink:#1a0b06;
+    --accent-soft: rgba(255,122,89,.14); --signal:#7cc4ff; --ok:#7cffb2; --warn:#febc2e; --err:#ff9c82;
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"] {
+    --bg:#f6f6f8; --surface:#ffffff; --surface-hi:#f1f2f5; --line:#e1e3ea; --line-hi:#dadce3;
+    --ink:#16181d; --ink-2:#3a3f4a; --ink-3:#5f6573; --accent:#4b4ded; --accent-ink:#ffffff;
+    --accent-soft:#eef0ff; --signal:#1f86e8; --ok:#137a3a; --warn:#9a5300; --err:#b4380f;
+    color-scheme: light;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    margin: 0;
+    min-height: 100%;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  .mg-app {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 28px 20px 40px;
+  }
+
+  .mg-header h1 {
+    font-size: 1.4rem;
+    font-weight: 650;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+
+  .mg-header p {
+    margin: 0 0 20px;
+    color: var(--ink-3);
+    font-size: 0.92rem;
+  }
+
+  .mg-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .mg-btn {
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.92rem;
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+
+  .mg-btn:hover { filter: brightness(1.06); }
+  .mg-btn:active { filter: brightness(0.96); }
+
+  .mg-stats {
+    display: flex;
+    gap: 18px;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.95rem;
+    color: var(--ink-2);
+  }
+
+  .mg-stats .mg-stat-label {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink-3);
+    margin-right: 4px;
+  }
+
+  .mg-status {
+    min-height: 1.4em;
+    margin: 2px 0 18px;
+    font-size: 0.92rem;
+    color: var(--ink-2);
+  }
+
+  .mg-status.mg-win {
+    color: var(--ok);
+    font-weight: 600;
+  }
+
+  .mg-board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(8px, 2.5vw, 14px);
+    width: min(100%, 560px);
+    margin: 0 auto;
+  }
+
+  .mg-card {
+    appearance: none;
+    font: inherit;
+    aspect-ratio: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    border: 1px solid var(--line-hi);
+    background: var(--surface-hi);
+    color: var(--ink);
+    font-size: clamp(1.5rem, 6vw, 2.25rem);
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: background-color 120ms ease, border-color 120ms ease;
+    outline: none;
+  }
+
+  .mg-card:hover:not(.mg-matched):not(.mg-flipped) {
+    border-color: var(--line);
+    background: var(--surface);
+  }
+
+  .mg-card:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+
+  .mg-card.mg-flipped {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  .mg-card.mg-matched {
+    background: var(--surface);
+    border: 2px solid var(--ok);
+    cursor: default;
+  }
+
+  @media (max-width: 380px) {
+    .mg-app { padding: 20px 14px 32px; }
+  }
+</style>
+
+<div class="mg-app">
+  <div class="mg-header">
+    <h1>Memory Match</h1>
+    <p>Find all 8 matching pairs in as few moves as possible.</p>
+  </div>
+
+  <div class="mg-controls">
+    <button type="button" class="mg-btn" id="mg-new-game">New game</button>
+    <div class="mg-stats">
+      <span>
+        <span class="mg-stat-label">Moves</span><span id="mg-moves" aria-live="polite" aria-atomic="true">0</span>
+      </span>
+      <span>
+        <span class="mg-stat-label">Time</span><span id="mg-timer">00:00</span>
+      </span>
+    </div>
+  </div>
+
+  <p class="mg-status" id="mg-status" aria-live="polite" aria-atomic="true"></p>
+
+  <div class="mg-board" id="mg-board"></div>
+</div>
+
+<script>
+(function () {
+  var EMOJIS = ['🍎', '🍌', '🍇', '🍓', '🍒', '🍑', '🥝', '🍉'];
+
+  var boardEl = document.getElementById('mg-board');
+  var movesEl = document.getElementById('mg-moves');
+  var timerEl = document.getElementById('mg-timer');
+  var statusEl = document.getElementById('mg-status');
+  var newGameBtn = document.getElementById('mg-new-game');
+
+  var deck = [];
+  var buttons = [];
+  var firstIndex = null;
+  var secondIndex = null;
+  var lock = false;
+  var moves = 0;
+  var matchesFound = 0;
+  var gameStarted = false;
+  var startTime = null;
+  var timerInterval = null;
+  var resolveTimeout = null;
+
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  function buildDeck() {
+    var pairs = EMOJIS.concat(EMOJIS);
+    shuffle(pairs);
+    return pairs.map(function (emoji) {
+      return { emoji: emoji, flipped: false, matched: false };
+    });
+  }
+
+  function formatTime(totalSeconds) {
+    var m = Math.floor(totalSeconds / 60);
+    var s = totalSeconds % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function setStatus(text, isWin) {
+    statusEl.textContent = text;
+    statusEl.classList.toggle('mg-win', !!isWin);
+  }
+
+  function updateCardUI(index) {
+    var card = deck[index];
+    var btn = buttons[index];
+    var position = index + 1;
+
+    if (card.matched) {
+      btn.classList.add('mg-matched');
+      btn.classList.remove('mg-flipped');
+      btn.textContent = card.emoji;
+      btn.setAttribute('aria-label', 'Card ' + position + ', ' + card.emoji);
+    } else if (card.flipped) {
+      btn.classList.add('mg-flipped');
+      btn.classList.remove('mg-matched');
+      btn.textContent = card.emoji;
+      btn.setAttribute('aria-label', 'Card ' + position + ', ' + card.emoji);
+    } else {
+      btn.classList.remove('mg-flipped', 'mg-matched');
+      btn.textContent = '';
+      btn.setAttribute('aria-label', 'Card ' + position + ', hidden');
+    }
+  }
+
+  function renderBoard() {
+    boardEl.innerHTML = '';
+    buttons = [];
+    deck.forEach(function (card, index) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mg-card';
+      btn.addEventListener('click', function () {
+        onCardClick(index);
+      });
+      boardEl.appendChild(btn);
+      buttons.push(btn);
+      updateCardUI(index);
+    });
+  }
+
+  function startGameTimer() {
+    gameStarted = true;
+    startTime = Date.now();
+    updateTimerDisplay();
+    timerInterval = setInterval(updateTimerDisplay, 250);
+  }
+
+  function updateTimerDisplay() {
+    var elapsed = Math.floor((Date.now() - startTime) / 1000);
+    timerEl.textContent = formatTime(elapsed);
+  }
+
+  function finishGame() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    var elapsed = Math.floor((Date.now() - startTime) / 1000);
+    timerEl.textContent = formatTime(elapsed);
+    setStatus('You won in ' + moves + ' moves and ' + formatTime(elapsed) + '.', true);
+  }
+
+  function onCardClick(index) {
+    if (lock) return;
+    var card = deck[index];
+    if (card.matched || card.flipped) return;
+
+    if (!gameStarted) startGameTimer();
+
+    card.flipped = true;
+    updateCardUI(index);
+
+    if (firstIndex === null) {
+      firstIndex = index;
+      return;
+    }
+
+    secondIndex = index;
+    moves++;
+    movesEl.textContent = String(moves);
+    lock = true;
+
+    var a = deck[firstIndex];
+    var b = deck[secondIndex];
+
+    if (a.emoji === b.emoji) {
+      a.matched = true;
+      b.matched = true;
+      updateCardUI(firstIndex);
+      updateCardUI(secondIndex);
+      matchesFound++;
+      setStatus('Match!');
+      firstIndex = null;
+      secondIndex = null;
+      lock = false;
+
+      if (matchesFound === EMOJIS.length) {
+        finishGame();
+      }
+    } else {
+      setStatus('No match, try again.');
+      var fIndex = firstIndex;
+      var sIndex = secondIndex;
+      resolveTimeout = setTimeout(function () {
+        a.flipped = false;
+        b.flipped = false;
+        updateCardUI(fIndex);
+        updateCardUI(sIndex);
+        firstIndex = null;
+        secondIndex = null;
+        lock = false;
+        resolveTimeout = null;
+      }, 800);
+    }
+  }
+
+  function newGame() {
+    if (resolveTimeout) {
+      clearTimeout(resolveTimeout);
+      resolveTimeout = null;
+    }
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+
+    deck = buildDeck();
+    firstIndex = null;
+    secondIndex = null;
+    lock = false;
+    moves = 0;
+    matchesFound = 0;
+    gameStarted = false;
+    startTime = null;
+
+    movesEl.textContent = '0';
+    timerEl.textContent = '00:00';
+    setStatus('');
+
+    renderBoard();
+  }
+
+  newGameBtn.addEventListener('click', newGame);
+
+  newGame();
+})();
+</script>

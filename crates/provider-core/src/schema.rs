@@ -1249,10 +1249,32 @@ pub struct AppSummary {
     /// The source artifact still exists and its content differs from this
     /// app's snapshot.
     pub source_changed: bool,
+    /// The starter app this is a copy of, for apps added from Starter apps.
+    #[ts(optional)]
+    pub starter_id: Option<String>,
     #[ts(optional)]
     pub last_opened_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// A ready-made app bundled with Conduit, as the Apps page lists it. Its
+/// name and description are the matching Ideas strings (`idea_id`).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/starter_app_info.ts"
+)]
+pub struct StarterAppInfo {
+    pub id: String,
+    pub idea_id: String,
+    pub category: AppCategory,
+    pub icon: String,
+    pub hosts: Vec<String>,
+    /// The user's copy, once added.
+    #[ts(optional)]
+    pub installed_app_id: Option<String>,
 }
 
 /// An app with its page, for opening it.

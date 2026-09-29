@@ -10,7 +10,8 @@ use conduit_desktop::db::repository::{
     artifacts::{self, ArtifactContent},
     conversations,
 };
-use provider_core::schema::AppCategory;
+use conduit_desktop::starter_apps;
+use provider_core::schema::{AppCategory, AppOrigin};
 
 const PAGE_V1: &str = "<!doctype html><title>Weather</title><p>v1</p>";
 const PAGE_V2: &str = "<!doctype html><title>Weather</title><p>v2</p>";
@@ -283,5 +284,44 @@ async fn editing_and_deleting_an_app() {
     assert!(
         grants::list(&pool, None).await.unwrap().is_empty(),
         "deleting an app deletes its grants"
+    );
+}
+
+#[tokio::test]
+async fn a_starter_app_is_added_once_and_granted_nothing() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let starter = starter_apps::find("weather-dashboard").unwrap();
+    let first = apps::install_starter(&pool, &enc, starter, meta("Weather dashboard"))
+        .await
+        .unwrap();
+    assert_eq!(first.origin, AppOrigin::Starter);
+    assert_eq!(first.starter_id.as_deref(), Some("weather-dashboard"));
+    assert_eq!(first.source_artifact_id, None);
+    assert!(!first.source_changed);
+    assert_eq!(
+        first.hosts,
+        vec![
+            "https://api.open-meteo.com".to_string(),
+            "https://geocoding-api.open-meteo.com".to_string()
+        ]
+    );
+    let again = apps::install_starter(&pool, &enc, starter, meta("Weather dashboard"))
+        .await
+        .unwrap();
+    assert_eq!(again.id, first.id, "adding it twice opens the same copy");
+    assert_eq!(apps::list(&pool, &enc).await.unwrap().len(), 1);
+    assert!(
+        grants::list(&pool, None).await.unwrap().is_empty(),
+        "a starter's sites still ask on first use"
+    );
+    let opened = apps::open(&pool, &enc, &first.id).await.unwrap().unwrap();
+    assert_eq!(opened.html, starter.html);
+    assert_eq!(
+        apps::installed_starters(&pool)
+            .await
+            .unwrap()
+            .get("weather-dashboard"),
+        Some(&first.id)
     );
 }

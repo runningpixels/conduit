@@ -1,0 +1,383 @@
+<style>
+  html[data-theme="dark"],
+  html:not([data-theme]) {
+    --bg:#0b0d12; --surface:#11141b; --surface-hi:#161a23; --line:#1c2130; --line-hi:#262c3c;
+    --ink:#e8eaf0; --ink-2:#b8becc; --ink-3:#8990a2; --accent:#ff7a59; --accent-ink:#1a0b06;
+    --accent-soft: rgba(255,122,89,.14); --signal:#7cc4ff; --ok:#7cffb2; --warn:#febc2e; --err:#ff9c82;
+    color-scheme: dark;
+  }
+  html[data-theme="light"] {
+    --bg:#f6f6f8; --surface:#ffffff; --surface-hi:#f1f2f5; --line:#e1e3ea; --line-hi:#dadce3;
+    --ink:#16181d; --ink-2:#3a3f4a; --ink-3:#5f6573; --accent:#4b4ded; --accent-ink:#ffffff;
+    --accent-soft:#eef0ff; --signal:#1f86e8; --ok:#137a3a; --warn:#9a5300; --err:#b4380f;
+    color-scheme: light;
+  }
+
+  html, body {
+    background: var(--bg);
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+
+  .pomodoro {
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 36px 28px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+  }
+
+  .phase-label {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+  }
+
+  .phase-label[data-phase="focus"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  .ring-wrap {
+    position: relative;
+    width: 260px;
+    height: 260px;
+    max-width: 70vw;
+    max-height: 70vw;
+  }
+
+  .ring-wrap svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .ring-track {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 10;
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.2s linear;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ring-progress { transition: none; }
+  }
+
+  .ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .time-readout {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 52px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1;
+  }
+
+  .cycle-dots {
+    display: flex;
+    gap: 8px;
+  }
+
+  .cycle-dots span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--line-hi);
+    display: inline-block;
+  }
+
+  .cycle-dots span.filled {
+    background: var(--accent);
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  button {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 12px 22px;
+    border: 1px solid var(--line);
+    background: var(--surface-hi);
+    color: var(--ink);
+    cursor: pointer;
+    outline: none;
+    min-width: 96px;
+  }
+
+  button:hover {
+    border-color: var(--line-hi);
+  }
+
+  button:active {
+    transform: translateY(1px);
+  }
+
+  button:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    min-width: 128px;
+  }
+
+  .stat {
+    text-align: center;
+    color: var(--ink-2);
+    font-size: 14px;
+  }
+
+  .stat strong {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    font-size: 16px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+</style>
+
+<div class="pomodoro">
+  <div class="phase-label" id="phaseLabel" data-phase="focus" aria-live="polite">Focus</div>
+
+  <div class="ring-wrap">
+    <svg viewBox="0 0 200 200" aria-hidden="true">
+      <circle class="ring-track" cx="100" cy="100" r="90"></circle>
+      <circle class="ring-progress" id="ringProgress" cx="100" cy="100" r="90"></circle>
+    </svg>
+    <div class="ring-center">
+      <div class="time-readout" id="timeReadout">25:00</div>
+      <div class="cycle-dots" id="cycleDots" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button type="button" class="primary" id="toggleBtn">Start</button>
+    <button type="button" id="resetBtn">Reset</button>
+    <button type="button" id="skipBtn">Skip</button>
+  </div>
+
+  <div class="stat">
+    Focus sessions completed: <strong id="sessionCount">0</strong>
+  </div>
+
+  <div class="visually-hidden" id="statusRegion" aria-live="polite"></div>
+</div>
+
+<script>
+(function () {
+  var DURATIONS = {
+    focus: 25 * 60 * 1000,
+    short: 5 * 60 * 1000,
+    long: 15 * 60 * 1000
+  };
+  var LABELS = {
+    focus: 'Focus',
+    short: 'Short Break',
+    long: 'Long Break'
+  };
+
+  var RADIUS = 90;
+  var CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+  var phase = 'focus';
+  var remaining = DURATIONS.focus;
+  var running = false;
+  var endTime = null;
+  var completedFocusCount = 0;
+  var focusPhaseIndex = 0;
+
+  var phaseLabelEl = document.getElementById('phaseLabel');
+  var timeReadoutEl = document.getElementById('timeReadout');
+  var ringProgressEl = document.getElementById('ringProgress');
+  var toggleBtn = document.getElementById('toggleBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  var skipBtn = document.getElementById('skipBtn');
+  var sessionCountEl = document.getElementById('sessionCount');
+  var cycleDotsEl = document.getElementById('cycleDots');
+  var statusRegion = document.getElementById('statusRegion');
+
+  ringProgressEl.setAttribute('stroke-dasharray', String(CIRCUMFERENCE));
+
+  function formatTime(ms) {
+    var totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+    var m = Math.floor(totalSeconds / 60);
+    var s = totalSeconds % 60;
+    return (m < 10 ? '0' + m : String(m)) + ':' + (s < 10 ? '0' + s : String(s));
+  }
+
+  function render() {
+    var duration = DURATIONS[phase];
+    var fraction = duration > 0 ? Math.min(1, Math.max(0, remaining / duration)) : 0;
+
+    timeReadoutEl.textContent = formatTime(remaining);
+
+    phaseLabelEl.textContent = LABELS[phase];
+    phaseLabelEl.setAttribute('data-phase', phase);
+
+    var offset = CIRCUMFERENCE * (1 - fraction);
+    ringProgressEl.setAttribute('stroke-dashoffset', String(offset));
+
+    sessionCountEl.textContent = String(completedFocusCount);
+
+    if (running) {
+      toggleBtn.textContent = 'Pause';
+    } else if (remaining < duration) {
+      toggleBtn.textContent = 'Resume';
+    } else {
+      toggleBtn.textContent = 'Start';
+    }
+
+    var dots = cycleDotsEl.children;
+    var filled = completedFocusCount % 4;
+    if (filled === 0 && completedFocusCount > 0) {
+      filled = 4;
+    }
+    for (var i = 0; i < dots.length; i++) {
+      if (i < filled) {
+        dots[i].classList.add('filled');
+      } else {
+        dots[i].classList.remove('filled');
+      }
+    }
+  }
+
+  function announce(message) {
+    statusRegion.textContent = message;
+  }
+
+  function advancePhase(natural) {
+    if (phase === 'focus') {
+      if (natural) {
+        completedFocusCount += 1;
+      }
+      focusPhaseIndex += 1;
+      phase = (focusPhaseIndex % 4 === 0) ? 'long' : 'short';
+    } else {
+      phase = 'focus';
+    }
+
+    remaining = DURATIONS[phase];
+
+    if (running) {
+      endTime = Date.now() + remaining;
+    } else {
+      endTime = null;
+    }
+
+    announce(LABELS[phase] + ' started.');
+    render();
+  }
+
+  function tick() {
+    if (!running) {
+      return;
+    }
+    var rem = endTime - Date.now();
+    if (rem <= 0) {
+      advancePhase(true);
+    } else {
+      remaining = rem;
+      render();
+    }
+  }
+
+  function toggleRunning() {
+    if (running) {
+      remaining = Math.max(0, endTime - Date.now());
+      running = false;
+      endTime = null;
+      announce(LABELS[phase] + ' paused.');
+    } else {
+      if (remaining <= 0) {
+        remaining = DURATIONS[phase];
+      }
+      endTime = Date.now() + remaining;
+      running = true;
+      announce(LABELS[phase] + ' running.');
+    }
+    render();
+  }
+
+  function reset() {
+    running = false;
+    endTime = null;
+    remaining = DURATIONS[phase];
+    announce(LABELS[phase] + ' reset.');
+    render();
+  }
+
+  function skip() {
+    advancePhase(false);
+  }
+
+  toggleBtn.addEventListener('click', toggleRunning);
+  resetBtn.addEventListener('click', reset);
+  skipBtn.addEventListener('click', skip);
+
+  setInterval(tick, 200);
+
+  render();
+})();
+</script>

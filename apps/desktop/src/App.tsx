@@ -110,12 +110,14 @@ import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
 import { AppsPage } from './pages/AppsPage';
-import type { AppSummary } from './ipc/contracts';
+import type { AppSummary, StarterAppInfo } from './ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog';
 import {
   artifactPrincipal,
   exportConversationDialog,
+  installStarterApp,
   listApps,
+  listStarterApps,
   exportDiagnostics,
   forkConversation,
   previewConversationExport,
@@ -262,9 +264,12 @@ export default function App() {
   const [openAppId, setOpenAppId] = useState<string | null>(null);
   const [savedApps, setSavedApps] = useState<AppSummary[]>([]);
   const [appDetailsTarget, setAppDetailsTarget] = useState<AppDetailsTarget | null>(null);
+  const [starterApps, setStarterApps] = useState<StarterAppInfo[]>([]);
   const refreshSavedApps = useCallback(async () => {
     try {
-      setSavedApps(await listApps());
+      const [apps, starters] = await Promise.all([listApps(), listStarterApps()]);
+      setSavedApps(apps);
+      setStarterApps(starters);
     } catch {
       setSavedApps([]);
     }
@@ -276,6 +281,35 @@ export default function App() {
     setOpenAppId(id);
     setDestination('apps');
   }, []);
+  // A starter app: add it the first time (named in the user's language, from
+  // its Ideas strings), then it is an ordinary app.
+  const addStarterApp = useCallback(
+    async (starter: StarterAppInfo): Promise<string | null> => {
+      if (starter.installedAppId) return starter.installedAppId;
+      try {
+        const app = await installStarterApp(
+          starter.id,
+          t(`ideas.item.${starter.ideaId}.title`),
+          t(`ideas.item.${starter.ideaId}.blurb`),
+        );
+        await refreshSavedApps();
+        setStatusMessage(t('apps.status.added', { name: app.name }));
+        return app.id;
+      } catch (e) {
+        setStatusMessage(e instanceof Error ? e.message : String(e));
+        return null;
+      }
+    },
+    [refreshSavedApps, t],
+  );
+  const openStarterApp = useCallback(
+    async (starter: StarterAppInfo) => {
+      const id = await addStarterApp(starter);
+      if (id) openSavedApp(id);
+    },
+    [addStarterApp, openSavedApp],
+  );
+  const readyMadeIdeas = useMemo(() => new Set(starterApps.map((s) => s.ideaId)), [starterApps]);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>('prompts');
   const settingsOpen = destination === 'settings';
   // t1-8: files dropped onto the window wait on the Documents page for the
@@ -2052,6 +2086,11 @@ export default function App() {
             yourApps={savedApps}
             onOpenApp={openSavedApp}
             onAllApps={() => openSavedApp(null)}
+            readyMadeIdeas={readyMadeIdeas}
+            onOpenReadyMade={(idea) => {
+              const starter = starterApps.find((s) => s.ideaId === idea.id);
+              if (starter) void openStarterApp(starter);
+            }}
             onPickIdea={(idea) => void tryIdea(idea)}
             onMoreIdeas={openIdeas}
             onHideIdeas={() => setRowHidden(true)}
@@ -2133,6 +2172,8 @@ export default function App() {
                 colorScheme={effectiveTheme}
                 networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
                 onAppsChanged={() => void refreshSavedApps()}
+                starters={starterApps}
+                onAddStarter={(starter) => void addStarterApp(starter)}
                 onStatus={setStatusMessage}
               />
             )}

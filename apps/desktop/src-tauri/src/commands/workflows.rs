@@ -20,7 +20,7 @@ use crate::workflows::{
     permissions::{self, Decision, PendingReview, PermissionView, Reviews},
     runner::{search_backend, RunBudget, Runner},
     schedule::ScheduleSpec,
-    scheduler::{next_run, RunningWorkflows, SchedulerWake},
+    scheduler::{next_run, show_notification, RunningWorkflows, SchedulerWake},
 };
 
 const MAX_NAME_CHARS: usize = 120;
@@ -136,6 +136,7 @@ pub async fn delete_workflow(state: State<'_, AppState>, id: String) -> Result<(
 /// Run a workflow now and return what it did. Waits for the whole run.
 #[tauri::command]
 pub async fn run_workflow(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     stream_manager: State<'_, StreamManager>,
     running: State<'_, Arc<RunningWorkflows>>,
@@ -153,6 +154,7 @@ pub async fn run_workflow(
         // The user started it and is watching: not gated.
         unattended: None,
         budget: RunBudget::default(),
+        notify: Some(&|title: &str, body: &str| show_notification(&app, title, body)),
     };
     runner.run(&id, &inputs.unwrap_or_default(), "manual").await
 }
@@ -248,18 +250,12 @@ pub fn notify_workflow_run(
     title: String,
     body: String,
 ) -> Result<(), String> {
-    use tauri_plugin_notification::NotificationExt;
     let clip = |s: &str, max: usize| s.trim().chars().take(max).collect::<String>();
     let title = clip(&title, MAX_NOTIFY_TITLE);
     if title.is_empty() {
         return Err("A notification needs a title.".to_string());
     }
-    app.notification()
-        .builder()
-        .title(title)
-        .body(clip(&body, MAX_NOTIFY_BODY))
-        .show()
-        .map_err(|e| e.to_string())
+    show_notification(&app, &title, &clip(&body, MAX_NOTIFY_BODY))
 }
 
 #[cfg(test)]

@@ -30,8 +30,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   will be allowed to do on its own (the sites it reads, web search, which
   model, saving documents) for you to approve. A scheduled run that needs
   more, after an edit or a settings change, pauses and asks: allow once,
-  always allow, or don't allow. Each run has a time and token limit. Only
-  the summarize step uses the model, and it can't use tools.
+  always allow, or don't allow. Each run has a time and token limit. A
+  site or model that fails for a moment is tried again (twice for pages
+  and searches, once for the model; choose per step), and a reply that
+  should be JSON but isn't gets one more ask. A new step shows a desktop
+  notification with text from earlier steps. Only the summarize step uses
+  the model, and it can't use tools.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the

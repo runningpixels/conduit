@@ -163,7 +163,8 @@ fn collect(steps: &[Step], ctx: &Context, set: &mut BTreeSet<Permission>) {
                     provider: ctx.provider.to_string(),
                 });
             }
-            StepAction::Template { .. } => {}
+            // Notifications stay on this computer.
+            StepAction::Template { .. } | StepAction::Notify { .. } => {}
             StepAction::SaveArtifact { .. } => {
                 set.insert(Permission::SaveDocuments);
             }

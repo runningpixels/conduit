@@ -19,8 +19,10 @@ import { useT, type Translate } from '../i18n';
 import type { WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/contracts';
 import {
   allStepIds,
+  defaultRetries,
   insertStep,
   listSourcesAt,
+  MAX_RETRIES,
   MAX_URLS,
   moveStep,
   newInput,
@@ -47,6 +49,7 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   template: 'workspace.workflows.editor.type.template',
   for_each: 'workspace.workflows.editor.type.forEach',
   save_artifact: 'workspace.workflows.editor.type.saveArtifact',
+  notify: 'workspace.workflows.editor.type.notify',
 };
 
 /// Readable names for step outputs and item fields in the "Insert value" menu.
@@ -400,7 +403,27 @@ function StepCard({
         </>
       );
       break;
+    case 'notify':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.notify.title')}
+            value={step.title}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'notify' ? { ...s, title: v } : s))}
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.notify.body')}
+            value={step.body ?? ''}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'notify' ? { ...s, body: v } : s))}
+          />
+        </>
+      );
+      break;
   }
+  const usualRetries = defaultRetries(step.type);
 
   return (
     <li className="wf-card" aria-labelledby={headingId}>
@@ -439,6 +462,27 @@ function StepCard({
         </span>
       </header>
       <div className="wf-card-body">{body}</div>
+      {usualRetries !== null ? (
+        <label className="wf-field wf-retries">
+          <span>{t('workspace.workflows.editor.retries')}</span>
+          <select
+            className="sel"
+            value={step.retries ?? usualRetries}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              // The usual number stays unwritten, so the stored workflow keeps
+              // following the default.
+              update((s) => ({ ...s, retries: n === usualRetries ? undefined : n }));
+            }}
+          >
+            {Array.from({ length: MAX_RETRIES + 1 }, (_, n) => (
+              <option key={n} value={n}>
+                {t('workspace.workflows.editor.retriesCount', { count: n })}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <label className="wf-check">
         <input
           type="checkbox"

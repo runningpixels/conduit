@@ -13,6 +13,7 @@ import {
   grantArtifactNetwork,
   revokeArtifactNetworkGrant,
   type ArtifactNetworkState,
+  type PagePrincipal,
 } from '../ipc/client';
 import {
   isLocalNetworkOrigin,
@@ -88,8 +89,8 @@ const LOG_LIMIT = 200;
 
 /** This session's requests for one page, oldest first (the inspector's
  *  Activity lists them). */
-export function readArtifactNetworkLog(artifactId: string): readonly NetworkLogEntry[] {
-  return logByArtifact.get(artifactId) ?? [];
+export function readArtifactNetworkLog(principal: PagePrincipal): readonly NetworkLogEntry[] {
+  return logByArtifact.get(principal) ?? [];
 }
 
 function bytesToBase64(buffer: ArrayBuffer): string {
@@ -125,14 +126,14 @@ export interface ArtifactNetwork {
 }
 
 /**
- * @param artifactId the saved page, or null when none is shown
+ * @param principal the page (`artifact:<id>` or `app:<id>`), or null when none is shown
  * @param contentHash changes whenever the page's content does; requests made
  *   after a change are marked in the log
  * @param policyKey changes when a setting that can block every request does
  *   (local-only, the Settings switch), so the state is read again
  */
 export function useArtifactNetwork(
-  artifactId: string | null,
+  principal: PagePrincipal | null,
   contentHash: string,
   policyKey = '',
 ): ArtifactNetwork {
@@ -144,20 +145,20 @@ export function useArtifactNetwork(
   const stateRef = useRef<ArtifactNetworkState | null>(null);
   const contentRef = useRef(contentHash);
   contentRef.current = contentHash;
-  const idRef = useRef(artifactId);
-  idRef.current = artifactId;
+  const idRef = useRef(principal);
+  idRef.current = principal;
 
   const refresh = useCallback(async () => {
-    if (!artifactId) return;
+    if (!principal) return;
     try {
-      const next = await getArtifactNetworkState(artifactId);
-      if (idRef.current !== artifactId) return;
+      const next = await getArtifactNetworkState(principal);
+      if (idRef.current !== principal) return;
       stateRef.current = next;
       setState(next);
     } catch {
       /* the panel still works; requests will fail in Rust if not allowed */
     }
-  }, [artifactId]);
+  }, [principal]);
 
   // A different page: forget the held requests of the last one and load this
   // one's grants and log.
@@ -169,9 +170,9 @@ export function useArtifactNetwork(
     setPending([]);
     stateRef.current = null;
     setState(null);
-    setLog(artifactId ? [...(logByArtifact.get(artifactId) ?? [])] : []);
+    setLog(principal ? [...(logByArtifact.get(principal) ?? [])] : []);
     void refresh();
-  }, [artifactId, refresh]);
+  }, [principal, refresh]);
 
   const firstPolicy = useRef(true);
   useEffect(() => {
@@ -185,16 +186,16 @@ export function useArtifactNetwork(
 
   const appendLog = useCallback(
     (entry: NetworkLogEntry) => {
-      if (!artifactId) return;
-      const list = logByArtifact.get(artifactId) ?? [];
+      if (!principal) return;
+      const list = logByArtifact.get(principal) ?? [];
       const at = list.findIndex((e) => e.id === entry.id);
       if (at >= 0) list[at] = entry;
       else list.push(entry);
       if (list.length > LOG_LIMIT) list.splice(0, list.length - LOG_LIMIT);
-      logByArtifact.set(artifactId, list);
-      if (idRef.current === artifactId) setLog([...list]);
+      logByArtifact.set(principal, list);
+      if (idRef.current === principal) setLog([...list]);
     },
-    [artifactId],
+    [principal],
   );
 
   /** Hold a request until the reader decides on `site`. */
@@ -225,22 +226,22 @@ export function useArtifactNetwork(
 
   const execute = useCallback(
     async (message: ArtifactFetchMessage, origin: string): Promise<ArtifactFetchResult> => {
-      if (!artifactId) return { ok: false, error: 'This page is not saved.' };
+      if (!principal) return { ok: false, error: 'This page is not saved.' };
       const started = Date.now();
       const content = contentRef.current;
-      if (!baselineByArtifact.has(artifactId)) baselineByArtifact.set(artifactId, content);
+      if (!baselineByArtifact.has(principal)) baselineByArtifact.set(principal, content);
       const entry: NetworkLogEntry = {
         id: ++logSeq,
         at: started,
         origin,
         method: message.method,
         url: message.url,
-        sinceChange: baselineByArtifact.get(artifactId) !== content,
+        sinceChange: baselineByArtifact.get(principal) !== content,
       };
       appendLog(entry);
       try {
         const response = await artifactFetch({
-          artifactId,
+          principal,
           url: message.url,
           method: message.method,
           headers: message.headers,
@@ -264,19 +265,19 @@ export function useArtifactNetwork(
         // The server sent the page to another site: ask about that site rather
         // than leave the page without its data. Allowing it re-sends the
         // original request, which Rust then follows through the redirect.
-        const denied = deniedByArtifact.get(artifactId)?.has(redirect.origin);
+        const denied = deniedByArtifact.get(principal)?.has(redirect.origin);
         if (denied || isAllowed(stateRef.current, redirect.origin)) return { ok: false, error: redirect.message };
         return hold(redirect.origin, message, origin, origin);
       }
     },
-    [artifactId, appendLog, hold],
+    [principal, appendLog, hold],
   );
 
   const denied = useMemo(
-    () => (artifactId ? deniedByArtifact.get(artifactId) ?? new Set<string>() : new Set<string>()),
+    () => (principal ? deniedByArtifact.get(principal) ?? new Set<string>() : new Set<string>()),
     // deniedVersion bumps when the set changes in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [artifactId, deniedVersion],
+    [principal, deniedVersion],
   );
 
   const handler = useMemo<ArtifactNetworkHandler>(
@@ -289,38 +290,38 @@ export function useArtifactNetwork(
         if (isLocalNetworkOrigin(origin)) {
           return { ok: false, error: 'Pages cannot contact your computer or local network.' };
         }
-        const current = stateRef.current ?? (artifactId ? await getArtifactNetworkState(artifactId).catch(() => null) : null);
+        const current = stateRef.current ?? (principal ? await getArtifactNetworkState(principal).catch(() => null) : null);
         if (current && !stateRef.current) {
           stateRef.current = current;
           setState(current);
         }
         if (current?.blockedReason) return { ok: false, error: current.blockedReason };
-        if (artifactId && deniedByArtifact.get(artifactId)?.has(origin)) {
+        if (principal && deniedByArtifact.get(principal)?.has(origin)) {
           return { ok: false, error: `You didn't allow this page to contact ${new URL(origin).host}.` };
         }
         if (isAllowed(current, origin)) return execute(message, origin);
         return hold(origin, message, origin);
       },
     }),
-    [artifactId, execute, hold],
+    [principal, execute, hold],
   );
 
   const decide = useCallback(
     async (origins: string[], decision: NetworkDecision, anySite = false) => {
-      if (!artifactId) return;
+      if (!principal) return;
       if (anySite && decision !== 'deny') {
         const everything = [...held.current.keys()];
         const queues = everything.flatMap((site) => held.current.get(site) ?? []);
         held.current.clear();
         try {
-          await grantArtifactNetwork(artifactId, ANY_SITE, decision);
+          await grantArtifactNetwork(principal, ANY_SITE, decision);
         } catch (error) {
           for (const h of queues) h.resolve({ ok: false, error: errorText(error) });
           setPending([]);
           return;
         }
-        deniedByArtifact.delete(artifactId);
-        baselineByArtifact.set(artifactId, contentRef.current);
+        deniedByArtifact.delete(principal);
+        baselineByArtifact.set(principal, contentRef.current);
         const base = stateRef.current ?? { blockedReason: null, always: [], session: [] };
         const next: ArtifactNetworkState =
           decision === 'page'
@@ -337,21 +338,21 @@ export function useArtifactNetwork(
         const queue = held.current.get(origin) ?? [];
         held.current.delete(origin);
         if (decision === 'deny') {
-          const set = deniedByArtifact.get(artifactId) ?? new Set<string>();
+          const set = deniedByArtifact.get(principal) ?? new Set<string>();
           set.add(origin);
-          deniedByArtifact.set(artifactId, set);
+          deniedByArtifact.set(principal, set);
           const host = new URL(origin).host;
           for (const h of queue) h.resolve({ ok: false, error: `You didn't allow this page to contact ${host}.` });
           continue;
         }
         try {
-          await grantArtifactNetwork(artifactId, origin, decision);
+          await grantArtifactNetwork(principal, origin, decision);
         } catch (error) {
           for (const h of queue) h.resolve({ ok: false, error: errorText(error) });
           continue;
         }
-        deniedByArtifact.get(artifactId)?.delete(origin);
-        baselineByArtifact.set(artifactId, contentRef.current);
+        deniedByArtifact.get(principal)?.delete(origin);
+        baselineByArtifact.set(principal, contentRef.current);
         const base = stateRef.current ?? { blockedReason: null, always: [], session: [] };
         const next: ArtifactNetworkState =
           decision === 'page'
@@ -364,16 +365,16 @@ export function useArtifactNetwork(
       setDeniedVersion((v) => v + 1);
       setPending((list) => list.filter((p) => !origins.includes(p.origin)));
     },
-    [artifactId, execute],
+    [principal, execute],
   );
 
   const revoke = useCallback(
     async (origin: string) => {
-      if (!artifactId) return;
-      await revokeArtifactNetworkGrant(artifactId, origin);
+      if (!principal) return;
+      await revokeArtifactNetworkGrant(principal, origin);
       await refresh();
     },
-    [artifactId, refresh],
+    [principal, refresh],
   );
 
   return { handler, state, denied, pending, log, decide, revoke };

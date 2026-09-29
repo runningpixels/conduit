@@ -1087,6 +1087,189 @@ pub struct Artifact {
 }
 
 // =============================================================================
+// App Types (mini-apps: a saved snapshot of an HTML artifact)
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_category.ts"
+)]
+pub enum AppCategory {
+    Tools,
+    LiveData,
+    Learn,
+    Play,
+    Writing,
+    Other,
+}
+
+impl AppCategory {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tools => "tools",
+            Self::LiveData => "live-data",
+            Self::Learn => "learn",
+            Self::Play => "play",
+            Self::Writing => "writing",
+            Self::Other => "other",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "tools" => Self::Tools,
+            "live-data" => Self::LiveData,
+            "learn" => Self::Learn,
+            "play" => Self::Play,
+            "writing" => Self::Writing,
+            "other" => Self::Other,
+            _ => return None,
+        })
+    }
+}
+
+/// Where an app came from. Only `Saved` exists so far; starter apps and
+/// imported `.conduitapp` files come later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_origin.ts"
+)]
+pub enum AppOrigin {
+    Saved,
+    Starter,
+    Imported,
+}
+
+impl AppOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Saved => "saved",
+            Self::Starter => "starter",
+            Self::Imported => "imported",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "saved" => Self::Saved,
+            "starter" => Self::Starter,
+            "imported" => Self::Imported,
+            _ => return None,
+        })
+    }
+}
+
+/// The https origins an app says it talks to. Declaring a host is not a
+/// grant: ADR-010's first-use prompt still decides.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_network.ts"
+)]
+pub struct AppNetwork {
+    pub hosts: Vec<String>,
+}
+
+/// What an app may ask for. Unknown keys are rejected, not ignored, so a
+/// manifest can't smuggle in a capability this version doesn't understand.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_capabilities.ts"
+)]
+pub struct AppCapabilities {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub network: Option<AppNetwork>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_created_with.ts"
+)]
+pub struct AppCreatedWith {
+    pub conduit: String,
+    pub from_artifact: bool,
+}
+
+/// An app's manifest: stored with the app, and the `manifest.json` of a
+/// `.conduitapp` file once export exists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_manifest.ts"
+)]
+pub struct AppManifest {
+    pub manifest_version: u32,
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub icon: Option<String>,
+    pub category: AppCategory,
+    pub version: String,
+    #[serde(default)]
+    pub capabilities: AppCapabilities,
+    pub created_with: AppCreatedWith,
+}
+
+/// One app in the Apps list.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_summary.ts"
+)]
+pub struct AppSummary {
+    pub id: String,
+    pub name: String,
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[ts(optional)]
+    pub icon: Option<String>,
+    pub category: AppCategory,
+    pub version: String,
+    pub origin: AppOrigin,
+    /// Declared hosts, from the manifest.
+    pub hosts: Vec<String>,
+    #[ts(optional)]
+    pub source_artifact_id: Option<String>,
+    /// The source artifact still exists and its content differs from this
+    /// app's snapshot.
+    pub source_changed: bool,
+    #[ts(optional)]
+    pub last_opened_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// An app with its page, for opening it.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_detail.ts"
+)]
+pub struct AppDetail {
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub summary: AppSummary,
+    pub html: String,
+}
+
+// =============================================================================
 // Attachment Types
 // =============================================================================
 

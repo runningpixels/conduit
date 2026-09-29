@@ -21,7 +21,7 @@ describe('Rail', () => {
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Chats', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
+    expect(labels).toEqual(['Chats', 'Apps', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
   });
 
@@ -33,14 +33,14 @@ describe('Rail', () => {
   it('is one tab stop, moved with the arrow keys', () => {
     renderRail();
     const chats = screen.getByRole('button', { name: 'Chats' });
-    const documents = screen.getByRole('button', { name: 'Documents' });
+    const apps = screen.getByRole('button', { name: 'Apps' });
     const settings = screen.getByRole('button', { name: 'Settings' });
     expect(chats.tabIndex).toBe(0);
-    expect(documents.tabIndex).toBe(-1);
+    expect(apps.tabIndex).toBe(-1);
     chats.focus();
     fireEvent.keyDown(chats, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(documents);
-    fireEvent.keyDown(documents, { key: 'End' });
+    expect(document.activeElement).toBe(apps);
+    fireEvent.keyDown(apps, { key: 'End' });
     expect(document.activeElement).toBe(settings);
     fireEvent.keyDown(settings, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(chats);

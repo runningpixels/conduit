@@ -179,6 +179,8 @@ import { capabilityChip } from '../ideas/capabilityChips';
 import { resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
 import { summarizeStreamState } from '../inspector/turnActivity';
 import { IdeaGallery } from '../ideas/IdeaGallery';
+import { YourAppsRow } from '../apps/YourAppsRow';
+import type { AppSummary } from '../ipc/contracts';
 import type { Capabilities } from '../ideas/capabilities';
 import type { IdeaState } from '../ideas/ideaState';
 import { useRichT, useT, type Translate } from '../i18n';
@@ -269,6 +271,10 @@ interface ChatViewProps {
   onOpenSettings?: (tab?: string) => void;
   /// What the new-chat idea gallery draws from (ADR-011); absent hides it.
   ideaGallery?: { caps: Capabilities; state: IdeaState } | null;
+  /// Saved apps for the new-chat "Your apps" row, most recently opened first.
+  yourApps?: readonly AppSummary[];
+  onOpenApp?: (id: string) => void;
+  onAllApps?: () => void;
   /// UI revamp: a turn's step line was clicked — open Activity on it.
   onOpenActivity?: (turnId: string) => void;
   /// The transcript for the inspector's Activity and Sources tabs: persisted
@@ -743,6 +749,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     paneActive = true,
     onOpenSettings,
     ideaGallery,
+    yourApps = [],
+    onOpenApp,
+    onAllApps,
     onOpenActivity,
     onTranscriptChange,
     onRunStatusChange,
@@ -3245,6 +3254,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         contextTokens={contextTokens}
         compactThresholdPercent={compactThresholdPercent}
       />
+      {threadEmpty && onOpenApp && onAllApps && (
+        <YourAppsRow apps={yourApps} onOpen={onOpenApp} onAll={onAllApps} />
+      )}
       {threadEmpty && ideaGallery && onPickIdea && (
         <IdeaGallery
           caps={ideaGallery.caps}

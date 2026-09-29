@@ -37,7 +37,7 @@ beforeEach(() => {
 
 describe('useArtifactNetwork', () => {
   it('holds a request to an undecided site until the reader allows it', async () => {
-    const id = `page-${nextArtifact}`;
+    const id = `artifact:page-${nextArtifact}` as const;
     const { result } = renderHook(() => useArtifactNetwork(id, '<html>'));
     await waitFor(() => expect(result.current.state).not.toBeNull());
 
@@ -65,7 +65,7 @@ describe('useArtifactNetwork', () => {
 
   it('goes straight to Rust for a site already allowed', async () => {
     getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: ['https://api.open-meteo.com'], session: [] });
-    const { result } = renderHook(() => useArtifactNetwork(`page-${nextArtifact}`, '<html>'));
+    const { result } = renderHook(() => useArtifactNetwork(`artifact:page-${nextArtifact}` as const, '<html>'));
     await waitFor(() => expect(result.current.state).not.toBeNull());
     const res = await result.current.handler.request(
       message('https://api.open-meteo.com/v1', { method: 'POST', body: new TextEncoder().encode('hi').buffer }),
@@ -76,7 +76,7 @@ describe('useArtifactNetwork', () => {
   });
 
   it('refuses held and later requests once the reader says no', async () => {
-    const { result } = renderHook(() => useArtifactNetwork(`page-${nextArtifact}`, '<html>'));
+    const { result } = renderHook(() => useArtifactNetwork(`artifact:page-${nextArtifact}` as const, '<html>'));
     await waitFor(() => expect(result.current.state).not.toBeNull());
     let first: unknown = null;
     act(() => {
@@ -100,7 +100,7 @@ describe('useArtifactNetwork', () => {
       always: ['https://api.open-meteo.com'],
       session: [],
     });
-    const { result } = renderHook(() => useArtifactNetwork(`page-${nextArtifact}`, '<html>'));
+    const { result } = renderHook(() => useArtifactNetwork(`artifact:page-${nextArtifact}` as const, '<html>'));
     await waitFor(() => expect(result.current.state).not.toBeNull());
     const res = await result.current.handler.request(message('https://api.open-meteo.com/v1'));
     expect(res).toEqual({ ok: false, error: "Local-only mode is on, so pages can't connect to the internet." });
@@ -113,7 +113,7 @@ describe('useArtifactNetwork', () => {
     artifactFetch.mockRejectedValueOnce(
       'redirect:https://api.frankfurter.dev The server redirected to api.frankfurter.dev, which this page has not been allowed to contact.',
     );
-    const id = `page-${nextArtifact}`;
+    const id = `artifact:page-${nextArtifact}` as const;
     const { result } = renderHook(() => useArtifactNetwork(id, '<html>'));
     await waitFor(() => expect(result.current.state).not.toBeNull());
     let settled: unknown = null;
@@ -137,7 +137,7 @@ describe('useArtifactNetwork', () => {
   });
 
   it('allows any public site with one decision', async () => {
-    const id = `page-${nextArtifact}`;
+    const id = `artifact:page-${nextArtifact}` as const;
     const { result } = renderHook(() => useArtifactNetwork(id, '<html>'));
     await waitFor(() => expect(result.current.state).not.toBeNull());
     const results: unknown[] = [];
@@ -159,7 +159,7 @@ describe('useArtifactNetwork', () => {
   });
 
   it('refuses plain http without asking', async () => {
-    const { result } = renderHook(() => useArtifactNetwork(`page-${nextArtifact}`, '<html>'));
+    const { result } = renderHook(() => useArtifactNetwork(`artifact:page-${nextArtifact}` as const, '<html>'));
     const res = await result.current.handler.request(message('http://example.com/'));
     expect(res).toMatchObject({ ok: false });
     expect(result.current.pending).toHaveLength(0);
@@ -167,7 +167,7 @@ describe('useArtifactNetwork', () => {
 
   it('marks requests made after the page changed', async () => {
     getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: ['https://api.open-meteo.com'], session: [] });
-    const { result, rerender } = renderHook(({ content }) => useArtifactNetwork(`page-${nextArtifact}`, content), {
+    const { result, rerender } = renderHook(({ content }) => useArtifactNetwork(`artifact:page-${nextArtifact}` as const, content), {
       initialProps: { content: '<v1>' },
     });
     await waitFor(() => expect(result.current.state).not.toBeNull());

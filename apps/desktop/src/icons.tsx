@@ -337,6 +337,15 @@ export const WorkflowIcon = (p: IconProps) => (
     <path d="M6 10v4a3 3 0 0 0 3 3h6" />
   </Svg>
 );
+/** Four rounded tiles: the Apps destination. */
+export const AppsIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="4" y="4" width="7" height="7" rx="2" />
+    <rect x="13" y="4" width="7" height="7" rx="2" />
+    <rect x="4" y="13" width="7" height="7" rx="2" />
+    <rect x="13" y="13" width="7" height="7" rx="3.5" />
+  </Svg>
+);
 export const IdeaIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 18h6M10 21h4" />

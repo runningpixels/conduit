@@ -24,10 +24,12 @@ import {
   SkillIcon,
   SunIcon,
   WorkflowIcon,
+  AppsIcon,
 } from '../icons';
 
 export type Destination =
   | 'chats'
+  | 'apps'
   | 'ideas'
   | 'documents'
   | 'library'
@@ -40,6 +42,7 @@ export type Destination =
  *  in the new-chat screen, and its page opens from there ("More ideas"). */
 export const DESTINATIONS: readonly Destination[] = [
   'chats',
+  'apps',
   'documents',
   'library',
   'workflows',
@@ -50,6 +53,7 @@ export const DESTINATIONS: readonly Destination[] = [
 
 const ICONS: Record<Destination, ReactNode> = {
   chats: <ChatIcon />,
+  apps: <AppsIcon />,
   ideas: <IdeaIcon />,
   documents: <KnowledgeIcon />,
   library: <SkillIcon />,

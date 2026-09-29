@@ -39,7 +39,7 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
 
   async function handleRevokeGrant(grant: ArtifactNetworkGrant) {
     try {
-      await revokeArtifactNetworkGrant(grant.artifactId, grant.host);
+      await revokeArtifactNetworkGrant(grant.principal, grant.host);
     } catch (e) {
       setGrantError(String(e));
     }
@@ -115,14 +115,14 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
             <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'grid', gap: 4 }}>
               {grants.map((grant) => (
                 <li
-                  key={`${grant.artifactId}|${grant.host}`}
+                  key={`${grant.principal}|${grant.host}`}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-xl)' }}
                 >
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{grant.host === ANY_SITE ? t('artifacts.network.anySite') : hostLabel(grant.host)}</span>
                     <span style={{ color: 'var(--ink-3)' }}>
                       {' · '}
-                      {grant.artifactTitle ?? t('settings.artifactSecurity.grants.untitled')}
+                      {grant.title ?? t('settings.artifactSecurity.grants.untitled')}
                     </span>
                   </span>
                   <button

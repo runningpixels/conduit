@@ -1,5 +1,8 @@
 import type {
   AccentOverride,
+  AppCategory,
+  AppDetail,
+  AppSummary,
   AppSettings,
   BrandConfig,
   ConsentDecision,
@@ -182,6 +185,9 @@ export type StreamEvent =
 
 export type {
   AccentOverride,
+  AppCategory,
+  AppDetail,
+  AppSummary,
   AppSettings,
   BrandConfig,
   Conversation,

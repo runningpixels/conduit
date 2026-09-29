@@ -8,6 +8,7 @@ import {
   readArtifactFileBytes,
   revealPath,
   setBrandConfig,
+  artifactPrincipal,
 } from '../ipc/client';
 import { buildPreviewProps, resolveKind, selectRenderer } from '../artifacts/selectRenderer';
 import { declaredHosts, scriptedHosts } from '../artifacts/networkHosts';
@@ -18,7 +19,7 @@ import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/ext
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
 import { inlineArtifactText } from '../artifacts/format';
-import { FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
+import { AppsIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
 import { Menu } from './Menu';
 import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
 import { readDocumentPeek, readExportMetadata, writeDocumentPeek } from '../shell/uiPrefs';
@@ -77,6 +78,8 @@ interface DocumentPanelProps {
   onOpenArtifact: (id: string) => void;
   onSaveContent: (artifactId: string, content: ArtifactContent, mimeType?: string) => Promise<void>;
   onExport: (artifactId: string, includeMetadata: boolean) => Promise<void>;
+  /** Save an HTML page as a mini-app (⋯ → Save as app). */
+  onSaveAsApp?: (artifact: { id: string; title: string | null }, html: string) => void;
   onCloseTab?: (id: string) => void;
   onCollapsePanel?: () => void;
   /** The panel is expanded (usePanelExpand). */
@@ -333,6 +336,7 @@ export function DocumentPanel({
   onOpenArtifact,
   onSaveContent,
   onExport,
+  onSaveAsApp,
   onCloseTab,
   onCollapsePanel,
   expanded = false,
@@ -405,7 +409,11 @@ export function DocumentPanel({
     effectiveArtifact && resolveKind(effectiveArtifact.kind, effectiveArtifact.mimeType) === 'html'
       ? effectiveArtifact.id
       : null;
-  const network = useArtifactNetwork(networkArtifactId, sourceText, networkPolicyKey);
+  const network = useArtifactNetwork(
+    networkArtifactId ? artifactPrincipal(networkArtifactId) : null,
+    sourceText,
+    networkPolicyKey,
+  );
   const networkDeclared = useMemo(() => (networkArtifactId ? declaredHosts(sourceText) : []), [networkArtifactId, sourceText]);
   const networkScripted = useMemo(() => {
     if (!networkArtifactId) return [];
@@ -1016,6 +1024,20 @@ export function DocumentPanel({
                 <DownloadIcon />
                 {exporting ? t('workspace.documentPanel.menu.exporting') : t('workspace.documentPanel.menu.saveCopy')}
               </button>
+              {onSaveAsApp && networkArtifactId && (
+                <button
+                  className="menu-item"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onSaveAsApp({ id: artifact.id, title: artifact.title ?? null }, raw || sourceText);
+                  }}
+                >
+                  <AppsIcon />
+                  {t('workspace.documentPanel.menu.saveAsApp')}
+                </button>
+              )}
               {onCloseTab && (
                 <button
                   className="menu-item"

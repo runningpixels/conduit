@@ -2,6 +2,7 @@
 //! what a run did. See `crate::workflows`.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde_json::Value;
 use tauri::State;
@@ -9,11 +10,16 @@ use tauri::State;
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::conversations;
 use crate::db::repository::workflows::{
-    self as repo, WorkflowRecord, WorkflowRun, WorkflowRunDetail, WorkflowSummary,
+    self as repo, WorkflowRecord, WorkflowRun, WorkflowRunDetail, WorkflowSchedule, WorkflowSummary,
 };
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
-use crate::workflows::{definition, runner::Runner};
+use crate::workflows::{
+    definition,
+    runner::Runner,
+    schedule::ScheduleSpec,
+    scheduler::{next_run, RunningWorkflows, SchedulerWake},
+};
 
 const MAX_NAME_CHARS: usize = 120;
 
@@ -130,9 +136,13 @@ pub async fn delete_workflow(state: State<'_, AppState>, id: String) -> Result<(
 pub async fn run_workflow(
     state: State<'_, AppState>,
     stream_manager: State<'_, StreamManager>,
+    running: State<'_, Arc<RunningWorkflows>>,
     id: String,
     inputs: Option<HashMap<String, String>>,
 ) -> Result<WorkflowRunDetail, String> {
+    let _guard = running
+        .try_start(&id)
+        .ok_or_else(|| "This workflow is already running.".to_string())?;
     let runner = Runner {
         state: state.inner(),
         streams: stream_manager.inner(),
@@ -161,6 +171,82 @@ pub async fn get_workflow_run(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "That run no longer exists.".to_string())
+}
+
+#[tauri::command]
+pub async fn get_workflow_schedule(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<WorkflowSchedule>, String> {
+    repo::get_schedule(&state.db, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Set a workflow's schedule (`spec: null` removes it). The next run is worked
+/// out in the user's time zone; the scheduler is woken so it takes effect now.
+#[tauri::command]
+pub async fn set_workflow_schedule(
+    state: State<'_, AppState>,
+    wake: State<'_, SchedulerWake>,
+    id: String,
+    spec: Option<Value>,
+    enabled: bool,
+) -> Result<Option<WorkflowSchedule>, String> {
+    if repo::get(&state.db, &state.encryption, &id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_none()
+    {
+        return Err("That workflow no longer exists.".to_string());
+    }
+    let Some(spec_value) = spec else {
+        repo::delete_schedule(&state.db, &id)
+            .await
+            .map_err(|e| e.to_string())?;
+        wake.poke();
+        return Ok(None);
+    };
+    let spec: ScheduleSpec = serde_json::from_value(spec_value.clone())
+        .map_err(|e| format!("The schedule can't be read: {e}"))?;
+    spec.validate()?;
+    let next = if enabled {
+        Some(next_run(&spec, chrono::Utc::now(), &chrono::Local)?)
+    } else {
+        None
+    };
+    let saved = repo::put_schedule(&state.db, &id, &spec_value, enabled, next.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    wake.poke();
+    Ok(Some(saved))
+}
+
+/// Longest notification title / body accepted from the renderer.
+const MAX_NOTIFY_TITLE: usize = 120;
+const MAX_NOTIFY_BODY: usize = 400;
+
+/// Show a desktop notification for a finished scheduled run. The renderer
+/// builds the text (it holds the translations); Rust shows it, so the webview
+/// needs no notification permission. Text is trimmed to fixed lengths.
+#[tauri::command]
+pub fn notify_workflow_run(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    let clip = |s: &str, max: usize| s.trim().chars().take(max).collect::<String>();
+    let title = clip(&title, MAX_NOTIFY_TITLE);
+    if title.is_empty() {
+        return Err("A notification needs a title.".to_string());
+    }
+    app.notification()
+        .builder()
+        .title(title)
+        .body(clip(&body, MAX_NOTIFY_BODY))
+        .show()
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

@@ -17,9 +17,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   editor: add steps, reorder them, and pick what each step reads from a
   menu of earlier results (shown as chips in the text), with problems
   shown before you save. Open the document a run saved straight from the
-  run. Only the
-  summarize step uses the model, and it can't use tools. Runs are started
-  by hand for now.
+  run. Schedule a workflow to run every day or on weekdays at a set time,
+  or every few hours, and get a notification when it finishes; a run
+  missed while Conduit was closed happens once when you open it. Only the
+  summarize step uses the model, and it can't use tools.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the

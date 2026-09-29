@@ -35,6 +35,7 @@ import type {
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
 import { newStep } from '../workflows/editorModel';
+import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
 import { WorkflowEditor, type WorkflowDraft } from '../workflows/WorkflowEditor';
 
@@ -66,10 +67,13 @@ function durationMs(start: string, end: string | null): number | null {
 export function WorkflowsPage({
   onStatus,
   onOpenDocument,
+  refreshKey,
 }: {
   onStatus: (message: string) => void;
   /** Open a document a run saved, in its conversation's document panel. */
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
+  /** Changes when a scheduled run finishes elsewhere; the page re-reads. */
+  refreshKey?: number;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -136,6 +140,14 @@ export function WorkflowsPage({
   useEffect(() => {
     void refreshList();
   }, [refreshList]);
+
+  // A scheduled run finished: re-read the list, and the selected workflow's runs.
+  useEffect(() => {
+    if (!refreshKey) return;
+    void refreshList();
+    if (selectedId) void listWorkflowRuns(selectedId, 20).then(setRuns, () => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   // Load the selected workflow and its runs.
   useEffect(() => {
@@ -310,6 +322,13 @@ export function WorkflowsPage({
           ? t('workspace.workflows.list.lastRun', { status: statusLabel(w.lastRunStatus), when: fmt.timeAgo(w.lastRunAt) })
           : t('workspace.workflows.list.neverRun')
       }
+      status={
+        w.nextRunAt ? (
+          <span className="wf-flag">
+            {t('workspace.workflows.list.nextRun', { when: formatNextRun(w.nextRunAt, fmt.locale) })}
+          </span>
+        ) : undefined
+      }
     />
   ));
 
@@ -450,6 +469,13 @@ export function WorkflowsPage({
             </button>
           </div>
         </section>
+
+        <ScheduleSection
+          workflowId={record.id}
+          refreshKey={refreshKey}
+          onStatus={onStatus}
+          onChanged={() => void refreshList()}
+        />
 
         <section className="grp" aria-label={t('workspace.workflows.runs.title')}>
           <div className="grp-label">{t('workspace.workflows.runs.title')}</div>

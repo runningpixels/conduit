@@ -14,6 +14,8 @@ const ipc = vi.hoisted(() => ({
   listWorkflowRuns: vi.fn(),
   getWorkflowRun: vi.fn(),
   validateWorkflow: vi.fn(),
+  getWorkflowSchedule: vi.fn(),
+  setWorkflowSchedule: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -39,6 +41,7 @@ const summary: WorkflowSummary = {
   updatedAt: '2026-09-28T08:00:00Z',
   lastRunStatus: null,
   lastRunAt: null,
+  nextRunAt: null,
 };
 
 const finishedRun: WorkflowRunDetail = {
@@ -98,6 +101,7 @@ describe('WorkflowsPage', () => {
     ipc.runWorkflow.mockResolvedValue(finishedRun);
     ipc.getWorkflowRun.mockResolvedValue(finishedRun);
     ipc.validateWorkflow.mockResolvedValue([]);
+    ipc.getWorkflowSchedule.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -168,6 +172,13 @@ describe('WorkflowsPage', () => {
     const detail = await screen.findByRole('region', { name: 'What this run did' });
     fireEvent.click(within(detail).getByRole('button', { name: 'Open “Morning briefing”' }));
     expect(onOpenDocument).toHaveBeenCalledWith('c1', 'a1');
+  });
+
+  it('shows when a scheduled workflow runs next, in the list', async () => {
+    ipc.listWorkflows.mockResolvedValue([{ ...summary, nextRunAt: '2026-09-30T06:00:00.000Z' }]);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    expect(await screen.findByText(/^Next: /)).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Schedule' })).toBeInTheDocument();
   });
 
   it('opens an earlier run from the history', async () => {

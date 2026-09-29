@@ -59,6 +59,8 @@ import type {
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
+  WorkflowSchedule,
+  ScheduleSpec,
   WorkflowSummary,
   ConversationFolder,
   KnowledgeCollection,
@@ -1326,4 +1328,22 @@ export async function listWorkflowRuns(id: string, limit?: number): Promise<Work
 
 export async function getWorkflowRun(runId: string): Promise<WorkflowRunDetail> {
   return invokeCommand<WorkflowRunDetail>('get_workflow_run', { runId });
+}
+
+export async function getWorkflowSchedule(id: string): Promise<WorkflowSchedule | null> {
+  return invokeCommand<WorkflowSchedule | null>('get_workflow_schedule', { id });
+}
+
+/** Set a workflow's schedule; `spec: null` removes it. */
+export async function setWorkflowSchedule(
+  id: string,
+  spec: ScheduleSpec | null,
+  enabled: boolean,
+): Promise<WorkflowSchedule | null> {
+  return invokeCommand<WorkflowSchedule | null>('set_workflow_schedule', { id, spec, enabled });
+}
+
+/** Show a desktop notification (text already translated) for a finished scheduled run. */
+export async function notifyWorkflowRun(title: string, body: string): Promise<void> {
+  return invokeCommand('notify_workflow_run', { title, body });
 }

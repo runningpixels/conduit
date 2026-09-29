@@ -63,7 +63,14 @@ function durationMs(start: string, end: string | null): number | null {
   return Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
 
-export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => void }) {
+export function WorkflowsPage({
+  onStatus,
+  onOpenDocument,
+}: {
+  onStatus: (message: string) => void;
+  /** Open a document a run saved, in its conversation's document panel. */
+  onOpenDocument?: (conversationId: string, artifactId: string) => void;
+}) {
   const t = useT();
   const fmt = useFormatters();
   const [summaries, setSummaries] = useState<WorkflowSummary[]>([]);
@@ -471,7 +478,7 @@ export function WorkflowsPage({ onStatus }: { onStatus: (message: string) => voi
           )}
         </section>
 
-        {openRun ? <RunDetail detail={openRun} statusLabel={statusLabel} /> : null}
+        {openRun ? <RunDetail detail={openRun} statusLabel={statusLabel} onOpenDocument={onOpenDocument} /> : null}
       </div>
     );
   }
@@ -562,10 +569,44 @@ function StepList({ steps, labels }: { steps: WorkflowStep[]; labels: InputLabel
   );
 }
 
-function RunDetail({ detail, statusLabel }: { detail: WorkflowRunDetail; statusLabel: (s: string) => string }) {
+/** A document a run saved, from a save step's output. */
+interface SavedDocument {
+  artifactId: string;
+  conversationId: string;
+  title: string;
+}
+
+/** The documents a run saved, once each, in the order they were saved. */
+export function savedDocuments(detail: WorkflowRunDetail): SavedDocument[] {
+  const seen = new Set<string>();
+  const docs: SavedDocument[] = [];
+  for (const step of detail.steps) {
+    const out = step.output as Partial<Record<string, unknown>> | null;
+    if (!out || typeof out.artifactId !== 'string' || typeof out.conversationId !== 'string') continue;
+    if (seen.has(out.artifactId)) continue;
+    seen.add(out.artifactId);
+    docs.push({
+      artifactId: out.artifactId,
+      conversationId: out.conversationId,
+      title: typeof out.title === 'string' && out.title ? out.title : out.artifactId,
+    });
+  }
+  return docs;
+}
+
+function RunDetail({
+  detail,
+  statusLabel,
+  onOpenDocument,
+}: {
+  detail: WorkflowRunDetail;
+  statusLabel: (s: string) => string;
+  onOpenDocument?: (conversationId: string, artifactId: string) => void;
+}) {
   const t = useT();
   const fmt = useFormatters();
   const started = useMemo(() => fmt.timeAgo(detail.run.startedAt), [fmt, detail.run.startedAt]);
+  const docs = savedDocuments(detail);
   return (
     <section className="grp wf-run-detail" aria-label={t('workspace.workflows.runDetail.title')}>
       <div className="grp-label">
@@ -575,6 +616,21 @@ function RunDetail({ detail, statusLabel }: { detail: WorkflowRunDetail; statusL
         <p className="wf-error" role="status">
           {detail.run.error}
         </p>
+      ) : null}
+      {docs.length > 0 && onOpenDocument ? (
+        <div className="wf-saved">
+          <span className="wf-muted">{t('workspace.workflows.runDetail.saved')}</span>
+          {docs.map((doc) => (
+            <button
+              key={doc.artifactId}
+              type="button"
+              className="btn ghost"
+              onClick={() => onOpenDocument(doc.conversationId, doc.artifactId)}
+            >
+              {t('workspace.workflows.runDetail.openDocument', { title: doc.title })}
+            </button>
+          ))}
+        </div>
       ) : null}
       <ul className="wf-run-steps">
         {detail.steps.map((step) => (

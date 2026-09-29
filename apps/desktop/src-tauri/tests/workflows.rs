@@ -312,6 +312,10 @@ async fn the_morning_briefing_runs_end_to_end() {
         .await
         .unwrap();
     assert_eq!(saved.len(), 1);
+    // The save step says where the document lives, so a run can open it.
+    let save_out = step(&run, "save", None).output.as_ref().unwrap();
+    assert_eq!(save_out["artifactId"], saved[0].id.as_str());
+    assert_eq!(save_out["conversationId"], conversation_id.as_str());
     let content = artifacts::get(&h.state.db, &h.state.encryption, &saved[0].id)
         .await
         .unwrap()

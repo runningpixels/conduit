@@ -148,6 +148,28 @@ describe('WorkflowsPage', () => {
     expect(onStatus).toHaveBeenCalledWith('Morning briefing failed. Open the run to see which step.');
   });
 
+  it('opens a document the run saved', async () => {
+    const withSave: WorkflowRunDetail = {
+      run: { ...finishedRun.run, status: 'completed', error: null },
+      steps: [
+        {
+          ...finishedRun.steps[1],
+          id: 's3',
+          stepId: 'save',
+          iteration: null,
+          output: { artifactId: 'a1', title: 'Morning briefing', conversationId: 'c1' },
+        },
+      ],
+    };
+    ipc.runWorkflow.mockResolvedValueOnce(withSave);
+    const onOpenDocument = vi.fn();
+    render(<WorkflowsPage onStatus={vi.fn()} onOpenDocument={onOpenDocument} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    fireEvent.click(within(detail).getByRole('button', { name: 'Open “Morning briefing”' }));
+    expect(onOpenDocument).toHaveBeenCalledWith('c1', 'a1');
+  });
+
   it('opens an earlier run from the history', async () => {
     ipc.listWorkflowRuns.mockResolvedValue([finishedRun.run]);
     render(<WorkflowsPage onStatus={vi.fn()} />);
@@ -209,7 +231,9 @@ describe('WorkflowsPage', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 
     ipc.validateWorkflow.mockResolvedValue([]);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Page 1' }), { target: { value: 'https://example.com' } });
+    const page1 = screen.getByRole('textbox', { name: 'Page 1' });
+    page1.textContent = 'https://example.com';
+    fireEvent.input(page1);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>

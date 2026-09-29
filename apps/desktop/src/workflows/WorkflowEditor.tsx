@@ -3,7 +3,8 @@
 /// Each text field has an "Insert value" menu listing exactly what that step
 /// may read (see `valuesAt`): inputs, the run's date, earlier steps' outputs,
 /// and inside a "repeat for each" step, the current item's fields. Choosing
-/// one inserts `{{…}}` at the cursor, so nobody has to know the syntax.
+/// one puts a chip at the cursor (`ChipField`), so nobody has to know the
+/// `{{…}}` syntax underneath.
 ///
 /// Step ids are set when a step is added and never change: other steps refer
 /// to them, and renaming would silently break those references. They are
@@ -13,11 +14,11 @@
 /// visual editor keeps it as is.
 
 import { useId, useRef, type ReactNode } from 'react';
+import { ChipField, type ChipFieldHandle } from './ChipField';
 import { useT, type Translate } from '../i18n';
 import type { WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/contracts';
 import {
   allStepIds,
-  insertReference,
   insertStep,
   listSourcesAt,
   MAX_URLS,
@@ -466,15 +467,11 @@ function TextField({
   multiline?: boolean;
 }) {
   const t = useT();
-  const fieldRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  const insert = (path: string) => {
-    const el = fieldRef.current;
-    const { text, caret } = insertReference(value, path, el?.selectionStart ?? undefined);
-    onChange(text);
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(caret, caret);
-    });
+  const labelId = useId();
+  const fieldRef = useRef<ChipFieldHandle>(null);
+  const labelFor = (path: string) => {
+    const found = refs.find((r) => r.path === path);
+    return found ? refLabel(found, t) : null;
   };
   const groups: { key: string; refs: ValueRef[] }[] = [
     { key: 'workspace.workflows.editor.insert.inputs', refs: refs.filter((r) => r.source.kind === 'input' || r.source.kind === 'run') },
@@ -484,20 +481,24 @@ function TextField({
 
   return (
     <div className="wf-field wf-text-field">
-      <label className="wf-field">
-        <span>{label}</span>
-        {multiline ? (
-          <textarea ref={fieldRef} className="mem-input" rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
-        ) : (
-          <input ref={fieldRef} className="mem-input" value={value} onChange={(e) => onChange(e.target.value)} />
-        )}
-      </label>
+      <div className="wf-field">
+        <span id={labelId}>{label}</span>
+        <ChipField
+          ref={fieldRef}
+          value={value}
+          onChange={onChange}
+          labelFor={labelFor}
+          removeLabel={(chip) => t('workspace.workflows.editor.chip.remove', { value: chip })}
+          multiline={multiline}
+          labelledBy={labelId}
+        />
+      </div>
       <select
         className="sel wf-insert"
         aria-label={t('workspace.workflows.editor.insert.label', { field: label })}
         value=""
         onChange={(e) => {
-          if (e.target.value) insert(e.target.value);
+          if (e.target.value) fieldRef.current?.insert(e.target.value);
         }}
       >
         <option value="">{t('workspace.workflows.editor.insert.placeholder')}</option>

@@ -22,6 +22,14 @@ describe('permissionText', () => {
   });
 });
 
+describe('agent tools', () => {
+  it('lists what the tools let the step do', () => {
+    expect(
+      permissionText({ kind: 'agentTools', stepId: 'think', tools: ['web_fetch', 'web_search'], label: null, local: null }, t),
+    ).toBe('agentTools {"step":"think","tools":"webFetch, webSearch"}');
+  });
+});
+
 describe('reviewText', () => {
   it('names the address a step got when any address may be asked about', () => {
     const review: WorkflowReview = {

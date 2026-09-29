@@ -106,7 +106,10 @@ describe('MemoryPage', () => {
 
     fireEvent.click(within(pending).getAllByRole('button', { name: 'Save' })[0]);
     await waitFor(() => expect(ipc.acceptMemoryItem).toHaveBeenCalledWith('p1'));
-    fireEvent.click(within(pending).getAllByRole('button', { name: 'Discard' })[1]);
+    // Saving reloads the list, so find the second suggestion's row afresh
+    // rather than through the element found before (it may be gone).
+    const second = (await screen.findByText('Another suggestion')).closest('li') as HTMLElement;
+    fireEvent.click(within(second).getByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(ipc.deleteMemoryItem).toHaveBeenCalledWith('p2'));
   });
 

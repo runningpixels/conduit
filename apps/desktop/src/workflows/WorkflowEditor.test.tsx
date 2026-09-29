@@ -179,6 +179,24 @@ describe('WorkflowEditor', () => {
     expect(within(insert).getAllByRole('option').map((o) => o.textContent)).toContain('ask · answer');
   });
 
+  it('adds an agent step and picks its tools, kept in a stable order', () => {
+    const out = renderEditor({ inputs: [], steps: [] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'agent' } });
+    const agent = card(/^1\. Let the model use tools/);
+    typeInto(within(agent).getByRole('textbox', { name: 'Instruction' }), 'Find the release notes');
+    const tools = within(agent).getByRole('group', { name: 'Tools it may use' });
+    expect(within(tools).getByRole('checkbox', { name: 'search the web' })).toBeChecked();
+    expect(within(tools).getByRole('checkbox', { name: 'read any web page it chooses' })).toBeChecked();
+    fireEvent.click(within(tools).getByRole('checkbox', { name: 'search the web' }));
+    fireEvent.click(within(tools).getByRole('checkbox', { name: 'do arithmetic' }));
+    fireEvent.click(within(tools).getByRole('checkbox', { name: 'search the web' }));
+    expect(out.draft.definition.steps[0]).toMatchObject({
+      type: 'agent',
+      prompt: 'Find the release notes',
+      tools: ['web_search', 'web_fetch', 'calculator'],
+    });
+  });
+
   it('keeps a summarize schema it cannot edit', () => {
     const schema = { type: 'object' };
     const out = renderEditor({ steps: [{ id: 's', type: 'summarize', prompt: 'p', input: 'i', schema }] });

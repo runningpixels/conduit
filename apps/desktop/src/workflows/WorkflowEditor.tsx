@@ -18,6 +18,7 @@ import { ChipField, type ChipFieldHandle } from './ChipField';
 import { useT, type Translate } from '../i18n';
 import type { WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/contracts';
 import {
+  AGENT_TOOLS,
   allStepIds,
   defaultRetries,
   insertStep,
@@ -35,6 +36,7 @@ import {
   type StepType,
   type ValueRef,
 } from './editorModel';
+import { agentToolText } from './permissionText';
 
 export interface WorkflowDraft {
   name: string;
@@ -51,6 +53,7 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   save_artifact: 'workspace.workflows.editor.type.saveArtifact',
   notify: 'workspace.workflows.editor.type.notify',
   ask: 'workspace.workflows.editor.type.ask',
+  agent: 'workspace.workflows.editor.type.agent',
 };
 
 /// Readable names for step outputs and item fields in the "Insert value" menu.
@@ -71,6 +74,7 @@ const FIELD_KEY: Record<string, string> = {
   item: 'workspace.workflows.editor.field.item',
   date: 'workspace.workflows.editor.field.date',
   answer: 'workspace.workflows.editor.field.answer',
+  toolCalls: 'workspace.workflows.editor.field.toolCalls',
 };
 
 export function refLabel(ref: ValueRef, t: Translate): string {
@@ -402,6 +406,47 @@ function StepCard({
               </select>
             </label>
           </div>
+        </>
+      );
+      break;
+    case 'agent':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.summarize.prompt')}
+            value={step.prompt}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'agent' ? { ...s, prompt: v } : s))}
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.summarize.input')}
+            value={step.input ?? ''}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'agent' ? { ...s, input: v } : s))}
+          />
+          <fieldset className="wf-tools">
+            <legend>{t('workspace.workflows.editor.agent.tools')}</legend>
+            {AGENT_TOOLS.map((tool) => (
+              <label key={tool} className="wf-check">
+                <input
+                  type="checkbox"
+                  checked={(step.tools ?? []).includes(tool)}
+                  onChange={(e) =>
+                    update((s) => {
+                      if (s.type !== 'agent') return s;
+                      const others = (s.tools ?? []).filter((x) => x !== tool);
+                      // Kept in the catalog's order, so the stored list is stable.
+                      const next = e.target.checked ? [...others, tool] : others;
+                      return { ...s, tools: AGENT_TOOLS.filter((x) => next.includes(x)) };
+                    })
+                  }
+                />
+                {agentToolText(tool, t)}
+              </label>
+            ))}
+          </fieldset>
+          <p className="wf-muted">{t('workspace.workflows.editor.agent.hint')}</p>
         </>
       );
       break;

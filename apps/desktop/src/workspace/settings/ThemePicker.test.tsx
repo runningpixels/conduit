@@ -222,7 +222,7 @@ describe('ThemePicker — user theme files (theming Phase 5)', () => {
 
     expect(card).toHaveAttribute('aria-checked', 'true');
     expect(localStorage.getItem('conduit:v10-user-theme')).toBe('my-theme');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('graphite');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
     // Every built-in card is now unchecked.
     for (const radio of screen.getAllByRole('radio')) {
       if (radio !== card) expect(radio).toHaveAttribute('aria-checked', 'false');

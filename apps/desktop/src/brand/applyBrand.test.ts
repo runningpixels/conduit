@@ -349,7 +349,7 @@ describe('clearBrand — full revert', () => {
     expect(document.documentElement.getAttribute('data-palette')).toBe('brand');
 
     clearBrand();
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
     expect(readPalette()).toBe('orange-charcoal'); // localStorage itself was never touched
   });
 });

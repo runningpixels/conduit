@@ -84,10 +84,10 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     expect(readPalette()).toBe('terra');
     expect(document.documentElement.getAttribute('data-palette')).toBe('terra');
     writePalette('orange-charcoal');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
     writePalette('orange-dark');
     expect(readPalette()).toBe('orange-dark');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
   });
 
   it('migrates stored conduit palette to terra', () => {
@@ -118,7 +118,7 @@ describe('uiPrefs (localStorage-backed V7 presentation prefs)', () => {
     document.documentElement.removeAttribute('data-mermaid-scale');
     applyUiPrefs();
     expect(document.documentElement.getAttribute('data-look')).toBe('soft');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-charcoal');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
     expect(document.documentElement.getAttribute('data-provider-colour')).toBe('off');
     expect(document.documentElement.getAttribute('data-reduce-motion')).toBe('on');
     expect(document.documentElement.getAttribute('data-expanded-status')).toBe('on');
@@ -232,7 +232,7 @@ describe('look (theming Phase 2, structural axis)', () => {
     expect(readLook()).toBe('soft');
     expect(readPalette()).toBe('orange-dark');
     expect(document.documentElement.getAttribute('data-look')).toBe('soft');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('orange-dark');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
     expect(handler).toHaveBeenCalledTimes(1);
     window.removeEventListener(THEME_CHANGED_EVENT, handler);
   });

@@ -296,6 +296,6 @@ Conduit 是本地桌面应用，因此常规使用不适用该条款。适用范
 使用 [Tauri](https://tauri.app)、[React](https://react.dev)、
 [sqlx](https://github.com/launchbadge/sqlx) 和
 [rustls](https://github.com/rustls/rustls) 构建。排版采用
-[Geist](https://github.com/vercel/geist-font) 与
-[Source Serif 4](https://github.com/adobe-fonts/source-serif)，二者均为 OFL-1.1。
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) 与
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono)，二者均为 OFL-1.1。
 语法高亮由 [Prism](https://prismjs.com) 提供。

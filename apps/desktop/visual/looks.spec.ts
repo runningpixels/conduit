@@ -273,8 +273,12 @@ async function settle(page: Page, { mermaid = false }: { mermaid?: boolean } = {
 
 /* One describe per registered theme x each mode it renders. Soft-look themes
  * keep the palette-only snapshot names the suite started with, so their
- * baselines survive the registry refactor; other looks prefix the look. */
-const MATRIX = THEMES.flatMap((theme) =>
+ * baselines survive the registry refactor; other looks prefix the look.
+ *
+ * ADR-011: the renderer pins every palette/look to the base (`terra` / `soft`),
+ * so every other theme would render pixel-identical to it. Only the base is
+ * snapshotted, in both modes, until the theme registry itself is removed. */
+const MATRIX = THEMES.filter((theme) => theme.look === 'soft' && theme.palette === 'terra').flatMap((theme) =>
   MODES.filter((mode) => theme.modes.includes(mode)).map((mode) => ({
     look: theme.look,
     palette: theme.palette,

@@ -347,6 +347,6 @@ atribuições de terceiros.
 Construído com [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx) e
 [rustls](https://github.com/rustls/rustls). Composto em
-[Geist](https://github.com/vercel/geist-font) e
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), ambas OFL-1.1.
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) e
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), ambas OFL-1.1.
 Realce de sintaxe por [Prism](https://prismjs.com).

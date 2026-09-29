@@ -352,6 +352,6 @@ Lizenzierung; [`NOTICE`](./NOTICE) für Drittanbieter-Nennungen.
 Gebaut mit [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx) und
 [rustls](https://github.com/rustls/rustls). Gesetzt in
-[Geist](https://github.com/vercel/geist-font) und
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), beide OFL-1.1.
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) und
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), beide OFL-1.1.
 Syntaxhervorhebung durch [Prism](https://prismjs.com).

@@ -10,13 +10,18 @@ the font files. Those texts are in this directory and must not be removed.
 
 | Family | Files | License | Source |
 |---|---|---|---|
-| Geist / Geist Mono | `Geist-{Regular,Medium,SemiBold,Bold}.woff2`, `GeistMono-{Regular,Medium,SemiBold}.woff2` | OFL-1.1 — [`OFL-Geist.txt`](./OFL-Geist.txt) | [vercel/geist-font](https://github.com/vercel/geist-font) |
-| Source Serif 4 | `SourceSerif4-{Regular,SemiBold,Italic,SemiBoldItalic}.woff2` | OFL-1.1 — [`OFL-SourceSerif4.txt`](./OFL-SourceSerif4.txt) | [adobe-fonts/source-serif](https://github.com/adobe-fonts/source-serif) |
+| Schibsted Grotesk (interface and prose) | `SchibstedGrotesk-{Latin,LatinExt}-Variable.woff2`, `SchibstedGrotesk-{Latin,LatinExt}-Italic-Variable.woff2` | OFL-1.1 — [`OFL-SchibstedGrotesk.txt`](./OFL-SchibstedGrotesk.txt) | [schibsted/schibsted-grotesk](https://github.com/schibsted/schibsted-grotesk), via [`@fontsource-variable/schibsted-grotesk`](https://fontsource.org/fonts/schibsted-grotesk) 5.3.0 |
+| JetBrains Mono (code, numbers, keys) | `JetBrainsMono-{Latin,LatinExt}-Variable.woff2` | OFL-1.1 — [`OFL-JetBrainsMono.txt`](./OFL-JetBrainsMono.txt) | [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono), via [`@fontsource-variable/jetbrains-mono`](https://fontsource.org/fonts/jetbrains-mono) 5.3.0 |
+
+Both are variable fonts (one file per subset covers every weight), split into
+Latin and Latin Extended; `tokens.css` declares matching `unicode-range`s so the
+Extended file loads only when a character needs it. CJK text falls back to the
+platform's CJK faces (see the CJK blocks in `tokens.css`). The choice is recorded
+in ADR-011.
 
 The OFL's reciprocity clause applies to derivative *fonts*, not to software that
-embeds them — bundling these in an AGPL-3.0 application is compatible. Note the
-Reserved Font Name provision: a modified version of either family may not be
-distributed under its original name.
+embeds them — bundling these in an AGPL-3.0 application is compatible. Neither family
+declares a Reserved Font Name, so the subset builds may keep their names.
 
 ## Adding or updating a font
 

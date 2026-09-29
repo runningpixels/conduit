@@ -115,9 +115,15 @@ export function writePalette(value: PalettePref): void {
   notifyThemeChanged();
 }
 
-/** `html[data-palette]` swaps surfaces, hue, and (for the terracotta looks) the prose face. */
-export function applyPalette(value: PalettePref): void {
-  document.documentElement.setAttribute('data-palette', value);
+/** ADR-011 (one design, two modes): the palette attribute is pinned to the base
+ *  palette, `terra`, whatever is stored. It has no block of its own in
+ *  tokens.css, so the Nocturne tokens in `:root` / `[data-theme="light"]`
+ *  always apply and a retired palette can never override them. The stored
+ *  preference is kept untouched for the mode migration that removes this axis. */
+export const PINNED_PALETTE: PalettePref = 'terra';
+
+export function applyPalette(_value: PalettePref): void {
+  document.documentElement.setAttribute('data-palette', PINNED_PALETTE);
 }
 
 /* ── Look (theming, docs/theming/README.md) ─────────────────────────────────
@@ -161,9 +167,12 @@ export function writeLook(value: LookPref): void {
   notifyThemeChanged();
 }
 
-/** `html[data-look]` retargets structural tokens and enables the look's sheet. */
-export function applyLook(value: LookPref): void {
-  document.documentElement.setAttribute('data-look', value);
+/** ADR-011: the look attribute is pinned to `soft` (the look `:root` already
+ *  describes), so the terminal/editorial/contrast sheets never engage. */
+export const PINNED_LOOK: LookPref = 'soft';
+
+export function applyLook(_value: LookPref): void {
+  document.documentElement.setAttribute('data-look', PINNED_LOOK);
 }
 
 /** The theme the stored look × palette pairing names, or `custom`. Derived,

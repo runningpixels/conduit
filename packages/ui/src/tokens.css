@@ -1,9 +1,10 @@
 /*
- * @conduit/ui — v5 design tokens, scale tokens, locally bundled fonts,
+ * @conduit/ui — design tokens, scale tokens, locally bundled fonts,
  * and the shared primitive component classes. Implements ADR-005.
  *
- * Source of truth for the visual tokens:
- *   the v5 design mockup (:root dark + [data-theme="light"] blocks).
+ * Source of truth for the visual tokens: ADR-011 (one design language,
+ * "Nocturne", in two modes) — the :root dark block and the
+ * [data-theme="light"] block below.
  *
  * Scale tokens (spacing / radius / typography) are introduced here so the
  * primitive classes below reference a named scale instead of re-literalizing
@@ -11,135 +12,84 @@
  */
 
 /* ───────────────────────── Fonts (bundled locally; CSP stays 'self') ───────────────────────── */
+/* ADR-011: Schibsted Grotesk for the interface and prose, JetBrains Mono for
+ * code, numbers and keys. Both are SIL OFL 1.1 variable fonts (licence texts
+ * in ./fonts/, which must ship alongside the binaries), split into Latin and
+ * Latin Extended by unicode-range so the Extended file loads only when a
+ * character needs it. Schibsted's italic is bundled rather than synthesised:
+ * markdown emphasis puts it in ordinary prose. */
 @font-face {
-  font-family: "Geist";
+  font-family: "Schibsted Grotesk";
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 900;
   font-display: swap;
-  src: url("./fonts/Geist-Regular.woff2") format("woff2");
+  src: url("./fonts/SchibstedGrotesk-Latin-Variable.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: "Geist";
+  font-family: "Schibsted Grotesk";
   font-style: normal;
-  font-weight: 500;
+  font-weight: 400 900;
   font-display: swap;
-  src: url("./fonts/Geist-Medium.woff2") format("woff2");
+  src: url("./fonts/SchibstedGrotesk-LatinExt-Variable.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-  font-family: "Geist";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("./fonts/Geist-SemiBold.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Geist";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("./fonts/Geist-Bold.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Geist Mono";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/GeistMono-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Geist Mono";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("./fonts/GeistMono-Medium.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Geist Mono";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("./fonts/GeistMono-SemiBold.woff2") format("woff2");
-}
-
-/* Source Serif 4 (SIL OFL 1.1 — see ./fonts/OFL-SourceSerif4.txt, which must
- * ship alongside the binaries). The reading face for the Orange Charcoal
- * palette only; the Terra palette never requests it, so the browser never fetches it.
- *
- * Both italics are bundled rather than left to synthesis: a slanted serif is
- * the one place faux-oblique is obvious, and markdown emphasis puts it in
- * ordinary prose. The Semibold face claims 600–700 so `<strong>` — which the
- * UA renders at 700, and nothing here resets — resolves to a real face instead
- * of a synthesised bold. */
-@font-face {
-  font-family: "Source Serif 4";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/SourceSerif4-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Source Serif 4";
+  font-family: "Schibsted Grotesk";
   font-style: italic;
-  font-weight: 400;
+  font-weight: 400 900;
   font-display: swap;
-  src: url("./fonts/SourceSerif4-Italic.woff2") format("woff2");
+  src: url("./fonts/SchibstedGrotesk-Latin-Italic-Variable.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: "Source Serif 4";
-  font-style: normal;
-  font-weight: 600 700;
-  font-display: swap;
-  src: url("./fonts/SourceSerif4-SemiBold.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Source Serif 4";
+  font-family: "Schibsted Grotesk";
   font-style: italic;
-  font-weight: 600 700;
+  font-weight: 400 900;
   font-display: swap;
-  src: url("./fonts/SourceSerif4-SemiBoldItalic.woff2") format("woff2");
+  src: url("./fonts/SchibstedGrotesk-LatinExt-Italic-Variable.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("./fonts/JetBrainsMono-Latin-Variable.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("./fonts/JetBrainsMono-LatinExt-Variable.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 /* ───────────────────────── v9 token set (dark, default) — conduit-v9-design-spec §5 ───────────────────────── */
 :root {
-  /* Geist stays first (v9 plan D3): CSP stays 'self', the app launches offline,
-   * and metrics stay identical across Windows/macOS/Linux. V9 §5's system stack
-   * follows as the fallback. The calm V9 is after comes from temperature and
-   * type size (§2.4), not from the face. */
-  --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* ADR-011: one sans face for the interface and prose. It stays first so CSP
+   * stays 'self', the app launches offline, and metrics match on every OS; the
+   * system stack follows as the fallback. */
+  --font-ui: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   /* --face-sans / --face-serif restate the UI and serif stacks (here and in
-   * each CJK block below) so a look may point --font-ui / --font-serif at
-   * another face while the Reading font preference can still reach the
+   * each CJK block below) so the Reading font preference can still reach the
    * originals. cssContract.test.ts asserts each pair stays identical. */
-  --face-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-  /* The product's one serif: artifact document titles (§6), and assistant prose
-   * under the Orange Charcoal palette.
-   *
-   * It was a pure system stack, on the §12.3 reasoning that a bundled webfont
-   * was too much to spend on a choice §10.2 flags as the first thing to kill.
-   * The Orange Charcoal palette spent it anyway, and once Source Serif 4 ships in
-   * the app that argument is not just void but inverted: leaving this as a system
-   * stack meant *two* serifs, and they render 18px apart — an artifact title in
-   * Georgia (Windows) or Charter (macOS) beside prose in Source Serif, at
-   * different colour and texture, differing per platform. One face, bundled,
-   * with the old stack demoted to fallback. */
-  --font-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
-  --face-serif: "Source Serif 4", Charter, "Iowan Old Style", Georgia, ui-serif, serif;
-  /* The reading surface: assistant prose. Defaults to the UI face, so the
-   * terra palette renders exactly as it did; Orange Charcoal points it at
-   * --font-serif rather than restating the stack, which is what keeps "one
-   * serif" a structural fact instead of two strings that happen to match.
-   *
-   * Not the user bubble. That is your own text echoed back — it belongs to the
-   * input register with the composer, and it is also the second speaker cue:
-   * Orange Charcoal drops the bubble's border, so with both turns in serif
-   * only alignment and a faint fill separate them. */
+  --face-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* ADR-011 drops the bundled serif. --font-serif (artifact document titles,
+   * and the retired palettes' prose) now names the product face, so any rule
+   * still reading it renders Schibsted rather than a platform serif. */
+  --font-serif: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --face-serif: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* The reading surface: assistant prose. The UI face, by reference. */
   --font-prose: var(--font-ui);
   --r-xs: 5px;
   --r-sm: 8px;
   --r: 12px;
   --r-lg: 16px;
-  --r-xl: 22px;
+  --r-xl: 20px;
   --r-pill: 999px;
   --tap: .15s cubic-bezier(.22,.61,.24,1);
   --rail-w: 52px;
@@ -162,89 +112,84 @@
    * native traffic lights into under titleBarStyle Overlay. */
   --titlebar-h: 32px;
 
-  /* Surfaces (spec §5): warm charcoal, not blue-black. --bg-side is the sidebar
-   * / panel / sheet-nav surface; it replaced --raised, which was the same role
-   * under a name V9 does not use. One token per surface — two hex literals
-   * behind one surface is the drift tokenContrast.test.ts reads this file to
-   * prevent. */
-  --bg: #262624;
-  --bg-side: #1f1e1d;
-  --card: #30302e;
-  --card-hi: #3a3a37;
-  --line: #3d3d3a;
-  --line-soft: #343431;
-  /* Raised border weight: the step up from --line that carries a hovered or
-   * active edge on its own. */
-  --line-hi: #4d4d49;
-  /* Text-field and dropdown border. --line (~1.2-1.4:1) is for dividers; a
-   * field needs a boundary that reads at 3:1 against every surface (WCAG
-   * 1.4.11) or it looks like a gap in the page. Mixed from each palette's own
-   * ink and page colour, so one declaration serves every palette and both
-   * modes (80% is the least that clears --card-hi in the dark palettes);
-   * tokenContrast.test.ts measures it per palette x mode. */
+  /* Surfaces (ADR-011, dark). Cool near-black with a faint blue cast; one token
+   * per surface — two hex literals behind one surface is the drift
+   * tokenContrast.test.ts reads this file to prevent. --bg-side is the second
+   * column / panel / sheet-nav surface, --bg-rail the navigation rail. */
+  --bg: #0b0d12;
+  --bg-rail: #07090d;
+  --bg-side: #10131a;
+  --card: #11141b;
+  --card-hi: #161a23;
+  --line: #1c2130;
+  --line-soft: #161a24;
+  /* Raised border weight: control borders, and a hovered or active edge. */
+  --line-hi: #262c3c;
+  /* Text-field and dropdown border. --line is for dividers; a field needs a
+   * boundary that reads at 3:1 against every surface (WCAG 1.4.11). Mixed from
+   * --ink-3 and --bg so one declaration serves both modes;
+   * tokenContrast.test.ts measures it. */
   --field-line: color-mix(in srgb, var(--ink-3) 80%, var(--bg));
-  /* Three-step ink ramp. Every step clears WCAG AA (4.5:1) against every
-   * surface, including --card-hi; tokenContrast.test.ts asserts it.
-   * --ink-3 carries real copy (composer placeholder, sidebar group headers,
-   * tool summaries, the status sentence). V9 §5 specifies #8e8b83 and claims
-   * every ink step clears AA — measured, that value is 3.35:1 on --card-hi,
-   * because V9's surfaces are ~2 steps lighter than V8's. Lightened to the
-   * smallest value that clears 4.5 on the worst surface (v9 plan D1).
-   *
-   * Lifting --ink-3 squeezed it against --ink-2 (V9's #b8b5ac), leaving 1.23:1
-   * between them — legible but visually one step, which is what the ramp's
-   * separation assertion exists to catch. --ink-2 moves up with it. The warm
-   * palette simply has less usable range than V8's blue-black did: AA against
-   * --card-hi is a higher floor than AA against #26262a was. */
-  --ink: #eceae2;
-  --ink-2: #c4c2ba;
-  --ink-3: #a6a39d;
+  /* Three-step ink ramp. Every step clears AA (4.5:1) on every surface,
+   * including --card-hi, and each step is a perceptible jump (>1.4:1) from the
+   * next; tokenContrast.test.ts asserts both. */
+  --ink: #e8eaf0;
+  --ink-2: #b8becc;
+  --ink-3: #8990a2;
   --shade: rgba(0,0,0,.55);
-  --lift: 0 1px 2px rgba(0,0,0,.35), 0 14px 40px -12px rgba(0,0,0,.6);
-  /* The composer's resting elevation (§7). Softer than --lift, which is for
-   * summoned overlays. */
-  --soft-lift: 0 1px 2px rgba(0,0,0,.25), 0 4px 16px -6px rgba(0,0,0,.35);
-  --ok: #4ade80;
-  --warn: #fbbf24;
-  /* #f87171 measured 4.13:1 on --card-hi, and the failed tool summary sits on exactly
-   * that surface once the tool line is hovered. Lifted to clear AA there. */
-  --err: #f97e7e;
+  /* Summoned overlays and floating panels. */
+  --lift: 0 30px 80px rgba(0,0,0,.45);
+  /* Resting cards and the composer: a hairline ring, no drop. */
+  --soft-lift: 0 0 0 1px #1c2130;
+  --ok: #7cffb2;
+  --ok-soft: rgba(124,255,178,.12);
+  --warn: #febc2e;
+  --warn-soft: rgba(254,188,46,.14);
+  --err: #ff9c82;
+  --err-soft: rgba(255,122,89,.07);
+  --err-line: rgba(255,122,89,.22);
   /* Code that Prism cannot tokenise — inline spans, ```text, unknown languages.
-   * Deliberately not var(--hue): hue is provider identity, so code would change
-   * colour when you switch model and go grey under provider-colour: off. Code
-   * is a machine fact (§7's register rule), not provenance. Clears AA on all
-   * four surfaces; tokenContrast.test.ts checks it. */
-  --code: #e0a080;
-  /* Links. A link's colour is its affordance — it reports that the text is
-   * actionable, which is information rather than decoration (§6.2). Ink plus a
-   * faint underline was tried first and failed: the underline measured 1.81:1
-   * against --bg, so a link was indistinguishable from the prose around it.
-   * Deliberately not --hue (provider identity) and not --code (machine output);
-   * a link is neither. */
-  --link: #9db8e8;
+   * A machine fact, not provenance: warm, but not the accent. */
+  --code: #f0b49a;
+  /* Links. Colour is the affordance (§6.2); the signal family, so a link never
+   * reads as a primary action. */
+  --link: #9dc8ff;
 
-  /* Hue is provider identity (spec §3); neutral fallback until data-provider lands.
-   *
-   * V9 splits hue by role, because its warmer/lighter surfaces put the brand
-   * hexes below AA as text (v9 plan D1):
-   *   --hue        the identity colour. Graphics only — the assistant left rule,
-   *                provider dots, the streaming caret, focus rings. WCAG's
-   *                non-text floor is 3:1 and all four clear it (3.57–3.83).
-   *   --hue-text   the same identity, lightened to clear AA (4.5:1) wherever
-   *                hue is literal text: `.switched`, the armed web button, the
-   *                palette mode badge, sidebar "New chat".
-   *   --hue-solid  a display fill that keeps --on-hue legible on top of it.
-   *                V9 §5 names this token for exactly that job but leaves it
-   *                aliased to --hue, where white text measures 2.98–3.20:1.
-   *                Tuned by lowering HSL lightness only, so hue and saturation
-   *                — the identity — survive.
-   * White-labelling still swaps one identity per provider; the two derivatives
-   * are computed from it, not chosen independently. */
-  --hue: var(--ink-2);
-  --hue-text: var(--ink-2);
-  --hue-solid: var(--ink-2);
+  /* The accent (ADR-011): the one colour the chrome uses. Primary actions,
+   * the active navigation item, focus, selection, the assistant's activity
+   * line. It does not follow the provider.
+   *   --accent        the fill and graphic value (3:1 non-text floor)
+   *   --accent-text   the accent wherever it is literal text (AA)
+   *   --on-accent     text and glyphs on an --accent fill (AA)
+   *   --accent-soft   selected fills;  --accent-line  selected borders */
+  --accent: #ff7a59;
+  --accent-text: #ff9c82;
+  --on-accent: #1a0b06;
+  --accent-soft: rgba(255,122,89,.14);
+  --accent-line: rgba(255,122,89,.4);
+  --glow-color: rgba(255,122,89,.16);
+  /* Signal: running and in-progress state, the far end of the activity line. */
+  --signal: #7cc4ff;
+  --signal-text: #7cc4ff;
+  /* Progress tracks and segmented-control grounds. */
+  --track: #171b25;
+  /* Text fields and the user's message bubble. */
+  --field-bg: #0e1117;
+  --bubble: #1a1f2b;
+
+  /* --hue was provider identity carried through the whole UI. Under ADR-011 the
+   * chrome no longer follows the provider, so every hue role resolves to the
+   * accent (the pin rule below keeps [data-provider] elements on it too).
+   * Provider identity survives as --provider-hue, set per provider below, for
+   * the places that name a model. --on-hue stays a literal: it is also what the
+   * provider-colour-off switch and the per-provider solid fills are measured
+   * against. */
+  --hue: var(--accent);
+  --hue-text: var(--accent-text);
+  --hue-solid: var(--accent);
   --on-hue: #ffffff;
-  --hue-weak: transparent;
+  --hue-weak: var(--accent-soft);
+  --provider-hue: var(--accent);
   --shadow-color: rgba(0,0,0,.55);
   --shadow: var(--lift);
   --glow: 0 0 0 1px var(--hue-weak), 0 0 22px -8px var(--hue);
@@ -255,14 +200,15 @@
   --hue-a20: color-mix(in srgb, var(--hue) 20%, transparent);
   --hue-a40: color-mix(in srgb, var(--hue) 40%, transparent);
 
-  /* Syntax highlighting palette (kept; restyled in later phases) */
-  --syn-keyword: #7dd3fc;
-  --syn-string: #86efac;
-  --syn-number: #fbbf24;
-  --syn-function: var(--hue);
-  --syn-tag: #f0abfc;
-  --syn-property: #93c5fd;
-  --syn-const: #fca5a5;
+  /* Syntax highlighting (ADR-011): a neutral set with accent-tinted keywords.
+   * Every colour clears AA on --card, where code blocks sit. */
+  --syn-keyword: #ff9c82;
+  --syn-string: #9ee6b8;
+  --syn-number: #f5c26b;
+  --syn-function: #9dc8ff;
+  --syn-tag: #c9a7ff;
+  --syn-property: #a9c7ff;
+  --syn-const: #ffb3a1;
   --syn-comment: var(--ink-3);
   --syn-punct: var(--ink-2);
   color-scheme: dark;
@@ -390,7 +336,7 @@
 
 /* ───────────────────────── CJK font fallback (D17) ─────────────────────────
  *
- * Geist has no CJK coverage, and neither does any face in the stack above, so
+ * The bundled faces have no CJK coverage, and neither does anything in the stack above, so
  * Japanese, Chinese and Korean reach the browser's per-character fallback.
  * Left to itself that picks *a* font with the glyph, which is where the
  * classic bug lives: Han characters are unified across the three languages at
@@ -403,89 +349,101 @@
  * fallback engine break the tie; and these stacks name the platform face
  * explicitly rather than trusting it to guess well.
  *
- * Geist stays first in each. Latin text and digits are common inside CJK UI
+ * Schibsted Grotesk stays first in each. Latin text and digits are common inside CJK UI
  * copy, and the CJK faces below draw them at proportions that do not match the
- * rest of the app. Keeping Geist ahead means each script is drawn by the face
+ * rest of the app. Keeping it ahead means each script is drawn by the face
  * chosen for it, which is exactly what the fallback chain is for. */
 html[lang^="ja"] {
-  --font-ui: "Geist", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+  --font-ui: "Schibsted Grotesk", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
     "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
-  --face-sans: "Geist", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+  --face-sans: "Schibsted Grotesk", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
     "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "Yu Gothic UI", "Hiragino Sans",
+  --font-mono: "JetBrains Mono", ui-monospace, "Yu Gothic UI", "Hiragino Sans",
     "Noto Sans JP", Meiryo, monospace;
-  --font-serif: "Source Serif 4", "Yu Mincho", YuMincho, "Hiragino Mincho ProN",
-    "Noto Serif JP", Charter, Georgia, ui-serif, serif;
-  --face-serif: "Source Serif 4", "Yu Mincho", YuMincho, "Hiragino Mincho ProN",
-    "Noto Serif JP", Charter, Georgia, ui-serif, serif;
+  --font-serif: "Schibsted Grotesk", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
+  --face-serif: "Schibsted Grotesk", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", Meiryo, ui-sans-serif, system-ui, sans-serif;
 }
 html[lang^="ko"] {
-  --font-ui: "Geist", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+  --font-ui: "Schibsted Grotesk", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
     ui-sans-serif, system-ui, sans-serif;
-  --face-sans: "Geist", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+  --face-sans: "Schibsted Grotesk", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
     ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "Malgun Gothic", "Apple SD Gothic Neo",
+  --font-mono: "JetBrains Mono", ui-monospace, "Malgun Gothic", "Apple SD Gothic Neo",
     "Noto Sans KR", monospace;
-  --font-serif: "Source Serif 4", Batang, AppleMyungjo, "Noto Serif KR",
-    Charter, Georgia, ui-serif, serif;
-  --face-serif: "Source Serif 4", Batang, AppleMyungjo, "Noto Serif KR",
-    Charter, Georgia, ui-serif, serif;
+  --font-serif: "Schibsted Grotesk", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+    ui-sans-serif, system-ui, sans-serif;
+  --face-serif: "Schibsted Grotesk", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+    ui-sans-serif, system-ui, sans-serif;
 }
 /* Simplified only. `zh-TW` and `zh-HK` are Traditional — a different
  * translation this app does not ship, and `resolveLocale` deliberately does
  * not serve them this catalog, so they never carry this attribute. */
 html[lang^="zh-CN"] {
-  --font-ui: "Geist", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+  --font-ui: "Schibsted Grotesk", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
     "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
-  --face-sans: "Geist", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+  --face-sans: "Schibsted Grotesk", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
     "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "Microsoft YaHei UI", "PingFang SC",
+  --font-mono: "JetBrains Mono", ui-monospace, "Microsoft YaHei UI", "PingFang SC",
     "Noto Sans SC", monospace;
-  --font-serif: "Source Serif 4", SimSun, "Songti SC", "Noto Serif SC",
-    "Source Han Serif SC", Charter, Georgia, ui-serif, serif;
-  --face-serif: "Source Serif 4", SimSun, "Songti SC", "Noto Serif SC",
-    "Source Han Serif SC", Charter, Georgia, ui-serif, serif;
+  --font-serif: "Schibsted Grotesk", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --face-serif: "Schibsted Grotesk", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Light maps to bone/paper (spec §5). In light mode the worst-contrast surface
- * is the *darkest* one — --bg-side — which is what the status/ink values below
- * are solved against. */
+/* Light (ADR-011). Porcelain greys with white cards. The worst-contrast surface
+ * is the *darkest* one — --bg-side — which is what the ink and status values
+ * below are solved against. */
 [data-theme="light"] {
-  --bg: #faf9f5;
-  --bg-side: #f0eee6;
+  --bg: #f6f6f8;
+  --bg-rail: #e2e4ea;
+  --bg-side: #eff0f4;
   --card: #ffffff;
-  --card-hi: #f5f4ee;
-  --line: #e4e1d7;
-  --line-soft: #edeae1;
-  --line-hi: #cfcbbf;
-  --ink: #29271f;
-  /* Moved down with --ink-3 to keep the ramp's three steps perceptible; see
-   * the dark block. */
-  --ink-2: #59564c;
-  /* V9 §5 specifies #7c786c, which measures 3.80:1 on --bg-side. Darkened to
-   * the smallest value clearing AA there (v9 plan D1). */
-  --ink-3: #706c61;
-  --shade: rgba(41,37,30,.3);
-  --lift: 0 1px 2px rgba(41,37,30,.06), 0 16px 40px -12px rgba(41,37,30,.16);
-  --soft-lift: 0 1px 2px rgba(41,37,30,.05), 0 4px 14px -6px rgba(41,37,30,.1);
-  /* Both sat at 4.32:1 on the new --bg-side; nudged to clear AA on every
-   * surface now that --bg-side is one of them. */
-  --ok: #147c3b;
-  --warn: #af5109;
-  --err: #b91c1c;
-  --code: #a2532b;
-  --link: #1f5fa8;
+  --card-hi: #f1f2f5;
+  --line: #e1e3ea;
+  --line-soft: #eeeff3;
+  --line-hi: #dadce3;
+  --ink: #16181d;
+  --ink-2: #3a3f4a;
+  --ink-3: #5f6573;
+  --shade: rgba(20,22,40,.3);
+  --lift: 0 1px 2px rgba(20,22,40,.05), 0 30px 70px rgba(20,22,40,.14);
+  --soft-lift: 0 1px 2px rgba(20,22,40,.06), 0 6px 20px rgba(20,22,40,.06);
+  --ok: #137a3a;
+  --ok-soft: #e3f6ea;
+  /* The dark block's amber fails as text on light surfaces; this one is the
+   * legible status colour. */
+  --warn: #9a5300;
+  --warn-soft: #ffe7c2;
+  --err: #b4380f;
+  --err-soft: #fff4ee;
+  --err-line: #f7d3c2;
+  --code: #a1401c;
+  --link: #1767b8;
+  --accent: #4b4ded;
+  --accent-text: #2a2aa8;
+  --on-accent: #ffffff;
+  --accent-soft: #eef0ff;
+  --accent-line: #c9ccf5;
+  --glow-color: rgba(75,77,237,.10);
+  --signal: #1f86e8;
+  --signal-text: #1767b8;
+  --track: #eeeff3;
+  --field-bg: #ffffff;
+  --bubble: #ffffff;
   --on-hue: #ffffff;
-  --shadow-color: rgba(20,30,40,.25);
+  --shadow-color: rgba(20,22,40,.25);
   --shadow: var(--lift);
   --glow: 0 0 0 1px var(--hue-weak), 0 0 18px -8px var(--hue);
-  --syn-keyword: #0369a1;
-  --syn-string: #15803d;
-  --syn-number: #b45309;
-  --syn-function: var(--hue);
-  --syn-tag: #a21caf;
-  --syn-property: #1d4ed8;
-  --syn-const: #b91c1c;
+  --syn-keyword: #2a2aa8;
+  --syn-string: #137a3a;
+  --syn-number: #9a5300;
+  --syn-function: #1767b8;
+  --syn-tag: #8a2bb5;
+  --syn-property: #2b4fb8;
+  --syn-const: #b4380f;
   --syn-comment: var(--ink-3);
   --syn-punct: var(--ink-2);
   color-scheme: light;
@@ -499,10 +457,10 @@ html[lang^="zh-CN"] {
    the AA-legible text variant (--hue-text), and the display fill that keeps
    --on-hue legible (--hue-solid). See the --hue comment in :root for why.
    --hue-weak is the 14–16% wash behind chips, derived from the identity. */
-[data-provider="anthropic"] { --hue: #d97757; --hue-text: #e08f75; --hue-solid: #c5522d; --hue-weak: color-mix(in srgb, #d97757 14%, transparent); --hue-weak-solid: rgba(217, 119, 87, .14); }
-[data-provider="openai"]    { --hue: #10a37f; --hue-text: #40b599; --hue-solid: #0d8669; --hue-weak: color-mix(in srgb, #10a37f 14%, transparent); --hue-weak-solid: rgba(16, 163, 127, .14); }
-[data-provider="ollama"]    { --hue: #90909b; --hue-text: #a2a2ab; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #90909b 16%, transparent); --hue-weak-solid: rgba(144, 144, 155, .16); }
-[data-provider="custom"]    { --hue: #7f8bff; --hue-text: #919bff; --hue-solid: #5464ff; --hue-weak: color-mix(in srgb, #7f8bff 14%, transparent); --hue-weak-solid: rgba(127, 139, 255, .14); }
+[data-provider="anthropic"] { --hue: #d97757; --provider-hue: #d97757; --hue-text: #e08f75; --hue-solid: #c5522d; --hue-weak: color-mix(in srgb, #d97757 14%, transparent); --hue-weak-solid: rgba(217, 119, 87, .14); }
+[data-provider="openai"]    { --hue: #10a37f; --provider-hue: #10a37f; --hue-text: #40b599; --hue-solid: #0d8669; --hue-weak: color-mix(in srgb, #10a37f 14%, transparent); --hue-weak-solid: rgba(16, 163, 127, .14); }
+[data-provider="ollama"]    { --hue: #90909b; --provider-hue: #90909b; --hue-text: #a2a2ab; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #90909b 16%, transparent); --hue-weak-solid: rgba(144, 144, 155, .16); }
+[data-provider="custom"]    { --hue: #7f8bff; --provider-hue: #7f8bff; --hue-text: #919bff; --hue-solid: #5464ff; --hue-weak: color-mix(in srgb, #7f8bff 14%, transparent); --hue-weak-solid: rgba(127, 139, 255, .14); }
 
 /* The four hues above are tuned for the dark surfaces and land at 3.1–3.5:1 on
    a light one, so every hue-coloured label (`.switched`, the armed web button,
@@ -511,13 +469,13 @@ html[lang^="zh-CN"] {
    --bg-side, so light mode needs no separate --hue-text: the identity value is
    already legible as text there, and --hue-text aliases it. */
 [data-theme="light"] [data-provider="anthropic"],
-[data-theme="light"][data-provider="anthropic"] { --hue: #b04f2b; --hue-text: #b04f2b; --hue-solid: #bd5836; --hue-weak: color-mix(in srgb, #b04f2b 14%, transparent); --hue-weak-solid: rgba(176, 79, 43, .14); }
+[data-theme="light"][data-provider="anthropic"] { --hue: #b04f2b; --provider-hue: #b04f2b; --hue-text: #b04f2b; --hue-solid: #bd5836; --hue-weak: color-mix(in srgb, #b04f2b 14%, transparent); --hue-weak-solid: rgba(176, 79, 43, .14); }
 [data-theme="light"] [data-provider="openai"],
-[data-theme="light"][data-provider="openai"]    { --hue: #0a7a5e; --hue-text: #0a7a5e; --hue-solid: #0d8667; --hue-weak: color-mix(in srgb, #0a7a5e 14%, transparent); --hue-weak-solid: rgba(10, 122, 94, .14); }
+[data-theme="light"][data-provider="openai"]    { --hue: #0a7a5e; --provider-hue: #0a7a5e; --hue-text: #0a7a5e; --hue-solid: #0d8667; --hue-weak: color-mix(in srgb, #0a7a5e 14%, transparent); --hue-weak-solid: rgba(10, 122, 94, .14); }
 [data-theme="light"] [data-provider="ollama"],
-[data-theme="light"][data-provider="ollama"]    { --hue: #6b6b78; --hue-text: #6b6b78; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #6b6b78 16%, transparent); --hue-weak-solid: rgba(107, 107, 120, .16); }
+[data-theme="light"][data-provider="ollama"]    { --hue: #6b6b78; --provider-hue: #6b6b78; --hue-text: #6b6b78; --hue-solid: #757582; --hue-weak: color-mix(in srgb, #6b6b78 16%, transparent); --hue-weak-solid: rgba(107, 107, 120, .16); }
 [data-theme="light"] [data-provider="custom"],
-[data-theme="light"][data-provider="custom"]    { --hue: #4d59da; --hue-text: #4d59da; --hue-solid: #5a6ae7; --hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --hue-weak-solid: rgba(77, 89, 218, .14); }
+[data-theme="light"][data-provider="custom"]    { --hue: #4d59da; --provider-hue: #4d59da; --hue-text: #4d59da; --hue-solid: #5a6ae7; --hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --hue-weak-solid: rgba(77, 89, 218, .14); }
 
 /* ── Palette preset: Orange Charcoal (renderer-only; html[data-palette]) ────
    The default look, and a second register orthogonal to data-theme — four
@@ -1038,6 +996,29 @@ html[data-palette="contrast"] [data-provider] {
   --hue-weak-solid: var(--hc-hue-weak-solid);
 }
 
+/* ── ADR-011 accent pin ─────────────────────────────────────────────────────
+   The chrome no longer follows the provider: every hue role on <html> and on
+   every [data-provider] element resolves to the accent. The renderer pins
+   data-palette to "terra" (the base, which has no palette block of its own)
+   until the palette machinery is deleted, so this is the rule that applies.
+
+   Same shape and specificity (0,2,1) as the retired palettes' pins, and placed
+   before the brand, user-theme and provider-colour-off rules below so those
+   still win on source order. The :not() member covers <html> before any
+   provider is configured, which would otherwise keep :root's white --on-hue
+   on a coral fill (2.6:1). --provider-hue is left alone: the per-provider
+   rules above set it, and it is what model dots read. */
+html[data-palette="terra"]:not([data-provider]),
+html[data-palette="terra"][data-provider],
+html[data-palette="terra"] [data-provider] {
+  --hue: var(--accent);
+  --hue-text: var(--accent-text);
+  --hue-solid: var(--accent);
+  --on-hue: var(--on-accent);
+  --hue-weak: var(--accent-soft);
+  --hue-weak-solid: var(--accent-soft);
+}
+
 /* ── Brand override neutralizes provider hue on descendants ─────────────────
    White-label plan §5-6: a brand replaces provider identity everywhere, not
    just at the root. `[data-provider="..."]` above matches ANY element
@@ -1203,6 +1184,7 @@ html[data-provider-colour="off"][data-provider] {
   --hue: var(--ink-2);
   --hue-text: var(--ink-2);
   --hue-solid: #6b6b66;
+  --on-hue: #ffffff;
   --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
   --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
 }
@@ -1213,6 +1195,7 @@ html[data-provider-colour="off"] [data-provider] {
   --hue: var(--ink-2);
   --hue-text: var(--ink-2);
   --hue-solid: #6b6b66;
+  --on-hue: #ffffff;
   --hue-weak: color-mix(in srgb, var(--ink-2) 14%, transparent);
   --hue-weak-solid: color-mix(in srgb, var(--ink-2) 14%, transparent);
 }

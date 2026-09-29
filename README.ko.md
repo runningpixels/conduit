@@ -322,6 +322,6 @@ Copyright (C) 2026 Emilio Olivares. [GNU AGPL v3.0 only](./LICENSE)에 따라
 [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx),
 [rustls](https://github.com/rustls/rustls)로 만들었습니다. 서체는
-[Geist](https://github.com/vercel/geist-font)와
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), 둘 다 OFL-1.1
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk)와
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), 둘 다 OFL-1.1
 입니다. 구문 강조는 [Prism](https://prismjs.com)이 담당합니다.

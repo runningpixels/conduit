@@ -336,6 +336,6 @@ Copyright (C) 2026 Emilio Olivares. [GNU AGPL v3.0 only](./LICENSE) の下で
 [Tauri](https://tauri.app)、[React](https://react.dev)、
 [sqlx](https://github.com/launchbadge/sqlx)、
 [rustls](https://github.com/rustls/rustls) を用いて構築しました。書体は
-[Geist](https://github.com/vercel/geist-font) と
-[Source Serif 4](https://github.com/adobe-fonts/source-serif)（いずれも OFL-1.1）。
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) と
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono)（いずれも OFL-1.1）。
 シンタックスハイライトは [Prism](https://prismjs.com) によります。

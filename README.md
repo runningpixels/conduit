@@ -331,6 +331,6 @@ apply to normal use. See [`LICENSING.md`](./LICENSING.md) for scope, the section
 Built with [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx) and
 [rustls](https://github.com/rustls/rustls). Typeset in
-[Geist](https://github.com/vercel/geist-font) and
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), both OFL-1.1.
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) and
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), both OFL-1.1.
 Syntax highlighting by [Prism](https://prismjs.com).

@@ -99,7 +99,7 @@ html[data-palette="orange-dark"] .bubble {
   padding: 12px 18px;
 }
 /* `font-variant-ligatures` because the bubble shows what was typed, verbatim.
- * Geist ligates arrows, so a pasted `-->` in a diagram or a shell line was
+ * Fonts can ligate arrows, so a pasted `-->` in a diagram or a shell line was
  * drawn as a single glyph and the transcript read back as text nobody wrote. */
 .bubble p {
   margin: 0;

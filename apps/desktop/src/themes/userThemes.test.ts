@@ -257,7 +257,7 @@ describe('applyUserTheme — palette + brand interaction (S6)', () => {
     expect(document.documentElement.style.getPropertyValue('--bg')).toBe('#0a0a0a');
     expect(document.documentElement.style.getPropertyValue('--hue')).toBe('#ff00ff');
     expect(document.documentElement.getAttribute('data-user-palette')).toBe('1');
-    expect(document.documentElement.getAttribute('data-palette')).toBe('graphite');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
   });
 
   it('skips the palette entirely while a brand is active, and sets no data-user-palette', () => {
@@ -400,7 +400,7 @@ describe('reconcileUserThemes (App boot)', () => {
     expect(outcome.fileName).toBe('my-theme.theme.md');
     expect(outcome.fallbackThemeId).toBe(themeById('graphite')!.id);
     expect(readSelectedUserThemeId()).toBeNull();
-    expect(document.documentElement.getAttribute('data-palette')).toBe('graphite');
+    expect(document.documentElement.getAttribute('data-palette')).toBe('terra') /* ADR-011: pinned */;
   });
 
   it('re-applies and rewrites the cache when the entry is still valid', () => {

@@ -359,6 +359,6 @@ pour les attributions de tiers.
 Réalisé avec [Tauri](https://tauri.app), [React](https://react.dev),
 [sqlx](https://github.com/launchbadge/sqlx) et
 [rustls](https://github.com/rustls/rustls). Composé en
-[Geist](https://github.com/vercel/geist-font) et
-[Source Serif 4](https://github.com/adobe-fonts/source-serif), toutes deux
+[Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) et
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), toutes deux
 OFL-1.1. Coloration syntaxique par [Prism](https://prismjs.com).

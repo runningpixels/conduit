@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { PALETTE_IDS, modesForPalette } from '../themes/registry';
+import { PINNED_PALETTE } from '../shell/uiPrefs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Normalised: the repo checks out CRLF on Windows, and the selector probes
@@ -327,6 +328,71 @@ describe('provider hue: solid fill role', () => {
     const onHue = resolve(TERRA[theme], 'on-hue');
     const solid = readTokenIn(hueBlockFor(theme, provider), 'hue-solid')!;
     expect(contrast(onHue, solid)).toBeGreaterThanOrEqual(AA);
+  });
+});
+
+/**
+ * ADR-011 (one design, two modes): the accent and signal roles, measured on
+ * the base stacks the renderer pins (`applyPalette` always writes `terra`).
+ *
+ *   --accent        fills and graphics — 3:1 on every surface
+ *   --accent-text   the accent as literal text — AA on every surface
+ *   --on-accent     glyphs on an --accent fill (send button, .btn.primary) — AA
+ *   --signal        running-state graphics — 3:1;  --signal-text — AA
+ *
+ * Rail labels are ink-3 on --bg-rail, so the rail joins the surface list for
+ * the ink ramp here rather than in SURFACES (which the retired palettes, having
+ * no rail colour, cannot satisfy).
+ */
+describe.each(['dark', 'light'] as const)('Nocturne (%s): accent, signal and rail', (mode) => {
+  const layers = TERRA[mode];
+  const surfaces = SURFACES.map((s) => [s, resolve(layers, s)] as const);
+
+  it.each(surfaces)('--accent clears 3:1 on --%s', (_s, bg) => {
+    expect(contrast(resolve(layers, 'accent'), bg)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+  it.each(surfaces)('--accent-text clears AA on --%s', (_s, bg) => {
+    expect(contrast(resolve(layers, 'accent-text'), bg)).toBeGreaterThanOrEqual(AA);
+  });
+  it('--on-accent clears AA on --accent', () => {
+    expect(contrast(resolve(layers, 'on-accent'), resolve(layers, 'accent'))).toBeGreaterThanOrEqual(AA);
+  });
+  it.each(surfaces)('--signal clears 3:1 on --%s', (_s, bg) => {
+    expect(contrast(resolve(layers, 'signal'), bg)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+  it.each(surfaces)('--signal-text clears AA on --%s', (_s, bg) => {
+    expect(contrast(resolve(layers, 'signal-text'), bg)).toBeGreaterThanOrEqual(AA);
+  });
+  it.each(INKS)('--%s clears AA on --bg-rail', (ink) => {
+    expect(contrast(resolve(layers, ink), resolve(layers, 'bg-rail'))).toBeGreaterThanOrEqual(AA);
+  });
+});
+
+describe('Nocturne accent pin', () => {
+  const pin = blockFor('html[data-palette="terra"] [data-provider]');
+
+  it('maps every hue role on [data-provider] elements onto the accent', () => {
+    expect(pin).toContain('--hue: var(--accent)');
+    expect(pin).toContain('--hue-text: var(--accent-text)');
+    expect(pin).toContain('--hue-solid: var(--accent)');
+    expect(pin).toContain('--on-hue: var(--on-accent)');
+    expect(pin).toContain('--hue-weak: var(--accent-soft)');
+  });
+
+  it('covers <html> itself too, which carries the active provider', () => {
+    expect(hasSelector('html[data-palette="terra"][data-provider]')).toBe(true);
+  });
+
+  it('pins the palette the renderer applies, which has no block of its own', () => {
+    expect(PINNED_PALETTE).toBe('terra');
+    expect(hasSelector(paletteSelector('terra'))).toBe(false);
+  });
+
+  it('keeps provider identity available as --provider-hue', () => {
+    for (const provider of PROVIDERS) {
+      expect(readTokenIn(hueBlockFor('dark', provider), 'provider-hue'), provider).not.toBeNull();
+      expect(readTokenIn(hueBlockFor('light', provider), 'provider-hue'), provider).not.toBeNull();
+    }
   });
 });
 

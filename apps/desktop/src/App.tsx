@@ -2129,6 +2129,7 @@ export default function App() {
                 openAppId={openAppId}
                 onOpenAppIdChange={setOpenAppId}
                 allowlist={settings.artifactRemoteAllowlist}
+                styledPreview={settings.artifactStyledPreview}
                 colorScheme={effectiveTheme}
                 networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
                 onAppsChanged={() => void refreshSavedApps()}

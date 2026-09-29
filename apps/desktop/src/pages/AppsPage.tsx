@@ -22,6 +22,7 @@ export interface AppsPageProps {
   openAppId: string | null;
   onOpenAppIdChange: (id: string | null) => void;
   allowlist: string[];
+  styledPreview: boolean;
   colorScheme: ArtifactColorScheme;
   networkPolicyKey?: string;
   /** The apps changed (saved, edited, deleted) — for the new-chat row. */
@@ -41,6 +42,7 @@ export function AppsPage({
   openAppId,
   onOpenAppIdChange,
   allowlist,
+  styledPreview,
   colorScheme,
   networkPolicyKey,
   onAppsChanged,
@@ -134,6 +136,7 @@ export function AppsPage({
         <AppView
           appId={openAppId}
           allowlist={allowlist}
+          styledPreview={styledPreview}
           colorScheme={colorScheme}
           networkPolicyKey={networkPolicyKey}
           revision={revision}

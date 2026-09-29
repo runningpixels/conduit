@@ -62,7 +62,7 @@ beforeEach(() => {
 describe('AppsPage', () => {
   it('lists saved apps with what they reach, and offers an update when the source changed', async () => {
     render(
-      <AppsPage openAppId={null} onOpenAppIdChange={vi.fn()} allowlist={[]} colorScheme="dark" />,
+      <AppsPage openAppId={null} onOpenAppIdChange={vi.fn()} allowlist={[]} styledPreview={false} colorScheme="dark" />,
     );
     const grid = await screen.findByRole('list');
     const cards = within(grid).getAllByRole('listitem');
@@ -76,14 +76,14 @@ describe('AppsPage', () => {
 
   it('opens an app from its card', async () => {
     const onOpen = vi.fn();
-    render(<AppsPage openAppId={null} onOpenAppIdChange={onOpen} allowlist={[]} colorScheme="dark" />);
+    render(<AppsPage openAppId={null} onOpenAppIdChange={onOpen} allowlist={[]} styledPreview={false} colorScheme="dark" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Pomodoro timer' }));
     expect(onOpen).toHaveBeenCalledWith('a2');
   });
 
   it('explains how to save one when there are none', async () => {
     ipc.listApps.mockResolvedValue([]);
-    render(<AppsPage openAppId={null} onOpenAppIdChange={vi.fn()} allowlist={[]} colorScheme="dark" />);
+    render(<AppsPage openAppId={null} onOpenAppIdChange={vi.fn()} allowlist={[]} styledPreview={false} colorScheme="dark" />);
     expect(await screen.findByText('No apps yet')).toBeTruthy();
   });
 
@@ -98,6 +98,7 @@ describe('AppsPage', () => {
         openAppId={null}
         onOpenAppIdChange={vi.fn()}
         allowlist={[]}
+        styledPreview={false}
         colorScheme="dark"
         onStatus={onStatus}
       />,
@@ -111,7 +112,7 @@ describe('AppsPage', () => {
     ipc.openApp.mockResolvedValue({ ...timer, html: '<p>25:00</p>' });
     ipc.deleteApp.mockResolvedValue(undefined);
     const onOpen = vi.fn();
-    render(<AppsPage openAppId="a2" onOpenAppIdChange={onOpen} allowlist={[]} colorScheme="dark" />);
+    render(<AppsPage openAppId="a2" onOpenAppIdChange={onOpen} allowlist={[]} styledPreview={false} colorScheme="dark" />);
     expect(await screen.findByRole('heading', { name: 'Pomodoro timer' })).toBeTruthy();
     expect(screen.getByText('Works without the internet')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'App actions' }));

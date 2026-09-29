@@ -28,6 +28,8 @@ import { AppTile } from './AppTile';
 export interface AppViewProps {
   appId: string;
   allowlist: string[];
+  /** The "styled preview" setting, so an app looks as its page did in the chat. */
+  styledPreview: boolean;
   colorScheme: ArtifactColorScheme;
   /** Changes when local-only or the artifact-network setting changes. */
   networkPolicyKey?: string;
@@ -43,6 +45,7 @@ export interface AppViewProps {
 export function AppView({
   appId,
   allowlist,
+  styledPreview,
   colorScheme,
   networkPolicyKey,
   revision,
@@ -240,7 +243,7 @@ export function AppView({
           key={`${summary.id}:${summary.version}:${revision}`}
           html={html}
           allowlist={allowlist}
-          styledPreview
+          styledPreview={styledPreview}
           colorScheme={colorScheme}
           onExternalLink={handleExternalLink}
           network={network.handler}

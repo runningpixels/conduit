@@ -27,7 +27,6 @@
 .app-tile[data-category="other"] { --tile: var(--ink-3); }
 
 /* ── List ─────────────────────────────────────────────────────────────── */
-.apps-page .page-content { max-width: 1200px; }
 .apps-error { margin: 0 0 var(--sp-3); color: var(--err); font-size: var(--fs-2xl); }
 .apps-section { display: grid; gap: 12px; }
 .apps-section-title {

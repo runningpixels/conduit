@@ -128,33 +128,12 @@ an, das geprüft wird, bevor es das Modell erreicht.
 
 ![Zwei MCP-Werkzeugaufrufe, uuid und calculator, mit inline dargestellten Ergebnissen](./docs/assets/screenshot-connectors.png)
 
-### Designs
+### Erscheinungsbild
 
-Ein Design legt neben den Farben auch Schrift, Eckenradien, Rahmen, Elevation
-und Bewegung fest. Neun sind eingebaut — Orange Charcoal (die Voreinstellung,
-oben abgebildet), Orange-Dark, Terra, Amber Terminal, Green Phosphor, Amber
-Paper, Graphite, Editorial und High Contrast (AAA-Kontrast) — wählbar unter
-Einstellungen → Erscheinungsbild oder beim Onboarding. Die Einstellung
-„Lese-Schriftart" bestimmt die Schrift für die Antworten des Assistenten.
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Amber-Terminal-Design: schwarzer Hintergrund, Amber-Akzent, durchgehend Monospace"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Green-Phosphor-Design: CRT-Grün auf Schwarz, durchgehend Monospace"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Amber-Paper-Design: der Terminal-Look, gedruckt auf warmem Papier"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Editorial-Design im hellen Modus: Serifenschrift zum Lesen, breite Ränder, Linien statt Kästen"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![Die Design-Auswahl unter Einstellungen → Erscheinungsbild mit allen neun eingebauten Designs](./docs/assets/screenshot-theme-picker.png)
-
-Sie können auch ein eigenes schreiben: Eine `.theme.md`-Datei im
-`themes`-Ordner der App erweitert ein eingebautes Design um Ihre eigenen
-Farben. Design-Dateien akzeptieren nur Hex-Farben und eine feste Auswahl an
-strukturellen Einstellungen — kein CSS, keine URLs. Siehe
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md).
+Ein Design in zwei Modi: dunkel, hell oder passend zum System. Die
+Hauptfarbe – der Akzent für Schaltflächen, Auswahl und das aktive Element –
+lässt sich unter Einstellungen → Erscheinungsbild für jeden Modus einzeln
+wählen; eine schlecht lesbare Farbe wird abgelehnt.
 
 ### Acht Sprachen
 

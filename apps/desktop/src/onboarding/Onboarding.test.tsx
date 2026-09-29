@@ -11,9 +11,6 @@ vi.mock('../ipc/client', () => ({
   getOnboardingState: vi.fn(),
   updateSettings: vi.fn(),
   // Theming Phase 5: the Appearance step's ThemePicker fetches this on mount.
-  listUserThemes: vi.fn().mockResolvedValue([]),
-  revealThemesDir: vi.fn().mockResolvedValue(undefined),
-  createExampleUserTheme: vi.fn(),
   listProviderModels: vi.fn().mockResolvedValue([]),
   listProviderDescriptors: vi.fn().mockResolvedValue([
     { id: 'anthropic', displayName: 'Anthropic', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null },

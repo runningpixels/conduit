@@ -11,9 +11,6 @@ import { SettingsSheet, type SettingsSection } from './SettingsSheet';
  */
 vi.mock('../ipc/client', () => ({
   // Theming Phase 5: the Appearance section's ThemePicker fetches this on mount.
-  listUserThemes: vi.fn().mockResolvedValue([]),
-  revealThemesDir: vi.fn().mockResolvedValue(undefined),
-  createExampleUserTheme: vi.fn(),
   updateSettings: vi.fn().mockResolvedValue({
     activeProvider: 'anthropic',
     activeModel: 'claude-sonnet-4',

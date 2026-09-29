@@ -99,31 +99,10 @@ PDF 在你自己的设备上读取。建立索引时会把文档文本发送给�
 
 ![两次 MCP 工具调用 uuid 与 calculator，结果内联显示](./docs/assets/screenshot-connectors.png)
 
-### 主题
+### 外观
 
-一个主题设定的不只是配色，还包括字体、圆角半径、边框、层次感和动效。内置了
-九种——Orange Charcoal（默认主题，见顶部截图）、Orange-Dark、Terra、Amber
-Terminal、Green Phosphor、Amber Paper、Graphite、Editorial 和 High
-Contrast（AAA 对比度）——可以在设置 → 外观或首次运行的设置流程中选择。阅读
-字体设置用于选择助手回复所用的字体。
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Amber Terminal 主题：黑色背景配琥珀色强调色，全局等宽字体"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Green Phosphor 主题：黑底 CRT 绿，全局等宽字体"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Amber Paper 主题：把终端观感印在暖色纸张上的效果"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Editorial 主题（浅色模式）：衬线正文字体、宽边距，用分隔线取代方框"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![设置 → 外观中的主题选择器，展示全部九种内置主题](./docs/assets/screenshot-theme-picker.png)
-
-你也可以自己编写主题：在应用的 `themes` 文件夹中放入一个 `.theme.md` 文件，
-即可用你自己的颜色扩展某个内置主题。主题文件只接受十六进制颜色和一组固定的
-结构选项——不支持 CSS，也不支持 URL。参见
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md)。
+一套设计，两种模式：深色、浅色，或跟随系统。按钮、选中内容和当前项目使用的主色，
+可以在 设置 → 外观 中为每种模式分别选择；难以辨认的颜色会被拒绝。
 
 ### 八种语言
 

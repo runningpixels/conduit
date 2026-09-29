@@ -128,34 +128,12 @@ siguiente mensaje, que se revisa antes de llegar al modelo.
 
 ![Dos llamadas a herramientas MCP, uuid y calculator, con sus resultados en línea](./docs/assets/screenshot-connectors.png)
 
-### Temas
+### Apariencia
 
-Un tema define la tipografía, los radios de esquina, los bordes, la
-elevación y el movimiento, además de los colores. Hay nueve integrados —
-Orange Charcoal (el predeterminado, mostrado arriba), Orange-Dark, Terra,
-Amber Terminal, Green Phosphor, Amber Paper, Graphite, Editorial y High
-Contrast (contraste AAA) —, que se eligen en Configuración → Apariencia o
-durante la configuración inicial. Un ajuste de fuente de lectura elige el
-tipo de letra para las respuestas del asistente.
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Tema Amber Terminal: fondo negro, acento ámbar, monoespaciada en todas partes"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Tema Green Phosphor: verde CRT sobre negro, monoespaciada en todas partes"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Tema Amber Paper: el aspecto de terminal impreso en papel cálido"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Tema Editorial en modo claro: lectura en serif, márgenes amplios, líneas en vez de recuadros"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![El selector de temas en Configuración → Apariencia, con los nueve temas integrados](./docs/assets/screenshot-theme-picker.png)
-
-También puedes escribir el tuyo: un archivo `.theme.md` en la carpeta
-`themes` de la aplicación extiende un tema integrado con tus propios
-colores. Los archivos de tema solo admiten colores hexadecimales y un
-conjunto fijo de opciones estructurales — sin CSS, sin URLs. Consulta
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md).
+Un diseño con dos modos: oscuro, claro o según el sistema. El color
+principal —el acento de los botones, la selección y el elemento activo— se
+elige por separado para cada modo en Ajustes → Apariencia; se rechaza un
+color que sería difícil de leer.
 
 ### Ocho idiomas
 

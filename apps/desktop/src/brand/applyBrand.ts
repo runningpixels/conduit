@@ -195,11 +195,9 @@ export function isValidHexColor(value: unknown): value is string {
  * anywhere outside its own definitions in tokens.css, so there is nothing
  * for a brand to override.)
  *
- * Exported (alongside `deriveHueWeak` below) for `themes/userThemes.ts`
- * (theming Phase 5): a user theme file's palette override goes through the
- * same allowlist + hex-grammar + derived-`--hue-weak` pipeline a brand does —
- * S7's whole point is that user theme files reuse the brand pipeline's
- * validation model rather than inventing a second one.
+ * Exported (alongside `deriveHueWeak` below): user theme files (retired by
+ * ADR-011) reused this allowlist + hex-grammar + derived-`--hue-weak`
+ * pipeline, and a future brand-on-Nocturne hook is expected to as well.
  */
 export const HUE_WEAK_PROPERTY = '--hue-weak';
 

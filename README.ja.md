@@ -121,33 +121,11 @@ OpenAI、Gemini、OpenRouter では、「パン屋のシンプルなロゴを描
 
 ![uuid と calculator という 2 つの MCP ツール呼び出しと、その結果のインライン表示](./docs/assets/screenshot-connectors.png)
 
-### テーマ
+### 外観
 
-テーマは配色だけでなく、書体・角の丸み・境界線・立体感・モーションまで
-決めます。ビルトインは 9 種類 — Orange Charcoal（既定、冒頭の画像）、
-Orange-Dark、Terra、Amber Terminal、Green Phosphor、Amber Paper、Graphite、
-Editorial、High Contrast（AAA コントラスト）— で、設定 → 外観、または初回
-セットアップ中に選べます。本文フォント設定でアシスタントの返信に使う書体を
-選べます。
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Amber Terminal テーマ：黒背景にアンバーのアクセント、全体が等幅フォント"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Green Phosphor テーマ：黒地に CRT グリーン、全体が等幅フォント"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Amber Paper テーマ：ターミナル風の見た目を温かみのある紙に印刷したような配色"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Editorial テーマ（ライトモード）：セリフ体の本文、広い余白、枠線の代わりに罫線"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![設定 → 外観のテーマピッカー。ビルトインの 9 種類のテーマがすべて表示されている](./docs/assets/screenshot-theme-picker.png)
-
-自分でテーマを書くこともできます。アプリの `themes` フォルダーに置いた
-`.theme.md` ファイルが、ビルトインのテーマをあなたの色で拡張します。テーマ
-ファイルが受け付けるのは 16 進数カラーコードと、あらかじめ決められた構造上の
-選択肢だけです — CSS も URL も使えません。詳しくは
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md) を参照してください。
+ひとつのデザインを 2 つのモードで使えます：ダーク、ライト、またはシステムに合わせる。
+ボタン、選択範囲、アクティブな項目に使うメインカラーは、設定 → 外観でモードごとに
+選べます。読みにくくなる色は受け付けません。
 
 ### 8 言語
 

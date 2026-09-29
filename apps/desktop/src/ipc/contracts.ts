@@ -29,7 +29,6 @@ import type {
   ToolCallStatus,
   Transport,
   UpdatePolicy,
-  UserThemeEntry,
   PromptArguments,
   ResourceBlock,
   ResourceRef,
@@ -195,7 +194,6 @@ export type {
   ProviderRequest,
   SettingsPatch,
   ModelInfo,
-  UserThemeEntry,
 };
 
 // =============================================================================

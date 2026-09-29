@@ -116,31 +116,11 @@ iframe에서 렌더링되어 스스로는 네트워크에도 Tauri 브리지에�
 
 ![uuid와 calculator 두 개의 MCP 도구 호출과 인라인으로 표시된 결과](./docs/assets/screenshot-connectors.png)
 
-### 테마
+### 모양
 
-테마는 색상뿐 아니라 서체, 모서리 반경, 테두리, 입체감, 모션까지 정합니다. 기본
-제공 테마는 아홉 가지 — Orange Charcoal(기본값, 맨 위에 표시), Orange-Dark,
-Terra, Amber Terminal, Green Phosphor, Amber Paper, Graphite, Editorial, High
-Contrast(AAA 대비) — 이며, 설정 → 모양 또는 첫 실행 설정 중에 선택합니다. 읽기
-글꼴 설정으로 어시스턴트 응답에 쓰일 서체를 고를 수 있습니다.
-
-<table>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-terminal.png" alt="Amber Terminal 테마: 검은 배경에 앰버 색 강조, 전체 고정폭 글꼴"><br><b>Amber Terminal</b></td>
-    <td><img src="./docs/assets/screenshot-theme-green-phosphor.png" alt="Green Phosphor 테마: 검은 바탕에 CRT 초록, 전체 고정폭 글꼴"><br><b>Green Phosphor</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/assets/screenshot-theme-amber-paper.png" alt="Amber Paper 테마: 터미널 느낌을 따뜻한 종이 위에 인쇄한 듯한 모습"><br><b>Amber Paper</b></td>
-    <td><img src="./docs/assets/screenshot-theme-editorial.png" alt="Editorial 테마(라이트 모드): 세리프 서체, 넓은 여백, 박스 대신 구분선"><br><b>Editorial</b></td>
-  </tr>
-</table>
-
-![설정 → 모양의 테마 선택기. 기본 제공 테마 아홉 가지가 모두 표시된 모습](./docs/assets/screenshot-theme-picker.png)
-
-직접 테마를 만들 수도 있습니다. 앱의 `themes` 폴더에 넣은 `.theme.md` 파일이
-기본 제공 테마를 사용자의 색으로 확장합니다. 테마 파일이 받는 것은 16진수
-색상과 정해진 구조적 선택지뿐입니다 — CSS도 URL도 없습니다. 자세한 내용은
-[`docs/theming/user-themes.md`](./docs/theming/user-themes.md)를 참고하세요.
+하나의 디자인을 두 가지 모드로 씁니다: 다크, 라이트, 또는 시스템 설정을 따르기.
+버튼, 선택 영역, 활성 항목에 쓰이는 메인 색상은 설정 → 모양에서 모드마다 따로
+고를 수 있으며, 읽기 어려운 색은 받지 않습니다.
 
 ### 8개 언어
 

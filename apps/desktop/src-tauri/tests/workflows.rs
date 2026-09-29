@@ -316,7 +316,6 @@ fn test_paths(root: &Path) -> AppPaths {
         connectors: root.join("connectors"),
         exports: root.join("exports"),
         branding: root.join("branding"),
-        themes: root.join("themes"),
     }
 }
 

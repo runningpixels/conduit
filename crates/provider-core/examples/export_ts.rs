@@ -22,11 +22,9 @@ use provider_core::schema::{
     PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
     ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
     ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
-    SupportState, TenantConfig, TenantIdentity, Theme, ThemeCorners, ThemeFace, ThemeIconStroke,
-    ThemeLabels, ThemeMotion, ThemeShadows, ToolCallRecord, ToolCallStatus, ToolChoice,
-    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, UserTheme, UserThemeEntry,
-    UserThemePalettes, UserThemeStructure, WebSearchDefaults, WebSearchFilters, WebSearchMode,
-    WebSearchRequest,
+    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, WebSearchDefaults,
+    WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -95,16 +93,6 @@ fn main() {
     BrandConfig::export().expect("export BrandConfig");
 
     // User theme files (theming Phase 5)
-    ThemeCorners::export().expect("export ThemeCorners");
-    ThemeFace::export().expect("export ThemeFace");
-    ThemeLabels::export().expect("export ThemeLabels");
-    ThemeShadows::export().expect("export ThemeShadows");
-    ThemeMotion::export().expect("export ThemeMotion");
-    ThemeIconStroke::export().expect("export ThemeIconStroke");
-    UserThemeStructure::export().expect("export UserThemeStructure");
-    UserThemePalettes::export().expect("export UserThemePalettes");
-    UserTheme::export().expect("export UserTheme");
-    UserThemeEntry::export().expect("export UserThemeEntry");
 
     // Connectors
     Transport::export().expect("export Transport");

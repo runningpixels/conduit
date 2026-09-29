@@ -17,6 +17,8 @@ import {
   deleteWorkflow,
   getWorkflow,
   getWorkflowRun,
+  answerWorkflowReview,
+  listWorkflowReviews,
   listWorkflowRuns,
   listWorkflows,
   runWorkflow,
@@ -29,6 +31,8 @@ import type {
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
+  WorkflowReview,
+  WorkflowReviewDecision,
   WorkflowRunStep,
   WorkflowStep,
   WorkflowSummary,
@@ -36,6 +40,7 @@ import type {
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
 import { newStep } from '../workflows/editorModel';
+import { reviewText } from '../workflows/permissionText';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
 import { WorkflowEditor, type WorkflowDraft } from '../workflows/WorkflowEditor';
@@ -45,6 +50,7 @@ const STATUS_CLASS: Record<string, string> = {
   completed: 'wf-status wf-status-completed',
   failed: 'wf-status wf-status-failed',
   running: 'wf-status wf-status-running',
+  paused: 'wf-status wf-status-paused',
   stopped: 'wf-status wf-status-stopped',
 };
 
@@ -92,6 +98,8 @@ export function WorkflowsPage({
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
+  /// Scheduled runs waiting for an answer (any workflow).
+  const [reviews, setReviews] = useState<WorkflowReview[]>([]);
 
   // Check the draft as it changes, so problems show before saving.
   const draftDefinition = mode.kind === 'draft' ? mode.draft.definition : null;
@@ -144,13 +152,39 @@ export function WorkflowsPage({
     void refreshList();
   }, [refreshList]);
 
-  // A scheduled run finished: re-read the list, and the selected workflow's runs.
+  // A scheduled run finished or paused: re-read the list, and the selected workflow's runs.
   useEffect(() => {
     if (!refreshKey) return;
     void refreshList();
     if (selectedId) void listWorkflowRuns(selectedId, 20).then(setRuns, () => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
+
+  // What scheduled runs are waiting for.
+  useEffect(() => {
+    let cancelled = false;
+    void listWorkflowReviews().then(
+      (next) => {
+        if (!cancelled) setReviews(next);
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  async function answer(review: WorkflowReview, decision: WorkflowReviewDecision) {
+    setReviews((current) => current.filter((r) => r.runId !== review.runId));
+    try {
+      const taken = await answerWorkflowReview(review.runId, decision);
+      if (!taken) onStatus(t('workspace.workflows.review.gone'));
+    } catch (e) {
+      onStatus(t('workspace.workflows.status.actionFailed', { error: errorText(e) }));
+    }
+    setReviews(await listWorkflowReviews().catch(() => []));
+    if (selectedId) setRuns(await listWorkflowRuns(selectedId, 20).catch(() => runs));
+  }
 
   // Load the selected workflow and its runs.
   useEffect(() => {
@@ -327,7 +361,9 @@ export function WorkflowsPage({
         ? t('workspace.workflows.run.failed')
         : status === 'stopped'
           ? t('workspace.workflows.run.stopped')
-          : t('workspace.workflows.run.running');
+          : status === 'paused'
+            ? t('workspace.workflows.run.paused')
+            : t('workspace.workflows.run.running');
 
   const list = summaries.map((w) => (
     <PageListItem
@@ -463,6 +499,36 @@ export function WorkflowsPage({
           </div>
         </header>
 
+        {reviews
+          .filter((review) => review.workflowId === record.id)
+          .map((review) => (
+            <section
+              key={review.runId}
+              className="wf-offer wf-review"
+              role="group"
+              aria-label={t('workspace.workflows.review.title')}
+            >
+              <b>{t('workspace.workflows.review.title')}</b>
+              <p className="wf-review-what">{reviewText(review, t)}</p>
+              <p className="wf-muted">
+                {t('workspace.workflows.review.expires', {
+                  when: formatNextRun(review.expiresAt, fmt.locale),
+                })}
+              </p>
+              <div className="wf-offer-actions">
+                <button type="button" className="btn primary" onClick={() => void answer(review, 'allowOnce')}>
+                  {t('workspace.workflows.review.allowOnce')}
+                </button>
+                <button type="button" className="btn" onClick={() => void answer(review, 'alwaysAllow')}>
+                  {t('workspace.workflows.review.alwaysAllow')}
+                </button>
+                <button type="button" className="btn ghost" onClick={() => void answer(review, 'deny')}>
+                  {t('workspace.workflows.review.deny')}
+                </button>
+              </div>
+            </section>
+          ))}
+
         <section className="grp" aria-label={t('workspace.workflows.steps.title')}>
           <div className="grp-label">{t('workspace.workflows.steps.title')}</div>
           <StepList
@@ -499,6 +565,7 @@ export function WorkflowsPage({
         <ScheduleSection
           workflowId={record.id}
           refreshKey={refreshKey}
+          definitionVersion={record.version}
           onStatus={onStatus}
           onChanged={() => void refreshList()}
         />

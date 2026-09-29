@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowRunFinished } from '../ipc/contracts';
-import { notificationFor } from './workflowRunEvents';
+import { notificationFor, notificationForReview } from './workflowRunEvents';
 
 /// A stand-in `t` that shows which message and values were chosen.
 const t = (id: string, values?: Record<string, unknown>) =>
@@ -38,5 +38,26 @@ describe('notificationFor', () => {
     expect(notificationFor({ ...base, status: 'skipped' }, t)).toBeNull();
     expect(notificationFor({ ...base, status: 'stopped' }, t)).toBeNull();
     expect(notificationFor({ ...base, workflowName: '' }, t)?.title).toBe('unnamed');
+  });
+});
+
+describe('notificationForReview', () => {
+  it('says which workflow waits, and what for', () => {
+    const t = (id: string, values?: Record<string, unknown>) =>
+      values ? `${id.split('.').pop()} ${JSON.stringify(values)}` : (id.split('.').pop() ?? id);
+    const note = notificationForReview(
+      {
+        runId: 'r1',
+        workflowId: 'w1',
+        workflowName: 'Morning briefing',
+        stepId: 'fetch',
+        permission: { kind: 'host', host: 'bbc.com', label: null, local: null },
+        url: 'https://bbc.com/news',
+        requestedAt: '2026-09-29T08:00:00Z',
+        expiresAt: '2026-09-30T08:00:00Z',
+      },
+      t,
+    );
+    expect(note).toEqual({ title: 'waitingTitle {"name":"Morning briefing"}', body: 'host {"host":"bbc.com"}' });
   });
 });

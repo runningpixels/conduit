@@ -1,13 +1,24 @@
 /// A workflow's schedule: run it automatically every day or on weekdays at a
 /// time, or every few hours. Changes save as they are made; the backend works
 /// out the next run in the user's time zone and wakes the scheduler.
+///
+/// Nobody watches a scheduled run, so turning a schedule on first shows
+/// everything the workflow will be allowed to do and asks the user to approve
+/// it. When an edit later needs more, the section says what and offers to
+/// approve it; until then a scheduled run pauses and asks.
 
 import { useEffect, useId, useState } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
-import { getWorkflowSchedule, setWorkflowSchedule } from '../ipc/client';
-import type { ScheduleSpec, WorkflowSchedule } from '../ipc/contracts';
+import {
+  approveWorkflowPermissions,
+  getWorkflowPermissions,
+  getWorkflowSchedule,
+  setWorkflowSchedule,
+} from '../ipc/client';
+import type { ScheduleSpec, WorkflowPermissions, WorkflowPermissionView, WorkflowSchedule } from '../ipc/contracts';
 import { BackgroundSection } from './BackgroundSection';
+import { permissionText } from './permissionText';
 
 /// What a schedule starts as when it is first switched on.
 export const DEFAULT_TIME = '08:00';
@@ -31,15 +42,29 @@ export function formatNextRun(iso: string, locale: string): string {
   }).format(new Date(iso));
 }
 
+function PermissionList({ items }: { items: WorkflowPermissionView[] }) {
+  const t = useT();
+  return (
+    <ul className="wf-permission-list">
+      {items.map((p) => (
+        <li key={JSON.stringify(p)}>{permissionText(p, t)}</li>
+      ))}
+    </ul>
+  );
+}
+
 export function ScheduleSection({
   workflowId,
   refreshKey,
+  definitionVersion,
   onStatus,
   onChanged,
 }: {
   workflowId: string;
   /// Changes when a scheduled run finishes, so the next time is re-read.
   refreshKey?: number;
+  /// The workflow's version: an edit can change what it needs approved.
+  definitionVersion?: number;
   onStatus: (message: string) => void;
   /// Called after a change is saved (the list shows the next run too).
   onChanged?: () => void;
@@ -50,6 +75,26 @@ export function ScheduleSection({
   const [schedule, setSchedule] = useState<WorkflowSchedule | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
+  /// `null` when it couldn't be read: turning on then goes ahead, and a
+  /// scheduled run still asks before doing anything unapproved.
+  const [permissions, setPermissions] = useState<WorkflowPermissions | null>(null);
+  /// Turning the schedule on, waiting for the user to approve what it may do.
+  const [approving, setApproving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getWorkflowPermissions(workflowId).then(
+      (next) => {
+        if (!cancelled) setPermissions(next);
+      },
+      () => {
+        if (!cancelled) setPermissions(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [workflowId, refreshKey, definitionVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,10 +126,25 @@ export function ScheduleSection({
     }
   };
 
+  /// Approve what the workflow needs now; `true` when that worked.
+  const approve = async (): Promise<boolean> => {
+    setSaving(true);
+    try {
+      setPermissions(await approveWorkflowPermissions(workflowId));
+      return true;
+    } catch (e) {
+      onStatus(t('workspace.workflows.permissions.approveFailed', { error: errorText(e) }));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!loaded) return null;
   const enabled = schedule?.enabled ?? false;
   const spec = schedule?.spec ?? DEFAULT_SCHEDULE;
   const kind = spec.kind;
+  const missing = permissions?.missing ?? [];
 
   return (
     <section className="grp wf-schedule" aria-label={t('workspace.workflows.schedule.title')}>
@@ -94,10 +154,57 @@ export function ScheduleSection({
           type="checkbox"
           checked={enabled}
           disabled={saving}
-          onChange={(e) => void save(spec, e.target.checked)}
+          onChange={(e) => {
+            if (e.target.checked && missing.length > 0) setApproving(true);
+            else void save(spec, e.target.checked);
+          }}
         />
         {t('workspace.workflows.schedule.enabled')}
       </label>
+      {approving && permissions ? (
+        <div className="wf-offer" role="group" aria-label={t('workspace.workflows.permissions.approveTitle')}>
+          <b>{t('workspace.workflows.permissions.approveTitle')}</b>
+          <p className="wf-muted">{t('workspace.workflows.permissions.approveBody')}</p>
+          <PermissionList items={permissions.required} />
+          <div className="wf-offer-actions">
+            <button
+              type="button"
+              className="btn primary"
+              disabled={saving}
+              onClick={async () => {
+                if (await approve()) {
+                  setApproving(false);
+                  await save(spec, true);
+                }
+              }}
+            >
+              {t('workspace.workflows.permissions.approveAndTurnOn')}
+            </button>
+            <button type="button" className="btn" disabled={saving} onClick={() => setApproving(false)}>
+              {t('common.actions.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {enabled && missing.length > 0 ? (
+        <div className="wf-offer" role="group" aria-label={t('workspace.workflows.permissions.moreTitle')}>
+          <b>{t('workspace.workflows.permissions.moreTitle')}</b>
+          <PermissionList items={missing} />
+          <p className="wf-muted">{t('workspace.workflows.permissions.moreBody')}</p>
+          <div className="wf-offer-actions">
+            <button type="button" className="btn primary" disabled={saving} onClick={() => void approve()}>
+              {t('workspace.workflows.permissions.approve')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {enabled && missing.length === 0 && permissions && permissions.required.length > 0 ? (
+        <p className="wf-muted wf-allowed">
+          {t('workspace.workflows.permissions.allowed', {
+            list: permissions.required.map((p) => permissionText(p, t)).join(' · '),
+          })}
+        </p>
+      ) : null}
       {enabled ? (
         <>
           <div className="wf-input-row">

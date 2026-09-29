@@ -114,6 +114,7 @@ const SHAPES: Record<string, unknown> = {
 const IPC_EXPORTS = [
   'getAppPaths', 'getSettings', 'updateSettings', 'saveProviderCredential',
   'setTrayLabels', 'getStartAtLogin', 'setStartAtLogin', 'getRunningWorkflowCount', 'stopWorkflowRun',
+  'getWorkflowPermissions', 'approveWorkflowPermissions', 'listWorkflowReviews', 'answerWorkflowReview',
   'loadProviderCredentialReference', 'validateProviderCredentials',
   'listProviderDescriptors', 'listProviderModels', 'startChatStream',
   'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getConversationCompaction', 'compactConversation', 'getRequestProviderEvents',

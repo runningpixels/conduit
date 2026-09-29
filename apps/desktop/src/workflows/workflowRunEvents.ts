@@ -9,9 +9,37 @@ import { useEffect, useRef } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Translate } from '../i18n';
-import type { WorkflowRunFinished } from '../ipc/contracts';
+import type { WorkflowReview, WorkflowRunFinished } from '../ipc/contracts';
+import { reviewText } from './permissionText';
 
 export const RUN_FINISHED_EVENT = 'workflow-run-finished';
+/// Emitted with a `WorkflowReview` when a scheduled run pauses to ask.
+export const RUN_PAUSED_EVENT = 'workflow-run-paused';
+
+/// The notification for a run that paused to ask.
+export function notificationForReview(review: WorkflowReview, t: Translate): { title: string; body: string } {
+  const name = review.workflowName || t('workspace.workflows.notify.unnamed');
+  return { title: t('workspace.workflows.notify.waitingTitle', { name }), body: reviewText(review, t) };
+}
+
+/// Call `onPaused` whenever a scheduled run pauses to ask.
+export function useWorkflowReviewEvents(onPaused: (review: WorkflowReview) => void) {
+  const handler = useRef(onPaused);
+  handler.current = onPaused;
+  useEffect(() => {
+    if (!isTauri()) return;
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void listen<WorkflowReview>(RUN_PAUSED_EVENT, (e) => handler.current(e.payload)).then((unlisten) => {
+      if (cancelled) unlisten();
+      else stop = unlisten;
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
+}
 
 /// The notification for a finished run, or `null` when there is nothing to say
 /// (a slot skipped because the workflow was still running, or a run the user

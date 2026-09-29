@@ -77,7 +77,12 @@ import { LibraryPage, type LibraryTab } from './pages/LibraryPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
-import { notificationFor, useWorkflowRunEvents } from './workflows/workflowRunEvents';
+import {
+  notificationFor,
+  notificationForReview,
+  useWorkflowReviewEvents,
+  useWorkflowRunEvents,
+} from './workflows/workflowRunEvents';
 import { useTrayLabels } from './shell/useTrayLabels';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
@@ -1009,6 +1014,12 @@ export default function App() {
     setWorkflowRunsVersion((v) => v + 1);
     const note = notificationFor(event, t);
     if (note) void notifyWorkflowRun(note.title, note.body).catch(() => {});
+  });
+  // A scheduled run paused to ask: say so, and show it on the Workflows page.
+  useWorkflowReviewEvents((review) => {
+    setWorkflowRunsVersion((v) => v + 1);
+    const note = notificationForReview(review, t);
+    void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   useTrayLabels(t);
 

@@ -21,6 +21,10 @@
 //!   token ("Stop", "Stop all workflows" in the tray, quitting mid-run).
 //! - A run still marked running at launch was cut off when Conduit closed; the
 //!   loop marks it failed before anything else runs.
+//! - Scheduled runs are unattended: they may do what the user approved and
+//!   pause to ask about anything else (`permissions`). Due runs are claimed in
+//!   the loop and run in the background, so a run waiting for an answer
+//!   doesn't hold up the next schedule.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -31,7 +35,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-use super::runner::Runner;
+use super::permissions::Reviews;
+use super::runner::{RunBudget, Runner, Unattended};
 use super::schedule::ScheduleSpec;
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::workflows as repo;
@@ -42,6 +47,8 @@ use crate::stream_manager::StreamManager;
 pub const RUN_FINISHED_EVENT: &str = "workflow-run-finished";
 /// Emitted with the number of runs in progress whenever it changes.
 pub const RUNS_CHANGED_EVENT: &str = "workflow-runs-changed";
+/// Emitted with a `PendingReview` when a scheduled run pauses to ask.
+pub const RUN_PAUSED_EVENT: &str = "workflow-run-paused";
 /// Longest the loop sleeps without looking again.
 const HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 /// A due time further in the past than this is a catch-up run.
@@ -219,16 +226,23 @@ fn saved_documents(detail: &repo::WorkflowRunDetail) -> Vec<SavedDocument> {
     docs
 }
 
-/// Run every schedule due at `now`, one after another, reading schedule times
-/// in `tz`. Returns what happened to each, in order.
-pub async fn run_due<Tz: TimeZone>(
+/// A due schedule, claimed: its slot is used up and its next time saved.
+pub struct Claimed {
+    pub workflow_id: String,
+    pub workflow_name: String,
+    pub trigger: String,
+    /// Why it can't run (its schedule no longer reads), if so.
+    pub error: Option<String>,
+}
+
+/// Claim every schedule due at `now`, reading schedule times in `tz`. Each
+/// one's next time is saved before anything runs, so neither a crash nor the
+/// next look (while these still run) can fire the same slot again.
+pub async fn claim_due<Tz: TimeZone>(
     state: &AppState,
-    streams: &StreamManager,
-    running: &Arc<RunningWorkflows>,
-    fetch_policy: AddressPolicy,
     now: DateTime<Utc>,
     tz: &Tz,
-) -> Vec<RunFinished> {
+) -> Vec<Claimed> {
     let pool = &state.db;
     let due = match repo::due_schedules(pool, &to_iso(now)).await {
         Ok(due) => due,
@@ -237,7 +251,7 @@ pub async fn run_due<Tz: TimeZone>(
             return Vec::new();
         }
     };
-    let mut finished = Vec::new();
+    let mut claimed = Vec::new();
     for schedule in due {
         let id = schedule.workflow_id.clone();
         let name = repo::get(pool, &state.encryption, &id)
@@ -259,68 +273,129 @@ pub async fn run_due<Tz: TimeZone>(
             .as_ref()
             .map_err(Clone::clone)
             .and_then(|spec| next_run(spec, now, tz));
-        // Saved before the run, so a crash can't fire this slot again. A spec
-        // that no longer reads turns the schedule off (no next time).
+        // A spec that no longer reads turns the schedule off (no next time).
         if let Err(e) = repo::mark_schedule_ran(pool, &id, &to_iso(now), next.as_deref().ok()).await
         {
             tracing::warn!(workflow_id = %id, error = %e, "could not update a workflow schedule");
             continue;
         }
-        if let Err(e) = &next {
-            finished.push(RunFinished {
-                workflow_id: id,
-                workflow_name: name,
-                run_id: None,
-                status: "failed".into(),
-                error: Some(format!("The schedule can't be read: {e}")),
-                trigger,
-                documents: Vec::new(),
-            });
-            continue;
-        }
-
-        let Some(guard) = running.try_start(&id) else {
-            finished.push(RunFinished {
-                workflow_id: id,
-                workflow_name: name,
-                run_id: None,
-                status: "skipped".into(),
-                error: None,
-                trigger,
-                documents: Vec::new(),
-            });
-            continue;
-        };
-        let runner = Runner {
-            state,
-            streams,
-            fetch_policy,
-            stop: guard.stop_token(),
-        };
-        let outcome = runner.run(&id, &HashMap::new(), &trigger).await;
-        drop(guard);
-        finished.push(match outcome {
-            Ok(detail) => RunFinished {
-                workflow_id: id,
-                workflow_name: name,
-                run_id: Some(detail.run.id.clone()),
-                status: detail.run.status.clone(),
-                error: detail.run.error.clone(),
-                trigger,
-                documents: saved_documents(&detail),
-            },
-            Err(error) => RunFinished {
-                workflow_id: id,
-                workflow_name: name,
-                run_id: None,
-                status: "failed".into(),
-                error: Some(error),
-                trigger,
-                documents: Vec::new(),
-            },
+        claimed.push(Claimed {
+            workflow_id: id,
+            workflow_name: name,
+            trigger,
+            error: next
+                .err()
+                .map(|e| format!("The schedule can't be read: {e}")),
         });
     }
-    finished
+    claimed
+}
+
+/// Run what was claimed, all at once, so a run waiting for the user holds up
+/// no other; `on_finished` hears each as it ends. Returns them in the order
+/// they finished.
+pub async fn run_claimed(
+    state: &AppState,
+    streams: &StreamManager,
+    running: &Arc<RunningWorkflows>,
+    reviews: &Reviews,
+    fetch_policy: AddressPolicy,
+    claimed: Vec<Claimed>,
+    on_finished: &(dyn Fn(&RunFinished) + Sync),
+) -> Vec<RunFinished> {
+    let finished = Mutex::new(Vec::new());
+    let runs = claimed.into_iter().map(|claim| async {
+        let event = run_one(state, streams, running, reviews, fetch_policy, claim).await;
+        on_finished(&event);
+        if let Ok(mut finished) = finished.lock() {
+            finished.push(event);
+        }
+    });
+    futures::future::join_all(runs).await;
+    finished.into_inner().unwrap_or_default()
+}
+
+async fn run_one(
+    state: &AppState,
+    streams: &StreamManager,
+    running: &Arc<RunningWorkflows>,
+    reviews: &Reviews,
+    fetch_policy: AddressPolicy,
+    claim: Claimed,
+) -> RunFinished {
+    let Claimed {
+        workflow_id,
+        workflow_name,
+        trigger,
+        error,
+    } = claim;
+    let finished = |status: &str, error: Option<String>| RunFinished {
+        workflow_id: workflow_id.clone(),
+        workflow_name: workflow_name.clone(),
+        run_id: None,
+        status: status.into(),
+        error,
+        trigger: trigger.clone(),
+        documents: Vec::new(),
+    };
+    if error.is_some() {
+        return finished("failed", error);
+    }
+    let Some(guard) = running.try_start(&workflow_id) else {
+        return finished("skipped", None);
+    };
+    // Nobody is watching: the run may do what the user approved, and asks
+    // about anything else.
+    let approved = repo::get_permissions(&state.db, &state.encryption, &workflow_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|(approved, _)| approved)
+        .unwrap_or_default();
+    let runner = Runner {
+        state,
+        streams,
+        fetch_policy,
+        stop: guard.stop_token(),
+        unattended: Some(Unattended::new(reviews, approved)),
+        budget: RunBudget::default(),
+    };
+    let outcome = runner.run(&workflow_id, &HashMap::new(), &trigger).await;
+    drop(guard);
+    match outcome {
+        Ok(detail) => RunFinished {
+            run_id: Some(detail.run.id.clone()),
+            status: detail.run.status.clone(),
+            error: detail.run.error.clone(),
+            documents: saved_documents(&detail),
+            ..finished("", None)
+        },
+        Err(error) => finished("failed", Some(error)),
+    }
+}
+
+/// Claim and run everything due at `now` ([`claim_due`], then
+/// [`run_claimed`]).
+pub async fn run_due<Tz: TimeZone>(
+    state: &AppState,
+    streams: &StreamManager,
+    running: &Arc<RunningWorkflows>,
+    reviews: &Reviews,
+    fetch_policy: AddressPolicy,
+    now: DateTime<Utc>,
+    tz: &Tz,
+) -> Vec<RunFinished> {
+    let claimed = claim_due(state, now, tz).await;
+    run_claimed(
+        state,
+        streams,
+        running,
+        reviews,
+        fetch_policy,
+        claimed,
+        &|_| {},
+    )
+    .await
 }
 
 /// How long to sleep before looking again: until the next due time, at most
@@ -341,7 +416,6 @@ async fn sleep_for(state: &AppState) -> std::time::Duration {
 /// The scheduler, for the life of the app. Started from `main`'s setup.
 pub async fn scheduler_loop(app: AppHandle) {
     let wake = app.state::<SchedulerWake>().inner().clone();
-    let running = app.state::<Arc<RunningWorkflows>>().inner().clone();
     match repo::fail_interrupted_runs(&app.state::<AppState>().db).await {
         Ok(0) => {}
         Ok(n) => tracing::info!(runs = n, "marked workflow runs cut off by a quit as failed"),
@@ -349,20 +423,28 @@ pub async fn scheduler_loop(app: AppHandle) {
     }
     loop {
         let state = app.state::<AppState>();
-        let streams = app.state::<StreamManager>();
-        for event in run_due(
-            &state,
-            &streams,
-            &running,
-            AddressPolicy::APP,
-            Utc::now(),
-            &Local,
-        )
-        .await
-        {
-            if let Err(e) = app.emit(RUN_FINISHED_EVENT, &event) {
-                tracing::warn!(error = %e, "could not announce a finished workflow run");
-            }
+        let claimed = claim_due(&state, Utc::now(), &Local).await;
+        // The runs go on in the background: one waiting a day for an answer
+        // must not stop the loop from starting the next schedule on time.
+        if !claimed.is_empty() {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let announce = |event: &RunFinished| {
+                    if let Err(e) = app.emit(RUN_FINISHED_EVENT, event) {
+                        tracing::warn!(error = %e, "could not announce a finished workflow run");
+                    }
+                };
+                run_claimed(
+                    &app.state::<AppState>(),
+                    &app.state::<StreamManager>(),
+                    &app.state::<Arc<RunningWorkflows>>(),
+                    &app.state::<Reviews>(),
+                    AddressPolicy::APP,
+                    claimed,
+                    &announce,
+                )
+                .await;
+            });
         }
         let wait = sleep_for(&state).await;
         tokio::select! {

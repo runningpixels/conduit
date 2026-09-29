@@ -642,7 +642,7 @@ export type WorkflowStep = {
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
 );
 
-export type WorkflowRunStatus = 'running' | 'completed' | 'failed' | 'stopped';
+export type WorkflowRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
 
 export interface WorkflowRun {
   id: string;
@@ -672,3 +672,36 @@ export interface WorkflowRunDetail {
   run: WorkflowRun;
   steps: WorkflowRunStep[];
 }
+
+/** One thing a workflow may do on its own (Rust `workflows::permissions::Permission`). */
+export type WorkflowPermission =
+  | { kind: 'host'; host: string }
+  | { kind: 'anyHost'; stepId: string }
+  | { kind: 'webSearch'; backend: string }
+  | { kind: 'model'; provider: string }
+  | { kind: 'saveDocuments' };
+
+/** A permission with its display name (provider, search backend) and, for a model, where it runs. */
+export type WorkflowPermissionView = WorkflowPermission & { label: string | null; local: boolean | null };
+
+/** What a workflow needs to run on its own, and what of that isn't approved yet. */
+export interface WorkflowPermissions {
+  required: WorkflowPermissionView[];
+  missing: WorkflowPermissionView[];
+  approvedAt: string | null;
+}
+
+/** A scheduled run paused to ask (Rust `workflows::permissions::PendingReview`). */
+export interface WorkflowReview {
+  runId: string;
+  workflowId: string;
+  workflowName: string;
+  stepId: string;
+  permission: WorkflowPermissionView;
+  /** For a fetch: the address it wants. */
+  url: string | null;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+export type WorkflowReviewDecision = 'allowOnce' | 'alwaysAllow' | 'deny';

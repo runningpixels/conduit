@@ -21,6 +21,10 @@ const ipc = vi.hoisted(() => ({
   getStartAtLogin: vi.fn(),
   setStartAtLogin: vi.fn(),
   stopWorkflowRun: vi.fn(),
+  getWorkflowPermissions: vi.fn(),
+  approveWorkflowPermissions: vi.fn(),
+  listWorkflowReviews: vi.fn(),
+  answerWorkflowReview: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -93,6 +97,8 @@ describe('WorkflowsPage', () => {
     for (const fn of Object.values(ipc)) fn.mockReset();
     ipc.getSettings.mockRejectedValue(new Error('not in tests'));
     ipc.getStartAtLogin.mockRejectedValue(new Error('not in tests'));
+    ipc.getWorkflowPermissions.mockResolvedValue({ required: [], missing: [], approvedAt: null });
+    ipc.listWorkflowReviews.mockResolvedValue([]);
     ipc.listWorkflows.mockResolvedValue([summary]);
     ipc.getWorkflow.mockResolvedValue(record);
     ipc.listWorkflowRuns.mockResolvedValue([]);
@@ -202,6 +208,28 @@ describe('WorkflowsPage', () => {
     const detail = await screen.findByRole('region', { name: 'What this run did' });
     expect(within(detail).getByText(/^Stopped/)).toBeInTheDocument();
     expect(within(detail).queryByText('Stopped before it finished.')).not.toBeInTheDocument();
+  });
+
+  it('shows what a paused scheduled run waits for, and answers it', async () => {
+    const review = {
+      runId: 'r9',
+      workflowId: 'w1',
+      workflowName: 'Morning briefing',
+      stepId: 'fetch',
+      permission: { kind: 'host', host: 'bbc.com', label: null, local: null },
+      url: 'https://bbc.com/news',
+      requestedAt: '2026-09-29T06:00:00.000Z',
+      expiresAt: '2026-09-30T06:00:00.000Z',
+    } as const;
+    ipc.listWorkflowReviews.mockResolvedValueOnce([review]).mockResolvedValue([]);
+    ipc.answerWorkflowReview.mockResolvedValue(true);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const panel = await screen.findByRole('group', { name: 'Waiting for you' });
+    expect(panel).toHaveTextContent('It wants to read pages on bbc.com.');
+    expect(panel).toHaveTextContent(/If nobody answers by /);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Always allow' }));
+    await waitFor(() => expect(ipc.answerWorkflowReview).toHaveBeenCalledWith('r9', 'alwaysAllow'));
+    expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument();
   });
 
   it('shows when a scheduled workflow runs next, in the list', async () => {

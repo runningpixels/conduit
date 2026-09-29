@@ -5,11 +5,12 @@
 //! - `template`: `{{steps.x.y}}` / `{{#each}}` filling
 //! - `extract`: readable text from fetched pages
 //! - `runner`: runs a workflow and records every step
-//!
-//! Runs are manual for now; scheduling builds on the same runner.
+//! - `permissions`: what a scheduled run may do, and asking when it wants more
+//! - `schedule` / `scheduler`: running workflows automatically
 
 pub mod definition;
 pub mod extract;
+pub mod permissions;
 pub mod runner;
 pub mod schedule;
 pub mod scheduler;

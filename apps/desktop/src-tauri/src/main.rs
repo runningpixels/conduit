@@ -15,7 +15,10 @@ use conduit_desktop::{
     tray::{self, TrayState},
     updater::*,
     webview_args,
-    workflows::scheduler::{scheduler_loop, RunningWorkflows, SchedulerWake, RUNS_CHANGED_EVENT},
+    workflows::permissions::Reviews,
+    workflows::scheduler::{
+        scheduler_loop, RunningWorkflows, SchedulerWake, RUNS_CHANGED_EVENT, RUN_PAUSED_EVENT,
+    },
 };
 use tauri::{Emitter, Manager, RunEvent};
 
@@ -73,6 +76,8 @@ fn main() {
         .manage(std::sync::Arc::new(RunningWorkflows::default()))
         .manage(SchedulerWake::default())
         .manage(TrayState::default())
+        // Scheduled runs waiting for the user's answer.
+        .manage(Reviews::default())
         .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
             ctx.app_handle().state::<ArtifactFrames>().respond(&request)
         })
@@ -273,6 +278,11 @@ fn main() {
             set_tray_labels,
             get_running_workflow_count,
             stop_workflow_run,
+            // Unattended runs: approve what they may do, answer when they ask.
+            get_workflow_permissions,
+            approve_workflow_permissions,
+            list_workflow_reviews,
+            answer_workflow_review,
             get_start_at_login,
             set_start_at_login,
         ])
@@ -308,6 +318,11 @@ fn main() {
                     let _ = handle.emit(RUNS_CHANGED_EVENT, count);
                     let _ = tray::refresh(&handle);
                 });
+            // A scheduled run paused to ask: the page notifies and shows it.
+            let handle = app.handle().clone();
+            app.state::<Reviews>().set_listener(move |review| {
+                let _ = handle.emit(RUN_PAUSED_EVENT, review);
+            });
             // Scheduled workflows run from here, independent of the window.
             tauri::async_runtime::spawn(scheduler_loop(app.handle().clone()));
             Ok(())

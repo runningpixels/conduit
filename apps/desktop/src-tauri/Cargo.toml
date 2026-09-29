@@ -123,6 +123,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
+# Desktop notifications for scheduled workflow runs (shown from Rust; the
+# renderer passes the translated text through `notify_workflow_run`).
+tauri-plugin-notification = "~2.4"
 
 # Phase 6: the updater migration precheck copies the live DB to a temp dir.
 # Also used by in-crate tests, so it lives in `[dependencies]` (not dev-only).

@@ -589,6 +589,34 @@ export interface WorkflowSummary {
   updatedAt: string;
   lastRunStatus: WorkflowRunStatus | null;
   lastRunAt: string | null;
+  /** When it next runs on its own (UTC), if it has a schedule that is on. */
+  nextRunAt: string | null;
+}
+
+/** When a workflow runs on its own (Rust `workflows::schedule::ScheduleSpec`). */
+export type ScheduleSpec =
+  | { kind: 'daily'; time: string }
+  | { kind: 'weekdays'; time: string }
+  | { kind: 'interval'; hours: number };
+
+export interface WorkflowSchedule {
+  workflowId: string;
+  spec: ScheduleSpec;
+  enabled: boolean;
+  /** UTC; null while the schedule is off. */
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+}
+
+/** Sent when a scheduled run ends (Rust `workflows::scheduler::RunFinished`). */
+export interface WorkflowRunFinished {
+  workflowId: string;
+  workflowName: string;
+  runId: string | null;
+  status: 'completed' | 'failed' | 'skipped' | 'running';
+  error: string | null;
+  trigger: 'schedule' | 'catch_up';
+  documents: { artifactId: string; conversationId: string; title: string }[];
 }
 
 export interface WorkflowDefinition {

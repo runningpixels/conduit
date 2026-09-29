@@ -34,6 +34,8 @@ pub struct WorkflowSummary {
     pub updated_at: String,
     pub last_run_status: Option<String>,
     pub last_run_at: Option<String>,
+    /// When it next runs on its own, if it has a schedule that is on.
+    pub next_run_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -187,13 +189,16 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<WorkflowSummary>, DbError> {
         String,
         Option<String>,
         Option<String>,
+        Option<String>,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT w.id, w.name, w.description, w.version, w.updated_at, \
                 (SELECT r.status FROM workflow_runs r WHERE r.workflow_id = w.id \
                    ORDER BY r.started_at DESC LIMIT 1), \
                 (SELECT r.started_at FROM workflow_runs r WHERE r.workflow_id = w.id \
-                   ORDER BY r.started_at DESC LIMIT 1) \
+                   ORDER BY r.started_at DESC LIMIT 1), \
+                (SELECT s.next_run_at FROM workflow_schedules s \
+                   WHERE s.workflow_id = w.id AND s.enabled = 1) \
          FROM workflows w ORDER BY w.updated_at DESC",
     )
     .fetch_all(pool)
@@ -201,7 +206,16 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<WorkflowSummary>, DbError> {
     Ok(rows
         .into_iter()
         .map(
-            |(id, name, description, version, updated_at, last_run_status, last_run_at)| {
+            |(
+                id,
+                name,
+                description,
+                version,
+                updated_at,
+                last_run_status,
+                last_run_at,
+                next_run_at,
+            )| {
                 WorkflowSummary {
                     id,
                     name,
@@ -210,6 +224,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<WorkflowSummary>, DbError> {
                     updated_at,
                     last_run_status,
                     last_run_at,
+                    next_run_at,
                 }
             },
         )
@@ -432,4 +447,123 @@ pub async fn get_run(
         run: run_from(row),
         steps,
     }))
+}
+
+/// A workflow's schedule (migration 0021). `spec` is a
+/// `workflows::schedule::ScheduleSpec` as JSON.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowSchedule {
+    pub workflow_id: String,
+    pub spec: Value,
+    pub enabled: bool,
+    /// UTC. `None` when the schedule is off.
+    pub next_run_at: Option<String>,
+    pub last_run_at: Option<String>,
+}
+
+type ScheduleRow = (String, String, i64, Option<String>, Option<String>);
+
+fn schedule_from(row: ScheduleRow) -> Result<WorkflowSchedule, DbError> {
+    let (workflow_id, spec_json, enabled, next_run_at, last_run_at) = row;
+    Ok(WorkflowSchedule {
+        workflow_id,
+        spec: serde_json::from_str(&spec_json)
+            .map_err(|e| DbError::Query(format!("stored schedule is invalid: {e}")))?,
+        enabled: enabled != 0,
+        next_run_at,
+        last_run_at,
+    })
+}
+
+const SCHEDULE_COLUMNS: &str = "workflow_id, spec_json, enabled, next_run_at, last_run_at";
+
+pub async fn get_schedule(
+    pool: &SqlitePool,
+    workflow_id: &str,
+) -> Result<Option<WorkflowSchedule>, DbError> {
+    let row: Option<ScheduleRow> = sqlx::query_as(&format!(
+        "SELECT {SCHEDULE_COLUMNS} FROM workflow_schedules WHERE workflow_id = ?"
+    ))
+    .bind(workflow_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(schedule_from).transpose()
+}
+
+/// Create or replace a workflow's schedule.
+pub async fn put_schedule(
+    pool: &SqlitePool,
+    workflow_id: &str,
+    spec: &Value,
+    enabled: bool,
+    next_run_at: Option<&str>,
+) -> Result<WorkflowSchedule, DbError> {
+    let now = now_iso8601();
+    sqlx::query(
+        "INSERT INTO workflow_schedules (workflow_id, spec_json, enabled, next_run_at, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?) \
+         ON CONFLICT(workflow_id) DO UPDATE SET spec_json = excluded.spec_json, \
+           enabled = excluded.enabled, next_run_at = excluded.next_run_at, updated_at = excluded.updated_at",
+    )
+    .bind(workflow_id)
+    .bind(spec.to_string())
+    .bind(i64::from(enabled))
+    .bind(next_run_at)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    get_schedule(pool, workflow_id)
+        .await?
+        .ok_or_else(|| DbError::Query("schedule vanished after save".into()))
+}
+
+pub async fn delete_schedule(pool: &SqlitePool, workflow_id: &str) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM workflow_schedules WHERE workflow_id = ?")
+        .bind(workflow_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Schedules that are on and due at or before `now` (UTC), soonest first.
+pub async fn due_schedules(pool: &SqlitePool, now: &str) -> Result<Vec<WorkflowSchedule>, DbError> {
+    let rows: Vec<ScheduleRow> = sqlx::query_as(&format!(
+        "SELECT {SCHEDULE_COLUMNS} FROM workflow_schedules \
+         WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at"
+    ))
+    .bind(now)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter().map(schedule_from).collect()
+}
+
+/// When the next schedule is due, if any is on.
+pub async fn earliest_next_run(pool: &SqlitePool) -> Result<Option<String>, DbError> {
+    let next: Option<Option<String>> = sqlx::query_scalar(
+        "SELECT MIN(next_run_at) FROM workflow_schedules WHERE enabled = 1 AND next_run_at IS NOT NULL",
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(next.flatten())
+}
+
+/// Record that a schedule ran (or was skipped) at `ran_at`, and when it runs next.
+pub async fn mark_schedule_ran(
+    pool: &SqlitePool,
+    workflow_id: &str,
+    ran_at: &str,
+    next_run_at: Option<&str>,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE workflow_schedules SET last_run_at = ?, next_run_at = ?, updated_at = ? WHERE workflow_id = ?",
+    )
+    .bind(ran_at)
+    .bind(next_run_at)
+    .bind(now_iso8601())
+    .bind(workflow_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

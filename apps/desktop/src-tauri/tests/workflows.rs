@@ -17,6 +17,7 @@ use conduit_desktop::{
     state::AppState,
     stream_manager::StreamManager,
     workflows::runner::Runner,
+    workflows::scheduler::{run_due, to_iso, RunningWorkflows},
 };
 use futures::stream::Stream;
 use provider_core::schema::{AppSettings, ProviderError, ProviderEvent, ProviderRequest};
@@ -432,4 +433,209 @@ async fn an_invalid_definition_does_not_start_a_run() {
         .await
         .unwrap()
         .is_empty());
+}
+
+// ── Scheduling ───────────────────────────────────────────────────────────────
+
+use chrono::{DateTime, FixedOffset, Utc};
+
+fn utc(s: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+}
+
+/// A model-free workflow that saves one document.
+fn saving_workflow() -> Value {
+    json!({ "steps": [
+        { "id": "doc", "type": "template", "template": "Report for {{run.date}}" },
+        { "id": "save", "type": "save_artifact", "title": "Daily report", "content": "{{steps.doc.text}}" }
+    ]})
+}
+
+impl Harness {
+    async fn schedule(&self, id: &str, spec: Value, enabled: bool, next_run_at: &str) {
+        repo::put_schedule(&self.state.db, id, &spec, enabled, Some(next_run_at))
+            .await
+            .unwrap();
+    }
+
+    async fn tick(
+        &self,
+        running: &std::sync::Arc<RunningWorkflows>,
+        now: &str,
+    ) -> Vec<conduit_desktop::workflows::scheduler::RunFinished> {
+        let tz = FixedOffset::east_opt(2 * 3600).unwrap();
+        run_due(
+            &self.state,
+            &self.streams,
+            running,
+            AddressPolicy { public_only: false },
+            utc(now),
+            &tz,
+        )
+        .await
+    }
+}
+
+#[tokio::test]
+async fn a_due_schedule_runs_once_and_moves_to_the_next_slot() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    // 08:00 at +02:00 is 06:00Z.
+    h.schedule(
+        &id,
+        json!({ "kind": "daily", "time": "08:00" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = std::sync::Arc::new(RunningWorkflows::default());
+
+    // Not due yet: nothing happens.
+    assert!(h.tick(&running, "2026-09-29T05:59:00Z").await.is_empty());
+
+    let finished = h.tick(&running, "2026-09-29T06:00:30Z").await;
+    assert_eq!(finished.len(), 1);
+    let event = &finished[0];
+    assert_eq!(event.status, "completed", "{:?}", event.error);
+    assert_eq!(event.trigger, "schedule");
+    assert_eq!(event.workflow_name, "Morning briefing");
+    assert_eq!(event.documents.len(), 1);
+    assert_eq!(event.documents[0].title, "Daily report");
+
+    let runs = repo::list_runs(&h.state.db, &id, 10).await.unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].trigger, "schedule");
+    let schedule = repo::get_schedule(&h.state.db, &id).await.unwrap().unwrap();
+    assert_eq!(
+        schedule.next_run_at.as_deref(),
+        Some("2026-09-30T06:00:00.000Z")
+    );
+    assert_eq!(
+        schedule.last_run_at.as_deref(),
+        Some(to_iso(utc("2026-09-29T06:00:30Z")).as_str())
+    );
+    // The list shows when it runs next.
+    let summary = repo::list(&h.state.db)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|w| w.id == id)
+        .unwrap();
+    assert_eq!(
+        summary.next_run_at.as_deref(),
+        Some("2026-09-30T06:00:00.000Z")
+    );
+
+    // Ticking again straight away doesn't run it a second time.
+    assert!(h.tick(&running, "2026-09-29T06:01:00Z").await.is_empty());
+}
+
+#[tokio::test]
+async fn missed_mornings_turn_into_one_catch_up_run() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    h.schedule(
+        &id,
+        json!({ "kind": "daily", "time": "08:00" }),
+        true,
+        "2026-09-26T06:00:00.000Z",
+    )
+    .await;
+    let running = std::sync::Arc::new(RunningWorkflows::default());
+
+    // Conduit was closed for three mornings.
+    let finished = h.tick(&running, "2026-09-29T10:00:00Z").await;
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].trigger, "catch_up");
+    assert_eq!(
+        repo::list_runs(&h.state.db, &id, 10).await.unwrap().len(),
+        1
+    );
+    let schedule = repo::get_schedule(&h.state.db, &id).await.unwrap().unwrap();
+    assert_eq!(
+        schedule.next_run_at.as_deref(),
+        Some("2026-09-30T06:00:00.000Z")
+    );
+}
+
+#[tokio::test]
+async fn a_workflow_already_running_skips_its_slot() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    h.schedule(
+        &id,
+        json!({ "kind": "interval", "hours": 2 }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = std::sync::Arc::new(RunningWorkflows::default());
+    let manual = running.try_start(&id).expect("free");
+
+    let finished = h.tick(&running, "2026-09-29T06:00:10Z").await;
+    assert_eq!(finished[0].status, "skipped");
+    assert!(repo::list_runs(&h.state.db, &id, 10)
+        .await
+        .unwrap()
+        .is_empty());
+    // The slot is used up; the next one is two hours on.
+    let schedule = repo::get_schedule(&h.state.db, &id).await.unwrap().unwrap();
+    assert_eq!(
+        schedule.next_run_at.as_deref(),
+        Some("2026-09-29T08:00:10.000Z")
+    );
+
+    drop(manual);
+    assert!(
+        running.try_start(&id).is_some(),
+        "the guard frees the workflow when dropped"
+    );
+}
+
+#[tokio::test]
+async fn a_schedule_that_is_off_does_not_run() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    h.schedule(
+        &id,
+        json!({ "kind": "daily", "time": "08:00" }),
+        false,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = std::sync::Arc::new(RunningWorkflows::default());
+    assert!(h.tick(&running, "2026-09-30T12:00:00Z").await.is_empty());
+    assert!(repo::list_runs(&h.state.db, &id, 10)
+        .await
+        .unwrap()
+        .is_empty());
+    let summary = repo::list(&h.state.db)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|w| w.id == id)
+        .unwrap();
+    assert_eq!(
+        summary.next_run_at, None,
+        "a schedule that is off shows no next run"
+    );
+}
+
+#[tokio::test]
+async fn deleting_a_workflow_deletes_its_schedule() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    h.schedule(
+        &id,
+        json!({ "kind": "daily", "time": "08:00" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    repo::delete(&h.state.db, &id).await.unwrap();
+    assert!(repo::get_schedule(&h.state.db, &id)
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(repo::earliest_next_run(&h.state.db).await.unwrap(), None);
 }

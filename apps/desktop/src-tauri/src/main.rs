@@ -14,6 +14,7 @@ use conduit_desktop::{
     stream_manager::StreamManager,
     updater::*,
     webview_args,
+    workflows::scheduler::{scheduler_loop, RunningWorkflows, SchedulerWake},
 };
 use tauri::{Manager, RunEvent};
 
@@ -47,12 +48,19 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        // Scheduled workflow runs report through OS notifications; only Rust
+        // shows them (`notify_workflow_run`), the webview gets no permission.
+        .plugin(tauri_plugin_notification::init())
         .manage(state)
         .manage(StreamManager::new())
         .manage(ConnectorRuntimeManager::new())
         // HTML artifacts load from their own origin so they don't inherit the
         // app CSP (which blocks every inline script); see `artifact_frames`.
         .manage(ArtifactFrames::default())
+        // Workflows: one run per workflow at a time (scheduler + "Run now"),
+        // and a way to wake the scheduler when a schedule changes.
+        .manage(std::sync::Arc::new(RunningWorkflows::default()))
+        .manage(SchedulerWake::default())
         .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
             ctx.app_handle().state::<ArtifactFrames>().respond(&request)
         })
@@ -246,6 +254,9 @@ fn main() {
             run_workflow,
             list_workflow_runs,
             get_workflow_run,
+            get_workflow_schedule,
+            set_workflow_schedule,
+            notify_workflow_run,
         ])
         .setup(|app| {
             // The main window is built here, not from tauri.conf.json, so its
@@ -268,6 +279,8 @@ fn main() {
             tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
                 .additional_browser_args(&webview_args::main_webview_browser_args(&allowlist))
                 .build()?;
+            // Scheduled workflows run from here, independent of the window.
+            tauri::async_runtime::spawn(scheduler_loop(app.handle().clone()));
             Ok(())
         })
         // t1-8 P2 M1 (D13): record every path a native window drop carries, so

@@ -20,6 +20,7 @@ import {
   getSettings,
   listConversations,
   getConversation,
+  notifyWorkflowRun,
   listConversationFolders,
   listConnectorGrants,
   listProviderDescriptors,
@@ -76,6 +77,7 @@ import { LibraryPage, type LibraryTab } from './pages/LibraryPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
+import { notificationFor, useWorkflowRunEvents } from './workflows/workflowRunEvents';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
@@ -997,6 +999,15 @@ export default function App() {
   /// Switching conversations clears the document panel and reloads the
   /// artifact list, so the open waits until that list has arrived.
   const pendingWorkflowDocRef = useRef<{ conversationId: string; artifactId: string } | null>(null);
+  // Scheduled workflow runs: a notification in the user's language, and a
+  // refresh of the Workflows page if it is open.
+  const [workflowRunsVersion, setWorkflowRunsVersion] = useState(0);
+  useWorkflowRunEvents((event) => {
+    setWorkflowRunsVersion((v) => v + 1);
+    const note = notificationFor(event, t);
+    if (note) void notifyWorkflowRun(note.title, note.body).catch(() => {});
+  });
+
   const openWorkflowDocument = useCallback(
     (conversationId: string, artifactId: string) => {
       setDestination('chats');
@@ -2081,7 +2092,11 @@ export default function App() {
               <MemoryPage settings={settings} onSettingsChange={setSettings} onStatus={setStatusMessage} />
             )}
             {destination === 'workflows' && (
-              <WorkflowsPage onStatus={setStatusMessage} onOpenDocument={openWorkflowDocument} />
+              <WorkflowsPage
+                onStatus={setStatusMessage}
+                onOpenDocument={openWorkflowDocument}
+                refreshKey={workflowRunsVersion}
+              />
             )}
           </div>
         )}

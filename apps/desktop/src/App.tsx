@@ -54,6 +54,7 @@ import {
   type PendingArtifact,
 } from './artifacts/pendingArtifact';
 import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
+import { applyAccent } from './themes/accent';
 import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
@@ -201,6 +202,7 @@ const defaultSettings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 const ASSISTANT_TURN_PREFIX = 'assistant-';
@@ -1519,6 +1521,14 @@ export default function App() {
   useEffect(() => {
     if (brandConfig) applyBrandTheme(brandConfig, effectiveTheme);
   }, [brandConfig, effectiveTheme]);
+
+  // ADR-011 main colour: same reasoning as the brand effect above — inline
+  // on <html>, so it is re-derived for the resolved mode on every flip. It
+  // stands down while a brand is active (applyAccent checks), which is why
+  // brandConfig is a dependency too.
+  useEffect(() => {
+    applyAccent(settings.accent, effectiveTheme);
+  }, [settings.accent, effectiveTheme, brandConfig]);
 
 
   // V7 — the active provider's identity tints the app (spec §5.4).

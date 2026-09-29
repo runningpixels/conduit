@@ -7,6 +7,7 @@ const withWorkspace = {
   workspaceRoot: 'D:\\work\\app',
   workspaceToolsConsentAcknowledged: true,
   memoryEnabled: false,
+  accent: {},
 };
 
 const names = (prompt: string, settings = withWorkspace) =>

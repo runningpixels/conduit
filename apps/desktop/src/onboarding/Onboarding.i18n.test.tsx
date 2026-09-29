@@ -90,6 +90,7 @@ const settings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 } as AppSettings;
 
 const recovery: MigrationRecoveryInfo = {

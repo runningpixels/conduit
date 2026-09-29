@@ -13,6 +13,7 @@ import {
 import { readMermaidScale, writeMermaidScale, type MermaidScalePref } from '../../shell/uiPrefs';
 import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../../i18n';
 import { ModePicker } from './ModePicker';
+import { AccentPicker } from './AccentPicker';
 
 interface AppearanceSectionProps {
   settings: AppSettings;
@@ -82,6 +83,7 @@ export function AppearanceSection({ settings, onUpdate }: AppearanceSectionProps
         </div>
         {/* ADR-011: one design in two modes; the mode is AppSettings.theme. */}
         <ModePicker value={settings.theme} onChange={(theme) => onUpdate({ ...settings, theme })} />
+        <AccentPicker value={settings.accent} onChange={(accent) => onUpdate({ ...settings, accent })} />
         <label className="field">
           <span className="field-label">{t('settings.appearance.fontSize.label')}</span>
           <select

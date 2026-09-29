@@ -1,4 +1,5 @@
 import type {
+  AccentOverride,
   AppSettings,
   BrandConfig,
   ConsentDecision,
@@ -181,6 +182,7 @@ export type StreamEvent =
   | { kind: 'error'; requestId: string; index: number; message: string };
 
 export type {
+  AccentOverride,
   AppSettings,
   BrandConfig,
   Conversation,

@@ -84,6 +84,7 @@ const baseSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 const listedArtifacts: Artifact[] = [

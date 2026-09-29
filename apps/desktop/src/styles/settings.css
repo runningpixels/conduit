@@ -359,6 +359,57 @@
   color: var(--ink);
 }
 
+/* ── Main colour (ADR-011) ─────────────────────────────────────────────── */
+.appearance-form > .accent-picker {
+  display: grid;
+  gap: var(--sp-2);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.accent-picker > small { color: var(--ink-3); font-size: var(--fs-lg); }
+.accent-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  padding-top: var(--sp-1);
+}
+.accent-row-label { font-size: var(--fs-3xl); color: var(--ink-2); }
+.accent-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.accent-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-round);
+  border: 2px solid var(--line-hi);
+  cursor: pointer;
+  transition: transform var(--tap), border-color var(--tap);
+}
+.accent-swatch:hover { transform: scale(1.08); }
+.accent-swatch--selected { border-color: var(--ink); }
+.accent-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 4px;
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.accent-custom--selected { border-color: var(--ink); color: var(--ink); }
+.accent-custom input {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-round);
+  background: none;
+  cursor: pointer;
+}
+.accent-error { grid-column: 2; margin: 0; font-size: var(--fs-lg); color: var(--err); }
+
 /* ── Onboarding (full-screen route) ────────────────────────────────────── */
 /* Fills the second `.app` row rather than the viewport: the caption row takes
    the first, so a 100vh minimum would overflow the shell by exactly its

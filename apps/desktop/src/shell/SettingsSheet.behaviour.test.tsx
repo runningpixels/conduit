@@ -103,6 +103,7 @@ const baseSettings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 function renderSheet(

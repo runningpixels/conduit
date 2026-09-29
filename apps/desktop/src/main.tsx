@@ -5,6 +5,7 @@ import './styles.css';
 import App from './App';
 import { applyRailStyle, applyUiReadability, readRailStyle, readUiDensity, readUiFontSize } from './workspace/readability';
 import { applyCachedBrand } from './brand/applyBrand';
+import { applyCachedAccent } from './themes/accent';
 import { resolveTheme } from './theme';
 import { I18nProvider, bootstrapI18n } from './i18n';
 import { installDevLocaleSwitch, readDevLocalePreference } from './i18n/devLocale';
@@ -21,6 +22,9 @@ applyRailStyle(readRailStyle());
  * default the bare :root block already assumes before any data-theme
  * attribute is set. */
 applyCachedBrand(resolveTheme('system'));
+/* The main colour (ADR-011) lives in AppSettings too; replay its cache the
+ * same way. After the brand, so an active brand makes it stand down. */
+applyCachedAccent(resolveTheme('system'));
 
 installDevLocaleSwitch();
 

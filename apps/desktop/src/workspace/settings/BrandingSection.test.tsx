@@ -90,6 +90,7 @@ const baseSettings: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 const SAVED_CONFIG: BrandConfig = {

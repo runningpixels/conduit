@@ -125,6 +125,7 @@ export type { LanguageSetting } from './generated/language_setting';
 export type { ProviderEndpointConfig } from './generated/provider_endpoint_config';
 export type { AgentGuardrails } from './generated/agent_guardrails';
 export type { AppSettings } from './generated/app_settings';
+export type { AccentOverride } from './generated/accent_override';
 // The shape every command's `Err` arrives in (D9): a catalog key plus an
 // English fallback, so the renderer translates and Rust does not.
 export type { AppError } from './generated/app_error';

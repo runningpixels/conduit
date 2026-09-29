@@ -11,16 +11,16 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AgentGuardrails, AppError, AppSettings, Artifact, ArtifactKind, AskUserField, Attachment,
-    BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime,
-    BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorPromptArgument,
-    ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent, ConnectorVersion,
-    ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary,
-    CredentialRequest, CredentialSummary, GenerationControls, GrantScope, GrantStatus,
-    KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
-    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel, PromptArguments,
-    ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
-    ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
+    AccentOverride, AgentGuardrails, AppError, AppSettings, Artifact, ArtifactKind, AskUserField,
+    Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette,
+    BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
+    ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
+    ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
+    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
+    GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
+    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel,
+    PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
+    ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
     ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
     SupportState, TenantConfig, TenantIdentity, Theme, ThemeCorners, ThemeFace, ThemeIconStroke,
     ThemeLabels, ThemeMotion, ThemeShadows, ToolCallRecord, ToolCallStatus, ToolChoice,
@@ -140,6 +140,7 @@ fn main() {
     UpdatePolicy::export().expect("export UpdatePolicy");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
     AgentGuardrails::export().expect("export AgentGuardrails");
+    AccentOverride::export().expect("export AccentOverride");
     AppError::export()
         .and_then(|_| AppSettings::export())
         .expect("export AppSettings");

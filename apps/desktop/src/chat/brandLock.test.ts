@@ -71,6 +71,7 @@ describe('buildProviderRequest brand appendix on a locked build', () => {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
   };
 
   it('omits the brand appendix even for an unambiguous rebrand request', () => {

@@ -2309,6 +2309,29 @@ pub struct AppSettings {
     /// stops injection immediately; stored items are kept.
     #[serde(default = "default_true")]
     pub memory_enabled: bool,
+    /// ADR-011: the user's main colour (accent), one per mode. Absent means
+    /// the design's own accent (coral in dark, indigo in light).
+    #[serde(default)]
+    pub accent: AccentOverride,
+}
+
+/// ADR-011: a main-colour override per mode, as `#rrggbb`. Each mode is
+/// independent; `None` keeps the design's default for that mode. The renderer
+/// derives the rest of the accent family (text, soft fill, border, the colour
+/// of text on it) and refuses a colour that would not be legible.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/accent_override.ts"
+)]
+pub struct AccentOverride {
+    #[serde(default)]
+    #[ts(optional)]
+    pub dark: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub light: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -2355,6 +2378,7 @@ impl Default for AppSettings {
             context_compact_enabled: true,
             context_compact_threshold_percent: 90,
             memory_enabled: true,
+            accent: AccentOverride::default(),
         }
     }
 }
@@ -2466,6 +2490,10 @@ pub struct SettingsPatch {
     /// t1-5: disable-all for memory injection.
     #[ts(optional)]
     pub memory_enabled: Option<bool>,
+    /// ADR-011: replace the main-colour override (both modes at once).
+    #[ts(optional)]
+    #[serde(default)]
+    pub accent: Option<AccentOverride>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

@@ -76,6 +76,7 @@ export const GALLERY_SETTINGS: AppSettings = {
   contextCompactEnabled: true,
   contextCompactThresholdPercent: 90,
   memoryEnabled: true,
+  accent: {},
 };
 
 export const GALLERY_FOLDERS: ConversationFolder[] = [

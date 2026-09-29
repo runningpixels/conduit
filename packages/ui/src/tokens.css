@@ -92,7 +92,6 @@
   --r-xl: 20px;
   --r-pill: 999px;
   --tap: .15s cubic-bezier(.22,.61,.24,1);
-  --rail-w: 52px;
   --chat-w: 43vw;
 
   /* Structural (spec §5) */
@@ -548,7 +547,6 @@ html[data-palette="brand"] [data-provider] {
   [data-theme="light"][data-provider="custom"]    { --provider-hue-weak: rgba(77, 89, 218, .14); }
 }
 
-[data-rail="expanded"] { --rail-w: 184px; }
 
 /* ── V7 UI prefs (renderer-only; spec §8.9) ────────────────────────────── */
 /* Reduce motion: collapse all durations; the streaming caret renders solid. */

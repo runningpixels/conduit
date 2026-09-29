@@ -2,8 +2,7 @@
 :root {
   --fs-wordmark: 15px;
   /* UI revamp: the activity rail's width, with and without labels. */
-  --rail-w: 56px;
-  --rail-w-labels: 88px;
+  --rail-w: 84px;
   --dur-collapse: .22s;
   --dur-menu: .13s;
   --dur-resize-hover: .15s;
@@ -38,9 +37,7 @@
   overflow: hidden;
 }
 
-.mark { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .mark-glyph { width: 18px; height: 18px; color: var(--hue); transition: color var(--tap); }
-.mark b { font-size: var(--fs-wordmark); font-weight: 600; letter-spacing: -.01em; }
 
 /* ── Title strip (spec §2.1) ───────────────────────────────────────────── */
 /* 46px inside the centre column: the chat's name and the two toggles.
@@ -273,6 +270,16 @@ html[data-resizing] * { cursor: col-resize !important; user-select: none; }
   align-items: center;
   gap: 10px;
   padding: 14px var(--sp-3) 10px;
+}
+/* The Chats destination's heading (ADR-011 shell): the product mark moved to
+   the rail, so this column names what it lists. */
+.sb-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--fs-10xl);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--ink);
 }
 .sb-collapse {
   margin-left: auto;
@@ -757,7 +764,7 @@ html[data-sidebar-overlay="open"] .body > .sidebar {
   position: fixed;
   top: var(--titlebar-h);
   bottom: 0;
-  left: var(--rail-current-w, var(--rail-w));
+  left: var(--rail-w);
   width: min(var(--sidebar-open-w), calc(100vw - 48px));
   z-index: 70;
   box-shadow: var(--lift);
@@ -951,84 +958,142 @@ html[data-panel-overlay="open"] .body > .doc-panel {
 .onboarding-idea:hover { border-color: var(--hue); }
 .onboarding-idea span { font-size: var(--fs-xl); color: var(--ink-2); }
 
-/* ── Activity rail (UI revamp, docs/plans/ui-revamp.md) ──────────────────── */
+/* ── Navigation rail (ADR-011 shell) ───────────────────────────────────────
+   Always labeled: the product mark and name on top, then each destination as
+   an icon over its label, then Settings and the light/dark toggle. */
 .shell {
-  --rail-current-w: var(--rail-w);
   display: grid;
-  grid-template-columns: var(--rail-current-w) minmax(0, 1fr);
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
   /* The height chain (see the header comment): one bounded row. */
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
-html[data-rail="labels"] .shell { --rail-current-w: var(--rail-w-labels); }
 .rail {
   min-height: 0;
-  background: var(--bg-side);
+  background: var(--bg-rail);
   border-right: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  padding-bottom: var(--sp-2);
+}
+.rail-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: var(--sp-3) 4px var(--sp-3);
+  margin-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.rail-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r);
+  background: var(--card-hi);
+  color: var(--accent);
+}
+.rail-brand-mark .mark-glyph { width: 24px; height: 24px; }
+.rail-brand-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-3xl);
+  font-weight: 700;
+  color: var(--ink);
 }
 .rail-group {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: var(--sp-2) 0;
+  width: 100%;
 }
 .rail-spacer { flex: 1; }
 .rail-btn {
-  position: relative;
-  width: 40px;
-  height: 40px;
+  width: 76px;
+  min-height: 52px;
+  padding: 4px 2px;
   display: grid;
-  place-items: center;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
   border-radius: var(--r-sm);
   color: var(--ink-3);
+  transition: color var(--tap);
+}
+/* The icon sits in a pill that fills when active, the way a native nav rail
+ * marks the current place; the label stays plain beneath it. */
+.rail-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 30px;
+  border-radius: var(--r-sm);
   transition: background var(--tap), color var(--tap);
 }
 .rail-btn svg { width: 19px; height: 19px; }
-.rail-btn:hover { background: var(--card-hi); color: var(--ink); }
-.rail-btn[aria-current="page"] { color: var(--hue-text); background: color-mix(in srgb, var(--hue) 14%, transparent); }
-.rail-btn:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
-.rail-label { display: none; }
-html[data-rail="labels"] .rail-btn {
-  width: 80px;
-  height: auto;
-  min-height: 48px;
-  padding: 5px 2px;
-  grid-template-rows: auto auto;
-  align-content: center;
-  gap: 3px;
+.rail-btn:hover { color: var(--ink); }
+.rail-btn:hover .rail-icon { background: var(--card-hi); }
+.rail-btn[aria-current="page"] { color: var(--ink); }
+.rail-btn[aria-current="page"] .rail-icon {
+  color: var(--accent);
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent-line);
+  outline-offset: -1px;
 }
+.rail-btn:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
 /* A long label (German "Gespeicherte Fakten") takes a second line rather
  * than an ellipsis; the button grows to hold it. */
-html[data-rail="labels"] .rail-label {
+.rail-label {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  max-width: 76px;
+  max-width: 74px;
   overflow: hidden;
   text-align: center;
   overflow-wrap: anywhere;
-  font-size: var(--fs-sm);
-  line-height: 1.1;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  line-height: 1.15;
 }
+.rail-btn[aria-current="page"] .rail-label { font-weight: 700; }
 .rail-dot {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 3px;
+  right: 11px;
   width: 7px;
   height: 7px;
   border-radius: var(--r-pill);
-  background: var(--hue);
+  background: var(--signal);
   /* A ring in the rail's own colour keeps the dot off the icon's strokes. */
-  border: 2px solid var(--bg-side);
+  border: 2px solid var(--bg-rail);
   box-sizing: content-box;
 }
-html[data-density="compact"] .rail-btn { width: 36px; height: 36px; }
-html[data-density="compact"][data-rail="labels"] .rail-btn { width: 80px; height: auto; min-height: 44px; }
+.rail-theme {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-top: var(--sp-2);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.rail-theme svg { width: 17px; height: 17px; }
+.rail-theme:hover { background: var(--card-hi); color: var(--ink); }
+.rail-theme:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+html[data-density="compact"] .rail-btn { min-height: 46px; }
 
 /* A destination page covers the body; the chat underneath stays mounted. */
 /* The chat's sashes sit above everything (z-index 25) so a drag never loses

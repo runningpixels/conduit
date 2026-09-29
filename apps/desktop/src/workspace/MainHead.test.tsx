@@ -5,8 +5,6 @@ import { MainHead } from './MainHead';
 function renderHead(props: Partial<Parameters<typeof MainHead>[0]> = {}) {
   return render(
     <MainHead
-      effectiveTheme="dark"
-      onToggleTheme={vi.fn()}
       panelOpen={false}
       onTogglePanel={vi.fn()}
       onToggleSidebar={vi.fn()}
@@ -83,12 +81,6 @@ describe('title strip', () => {
     expect(container.querySelector('.main-head')).not.toHaveAttribute('data-tauri-drag-region');
   });
 
-  it('toggles the theme', async () => {
-    const onToggleTheme = vi.fn();
-    renderHead({ onToggleTheme });
-    screen.getByRole('button', { name: 'Toggle light and dark mode' }).click();
-    expect(onToggleTheme).toHaveBeenCalledOnce();
-  });
 });
 
 /**
@@ -122,8 +114,6 @@ describe('collapsed-sidebar actions', () => {
     expect(toggle).toHaveAttribute('aria-controls', 'sidebar');
     rerender(
       <MainHead
-        effectiveTheme="dark"
-        onToggleTheme={vi.fn()}
         panelOpen={false}
         onTogglePanel={vi.fn()}
         onToggleSidebar={vi.fn()}

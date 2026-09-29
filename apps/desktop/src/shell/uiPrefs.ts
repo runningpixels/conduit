@@ -81,6 +81,8 @@ const RETIRED_KEYS = [
   'conduit:v10-reading-font',
   'conduit:v10-user-theme',
   'conduit:v10-user-theme-cache',
+  // The rail is always labeled now (ADR-011 shell).
+  'conduit:v11-rail',
 ] as const;
 
 const DARK_ONLY_PALETTES = ['amber', 'phosphor'];
@@ -116,7 +118,7 @@ export function migrateRetiredThemePrefs(): 'dark' | 'light' | null {
   }
   try {
     const html = document.documentElement;
-    for (const attr of ['data-look', 'data-provider-colour', 'data-reading-font', 'data-user-palette', 'data-user-labels']) {
+    for (const attr of ['data-look', 'data-provider-colour', 'data-reading-font', 'data-user-palette', 'data-user-labels', 'data-rail']) {
       html.removeAttribute(attr);
     }
     if (!isBrandActive()) html.removeAttribute('data-palette');

@@ -89,7 +89,7 @@ import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
 import { notePicked, observeReady, ROW_GIVE_UP, setRowHidden, useIdeaState } from './ideas/ideaState';
-import { newIdeas, starterIdeas } from './ideas/selectIdeas';
+import { starterIdeas } from './ideas/selectIdeas';
 import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
 import { applyUiPrefs, migrateRetiredThemePrefs, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
@@ -995,6 +995,12 @@ export default function App() {
   // Scheduled workflow runs: a notification in the user's language, and a
   // refresh of the Workflows page if it is open.
   const [workflowRunsVersion, setWorkflowRunsVersion] = useState(0);
+  // A run waiting on the user (a review or an "Ask me" step) puts a dot on
+  // the rail's Workflows button until the page is opened.
+  const [workflowsNeedYou, setWorkflowsNeedYou] = useState(false);
+  useEffect(() => {
+    if (destination === 'workflows') setWorkflowsNeedYou(false);
+  }, [destination]);
   useWorkflowRunEvents((event) => {
     setWorkflowRunsVersion((v) => v + 1);
     const note = notificationFor(event, t);
@@ -1003,12 +1009,14 @@ export default function App() {
   // A scheduled run paused to ask: say so, and show it on the Workflows page.
   useWorkflowReviewEvents((review) => {
     setWorkflowRunsVersion((v) => v + 1);
+    setWorkflowsNeedYou(true);
     const note = notificationForReview(review, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   // A run stopped at an "Ask me" step: show it, and say so if nobody is looking.
   useWorkflowQuestionEvents((question) => {
     setWorkflowRunsVersion((v) => v + 1);
+    setWorkflowsNeedYou(true);
     if (document.hasFocus()) return;
     const note = notificationForQuestion(question, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
@@ -1919,7 +1927,10 @@ export default function App() {
           if (d === 'settings') openSettings();
           else setDestination(d);
         }}
-        dots={{ ideas: ideaState.spotlight.length > 0 || newIdeas(ideaState).length > 0 }}
+        dots={{ workflows: workflowsNeedYou && destination !== 'workflows' }}
+        effectiveTheme={effectiveTheme}
+        onToggleTheme={handleToggleTheme}
+        logoSrc={brandLogo ?? undefined}
       />
       {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}
       <div className="body" data-page={destination !== 'chats' ? destination : undefined}>
@@ -1954,7 +1965,6 @@ export default function App() {
           onCreateFolder={handleCreateFolder}
           onRenameFolder={(folderId, name) => void handleRenameFolder(folderId, name)}
           onDeleteFolder={(folderId) => void handleDeleteFolder(folderId)}
-          logoSrc={brandLogo ?? undefined}
           runStatus={runStatus}
         />
 
@@ -1982,8 +1992,6 @@ export default function App() {
         <main className="center">
           <MainHead
             title={activeConversationSummary?.displayTitle}
-            effectiveTheme={effectiveTheme}
-            onToggleTheme={handleToggleTheme}
             panelOpen={panelVisible}
             onTogglePanel={toggleDocPanelView}
             hiddenArtifactCount={hiddenArtifactCount}

@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import '@conduit/ui/tokens.css';
 import './styles.css';
 import App from './App';
-import { applyRailStyle, applyUiReadability, readRailStyle, readUiDensity, readUiFontSize } from './workspace/readability';
+import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
 import { applyCachedBrand } from './brand/applyBrand';
 import { applyCachedAccent } from './themes/accent';
 import { resolveTheme } from './theme';
@@ -11,7 +11,6 @@ import { I18nProvider, bootstrapI18n } from './i18n';
 import { installDevLocaleSwitch, readDevLocalePreference } from './i18n/devLocale';
 
 applyUiReadability(readUiFontSize(), readUiDensity());
-applyRailStyle(readRailStyle());
 /* Before first paint, not in App's boot effect: that effect runs after several
  * awaited IPC calls, and a white-label brand moves every surface. `get_brand_config`
  * is IPC too, so replay the last-known-good config from localStorage synchronously here, and

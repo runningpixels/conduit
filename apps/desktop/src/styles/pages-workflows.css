@@ -189,3 +189,49 @@
 .wf-question-form { display: grid; gap: var(--sp-2); justify-items: start; }
 .wf-question-form .wf-field { justify-self: stretch; }
 .wf-review-what { margin: 0; color: var(--ink); font-size: var(--fs-2xl); overflow-wrap: anywhere; }
+
+/* ── ADR-011: a workflow's steps on the activity line ─────────────────────
+   Numbered nodes on a line that runs from the accent into the signal colour,
+   the same line an assistant reply is drawn on. Nested steps (a "for each")
+   get their own count and their own line. */
+.wf-name { font-size: var(--fs-10xl); font-weight: 700; letter-spacing: -.02em; }
+.wf-steps {
+  list-style: none;
+  padding-left: 0;
+  gap: var(--sp-3);
+  counter-reset: wf-step;
+}
+.wf-steps > li {
+  position: relative;
+  padding-left: 36px;
+  min-height: 24px;
+  counter-increment: wf-step;
+}
+.wf-steps > li::before {
+  content: counter(wf-step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-round);
+  font: 600 var(--fs-md) / 1 var(--font-mono);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent-line);
+  outline-offset: -1px;
+}
+.wf-steps > li::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 27px;
+  bottom: calc(-1 * var(--sp-3) + 3px);
+  width: 2px;
+  background: linear-gradient(to bottom, var(--accent), var(--signal));
+  opacity: .55;
+}
+.wf-steps > li:last-child::after { display: none; }
+.wf-steps .wf-steps { margin-top: var(--sp-3); }

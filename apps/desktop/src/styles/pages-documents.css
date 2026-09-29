@@ -96,3 +96,15 @@
 
 html[data-density="compact"] .docs-row { padding: 4px 0; }
 html[data-density="compact"] .docs-detail-meta { margin-bottom: var(--sp-4); }
+
+/* ── ADR-011: the document list sits on a card ───────────────────────────── */
+.docs-rows {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--soft-lift);
+  overflow: hidden;
+}
+.docs-row { padding-left: 16px; padding-right: 16px; }
+.docs-row:last-child { border-bottom: 0; }
+.docs-detail-title { font-size: var(--fs-10xl); font-weight: 700; letter-spacing: -.02em; }

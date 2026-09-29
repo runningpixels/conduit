@@ -62,6 +62,9 @@ import type {
   WorkflowSchedule,
   ScheduleSpec,
   WorkflowSummary,
+  WorkflowPermissions,
+  WorkflowReview,
+  WorkflowReviewDecision,
   ConversationFolder,
   KnowledgeCollection,
   KnowledgeContext,
@@ -1369,6 +1372,26 @@ export async function setTrayLabels(labels: TrayLabels): Promise<void> {
 
 export async function getRunningWorkflowCount(): Promise<number> {
   return invokeCommand<number>('get_running_workflow_count');
+}
+
+/** What a workflow would be allowed to do on its own, and what isn't approved yet. */
+export async function getWorkflowPermissions(id: string): Promise<WorkflowPermissions> {
+  return invokeCommand<WorkflowPermissions>('get_workflow_permissions', { id });
+}
+
+/** Approve everything the workflow needs now to run on its own. */
+export async function approveWorkflowPermissions(id: string): Promise<WorkflowPermissions> {
+  return invokeCommand<WorkflowPermissions>('approve_workflow_permissions', { id });
+}
+
+/** Scheduled runs waiting for an answer, oldest first. */
+export async function listWorkflowReviews(): Promise<WorkflowReview[]> {
+  return invokeCommand<WorkflowReview[]>('list_workflow_reviews');
+}
+
+/** Answer a paused run; resolves `false` if it was no longer waiting. */
+export async function answerWorkflowReview(runId: string, decision: WorkflowReviewDecision): Promise<boolean> {
+  return invokeCommand<boolean>('answer_workflow_review', { runId, decision });
 }
 
 /** Ask a workflow's run in progress to stop; resolves `false` if it wasn't running. */

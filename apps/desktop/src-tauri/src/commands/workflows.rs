@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
 
@@ -16,7 +17,8 @@ use crate::state::AppState;
 use crate::stream_manager::StreamManager;
 use crate::workflows::{
     definition,
-    runner::Runner,
+    permissions::{self, Decision, PendingReview, PermissionView, Reviews},
+    runner::{search_backend, RunBudget, Runner},
     schedule::ScheduleSpec,
     scheduler::{next_run, RunningWorkflows, SchedulerWake},
 };
@@ -148,6 +150,9 @@ pub async fn run_workflow(
         streams: stream_manager.inner(),
         fetch_policy: AddressPolicy::APP,
         stop: guard.stop_token(),
+        // The user started it and is watching: not gated.
+        unattended: None,
+        budget: RunBudget::default(),
     };
     runner.run(&id, &inputs.unwrap_or_default(), "manual").await
 }
@@ -274,4 +279,93 @@ mod tests {
         assert_eq!(problems.len(), 2, "{problems:?}");
         assert!(validate_workflow(json!({ "steps": "nope" }))[0].contains("can't be read"));
     }
+}
+
+/// What a workflow needs to run on its own, and what of that isn't approved.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowPermissions {
+    /// Everything it will be allowed to do, with today's settings.
+    pub required: Vec<PermissionView>,
+    /// What of `required` the user hasn't approved (empty when all is).
+    pub missing: Vec<PermissionView>,
+    /// When the user last approved; `None` if never.
+    pub approved_at: Option<String>,
+}
+
+async fn workflow_permissions(state: &AppState, id: &str) -> Result<WorkflowPermissions, String> {
+    let workflow = repo::get(&state.db, &state.encryption, id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "That workflow no longer exists.".to_string())?;
+    let def: definition::WorkflowDefinition = serde_json::from_value(workflow.definition)
+        .map_err(|e| format!("The workflow definition can't be read: {e}"))?;
+    let settings = state.settings()?;
+    let backend = search_backend(&settings);
+    let required = permissions::required(
+        &def,
+        &permissions::Context {
+            search_backend: &backend,
+            provider: &settings.active_provider,
+        },
+    );
+    let stored = repo::get_permissions(&state.db, &state.encryption, id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let approved = stored
+        .as_ref()
+        .map(|(list, _)| list.iter().cloned().collect())
+        .unwrap_or_default();
+    let missing = permissions::missing(&required, &approved);
+    Ok(WorkflowPermissions {
+        required: required.into_iter().map(permissions::view).collect(),
+        missing: missing.into_iter().map(permissions::view).collect(),
+        approved_at: stored.map(|(_, at)| at),
+    })
+}
+
+/// What the workflow would be allowed to do on its own, for the approval
+/// shown when a schedule is turned on.
+#[tauri::command]
+pub async fn get_workflow_permissions(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<WorkflowPermissions, String> {
+    workflow_permissions(&state, &id).await
+}
+
+/// Approve everything the workflow needs now; what it no longer needs is
+/// dropped from the approval.
+#[tauri::command]
+pub async fn approve_workflow_permissions(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<WorkflowPermissions, String> {
+    let current = workflow_permissions(&state, &id).await?;
+    let approved: Vec<_> = current
+        .required
+        .into_iter()
+        .map(|view| view.permission)
+        .collect();
+    repo::set_permissions(&state.db, &state.encryption, &id, &approved)
+        .await
+        .map_err(|e| e.to_string())?;
+    workflow_permissions(&state, &id).await
+}
+
+/// Scheduled runs waiting for the user, oldest first.
+#[tauri::command]
+pub fn list_workflow_reviews(reviews: State<'_, Reviews>) -> Vec<PendingReview> {
+    reviews.list()
+}
+
+/// Answer a paused run: `allowOnce`, `alwaysAllow` or `deny`. `false` when it
+/// is no longer waiting (answered, stopped, or expired).
+#[tauri::command]
+pub fn answer_workflow_review(
+    reviews: State<'_, Reviews>,
+    run_id: String,
+    decision: Decision,
+) -> bool {
+    reviews.answer(&run_id, decision)
 }

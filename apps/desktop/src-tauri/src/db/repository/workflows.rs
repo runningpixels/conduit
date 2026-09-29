@@ -8,6 +8,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::workflows::permissions::Permission;
 use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -300,8 +301,9 @@ pub async fn finish_run(
     Ok(())
 }
 
-/// Mark runs (and their steps) still `running` as failed: at launch nothing is
-/// running, so they were cut off when Conduit closed. Returns how many runs.
+/// Mark runs (and their steps) still `running` or `paused` as failed: at
+/// launch nothing is running, so they were cut off when Conduit closed.
+/// Returns how many runs.
 pub async fn fail_interrupted_runs(pool: &SqlitePool) -> Result<u64, DbError> {
     let now = now_iso8601();
     let error = interrupted();
@@ -315,7 +317,7 @@ pub async fn fail_interrupted_runs(pool: &SqlitePool) -> Result<u64, DbError> {
     .await?;
     let runs = sqlx::query(
         "UPDATE workflow_runs SET status = 'failed', error = ?, finished_at = ? \
-         WHERE status = 'running'",
+         WHERE status IN ('running', 'paused')",
     )
     .bind(&error)
     .bind(&now)
@@ -594,6 +596,61 @@ pub async fn mark_schedule_ran(
     .bind(next_run_at)
     .bind(now_iso8601())
     .bind(workflow_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Set a run's status while it is in progress: `paused` while it waits for
+/// the user, `running` again after.
+pub async fn set_run_status(pool: &SqlitePool, run_id: &str, status: &str) -> Result<(), DbError> {
+    sqlx::query("UPDATE workflow_runs SET status = ? WHERE id = ?")
+        .bind(status)
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// What the user approved a workflow to do unattended, and when; `None`
+/// before the first approval.
+pub async fn get_permissions(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    workflow_id: &str,
+) -> Result<Option<(Vec<Permission>, String)>, DbError> {
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT approved, approved_at FROM workflow_permissions WHERE workflow_id = ?",
+    )
+    .bind(workflow_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|(approved, at)| {
+        let list = serde_json::from_value(decrypt_json(enc, &approved)?).map_err(|e| {
+            DbError::Query(format!("stored workflow permissions can't be read: {e}"))
+        })?;
+        Ok((list, at))
+    })
+    .transpose()
+}
+
+/// Replace what a workflow is approved to do unattended.
+pub async fn set_permissions(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    workflow_id: &str,
+    approved: &[Permission],
+) -> Result<(), DbError> {
+    let json = serde_json::to_value(approved)
+        .map_err(|e| DbError::Query(format!("workflow permissions can't be stored: {e}")))?;
+    sqlx::query(
+        "INSERT INTO workflow_permissions (workflow_id, approved, approved_at) VALUES (?, ?, ?) \
+         ON CONFLICT(workflow_id) DO UPDATE SET approved = excluded.approved, \
+         approved_at = excluded.approved_at",
+    )
+    .bind(workflow_id)
+    .bind(encrypt_json(enc, &json)?)
+    .bind(now_iso8601())
     .execute(pool)
     .await?;
     Ok(())

@@ -16,8 +16,10 @@ use conduit_desktop::{
     paths::AppPaths,
     state::AppState,
     stream_manager::StreamManager,
-    workflows::runner::Runner,
-    workflows::scheduler::{run_due, to_iso, RunningWorkflows},
+    workflows::definition::WorkflowDefinition,
+    workflows::permissions::{self, Decision, Permission, Reviews},
+    workflows::runner::{RunBudget, Runner, Unattended},
+    workflows::scheduler::{claim_due, run_claimed, run_due, to_iso, RunningWorkflows},
 };
 use futures::stream::Stream;
 use provider_core::schema::{AppSettings, ProviderError, ProviderEvent, ProviderRequest};
@@ -37,6 +39,8 @@ struct EchoModel {
     reply_json: Option<&'static str>,
     /// Start replying, then say nothing more until the reply is cancelled.
     hang: bool,
+    /// Report this many tokens used (input + output) with each reply.
+    usage: Option<u64>,
 }
 
 impl EchoModel {
@@ -130,6 +134,14 @@ impl ProviderAdapter for EchoModel {
                 block_id: "b0".into(),
                 index: 3,
             },
+            ProviderEvent::Usage {
+                request_id: r.clone(),
+                usage: serde_json::from_value(json!({
+                    "inputTokens": self.usage.unwrap_or(0) / 2,
+                    "outputTokens": self.usage.unwrap_or(0) - self.usage.unwrap_or(0) / 2,
+                }))
+                .unwrap(),
+            },
             ProviderEvent::MessageComplete {
                 request_id: r,
                 index: 4,
@@ -214,6 +226,7 @@ struct Harness {
     state: AppState,
     streams: StreamManager,
     model: EchoModel,
+    reviews: Reviews,
     _dir: tempfile::TempDir,
 }
 
@@ -236,6 +249,7 @@ impl Harness {
             state,
             streams,
             model,
+            reviews: Reviews::default(),
             _dir: dir,
         }
     }
@@ -259,6 +273,8 @@ impl Harness {
             streams: &self.streams,
             fetch_policy: AddressPolicy { public_only: false },
             stop: Default::default(),
+            unattended: None,
+            budget: RunBudget::default(),
         };
         runner
             .run(id, &HashMap::new(), "manual")
@@ -458,6 +474,8 @@ async fn an_invalid_definition_does_not_start_a_run() {
         streams: &h.streams,
         fetch_policy: AddressPolicy { public_only: false },
         stop: Default::default(),
+        unattended: None,
+        budget: RunBudget::default(),
     };
     let err = runner
         .run(&id, &HashMap::new(), "manual")
@@ -487,10 +505,31 @@ fn saving_workflow() -> Value {
 }
 
 impl Harness {
+    /// Schedule `id`, approving everything it needs (as turning a schedule on
+    /// in the app does).
     async fn schedule(&self, id: &str, spec: Value, enabled: bool, next_run_at: &str) {
         repo::put_schedule(&self.state.db, id, &spec, enabled, Some(next_run_at))
             .await
             .unwrap();
+        let required = self.required(id).await;
+        repo::set_permissions(&self.state.db, &self.state.encryption, id, &required)
+            .await
+            .unwrap();
+    }
+
+    async fn required(&self, id: &str) -> Vec<Permission> {
+        let workflow = repo::get(&self.state.db, &self.state.encryption, id)
+            .await
+            .unwrap()
+            .unwrap();
+        let def: WorkflowDefinition = serde_json::from_value(workflow.definition).unwrap();
+        permissions::required(
+            &def,
+            &permissions::Context {
+                search_backend: "duckduckgo",
+                provider: "ollama",
+            },
+        )
     }
 
     async fn tick(
@@ -503,6 +542,7 @@ impl Harness {
             &self.state,
             &self.streams,
             running,
+            &self.reviews,
             AddressPolicy { public_only: false },
             utc(now),
             &tz,
@@ -686,6 +726,8 @@ impl Harness {
             streams: &self.streams,
             fetch_policy: AddressPolicy { public_only: false },
             stop: stop.clone(),
+            unattended: None,
+            budget: RunBudget::default(),
         };
         let no_inputs = HashMap::new();
         let stopper = async {
@@ -826,4 +868,382 @@ fn running_workflows_count_stop_and_report_changes() {
     drop(b);
     assert_eq!(running.count(), 0);
     assert_eq!(*seen.lock().unwrap(), vec![1, 2, 1, 0]);
+}
+
+// ── Unattended runs: approvals, questions, budgets ──────────────────────────
+
+impl Harness {
+    /// Run `id` as nobody-is-watching, approved for `approved`.
+    fn unattended_runner(&self, approved: Vec<Permission>, stop: CancellationToken) -> Runner<'_> {
+        let mut unattended = Unattended::new(&self.reviews, approved);
+        unattended.wait = std::time::Duration::from_secs(5);
+        Runner {
+            state: &self.state,
+            streams: &self.streams,
+            fetch_policy: AddressPolicy { public_only: false },
+            stop,
+            unattended: Some(unattended),
+            budget: RunBudget::default(),
+        }
+    }
+
+    /// Wait until a run is asking; returns its review.
+    async fn next_review(&self) -> permissions::PendingReview {
+        for _ in 0..200 {
+            if let Some(review) = self.reviews.list().into_iter().next() {
+                return review;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("no run asked");
+    }
+}
+
+fn fetching_workflow(base: &str) -> Value {
+    json!({ "steps": [
+        { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/a")] },
+        { "id": "save", "type": "save_artifact", "title": "Page", "content": "{{steps.fetch.text}}" },
+    ]})
+}
+
+#[tokio::test]
+async fn an_approved_unattended_run_asks_nothing() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve(vec![("/a", PAGE_A)]).await;
+    let id = h.save(fetching_workflow(&base)).await;
+    let approved = h.required(&id).await;
+    assert_eq!(
+        approved,
+        vec![
+            Permission::Host {
+                host: "127.0.0.1".into()
+            },
+            Permission::SaveDocuments
+        ]
+    );
+    let detail = h
+        .unattended_runner(approved, CancellationToken::new())
+        .run(&id, &HashMap::new(), "schedule")
+        .await
+        .unwrap();
+    assert_eq!(detail.run.status, "completed");
+    assert!(h.reviews.list().is_empty());
+}
+
+#[tokio::test]
+async fn an_unapproved_step_pauses_the_run_and_allow_once_carries_on() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve(vec![("/a", PAGE_A)]).await;
+    let id = h.save(fetching_workflow(&base)).await;
+    let runner = h.unattended_runner(vec![Permission::SaveDocuments], CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.step_id, "fetch");
+        assert_eq!(review.workflow_name, "Morning briefing");
+        assert_eq!(
+            review.permission.permission,
+            Permission::Host {
+                host: "127.0.0.1".into()
+            }
+        );
+        assert_eq!(review.url.as_deref(), Some(format!("{base}/a").as_str()));
+        let runs = repo::list_runs(&h.state.db, &id, 1).await.unwrap();
+        assert_eq!(runs[0].status, "paused", "the run shows it is waiting");
+        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+    assert!(
+        repo::get_permissions(&h.state.db, &h.state.encryption, &id)
+            .await
+            .unwrap()
+            .is_none(),
+        "allowing once approves nothing for next time"
+    );
+}
+
+#[tokio::test]
+async fn always_allow_saves_the_permission_for_next_time() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve(vec![("/a", PAGE_A)]).await;
+    let id = h.save(fetching_workflow(&base)).await;
+    let runner = h.unattended_runner(vec![], CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        for _ in 0..2 {
+            let review = h.next_review().await;
+            assert!(h.reviews.answer(&review.run_id, Decision::AlwaysAllow));
+            // Let the run take the answer before looking for the next question.
+            while !h.reviews.list().is_empty() {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+    let (saved, _) = repo::get_permissions(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        saved,
+        vec![
+            Permission::Host {
+                host: "127.0.0.1".into()
+            },
+            Permission::SaveDocuments
+        ]
+    );
+}
+
+#[tokio::test]
+async fn deny_fails_the_step_and_nobody_answering_counts_as_deny() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve(vec![("/a", PAGE_A)]).await;
+    let id = h.save(fetching_workflow(&base)).await;
+
+    let runner = h.unattended_runner(vec![Permission::SaveDocuments], CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        h.reviews.answer(&review.run_id, Decision::Deny);
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.steps[0].error.as_deref(),
+        Some("You didn't allow this.")
+    );
+
+    let mut runner = h.unattended_runner(vec![Permission::SaveDocuments], CancellationToken::new());
+    if let Some(u) = runner.unattended.as_mut() {
+        u.wait = std::time::Duration::from_millis(100);
+    }
+    let detail = runner.run(&id, &HashMap::new(), "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.steps[0].error.as_deref(),
+        Some("Nobody answered within a day, so this didn't go ahead.")
+    );
+    assert!(h.reviews.list().is_empty(), "an expired question is gone");
+}
+
+#[tokio::test]
+async fn stopping_a_run_that_waits_for_an_answer_ends_it_as_stopped() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve(vec![("/a", PAGE_A)]).await;
+    let id = h.save(fetching_workflow(&base)).await;
+    let stop = CancellationToken::new();
+    let runner = h.unattended_runner(vec![], stop.clone());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let stopper = async {
+        h.next_review().await;
+        stop.cancel();
+    };
+    let (detail, ()) = tokio::join!(run, stopper);
+    assert_eq!(detail.unwrap().run.status, "stopped");
+    assert!(h.reviews.list().is_empty());
+}
+
+#[tokio::test]
+async fn a_new_model_provider_counts_as_outside_the_approval() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "sum", "type": "summarize", "prompt": "Sum up", "input": "text" },
+        ]}))
+        .await;
+    // Approved for a cloud provider; the settings now use Ollama.
+    let runner = h.unattended_runner(
+        vec![Permission::Model {
+            provider: "openai".into(),
+        }],
+        CancellationToken::new(),
+    );
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(
+            review.permission.permission,
+            Permission::Model {
+                provider: "ollama".into()
+            }
+        );
+        assert_eq!(review.permission.local, Some(true));
+        h.reviews.answer(&review.run_id, Decision::AllowOnce);
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+}
+
+#[tokio::test]
+async fn going_over_the_time_budget_fails_the_run_even_when_the_step_may_fail() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve_hanging().await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/slow")], "onError": "skip" },
+            { "id": "after", "type": "template", "template": "never" },
+        ]}))
+        .await;
+    let runner = Runner {
+        state: &h.state,
+        streams: &h.streams,
+        fetch_policy: AddressPolicy { public_only: false },
+        stop: CancellationToken::new(),
+        unattended: None,
+        budget: RunBudget {
+            wall_clock: std::time::Duration::from_millis(300),
+            ..RunBudget::default()
+        },
+    };
+    let detail = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        runner.run(&id, &HashMap::new(), "manual"),
+    )
+    .await
+    .expect("the budget ends the run")
+    .unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.run.error.as_deref(),
+        Some("The run went over its time limit of 1 second.")
+    );
+    assert_eq!(
+        detail.steps.len(),
+        1,
+        "nothing runs after the budget is spent"
+    );
+}
+
+#[tokio::test]
+async fn going_over_the_token_budget_fails_the_run() {
+    let model = EchoModel {
+        usage: Some(600),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "one", "type": "summarize", "prompt": "Sum up", "input": "a" },
+            { "id": "two", "type": "summarize", "prompt": "Sum up", "input": "b" },
+            { "id": "three", "type": "summarize", "prompt": "Sum up", "input": "c" },
+        ]}))
+        .await;
+    let runner = Runner {
+        state: &h.state,
+        streams: &h.streams,
+        fetch_policy: AddressPolicy { public_only: false },
+        stop: CancellationToken::new(),
+        unattended: None,
+        budget: RunBudget {
+            max_tokens: 1000,
+            ..RunBudget::default()
+        },
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.run.error.as_deref(),
+        Some("The run went over its limit of 1000 model tokens.")
+    );
+    let statuses: Vec<&str> = detail.steps.iter().map(|s| s.status.as_str()).collect();
+    assert_eq!(
+        statuses,
+        vec!["completed", "failed"],
+        "the second reply crosses the limit"
+    );
+}
+
+#[tokio::test]
+async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
+    let h = Harness::new(EchoModel::default()).await;
+    let base = serve(vec![("/a", PAGE_A)]).await;
+    let asks = h.save(fetching_workflow(&base)).await;
+    let approved = h.save(saving_workflow()).await;
+    let spec = json!({ "kind": "daily", "time": "08:00" });
+    h.schedule(&asks, spec.clone(), true, "2026-09-29T06:00:00.000Z")
+        .await;
+    h.schedule(&approved, spec, true, "2026-09-29T06:00:00.000Z")
+        .await;
+    // `asks` was approved for another site before an edit pointed it here.
+    repo::set_permissions(
+        &h.state.db,
+        &h.state.encryption,
+        &asks,
+        &[
+            Permission::Host {
+                host: "example.com".into(),
+            },
+            Permission::SaveDocuments,
+        ],
+    )
+    .await
+    .unwrap();
+
+    let tz = FixedOffset::east_opt(2 * 3600).unwrap();
+    let claimed = claim_due(&h.state, utc("2026-09-29T06:00:10Z"), &tz).await;
+    assert_eq!(claimed.len(), 2);
+    assert!(
+        claim_due(&h.state, utc("2026-09-29T06:00:20Z"), &tz)
+            .await
+            .is_empty(),
+        "claimed slots are used up before anything runs"
+    );
+    let running = std::sync::Arc::new(RunningWorkflows::default());
+    let order = Mutex::new(Vec::new());
+    let record = |event: &conduit_desktop::workflows::scheduler::RunFinished| {
+        order.lock().unwrap().push(event.workflow_id.clone());
+    };
+    let runs = run_claimed(
+        &h.state,
+        &h.streams,
+        &running,
+        &h.reviews,
+        AddressPolicy { public_only: false },
+        claimed,
+        &record,
+    );
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.workflow_id, asks);
+        // The other workflow finished while this one waited.
+        for _ in 0..200 {
+            if !order.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(*order.lock().unwrap(), vec![approved.clone()]);
+        h.reviews.answer(&review.run_id, Decision::AllowOnce);
+    };
+    let (finished, ()) = tokio::join!(runs, answer);
+    assert_eq!(*order.lock().unwrap(), vec![approved.clone(), asks.clone()]);
+    assert!(finished.iter().all(|f| f.status == "completed"));
+}
+
+#[tokio::test]
+async fn a_run_left_waiting_by_a_quit_is_marked_failed_at_launch() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    let run = repo::start_run(&h.state.db, &id, 1, "schedule")
+        .await
+        .unwrap();
+    repo::set_run_status(&h.state.db, &run.id, "paused")
+        .await
+        .unwrap();
+    assert_eq!(repo::fail_interrupted_runs(&h.state.db).await.unwrap(), 1);
+    let detail = repo::get_run(&h.state.db, &h.state.encryption, &run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail.run.status, "failed");
 }

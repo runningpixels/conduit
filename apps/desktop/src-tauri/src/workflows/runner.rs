@@ -14,10 +14,18 @@
 //! - A run can be stopped (`Runner::stop`): a fetch or search is dropped, a
 //!   model reply is cancelled through the stream manager, and no further step
 //!   starts. The run ends as `stopped`, whatever the steps' `on_error` says.
+//! - A run nobody is watching (`Runner::unattended`, the scheduler's) checks
+//!   each fetch, search, model call and save against what the user approved,
+//!   and pauses to ask about anything else (see `permissions`).
+//! - Every run has a budget (`RunBudget`): time spent running (not waiting
+//!   for an answer) and model tokens. Going over fails the run with the
+//!   reason, whatever the steps' `on_error` says; it never truncates quietly.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use provider_core::schema::{
@@ -28,6 +36,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::definition::{self, ArtifactFormat, OnError, SaveMode, Step, StepAction};
+use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
 use super::{extract, template};
 use crate::artifact_network::{self, AddressPolicy, ArtifactFetchRequest};
 use crate::db::repository::artifacts::{self, ArtifactContent};
@@ -61,6 +70,50 @@ pub struct Runner<'a> {
     pub fetch_policy: AddressPolicy,
     /// Cancelled to stop the run (from `RunningWorkflows`).
     pub stop: CancellationToken,
+    /// `Some` for a run nobody is watching (the scheduler's); `None` for "Run
+    /// now", which isn't gated.
+    pub unattended: Option<Unattended<'a>>,
+    pub budget: RunBudget,
+}
+
+/// What an unattended run may do, and where it asks for more.
+pub struct Unattended<'a> {
+    pub reviews: &'a Reviews,
+    /// What the user approved; "Always allow" adds to it (and saves it).
+    pub approved: Mutex<BTreeSet<Permission>>,
+    /// How long a question waits before it counts as "Don't allow".
+    pub wait: Duration,
+}
+
+impl<'a> Unattended<'a> {
+    pub fn new(reviews: &'a Reviews, approved: impl IntoIterator<Item = Permission>) -> Self {
+        Self {
+            reviews,
+            approved: Mutex::new(approved.into_iter().collect()),
+            wait: REVIEW_WAIT,
+        }
+    }
+}
+
+/// How long a paused run waits for an answer.
+pub const REVIEW_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Limits on one run.
+#[derive(Debug, Clone, Copy)]
+pub struct RunBudget {
+    /// Time spent running; time waiting for the user doesn't count.
+    pub wall_clock: Duration,
+    /// Model tokens, input and output, across the whole run.
+    pub max_tokens: u64,
+}
+
+impl Default for RunBudget {
+    fn default() -> Self {
+        Self {
+            wall_clock: Duration::from_secs(30 * 60),
+            max_tokens: 500_000,
+        }
+    }
 }
 
 impl Runner<'_> {
@@ -108,13 +161,21 @@ impl Runner<'_> {
         let exec = Exec {
             runner: self,
             run_id: &run.id,
+            workflow_id: &workflow.id,
+            workflow_name: &workflow.name,
             conversation_id: &conversation_id,
+            started: Instant::now(),
+            waited: Mutex::new(Duration::ZERO),
+            tokens: Mutex::new(0),
+            over_budget: Mutex::new(None),
         };
         let result = exec.steps(&def.steps, &mut ctx, None).await;
-        let (status, error) = match &result {
-            Ok(()) => ("completed", None),
-            Err(_) if self.stop.is_cancelled() => ("stopped", Some(STOPPED)),
-            Err(e) => ("failed", Some(e.as_str())),
+        let over_budget = exec.over_budget();
+        let (status, error) = match (&result, &over_budget) {
+            (Ok(()), _) => ("completed", None),
+            (Err(_), _) if self.stop.is_cancelled() => ("stopped", Some(STOPPED)),
+            (Err(_), Some(reason)) => ("failed", Some(reason.as_str())),
+            (Err(e), None) => ("failed", Some(e.as_str())),
         };
         repo::finish_run(pool, &run.id, status, error)
             .await
@@ -156,7 +217,15 @@ impl Runner<'_> {
 struct Exec<'a> {
     runner: &'a Runner<'a>,
     run_id: &'a str,
+    workflow_id: &'a str,
+    workflow_name: &'a str,
     conversation_id: &'a str,
+    started: Instant,
+    /// Time spent waiting for the user, which the budget doesn't count.
+    waited: Mutex<Duration>,
+    tokens: Mutex<u64>,
+    /// Set when a budget is exceeded; the run ends with this reason.
+    over_budget: Mutex<Option<String>>,
 }
 
 type StepFuture<'f> = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'f>>;
@@ -174,6 +243,9 @@ impl Exec<'_> {
             for step in steps {
                 if self.runner.stop.is_cancelled() {
                     return Err(STOPPED.to_string());
+                }
+                if let Some(reason) = self.check_time() {
+                    return Err(reason);
                 }
                 self.step(step, ctx, iteration).await?;
             }
@@ -216,6 +288,13 @@ impl Exec<'_> {
                     .map_err(|e| e.to_string())?;
                 Err(STOPPED.to_string())
             }
+            Err(_) if self.over_budget().is_some() => {
+                let reason = self.over_budget().unwrap_or_default();
+                repo::finish_step(pool, enc, &row, "failed", None, Some(&reason))
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Err(reason)
+            }
             Err(error) => {
                 repo::finish_step(pool, enc, &row, "failed", None, Some(&error))
                     .await
@@ -234,7 +313,7 @@ impl Exec<'_> {
     /// Do what the step says, with its templates already filled in `filled`.
     async fn act(&self, step: &Step, filled: &Value, ctx: &mut Value) -> Result<Value, String> {
         match &step.action {
-            StepAction::FetchPage { .. } => {
+            StepAction::FetchPage { urls: templates } => {
                 let urls: Vec<String> = filled["urls"]
                     .as_array()
                     .map(|a| {
@@ -243,9 +322,23 @@ impl Exec<'_> {
                             .collect()
                     })
                     .unwrap_or_default();
+                for (template, url) in templates.iter().zip(&urls) {
+                    let permission = permissions::for_fetch(&step.id, template, url.trim());
+                    // An address with no host fails in the fetch itself.
+                    if permission
+                        != (Permission::Host {
+                            host: String::new(),
+                        })
+                    {
+                        self.allow(&step.id, permission, Some(url.trim())).await?;
+                    }
+                }
                 self.unless_stopped(self.fetch_pages(&urls)).await
             }
             StepAction::WebSearch { max_results, .. } => {
+                let backend = search_backend(&self.runner.state.settings()?);
+                self.allow(&step.id, Permission::WebSearch { backend }, None)
+                    .await?;
                 let query = filled["query"].as_str().unwrap_or_default();
                 self.unless_stopped(
                     self.web_search(query, max_results.unwrap_or(DEFAULT_SEARCH_RESULTS)),
@@ -253,12 +346,17 @@ impl Exec<'_> {
                 .await
             }
             StepAction::Summarize { schema, .. } => {
+                let provider = self.runner.state.settings()?.active_provider;
+                self.allow(&step.id, Permission::Model { provider }, None)
+                    .await?;
                 let prompt = filled["prompt"].as_str().unwrap_or_default();
                 let input = filled["input"].as_str().unwrap_or_default();
                 self.summarize(prompt, input, schema.as_ref()).await
             }
             StepAction::Template { .. } => Ok(json!({ "text": filled["template"] })),
             StepAction::SaveArtifact { format, mode, .. } => {
+                self.allow(&step.id, Permission::SaveDocuments, None)
+                    .await?;
                 let title = filled["title"].as_str().unwrap_or_default().trim();
                 let content = filled["content"].as_str().unwrap_or_default();
                 self.save_artifact(title, content, *format, *mode).await
@@ -293,7 +391,7 @@ impl Exec<'_> {
         }
     }
 
-    /// `work`, abandoned as soon as the run is stopped.
+    /// `work`, abandoned as soon as the run is stopped or out of time.
     async fn unless_stopped(
         &self,
         work: impl Future<Output = Result<Value, String>>,
@@ -301,7 +399,144 @@ impl Exec<'_> {
         tokio::select! {
             result = work => result,
             _ = self.runner.stop.cancelled() => Err(STOPPED.to_string()),
+            _ = tokio::time::sleep(self.time_left()) => {
+                Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()))
+            }
         }
+    }
+
+    /// Go ahead if the run may do `permission`; otherwise (unattended runs
+    /// only) pause, ask, and wait for the answer.
+    async fn allow(
+        &self,
+        step_id: &str,
+        permission: Permission,
+        url: Option<&str>,
+    ) -> Result<(), String> {
+        let Some(unattended) = &self.runner.unattended else {
+            return Ok(());
+        };
+        if unattended
+            .approved
+            .lock()
+            .map(|a| a.contains(&permission))
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+        let pool = &self.runner.state.db;
+        let now = chrono::Utc::now();
+        let expires = now + chrono::Duration::from_std(unattended.wait).unwrap_or_default();
+        let review = PendingReview {
+            run_id: self.run_id.to_string(),
+            workflow_id: self.workflow_id.to_string(),
+            workflow_name: self.workflow_name.to_string(),
+            step_id: step_id.to_string(),
+            permission: permissions::view(permission.clone()),
+            url: url.map(str::to_string),
+            requested_at: super::scheduler::to_iso(now),
+            expires_at: super::scheduler::to_iso(expires),
+        };
+        repo::set_run_status(pool, self.run_id, "paused")
+            .await
+            .map_err(|e| e.to_string())?;
+        let answer = unattended.reviews.ask(review);
+        let asked = Instant::now();
+        let decision = tokio::select! {
+            decision = answer => decision.ok(),
+            _ = self.runner.stop.cancelled() => None,
+            _ = tokio::time::sleep(unattended.wait) => None,
+        };
+        unattended.reviews.clear(self.run_id);
+        if let Ok(mut waited) = self.waited.lock() {
+            *waited += asked.elapsed();
+        }
+        repo::set_run_status(pool, self.run_id, "running")
+            .await
+            .map_err(|e| e.to_string())?;
+        if self.runner.stop.is_cancelled() {
+            return Err(STOPPED.to_string());
+        }
+        match decision {
+            Some(Decision::AllowOnce) => Ok(()),
+            Some(Decision::AlwaysAllow) => {
+                let approved: Vec<Permission> = match unattended.approved.lock() {
+                    Ok(mut set) => {
+                        set.insert(permission);
+                        set.iter().cloned().collect()
+                    }
+                    Err(_) => return Ok(()),
+                };
+                repo::set_permissions(
+                    pool,
+                    &self.runner.state.encryption,
+                    self.workflow_id,
+                    &approved,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                Ok(())
+            }
+            Some(Decision::Deny) => Err("You didn't allow this.".to_string()),
+            None => Err("Nobody answered within a day, so this didn't go ahead.".to_string()),
+        }
+    }
+
+    /// The budget reason, once one is exceeded.
+    fn over_budget(&self) -> Option<String> {
+        self.over_budget.lock().ok().and_then(|r| r.clone())
+    }
+
+    fn exceed(&self, reason: String) -> String {
+        if let Ok(mut slot) = self.over_budget.lock() {
+            slot.get_or_insert(reason.clone());
+        }
+        reason
+    }
+
+    fn running_time(&self) -> Duration {
+        let waited = self.waited.lock().map(|w| *w).unwrap_or_default();
+        self.started.elapsed().saturating_sub(waited)
+    }
+
+    fn time_left(&self) -> Duration {
+        self.runner
+            .budget
+            .wall_clock
+            .saturating_sub(self.running_time())
+    }
+
+    fn time_limit_reason(&self) -> String {
+        let secs = self.runner.budget.wall_clock.as_secs_f64().ceil() as u64;
+        let limit = match secs {
+            0..=1 => "1 second".to_string(),
+            2..=59 => format!("{secs} seconds"),
+            60..=119 => "1 minute".to_string(),
+            _ => format!("{} minutes", secs.div_ceil(60)),
+        };
+        format!("The run went over its time limit of {limit}.")
+    }
+
+    /// `Some(reason)` once the run has used up its time.
+    fn check_time(&self) -> Option<String> {
+        (self.time_left().is_zero()).then(|| self.exceed(self.time_limit_reason()))
+    }
+
+    /// Count a reply's tokens; `Some(reason)` once over the limit.
+    fn count_tokens(&self, used: u64) -> Option<String> {
+        let total = match self.tokens.lock() {
+            Ok(mut tokens) => {
+                *tokens += used;
+                *tokens
+            }
+            Err(_) => return None,
+        };
+        (total > self.runner.budget.max_tokens).then(|| {
+            self.exceed(format!(
+                "The run went over its limit of {} model tokens.",
+                self.runner.budget.max_tokens
+            ))
+        })
     }
 
     async fn fetch_pages(&self, urls: &[String]) -> Result<Value, String> {
@@ -478,6 +713,15 @@ impl Exec<'_> {
         // it and records it), then waits for the stream to wind down.
         tokio::select! {
             result = &mut stream => { result?; }
+            _ = tokio::time::sleep(self.time_left()) => {
+                let _ = self
+                    .runner
+                    .streams
+                    .cancel_stream(state, &request_id, Some(self.conversation_id))
+                    .await;
+                let _ = stream.await;
+                return Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()));
+            }
             _ = self.runner.stop.cancelled() => {
                 // Retried: a stop in the first moment can land before the
                 // stream is registered, when there is nothing to cancel yet.
@@ -499,12 +743,19 @@ impl Exec<'_> {
             .lock()
             .map_err(|_| "the reply could not be read".to_string())?;
         let mut reply = String::new();
+        let mut used = 0;
         for event in events.iter() {
             match event {
                 ProviderEvent::ContentDelta { content, .. } => reply.push_str(content),
                 ProviderEvent::Error { error, .. } => return Err(error.message.clone()),
+                ProviderEvent::Usage { usage, .. } => {
+                    used += usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
+                }
                 _ => {}
             }
+        }
+        if let Some(reason) = self.count_tokens(used) {
+            return Err(reason);
         }
         let reply = reply.trim().to_string();
         if reply.is_empty() {
@@ -651,6 +902,14 @@ fn parse_json_reply(reply: &str) -> Option<Value> {
         }
     }
     None
+}
+
+/// The configured search backend's id (`duckduckgo`, `brave`, ...).
+pub fn search_backend(settings: &crate::state::AppSettings) -> String {
+    serde_json::to_value(settings.web_search.local_backend)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

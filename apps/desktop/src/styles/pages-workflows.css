@@ -56,6 +56,7 @@
 .wf-status-failed { color: var(--err); }
 .wf-status-running { color: var(--warn); }
 .wf-status-stopped { color: var(--ink-3); }
+.wf-status-paused { color: var(--warn); }
 
 .wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-lg); }
 .wf-io {
@@ -178,3 +179,7 @@
 }
 .wf-offer b { color: var(--ink); font-size: var(--fs-2xl); }
 .wf-offer-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.wf-permission-list { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: var(--fs-xl); display: grid; gap: 2px; }
+.wf-allowed { overflow-wrap: anywhere; }
+.wf-review { border-color: var(--warn); }
+.wf-review-what { margin: 0; color: var(--ink); font-size: var(--fs-2xl); overflow-wrap: anywhere; }

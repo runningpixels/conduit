@@ -26,8 +26,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   while it's in the tray brings the window back. Stop a run in progress
   from its page, or every run from the tray menu, which shows how many are
   running; quitting mid-run asks first, and a stopped run is kept, marked
-  as stopped. Only the summarize step uses the model, and it can't use
-  tools.
+  as stopped. Turning a schedule on first shows everything the workflow
+  will be allowed to do on its own (the sites it reads, web search, which
+  model, saving documents) for you to approve. A scheduled run that needs
+  more, after an edit or a settings change, pauses and asks: allow once,
+  always allow, or don't allow. Each run has a time and token limit. Only
+  the summarize step uses the model, and it can't use tools.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the

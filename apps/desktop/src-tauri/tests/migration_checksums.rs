@@ -128,6 +128,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "c12c1078786b991c6c4b9f201c67f3d4400349e6f40dec6b5c14839cac3e480b597206271c038386b41c9687a8aa6997",
         "workflow schedules",
     ),
+    (
+        22,
+        "0045ce754589bd86407fc14b8135daf6b339cfd78b852c1ac6c514b6d1cfe302c9c7a4b0a952cb53f9f30df11bc8e9e6",
+        "workflow permissions",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

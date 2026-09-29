@@ -40,6 +40,8 @@ export function describeStep(step: WorkflowStep, t: Translate, labels: InputLabe
       return (step.format ?? 'markdown') === 'html'
         ? t('workspace.workflows.step.saveHtml', { title: q(step.title) })
         : t('workspace.workflows.step.saveMarkdown', { title: q(step.title) });
+    case 'agent':
+      return t('workspace.workflows.step.agent', { prompt: q(step.prompt) });
     case 'ask':
       return t('workspace.workflows.step.ask', { question: q(step.question) });
     case 'notify':

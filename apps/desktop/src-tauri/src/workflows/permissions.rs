@@ -43,6 +43,16 @@ pub enum Permission {
     Model { provider: String },
     /// Save documents.
     SaveDocuments,
+    /// Let an agent step use these tools (sorted). Reading pages this way
+    /// goes wherever the model decides, so it's approved as a whole.
+    AgentTools { step_id: String, tools: Vec<String> },
+}
+
+/// `tools`, sorted, as an `AgentTools` permission lists them.
+pub fn sorted(tools: &[String]) -> Vec<String> {
+    let mut tools = tools.to_vec();
+    tools.sort();
+    tools
 }
 
 /// A permission with what the page needs to describe it.
@@ -164,6 +174,17 @@ fn collect(steps: &[Step], ctx: &Context, set: &mut BTreeSet<Permission>) {
             }
             // Notifications stay on this computer.
             StepAction::Template { .. } | StepAction::Notify { .. } | StepAction::Ask { .. } => {}
+            StepAction::Agent { tools, .. } => {
+                set.insert(Permission::Model {
+                    provider: ctx.provider.to_string(),
+                });
+                if !tools.is_empty() {
+                    set.insert(Permission::AgentTools {
+                        step_id: step.id.clone(),
+                        tools: sorted(tools),
+                    });
+                }
+            }
             StepAction::SaveArtifact { .. } => {
                 set.insert(Permission::SaveDocuments);
             }

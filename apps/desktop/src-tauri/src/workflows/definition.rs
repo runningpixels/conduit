@@ -56,6 +56,10 @@ pub struct Step {
 
 /// Most retries a step may ask for.
 pub const MAX_RETRIES: u32 = 5;
+/// Tools an agent step may use: read-only built-ins that never stop to ask
+/// for approval, so a run nobody is watching can't hang on one.
+pub const AGENT_TOOLS: &[&str] = &["web_search", "web_fetch", "current_time", "calculator"];
+
 /// Most choices an "Ask me" step offers, and the longest one.
 pub const MAX_CHOICES: usize = 10;
 pub const MAX_CHOICE_CHARS: usize = 80;
@@ -73,6 +77,7 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 /// - `save_artifact`: `artifactId`
 /// - `notify`: `delivered`
 /// - `ask`: `answer`
+/// - `agent`: `text` (its answer) and `toolCalls` (the tools it called)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -113,6 +118,17 @@ pub enum StepAction {
         format: ArtifactFormat,
         #[serde(default)]
         mode: SaveMode,
+    },
+    /// A model turn that may use a few read-only tools before answering.
+    Agent {
+        /// What to do ("Find this week's Rust release notes and list what changed").
+        prompt: String,
+        /// Text to work on, usually from an earlier step.
+        #[serde(default)]
+        input: String,
+        /// Tools it may call, from [`AGENT_TOOLS`].
+        #[serde(default)]
+        tools: Vec<String>,
     },
     /// Stop and ask the user; the answer is the step's `answer`.
     Ask {
@@ -290,6 +306,26 @@ fn check_steps(
                 }
                 texts.push(title);
                 texts.push(content);
+            }
+            StepAction::Agent {
+                prompt,
+                input,
+                tools,
+            } => {
+                if prompt.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs an instruction."));
+                }
+                for tool in tools {
+                    if !AGENT_TOOLS.contains(&tool.as_str()) {
+                        problems.push(format!("Step \"{name}\" can't use the tool \"{tool}\"."));
+                    }
+                }
+                let mut seen = HashSet::new();
+                if !tools.iter().all(|t| seen.insert(t)) {
+                    problems.push(format!("Step \"{name}\" lists a tool twice."));
+                }
+                texts.push(prompt);
+                texts.push(input);
             }
             StepAction::Ask {
                 question,
@@ -555,6 +591,28 @@ mod tests {
             validate(&typed).is_ok(),
             "a typed answer may default to anything"
         );
+    }
+
+    #[test]
+    fn an_agent_step_may_only_use_the_read_only_tools_once_each() {
+        let d = def(json!({ "steps": [
+            { "id": "a", "type": "agent", "prompt": "Go", "tools": ["web_search", "workspace_write", "web_search"] },
+        ]}));
+        let problems = validate(&d).unwrap_err();
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("can't use the tool \"workspace_write\"")),
+            "{problems:?}"
+        );
+        assert!(
+            problems.iter().any(|p| p.contains("lists a tool twice")),
+            "{problems:?}"
+        );
+        let fine = def(json!({ "steps": [
+            { "id": "a", "type": "agent", "prompt": "Go", "tools": ["web_fetch", "calculator"] },
+        ]}));
+        assert!(validate(&fine).is_ok());
     }
 
     #[test]

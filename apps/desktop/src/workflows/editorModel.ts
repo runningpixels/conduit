@@ -19,12 +19,17 @@ export const STEP_TYPES: readonly StepType[] = [
   'fetch_page',
   'web_search',
   'summarize',
+  'agent',
   'template',
   'for_each',
   'save_artifact',
   'ask',
   'notify',
 ];
+
+/// Tools an agent step may use (the backend's `AGENT_TOOLS`): read-only, and
+/// none stops to ask for approval.
+export const AGENT_TOOLS = ['web_search', 'web_fetch', 'current_time', 'calculator'] as const;
 
 /// Most retries a step may ask for (the backend's `MAX_RETRIES`).
 export const MAX_RETRIES = 5;
@@ -54,6 +59,7 @@ const ID_PREFIX: Record<StepType, string> = {
   template: 'text',
   for_each: 'each',
   save_artifact: 'save',
+  agent: 'agent',
   ask: 'ask',
   notify: 'notify',
 };
@@ -93,6 +99,8 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, items: '', steps: [] };
     case 'save_artifact':
       return { id, type, title: '', content: '', format: 'markdown', mode: 'update' };
+    case 'agent':
+      return { id, type, prompt: '', input: '', tools: ['web_search', 'web_fetch'] };
     case 'ask':
       return { id, type, question: '', choices: [] };
     case 'notify':
@@ -240,6 +248,11 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [{ field: 'items', list: true }];
     case 'save_artifact':
       return [{ field: 'artifactId', list: false }];
+    case 'agent':
+      return [
+        { field: 'text', list: false },
+        { field: 'toolCalls', list: true },
+      ];
     case 'ask':
       return [{ field: 'answer', list: false }];
     case 'notify':

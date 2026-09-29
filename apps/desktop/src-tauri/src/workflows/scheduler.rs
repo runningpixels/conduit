@@ -317,6 +317,8 @@ pub struct RunContext<'a> {
     pub running: &'a Arc<RunningWorkflows>,
     pub reviews: &'a Reviews,
     pub questions: &'a Questions,
+    /// Runs agent steps' tool loops; `None` in tests without one.
+    pub connectors: Option<&'a crate::connector_runtime::ConnectorRuntimeManager>,
     /// `AddressPolicy::APP` in the app; tests allow a local server.
     pub fetch_policy: AddressPolicy,
     /// Shows `notify` steps; `None` in tests.
@@ -350,6 +352,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         running,
         reviews,
         questions,
+        connectors,
         fetch_policy,
         notify,
     } = *ctx;
@@ -391,6 +394,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         budget: RunBudget::default(),
         notify,
         questions: Some(questions),
+        connectors,
     };
     let outcome = runner.run(&workflow_id, &HashMap::new(), &trigger).await;
     drop(guard);
@@ -425,6 +429,7 @@ pub async fn run_due<Tz: TimeZone>(
         running,
         reviews,
         questions: &questions,
+        connectors: None,
         fetch_policy,
         notify: None,
     };
@@ -474,6 +479,9 @@ pub async fn scheduler_loop(app: AppHandle) {
                     running: &app.state::<Arc<RunningWorkflows>>(),
                     reviews: &app.state::<Reviews>(),
                     questions: &app.state::<Questions>(),
+                    connectors: Some(
+                        &app.state::<crate::connector_runtime::ConnectorRuntimeManager>(),
+                    ),
                     fetch_policy: AddressPolicy::APP,
                     notify: Some(&notify),
                 };

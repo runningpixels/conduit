@@ -6,6 +6,24 @@
 import type { Translate } from '../i18n';
 import type { WorkflowPermissionView, WorkflowReview } from '../ipc/contracts';
 
+/// What each agent tool lets a step do (tool name → catalog key).
+const AGENT_TOOL_KEY: Record<string, string> = {
+  web_search: 'workspace.workflows.agentTool.webSearch',
+  web_fetch: 'workspace.workflows.agentTool.webFetch',
+  current_time: 'workspace.workflows.agentTool.currentTime',
+  calculator: 'workspace.workflows.agentTool.calculator',
+};
+
+/// What one agent tool lets a step do ("search the web").
+export function agentToolText(tool: string, t: Translate): string {
+  return AGENT_TOOL_KEY[tool] ? t(AGENT_TOOL_KEY[tool]) : tool;
+}
+
+/// What an agent step's tools let it do, joined ("search the web, read any web page it chooses").
+export function agentToolsText(tools: readonly string[], t: Translate): string {
+  return tools.map((tool) => agentToolText(tool, t)).join(', ');
+}
+
 /// One line of "When it runs on its own, it will be allowed to: …".
 export function permissionText(p: WorkflowPermissionView, t: Translate): string {
   switch (p.kind) {
@@ -21,6 +39,8 @@ export function permissionText(p: WorkflowPermissionView, t: Translate): string 
         : t('workspace.workflows.permissions.modelCloud', { provider: p.label ?? p.provider });
     case 'saveDocuments':
       return t('workspace.workflows.permissions.saveDocuments');
+    case 'agentTools':
+      return t('workspace.workflows.permissions.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
   }
 }
 
@@ -40,5 +60,7 @@ export function reviewText(review: WorkflowReview, t: Translate): string {
         : t('workspace.workflows.review.modelCloud', { provider: p.label ?? p.provider });
     case 'saveDocuments':
       return t('workspace.workflows.review.saveDocuments');
+    case 'agentTools':
+      return t('workspace.workflows.review.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
   }
 }

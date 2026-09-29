@@ -134,32 +134,47 @@ pub async fn delete_workflow(state: State<'_, AppState>, id: String) -> Result<(
         .map_err(|e| e.to_string())
 }
 
+/// Run `workflow_id` with the user watching (not gated), from `resume` when
+/// given. One run per workflow at a time. Waits for the whole run.
+async fn run_manually(
+    app: &tauri::AppHandle,
+    workflow_id: &str,
+    inputs: &HashMap<String, String>,
+    trigger: &str,
+    resume: Option<&Resume>,
+) -> Result<WorkflowRunDetail, String> {
+    use tauri::Manager;
+    let state = app.state::<AppState>();
+    let streams = app.state::<StreamManager>();
+    let running = app.state::<Arc<RunningWorkflows>>();
+    let questions = app.state::<Questions>();
+    let connectors = app.state::<crate::connector_runtime::ConnectorRuntimeManager>();
+    let guard = running
+        .try_start(workflow_id)
+        .ok_or_else(|| "This workflow is already running.".to_string())?;
+    let notify = |title: &str, body: &str| show_notification(app, title, body);
+    let runner = Runner {
+        state: state.inner(),
+        streams: streams.inner(),
+        fetch_policy: AddressPolicy::APP,
+        stop: guard.stop_token(),
+        unattended: None,
+        budget: RunBudget::default(),
+        notify: Some(&notify),
+        questions: Some(questions.inner()),
+        connectors: Some(connectors.inner()),
+    };
+    runner.run_from(workflow_id, inputs, trigger, resume).await
+}
+
 /// Run a workflow now and return what it did. Waits for the whole run.
 #[tauri::command]
 pub async fn run_workflow(
     app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    stream_manager: State<'_, StreamManager>,
-    running: State<'_, Arc<RunningWorkflows>>,
-    questions: State<'_, Questions>,
     id: String,
     inputs: Option<HashMap<String, String>>,
 ) -> Result<WorkflowRunDetail, String> {
-    let guard = running
-        .try_start(&id)
-        .ok_or_else(|| "This workflow is already running.".to_string())?;
-    let runner = Runner {
-        state: state.inner(),
-        streams: stream_manager.inner(),
-        fetch_policy: AddressPolicy::APP,
-        stop: guard.stop_token(),
-        // The user started it and is watching: not gated.
-        unattended: None,
-        budget: RunBudget::default(),
-        notify: Some(&|title: &str, body: &str| show_notification(&app, title, body)),
-        questions: Some(questions.inner()),
-    };
-    runner.run(&id, &inputs.unwrap_or_default(), "manual").await
+    run_manually(&app, &id, &inputs.unwrap_or_default(), "manual", None).await
 }
 
 /// Run a workflow again from `step_id`, reusing what an earlier run did
@@ -168,9 +183,6 @@ pub async fn run_workflow(
 pub async fn rerun_workflow_from(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    stream_manager: State<'_, StreamManager>,
-    running: State<'_, Arc<RunningWorkflows>>,
-    questions: State<'_, Questions>,
     run_id: String,
     step_id: String,
 ) -> Result<WorkflowRunDetail, String> {
@@ -185,26 +197,11 @@ pub async fn rerun_workflow_from(
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
     let workflow_id = earlier.run.workflow_id.clone();
-    let guard = running
-        .try_start(&workflow_id)
-        .ok_or_else(|| "This workflow is already running.".to_string())?;
-    let runner = Runner {
-        state: state.inner(),
-        streams: stream_manager.inner(),
-        fetch_policy: AddressPolicy::APP,
-        stop: guard.stop_token(),
-        unattended: None,
-        budget: RunBudget::default(),
-        notify: Some(&|title: &str, body: &str| show_notification(&app, title, body)),
-        questions: Some(questions.inner()),
-    };
     let resume = Resume {
         from_step: step_id,
         earlier: earlier.steps,
     };
-    runner
-        .run_from(&workflow_id, &inputs, "rerun", Some(&resume))
-        .await
+    run_manually(&app, &workflow_id, &inputs, "rerun", Some(&resume)).await
 }
 
 /// Stop a workflow's run in progress. The run ends as `stopped` after the

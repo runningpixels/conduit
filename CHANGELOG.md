@@ -39,8 +39,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   reused, and the run keeps the values it started with. An "Ask me" step
   stops to ask you something, with answers to pick from or a box to type
   in, and the next steps use your answer; if nobody answers, it can fall
-  back to an answer you set. Only the summarize step uses the model, and it
-  can't use tools.
+  back to an answer you set. A "Let the model use tools" step lets the
+  model search the web, read pages, check the time or do arithmetic before
+  it answers; a scheduled run asks you to approve those tools first. The
+  summarize step still gets no tools.
 - **Leave a document out of a chat.** In the composer's Documents menu, an
   attached collection expands to list its documents; untick one and that
   chat stops searching it, without deleting it. Documents added to the

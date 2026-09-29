@@ -644,6 +644,7 @@ export type WorkflowStep = {
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
   | { type: 'notify'; title: string; body?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
+  | { type: 'agent'; prompt: string; input?: string; tools?: string[] }
 );
 
 export type WorkflowRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
@@ -683,7 +684,8 @@ export type WorkflowPermission =
   | { kind: 'anyHost'; stepId: string }
   | { kind: 'webSearch'; backend: string }
   | { kind: 'model'; provider: string }
-  | { kind: 'saveDocuments' };
+  | { kind: 'saveDocuments' }
+  | { kind: 'agentTools'; stepId: string; tools: string[] };
 
 /** A permission with its display name (provider, search backend) and, for a model, where it runs. */
 export type WorkflowPermissionView = WorkflowPermission & { label: string | null; local: boolean | null };

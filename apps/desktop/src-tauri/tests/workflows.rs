@@ -47,6 +47,8 @@ struct EchoModel {
     bad_json_first: bool,
     /// Fail this many replies with a provider error before answering.
     failures: Arc<std::sync::atomic::AtomicUsize>,
+    /// Call this tool (name, arguments) first; answer once a tool result is in.
+    tool_call: Option<(&'static str, Value)>,
 }
 
 impl EchoModel {
@@ -114,6 +116,44 @@ impl ProviderAdapter for EchoModel {
                 |n| n.checked_sub(1),
             )
             .is_ok();
+        if let Some((name, arguments)) = &self.tool_call {
+            let answered = request
+                .messages
+                .iter()
+                .any(|m| m.role == provider_core::schema::MessageRole::Tool);
+            if !answered {
+                return Ok(Box::pin(futures::stream::iter(vec![
+                    ProviderEvent::MessageStart {
+                        request_id: r.clone(),
+                        index: 0,
+                    },
+                    ProviderEvent::ContentDelta {
+                        request_id: r.clone(),
+                        block_id: "b0".into(),
+                        index: 1,
+                        content: "Let me check.".into(),
+                    },
+                    ProviderEvent::ToolCallStart {
+                        request_id: r.clone(),
+                        tool_call_id: "call-1".into(),
+                        index: 2,
+                        tool_id: (*name).into(),
+                        name: (*name).into(),
+                    },
+                    ProviderEvent::ToolCallComplete {
+                        request_id: r.clone(),
+                        tool_call_id: "call-1".into(),
+                        index: 3,
+                        arguments: arguments.clone(),
+                    },
+                    ProviderEvent::MessageComplete {
+                        request_id: r,
+                        index: 4,
+                        finish_reason: "tool_calls".into(),
+                    },
+                ])));
+            }
+        }
         if failing {
             return Ok(Box::pin(futures::stream::iter(vec![
                 ProviderEvent::Error {
@@ -335,6 +375,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            connectors: None,
         };
         runner
             .run(id, &HashMap::new(), "manual")
@@ -538,6 +579,7 @@ async fn an_invalid_definition_does_not_start_a_run() {
         budget: RunBudget::default(),
         notify: None,
         questions: None,
+        connectors: None,
     };
     let err = runner
         .run(&id, &HashMap::new(), "manual")
@@ -792,6 +834,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            connectors: None,
         };
         let no_inputs = HashMap::new();
         let stopper = async {
@@ -950,6 +993,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            connectors: None,
         }
     }
 
@@ -1172,6 +1216,7 @@ async fn going_over_the_time_budget_fails_the_run_even_when_the_step_may_fail() 
         },
         notify: None,
         questions: None,
+        connectors: None,
     };
     let detail = tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -1218,6 +1263,7 @@ async fn going_over_the_token_budget_fails_the_run() {
         },
         notify: None,
         questions: None,
+        connectors: None,
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "failed");
@@ -1280,6 +1326,7 @@ async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
         running: &running,
         reviews: &h.reviews,
         questions: &questions,
+        connectors: None,
         fetch_policy: AddressPolicy { public_only: false },
         notify: None,
     };
@@ -1448,6 +1495,7 @@ async fn a_notify_step_shows_its_filled_in_text() {
         budget: RunBudget::default(),
         notify: Some(&notify),
         questions: None,
+        connectors: None,
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "completed");
@@ -1480,6 +1528,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            connectors: None,
         }
     }
 
@@ -1645,6 +1694,7 @@ impl Harness {
     ) -> Runner<'a> {
         Runner {
             questions: Some(questions),
+            connectors: None,
             stop,
             ..self.manual_runner()
         }
@@ -1755,4 +1805,103 @@ async fn stopping_while_asking_stops_and_nowhere_to_ask_fails() {
         .as_deref()
         .unwrap()
         .contains("can't be asked here"));
+}
+
+// ── Agent step ──────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn an_agent_step_calls_its_tools_and_answers() {
+    let model = EchoModel {
+        tool_call: Some(("calculator", json!({ "expression": "6*7" }))),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "think", "type": "agent", "prompt": "Work it out", "input": "What is 6*7?", "tools": ["calculator"] },
+            { "id": "doc", "type": "template", "template": "Answer: {{steps.think.text}}" },
+        ]}))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = detail.steps[0].output.as_ref().unwrap();
+    assert_eq!(out["toolCalls"], json!(["calculator"]));
+    // The echo model answers the second round from its last message (the
+    // tool result); "Let me check." came before the tool call.
+    assert_eq!(out["text"], "SUMMARY: (nothing)");
+    let requests = h.model.requests.lock().unwrap();
+    assert_eq!(
+        requests.len(),
+        2,
+        "one round to call the tool, one to answer"
+    );
+    let offered: Vec<&str> = requests[0]
+        .tool_definitions
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    assert_eq!(offered, vec!["calculator"], "only the tools the step lists");
+}
+
+#[tokio::test]
+async fn an_agent_step_without_a_tool_loop_fails_and_needs_approval_unattended() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "think", "type": "agent", "prompt": "Look it up", "tools": ["web_search", "web_fetch"] },
+        ]}))
+        .await;
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "failed");
+    assert!(detail.steps[0]
+        .error
+        .as_deref()
+        .unwrap()
+        .contains("can't run here"));
+
+    assert_eq!(
+        h.required(&id).await,
+        vec![
+            Permission::Model {
+                provider: "ollama".into()
+            },
+            Permission::AgentTools {
+                step_id: "think".into(),
+                tools: vec!["web_fetch".into(), "web_search".into()],
+            },
+        ]
+    );
+    // Unattended, with only the model approved: it asks about the tools.
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.unattended_runner(
+            vec![Permission::Model {
+                provider: "ollama".into(),
+            }],
+            CancellationToken::new(),
+        )
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert!(matches!(
+            review.permission.permission,
+            Permission::AgentTools { .. }
+        ));
+        h.reviews.answer(&review.run_id, Decision::Deny);
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.steps[0].error.as_deref(),
+        Some("You didn't allow this.")
+    );
 }

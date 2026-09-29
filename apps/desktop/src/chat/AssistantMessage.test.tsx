@@ -140,7 +140,7 @@ describe('AssistantMessage live tail', () => {
     );
 
     const tail = document.querySelector('.turn-live-tail');
-    const card = document.querySelector('.turn-steps');
+    const card = document.querySelector('.turn-step-block');
     expect(tail).not.toBeNull();
     expect(card).not.toBeNull();
     // DOCUMENT_POSITION_FOLLOWING — the tail comes after the card.
@@ -235,7 +235,7 @@ describe('AssistantMessage chronological timeline', () => {
 
     const article = document.querySelector('article.turn.assistant');
     expect(article).not.toBeNull();
-    const card = article!.querySelector('.turn-steps');
+    const card = article!.querySelector('.turn-step-block');
     const prose = article!.querySelector('.prose');
     expect(card).not.toBeNull();
     expect(prose).not.toBeNull();
@@ -264,11 +264,11 @@ describe('AssistantMessage chronological timeline', () => {
     );
 
     const article = document.querySelector('article.turn.assistant')!;
-    const nodes = [...article.querySelectorAll('.prose, .turn-steps')];
+    const nodes = [...article.querySelectorAll('.prose, .turn-step-block')];
     expect(nodes).toHaveLength(3);
     expect(nodes[0].classList.contains('prose')).toBe(true);
     expect(nodes[0].textContent).toContain('Let me ask.');
-    expect(nodes[1].classList.contains('turn-steps')).toBe(true);
+    expect(nodes[1].classList.contains('turn-step-block')).toBe(true);
     expect(nodes[2].classList.contains('prose')).toBe(true);
     expect(nodes[2].textContent).toContain('Thanks!');
   });
@@ -352,7 +352,7 @@ describe('AssistantMessage chronological timeline', () => {
     );
 
     const tail = document.querySelector('.turn-live-tail');
-    const card = document.querySelector('.turn-steps');
+    const card = document.querySelector('.turn-step-block');
     expect(tail).not.toBeNull();
     expect(card).not.toBeNull();
     expect(card!.compareDocumentPosition(tail!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -442,10 +442,10 @@ describe('AssistantMessage chronological timeline', () => {
     );
 
     const article = document.querySelector('article.turn.assistant')!;
-    const nodes = [...article.querySelectorAll('.think, .turn-steps, .prose')];
+    const nodes = [...article.querySelectorAll('.think, .turn-step-block, .prose')];
     expect(nodes).toHaveLength(3);
     expect(nodes[0].classList.contains('think')).toBe(true);
-    expect(nodes[1].classList.contains('turn-steps')).toBe(true);
+    expect(nodes[1].classList.contains('turn-step-block')).toBe(true);
     expect(nodes[2].classList.contains('prose')).toBe(true);
   });
 });
@@ -591,13 +591,25 @@ describe('AssistantMessage compact step line', () => {
     ],
   });
 
-  it('replaces the tool cards with one line per turn', () => {
+  it('replaces the tool cards with a row per step (ADR-011)', () => {
     render(<AssistantMessage state={twoStepsOneSite} provider="openai" onOpenActivity={() => {}} />);
-    const lines = document.querySelectorAll('.turn-steps');
-    expect(lines).toHaveLength(1);
-    expect(lines[0].textContent).toContain('2 steps · 1 site');
-    expect(lines[0].querySelector('.step-status')?.getAttribute('data-status')).toBe('done');
+    expect(document.querySelectorAll('.turn-step-block')).toHaveLength(1);
+    const rows = document.querySelectorAll('.turn-step-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector('.step-status')?.getAttribute('data-status')).toBe('done');
+    // Every step is a row, so there is no summary line to reach the rest.
+    expect(document.querySelector('.turn-steps')).toBeNull();
     expect(document.querySelector('.tool')).toBeNull();
+  });
+
+  it('shows the first three steps as rows and folds the rest into the summary line', () => {
+    const five = finished({
+      toolCalls: ['c1', 'c2', 'c3', 'c4', 'c5'].map((id) => done(id, 'current_time')),
+      segments: ['c1', 'c2', 'c3', 'c4', 'c5'].map((id) => ({ kind: 'tool' as const, toolCallId: id })),
+    });
+    render(<AssistantMessage state={five} provider="openai" onOpenActivity={() => {}} />);
+    expect(document.querySelectorAll('.turn-step-row')).toHaveLength(3);
+    expect(document.querySelector('.turn-steps')?.textContent).toContain('5 steps');
   });
 
   it('opens the activity for this turn when the host handles it', () => {
@@ -611,7 +623,7 @@ describe('AssistantMessage compact step line', () => {
         onOpenActivity={onOpenActivity}
       />,
     );
-    fireEvent.click(document.querySelector('.turn-steps')!);
+    fireEvent.click(document.querySelector('.turn-step-row')!);
     expect(onOpenActivity).toHaveBeenCalledWith('turn-1');
     expect(document.querySelector('.tool')).toBeNull();
   });
@@ -621,17 +633,17 @@ describe('AssistantMessage compact step line', () => {
     const { unmount } = render(
       <AssistantMessage state={twoStepsOneSite} provider="openai" messageId="m1" onOpenActivity={onOpenActivity} />,
     );
-    fireEvent.click(document.querySelector('.turn-steps')!);
+    fireEvent.click(document.querySelector('.turn-step-row')!);
     expect(onOpenActivity).toHaveBeenLastCalledWith('m1');
     unmount();
     render(<AssistantMessage state={twoStepsOneSite} provider="openai" onOpenActivity={onOpenActivity} />);
-    fireEvent.click(document.querySelector('.turn-steps')!);
+    fireEvent.click(document.querySelector('.turn-step-row')!);
     expect(onOpenActivity).toHaveBeenLastCalledWith('req-1');
   });
 
   it('expands the old tool cards in place without an activity handler', () => {
     render(<AssistantMessage state={twoStepsOneSite} provider="openai" />);
-    const line = document.querySelector('.turn-steps')!;
+    const line = document.querySelector('.turn-step-row')!;
     expect(line).toHaveAttribute('aria-expanded', 'false');
     expect(document.querySelector('.tool')).toBeNull();
     fireEvent.click(line);
@@ -642,9 +654,9 @@ describe('AssistantMessage compact step line', () => {
     expect(document.querySelector('.tool')).toBeNull();
   });
 
-  it('shows no line for a turn without tools', () => {
+  it('shows no steps for a turn without tools', () => {
     render(<AssistantMessage state={finished({})} provider="openai" />);
-    expect(document.querySelector('.turn-steps')).toBeNull();
+    expect(document.querySelector('.turn-step-block')).toBeNull();
   });
 
   it('spins while the turn is running', () => {
@@ -654,7 +666,7 @@ describe('AssistantMessage compact step line', () => {
         provider="openai"
       />,
     );
-    expect(document.querySelector('.turn-steps .step-status')?.getAttribute('data-status')).toBe('running');
+    expect(document.querySelector('.turn-step-row .step-status')?.getAttribute('data-status')).toBe('running');
   });
 
   it('keeps a pending approval inline', () => {

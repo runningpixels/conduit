@@ -1034,6 +1034,34 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   transition: background var(--tap), color var(--tap);
 }
 .turn-steps:hover { background: var(--card-hi); color: var(--ink-2); }
+
+/* ADR-011: the first few steps of a turn as rows in the reply; the rest fold
+   into the summary line above, which only shows when there are more. */
+.turn-step-block { display: grid; gap: 6px; margin-bottom: var(--sp-3); }
+.turn-step-block > .turn-steps { justify-self: start; margin-bottom: 0; }
+.turn-step-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.turn-step-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink-2);
+  text-align: left;
+  font-size: var(--fs-3xl);
+  transition: background var(--tap);
+}
+.turn-step-row:hover { background: var(--card-hi); }
+.turn-step-row:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.turn-step-row .step-status { margin-top: 0; }
+.turn-step-name { font-family: var(--font-mono); font-size: var(--fs-xl); color: var(--ink); white-space: nowrap; }
+.turn-step-detail { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-step-dur { font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-3); white-space: nowrap; }
 .turn-steps .step-status { margin-top: 0; }
 .turn-steps-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .turn-steps-chev { width: var(--space-12); height: var(--space-12); flex: 0 0 auto; transition: transform var(--tap); }

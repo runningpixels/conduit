@@ -1,4 +1,4 @@
-/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look (html[data-look]) may retarget them. */
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. */
 :root {
   --shadow-tab-active: 0 1px 2px rgba(0, 0, 0, .15);
   --fs-doc-h1: 21px;

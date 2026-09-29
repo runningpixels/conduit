@@ -1,7 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, waitFor, fireEvent } from '@testing-library/react';
 import { MermaidBlock, sizeSvgFromViewBox } from './MermaidBlock';
-import { writeLook } from '../../shell/uiPrefs';
 import type { ResolvedTokens } from '../../themes/resolvedTokens';
 
 const NEWLINE = String.fromCharCode(10);
@@ -212,7 +211,6 @@ describe('MermaidBlock — tokens theming', () => {
     renderFn.mockImplementation(async (_id: string, _text: string) => ({
       svg: '<svg xmlns="http://www.w3.org/2000/svg" data-testid="mermaid-svg"></svg>',
     }));
-    writeLook('terminal');
   });
 
   it('initializes with theme "base" and themeVariables when tokens theming is active', async () => {

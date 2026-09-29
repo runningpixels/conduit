@@ -1,5 +1,4 @@
-/* Role tokens (theming Phase 1): off-scale values this sheet owns. A look
- * (html[data-look]) may retarget them. */
+/* Role tokens (theming Phase 1): off-scale values this sheet owns. */
 :root {
   --fs-bubble: 15px;
   --fs-prose: 15.5px;
@@ -14,13 +13,6 @@
   --shadow-composer-focus-spread: 3px;
 }
 
-/* Reading font (Appearance; uiPrefs.ts `data-reading-font`). Overrides the
- * prose face whatever the look or palette chose, so `:root` is doubled to
- * outrank html[data-look] and html[data-palette] (both (0,1,1)) without
- * depending on stylesheet order. `theme` declares nothing. --face-* are the
- * original stacks, locale-aware (tokens.css), untouched by any look. */
-html:root[data-reading-font="sans"] { --font-prose: var(--face-sans); }
-html:root[data-reading-font="serif"] { --font-prose: var(--face-serif); }
 
 /* ── Chat thread ───────────────────────────────────────────────────────── */
 /* `overflow-x: hidden` is load-bearing, not tidiness: a computed `visible` next
@@ -85,18 +77,6 @@ html:root[data-reading-font="serif"] { --font-prose: var(--face-serif); }
   font-family: var(--font-ui);
   font-size: var(--fs-bubble);
   line-height: 1.6;
-}
-/* Under Orange Charcoal the user message is a fill without an outline. The
-   border is what makes
-   the bubble read as a card; dropping it leaves the same shape sitting
-   in the prose column rather than on top of it. No size bump: the 16.5px on
-   `.prose` is optical compensation for the serif's smaller x-height, and the
-   bubble is not serif. */
-html[data-palette="orange-charcoal"] .bubble,
-html[data-palette="orange-dark"] .bubble {
-  border-color: transparent;
-  border-radius: var(--r-bubble-accent);
-  padding: 12px 18px;
 }
 /* `font-variant-ligatures` because the bubble shows what was typed, verbatim.
  * Fonts can ligate arrows, so a pasted `-->` in a diagram or a shell line was
@@ -320,11 +300,6 @@ html[data-palette="orange-dark"] .bubble {
   color: var(--ink);
   overflow-wrap: anywhere;
 }
-/* Source Serif 4's x-height runs smaller than Geist's, so the same px reads a
- * step down. The bump is optical compensation, not a size preference — the
- * measure and leading are tuned together. */
-html[data-palette="orange-charcoal"] .prose,
-html[data-palette="orange-dark"] .prose { font-size: var(--fs-prose-serif); line-height: 1.7; }
 
 /* Links had no rule anywhere in the product, so every one rendered in
  * Chromium's UA colour. The first fix — ink with a `--line-hi` underline —

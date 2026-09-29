@@ -76,7 +76,6 @@
 
 import type { BrandConfig, BrandPalette } from '@conduit/config-schema';
 import { resetBrand, setBrand } from './index';
-import { applyPalette, readPalette } from '../shell/uiPrefs';
 
 /**
  * The pre-paint cache's own shape — deliberately narrower than
@@ -289,10 +288,8 @@ function applyBrandIdentity(config: Pick<BrandConfig, 'identity'>): void {
 /**
  * Revert everything `applyBrand` can have set: remove every allowlisted
  * custom property plus the derived `--hue-weak` (back to whatever the
- * stylesheet says), restore the `data-palette` attribute to the user's
- * *stored* preference rather than a hardcoded default (branding must not
- * clobber that preference — it only suspends it while active), reset the
- * identity singleton, and drop the pre-paint cache so the next launch
+ * stylesheet says), drop the `data-palette="brand"` sentinel (ADR-011: no
+ * palette sits underneath it any more), reset the identity singleton, and drop the pre-paint cache so the next launch
  * doesn't replay a cleared brand.
  */
 export function clearBrand(): void {
@@ -301,7 +298,7 @@ export function clearBrand(): void {
     root.removeProperty(PALETTE_PROPERTY_MAP[key]);
   }
   root.removeProperty(HUE_WEAK_PROPERTY);
-  applyPalette(readPalette());
+  document.documentElement.removeAttribute('data-palette');
   resetBrand();
   clearBrandCache();
 }

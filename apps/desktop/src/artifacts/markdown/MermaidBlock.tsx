@@ -4,7 +4,7 @@
 
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { CopyIcon, CheckIcon } from '../../icons';
-import { mermaidScaleFactor, readMermaidScale, readLook, type MermaidScalePref } from '../../shell/uiPrefs';
+import { mermaidScaleFactor, readMermaidScale, type MermaidScalePref } from '../../shell/uiPrefs';
 import {
   activeRendererTheming,
   readResolvedTokens,
@@ -73,18 +73,15 @@ function svgToBlobUrl(svg: string): string {
 /**
  * `mermaid.render`'s `themeVariables` for `theme: 'base'`, built from the
  * live document's resolved tokens (themes/resolvedTokens.ts) so a Mermaid
- * diagram follows whatever look × palette is active instead of Mermaid's own
+ * diagram follows the design's tokens in either mode instead of Mermaid's own
  * baked-in dark/default themes. Returns `undefined` — the caller's cue to
  * fall back to native theming — if any token this needs failed validation or
  * is unset; a half-built palette (e.g. a border colour missing) is worse
  * than the renderer's own theme.
  */
-function buildMermaidThemeVariables(
-  tokens: ResolvedTokens,
-  look: ReturnType<typeof readLook>,
-): Record<string, string> | undefined {
+function buildMermaidThemeVariables(tokens: ResolvedTokens): Record<string, string> | undefined {
   const background = tokens.bg ?? tokens.card;
-  const fontFamily = look === 'terminal' ? tokens.fontMono : tokens.fontUi;
+  const fontFamily = tokens.fontUi;
   const required = [
     background,
     tokens.card,
@@ -125,9 +122,9 @@ export function MermaidBlock({ source, fallback, onReady }: MermaidBlockProps) {
   const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState(mermaidTheme);
   const [scalePref, setScalePref] = useState<MermaidScalePref>(readMermaidScale);
-  // Bumps on THEME_CHANGED_EVENT (a palette/look write that doesn't touch
-  // data-theme, e.g. switching between two dark themes) so tokens theming
-  // re-renders even when the MutationObserver below has nothing to fire on.
+  // Bumps on THEME_CHANGED_EVENT (a brand or accent change that doesn't touch
+  // data-theme) so tokens theming re-renders even when the MutationObserver
+  // below has nothing to fire on.
   const themeRevision = useThemeRevision();
 
   useEffect(() => {
@@ -170,7 +167,7 @@ export function MermaidBlock({ source, fallback, onReady }: MermaidBlockProps) {
         // would otherwise win.
         const tokensThemeVariables =
           activeRendererTheming('mermaid') === 'tokens'
-            ? buildMermaidThemeVariables(readResolvedTokens(), readLook())
+            ? buildMermaidThemeVariables(readResolvedTokens())
             : undefined;
 
         if (tokensThemeVariables) {

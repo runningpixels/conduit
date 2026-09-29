@@ -26,7 +26,6 @@ import {
   listProviderDescriptors,
   listProviderModels,
   listKnowledgeCollections,
-  listUserThemes,
   revealArtifactsDir,
   searchMessages,
   setArtifactContent,
@@ -58,7 +57,6 @@ import { applyTheme, resolveTheme, watchSystemTheme } from './theme';
 import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
-import { applyCachedUserTheme, reconcileUserThemes } from './themes/userThemes';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -92,7 +90,7 @@ import { readyCapabilities, resolveCapabilities, type SetupTarget } from './idea
 import { notePicked, observeReady, ROW_GIVE_UP, setRowHidden, useIdeaState } from './ideas/ideaState';
 import { newIdeas, starterIdeas } from './ideas/selectIdeas';
 import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
-import { applyUiPrefs, supportedModes, THEME_CHANGED_EVENT } from './shell/uiPrefs';
+import { applyUiPrefs, migrateRetiredThemePrefs, THEME_CHANGED_EVENT } from './shell/uiPrefs';
 import {
   useColumnOverlay,
   useColumnResize,
@@ -726,18 +724,23 @@ export default function App() {
         // not-yet-registered `get_brand_logo` command degrades to `null`
         // rather than failing this whole Promise.all, same as every other
         // brand-optional load here.
-        const [loadedPaths, loadedSettings, onboardingState, loadedBrand, loadedLogo, userThemeEntries] =
-          await Promise.all([
-            getAppPaths(),
-            getSettings(),
-            getOnboardingState(),
-            getBrandConfig(),
-            fetchBrandLogo(),
-            // Theming Phase 5: `dev:web` has no backend, so this rejects there —
-            // degrade to "no user themes" rather than failing the whole boot,
-            // same as `fetchBrandLogo`'s own never-rejects wrapper above.
-            listUserThemes().catch(() => []),
-          ]);
+        const [loadedPaths, fetchedSettings, onboardingState, loadedBrand, loadedLogo] = await Promise.all([
+          getAppPaths(),
+          getSettings(),
+          getOnboardingState(),
+          getBrandConfig(),
+          fetchBrandLogo(),
+        ]);
+        // ADR-011: the looks and palettes are gone. A single-mode theme (Amber
+        // Terminal, Green Phosphor, Amber Paper) used to force its mode without
+        // writing AppSettings.theme; carry that forced mode over once, so
+        // nobody's app flips light or dark on upgrade, then drop the old keys.
+        const forcedMode = migrateRetiredThemePrefs();
+        const loadedSettings =
+          forcedMode && fetchedSettings.theme !== forcedMode
+            ? { ...fetchedSettings, theme: forcedMode }
+            : fetchedSettings;
+        if (loadedSettings !== fetchedSettings) void updateSettingsPersisted(loadedSettings);
         setPaths(loadedPaths);
         setSettings(loadedSettings);
         setSettingsLoaded(true);
@@ -759,15 +762,6 @@ export default function App() {
           setBrandLogo(null);
         }
         setBrandConfig(loadedBrand);
-        // Theming Phase 5 — reconcile the persisted user-theme selection
-        // against the authoritative file list, ordered after the brand
-        // reconcile above so `isBrandActive()` (which reads `data-palette`)
-        // reflects Rust's answer rather than the pre-paint replay's guess.
-        const userThemeOutcome = reconcileUserThemes(
-          userThemeEntries,
-          resolveTheme(loadedSettings.theme),
-          t,
-        );
         void listProviderDescriptors()
           .then(setProviders)
           .catch(() => setProviders([]));
@@ -784,19 +778,6 @@ export default function App() {
         } else {
           setBoundaryOk(true);
           setStatus(null);
-        }
-        // Theming Phase 5: after the null above, not before it — a toast set
-        // earlier in this effect would just be clobbered by that
-        // unconditional clear.
-        if (userThemeOutcome.cleared) {
-          setStatus(
-            makeStatus(
-              t('settings.appearance.userThemes.toastCleared', {
-                fileName: userThemeOutcome.fileName ?? '',
-              }),
-              'error',
-            ),
-          );
         }
       } catch (error) {
         setBoundaryOk(false);
@@ -1486,17 +1467,14 @@ export default function App() {
   }, [activeConversationId]);
 
   const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>(() => resolveTheme(settings.theme));
-  /* A single-mode theme (Amber Terminal is dark-only) has nothing to toggle. */
-  const [modeLocked, setModeLocked] = useState(() => supportedModes().length < 2);
   useEffect(() => {
     const eff = applyTheme(settings.theme);
     setEffectiveTheme(eff);
     const stopWatching = watchSystemTheme(settings.theme, () => setEffectiveTheme(resolveTheme(settings.theme)));
-    /* A theme change can narrow the renderable modes (a dark-only palette), so
-     * the effective mode is re-resolved whenever the look or palette moves. */
+    /* A brand or accent change re-resolves the effective mode for anything
+     * keyed on it (the brand re-apply below). */
     const onThemeChanged = () => {
       setEffectiveTheme(applyTheme(settings.theme));
-      setModeLocked(supportedModes().length < 2);
     };
     window.addEventListener(THEME_CHANGED_EVENT, onThemeChanged);
     return () => {
@@ -1542,14 +1520,6 @@ export default function App() {
     if (brandConfig) applyBrandTheme(brandConfig, effectiveTheme);
   }, [brandConfig, effectiveTheme]);
 
-  // Theming Phase 5 — same reasoning as the brand effect above: a user
-  // theme's palette override is also inline CSS on <html>, so it has to be
-  // re-applied for the resolved theme on every mode flip, not just when the
-  // theme picker changes it. A no-op when no user theme is selected
-  // (`applyCachedUserTheme` reads its own storage and returns `null`).
-  useEffect(() => {
-    applyCachedUserTheme(effectiveTheme);
-  }, [effectiveTheme]);
 
   // V7 — the active provider's identity tints the app (spec §5.4).
   useEffect(() => {
@@ -1837,7 +1807,6 @@ export default function App() {
   useHotkeys(hotkeyHandlers);
 
   const handleToggleTheme = useCallback(() => {
-    if (supportedModes().length < 2) return;
     setSettings((current) => {
       const next: AppSettings = {
         ...current,
@@ -2005,7 +1974,6 @@ export default function App() {
             title={activeConversationSummary?.displayTitle}
             effectiveTheme={effectiveTheme}
             onToggleTheme={handleToggleTheme}
-            modeLocked={modeLocked}
             panelOpen={panelVisible}
             onTogglePanel={toggleDocPanelView}
             hiddenArtifactCount={hiddenArtifactCount}

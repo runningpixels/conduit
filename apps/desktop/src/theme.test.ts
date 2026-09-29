@@ -1,8 +1,8 @@
 /**
- * Theme mode resolution (theme.ts). `resolveTheme` narrows `AppSettings.theme`
- * to what the active look × palette can actually render — `supportedModes()`
- * from shell/uiPrefs.ts — without ever writing back to the user's own
- * dark/light/system preference (themes/registry.ts's `modesForPalette`).
+ * Theme mode resolution (theme.ts): `AppSettings.theme` (dark / light /
+ * system) to the effective mode. ADR-011 removed palette narrowing; a
+ * retired single-mode palette is migrated once at boot instead
+ * (uiPrefs.ts `migrateRetiredThemePrefs`).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,7 +22,7 @@ function mockMatchMedia(prefersLight: boolean) {
   return { mql, listeners };
 }
 
-describe('resolveTheme — default registry state (both modes supported)', () => {
+describe('resolveTheme', () => {
   beforeEach(() => {
     mockMatchMedia(false);
   });
@@ -49,33 +49,20 @@ describe('resolveTheme — default registry state (both modes supported)', () =>
   });
 });
 
-describe('resolveTheme — narrows to supportedModes() (dark-only palette active)', () => {
+describe('resolveTheme — no palette narrowing (ADR-011)', () => {
   beforeEach(() => {
-    vi.resetModules();
-    vi.doMock('./shell/uiPrefs', () => ({ supportedModes: () => ['dark'] }));
+    mockMatchMedia(true);
+    localStorage.setItem('conduit:v9-palette', 'amber');
   });
   afterEach(() => {
-    vi.doUnmock('./shell/uiPrefs');
-    vi.resetModules();
+    localStorage.removeItem('conduit:v9-palette');
     vi.unstubAllGlobals();
   });
 
-  it('light narrows to dark', async () => {
-    mockMatchMedia(true);
+  it('a stored retired dark-only palette no longer forces dark', async () => {
     const { resolveTheme } = await import('./theme');
-    expect(resolveTheme('light')).toBe('dark');
-  });
-
-  it('system narrows to dark even when the OS prefers light', async () => {
-    mockMatchMedia(true);
-    const { resolveTheme } = await import('./theme');
-    expect(resolveTheme('system')).toBe('dark');
-  });
-
-  it('dark is unaffected (already the only supported mode)', async () => {
-    mockMatchMedia(false);
-    const { resolveTheme } = await import('./theme');
-    expect(resolveTheme('dark')).toBe('dark');
+    expect(resolveTheme('light')).toBe('light');
+    expect(resolveTheme('system')).toBe('light');
   });
 });
 

@@ -44,7 +44,6 @@ const cssFiles = [
   // them here, a class only ever styled from a look sheet (`.value-flash`,
   // the terminal look's live-value flash) would read as an unstyled orphan,
   // and a class a look sheet stops using would never register as dead.
-  ...walk(join(repoRoot, 'packages', 'ui', 'src', 'looks')).filter((f) => f.endsWith('.css')),
 ];
 
 /**
@@ -314,10 +313,10 @@ const NOT_IN_MARKUP: Record<string, string> = {
   'kind-error': 'built from a template literal in ToastStack.tsx',
   'kind-success': 'built from a template literal in ToastStack.tsx',
   'kind-warning': 'built from a template literal in ToastStack.tsx',
-  // Composed as `theme-picker--${variant}` in ThemePicker.tsx; the `settings`
+  // Composed as `theme-picker--${variant}` in ModePicker.tsx; the `settings`
   // variant has no rule of its own (the base `.theme-picker` covers it), so
   // only the `onboarding` override needs registering here.
-  'theme-picker--onboarding': 'built from a template literal in ThemePicker.tsx',
+  'theme-picker--onboarding': 'built from a template literal in ModePicker.tsx',
 };
 
 describe('no dead rules', () => {
@@ -415,23 +414,6 @@ describe('bundled fonts', () => {
     const decl = tokens.match(/--font-prose:\s*([^;]+);/);
     expect(decl, 'no --font-prose declared').not.toBeNull();
     expect(decl![1].trim()).toBe('var(--font-ui)');
-  });
-
-  /**
-   * There is one serif in the product, and it is one *token*, not two stacks
-   * that happen to agree. `--font-serif` dresses artifact document titles and
-   * the Orange Charcoal palette's prose, and those two render 18px apart in the
-   * same view — when this was a system stack and the palette named Source Serif
-   * directly, a title fell back to Georgia on Windows and Charter on macOS
-   * beside prose that did neither. Restating the stack here would let them
-   * drift apart again silently, so the override has to be the reference.
-   */
-  it('the palette dresses prose in the product serif, by reference', () => {
-    const decls = [...tokens.matchAll(/--font-prose:\s*([^;]+);/g)].map((m) => m[1].trim());
-    expect(decls.length, 'the palette never overrides --font-prose').toBeGreaterThan(1);
-    for (const decl of decls.slice(1)) {
-      expect(decl).toBe('var(--font-serif)');
-    }
   });
 
   /**

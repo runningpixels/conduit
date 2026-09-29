@@ -2,12 +2,11 @@ import { useEffect, useState } from 'react';
 import type { AppSettings } from '../ipc/contracts';
 import { SHIPPED_LOCALES, TRANSLATED_LOCALE_CODES, useT } from '../i18n';
 import { applyUiReadability, readUiDensity, readUiFontSize, type UiFontSize } from '../workspace/readability';
-import { ThemePicker } from '../workspace/settings/ThemePicker';
-import { useSupportedModes } from '../themes/useSupportedModes';
+import { ModePicker } from '../workspace/settings/ModePicker';
 import { usePersistSteps } from './persistSteps';
 
 /**
- * First-run appearance: language, mode, theme, text size.
+ * First-run appearance: language, mode, text size.
  *
  * **Why this is step one.** Two reasons, and they point the same way. A user
  * who cannot read the interface cannot act on any later step, so the language
@@ -17,7 +16,7 @@ import { usePersistSteps } from './persistSteps';
  * user has typed into — free on the first step, and destructive on the step
  * where the API key goes.
  *
- * **Why these four and not the six in Settings.** Density and diagram scale are
+ * **Why these three and not the six in Settings.** Density and diagram scale are
  * refinements, and first run should only ask what someone can answer before
  * they have seen the app. "Can you read this" and "is it the right colour" are
  * answerable on sight; "comfortable or compact line spacing" is not.
@@ -42,9 +41,6 @@ export function AppearanceStep({
   /* The language write is awaited, so the select has a real in-flight window.
      Disabling it stops a second choice from queueing a second re-mount. */
   const [switchingLanguage, setSwitchingLanguage] = useState(false);
-  const supported = useSupportedModes();
-  const modeForced = supported.length < 2;
-  const modeForcedTo = supported[0];
 
   /* Density is not offered here, but `applyUiReadability` takes both, so the
      stored value is read and passed straight back through unchanged. */
@@ -100,33 +96,9 @@ export function AppearanceStep({
           </small>
         </div>
 
-        {/* A dark-only theme forces dark without touching the saved mode, so the
-            select is disabled and says why — same treatment as AppearanceSection. */}
-        <div className="field">
-          <label className="field-label" htmlFor="onboarding-mode">
-            {t('settings.appearance.theme.label')}
-          </label>
-          <select
-            id="onboarding-mode"
-            aria-describedby={modeForced ? 'onboarding-mode-hint' : undefined}
-            disabled={modeForced}
-            value={settings.theme}
-            onChange={(e) => set('theme', e.target.value as AppSettings['theme'])}
-          >
-            <option value="system">{t('settings.appearance.theme.optionSystem')}</option>
-            <option value="dark">{t('settings.appearance.theme.optionDark')}</option>
-            <option value="light">{t('settings.appearance.theme.optionLight')}</option>
-          </select>
-          {modeForced && (
-            <small id="onboarding-mode-hint">{t(modeForcedTo === 'dark' ? 'settings.appearance.theme.hintDarkOnly' : 'settings.appearance.theme.hintLightOnly')}</small>
-          )}
-        </div>
-
-        {/* The theme (look x palette) is a renderer-only presentation pref: it
-            lives in localStorage and on <html>, deliberately outside
-            AppSettings, so ThemePicker writes it directly rather than through
-            the settings path. */}
-        <ThemePicker variant="onboarding" />
+        {/* ADR-011: one design in two modes. Written through the settings path
+            like language, since the mode is AppSettings.theme. */}
+        <ModePicker variant="onboarding" value={settings.theme} onChange={(theme) => set('theme', theme)} />
 
         <label className="field">
           <span className="field-label">{t('settings.appearance.fontSize.label')}</span>

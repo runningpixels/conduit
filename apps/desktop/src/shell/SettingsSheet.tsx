@@ -35,8 +35,6 @@ import { SkillsSection } from '../workspace/settings/SkillsSection';
 import { MemorySection } from '../workspace/settings/MemorySection';
 import { UsageSection } from '../workspace/settings/UsageSection';
 import {
-  readProviderColour,
-  writeProviderColour,
   readReduceMotion,
   writeReduceMotion,
   readShowReasoning,
@@ -247,7 +245,6 @@ export function SettingsSheet({
   const sheetRef = useRef<HTMLDivElement>(null);
   const lastFocusRef = useRef<HTMLElement | null>(null);
 
-  const [providerColour, setProviderColour] = useState(readProviderColour);
   const [reduceMotion, setReduceMotion] = useState(readReduceMotion);
   const [showReasoning, setShowReasoning] = useState(readShowReasoning);
   const [sendWith, setSendWith] = useState(readSendWith);
@@ -651,21 +648,6 @@ export function SettingsSheet({
               </p>
               <AppearanceSection settings={settings} onUpdate={save} />
               <div className="grp" style={{ marginTop: 20 }}>
-                <div className="srow">
-                  <span className="srow-text">
-                    <b>{t('shell.settingsSheet.appearance.providerColour.label')}</b>
-                    <small>{t('shell.settingsSheet.appearance.providerColour.help')}</small>
-                  </span>
-                  <Toggle
-                    label={t('shell.settingsSheet.appearance.providerColour.label')}
-                    pressed={providerColour === 'on'}
-                    onChange={() => {
-                      const next = providerColour === 'on' ? 'off' : 'on';
-                      setProviderColour(next);
-                      writeProviderColour(next);
-                    }}
-                  />
-                </div>
                 <div className="srow">
                   <span className="srow-text">
                     <b>{t('shell.settingsSheet.appearance.reduceMotion.label')}</b>

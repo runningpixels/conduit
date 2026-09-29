@@ -1,31 +1,24 @@
 /**
- * WCAG contrast guard for the token palette.
+ * WCAG contrast guard for the design tokens (ADR-011: one design, two modes).
  *
  * The V7 ink ramp shipped with `--ink-3` at 3.2:1 against `--card` — under the
  * AA floor for normal text — and it carries real copy: the composer
  * placeholder, sidebar group headers, tool status, `.kv` labels, timestamps.
- * `tsc -b` and the component tests cannot see a contrast ratio, so the palette
- * is asserted numerically here, the same way cssContract.test.ts asserts the
+ * `tsc -b` and the component tests cannot see a contrast ratio, so the tokens
+ * are asserted numerically here, the same way cssContract.test.ts asserts the
  * button reset.
  *
  * Ratios are computed from tokens.css itself, so editing a colour re-checks it.
- *
- * The set of looks this file checks is registry-driven (Phase 2): every
- * `PALETTE_IDS` entry × the modes `modesForPalette` says it supports. Adding a
- * palette to the registry (and its block(s) to tokens.css) is automatically
- * covered here without touching this file — see themes/registry.ts.
+ * Dark is `:root`; light is `:root` overlaid with `[data-theme="light"]`.
  */
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PALETTE_IDS, modesForPalette } from '../themes/registry';
-import { PINNED_PALETTE } from '../shell/uiPrefs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-// Normalised: the repo checks out CRLF on Windows, and the selector probes
-// below anchor on the newline that separates one rule from the next.
+// Normalised: the repo checks out CRLF on Windows.
 const tokens = readFileSync(
   join(here, '..', '..', '..', '..', 'packages', 'ui', 'src', 'tokens.css'),
   'utf8',
@@ -33,6 +26,8 @@ const tokens = readFileSync(
 
 /** WCAG 2.1 normal-text minimum. */
 const AA = 4.5;
+/** WCAG 1.4.11 non-text minimum, for graphical objects that carry no glyphs. */
+const AA_NON_TEXT = 3;
 
 function channel(v: number): number {
   const c = v / 255;
@@ -67,16 +62,8 @@ function readTokenIn(block: string, name: string): string | null {
 /**
  * Top-level rules, as `{ selectors, decls }`. Nested at-blocks (`@supports`,
  * `@media`) are skipped outright: their contents are fallbacks and overrides
- * that must never be mistaken for the real declarations.
- *
- * This replaces a substring `indexOf` probe. That probe resolved a selector to
- * "the first place this text appears anywhere in the file", which made two
- * things true that should not have been: a shorter selector silently matched
- * inside a longer one (`[data-theme="light"] {\n` is a substring of
- * `html[data-palette="orange-charcoal"][data-theme="light"] {\n`, so the light theme's
- * contrast was checked correctly only by source order), and a typo'd or deleted
- * selector matched something else instead of failing. Exact selector-member
- * matching plus a uniqueness check makes both of those errors loud.
+ * that must never be mistaken for the real declarations. Exact selector-member
+ * matching plus a uniqueness check makes a typo'd or deleted selector loud.
  */
 interface Rule {
   selectors: string[];
@@ -131,17 +118,7 @@ function blockFor(selector: string): string {
   return hits[0].decls;
 }
 
-/** Whether any top-level rule declares `selector` among its comma-separated members. */
-function hasSelector(selector: string): boolean {
-  return RULES.some((r) => r.selectors.includes(selector));
-}
-
-/**
- * Resolve a token the way the browser would: walk the layers in cascade order
- * and take the last one that declares it. A palette is a *delta* over a theme —
- * two hex literals behind one surface is the drift this file exists to prevent
- * — so most tokens fall through to the layer beneath.
- */
+/** Resolve a token the way the browser would: the last layer that declares it. */
 function resolve(layers: readonly string[], name: string): string {
   for (let i = layers.length - 1; i >= 0; i -= 1) {
     const hit = readTokenIn(blockFor(layers[i]), name);
@@ -150,204 +127,64 @@ function resolve(layers: readonly string[], name: string): string {
   throw new Error(`token --${name} is not a hex literal in any of [${layers.join(', ')}]`);
 }
 
-/** WCAG 1.4.11 non-text minimum, for graphical objects that carry no glyphs. */
-const AA_NON_TEXT = 3;
+const MODES = {
+  dark: [':root'],
+  light: [':root', '[data-theme="light"]'],
+} as const;
 
 /**
- * Surfaces text can sit on. `--bg-side` (the sidebar / panel / sheet-nav fill,
- * formerly `--raised`) is the worst case in light mode, where it is the
- * *darkest* surface — the direction that catches the opposite failures from
- * dark mode's `--card-hi`.
+ * Surfaces text can sit on. `--bg-side` (the side column / panel / sheet-nav
+ * fill) is the worst case in light mode, where it is the *darkest* surface —
+ * the direction that catches the opposite failures from dark mode's `--card-hi`.
  */
 const SURFACES = ['bg', 'bg-side', 'card', 'card-hi'] as const;
 /** Ink steps that carry text. All three must be legible on all four surfaces. */
 const INKS = ['ink', 'ink-2', 'ink-3'] as const;
 
-/**
- * The palette selector for a non-`terra` palette id.
- *
- * `terra` is the base look: it has no `html[data-palette]` block of its own —
- * `:root` / `[data-theme="light"]` already *are* Terra — so it is handled
- * separately below rather than through this helper.
- */
-function paletteSelector(id: string): string {
-  return `html[data-palette="${id}"]`;
-}
-
-function paletteLightSelector(id: string): string {
-  return `${paletteSelector(id)}[data-theme="light"]`;
-}
-
-/**
- * The looks the app can render, one entry per palette × supported mode. Each
- * is a *stack* of token layers in cascade order, because a palette is a delta
- * over a theme — it declares only what it changes.
- *
- * The non-terra light stacks list the palette's base block after
- * `[data-theme="light"]` deliberately: `html[data-palette="…"]` is (0,1,1)
- * and `[data-theme="light"]` is (0,1,0), so in the browser the palette's dark
- * values *do* outrank the light theme. That is why the light palette block has
- * to redeclare every colour the dark one does, and why the coverage test below
- * exists.
- *
- * A palette whose `modesForPalette` is `['light']` only (e.g. `paper`) is the
- * exception: it never meets dark (resolveTheme() forces light), so its base
- * `html[data-palette="…"]` block *is* the light values — there is no separate
- * `[data-theme="light"]` compound block to layer on top of it, and none is
- * required. Its stack is still resolved on top of `[data-theme="light"]` so a
- * token the palette leaves undeclared falls through to the light theme
- * default rather than the dark one.
- *
- * Registry-driven (Phase 2): built from `PALETTE_IDS` × `modesForPalette`, so a
- * new palette (and its tokens.css block(s)) is covered the moment it lands in
- * the registry, with no edit here.
- */
-const THEMES: Record<string, readonly string[]> = {};
-for (const id of PALETTE_IDS) {
-  const modes = modesForPalette(id);
-  if (id === 'terra') {
-    THEMES['terra dark'] = [':root'];
-    if (modes.includes('light')) THEMES['terra light'] = [':root', '[data-theme="light"]'];
-    continue;
-  }
-  const dark = paletteSelector(id);
-  const light = paletteLightSelector(id);
-  const lightOnly = modes.length === 1 && modes[0] === 'light';
-  if (lightOnly) {
-    THEMES[`${id} light`] = [':root', '[data-theme="light"]', dark];
-    continue;
-  }
-  THEMES[`${id} dark`] = [':root', dark];
-  if (modes.includes('light')) {
-    THEMES[`${id} light`] = [':root', '[data-theme="light"]', dark, light];
-  }
-}
-
-describe.each(Object.entries(THEMES))('%s', (_look, layers) => {
-  const surfaces = Object.fromEntries(SURFACES.map((s) => [s, resolve(layers, s)]));
+describe.each(Object.entries(MODES))('%s mode', (_mode, layers) => {
+  const surfaces = SURFACES.map((s) => [s, resolve(layers, s)] as const);
 
   it.each(INKS.flatMap((ink) => SURFACES.map((s) => [ink, s] as const)))(
     '--%s on --%s clears AA',
     (ink, surface) => {
-      expect(contrast(resolve(layers, ink), surfaces[surface])).toBeGreaterThanOrEqual(AA);
+      expect(contrast(resolve(layers, ink), resolve(layers, surface))).toBeGreaterThanOrEqual(AA);
     },
   );
 
   // A ramp whose steps are numerically legible but visually identical buys
   // nothing — each step must be a perceptible jump from the next.
-  it('keeps three distinct steps', () => {
+  it('keeps three distinct ink steps', () => {
     const ramp = INKS.map((i) => resolve(layers, i));
     expect(contrast(ramp[0], ramp[1])).toBeGreaterThan(1.4);
     expect(contrast(ramp[1], ramp[2])).toBeGreaterThan(1.4);
   });
 
   // Status colours label errors and warnings; illegible ones defeat the point.
-  // Checked on every surface, not just --bg/--card: a failed tool summary sits on
-  // a hovered tool line, which is --card-hi, and that is where --err was
-  // measured at 4.13:1 under the V9 palette.
-  it.each(
-    (['ok', 'warn', 'err'] as const).flatMap((s) => SURFACES.map((sf) => [s, sf] as const)),
-  )('--%s clears AA on --%s', (status, surface) => {
-    expect(contrast(resolve(layers, status), surfaces[surface])).toBeGreaterThanOrEqual(AA);
-  });
-
-  // --code carries body text (inline spans, plain fence bodies), so it is held
-  // to every surface it can sit on, like the ink ramp above.
-  it.each(SURFACES)('--code clears AA on --%s', (surface) => {
-    expect(contrast(resolve(layers, 'code'), surfaces[surface])).toBeGreaterThanOrEqual(AA);
-  });
-
-  // --link is the only thing marking a link as actionable, so it has to be
-  // legible on every surface prose can sit on.
-  it.each(SURFACES)('--link clears AA on --%s', (surface) => {
-    expect(contrast(resolve(layers, 'link'), surfaces[surface])).toBeGreaterThanOrEqual(AA);
-  });
-});
-
-/**
- * V9 splits provider hue into three roles, each with its own floor, because the
- * warm palette's surfaces are light enough that one value cannot serve all
- * three (v9 implementation plan D1):
- *
- *   --hue        graphics only — the assistant left rule, provider dots, the
- *                streaming caret, focus rings. WCAG 1.4.11, so 3:1.
- *   --hue-text   the same identity wherever it is literal text. AA, 4.5:1.
- *   --hue-solid  a fill with --on-hue on top of it (the send button glyph, the
- *                `.btn.primary` label). AA against --on-hue.
- *
- * Each is checked against the theme it is scoped to. Without the split, all
- * four dark hues measure 3.57–4.43 on --card/--card-hi and white-on-hue
- * measures 2.98–3.20 — the state the V9 spec ships and describes as legible.
- *
- * These roles are declared theme-wide (`[data-provider="…"]`, not scoped to a
- * palette), so they are checked once against Terra's surfaces regardless of
- * how many palettes the registry lists.
- */
-const PROVIDERS = ['anthropic', 'openai', 'ollama', 'custom'] as const;
-const THEME_PROVIDERS = (['dark', 'light'] as const).flatMap((theme) =>
-  PROVIDERS.map((provider) => [theme, provider] as const),
-);
-
-function hueBlockFor(theme: 'dark' | 'light', provider: string): string {
-  return blockFor(
-    theme === 'light'
-      ? `[data-theme="light"][data-provider="${provider}"]`
-      : `[data-provider="${provider}"]`,
+  // Checked on every surface: a failed tool summary sits on a hovered tool
+  // line, which is --card-hi.
+  it.each((['ok', 'warn', 'err'] as const).flatMap((s) => SURFACES.map((sf) => [s, sf] as const)))(
+    '--%s clears AA on --%s',
+    (status, surface) => {
+      expect(contrast(resolve(layers, status), resolve(layers, surface))).toBeGreaterThanOrEqual(AA);
+    },
   );
-}
 
-/** The terra (default) palette's surface stack for a theme. */
-const TERRA = { dark: THEMES['terra dark'], light: THEMES['terra light'] } as const;
+  // --code carries body text (inline spans, plain fence bodies), and --link is
+  // the only thing marking a link as actionable.
+  it.each((['code', 'link'] as const).flatMap((s) => SURFACES.map((sf) => [s, sf] as const)))(
+    '--%s clears AA on --%s',
+    (token, surface) => {
+      expect(contrast(resolve(layers, token), resolve(layers, surface))).toBeGreaterThanOrEqual(AA);
+    },
+  );
 
-describe('provider hue: text role', () => {
-  it.each(THEME_PROVIDERS)('%s / %s --hue-text clears AA on every surface', (theme, provider) => {
-    const hueText = readTokenIn(hueBlockFor(theme, provider), 'hue-text')!;
-    for (const surface of SURFACES) {
-      expect(
-        contrast(hueText, resolve(TERRA[theme], surface)),
-        `${theme}/${provider} --hue-text on --${surface}`,
-      ).toBeGreaterThanOrEqual(AA);
-    }
-  });
-});
-
-describe('provider hue: graphic role', () => {
-  it.each(THEME_PROVIDERS)('%s / %s --hue clears 3:1 on every surface', (theme, provider) => {
-    const hue = readTokenIn(hueBlockFor(theme, provider), 'hue')!;
-    for (const surface of SURFACES) {
-      expect(
-        contrast(hue, resolve(TERRA[theme], surface)),
-        `${theme}/${provider} --hue on --${surface}`,
-      ).toBeGreaterThanOrEqual(AA_NON_TEXT);
-    }
-  });
-});
-
-describe('provider hue: solid fill role', () => {
-  it.each(THEME_PROVIDERS)('%s / %s --on-hue clears AA on --hue-solid', (theme, provider) => {
-    const onHue = resolve(TERRA[theme], 'on-hue');
-    const solid = readTokenIn(hueBlockFor(theme, provider), 'hue-solid')!;
-    expect(contrast(onHue, solid)).toBeGreaterThanOrEqual(AA);
-  });
-});
-
-/**
- * ADR-011 (one design, two modes): the accent and signal roles, measured on
- * the base stacks the renderer pins (`applyPalette` always writes `terra`).
- *
- *   --accent        fills and graphics — 3:1 on every surface
- *   --accent-text   the accent as literal text — AA on every surface
- *   --on-accent     glyphs on an --accent fill (send button, .btn.primary) — AA
- *   --signal        running-state graphics — 3:1;  --signal-text — AA
- *
- * Rail labels are ink-3 on --bg-rail, so the rail joins the surface list for
- * the ink ramp here rather than in SURFACES (which the retired palettes, having
- * no rail colour, cannot satisfy).
- */
-describe.each(['dark', 'light'] as const)('Nocturne (%s): accent, signal and rail', (mode) => {
-  const layers = TERRA[mode];
-  const surfaces = SURFACES.map((s) => [s, resolve(layers, s)] as const);
-
+  /*
+   * The accent and signal roles:
+   *   --accent        fills and graphics — 3:1 on every surface
+   *   --accent-text   the accent as literal text — AA on every surface
+   *   --on-accent     glyphs on an --accent fill (send button, .btn.primary) — AA
+   *   --signal        running-state graphics — 3:1;  --signal-text — AA
+   */
   it.each(surfaces)('--accent clears 3:1 on --%s', (_s, bg) => {
     expect(contrast(resolve(layers, 'accent'), bg)).toBeGreaterThanOrEqual(AA_NON_TEXT);
   });
@@ -363,153 +200,16 @@ describe.each(['dark', 'light'] as const)('Nocturne (%s): accent, signal and rai
   it.each(surfaces)('--signal-text clears AA on --%s', (_s, bg) => {
     expect(contrast(resolve(layers, 'signal-text'), bg)).toBeGreaterThanOrEqual(AA);
   });
+  // Rail labels are ink on --bg-rail.
   it.each(INKS)('--%s clears AA on --bg-rail', (ink) => {
     expect(contrast(resolve(layers, ink), resolve(layers, 'bg-rail'))).toBeGreaterThanOrEqual(AA);
   });
 });
 
-describe('Nocturne accent pin', () => {
-  const pin = blockFor('html[data-palette="terra"] [data-provider]');
-
-  it('maps every hue role on [data-provider] elements onto the accent', () => {
-    expect(pin).toContain('--hue: var(--accent)');
-    expect(pin).toContain('--hue-text: var(--accent-text)');
-    expect(pin).toContain('--hue-solid: var(--accent)');
-    expect(pin).toContain('--on-hue: var(--on-accent)');
-    expect(pin).toContain('--hue-weak: var(--accent-soft)');
-  });
-
-  it('covers <html> itself too, which carries the active provider', () => {
-    expect(hasSelector('html[data-palette="terra"][data-provider]')).toBe(true);
-  });
-
-  it('pins the palette the renderer applies, which has no block of its own', () => {
-    expect(PINNED_PALETTE).toBe('terra');
-    expect(hasSelector(paletteSelector('terra'))).toBe(false);
-  });
-
-  it('keeps provider identity available as --provider-hue', () => {
-    for (const provider of PROVIDERS) {
-      expect(readTokenIn(hueBlockFor('dark', provider), 'provider-hue'), provider).not.toBeNull();
-      expect(readTokenIn(hueBlockFor('light', provider), 'provider-hue'), provider).not.toBeNull();
-    }
-  });
-});
-
 /**
- * Some palettes pin one identity across every provider through private
- * `--<prefix>-hue*` literals rather than by declaring `--hue` directly — so
- * that the rule doing the assigning can stay theme-agnostic and lose to
- * `provider-colour: off` on source order (see the orange-charcoal/orange-dark
- * blocks in tokens.css).
- *
- * That indirection costs the checks above their subject: under such a palette
- * `--hue` is a `var()`, which `readTokenIn` cannot see. This section puts the
- * subject back for *any* palette that declares the pin — the literals are
- * measured, and the mapping from literal to role is asserted, so the two
- * cannot drift apart.
- *
- * Registry-driven: a palette is included here iff tokens.css declares
- * `html[data-palette="<id>"] [data-provider]` (the pinned-hue rule), and the
- * private variable names are read out of that rule's own text rather than
- * hardcoded — so this generalizes to any future pinning palette (Phase 3's
- * `amber`, if it pins) with no edit here.
- */
-function pinSelector(id: string): string {
-  return `${paletteSelector(id)} [data-provider]`;
-}
-
-interface PinnedHueVars {
-  hue: string;
-  hueText: string;
-  hueSolid: string;
-}
-
-function pinnedHueVars(pin: string): PinnedHueVars | null {
-  const hue = pin.match(/--hue:\s*var\((--[a-z0-9-]+)\)/)?.[1];
-  const hueText = pin.match(/--hue-text:\s*var\((--[a-z0-9-]+)\)/)?.[1];
-  const hueSolid = pin.match(/--hue-solid:\s*var\((--[a-z0-9-]+)\)/)?.[1];
-  if (!hue || !hueText || !hueSolid) return null;
-  return { hue, hueText, hueSolid };
-}
-
-const PINNED_PALETTES = PALETTE_IDS.filter((id) => id !== 'terra' && hasSelector(pinSelector(id)));
-
-describe.each(PINNED_PALETTES)('%s palette hue (pinned via [data-provider])', (id) => {
-  const dark = paletteSelector(id);
-  const light = paletteLightSelector(id);
-  const pin = blockFor(pinSelector(id));
-  const vars = pinnedHueVars(pin);
-
-  it('pins --hue / --hue-text / --hue-solid to private var() tokens', () => {
-    expect(vars, `${pinSelector(id)} does not map --hue/--hue-text/--hue-solid to var(--private) tokens`).not.toBeNull();
-  });
-
-  const paletteModes = modesForPalette(id);
-  const lightOnly = paletteModes.length === 1 && paletteModes[0] === 'light';
-  // A light-only palette (e.g. `paper`) has no dark block at all — its base
-  // selector already holds the light values (see the THEMES-building comment
-  // near the top of this file) — so its only entry probes the base selector
-  // under the `THEMES['<id> light']` stack, not a separate compound block.
-  const modes: Array<readonly [mode: 'dark' | 'light', sel: string, layers: readonly string[]]> = lightOnly
-    ? [['light', dark, THEMES[`${id} light`]]]
-    : [['dark', dark, THEMES[`${id} dark`]]];
-  if (!lightOnly && paletteModes.includes('light')) {
-    modes.push(['light', light, THEMES[`${id} light`]]);
-  }
-
-  it.each(modes)('%s --hue-text clears AA on every surface', (_mode, sel, layers) => {
-    const hueText = readTokenIn(blockFor(sel), vars!.hueText.slice(2))!;
-    for (const surface of SURFACES) {
-      expect(
-        contrast(hueText, resolve(layers, surface)),
-        `${vars!.hueText} on --${surface}`,
-      ).toBeGreaterThanOrEqual(AA);
-    }
-  });
-
-  it.each(modes)('%s --hue clears 3:1 on every surface', (_mode, sel, layers) => {
-    const hue = readTokenIn(blockFor(sel), vars!.hue.slice(2))!;
-    for (const surface of SURFACES) {
-      expect(contrast(hue, resolve(layers, surface)), `${vars!.hue} on --${surface}`).toBeGreaterThanOrEqual(
-        AA_NON_TEXT,
-      );
-    }
-  });
-
-  it.each(modes)('%s --on-hue clears AA on the pinned hue-solid', (_mode, sel, layers) => {
-    const solid = readTokenIn(blockFor(sel), vars!.hueSolid.slice(2))!;
-    expect(contrast(resolve(layers, 'on-hue'), solid)).toBeGreaterThanOrEqual(AA);
-  });
-
-  // Without this, the literals above could be measured while the app renders
-  // something else entirely.
-  it('maps every hue role onto the measured literal', () => {
-    expect(pin).toContain(`--hue: var(${vars!.hue})`);
-    expect(pin).toContain(`--hue-text: var(${vars!.hueText})`);
-    expect(pin).toContain(`--hue-solid: var(${vars!.hueSolid})`);
-  });
-});
-
-/**
- * `html[data-palette="<id>"]` is (0,1,1) and `[data-theme="light"]` is (0,1,0),
- * so the palette's dark values outrank the light theme. Any colour the dark
- * block declares and the light block forgets leaks into light mode — and for
- * `--ink` that is near-white text on near-white paper, with every contrast
- * assertion above still green because they resolve the stack correctly.
- *
- * So the coverage itself is the assertion. Registry-driven: runs for every
- * non-terra palette that supports BOTH modes — a light-only palette (e.g.
- * `paper`) has no separate dark block for its light block to cover, so this
- * check does not apply to it (see the THEMES-building comment above).
- */
-
-/**
- * `--field-line` (text-field and dropdown border) is a `color-mix` of each
- * palette's `--ink-3` into its `--bg`, not a literal, so every palette gets it
- * without a value of its own. Resolve it the way the browser does (sRGB, by the
- * declared share) and hold it to the non-text minimum on every surface a field
- * sits on or is filled with.
+ * `--field-line` (text-field and dropdown border) is a `color-mix` of `--ink-3`
+ * into `--bg`, not a literal. Resolve it the way the browser does (sRGB, by
+ * the declared share) and hold it to the non-text minimum on every surface.
  */
 function fieldLineShare(layers: readonly string[]): number {
   for (let i = layers.length - 1; i >= 0; i -= 1) {
@@ -533,132 +233,88 @@ function mixHex(a: string, b: string, share: number): string {
     .join('')}`;
 }
 
-describe.each(Object.entries(THEMES))('%s: field border', (_look, layers) => {
+describe.each(Object.entries(MODES))('%s mode: field border', (_mode, layers) => {
   const line = mixHex(resolve(layers, 'ink-3'), resolve(layers, 'bg'), fieldLineShare(layers));
   it.each(SURFACES)('--field-line on --%s clears 3:1', (surface) => {
     expect(contrast(line, resolve(layers, surface))).toBeGreaterThanOrEqual(AA_NON_TEXT);
   });
 });
 
-const LIGHT_CAPABLE_PALETTES = PALETTE_IDS.filter(
-  (id) => id !== 'terra' && modesForPalette(id).includes('light') && modesForPalette(id).includes('dark'),
+/**
+ * The accent is set once on :root and inherited (ADR-011). A [data-provider]
+ * rule that redeclared --hue would put provider colour back into the chrome
+ * for everything under that element, so none may.
+ */
+describe('accent inheritance', () => {
+  it('declares every hue role on :root as the accent', () => {
+    const root = blockFor(':root');
+    expect(root).toMatch(/--hue:\s*var\(--accent\)/);
+    expect(root).toMatch(/--hue-text:\s*var\(--accent-text\)/);
+    expect(root).toMatch(/--hue-solid:\s*var\(--accent\)/);
+    expect(root).toMatch(/--on-hue:\s*var\(--on-accent\)/);
+    expect(root).toMatch(/--hue-weak:\s*var\(--accent-soft\)/);
+  });
+
+  it('no [data-provider] rule redeclares a hue role', () => {
+    const offenders = RULES.filter(
+      (r) =>
+        r.selectors.some((s) => s.includes('[data-provider')) &&
+        // The white-label rule sets `inherit`, which keeps the inherited accent.
+        /(^|[;\s])--(hue|hue-text|hue-solid|hue-weak|on-hue)\s*:(?!\s*inherit)/.test(r.decls),
+    ).map((r) => r.selectors.join(', '));
+    expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Provider identity survives as --provider-hue* for the places that name a
+ * model (ADR-011). Same three roles and floors the old --hue split had:
+ * graphic 3:1, text AA, and white on the solid fill AA.
+ */
+const PROVIDERS = ['anthropic', 'openai', 'ollama', 'custom'] as const;
+const THEME_PROVIDERS = (['dark', 'light'] as const).flatMap((mode) =>
+  PROVIDERS.map((provider) => [mode, provider] as const),
 );
 
-describe.each(LIGHT_CAPABLE_PALETTES)('%s palette: light covers dark', (id) => {
-  it('redeclares every colour the dark block declares', () => {
-    const dark = blockFor(paletteSelector(id));
-    const light = blockFor(paletteLightSelector(id));
-    const declared = [...dark.matchAll(/--([a-z0-9-]+)\s*:\s*(?:#|rgba?\()/g)].map((m) => m[1]);
-    expect(declared.length, 'the dark palette block declares no colours').toBeGreaterThan(0);
-    const missing = declared.filter((name) => !new RegExp(`--${name}\\s*:`).test(light));
-    expect(missing, 'these leak dark values into light mode').toEqual([]);
-  });
-});
-
-/**
- * Block-existence coverage: every palette the registry names must actually
- * have the tokens.css blocks its modes promise, or the whole suite above is
- * silently vacuous (`blockFor` only throws for a selector some *other* rule
- * still happens to declare; a palette with *no* block at all would just never
- * be exercised).
- */
-describe('palette block coverage (registry vs. tokens.css)', () => {
-  it.each(PALETTE_IDS.filter((id) => id !== 'terra'))('%s has a dark block', (id) => {
-    expect(hasSelector(paletteSelector(id)), `expected ${paletteSelector(id)} in tokens.css`).toBe(true);
-  });
-
-  it.each(PALETTE_IDS.filter((id) => id !== 'terra'))(
-    '%s has a light block iff its registry modes are exactly [dark, light]',
-    (id) => {
-      const modes = modesForPalette(id);
-      const needsCompoundLightBlock = modes.includes('light') && modes.includes('dark');
-      const hasLightBlock = hasSelector(paletteLightSelector(id));
-      if (needsCompoundLightBlock) {
-        expect(hasLightBlock, `${id} supports both modes but has no ${paletteLightSelector(id)} block`).toBe(
-          true,
-        );
-      }
-      // Dark-only and light-only palettes are not required to omit a compound
-      // light block (one would simply be unused); a light-only palette's base
-      // block already *is* the light values (see the THEMES-building comment
-      // above), so it needs no separate `[data-theme="light"]` block at all.
-    },
+function providerBlock(mode: 'dark' | 'light', provider: string): string {
+  return blockFor(
+    mode === 'light' ? `[data-theme="light"][data-provider="${provider}"]` : `[data-provider="${provider}"]`,
   );
-});
+}
 
-/**
- * WCAG AAA (enhanced) minimum for normal text. The `contrast` palette ("High
- * Contrast") targets this floor explicitly for every ink/status/link/code
- * token on every surface — a stricter bar than the AA the rest of the suite
- * enforces, so it gets its own threshold and its own describe rather than
- * weakening the shared one above.
- */
-const AAA = 7;
+describe('provider identity', () => {
+  it.each(THEME_PROVIDERS)('%s / %s --provider-hue-text clears AA on every surface', (mode, provider) => {
+    const text = readTokenIn(providerBlock(mode, provider), 'provider-hue-text')!;
+    for (const surface of SURFACES) {
+      expect(contrast(text, resolve(MODES[mode], surface)), `${mode}/${provider} on --${surface}`).toBeGreaterThanOrEqual(AA);
+    }
+  });
 
-describe.each(
-  (['dark', 'light'] as const).filter((m) => modesForPalette('contrast').includes(m)),
-)('contrast palette (%s): AAA (7:1) for ink/status/link/code', (mode) => {
-  const layers = THEMES[`contrast ${mode}`];
-  const surfaces = Object.fromEntries(SURFACES.map((s) => [s, resolve(layers, s)]));
-  const tokens = [...INKS, 'ok', 'warn', 'err', 'link', 'code'] as const;
+  it.each(THEME_PROVIDERS)('%s / %s --provider-hue clears 3:1 on every surface', (mode, provider) => {
+    const hue = readTokenIn(providerBlock(mode, provider), 'provider-hue')!;
+    for (const surface of SURFACES) {
+      expect(contrast(hue, resolve(MODES[mode], surface)), `${mode}/${provider} on --${surface}`).toBeGreaterThanOrEqual(
+        AA_NON_TEXT,
+      );
+    }
+  });
 
-  it.each(tokens.flatMap((t) => SURFACES.map((s) => [t, s] as const)))(
-    '--%s on --%s clears AAA',
-    (token, surface) => {
-      expect(contrast(resolve(layers, token), surfaces[surface])).toBeGreaterThanOrEqual(AAA);
-    },
-  );
-});
-
-/**
- * The contrast palette also targets >=3:1 (the non-text floor) for --line
- * against every surface, so borders stay visible under the contrast look's
- * heavier-border treatment — ordinary palettes only need --line to be
- * present, not measurably visible.
- */
-describe.each(
-  (['dark', 'light'] as const).filter((m) => modesForPalette('contrast').includes(m)),
-)('contrast palette (%s): --line clears 3:1 on every surface', (mode) => {
-  const layers = THEMES[`contrast ${mode}`];
-  const surfaces = Object.fromEntries(SURFACES.map((s) => [s, resolve(layers, s)]));
-
-  it.each(SURFACES)('--line on --%s', (surface) => {
-    expect(contrast(resolve(layers, 'line'), surfaces[surface])).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  it.each(THEME_PROVIDERS)('%s / %s white clears AA on --provider-hue-solid', (mode, provider) => {
+    const solid = readTokenIn(providerBlock(mode, provider), 'provider-hue-solid')!;
+    expect(contrast('#ffffff', solid)).toBeGreaterThanOrEqual(AA);
   });
 });
 
-/**
- * --hue-solid always carries --on-hue on top of it (the send button glyph,
- * `.btn.primary`'s label), so this must clear AA for every palette in every
- * mode it renders — not just the palettes already covered by the two
- * describes above ("provider hue: solid fill role" for terra's per-provider
- * hue, and the pinned-hue describe for palettes that pin --hue/--hue-solid to
- * private var() tokens).
- *
- * Every non-terra palette here pins its hue (tokens.css's
- * `[data-provider]` rule), so `PINNED_PALETTES` — computed above from
- * tokens.css itself, not hardcoded — already equals every non-terra
- * `PALETTE_IDS` entry, and its per-mode "clears AA on the pinned hue-solid"
- * test already re-checks this for each of them. This block is the explicit,
- * registry-wide assertion that no non-terra palette has silently fallen out
- * of that coverage (e.g. by declaring --hue directly instead of pinning it),
- * which would make the check above pass vacuously by never running for it.
- */
-describe('--hue-solid vs --on-hue clears AA for every palette/mode (registry-wide)', () => {
-  const nonTerraPalettes = PALETTE_IDS.filter((id) => id !== 'terra');
-
-  it('every non-terra palette pins --hue via [data-provider] (or is reported here, not silently skipped)', () => {
-    const unpinned = nonTerraPalettes.filter((id) => !PINNED_PALETTES.includes(id));
-    expect(
-      unpinned,
-      'these palettes declare no [data-provider] pin rule, so their --hue-solid vs --on-hue pairing is ' +
-        'unchecked — either add the pin (see amber/orange-charcoal) or add bespoke coverage for them here',
-    ).toEqual([]);
-  });
-
-  // terra itself is covered by "provider hue: solid fill role" above, across
-  // both themes and all four providers.
-  it('terra is covered by the provider hue describes above', () => {
-    expect(THEME_PROVIDERS.length).toBeGreaterThan(0);
+describe('no retired theme selectors remain', () => {
+  it('declares no look, palette (other than the white-label sentinel) or provider-colour rule', () => {
+    const retired = RULES.flatMap((r) => r.selectors).filter(
+      (s) =>
+        s.includes('data-look') ||
+        s.includes('data-provider-colour') ||
+        s.includes('data-user-') ||
+        s.includes('data-reading-font') ||
+        (s.includes('data-palette') && !s.includes('data-palette="brand"')),
+    );
+    expect(retired).toEqual([]);
   });
 });

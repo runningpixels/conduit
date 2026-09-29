@@ -21,6 +21,7 @@ choice, the entry says so.
 
 | Concept | German | Spanish | French | Japanese | Portuguese (BR) | Korean | Chinese (Simplified) | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| app / mini-app (a page saved from a chat) | App / Mini-App | app / miniapp | app / mini-app | アプリ / ミニアプリ | app / miniapp | 앱 / 미니 앱 | 应用 / 小应用 | The Apps rail page and "Save as app". *App* in navigation; *mini-app* where "app" could mean the product itself. |
 | artifact | Artefakt | Artefacto | Artefact | アーティファクト | Artefato | 아티팩트 | 工件 | Established: `recovery.delete.wipe.scopeConversationsLabel`. |
 | connector | Connector | Conector | Connecteur | コネクタ | Conector | 커넥터 | 连接器 | Kept as a loanword, capitalised as a German noun. It names a feature of this app, and *Adapter* / *Erweiterung* both already mean something else in the ecosystem. |
 | chat (the stored record) | Chat | chat | conversation | チャット | chat | 채팅 | 聊天 | English said both "chat" and "conversation" for one object and now says only *chat*. The three locales split on purpose — see below. Never *Gespräch* / *charla*: the UI means the stored record, not the act of talking. |

@@ -109,9 +109,13 @@ import { modShortcutHint } from './lib/shortcuts';
 import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
+import { AppsPage } from './pages/AppsPage';
+import type { AppSummary } from './ipc/contracts';
+import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog';
 import {
   artifactPrincipal,
   exportConversationDialog,
+  listApps,
   exportDiagnostics,
   forkConversation,
   previewConversationExport,
@@ -253,6 +257,25 @@ export default function App() {
   // chat sidebar and the chat; every other destination is a page over the
   // body, with the chat kept mounted underneath so a running turn goes on.
   const [destination, setDestination] = useState<Destination>('chats');
+  // Apps: the one open app (null = the list), the saved apps for the
+  // new-chat row, and the Save as app / edit dialog.
+  const [openAppId, setOpenAppId] = useState<string | null>(null);
+  const [savedApps, setSavedApps] = useState<AppSummary[]>([]);
+  const [appDetailsTarget, setAppDetailsTarget] = useState<AppDetailsTarget | null>(null);
+  const refreshSavedApps = useCallback(async () => {
+    try {
+      setSavedApps(await listApps());
+    } catch {
+      setSavedApps([]);
+    }
+  }, []);
+  useEffect(() => {
+    void refreshSavedApps();
+  }, [refreshSavedApps, destination]);
+  const openSavedApp = useCallback((id: string | null) => {
+    setOpenAppId(id);
+    setDestination('apps');
+  }, []);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>('prompts');
   const settingsOpen = destination === 'settings';
   // t1-8: files dropped onto the window wait on the Documents page for the
@@ -2026,6 +2049,9 @@ export default function App() {
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
             ideaGallery={ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
+            yourApps={savedApps}
+            onOpenApp={openSavedApp}
+            onAllApps={() => openSavedApp(null)}
             onPickIdea={(idea) => void tryIdea(idea)}
             onMoreIdeas={openIdeas}
             onHideIdeas={() => setRowHidden(true)}
@@ -2098,6 +2124,17 @@ export default function App() {
             {destination === 'memory' && (
               <MemoryPage settings={settings} onSettingsChange={setSettings} onStatus={setStatusMessage} />
             )}
+            {destination === 'apps' && (
+              <AppsPage
+                openAppId={openAppId}
+                onOpenAppIdChange={setOpenAppId}
+                allowlist={settings.artifactRemoteAllowlist}
+                colorScheme={effectiveTheme}
+                networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
+                onAppsChanged={() => void refreshSavedApps()}
+                onStatus={setStatusMessage}
+              />
+            )}
             {destination === 'workflows' && (
               <WorkflowsPage
                 onStatus={setStatusMessage}
@@ -2169,6 +2206,9 @@ export default function App() {
           onDismissPending={() => setPendingArtifact(null)}
           onSaveContent={(artifactId, content, mimeType) => handleSaveContent(artifactId, content, mimeType)}
           onExport={(artifactId, includeMetadata) => handleExport(artifactId, includeMetadata)}
+          onSaveAsApp={(artifact, html) =>
+            setAppDetailsTarget({ mode: 'save', artifactId: artifact.id, title: artifact.title, html })
+          }
           onRenameArtifact={handleRenameArtifact}
           onStatus={setStatusMessage}
           logoSrc={brandLogo ?? undefined}
@@ -2182,6 +2222,15 @@ export default function App() {
       </div>
 
       <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
+      <AppDetailsDialog
+        target={appDetailsTarget}
+        onClose={() => setAppDetailsTarget(null)}
+        onSaved={(app) => {
+          setAppDetailsTarget(null);
+          void refreshSavedApps();
+          setStatusMessage(t('apps.status.saved', { name: app.name }));
+        }}
+      />
 
       {/* Closes whichever side column is showing as an overlay (workspace.css). */}
       <div className="overlay-scrim" aria-hidden="true" onClick={closeOverlays} />

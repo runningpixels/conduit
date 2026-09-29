@@ -194,6 +194,8 @@ describe('English catalog', () => {
       'artifacts',
       // Mirrors src/ideas/: the Ideas page and its starters.
       'ideas',
+      // Mirrors src/apps/: saved mini-apps (pages/AppsPage.tsx).
+      'apps',
       // The app shell itself: dialogs and toasts owned by App.tsx rather
       // than by any one feature.
       'app',

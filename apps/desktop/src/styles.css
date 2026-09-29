@@ -42,3 +42,6 @@
 
 /* Workflows page: saved routines, their steps and runs */
 @import './styles/pages-workflows.css';
+
+/* Apps page: saved mini-apps, the open app, Save as app */
+@import './styles/pages-apps.css';

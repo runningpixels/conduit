@@ -40,6 +40,16 @@ artifactStyledPreview: boolean,
  */
 artifactNetworkEnabled: boolean, 
 /**
+ * Keep running in the tray when the main window is closed, so scheduled
+ * workflows still run. Off by default: closing the window quits, as it
+ * always did. Offered once, the first time a schedule is switched on.
+ */
+closeToTray: boolean, 
+/**
+ * Whether that one-time offer has been made (whatever the answer).
+ */
+closeToTrayOffered: boolean, 
+/**
  * Phase 6: which update channel the client checks. Consumer UI only offers
  * `Stable`/`Beta`; `Pinned`/`TenantSpecific` are reserved for Phase 7/8/9.
  * Defaults to `Stable`. Drives the updater endpoint URL in `updater.rs`.

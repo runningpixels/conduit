@@ -55,10 +55,23 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError>
 
 #[tauri::command]
 pub fn update_settings(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     patch: SettingsPatch,
 ) -> Result<AppSettings, AppError> {
-    state.update_settings(patch)
+    let close_to_tray = patch.close_to_tray;
+    let settings = state.update_settings(patch)?;
+    if let Some(enabled) = close_to_tray {
+        crate::tray::ensure_tray(&app, enabled)
+            .map_err(|e| AppError::from(format!("failed to update the tray icon: {e}")))?;
+        // Starting at sign-in only makes sense into the tray; with no tray it
+        // would open a window every sign-in, so turning the tray off drops it.
+        if !enabled {
+            use tauri_plugin_autostart::ManagerExt;
+            let _ = app.autolaunch().disable();
+        }
+    }
+    Ok(settings)
 }
 
 /// ADR-008: folder picker for workspace tools runs entirely on the Rust side

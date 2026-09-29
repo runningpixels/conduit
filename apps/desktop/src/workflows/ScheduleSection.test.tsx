@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ScheduleSpec, WorkflowSchedule } from '../ipc/contracts';
 
-const ipc = vi.hoisted(() => ({ getWorkflowSchedule: vi.fn(), setWorkflowSchedule: vi.fn() }));
+const ipc = vi.hoisted(() => ({
+  getWorkflowSchedule: vi.fn(),
+  setWorkflowSchedule: vi.fn(),
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+  getStartAtLogin: vi.fn(),
+  setStartAtLogin: vi.fn(),
+}));
 vi.mock('../ipc/client', () => ipc);
 
 import { ScheduleSection } from './ScheduleSection';
@@ -10,6 +17,9 @@ import { ScheduleSection } from './ScheduleSection';
 beforeEach(() => {
   vi.clearAllMocks();
   ipc.getWorkflowSchedule.mockResolvedValue(null);
+  // The tray offer has been answered already: these tests are about the schedule.
+  ipc.getSettings.mockResolvedValue({ closeToTray: false, closeToTrayOffered: true });
+  ipc.getStartAtLogin.mockResolvedValue(false);
   ipc.setWorkflowSchedule.mockImplementation(
     async (workflowId: string, spec: ScheduleSpec, enabled: boolean): Promise<WorkflowSchedule> => ({
       workflowId,

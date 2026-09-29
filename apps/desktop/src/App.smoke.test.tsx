@@ -30,6 +30,8 @@ const settings: AppSettings = {
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,
+  closeToTray: false,
+  closeToTrayOffered: false,
   updateChannel: 'stable',
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,
@@ -111,6 +113,7 @@ const SHAPES: Record<string, unknown> = {
  */
 const IPC_EXPORTS = [
   'getAppPaths', 'getSettings', 'updateSettings', 'saveProviderCredential',
+  'setTrayLabels', 'getStartAtLogin', 'setStartAtLogin',
   'loadProviderCredentialReference', 'validateProviderCredentials',
   'listProviderDescriptors', 'listProviderModels', 'startChatStream',
   'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getConversationCompaction', 'compactConversation', 'getRequestProviderEvents',
@@ -171,7 +174,9 @@ vi.mock('./ipc/client', () => {
   return mod;
 });
 
-describe('App shell', () => {
+// Each test boots the whole app; under a loaded full-suite run that can take
+// longer than the 5s default, which failed these as timeouts, not as bugs.
+describe('App shell', { timeout: 20_000 }, () => {
   it('mounts the three columns and the composer', async () => {
     const { default: App } = await import('./App');
     render(<App />);

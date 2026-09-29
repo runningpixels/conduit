@@ -643,6 +643,7 @@ export type WorkflowStep = {
   | { type: 'for_each'; items: string; steps: WorkflowStep[] }
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
   | { type: 'notify'; title: string; body?: string }
+  | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
 );
 
 export type WorkflowRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
@@ -708,3 +709,18 @@ export interface WorkflowReview {
 }
 
 export type WorkflowReviewDecision = 'allowOnce' | 'alwaysAllow' | 'deny';
+
+/** A run waiting at an "Ask me" step (Rust `workflows::ask::PendingQuestion`). */
+export interface WorkflowQuestion {
+  runId: string;
+  workflowId: string;
+  workflowName: string;
+  stepId: string;
+  question: string;
+  /** Answers to pick from; empty for a typed answer. */
+  choices: string[];
+  /** Taken when nobody answers before `expiresAt`. */
+  default: string | null;
+  requestedAt: string;
+  expiresAt: string;
+}

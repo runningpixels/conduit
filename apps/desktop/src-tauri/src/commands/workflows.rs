@@ -16,6 +16,7 @@ use crate::db::repository::workflows::{
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
 use crate::workflows::{
+    ask::{self, PendingQuestion, Questions},
     definition,
     permissions::{self, Decision, PendingReview, PermissionView, Reviews},
     runner::{search_backend, Resume, RunBudget, Runner},
@@ -140,6 +141,7 @@ pub async fn run_workflow(
     state: State<'_, AppState>,
     stream_manager: State<'_, StreamManager>,
     running: State<'_, Arc<RunningWorkflows>>,
+    questions: State<'_, Questions>,
     id: String,
     inputs: Option<HashMap<String, String>>,
 ) -> Result<WorkflowRunDetail, String> {
@@ -155,6 +157,7 @@ pub async fn run_workflow(
         unattended: None,
         budget: RunBudget::default(),
         notify: Some(&|title: &str, body: &str| show_notification(&app, title, body)),
+        questions: Some(questions.inner()),
     };
     runner.run(&id, &inputs.unwrap_or_default(), "manual").await
 }
@@ -167,6 +170,7 @@ pub async fn rerun_workflow_from(
     state: State<'_, AppState>,
     stream_manager: State<'_, StreamManager>,
     running: State<'_, Arc<RunningWorkflows>>,
+    questions: State<'_, Questions>,
     run_id: String,
     step_id: String,
 ) -> Result<WorkflowRunDetail, String> {
@@ -192,6 +196,7 @@ pub async fn rerun_workflow_from(
         unattended: None,
         budget: RunBudget::default(),
         notify: Some(&|title: &str, body: &str| show_notification(&app, title, body)),
+        questions: Some(questions.inner()),
     };
     let resume = Resume {
         from_step: step_id,
@@ -407,4 +412,25 @@ pub fn answer_workflow_review(
     decision: Decision,
 ) -> bool {
     reviews.answer(&run_id, decision)
+}
+
+/// Runs waiting at an "Ask me" step, oldest first.
+#[tauri::command]
+pub fn list_workflow_questions(questions: State<'_, Questions>) -> Vec<PendingQuestion> {
+    questions.list()
+}
+
+/// Answer a run waiting at an "Ask me" step. `Ok(false)` when it is no longer
+/// waiting; `Err` when the answer won't do (empty, or not one of the choices).
+#[tauri::command]
+pub fn answer_workflow_question(
+    questions: State<'_, Questions>,
+    run_id: String,
+    answer: String,
+) -> Result<bool, String> {
+    let Some(pending) = questions.get(&run_id) else {
+        return Ok(false);
+    };
+    let answer = ask::checked_answer(&pending, &answer)?;
+    Ok(questions.answer(&run_id, answer))
 }

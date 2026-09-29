@@ -17,7 +17,9 @@ import {
   deleteWorkflow,
   getWorkflow,
   getWorkflowRun,
+  answerWorkflowQuestion,
   answerWorkflowReview,
+  listWorkflowQuestions,
   listWorkflowReviews,
   listWorkflowRuns,
   listWorkflows,
@@ -32,6 +34,7 @@ import type {
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
+  WorkflowQuestion,
   WorkflowReview,
   WorkflowReviewDecision,
   WorkflowRunStep,
@@ -102,6 +105,8 @@ export function WorkflowsPage({
   const [problems, setProblems] = useState<string[]>([]);
   /// Scheduled runs waiting for an answer (any workflow).
   const [reviews, setReviews] = useState<WorkflowReview[]>([]);
+  /// Runs waiting at an "Ask me" step (any workflow).
+  const [questions, setQuestions] = useState<WorkflowQuestion[]>([]);
 
   // Check the draft as it changes, so problems show before saving.
   const draftDefinition = mode.kind === 'draft' ? mode.draft.definition : null;
@@ -171,6 +176,12 @@ export function WorkflowsPage({
       },
       () => {},
     );
+    void listWorkflowQuestions().then(
+      (next) => {
+        if (!cancelled) setQuestions(next);
+      },
+      () => {},
+    );
     return () => {
       cancelled = true;
     };
@@ -186,6 +197,20 @@ export function WorkflowsPage({
     }
     setReviews(await listWorkflowReviews().catch(() => []));
     if (selectedId) setRuns(await listWorkflowRuns(selectedId, 20).catch(() => runs));
+  }
+
+  async function reply(question: WorkflowQuestion, text: string) {
+    // Gone at once, so it can't sit beside the run's next question.
+    setQuestions((current) => current.filter((q) => q.runId !== question.runId));
+    try {
+      const taken = await answerWorkflowQuestion(question.runId, text);
+      if (!taken) onStatus(t('workspace.workflows.review.gone'));
+    } catch (e) {
+      onStatus(t('workspace.workflows.question.failed', { error: errorText(e) }));
+      setQuestions((current) => (current.some((q) => q.runId === question.runId) ? current : [question, ...current]));
+      return;
+    }
+    setQuestions(await listWorkflowQuestions().catch(() => []));
   }
 
   // Load the selected workflow and its runs.
@@ -535,6 +560,17 @@ export function WorkflowsPage({
             </section>
           ))}
 
+        {questions
+          .filter((question) => question.workflowId === record.id)
+          .map((question) => (
+            <QuestionPanel
+              key={question.runId}
+              question={question}
+              expires={formatNextRun(question.expiresAt, fmt.locale)}
+              onAnswer={(text) => reply(question, text)}
+            />
+          ))}
+
         <section className="grp" aria-label={t('workspace.workflows.steps.title')}>
           <div className="grp-label">{t('workspace.workflows.steps.title')}</div>
           <StepList
@@ -725,6 +761,66 @@ export function savedDocuments(detail: WorkflowRunDetail): SavedDocument[] {
     });
   }
   return docs;
+}
+
+/// A run waiting at an "Ask me" step: the question, and its choices or a box
+/// to type the answer in.
+function QuestionPanel({
+  question,
+  expires,
+  onAnswer,
+}: {
+  question: WorkflowQuestion;
+  expires: string;
+  onAnswer: (answer: string) => Promise<void>;
+}) {
+  const t = useT();
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const send = async (answer: string) => {
+    setSending(true);
+    try {
+      await onAnswer(answer);
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <section className="wf-offer wf-review" role="group" aria-label={t('workspace.workflows.review.title')}>
+      <b>{t('workspace.workflows.review.title')}</b>
+      <p className="wf-review-what">{question.question}</p>
+      {question.choices.length > 0 ? (
+        <div className="wf-offer-actions">
+          {question.choices.map((choice) => (
+            <button key={choice} type="button" className="btn" disabled={sending} onClick={() => void send(choice)}>
+              {choice}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <form
+          className="wf-question-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (text.trim()) void send(text);
+          }}
+        >
+          <label className="wf-field">
+            <span>{t('workspace.workflows.question.answerLabel')}</span>
+            <textarea className="mem-input" rows={2} value={text} onChange={(e) => setText(e.target.value)} />
+          </label>
+          <button type="submit" className="btn primary" disabled={sending || !text.trim()}>
+            {t('workspace.workflows.question.send')}
+          </button>
+        </form>
+      )}
+      <p className="wf-muted">
+        {question.default != null
+          ? t('workspace.workflows.question.expiresDefault', { when: expires, answer: question.default })
+          : t('workspace.workflows.review.expires', { when: expires })}
+      </p>
+    </section>
+  );
 }
 
 function RunDetail({

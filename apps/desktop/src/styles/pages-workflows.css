@@ -184,4 +184,6 @@
 .wf-permission-list { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: var(--fs-xl); display: grid; gap: 2px; }
 .wf-allowed { overflow-wrap: anywhere; }
 .wf-review { border-color: var(--warn); }
+.wf-question-form { display: grid; gap: var(--sp-2); justify-items: start; }
+.wf-question-form .wf-field { justify-self: stretch; }
 .wf-review-what { margin: 0; color: var(--ink); font-size: var(--fs-2xl); overflow-wrap: anywhere; }

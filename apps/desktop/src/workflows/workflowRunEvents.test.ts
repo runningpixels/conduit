@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowRunFinished } from '../ipc/contracts';
-import { notificationFor, notificationForReview } from './workflowRunEvents';
+import { notificationFor, notificationForQuestion, notificationForReview } from './workflowRunEvents';
 
 /// A stand-in `t` that shows which message and values were chosen.
 const t = (id: string, values?: Record<string, unknown>) =>
@@ -59,5 +59,27 @@ describe('notificationForReview', () => {
       t,
     );
     expect(note).toEqual({ title: 'waitingTitle {"name":"Morning briefing"}', body: 'host {"host":"bbc.com"}' });
+  });
+});
+
+describe('notificationForQuestion', () => {
+  it('names the workflow and shows the question', () => {
+    const t = (id: string, values?: Record<string, unknown>) =>
+      values ? `${id.split('.').pop()} ${JSON.stringify(values)}` : (id.split('.').pop() ?? id);
+    const note = notificationForQuestion(
+      {
+        runId: 'r1',
+        workflowId: 'w1',
+        workflowName: 'Morning briefing',
+        stepId: 'ask',
+        question: 'Which topic today?',
+        choices: [],
+        default: null,
+        requestedAt: '2026-09-29T08:00:00Z',
+        expiresAt: '2026-09-30T08:00:00Z',
+      },
+      t,
+    );
+    expect(note).toEqual({ title: 'questionTitle {"name":"Morning briefing"}', body: 'Which topic today?' });
   });
 });

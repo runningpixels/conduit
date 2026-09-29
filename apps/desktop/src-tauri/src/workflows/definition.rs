@@ -56,6 +56,9 @@ pub struct Step {
 
 /// Most retries a step may ask for.
 pub const MAX_RETRIES: u32 = 5;
+/// Most choices an "Ask me" step offers, and the longest one.
+pub const MAX_CHOICES: usize = 10;
+pub const MAX_CHOICE_CHARS: usize = 80;
 
 /// What a step does. Each field that holds text is a template.
 ///
@@ -69,6 +72,7 @@ pub const MAX_RETRIES: u32 = 5;
 ///   outputs by step id
 /// - `save_artifact`: `artifactId`
 /// - `notify`: `delivered`
+/// - `ask`: `answer`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -109,6 +113,16 @@ pub enum StepAction {
         format: ArtifactFormat,
         #[serde(default)]
         mode: SaveMode,
+    },
+    /// Stop and ask the user; the answer is the step's `answer`.
+    Ask {
+        question: String,
+        /// Answers to pick from; empty for a typed answer. Not templates.
+        #[serde(default)]
+        choices: Vec<String>,
+        /// Taken when nobody answers in time; without it the step fails.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default: Option<String>,
     },
     /// A desktop notification.
     Notify {
@@ -276,6 +290,37 @@ fn check_steps(
                 }
                 texts.push(title);
                 texts.push(content);
+            }
+            StepAction::Ask {
+                question,
+                choices,
+                default,
+            } => {
+                if question.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs a question."));
+                }
+                if choices.len() > MAX_CHOICES {
+                    problems.push(format!(
+                        "Step \"{name}\" offers {} choices; the limit is {MAX_CHOICES}.",
+                        choices.len()
+                    ));
+                }
+                if choices
+                    .iter()
+                    .any(|c| c.trim().is_empty() || c.chars().count() > MAX_CHOICE_CHARS)
+                {
+                    problems.push(format!(
+                        "Step \"{name}\": each choice needs text, under {MAX_CHOICE_CHARS} characters."
+                    ));
+                }
+                if let Some(default) = default {
+                    if !choices.is_empty() && !choices.iter().any(|c| c == default) {
+                        problems.push(format!(
+                            "Step \"{name}\": the answer taken when nobody answers must be one of the choices."
+                        ));
+                    }
+                }
+                texts.push(question);
             }
             StepAction::Notify { title, body } => {
                 if title.trim().is_empty() {
@@ -478,6 +523,37 @@ mod tests {
         assert!(
             round_trip.get("retries").is_none(),
             "an unset retries isn't written back"
+        );
+    }
+
+    #[test]
+    fn an_ask_step_needs_a_question_and_a_default_among_its_choices() {
+        let d = def(json!({ "steps": [
+            { "id": "a", "type": "ask", "question": " ", "choices": ["Yes", ""], "default": "Maybe" },
+        ]}));
+        let problems = validate(&d).unwrap_err();
+        assert!(
+            problems.iter().any(|p| p.contains("needs a question")),
+            "{problems:?}"
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("each choice needs text")),
+            "{problems:?}"
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("must be one of the choices")),
+            "{problems:?}"
+        );
+        let typed = def(json!({ "steps": [
+            { "id": "a", "type": "ask", "question": "Anything to add?", "default": "No" },
+        ]}));
+        assert!(
+            validate(&typed).is_ok(),
+            "a typed answer may default to anything"
         );
     }
 

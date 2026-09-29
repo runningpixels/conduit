@@ -50,6 +50,7 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   for_each: 'workspace.workflows.editor.type.forEach',
   save_artifact: 'workspace.workflows.editor.type.saveArtifact',
   notify: 'workspace.workflows.editor.type.notify',
+  ask: 'workspace.workflows.editor.type.ask',
 };
 
 /// Readable names for step outputs and item fields in the "Insert value" menu.
@@ -69,6 +70,7 @@ const FIELD_KEY: Record<string, string> = {
   index: 'workspace.workflows.editor.field.index',
   item: 'workspace.workflows.editor.field.item',
   date: 'workspace.workflows.editor.field.date',
+  answer: 'workspace.workflows.editor.field.answer',
 };
 
 export function refLabel(ref: ValueRef, t: Translate): string {
@@ -400,6 +402,45 @@ function StepCard({
               </select>
             </label>
           </div>
+        </>
+      );
+      break;
+    case 'ask':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.ask.question')}
+            value={step.question}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'ask' ? { ...s, question: v } : s))}
+          />
+          <label className="wf-field">
+            <span>{t('workspace.workflows.editor.ask.choices')}</span>
+            <textarea
+              className="mem-input"
+              rows={3}
+              value={(step.choices ?? []).join('\n')}
+              onChange={(e) =>
+                update((s) => (s.type === 'ask' ? { ...s, choices: e.target.value.split('\n') } : s))
+              }
+              // Blank lines only while typing; they go when the box is left.
+              onBlur={() =>
+                update((s) =>
+                  s.type === 'ask' ? { ...s, choices: (s.choices ?? []).map((c) => c.trim()).filter(Boolean) } : s,
+                )
+              }
+            />
+          </label>
+          <label className="wf-field">
+            <span>{t('workspace.workflows.editor.ask.default')}</span>
+            <input
+              className="mem-input"
+              value={step.default ?? ''}
+              onChange={(e) =>
+                update((s) => (s.type === 'ask' ? { ...s, default: e.target.value.trim() ? e.target.value : null } : s))
+              }
+            />
+          </label>
         </>
       );
       break;

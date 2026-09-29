@@ -9,12 +9,39 @@ import { useEffect, useRef } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Translate } from '../i18n';
-import type { WorkflowReview, WorkflowRunFinished } from '../ipc/contracts';
+import type { WorkflowQuestion, WorkflowReview, WorkflowRunFinished } from '../ipc/contracts';
 import { reviewText } from './permissionText';
 
 export const RUN_FINISHED_EVENT = 'workflow-run-finished';
 /// Emitted with a `WorkflowReview` when a scheduled run pauses to ask.
 export const RUN_PAUSED_EVENT = 'workflow-run-paused';
+/// Emitted with a `WorkflowQuestion` when a run stops at an "Ask me" step.
+export const RUN_QUESTION_EVENT = 'workflow-run-question';
+
+/// The notification for a run waiting at an "Ask me" step.
+export function notificationForQuestion(question: WorkflowQuestion, t: Translate): { title: string; body: string } {
+  const name = question.workflowName || t('workspace.workflows.notify.unnamed');
+  return { title: t('workspace.workflows.notify.questionTitle', { name }), body: question.question };
+}
+
+/// Call `onAsked` whenever a run stops at an "Ask me" step.
+export function useWorkflowQuestionEvents(onAsked: (question: WorkflowQuestion) => void) {
+  const handler = useRef(onAsked);
+  handler.current = onAsked;
+  useEffect(() => {
+    if (!isTauri()) return;
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void listen<WorkflowQuestion>(RUN_QUESTION_EVENT, (e) => handler.current(e.payload)).then((unlisten) => {
+      if (cancelled) unlisten();
+      else stop = unlisten;
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
+}
 
 /// The notification for a run that paused to ask.
 export function notificationForReview(review: WorkflowReview, t: Translate): { title: string; body: string } {

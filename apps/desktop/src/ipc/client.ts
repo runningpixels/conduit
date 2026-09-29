@@ -65,6 +65,7 @@ import type {
   WorkflowPermissions,
   WorkflowReview,
   WorkflowReviewDecision,
+  WorkflowQuestion,
   ConversationFolder,
   KnowledgeCollection,
   KnowledgeContext,
@@ -1397,6 +1398,16 @@ export async function listWorkflowReviews(): Promise<WorkflowReview[]> {
 /** Answer a paused run; resolves `false` if it was no longer waiting. */
 export async function answerWorkflowReview(runId: string, decision: WorkflowReviewDecision): Promise<boolean> {
   return invokeCommand<boolean>('answer_workflow_review', { runId, decision });
+}
+
+/** Runs waiting at an "Ask me" step, oldest first. */
+export async function listWorkflowQuestions(): Promise<WorkflowQuestion[]> {
+  return invokeCommand<WorkflowQuestion[]>('list_workflow_questions');
+}
+
+/** Answer a run waiting at an "Ask me" step; resolves `false` if it was no longer waiting. */
+export async function answerWorkflowQuestion(runId: string, answer: string): Promise<boolean> {
+  return invokeCommand<boolean>('answer_workflow_question', { runId, answer });
 }
 
 /** Ask a workflow's run in progress to stop; resolves `false` if it wasn't running. */

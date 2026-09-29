@@ -79,7 +79,9 @@ import { MemoryPage } from './pages/MemoryPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
 import {
   notificationFor,
+  notificationForQuestion,
   notificationForReview,
+  useWorkflowQuestionEvents,
   useWorkflowReviewEvents,
   useWorkflowRunEvents,
 } from './workflows/workflowRunEvents';
@@ -1019,6 +1021,13 @@ export default function App() {
   useWorkflowReviewEvents((review) => {
     setWorkflowRunsVersion((v) => v + 1);
     const note = notificationForReview(review, t);
+    void notifyWorkflowRun(note.title, note.body).catch(() => {});
+  });
+  // A run stopped at an "Ask me" step: show it, and say so if nobody is looking.
+  useWorkflowQuestionEvents((question) => {
+    setWorkflowRunsVersion((v) => v + 1);
+    if (document.hasFocus()) return;
+    const note = notificationForQuestion(question, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   useTrayLabels(t);

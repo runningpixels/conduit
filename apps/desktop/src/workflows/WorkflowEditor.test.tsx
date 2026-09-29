@@ -157,6 +157,28 @@ describe('WorkflowEditor', () => {
     expect(within(notify).queryByRole('combobox', { name: 'If it fails, try again' })).not.toBeInTheDocument();
   });
 
+  it('adds an ask step with choices and an answer for when nobody answers', () => {
+    const out = renderEditor({ inputs: [], steps: [] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'ask' } });
+    const ask = card(/^1\. Ask me/);
+    typeInto(within(ask).getByRole('textbox', { name: 'Question' }), 'Which topic?');
+    const choices = within(ask).getByRole('textbox', { name: /^Answers to pick from/ });
+    fireEvent.change(choices, { target: { value: 'Rust\n Go \n\n' } });
+    fireEvent.blur(choices);
+    fireEvent.change(within(ask).getByRole('textbox', { name: 'If nobody answers, use' }), { target: { value: 'Rust' } });
+    expect(out.draft.definition.steps[0]).toEqual({
+      id: 'ask',
+      type: 'ask',
+      question: 'Which topic?',
+      choices: ['Rust', 'Go'],
+      default: 'Rust',
+    });
+    // Later steps can insert the answer.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'template' } });
+    const insert = within(card(/^2\. /)).getByRole('combobox', { name: /^Insert a value into/ });
+    expect(within(insert).getAllByRole('option').map((o) => o.textContent)).toContain('ask · answer');
+  });
+
   it('keeps a summarize schema it cannot edit', () => {
     const schema = { type: 'object' };
     const out = renderEditor({ steps: [{ id: 's', type: 'summarize', prompt: 'p', input: 'i', schema }] });

@@ -5,9 +5,12 @@
 //! - `template`: `{{steps.x.y}}` / `{{#each}}` filling
 //! - `extract`: readable text from fetched pages
 //! - `runner`: runs a workflow and records every step
+//! - `ask`: "Ask me" steps, which wait for the user's answer
+//! - `waiting`: what runs wait on, and answering it
 //! - `permissions`: what a scheduled run may do, and asking when it wants more
 //! - `schedule` / `scheduler`: running workflows automatically
 
+pub mod ask;
 pub mod definition;
 pub mod extract;
 pub mod permissions;
@@ -15,3 +18,4 @@ pub mod runner;
 pub mod schedule;
 pub mod scheduler;
 pub mod template;
+pub mod waiting;

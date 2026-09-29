@@ -16,6 +16,7 @@ use conduit_desktop::{
     paths::AppPaths,
     state::AppState,
     stream_manager::StreamManager,
+    workflows::ask::Questions,
     workflows::definition::WorkflowDefinition,
     workflows::permissions::{self, Decision, Permission, Reviews},
     workflows::runner::{Resume, RunBudget, Runner, Unattended},
@@ -333,6 +334,7 @@ impl Harness {
             unattended: None,
             budget: RunBudget::default(),
             notify: None,
+            questions: None,
         };
         runner
             .run(id, &HashMap::new(), "manual")
@@ -535,6 +537,7 @@ async fn an_invalid_definition_does_not_start_a_run() {
         unattended: None,
         budget: RunBudget::default(),
         notify: None,
+        questions: None,
     };
     let err = runner
         .run(&id, &HashMap::new(), "manual")
@@ -788,6 +791,7 @@ impl Harness {
             unattended: None,
             budget: RunBudget::default(),
             notify: None,
+            questions: None,
         };
         let no_inputs = HashMap::new();
         let stopper = async {
@@ -945,6 +949,7 @@ impl Harness {
             unattended: Some(unattended),
             budget: RunBudget::default(),
             notify: None,
+            questions: None,
         }
     }
 
@@ -1166,6 +1171,7 @@ async fn going_over_the_time_budget_fails_the_run_even_when_the_step_may_fail() 
             ..RunBudget::default()
         },
         notify: None,
+        questions: None,
     };
     let detail = tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -1211,6 +1217,7 @@ async fn going_over_the_token_budget_fails_the_run() {
             ..RunBudget::default()
         },
         notify: None,
+        questions: None,
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "failed");
@@ -1266,11 +1273,13 @@ async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
     let record = |event: &conduit_desktop::workflows::scheduler::RunFinished| {
         order.lock().unwrap().push(event.workflow_id.clone());
     };
+    let questions = Questions::default();
     let ctx = RunContext {
         state: &h.state,
         streams: &h.streams,
         running: &running,
         reviews: &h.reviews,
+        questions: &questions,
         fetch_policy: AddressPolicy { public_only: false },
         notify: None,
     };
@@ -1438,6 +1447,7 @@ async fn a_notify_step_shows_its_filled_in_text() {
         unattended: None,
         budget: RunBudget::default(),
         notify: Some(&notify),
+        questions: None,
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "completed");
@@ -1469,6 +1479,7 @@ impl Harness {
             unattended: None,
             budget: RunBudget::default(),
             notify: None,
+            questions: None,
         }
     }
 
@@ -1622,4 +1633,126 @@ async fn a_step_allowed_to_fail_is_reused_with_its_error() {
         .as_str()
         .unwrap()
         .starts_with("Fetch said: None of the pages could be fetched."));
+}
+
+// ── Ask me ──────────────────────────────────────────────────────────────────
+
+impl Harness {
+    fn asking_runner<'a>(
+        &'a self,
+        questions: &'a Questions,
+        stop: CancellationToken,
+    ) -> Runner<'a> {
+        Runner {
+            questions: Some(questions),
+            stop,
+            ..self.manual_runner()
+        }
+    }
+}
+
+/// Nobody-is-watching with a 100 ms wait, approved for nothing.
+fn short_wait(reviews: &Reviews) -> Unattended<'_> {
+    let mut unattended = Unattended::new(reviews, []);
+    unattended.wait = std::time::Duration::from_millis(100);
+    unattended
+}
+
+async fn next_question(questions: &Questions) -> conduit_desktop::workflows::ask::PendingQuestion {
+    for _ in 0..200 {
+        if let Some(q) = questions.list().into_iter().next() {
+            return q;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("no run asked");
+}
+
+fn asking_workflow(default: Option<&str>) -> Value {
+    let mut ask = json!({ "id": "ask", "type": "ask", "question": "Which topic, {{inputs.who}}?", "choices": ["Rust", "Go"] });
+    if let Some(default) = default {
+        ask["default"] = json!(default);
+    }
+    json!({
+        "inputs": [ { "id": "who", "label": "Who", "default": "Sam" } ],
+        "steps": [ ask, { "id": "doc", "type": "template", "template": "Topic: {{steps.ask.answer}}" } ]
+    })
+}
+
+#[tokio::test]
+async fn an_ask_step_waits_for_the_answer_and_carries_on_with_it() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(asking_workflow(None)).await;
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let q = next_question(&questions).await;
+        assert_eq!(q.question, "Which topic, Sam?");
+        assert_eq!(q.choices, vec!["Rust", "Go"]);
+        let runs = repo::list_runs(&h.state.db, &id, 1).await.unwrap();
+        assert_eq!(runs[0].status, "paused");
+        assert!(questions.answer(&q.run_id, "Go".into()));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed");
+    assert_eq!(detail.steps[0].output.as_ref().unwrap()["answer"], "Go");
+    assert_eq!(
+        detail.steps[1].output.as_ref().unwrap()["text"],
+        "Topic: Go"
+    );
+}
+
+#[tokio::test]
+async fn nobody_answering_takes_the_default_or_fails_without_one() {
+    let h = Harness::new(EchoModel::default()).await;
+    let questions = Questions::default();
+    let id = h.save(asking_workflow(Some("Rust"))).await;
+    let mut runner = h.asking_runner(&questions, CancellationToken::new());
+    runner.unattended = Some(short_wait(&h.reviews));
+    let detail = runner.run(&id, &HashMap::new(), "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "completed");
+    assert_eq!(
+        detail.steps[1].output.as_ref().unwrap()["text"],
+        "Topic: Rust"
+    );
+
+    let id = h.save(asking_workflow(None)).await;
+    let mut runner = h.asking_runner(&questions, CancellationToken::new());
+    runner.unattended = Some(short_wait(&h.reviews));
+    let detail = runner.run(&id, &HashMap::new(), "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.steps[0].error.as_deref(),
+        Some("Nobody answered in time.")
+    );
+    assert!(questions.list().is_empty());
+}
+
+#[tokio::test]
+async fn stopping_while_asking_stops_and_nowhere_to_ask_fails() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(asking_workflow(None)).await;
+    let questions = Questions::default();
+    let stop = CancellationToken::new();
+    let runner = h.asking_runner(&questions, stop.clone());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let stopper = async {
+        next_question(&questions).await;
+        stop.cancel();
+    };
+    let (detail, ()) = tokio::join!(run, stopper);
+    assert_eq!(detail.unwrap().run.status, "stopped");
+    assert!(questions.list().is_empty());
+
+    let detail = h.run(&id).await;
+    assert_eq!(detail.run.status, "failed");
+    assert!(detail.steps[0]
+        .error
+        .as_deref()
+        .unwrap()
+        .contains("can't be asked here"));
 }

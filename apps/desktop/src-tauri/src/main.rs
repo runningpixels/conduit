@@ -15,9 +15,11 @@ use conduit_desktop::{
     tray::{self, TrayState},
     updater::*,
     webview_args,
+    workflows::ask::Questions,
     workflows::permissions::Reviews,
     workflows::scheduler::{
         scheduler_loop, RunningWorkflows, SchedulerWake, RUNS_CHANGED_EVENT, RUN_PAUSED_EVENT,
+        RUN_QUESTION_EVENT,
     },
 };
 use tauri::{Emitter, Manager, RunEvent};
@@ -78,6 +80,8 @@ fn main() {
         .manage(TrayState::default())
         // Scheduled runs waiting for the user's answer.
         .manage(Reviews::default())
+        // Runs waiting at an "Ask me" step.
+        .manage(Questions::default())
         .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
             ctx.app_handle().state::<ArtifactFrames>().respond(&request)
         })
@@ -284,6 +288,8 @@ fn main() {
             approve_workflow_permissions,
             list_workflow_reviews,
             answer_workflow_review,
+            list_workflow_questions,
+            answer_workflow_question,
             get_start_at_login,
             set_start_at_login,
         ])
@@ -323,6 +329,10 @@ fn main() {
             let handle = app.handle().clone();
             app.state::<Reviews>().set_listener(move |review| {
                 let _ = handle.emit(RUN_PAUSED_EVENT, review);
+            });
+            let handle = app.handle().clone();
+            app.state::<Questions>().set_listener(move |question| {
+                let _ = handle.emit(RUN_QUESTION_EVENT, question);
             });
             // Scheduled workflows run from here, independent of the window.
             tauri::async_runtime::spawn(scheduler_loop(app.handle().clone()));

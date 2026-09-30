@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { declaredHosts, hostLabel, scriptedHosts } from './networkHosts';
+import { declaredCapabilities, declaredHosts, hostLabel, scriptedHosts } from './networkHosts';
 
 describe('declaredHosts', () => {
   it('reads each declared site with its reason', () => {
@@ -50,6 +50,29 @@ describe('scriptedHosts link targets', () => {
       const res = await fetch('https://api.github.com/users/' + login);
     </script>`;
     expect(scriptedHosts(html)).toEqual(['https://api.github.com']);
+  });
+});
+
+describe('declaredCapabilities', () => {
+  it('reads a declared capability with its reason', () => {
+    const html = `<meta name="conduit-capability" content="storage — keep the habit log between launches">`;
+    expect(declaredCapabilities(html)).toEqual(['storage']);
+  });
+
+  it('lower-cases, dedupes across tags, and drops unknown names', () => {
+    const html = `<meta name="conduit-capability" content="STORAGE — one reason">
+      <meta name="conduit-capability" content="storage — repeated; models — not a real capability">`;
+    expect(declaredCapabilities(html)).toEqual(['storage']);
+  });
+
+  it('ignores other meta tags and a missing content attribute', () => {
+    const html = `<meta name="conduit-network" content="storage — no">
+      <meta name="conduit-capability">`;
+    expect(declaredCapabilities(html)).toEqual([]);
+  });
+
+  it('is empty when the page declares nothing', () => {
+    expect(declaredCapabilities('<p>no meta here</p>')).toEqual([]);
   });
 });
 

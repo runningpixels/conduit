@@ -1175,6 +1175,19 @@ pub struct AppNetwork {
     pub hosts: Vec<String>,
 }
 
+/// A page's `window.conduit.storage` allowance (ADR-012). Declaring `storage`
+/// in a `<meta name="conduit-capability">` tag gets an app this, fixed at
+/// 5 MiB; the same cap the bridge enforces in Rust for every principal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_storage.ts"
+)]
+pub struct AppStorage {
+    pub quota_bytes: u64,
+}
+
 /// What an app may ask for. Unknown keys are rejected, not ignored, so a
 /// manifest can't smuggle in a capability this version doesn't understand.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1187,6 +1200,9 @@ pub struct AppCapabilities {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub network: Option<AppNetwork>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub storage: Option<AppStorage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1244,6 +1260,8 @@ pub struct AppSummary {
     pub origin: AppOrigin,
     /// Declared hosts, from the manifest.
     pub hosts: Vec<String>,
+    /// Whether the manifest declares `storage` (ADR-012).
+    pub storage: bool,
     #[ts(optional)]
     pub source_artifact_id: Option<String>,
     /// The source artifact still exists and its content differs from this
@@ -1289,6 +1307,18 @@ pub struct AppDetail {
     #[ts(flatten)]
     pub summary: AppSummary,
     pub html: String,
+}
+
+/// How much of a principal's `window.conduit.storage` is in use (ADR-012).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/page_storage_usage.ts"
+)]
+pub struct PageStorageUsage {
+    pub bytes: u64,
+    pub keys: u64,
 }
 
 // =============================================================================

@@ -1677,7 +1677,13 @@
     "apps.card.usesInternet": "57b77d459f5cc253a1b34ffd9b3fcf91c2e78c89",
     "apps.status.added": "fb9ffc00fcbe583580d74ebbd9c98f174aec6bdc",
     "ideas.card.openApp": "b329e00d892208276cf06a47890794bdad716e94",
-    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7"
+    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7",
+    "apps.clearData.confirm": "719ea396ad92e01b4757ec2b93bb1e5f270f771d",
+    "apps.clearData.description": "406fe72d447c925966d5d2bdbedd19d8a773a1e4",
+    "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
+    "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
+    "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3357,7 +3363,13 @@
     "apps.card.usesInternet": "57b77d459f5cc253a1b34ffd9b3fcf91c2e78c89",
     "apps.status.added": "fb9ffc00fcbe583580d74ebbd9c98f174aec6bdc",
     "ideas.card.openApp": "b329e00d892208276cf06a47890794bdad716e94",
-    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7"
+    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7",
+    "apps.clearData.confirm": "719ea396ad92e01b4757ec2b93bb1e5f270f771d",
+    "apps.clearData.description": "406fe72d447c925966d5d2bdbedd19d8a773a1e4",
+    "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
+    "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
+    "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -5037,7 +5049,13 @@
     "apps.card.usesInternet": "57b77d459f5cc253a1b34ffd9b3fcf91c2e78c89",
     "apps.status.added": "fb9ffc00fcbe583580d74ebbd9c98f174aec6bdc",
     "ideas.card.openApp": "b329e00d892208276cf06a47890794bdad716e94",
-    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7"
+    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7",
+    "apps.clearData.confirm": "719ea396ad92e01b4757ec2b93bb1e5f270f771d",
+    "apps.clearData.description": "406fe72d447c925966d5d2bdbedd19d8a773a1e4",
+    "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
+    "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
+    "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6717,7 +6735,13 @@
     "apps.card.usesInternet": "57b77d459f5cc253a1b34ffd9b3fcf91c2e78c89",
     "apps.status.added": "fb9ffc00fcbe583580d74ebbd9c98f174aec6bdc",
     "ideas.card.openApp": "b329e00d892208276cf06a47890794bdad716e94",
-    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7"
+    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7",
+    "apps.clearData.confirm": "719ea396ad92e01b4757ec2b93bb1e5f270f771d",
+    "apps.clearData.description": "406fe72d447c925966d5d2bdbedd19d8a773a1e4",
+    "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
+    "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
+    "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8397,7 +8421,13 @@
     "apps.card.usesInternet": "57b77d459f5cc253a1b34ffd9b3fcf91c2e78c89",
     "apps.status.added": "fb9ffc00fcbe583580d74ebbd9c98f174aec6bdc",
     "ideas.card.openApp": "b329e00d892208276cf06a47890794bdad716e94",
-    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7"
+    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7",
+    "apps.clearData.confirm": "719ea396ad92e01b4757ec2b93bb1e5f270f771d",
+    "apps.clearData.description": "406fe72d447c925966d5d2bdbedd19d8a773a1e4",
+    "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
+    "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
+    "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -10077,7 +10107,13 @@
     "apps.card.usesInternet": "57b77d459f5cc253a1b34ffd9b3fcf91c2e78c89",
     "apps.status.added": "fb9ffc00fcbe583580d74ebbd9c98f174aec6bdc",
     "ideas.card.openApp": "b329e00d892208276cf06a47890794bdad716e94",
-    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7"
+    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7",
+    "apps.clearData.confirm": "719ea396ad92e01b4757ec2b93bb1e5f270f771d",
+    "apps.clearData.description": "406fe72d447c925966d5d2bdbedd19d8a773a1e4",
+    "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
+    "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
+    "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11757,6 +11793,12 @@
     "apps.card.usesInternet": "57b77d459f5cc253a1b34ffd9b3fcf91c2e78c89",
     "apps.status.added": "fb9ffc00fcbe583580d74ebbd9c98f174aec6bdc",
     "ideas.card.openApp": "b329e00d892208276cf06a47890794bdad716e94",
-    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7"
+    "ideas.card.openAppAriaLabel": "123db47e218e5018de728bcdcaea55618dc182e7",
+    "apps.clearData.confirm": "719ea396ad92e01b4757ec2b93bb1e5f270f771d",
+    "apps.clearData.description": "406fe72d447c925966d5d2bdbedd19d8a773a1e4",
+    "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
+    "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
+    "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
   }
 }

@@ -65,6 +65,42 @@ export function scriptedHosts(html: string): string[] {
   return [...out];
 }
 
+/// Capability names a page may declare (ADR-012). Only `storage` exists today;
+/// anything else is a page asking for something Conduit doesn't grant, and is
+/// silently dropped here the same way an unknown `conduit-network` host would
+/// not be — Rust re-validates the declared list on save/update regardless.
+const KNOWN_CAPABILITIES = new Set(['storage']);
+
+function capabilityContents(html: string): string[] {
+  const contents: string[] = [];
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    const name = /\bname\s*=\s*["']?([^"'\s>]+)/i.exec(tag)?.[1];
+    if (name?.toLowerCase() !== 'conduit-capability') continue;
+    const content = /\bcontent\s*=\s*("([^"]*)"|'([^']*)')/i.exec(tag);
+    const value = content?.[2] ?? content?.[3];
+    if (value) contents.push(value);
+  }
+  return contents;
+}
+
+/// Capabilities the page declares with `<meta name="conduit-capability"
+/// content="storage — why">` (an optional `— reason`, several separated by
+/// `;`, several tags). Lower-cased, de-duplicated, in order, and filtered to
+/// names Conduit actually knows.
+export function declaredCapabilities(html: string): string[] {
+  const out: string[] = [];
+  for (const content of capabilityContents(html)) {
+    for (const entry of content.split(/[;\n]/)) {
+      const trimmed = entry.trim();
+      if (!trimmed) continue;
+      const [namePart] = trimmed.split(/\s+[—–-]\s+|\s*:\s+/);
+      const name = namePart.trim().toLowerCase();
+      if (KNOWN_CAPABILITIES.has(name) && !out.includes(name)) out.push(name);
+    }
+  }
+  return out;
+}
+
 /// "api.open-meteo.com" for display; the port is kept when it is not 443.
 export function hostLabel(origin: string): string {
   try {

@@ -20,6 +20,7 @@ pub mod knowledge;
 pub mod licenses;
 pub mod memory;
 pub mod messages;
+pub mod page_storage;
 pub mod prompts;
 pub mod search;
 pub mod skills;

@@ -1,5 +1,6 @@
 import { Channel } from '@tauri-apps/api/core';
-import { invokeCommand } from './errors';
+import { invokeCommand, IpcError } from './errors';
+import type { BridgeErrorCode } from '../artifacts/pageBridge';
 import type {
   AddLocalConnectorRequest,
   AddLocalConnectorResult,
@@ -616,6 +617,77 @@ export async function revokeArtifactNetworkGrant(principal: PagePrincipal, host:
 
 export async function clearArtifactNetworkGrants(principal?: PagePrincipal): Promise<void> {
   await invokeCommand('clear_artifact_network_grants', { principal: principal ?? null });
+}
+
+// =============================================================================
+// Page bridge storage (ADR-012)
+// =============================================================================
+
+/** How much a page has stored, and how many keys. Hand-written: no
+ *  `AppSummary.storage`/generated binding is depended on here — see
+ *  `docs/private/bridge-storage-contract.md`. Mirrors Rust's
+ *  `PageStorageUsage` (ts-rs) once that lands in `@conduit/config-schema`. */
+export interface PageStorageUsage {
+  bytes: number;
+  keys: number;
+}
+
+/** The value stored for `key`, or `null` when there is none. */
+export async function pageStorageGet(principal: PagePrincipal, key: string): Promise<unknown> {
+  return invokeCommand<unknown>('page_storage_get', { principal, key });
+}
+
+/** `value` must be JSON-serializable; Rust enforces the size and count caps
+ *  (docs/private/bridge-storage-contract.md) and fails the whole write rather
+ *  than partly applying it. */
+export async function pageStorageSet(principal: PagePrincipal, key: string, value: unknown): Promise<void> {
+  await invokeCommand('page_storage_set', { principal, key, value });
+}
+
+export async function pageStorageDelete(principal: PagePrincipal, key: string): Promise<void> {
+  await invokeCommand('page_storage_delete', { principal, key });
+}
+
+/** Sorted keys, optionally limited to a prefix. */
+export async function pageStorageKeys(principal: PagePrincipal, prefix?: string): Promise<string[]> {
+  return invokeCommand<string[]>('page_storage_keys', { principal, prefix: prefix ?? null });
+}
+
+export async function pageStorageUsage(principal: PagePrincipal): Promise<PageStorageUsage> {
+  return invokeCommand<PageStorageUsage>('page_storage_usage', { principal });
+}
+
+/** Erases every key the principal owns. Used by the app view's "Clear data". */
+export async function pageStorageClear(principal: PagePrincipal): Promise<void> {
+  await invokeCommand('page_storage_clear', { principal });
+}
+
+const BRIDGE_ERROR_CODES: ReadonlySet<string> = new Set<BridgeErrorCode>([
+  'invalid',
+  'quota',
+  'rate_limited',
+  'unavailable',
+]);
+
+/**
+ * Maps a `page_storage_*` rejection to a bridge error. Unlike the rest of
+ * this file's commands (D9's `{ code, params, fallback }` `AppError`
+ * envelope), these commands reject with a bare `Err(String)` whose text
+ * starts with a code and a colon — `"quota: too big"` — per
+ * `docs/private/bridge-storage-contract.md`. An unrecognised prefix (or a
+ * command that hasn't been converted at all) maps to `unavailable` rather
+ * than guessing.
+ */
+export function bridgeErrorFromIpc(e: unknown): { code: BridgeErrorCode; message: string } {
+  const text = e instanceof IpcError || e instanceof Error ? e.message : String(e);
+  const at = text.indexOf(': ');
+  if (at > 0) {
+    const code = text.slice(0, at);
+    if (BRIDGE_ERROR_CODES.has(code)) {
+      return { code: code as BridgeErrorCode, message: text.slice(at + 2) };
+    }
+  }
+  return { code: 'unavailable', message: text };
 }
 
 // =============================================================================
@@ -1293,14 +1365,18 @@ export interface AppMetaInput {
 
 /** Save an HTML artifact as an app. `declaredHosts` come from the page's
  *  `conduit-network` meta tags; `keepHosts` are the page's remembered grants
- *  the user chose to carry over (Rust refuses any it doesn't have). */
+ *  the user chose to carry over (Rust refuses any it doesn't have).
+ *  `declaredCapabilities` comes from the page's `conduit-capability` meta
+ *  tags (`declaredCapabilities` in `artifacts/networkHosts.ts`); Rust rejects
+ *  anything it doesn't recognise (ADR-012). */
 export async function saveApp(
   artifactId: string,
   meta: AppMetaInput,
   declaredHosts: string[],
   keepHosts: string[],
+  declaredCapabilities: string[],
 ): Promise<AppSummary> {
-  return invokeCommand<AppSummary>('save_app', { artifactId, meta, declaredHosts, keepHosts });
+  return invokeCommand<AppSummary>('save_app', { artifactId, meta, declaredHosts, keepHosts, declaredCapabilities });
 }
 
 export async function listApps(): Promise<AppSummary[]> {
@@ -1316,8 +1392,12 @@ export async function updateApp(id: string, meta: AppMetaInput): Promise<AppSumm
   return invokeCommand<AppSummary>('update_app', { id, meta });
 }
 
-export async function updateAppFromArtifact(id: string, declaredHosts: string[]): Promise<AppSummary> {
-  return invokeCommand<AppSummary>('update_app_from_artifact', { id, declaredHosts });
+export async function updateAppFromArtifact(
+  id: string,
+  declaredHosts: string[],
+  declaredCapabilities: string[],
+): Promise<AppSummary> {
+  return invokeCommand<AppSummary>('update_app_from_artifact', { id, declaredHosts, declaredCapabilities });
 }
 
 export async function deleteApp(id: string): Promise<void> {

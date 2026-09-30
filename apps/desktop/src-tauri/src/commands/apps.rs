@@ -52,8 +52,10 @@ pub async fn save_app(
     artifact_id: String,
     meta: AppMetaInput,
     declared_hosts: Vec<String>,
+    declared_capabilities: Vec<String>,
     keep_hosts: Vec<String>,
 ) -> Result<AppSummary, String> {
+    let has_storage = apps::validate_capabilities(&declared_capabilities)?;
     apps::save_from_artifact(
         &state.db,
         &state.paths.artifacts,
@@ -61,6 +63,7 @@ pub async fn save_app(
         &artifact_id,
         meta.validated()?,
         declared_origins(declared_hosts),
+        has_storage,
         &keep_hosts,
     )
     .await
@@ -99,13 +102,16 @@ pub async fn update_app_from_artifact(
     state: State<'_, AppState>,
     id: String,
     declared_hosts: Vec<String>,
+    declared_capabilities: Vec<String>,
 ) -> Result<AppSummary, String> {
+    let has_storage = apps::validate_capabilities(&declared_capabilities)?;
     apps::update_from_artifact(
         &state.db,
         &state.paths.artifacts,
         &state.encryption,
         &id,
         declared_origins(declared_hosts),
+        has_storage,
     )
     .await
     .map_err(|e| e.to_string())

@@ -9,7 +9,11 @@ export type AppSummary = { id: string, name: string, description?: string, icon?
 /**
  * Declared hosts, from the manifest.
  */
-hosts: Array<string>, sourceArtifactId?: string, 
+hosts: Array<string>, 
+/**
+ * Whether the manifest declares `storage` (ADR-012).
+ */
+storage: boolean, sourceArtifactId?: string, 
 /**
  * The source artifact still exists and its content differs from this
  * app's snapshot.

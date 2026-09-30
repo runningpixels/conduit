@@ -8,7 +8,7 @@ use std::path::Path;
 
 use provider_core::schema::{
     AppCapabilities, AppCategory, AppCreatedWith, AppDetail, AppManifest, AppNetwork, AppOrigin,
-    AppSummary,
+    AppStorage, AppSummary,
 };
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
@@ -18,7 +18,7 @@ use crate::{
     db::{
         repository::{
             artifact_network::{self as grants, Principal},
-            artifacts,
+            artifacts, page_storage,
         },
         DbError,
     },
@@ -26,6 +26,23 @@ use crate::{
     starter_apps::StarterApp,
     time::now_iso8601,
 };
+
+/// The fixed quota a `storage` capability declaration gets, per ADR-012.
+pub const STORAGE_QUOTA_BYTES: u64 = 5 * 1024 * 1024;
+
+/// The one capability name a page may declare today.
+pub const KNOWN_CAPABILITIES: &[&str] = &["storage"];
+
+/// Check every declared capability is known, rejecting the first that isn't.
+/// Returns whether `storage` was among them.
+pub fn validate_capabilities(capabilities: &[String]) -> Result<bool, String> {
+    for cap in capabilities {
+        if !KNOWN_CAPABILITIES.contains(&cap.as_str()) {
+            return Err(format!("invalid: unknown capability {cap:?}"));
+        }
+    }
+    Ok(capabilities.iter().any(|c| c == "storage"))
+}
 
 pub const MAX_NAME_CHARS: usize = 80;
 pub const MAX_DESCRIPTION_CHARS: usize = 280;
@@ -132,8 +149,14 @@ fn sorted_hosts(hosts: impl IntoIterator<Item = String>) -> Vec<String> {
     hosts
 }
 
-fn manifest(id: &str, meta: &AppMeta, version: &str, hosts: Vec<String>) -> AppManifest {
-    manifest_from(id, meta, version, hosts, true)
+fn manifest(
+    id: &str,
+    meta: &AppMeta,
+    version: &str,
+    hosts: Vec<String>,
+    has_storage: bool,
+) -> AppManifest {
+    manifest_from(id, meta, version, hosts, has_storage, true)
 }
 
 fn manifest_from(
@@ -141,6 +164,7 @@ fn manifest_from(
     meta: &AppMeta,
     version: &str,
     hosts: Vec<String>,
+    has_storage: bool,
     from_artifact: bool,
 ) -> AppManifest {
     AppManifest {
@@ -153,6 +177,9 @@ fn manifest_from(
         version: version.to_string(),
         capabilities: AppCapabilities {
             network: (!hosts.is_empty()).then_some(AppNetwork { hosts }),
+            storage: has_storage.then_some(AppStorage {
+                quota_bytes: STORAGE_QUOTA_BYTES,
+            }),
         },
         created_with: AppCreatedWith {
             conduit: env!("CARGO_PKG_VERSION").to_string(),
@@ -178,6 +205,9 @@ fn decode_manifest(enc: &Encryption, stored: &str) -> Result<AppManifest, DbErro
 /// from its `conduit-network` meta tags, already normalised by the caller).
 /// `keep_hosts` are the artifact's remembered grants the user chose to carry
 /// over; each must really be one of them, so a caller can't mint a grant here.
+/// `has_storage` is whether the page declared the `storage` capability
+/// (validated by the caller); when it did, the artifact's `page_storage` rows
+/// are copied to the new app so a tracker keeps its entries.
 pub async fn save_from_artifact(
     pool: &SqlitePool,
     artifacts_dir: &Path,
@@ -185,6 +215,7 @@ pub async fn save_from_artifact(
     artifact_id: &str,
     meta: AppMeta,
     declared_hosts: Vec<String>,
+    has_storage: bool,
     keep_hosts: &[String],
 ) -> Result<AppSummary, DbError> {
     let html = artifact_html(pool, artifacts_dir, enc, artifact_id).await?;
@@ -202,7 +233,7 @@ pub async fn save_from_artifact(
     let id = Uuid::new_v4().to_string();
     let version = "1.0.0";
     let hosts = sorted_hosts(declared_hosts.into_iter().chain(keep_hosts.iter().cloned()));
-    let manifest = manifest(&id, &meta, version, hosts);
+    let manifest = manifest(&id, &meta, version, hosts, has_storage);
     let now = now_iso8601();
     sqlx::query(
         "INSERT INTO apps (id, name, description, icon, category, version, source_artifact_id, \
@@ -228,6 +259,11 @@ pub async fn save_from_artifact(
     let app = Principal::app(&id);
     for host in keep_hosts {
         grants::grant(pool, &app, host).await?;
+    }
+    if has_storage {
+        page_storage::copy(pool, &Principal::artifact(artifact_id), &app)
+            .await
+            .map_err(DbError::from)?;
     }
     get_summary(pool, enc, &id)
         .await?
@@ -290,6 +326,7 @@ fn summary_from_row(enc: &Encryption, row: AppRow) -> Result<AppSummary, DbError
             .network
             .map(|n| n.hosts)
             .unwrap_or_default(),
+        storage: manifest.capabilities.storage.is_some(),
         source_changed: source_hash.is_some_and(|h| h != content_hash),
         source_artifact_id,
         starter_id,
@@ -353,7 +390,8 @@ async fn refresh_starter(pool: &SqlitePool, enc: &Encryption, id: &str) -> Resul
     };
     let version = bump_minor(&old.version);
     let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
-    let manifest = manifest_from(id, &meta, &version, hosts, false);
+    let has_storage = starter.capabilities.contains(&"storage");
+    let manifest = manifest_from(id, &meta, &version, hosts, has_storage, false);
     sqlx::query(
         "UPDATE apps SET version = ?, manifest_json = ?, payload = ?, content_hash = ?,                          updated_at = ? WHERE id = ?",
     )
@@ -420,7 +458,8 @@ pub async fn update_meta(
         .network
         .map(|n| n.hosts)
         .unwrap_or_default();
-    let manifest = manifest(id, &meta, &old.version, hosts);
+    let has_storage = old.capabilities.storage.is_some();
+    let manifest = manifest(id, &meta, &old.version, hosts, has_storage);
     sqlx::query(
         "UPDATE apps SET name = ?, description = ?, icon = ?, category = ?, manifest_json = ?, \
                          updated_at = ? WHERE id = ?",
@@ -442,13 +481,16 @@ pub async fn update_meta(
 /// Take a fresh snapshot of the app's source artifact and bump its minor
 /// version. Declared hosts are re-read from the new page; the app's own grants
 /// stay (the user gave them to this app), and a newly declared host still asks
-/// on first use.
+/// on first use. The app's `page_storage` rows are untouched either way — only
+/// the manifest's `storage` capability is recomputed from `has_storage`, the
+/// new page's own declaration.
 pub async fn update_from_artifact(
     pool: &SqlitePool,
     artifacts_dir: &Path,
     enc: &Encryption,
     id: &str,
     declared_hosts: Vec<String>,
+    has_storage: bool,
 ) -> Result<AppSummary, DbError> {
     let summary = get_summary(pool, enc, id)
         .await?
@@ -471,7 +513,7 @@ pub async fn update_from_artifact(
         category: old.category,
     };
     let version = bump_minor(&old.version);
-    let manifest = manifest(id, &meta, &version, hosts);
+    let manifest = manifest(id, &meta, &version, hosts, has_storage);
     sqlx::query(
         "UPDATE apps SET version = ?, manifest_json = ?, payload = ?, content_hash = ?, \
                          updated_at = ? WHERE id = ?",
@@ -516,7 +558,8 @@ pub async fn install_starter(
     let id = Uuid::new_v4().to_string();
     let version = "1.0.0";
     let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
-    let manifest = manifest_from(&id, &meta, version, hosts, false);
+    let has_storage = starter.capabilities.contains(&"storage");
+    let manifest = manifest_from(&id, &meta, version, hosts, has_storage, false);
     let now = now_iso8601();
     sqlx::query(
         "INSERT INTO apps (id, name, description, icon, category, version, source_artifact_id, \
@@ -544,9 +587,13 @@ pub async fn install_starter(
         .ok_or_else(|| invalid("The app wasn't added."))
 }
 
-/// Delete an app and its grants.
+/// Delete an app, its grants, and its storage.
 pub async fn delete(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
-    grants::clear(pool, Some(&Principal::app(id))).await?;
+    let app = Principal::app(id);
+    grants::clear(pool, Some(&app)).await?;
+    page_storage::clear(pool, &app)
+        .await
+        .map_err(DbError::from)?;
     sqlx::query("DELETE FROM apps WHERE id = ?")
         .bind(id)
         .execute(pool)

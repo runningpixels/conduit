@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@conduit/ui';
 import { useT } from '../i18n';
 import { PageEmpty, PageFrame } from '../shell/PageFrame';
-import { declaredHosts } from '../artifacts/networkHosts';
+import { declaredCapabilities, declaredHosts } from '../artifacts/networkHosts';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { deleteApp, getArtifact, getArtifactContentBytes, listApps, updateAppFromArtifact } from '../ipc/client';
 import type { AppSummary, StarterAppInfo } from '../ipc/contracts';
@@ -91,6 +91,7 @@ export function AppsPage({
         const updated = await updateAppFromArtifact(
           app.id,
           declaredHosts(html).map((d) => d.origin),
+          declaredCapabilities(html),
         );
         onStatus?.(t('apps.status.updated', { name: updated.name, version: updated.version }));
         await changed();

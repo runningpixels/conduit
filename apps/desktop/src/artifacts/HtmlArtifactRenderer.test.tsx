@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
-import { HtmlArtifactRenderer, assembleArtifactDoc } from './HtmlArtifactRenderer';
+import { ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT, HtmlArtifactRenderer, assembleArtifactDoc } from './HtmlArtifactRenderer';
 import { OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import { ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE } from './externalUrl';
 import { ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE } from './runtimeError';
 import { ARTIFACT_FETCH_MESSAGE_TYPE, ARTIFACT_FETCH_RESULT_MESSAGE_TYPE } from './networkBridge';
+import { PAGE_BRIDGE_MESSAGE_TYPE } from './pageBridge';
 import type { ResolvedTokens } from '../themes/resolvedTokens';
 
 // Defaults reproduce this file's pre-Phase-3 world (native theming), so every
@@ -309,5 +310,104 @@ describe('HtmlArtifactRenderer network bridge (ADR-010)', () => {
       expect.objectContaining({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: 7, error: expect.any(String) }),
       '*',
     );
+  });
+});
+
+describe('HtmlArtifactRenderer page bridge (ADR-012)', () => {
+  const storageHtml = '<meta name="conduit-capability" content="storage — keep entries"><p>x</p>';
+  const bridgeRequest = {
+    type: PAGE_BRIDGE_MESSAGE_TYPE,
+    id: 'b1',
+    method: 'storage.get',
+    params: { key: 'theme' },
+  };
+
+  it('injects the bridge script only when the page declares storage AND a handler is given', () => {
+    const bridge = vi.fn(async () => ({ ok: true as const, result: null }));
+
+    const { container: neither } = render(<HtmlArtifactRenderer html={storageHtml} allowlist={[]} />);
+    const noHandlerSrcdoc = frame(neither)?.getAttribute('srcdoc') ?? '';
+    expect(noHandlerSrcdoc).not.toContain(PAGE_BRIDGE_MESSAGE_TYPE);
+
+    const { container: noCapability } = render(
+      <HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} bridge={bridge} />,
+    );
+    expect(frame(noCapability)?.getAttribute('srcdoc') ?? '').not.toContain(PAGE_BRIDGE_MESSAGE_TYPE);
+
+    const { container: both } = render(<HtmlArtifactRenderer html={storageHtml} allowlist={[]} bridge={bridge} />);
+    const srcdoc = frame(both)?.getAttribute('srcdoc') ?? '';
+    expect(srcdoc).toContain(PAGE_BRIDGE_MESSAGE_TYPE);
+    // CSP is untouched by the bridge, same as the network bridge.
+    const csp = (doc: string) => /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(doc)?.[1];
+    expect(csp(srcdoc)).toBe(csp(noHandlerSrcdoc));
+    expect(srcdoc.indexOf(PAGE_BRIDGE_MESSAGE_TYPE)).toBeLessThan(srcdoc.indexOf('<body>'));
+  });
+
+  it('reaches the handler with a request from its own frame and posts the reply back', async () => {
+    const bridge = vi.fn(async () => ({ ok: true as const, result: 'dark' }));
+    const { container } = render(<HtmlArtifactRenderer html={storageHtml} allowlist={[]} bridge={bridge} />);
+    const iframe = container.querySelector('iframe')!;
+    const post = vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation(() => {});
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: bridgeRequest, source: iframe.contentWindow }));
+    });
+    expect(bridge).toHaveBeenCalledWith('storage.get', { key: 'theme' });
+    expect(post).toHaveBeenCalledWith(
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'b1', ok: true, result: 'dark' },
+      '*',
+    );
+  });
+
+  it('ignores a bridge request that does not come from the frame', async () => {
+    const bridge = vi.fn(async () => ({ ok: true as const, result: null }));
+    render(<HtmlArtifactRenderer html={storageHtml} allowlist={[]} bridge={bridge} />);
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: bridgeRequest }));
+    });
+    expect(bridge).not.toHaveBeenCalled();
+  });
+
+  it('replies "unavailable" when no handler is given, even if the page asks anyway', async () => {
+    const { container } = render(<HtmlArtifactRenderer html={storageHtml} allowlist={[]} />);
+    const iframe = container.querySelector('iframe')!;
+    const post = vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation(() => {});
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: bridgeRequest, source: iframe.contentWindow }));
+    });
+    expect(post).toHaveBeenCalledWith(
+      {
+        type: PAGE_BRIDGE_MESSAGE_TYPE,
+        id: 'b1',
+        ok: false,
+        error: { code: 'unavailable', message: expect.any(String) },
+      },
+      '*',
+    );
+  });
+});
+
+describe('the Tauri channel inside a page (ADR 007)', () => {
+  it('is cut by the first script, before any other Conduit or page script', () => {
+    const doc = assembleArtifactDoc('<script>page()</script>', [], true, 'dark', undefined, true, ['storage']);
+    const firstScript = doc.indexOf('<script>') + '<script>'.length;
+    expect(doc.slice(firstScript, firstScript + ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT.length)).toBe(
+      ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT,
+    );
+  });
+
+  it('neuters postMessage and invoke without touching anything else', async () => {
+    const posted: unknown[] = [];
+    const win = {
+      chrome: { webview: { postMessage: (m: unknown) => posted.push(m) } },
+      __TAURI_INTERNALS__: { invoke: () => Promise.resolve('ran') },
+      ipc: { postMessage: (m: unknown) => posted.push(m) },
+    };
+    new Function('window', ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT)(win);
+    win.chrome.webview.postMessage('x');
+    win.ipc.postMessage('y');
+    await expect(win.__TAURI_INTERNALS__.invoke()).rejects.toThrow('Not available in a page.');
+    expect(posted).toEqual([]);
+    // A page with none of these (every other platform) is left alone.
+    expect(() => new Function('window', ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT)({})).not.toThrow();
   });
 });

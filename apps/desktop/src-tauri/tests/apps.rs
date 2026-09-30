@@ -489,11 +489,8 @@ async fn deleting_an_artifact_deletes_its_storage() {
 
 #[test]
 fn an_unknown_declared_capability_is_refused() {
-    assert_eq!(
-        apps::validate_capabilities(&["storage".to_string()]).unwrap(),
-        true
-    );
-    assert_eq!(apps::validate_capabilities(&[]).unwrap(), false);
+    assert!(apps::validate_capabilities(&["storage".to_string()]).unwrap());
+    assert!(!apps::validate_capabilities(&[]).unwrap());
     let err = apps::validate_capabilities(&["flux-capacitor".to_string()]).unwrap_err();
     assert!(err.starts_with("invalid:"), "{err}");
 }

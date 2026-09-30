@@ -208,6 +208,9 @@ fn decode_manifest(enc: &Encryption, stored: &str) -> Result<AppManifest, DbErro
 /// `has_storage` is whether the page declared the `storage` capability
 /// (validated by the caller); when it did, the artifact's `page_storage` rows
 /// are copied to the new app so a tracker keeps its entries.
+// Each argument is one thing the Save as app form or the page declared;
+// bundling them would only hide which is which at the call site.
+#[allow(clippy::too_many_arguments)]
 pub async fn save_from_artifact(
     pool: &SqlitePool,
     artifacts_dir: &Path,

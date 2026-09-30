@@ -1,5 +1,8 @@
 <meta name="conduit-network" content="https://geocoding-api.open-meteo.com — look up a city's coordinates">
 <meta name="conduit-network" content="https://api.open-meteo.com — fetch current weather and forecast">
+<script type="application/conduit-inputs+json">
+[{"id":"city","label":"City","type":"string","default":"Paris","required":true},{"id":"units","label":"Units","type":"enum","options":["metric","imperial"],"default":"metric"}]
+</script>
 <style>
   html[data-theme="dark"], html:not([data-theme]) {
     --bg:#0b0d12; --surface:#11141b; --surface-hi:#161a23; --line:#1c2130; --line-hi:#262c3c;
@@ -292,7 +295,19 @@
 (function () {
   "use strict";
 
-  var DEFAULT_LAT = 48.8566, DEFAULT_LON = 2.3522, DEFAULT_LABEL = "Paris, France";
+  var DEFAULT_CITY = "Paris", DEFAULT_UNITS = "metric";
+
+  // window.conduit.inputs (ADR-013): the launch-input values Conduit resolved
+  // for this app (a stored value, else the declared default). Falls back to
+  // the same defaults declared in the `application/conduit-inputs+json`
+  // block above when the bridge hasn't defined it at all (e.g. a chat page
+  // preview, which gets defaults with no form).
+  function readInputs() {
+    var inputs = (window.conduit && window.conduit.inputs) || {};
+    var city = typeof inputs.city === "string" && inputs.city.trim() ? inputs.city.trim() : DEFAULT_CITY;
+    var units = inputs.units === "imperial" ? "imperial" : DEFAULT_UNITS;
+    return { city: city, units: units };
+  }
 
   var WMO_TEXT = {
     0: "Clear sky",
@@ -594,6 +609,18 @@
   unitCBtn.addEventListener("click", function () { setUnit("C"); });
   unitFBtn.addEventListener("click", function () { setUnit("F"); });
 
-  fetchWeather(DEFAULT_LAT, DEFAULT_LON, DEFAULT_LABEL);
+  // Launch inputs (ADR-013) drive the city and the initial unit; the toggle
+  // and the search box stay free to change the view for this session without
+  // touching the stored inputs.
+  function applyInputs() {
+    var inputs = readInputs();
+    setUnit(inputs.units === "imperial" ? "F" : "C");
+    locationLabelEl.textContent = "Showing weather for: " + inputs.city;
+    geocodeAndFetch(inputs.city);
+  }
+
+  window.addEventListener("conduit:inputs-changed", applyInputs);
+
+  applyInputs();
 })();
 </script>

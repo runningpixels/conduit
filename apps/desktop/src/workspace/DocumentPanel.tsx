@@ -11,7 +11,7 @@ import {
   artifactPrincipal,
 } from '../ipc/client';
 import { buildPreviewProps, resolveKind, selectRenderer } from '../artifacts/selectRenderer';
-import { declaredHosts, scriptedHosts } from '../artifacts/networkHosts';
+import { declaredHosts, declaredInputs, scriptedHosts } from '../artifacts/networkHosts';
 import { useArtifactNetwork } from './useArtifactNetwork';
 import { usePageBridge } from './usePageBridge';
 import { ArtifactNetworkBanner, ArtifactNetworkChip, ArtifactNetworkDialog } from './ArtifactNetwork';
@@ -418,6 +418,23 @@ export function DocumentPanel({
   // window.conduit.storage for a saved HTML page (ADR-012), same principal as
   // the network bridge above.
   const bridge = usePageBridge(networkArtifactId ? artifactPrincipal(networkArtifactId) : null);
+  // Launch inputs (ADR-013): a chat page gets its declared defaults and no
+  // form — the form is an app-only feature (AppView/AppInputsDialog); a page
+  // still in a chat is edited by asking for a change. `undefined` (not `{}`)
+  // for a page with no declared inputs, so `window.conduit.inputs` is simply
+  // absent rather than an always-empty object.
+  const declaredPageInputs = useMemo(
+    () => (networkArtifactId ? declaredInputs(sourceText) : []),
+    [networkArtifactId, sourceText],
+  );
+  const pageInputValues = useMemo(() => {
+    if (declaredPageInputs.length === 0) return undefined;
+    const values: Record<string, unknown> = {};
+    for (const input of declaredPageInputs) {
+      if (input.default !== undefined) values[input.id] = input.default;
+    }
+    return values;
+  }, [declaredPageInputs]);
   const networkDeclared = useMemo(() => (networkArtifactId ? declaredHosts(sourceText) : []), [networkArtifactId, sourceText]);
   const networkScripted = useMemo(() => {
     if (!networkArtifactId) return [];
@@ -1197,6 +1214,7 @@ export function DocumentPanel({
                   onAskToFix={onAskToFix}
                   network={networkArtifactId ? network.handler : undefined}
                   bridge={networkArtifactId ? bridge : undefined}
+                  inputValues={networkArtifactId ? pageInputValues : undefined}
                 />
               );
             })()}

@@ -203,6 +203,8 @@ fn main() {
             delete_app,
             list_starter_apps,
             install_starter_app,
+            get_app_inputs,
+            set_app_inputs,
             page_storage_get,
             page_storage_set,
             page_storage_delete,

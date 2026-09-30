@@ -1683,7 +1683,12 @@
     "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
     "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
     "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
-    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda",
+    "apps.view.inputs": "bbcf64a3a280c2e26bbf0237d5f1affec0d56857",
+    "apps.inputs.title": "fb5f30bc6dcc0d22491660385aa3c1678aa9b8a8",
+    "apps.inputs.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "apps.inputs.requiredMark": "eed6bfb41051ed5b74447340f3c2e29d11e99a7c",
+    "apps.inputs.requiredError": "7432b8723a27e53b1b4bf91c5dedb671081ea547"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3369,7 +3374,12 @@
     "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
     "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
     "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
-    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda",
+    "apps.view.inputs": "bbcf64a3a280c2e26bbf0237d5f1affec0d56857",
+    "apps.inputs.title": "fb5f30bc6dcc0d22491660385aa3c1678aa9b8a8",
+    "apps.inputs.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "apps.inputs.requiredMark": "eed6bfb41051ed5b74447340f3c2e29d11e99a7c",
+    "apps.inputs.requiredError": "7432b8723a27e53b1b4bf91c5dedb671081ea547"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -5055,7 +5065,12 @@
     "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
     "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
     "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
-    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda",
+    "apps.view.inputs": "bbcf64a3a280c2e26bbf0237d5f1affec0d56857",
+    "apps.inputs.title": "fb5f30bc6dcc0d22491660385aa3c1678aa9b8a8",
+    "apps.inputs.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "apps.inputs.requiredMark": "eed6bfb41051ed5b74447340f3c2e29d11e99a7c",
+    "apps.inputs.requiredError": "7432b8723a27e53b1b4bf91c5dedb671081ea547"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6741,7 +6756,12 @@
     "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
     "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
     "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
-    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda",
+    "apps.view.inputs": "bbcf64a3a280c2e26bbf0237d5f1affec0d56857",
+    "apps.inputs.title": "fb5f30bc6dcc0d22491660385aa3c1678aa9b8a8",
+    "apps.inputs.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "apps.inputs.requiredMark": "eed6bfb41051ed5b74447340f3c2e29d11e99a7c",
+    "apps.inputs.requiredError": "7432b8723a27e53b1b4bf91c5dedb671081ea547"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -8427,7 +8447,12 @@
     "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
     "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
     "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
-    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda",
+    "apps.view.inputs": "bbcf64a3a280c2e26bbf0237d5f1affec0d56857",
+    "apps.inputs.title": "fb5f30bc6dcc0d22491660385aa3c1678aa9b8a8",
+    "apps.inputs.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "apps.inputs.requiredMark": "eed6bfb41051ed5b74447340f3c2e29d11e99a7c",
+    "apps.inputs.requiredError": "7432b8723a27e53b1b4bf91c5dedb671081ea547"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -10113,7 +10138,12 @@
     "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
     "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
     "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
-    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda",
+    "apps.view.inputs": "bbcf64a3a280c2e26bbf0237d5f1affec0d56857",
+    "apps.inputs.title": "fb5f30bc6dcc0d22491660385aa3c1678aa9b8a8",
+    "apps.inputs.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "apps.inputs.requiredMark": "eed6bfb41051ed5b74447340f3c2e29d11e99a7c",
+    "apps.inputs.requiredError": "7432b8723a27e53b1b4bf91c5dedb671081ea547"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11799,6 +11829,11 @@
     "apps.clearData.title": "0f6a7679bf26475ea48650e5c6c1260c6aa08956",
     "apps.menu.clearData": "cf41e25c414f5f429970c5e38b4c0d20d1e9ed4f",
     "apps.status.cleared": "123a37b01dfc60cbb25f2796c4a8fa54ce360f4b",
-    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda"
+    "apps.view.stores": "8342728666266489aaf851dc91ae1817b5a67bda",
+    "apps.view.inputs": "bbcf64a3a280c2e26bbf0237d5f1affec0d56857",
+    "apps.inputs.title": "fb5f30bc6dcc0d22491660385aa3c1678aa9b8a8",
+    "apps.inputs.save": "efc007a393f66cdb14d57d385822a3d9e36ef873",
+    "apps.inputs.requiredMark": "eed6bfb41051ed5b74447340f3c2e29d11e99a7c",
+    "apps.inputs.requiredError": "7432b8723a27e53b1b4bf91c5dedb671081ea547"
   }
 }

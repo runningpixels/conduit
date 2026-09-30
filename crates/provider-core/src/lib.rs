@@ -3,6 +3,7 @@
 
 pub mod adapter;
 pub mod adapters;
+pub mod app_inputs;
 pub mod brand;
 pub mod brand_emit;
 pub mod catalog;

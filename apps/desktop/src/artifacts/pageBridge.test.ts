@@ -1,11 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { PAGE_BRIDGE_MESSAGE_TYPE, buildPageBridgeScript, parsePageBridgeRequest } from './pageBridge';
+import { PAGE_BRIDGE_MESSAGE_TYPE, buildPageBridgeScript, parsePageBridgeRequest, scriptSafeJson } from './pageBridge';
 
 /// Runs the in-frame script against a fake window and parent, the way the
-/// sandboxed frame would (mirrors networkBridge.test.ts's harness).
-function frame(capabilities: string[]) {
+/// sandboxed frame would (mirrors networkBridge.test.ts's harness). `window`
+/// needs `dispatchEvent`/`CustomEvent` too once inputs are involved, since the
+/// script dispatches `conduit:inputs-changed` on it directly.
+function frame(capabilities: string[], inputs?: Record<string, unknown> | null) {
   const listeners: Array<(e: { source: unknown; data: unknown }) => void> = [];
+  const windowEvents: CustomEvent[] = [];
   const posted: Array<Record<string, unknown>> = [];
   const parent = {
     postMessage(data: Record<string, unknown>) {
@@ -16,12 +19,16 @@ function frame(capabilities: string[]) {
     addEventListener: (type: string, fn: (e: { source: unknown; data: unknown }) => void) => {
       if (type === 'message') listeners.push(fn);
     },
+    dispatchEvent: (event: CustomEvent) => {
+      windowEvents.push(event);
+      return true;
+    },
   };
-  new Function('window', 'parent', buildPageBridgeScript(capabilities))(win, parent);
+  new Function('window', 'parent', buildPageBridgeScript(capabilities, inputs))(win, parent);
   const answer = (data: unknown, source: unknown = parent) => {
     for (const fn of listeners) fn({ source, data });
   };
-  return { win, posted, answer, parent };
+  return { win, posted, answer, parent, windowEvents };
 }
 
 describe('buildPageBridgeScript', () => {
@@ -113,6 +120,68 @@ describe('buildPageBridgeScript', () => {
     void conduit.storage.keys('todo:');
     expect(f.posted[0].method).toBe('storage.keys');
     expect(f.posted[0].params).toEqual({ prefix: 'todo:' });
+  });
+});
+
+describe('buildPageBridgeScript — launch inputs (ADR-013)', () => {
+  it('defines a frozen window.conduit.inputs from the given values, independent of capabilities', () => {
+    const f = frame([], { city: 'Paris', units: 'metric' });
+    const conduit = f.win.conduit as { capabilities: string[]; inputs: Record<string, unknown> };
+    expect(conduit.capabilities).toEqual([]);
+    expect(conduit.inputs).toEqual({ city: 'Paris', units: 'metric' });
+    expect(Object.isFrozen(conduit.inputs)).toBe(true);
+    expect(Object.isFrozen(conduit)).toBe(true);
+  });
+
+  it('has no inputs property when inputs is not given', () => {
+    const f = frame(['storage']);
+    const conduit = f.win.conduit as { inputs?: unknown };
+    expect(conduit.inputs).toBeUndefined();
+    expect('inputs' in conduit).toBe(false);
+  });
+
+  it('an inputs-changed message from the parent swaps the values and dispatches conduit:inputs-changed', () => {
+    const f = frame([], { city: 'Paris' });
+    f.answer({ type: PAGE_BRIDGE_MESSAGE_TYPE, event: 'inputs-changed', inputs: { city: 'Berlin' } });
+    const conduit = f.win.conduit as { inputs: Record<string, unknown> };
+    expect(conduit.inputs).toEqual({ city: 'Berlin' });
+    expect(f.windowEvents).toHaveLength(1);
+    expect(f.windowEvents[0].type).toBe('conduit:inputs-changed');
+    expect(f.windowEvents[0].detail).toEqual({ city: 'Berlin' });
+  });
+
+  it('ignores an inputs-changed message that does not come from the parent', () => {
+    const f = frame([], { city: 'Paris' });
+    f.answer({ type: PAGE_BRIDGE_MESSAGE_TYPE, event: 'inputs-changed', inputs: { city: 'Berlin' } }, {});
+    const conduit = f.win.conduit as { inputs: Record<string, unknown> };
+    expect(conduit.inputs).toEqual({ city: 'Paris' });
+    expect(f.windowEvents).toHaveLength(0);
+  });
+
+  it('each read of window.conduit.inputs is its own frozen copy of the current values', () => {
+    const f = frame([], { count: 1 });
+    const conduit = f.win.conduit as { inputs: Record<string, unknown> };
+    const first = conduit.inputs;
+    const second = conduit.inputs;
+    expect(first).toEqual(second);
+    expect(first).not.toBe(second);
+    expect(Object.isFrozen(first)).toBe(true);
+  });
+});
+
+describe('input values embedded in the script', () => {
+  const nasty = { city: '</script><script>alert(1)</script>', note: 'line' + String.fromCharCode(0x2028) + 'sep' };
+
+  it('can never close the <script> element they sit in', () => {
+    const script = buildPageBridgeScript([], nasty);
+    expect(script).not.toContain('</script>');
+    expect(scriptSafeJson(nasty)).not.toContain('<');
+  });
+
+  it('still reach the page exactly as stored', () => {
+    const { win } = frame([], nasty);
+    const conduit = win.conduit as { inputs: Record<string, unknown> };
+    expect(conduit.inputs).toEqual(nasty);
   });
 });
 

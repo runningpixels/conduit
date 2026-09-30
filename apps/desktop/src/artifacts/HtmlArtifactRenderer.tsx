@@ -72,7 +72,7 @@ import {
   type PageBridgeHandler,
   type PageBridgeOutcome,
 } from './pageBridge';
-import { declaredCapabilities } from './networkHosts';
+import { declaredCapabilities, declaredInputs } from './networkHosts';
 
 export type ArtifactColorScheme = 'light' | 'dark';
 
@@ -101,6 +101,24 @@ export interface HtmlArtifactRendererProps {
    * it can feature-detect with `window.conduit?.storage`.
    */
   bridge?: PageBridgeHandler;
+  /**
+   * The page's launch input values (ADR-013), baked into the bridge script at
+   * render — the first value for a given page load is what ships in the
+   * srcdoc; later changes to this prop do NOT rebuild the srcdoc (a page
+   * mid-session should not reload). Push a later change to the running page
+   * with `inputsRevision` instead. Omitted or `undefined` when the page has
+   * no inputs (or nothing has supplied values yet): `window.conduit.inputs`
+   * is then absent, same convention as `bridge`/`storage`.
+   */
+  inputValues?: Record<string, unknown>;
+  /**
+   * Bump this (e.g. after a successful `setAppInputs`) to post the current
+   * `inputValues` to the already-loaded frame as an `inputs-changed` message,
+   * without rebuilding the srcdoc. A change to `inputValues` alone, with no
+   * revision bump, is NOT pushed — that's what lets the initial bake-in
+   * happen without immediately re-posting itself.
+   */
+  inputsRevision?: number;
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -231,18 +249,20 @@ export function assembleArtifactDoc(
   tokens?: ResolvedTokens,
   network = false,
   capabilities: string[] = [],
+  inputs: Record<string, unknown> | null = null,
 ): string {
   const csp = buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP;
   const tokensStyle = tokens && buildTokensArtifactStyle(tokens);
   const reset = tokensStyle?.reset ?? RESET_STYLE;
   const styled = tokensStyle?.styled ?? (colorScheme === 'dark' ? STYLED_STYLE_DARK : STYLED_STYLE_LIGHT);
   const extra = styledPreview ? `<style>${styled}</style>` : '';
+  const hasPageBridge = capabilities.length > 0 || inputs != null;
   return (
     `<!doctype html><html data-theme="${colorScheme}"><head>` +
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT}${ARTIFACT_WEBRTC_BLOCK_SCRIPT}${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}${capabilities.length > 0 ? buildPageBridgeScript(capabilities) : ''}</script>` +
+    `<script>${ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT}${ARTIFACT_WEBRTC_BLOCK_SCRIPT}${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}${hasPageBridge ? buildPageBridgeScript(capabilities, inputs) : ''}</script>` +
     `</head><body>${html}</body></html>`
   );
 }
@@ -256,6 +276,8 @@ export function HtmlArtifactRenderer({
   onAskToFix,
   network,
   bridge,
+  inputValues,
+  inputsRevision,
 }: HtmlArtifactRendererProps) {
   const t = useT();
   const themingKind = activeRendererTheming('iframe');
@@ -272,6 +294,21 @@ export function HtmlArtifactRenderer({
   // capability and something can actually answer it — a handler with nothing
   // declared would just be dead code in every other artifact's srcdoc.
   const capabilities = useMemo(() => (bridge ? declaredCapabilities(html) : []), [bridge, html]);
+  // Whether the page declares any launch inputs at all (ADR-013) — independent
+  // of `bridge`/`capabilities`, since a page can declare inputs without
+  // declaring a capability.
+  const declaresInputs = useMemo(() => declaredInputs(html).length > 0, [html]);
+  // Baked in once per page load: `inputValues` at the moment `html` last
+  // changed, kept across re-renders even when the prop changes underneath it.
+  // A page must never reload just because its input values changed — later
+  // changes reach the frame via the `inputsRevision` effect below instead.
+  const lastHtmlRef = useRef(html);
+  const bakedInputValuesRef = useRef(inputValues);
+  if (html !== lastHtmlRef.current) {
+    lastHtmlRef.current = html;
+    bakedInputValuesRef.current = inputValues;
+  }
+  const bakedInputs = declaresInputs && bakedInputValuesRef.current != null ? bakedInputValuesRef.current : null;
   const srcdoc = useMemo(
     () =>
       assembleArtifactDoc(
@@ -282,8 +319,9 @@ export function HtmlArtifactRenderer({
         themingKind === 'tokens' ? readResolvedTokens() : undefined,
         hasNetwork,
         capabilities,
+        bakedInputs,
       ),
-    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities],
+    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities, bakedInputs],
   );
   const frameSource = useArtifactFrameSource(srcdoc);
   const [loaded, setLoaded] = useState(false);
@@ -297,6 +335,24 @@ export function HtmlArtifactRenderer({
   // The first error the current page threw; a new document starts clean.
   const [runtimeError, setRuntimeError] = useState<ArtifactRuntimeError | null>(null);
   useEffect(() => setRuntimeError(null), [srcdoc]);
+
+  // Pushing a later input-values change (ADR-013): `inputValues` always holds
+  // the latest prop, read only once `inputsRevision` actually moves — a
+  // revision-less change to `inputValues` (e.g. the initial bake landing a
+  // render late) must NOT post anything on its own.
+  const currentInputValuesRef = useRef(inputValues);
+  currentInputValuesRef.current = inputValues;
+  const lastPushedRevisionRef = useRef(inputsRevision);
+  useEffect(() => {
+    if (inputsRevision === undefined || inputsRevision === lastPushedRevisionRef.current) return;
+    lastPushedRevisionRef.current = inputsRevision;
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return;
+    target.postMessage(
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, event: 'inputs-changed', inputs: currentInputValuesRef.current ?? {} },
+      '*',
+    );
+  }, [inputsRevision]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {

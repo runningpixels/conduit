@@ -62,6 +62,8 @@ export type { AppNetwork } from './generated/app_network';
 export type { AppStorage } from './generated/app_storage';
 export type { AppCapabilities } from './generated/app_capabilities';
 export type { AppCreatedWith } from './generated/app_created_with';
+export type { AppInputKind } from './generated/app_input_kind';
+export type { AppInput } from './generated/app_input';
 export type { AppManifest } from './generated/app_manifest';
 export type { AppSummary } from './generated/app_summary';
 export type { AppDetail } from './generated/app_detail';

@@ -2,9 +2,14 @@
 import type { AppCapabilities } from "./app_capabilities";
 import type { AppCategory } from "./app_category";
 import type { AppCreatedWith } from "./app_created_with";
+import type { AppInput } from "./app_input";
 
 /**
  * An app's manifest: stored with the app, and the `manifest.json` of a
  * `.conduitapp` file once export exists.
  */
-export type AppManifest = { manifestVersion: number, id: string, name: string, description?: string, icon?: string, category: AppCategory, version: string, capabilities: AppCapabilities, createdWith: AppCreatedWith, };
+export type AppManifest = { manifestVersion: number, id: string, name: string, description?: string, icon?: string, category: AppCategory, version: string, capabilities: AppCapabilities, createdWith: AppCreatedWith, 
+/**
+ * Launch inputs the page declares (ADR-013).
+ */
+inputs: Array<AppInput>, };

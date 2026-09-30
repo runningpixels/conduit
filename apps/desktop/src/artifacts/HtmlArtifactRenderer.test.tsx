@@ -386,6 +386,66 @@ describe('HtmlArtifactRenderer page bridge (ADR-012)', () => {
   });
 });
 
+describe('HtmlArtifactRenderer launch inputs (ADR-013)', () => {
+  const inputsHtml =
+    '<script type="application/conduit-inputs+json">[{"id":"city","label":"City","type":"string","default":"Paris"}]</script><p>x</p>';
+
+  it('bakes inputValues into window.conduit.inputs at render, when the page declares inputs', () => {
+    const { container } = render(
+      <HtmlArtifactRenderer html={inputsHtml} allowlist={[]} inputValues={{ city: 'Paris' }} />,
+    );
+    const srcdoc = frame(container)?.getAttribute('srcdoc') ?? '';
+    expect(srcdoc).toContain(PAGE_BRIDGE_MESSAGE_TYPE);
+    expect(srcdoc).toContain('Paris');
+    expect(srcdoc.indexOf(PAGE_BRIDGE_MESSAGE_TYPE)).toBeLessThan(srcdoc.indexOf('<body>'));
+  });
+
+  it('has no inputs script when the page declares none, even if inputValues is given', () => {
+    const { container } = render(
+      <HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} inputValues={{ city: 'Paris' }} />,
+    );
+    expect(frame(container)?.getAttribute('srcdoc') ?? '').not.toContain(PAGE_BRIDGE_MESSAGE_TYPE);
+  });
+
+  it('has no inputs script when the page declares inputs but nothing supplied values yet', () => {
+    const { container } = render(<HtmlArtifactRenderer html={inputsHtml} allowlist={[]} />);
+    expect(frame(container)?.getAttribute('srcdoc') ?? '').not.toContain(PAGE_BRIDGE_MESSAGE_TYPE);
+  });
+
+  it('bumping inputsRevision posts inputs-changed to the frame WITHOUT rebuilding the srcdoc', () => {
+    const { container, rerender } = render(
+      <HtmlArtifactRenderer html={inputsHtml} allowlist={[]} inputValues={{ city: 'Paris' }} inputsRevision={0} />,
+    );
+    const iframe = container.querySelector('iframe')!;
+    const srcdocBefore = iframe.getAttribute('srcdoc');
+    const post = vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation(() => {});
+
+    rerender(
+      <HtmlArtifactRenderer html={inputsHtml} allowlist={[]} inputValues={{ city: 'Berlin' }} inputsRevision={1} />,
+    );
+
+    expect(container.querySelector('iframe')!.getAttribute('srcdoc')).toBe(srcdocBefore);
+    expect(post).toHaveBeenCalledWith(
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, event: 'inputs-changed', inputs: { city: 'Berlin' } },
+      '*',
+    );
+  });
+
+  it('does not post anything when inputValues changes but inputsRevision does not move', () => {
+    const { container, rerender } = render(
+      <HtmlArtifactRenderer html={inputsHtml} allowlist={[]} inputValues={{ city: 'Paris' }} inputsRevision={0} />,
+    );
+    const iframe = container.querySelector('iframe')!;
+    const post = vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation(() => {});
+
+    rerender(
+      <HtmlArtifactRenderer html={inputsHtml} allowlist={[]} inputValues={{ city: 'Berlin' }} inputsRevision={0} />,
+    );
+
+    expect(post).not.toHaveBeenCalled();
+  });
+});
+
 describe('the Tauri channel inside a page (ADR 007)', () => {
   it('is cut by the first script, before any other Conduit or page script', () => {
     const doc = assembleArtifactDoc('<script>page()</script>', [], true, 'dark', undefined, true, ['storage']);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { declaredCapabilities, declaredHosts, hostLabel, scriptedHosts } from './networkHosts';
+import { declaredCapabilities, declaredHosts, declaredInputs, hostLabel, scriptedHosts } from './networkHosts';
 
 describe('declaredHosts', () => {
   it('reads each declared site with its reason', () => {
@@ -73,6 +73,53 @@ describe('declaredCapabilities', () => {
 
   it('is empty when the page declares nothing', () => {
     expect(declaredCapabilities('<p>no meta here</p>')).toEqual([]);
+  });
+});
+
+describe('declaredInputs', () => {
+  it('parses a well-formed block', () => {
+    const html = `<script type="application/conduit-inputs+json">
+      [{ "id": "city", "label": "City", "type": "string", "default": "Paris", "required": true },
+       { "id": "units", "label": "Units", "type": "enum", "options": ["metric", "imperial"], "default": "metric" }]
+      </script>`;
+    expect(declaredInputs(html)).toEqual([
+      { id: 'city', label: 'City', type: 'string', required: true, default: 'Paris' },
+      { id: 'units', label: 'Units', type: 'enum', required: false, default: 'metric', options: ['metric', 'imperial'] },
+    ]);
+  });
+
+  it('is empty without the tag, and when the block is not a JSON array', () => {
+    expect(declaredInputs('<p>no inputs here</p>')).toEqual([]);
+    expect(declaredInputs('<script type="application/conduit-inputs+json">not json</script>')).toEqual([]);
+    expect(declaredInputs('<script type="application/conduit-inputs+json">{"id":"x"}</script>')).toEqual([]);
+  });
+
+  it('never executes as a script, only reads as data', () => {
+    const html = '<script type="application/conduit-inputs+json">[{"id":"a","label":"A","type":"string"}]</script>';
+    expect(() => declaredInputs(html)).not.toThrow();
+  });
+
+  it('drops malformed entries and duplicate ids, keeping the well-formed ones', () => {
+    const html = `<script type="application/conduit-inputs+json">[
+      { "id": "good", "label": "Good", "type": "string" },
+      { "id": "bad id!", "label": "Bad id", "type": "string" },
+      { "id": "no-label", "label": "", "type": "string" },
+      { "id": "bad-type", "label": "Bad type", "type": "secret" },
+      { "id": "bad-default", "label": "Bad default", "type": "number", "default": "nope" },
+      { "id": "enum-missing-options", "label": "Enum", "type": "enum" },
+      { "id": "enum-bad-default", "label": "Enum2", "type": "enum", "options": ["a", "b"], "default": "c" },
+      { "id": "bad-date", "label": "Date", "type": "date", "default": "2024-02-30" },
+      { "id": "string-with-options", "label": "Oops", "type": "string", "options": ["a"] },
+      "not an object",
+      { "id": "good", "label": "Duplicate id", "type": "string" }
+    ]</script>`;
+    expect(declaredInputs(html)).toEqual([{ id: 'good', label: 'Good', type: 'string', required: false }]);
+  });
+
+  it('caps at 20 inputs', () => {
+    const items = Array.from({ length: 25 }, (_, i) => ({ id: `f${i}`, label: `F${i}`, type: 'string' }));
+    const html = `<script type="application/conduit-inputs+json">${JSON.stringify(items)}</script>`;
+    expect(declaredInputs(html)).toHaveLength(20);
   });
 });
 

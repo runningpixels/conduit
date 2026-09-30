@@ -9,7 +9,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
 import { useT } from '../i18n';
-import { declaredCapabilities, declaredHosts } from '../artifacts/networkHosts';
+import { declaredCapabilities, declaredHosts, declaredInputs } from '../artifacts/networkHosts';
 import { useSiteLabel } from '../workspace/ArtifactNetwork';
 import {
   artifactPrincipal,
@@ -63,6 +63,7 @@ export function AppDetailsDialog({
     () => (target?.mode === 'save' ? declaredCapabilities(target.html) : []),
     [target],
   );
+  const inputs = useMemo(() => (target?.mode === 'save' ? declaredInputs(target.html) : []), [target]);
 
   useEffect(() => {
     if (!target) return;
@@ -125,7 +126,7 @@ export function AppDetailsDialog({
     try {
       const app =
         target.mode === 'save'
-          ? await saveApp(target.artifactId, meta, declared, [...keep], capabilities)
+          ? await saveApp(target.artifactId, meta, declared, [...keep], capabilities, inputs)
           : await updateApp(target.app.id, meta);
       onSaved(app, target.mode);
     } catch (e) {

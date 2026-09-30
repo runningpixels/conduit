@@ -5,13 +5,15 @@
 mod common;
 
 use conduit_desktop::db::repository::{
+    app_inputs,
     apps::{self, AppMeta},
     artifact_network::{self as grants, Principal},
     artifacts::{self, ArtifactContent},
     conversations, page_storage,
 };
 use conduit_desktop::starter_apps;
-use provider_core::schema::{AppCategory, AppOrigin};
+use provider_core::schema::{AppCategory, AppInput, AppInputKind, AppOrigin};
+use serde_json::{json, Map};
 
 const PAGE_V1: &str = "<!doctype html><title>Weather</title><p>v1</p>";
 const PAGE_V2: &str = "<!doctype html><title>Weather</title><p>v2</p>";
@@ -73,6 +75,7 @@ async fn an_app_outlives_its_chat_and_keeps_only_the_grants_the_user_chose() {
         meta("Weather"),
         vec!["https://geocoding-api.open-meteo.com".to_string()],
         false,
+        vec![],
         &["https://api.open-meteo.com".to_string()],
     )
     .await
@@ -141,6 +144,7 @@ async fn keeping_a_host_the_page_was_never_granted_is_refused() {
         meta("Weather"),
         vec![],
         false,
+        vec![],
         &["https://evil.example".to_string()],
     )
     .await;
@@ -177,6 +181,7 @@ async fn only_html_pages_become_apps() {
         meta("Notes"),
         vec![],
         false,
+        vec![],
         &[]
     )
     .await
@@ -190,10 +195,19 @@ async fn a_changed_source_offers_an_update_that_bumps_the_version() {
     let enc = common::setup_encryption();
     let conv = conversations::create(&pool, None).await.unwrap();
     let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
-    let app =
-        apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], false, &[])
-            .await
-            .unwrap();
+    let app = apps::save_from_artifact(
+        &pool,
+        dir.path(),
+        &enc,
+        &art,
+        meta("W"),
+        vec![],
+        false,
+        vec![],
+        &[],
+    )
+    .await
+    .unwrap();
     grants::grant(
         &pool,
         &Principal::app(&app.id),
@@ -224,6 +238,7 @@ async fn a_changed_source_offers_an_update_that_bumps_the_version() {
         &app.id,
         vec!["https://api.github.com".to_string()],
         false,
+        vec![],
     )
     .await
     .unwrap();
@@ -253,10 +268,19 @@ async fn editing_and_deleting_an_app() {
     let enc = common::setup_encryption();
     let conv = conversations::create(&pool, None).await.unwrap();
     let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
-    let app =
-        apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], false, &[])
-            .await
-            .unwrap();
+    let app = apps::save_from_artifact(
+        &pool,
+        dir.path(),
+        &enc,
+        &art,
+        meta("W"),
+        vec![],
+        false,
+        vec![],
+        &[],
+    )
+    .await
+    .unwrap();
     grants::grant(
         &pool,
         &Principal::app(&app.id),
@@ -377,6 +401,7 @@ async fn saving_a_page_that_declares_storage_copies_it_and_the_app_keeps_it_afte
         meta("Tracker"),
         vec![],
         true,
+        vec![],
         &[],
     )
     .await
@@ -429,6 +454,7 @@ async fn a_page_that_does_not_declare_storage_copies_nothing() {
         meta("Tracker"),
         vec![],
         false,
+        vec![],
         &[],
     )
     .await
@@ -451,9 +477,19 @@ async fn deleting_an_app_deletes_its_storage() {
     let enc = common::setup_encryption();
     let conv = conversations::create(&pool, None).await.unwrap();
     let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
-    let app = apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], true, &[])
-        .await
-        .unwrap();
+    let app = apps::save_from_artifact(
+        &pool,
+        dir.path(),
+        &enc,
+        &art,
+        meta("W"),
+        vec![],
+        true,
+        vec![],
+        &[],
+    )
+    .await
+    .unwrap();
     let app_p = Principal::app(&app.id);
     page_storage::set(&pool, &enc, &app_p, "k", &serde_json::json!(1))
         .await
@@ -493,4 +529,270 @@ fn an_unknown_declared_capability_is_refused() {
     assert!(!apps::validate_capabilities(&[]).unwrap());
     let err = apps::validate_capabilities(&["flux-capacitor".to_string()]).unwrap_err();
     assert!(err.starts_with("invalid:"), "{err}");
+}
+
+// ── Launch inputs (ADR-013) ─────────────────────────────────────────────────
+
+fn city_input() -> AppInput {
+    AppInput {
+        id: "city".to_string(),
+        label: "City".to_string(),
+        kind: AppInputKind::String,
+        required: true,
+        default: Some(json!("Paris")),
+        options: None,
+    }
+}
+
+fn units_input() -> AppInput {
+    AppInput {
+        id: "units".to_string(),
+        label: "Units".to_string(),
+        kind: AppInputKind::Enum,
+        required: false,
+        default: Some(json!("metric")),
+        options: Some(vec!["metric".to_string(), "imperial".to_string()]),
+    }
+}
+
+/// A required input with no default, so `inputs_missing` starts `true`.
+fn note_input() -> AppInput {
+    AppInput {
+        id: "note".to_string(),
+        label: "Note".to_string(),
+        kind: AppInputKind::String,
+        required: true,
+        default: None,
+        options: None,
+    }
+}
+
+async fn save_with_inputs(
+    pool: &sqlx::SqlitePool,
+    dir: &std::path::Path,
+    enc: &conduit_desktop::encryption::Encryption,
+    conv: &str,
+    inputs: Vec<AppInput>,
+) -> provider_core::schema::AppSummary {
+    let art = html_artifact(pool, dir, conv, PAGE_V1).await;
+    apps::save_from_artifact(
+        pool,
+        dir,
+        enc,
+        &art,
+        meta("Weather"),
+        vec![],
+        false,
+        inputs,
+        &[],
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn saving_with_declared_inputs_then_get_app_inputs_returns_the_defaults() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let app = save_with_inputs(
+        &pool,
+        dir.path(),
+        &enc,
+        &conv.id,
+        vec![city_input(), units_input()],
+    )
+    .await;
+    assert_eq!(app.inputs.len(), 2);
+    assert!(!app.inputs_missing, "both inputs have defaults");
+
+    let values = app_inputs::get_values(&pool, &enc, &app.id, &app.inputs)
+        .await
+        .unwrap();
+    assert_eq!(values.get("city"), Some(&json!("Paris")));
+    assert_eq!(values.get("units"), Some(&json!("metric")));
+}
+
+#[tokio::test]
+async fn set_app_inputs_accepts_valid_rejects_invalid_and_undeclared() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let app = save_with_inputs(
+        &pool,
+        dir.path(),
+        &enc,
+        &conv.id,
+        vec![city_input(), units_input()],
+    )
+    .await;
+
+    // A valid value for a declared input.
+    let mut valid = Map::new();
+    valid.insert("city".to_string(), json!("Lisbon"));
+    let values = app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, valid)
+        .await
+        .unwrap();
+    assert_eq!(values.get("city"), Some(&json!("Lisbon")));
+
+    // An invalid value for a declared input (not one of the enum's options).
+    let mut invalid = Map::new();
+    invalid.insert("units".to_string(), json!("kelvin"));
+    let err = app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, invalid)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().starts_with("invalid:"), "{err}");
+
+    // An id that isn't declared at all.
+    let mut undeclared = Map::new();
+    undeclared.insert("bogus".to_string(), json!("x"));
+    let err = app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, undeclared)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().starts_with("invalid:"), "{err}");
+
+    // Neither refused write changed the stored value.
+    let values = app_inputs::get_values(&pool, &enc, &app.id, &app.inputs)
+        .await
+        .unwrap();
+    assert_eq!(values.get("city"), Some(&json!("Lisbon")));
+}
+
+#[tokio::test]
+async fn a_null_value_clears_an_input_back_to_its_default() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let app = save_with_inputs(&pool, dir.path(), &enc, &conv.id, vec![city_input()]).await;
+
+    let mut edit = Map::new();
+    edit.insert("city".to_string(), json!("Lisbon"));
+    app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, edit)
+        .await
+        .unwrap();
+
+    let mut clear = Map::new();
+    clear.insert("city".to_string(), serde_json::Value::Null);
+    let values = app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, clear)
+        .await
+        .unwrap();
+    assert_eq!(
+        values.get("city"),
+        Some(&json!("Paris")),
+        "back to the default"
+    );
+}
+
+#[tokio::test]
+async fn updating_from_source_drops_removed_inputs_and_keeps_the_rest() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
+    let app = apps::save_from_artifact(
+        &pool,
+        dir.path(),
+        &enc,
+        &art,
+        meta("Weather"),
+        vec![],
+        false,
+        vec![city_input(), units_input()],
+        &[],
+    )
+    .await
+    .unwrap();
+
+    let mut edits = Map::new();
+    edits.insert("city".to_string(), json!("Lisbon"));
+    edits.insert("units".to_string(), json!("imperial"));
+    app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, edits)
+        .await
+        .unwrap();
+
+    artifacts::set_content(
+        &pool,
+        dir.path(),
+        &enc,
+        &art,
+        Some("text/html"),
+        &ArtifactContent::Text {
+            text: PAGE_V2.to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    // The updated page only declares `city`; `units` is dropped.
+    let updated = apps::update_from_artifact(
+        &pool,
+        dir.path(),
+        &enc,
+        &app.id,
+        vec![],
+        false,
+        vec![city_input()],
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.inputs.len(), 1);
+
+    let values = app_inputs::get_values(&pool, &enc, &app.id, &updated.inputs)
+        .await
+        .unwrap();
+    assert_eq!(values.get("city"), Some(&json!("Lisbon")), "kept");
+    assert_eq!(values.get("units"), None, "no longer declared, so dropped");
+}
+
+#[tokio::test]
+async fn deleting_the_app_deletes_its_input_values() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let app = save_with_inputs(&pool, dir.path(), &enc, &conv.id, vec![city_input()]).await;
+
+    let mut edit = Map::new();
+    edit.insert("city".to_string(), json!("Lisbon"));
+    app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, edit)
+        .await
+        .unwrap();
+
+    apps::delete(&pool, &app.id).await.unwrap();
+
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM app_inputs WHERE app_id = ?")
+        .bind(&app.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "the app's stored input values are gone");
+}
+
+#[tokio::test]
+async fn inputs_missing_is_true_until_a_required_input_with_no_default_is_set() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let app = save_with_inputs(&pool, dir.path(), &enc, &conv.id, vec![note_input()]).await;
+    assert!(
+        app.inputs_missing,
+        "a required input with no default and no value is missing"
+    );
+
+    let mut edit = Map::new();
+    edit.insert("note".to_string(), json!("Remember the milk"));
+    app_inputs::set_values(&pool, &enc, &app.id, &app.inputs, edit)
+        .await
+        .unwrap();
+
+    let refetched = apps::get_summary(&pool, &enc, &app.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!refetched.inputs_missing, "a value has now been set");
 }

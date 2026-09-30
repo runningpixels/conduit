@@ -14,6 +14,7 @@ import { declaredCapabilities, declaredHosts, scriptedHosts } from '../artifacts
 import { isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { useArtifactNetwork } from '../workspace/useArtifactNetwork';
 import { usePageBridge } from '../workspace/usePageBridge';
+import type { PageBridgeHandler } from '../artifacts/pageBridge';
 import {
   ArtifactNetworkBanner,
   ArtifactNetworkChip,
@@ -89,7 +90,25 @@ export function AppView({
 
   const html = app?.html ?? '';
   const network = useArtifactNetwork(app ? appPrincipal(app.id) : null, html, networkPolicyKey);
-  const bridge = usePageBridge(app ? appPrincipal(app.id) : null);
+  const pageBridge = usePageBridge(app ? appPrincipal(app.id) : null);
+  // After the page writes, re-read how much it stores — debounced, since a
+  // tracker may save on every keystroke.
+  const [writeRevision, setWriteRevision] = useState(0);
+  const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (writeTimer.current) clearTimeout(writeTimer.current);
+  }, []);
+  const bridge = useMemo<PageBridgeHandler | undefined>(() => {
+    if (!pageBridge) return undefined;
+    return async (method, params) => {
+      const outcome = await pageBridge(method, params);
+      if (outcome.ok && method !== 'storage.get' && method !== 'storage.keys') {
+        if (writeTimer.current) clearTimeout(writeTimer.current);
+        writeTimer.current = setTimeout(() => setWriteRevision((r) => r + 1), 600);
+      }
+      return outcome;
+    };
+  }, [pageBridge]);
   const declaresStorage = useMemo(() => declaredCapabilities(html).includes('storage'), [html]);
   const declared = useMemo(() => declaredHosts(html), [html]);
   const scripted = useMemo(() => {
@@ -120,8 +139,8 @@ export function AppView({
   }, [pendingUrl, onStatus]);
   const cancelExternalLink = useCallback(() => setPendingUrl(null), []);
 
-  // How much the page has stored (ADR-012): read on open, and again after
-  // "Clear data" — not on every render, since usage only changes then.
+  // How much the page has stored (ADR-012): read on open, after "Clear
+  // data", and shortly after the page writes.
   const openedAppId = app?.id;
   useEffect(() => {
     if (!openedAppId || !declaresStorage) {
@@ -139,7 +158,7 @@ export function AppView({
     return () => {
       cancelled = true;
     };
-  }, [openedAppId, declaresStorage, clearRevision]);
+  }, [openedAppId, declaresStorage, clearRevision, writeRevision]);
 
   const handleClearData = useCallback(async () => {
     setClearConfirmOpen(false);
@@ -335,7 +354,7 @@ export function AppView({
             {t('apps.card.sourceChanged')}
           </span>
         )}
-        {declaresStorage && storageUsage && (
+        {declaresStorage && storageUsage && storageUsage.bytes > 0 && (
           <span className="app-view-fact">
             <span className="app-view-dot" data-tone="net" aria-hidden="true" />
             {t('apps.view.stores', { size: fmt.size(storageUsage.bytes) })}

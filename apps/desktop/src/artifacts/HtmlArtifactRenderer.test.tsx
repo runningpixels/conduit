@@ -395,17 +395,17 @@ describe('the Tauri channel inside a page (ADR 007)', () => {
     );
   });
 
-  it('neuters postMessage and invoke without touching anything else', async () => {
+  it('neuters the webview channel that invoke and ipc both end in', () => {
     const posted: unknown[] = [];
+    const webview = { postMessage: (m: unknown) => posted.push(m) };
     const win = {
-      chrome: { webview: { postMessage: (m: unknown) => posted.push(m) } },
-      __TAURI_INTERNALS__: { invoke: () => Promise.resolve('ran') },
-      ipc: { postMessage: (m: unknown) => posted.push(m) },
+      chrome: { webview },
+      // wry's shim, as injected: it forwards to chrome.webview at call time.
+      ipc: { postMessage: (s: unknown) => win.chrome.webview.postMessage(s) },
     };
     new Function('window', ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT)(win);
     win.chrome.webview.postMessage('x');
     win.ipc.postMessage('y');
-    await expect(win.__TAURI_INTERNALS__.invoke()).rejects.toThrow('Not available in a page.');
     expect(posted).toEqual([]);
     // A page with none of these (every other platform) is left alone.
     expect(() => new Function('window', ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT)({})).not.toThrow();

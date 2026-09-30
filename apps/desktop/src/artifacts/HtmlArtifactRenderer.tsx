@@ -215,12 +215,13 @@ export const ARTIFACT_LINK_INTERCEPTOR_SCRIPT =
 /// On Windows, WebView2 runs Tauri's init scripts in every frame (wry can't
 /// scope them to the main frame there), so a page finds `__TAURI_INTERNALS__`
 /// and `chrome.webview`. Tauri already refuses every call from this origin
-/// (no capability grants it); this cuts the channel itself before any page
-/// script runs, so nothing a page sends reaches the app. ADR 007.
+/// (no capability grants it). This cuts the channel itself before any page
+/// script runs: Tauri's `invoke` and wry's `ipc` are non-writable, but both
+/// end in `chrome.webview.postMessage` (the custom-protocol path is blocked by
+/// the page's `connect-src 'none'`), which is writable in the frame. Checked
+/// live in a release build. ADR 007.
 export const ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT =
-  "(function(){try{var w=window.chrome&&window.chrome.webview;if(w){w.postMessage=function(){};}}catch(e){}" +
-  "try{var t=window.__TAURI_INTERNALS__;if(t&&t.invoke){t.invoke=function(){return Promise.reject(new Error('Not available in a page.'));};}}catch(e){}" +
-  "try{if(window.ipc&&window.ipc.postMessage){window.ipc.postMessage=function(){};}}catch(e){}})();";
+  '(function(){try{var w=window.chrome&&window.chrome.webview;if(w){w.postMessage=function(){};}}catch(e){}})();';
 
 export function assembleArtifactDoc(
   html: string,

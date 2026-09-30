@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { PAGE_BRIDGE_MESSAGE_TYPE, buildPageBridgeScript, parsePageBridgeRequest } from './pageBridge';
+import { PAGE_BRIDGE_MESSAGE_TYPE, buildPageBridgeScript, parsePageBridgeRequest, scriptSafeJson } from './pageBridge';
 
 /// Runs the in-frame script against a fake window and parent, the way the
 /// sandboxed frame would (mirrors networkBridge.test.ts's harness). `window`
@@ -166,6 +166,22 @@ describe('buildPageBridgeScript — launch inputs (ADR-013)', () => {
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
     expect(Object.isFrozen(first)).toBe(true);
+  });
+});
+
+describe('input values embedded in the script', () => {
+  const nasty = { city: '</script><script>alert(1)</script>', note: 'line' + String.fromCharCode(0x2028) + 'sep' };
+
+  it('can never close the <script> element they sit in', () => {
+    const script = buildPageBridgeScript([], nasty);
+    expect(script).not.toContain('</script>');
+    expect(scriptSafeJson(nasty)).not.toContain('<');
+  });
+
+  it('still reach the page exactly as stored', () => {
+    const { win } = frame([], nasty);
+    const conduit = win.conduit as { inputs: Record<string, unknown> };
+    expect(conduit.inputs).toEqual(nasty);
   });
 });
 

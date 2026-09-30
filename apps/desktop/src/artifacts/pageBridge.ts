@@ -47,6 +47,16 @@ export type PageBridgeHandler = (
   params: unknown,
 ) => Promise<PageBridgeOutcome>;
 
+/// JSON for embedding inside an inline `<script>`: `<` is escaped so a value
+/// like `"</script>"` can't end the element, and U+2028/U+2029 are escaped
+/// because older engines reject them inside string literals.
+export function scriptSafeJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 /// The in-frame script: defines `window.conduit`, frozen, with a `storage`
 /// namespace only when `'storage'` is among `capabilities`, and an `inputs`
 /// getter only when `inputs` is non-null (ADR-013) — independent of
@@ -66,11 +76,12 @@ export type PageBridgeHandler = (
 /// current values and dispatches `new CustomEvent('conduit:inputs-changed',
 /// { detail: inputs })` on `window` — the page's only way to learn a value
 /// changed, since `window.conduit` itself stays the same frozen object.
+
 export function buildPageBridgeScript(capabilities: string[], inputs?: Record<string, unknown> | null): string {
   const hasStorage = capabilities.includes('storage');
   const hasInputs = inputs != null;
   const capsLiteral = JSON.stringify(capabilities);
-  const inputsLiteral = hasInputs ? JSON.stringify(inputs) : 'null';
+  const inputsLiteral = hasInputs ? scriptSafeJson(inputs) : 'null';
   return (
     `(function(){var TYPE='${PAGE_BRIDGE_MESSAGE_TYPE}';var seq=0,pending={};` +
     `function call(method,params){return new Promise(function(resolve,reject){` +

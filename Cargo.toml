@@ -17,3 +17,11 @@ repository = "https://github.com/runningpixels/conduit"
 # accidental `cargo publish` and lets cargo-deny treat the intra-workspace
 # path deps as private rather than as wildcard version requirements.
 publish = false
+
+# Debug builds: keep full debug info for our own crates, none for
+# dependencies. On Windows most of a debug target's size is dependency
+# debug info (.pdb / .rlib sections) nobody steps through; dropping it makes
+# `target/debug` much smaller and linking faster. Backtraces through our code
+# keep file and line numbers. Tests use the dev profile too.
+[profile.dev.package."*"]
+debug = false

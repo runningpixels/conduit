@@ -71,9 +71,11 @@ export function AppsPage({
     }
   }, []);
 
+  // Reload when an app opens or closes, and when a starter is added (the
+  // starter list changes identity), so My apps shows it straight away.
   useEffect(() => {
     void refresh();
-  }, [refresh, openAppId]);
+  }, [refresh, openAppId, starters]);
 
   const changed = useCallback(async () => {
     setRevision((r) => r + 1);

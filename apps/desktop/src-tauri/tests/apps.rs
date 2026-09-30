@@ -325,3 +325,27 @@ async fn a_starter_app_is_added_once_and_granted_nothing() {
         Some(&first.id)
     );
 }
+
+#[tokio::test]
+async fn an_added_starter_follows_the_page_this_build_ships() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let starter = starter_apps::find("snake").unwrap();
+    let app = apps::install_starter(&pool, &enc, starter, meta("Snake"))
+        .await
+        .unwrap();
+    // As if it had been added from an older build's page.
+    sqlx::query("UPDATE apps SET payload = '<p>old</p>', content_hash = 'old' WHERE id = ?")
+        .bind(&app.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let opened = apps::open(&pool, &enc, &app.id).await.unwrap().unwrap();
+    assert_eq!(opened.html, starter.html);
+    assert_eq!(opened.summary.version, "1.1.0");
+    let again = apps::open(&pool, &enc, &app.id).await.unwrap().unwrap();
+    assert_eq!(
+        again.summary.version, "1.1.0",
+        "an up-to-date copy is left alone"
+    );
+}

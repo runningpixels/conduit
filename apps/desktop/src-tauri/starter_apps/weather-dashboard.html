@@ -283,7 +283,7 @@
     <div class="current-card" id="currentWeather"></div>
   </div>
 
-  <div class="forecast-section">
+  <div class="forecast-section" id="forecastSection">
     <h2>7-Day Forecast</h2>
     <div class="forecast-row" id="forecastRow"></div>
   </div>
@@ -457,7 +457,15 @@
     retryBtn.onclick = retryFn;
   }
 
+  // With nothing to show (a failed first load), hide the empty card and the
+  // forecast heading rather than leave blank boxes under the error.
+  function setDataVisible(visible) {
+    currentWeatherEl.hidden = !visible;
+    document.getElementById("forecastSection").hidden = !visible;
+  }
+
   function showLoading() {
+    setDataVisible(true);
     currentWeatherEl.innerHTML =
       '<div class="loading"><span class="spinner"></span><span>Loading weather&hellip;</span></div>';
     forecastRowEl.innerHTML = "";
@@ -491,11 +499,13 @@
 
   function restorePrevious() {
     if (state.current) {
+      setDataVisible(true);
       renderCurrent();
       renderForecast();
     } else {
       currentWeatherEl.innerHTML = "";
       forecastRowEl.innerHTML = "";
+      setDataVisible(false);
     }
   }
 

@@ -159,6 +159,23 @@ describe('AppsPage starter apps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Weather dashboard' }));
     expect(onOpen).toHaveBeenCalledWith('a9');
   });
+
+  it('lists a starter under My apps as soon as it is added', async () => {
+    ipc.listApps.mockResolvedValue([]);
+    const props = {
+      openAppId: null,
+      onOpenAppIdChange: vi.fn(),
+      allowlist: [],
+      styledPreview: false,
+      colorScheme: 'dark' as const,
+    };
+    const { rerender } = render(<AppsPage {...props} starters={starters} />);
+    await screen.findByText('Starter apps');
+    expect(screen.queryByRole('heading', { name: /My apps/ })).toBeNull();
+    ipc.listApps.mockResolvedValue([timer]);
+    rerender(<AppsPage {...props} starters={starters.map((s) => ({ ...s, installedAppId: 'a2' }))} />);
+    expect(await screen.findByRole('heading', { name: 'My apps · 1' })).toBeTruthy();
+  });
 });
 
 describe('AppDetailsDialog', () => {

@@ -251,7 +251,12 @@ export function AppView({
       </div>
 
       <footer className="app-view-strip">
-        {network.state?.blockedReason ? (
+        {summary.hosts.length === 0 && reachable.length === 0 ? (
+          <span className="app-view-fact">
+            <span className="app-view-dot" data-tone="off" aria-hidden="true" />
+            {t('apps.view.offline')}
+          </span>
+        ) : network.state?.blockedReason ? (
           <span className="app-view-fact">
             <span className="app-view-dot" data-tone="off" aria-hidden="true" />
             {t('apps.view.networkBlocked')}

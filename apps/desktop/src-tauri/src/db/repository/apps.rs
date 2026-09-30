@@ -324,12 +324,58 @@ pub async fn get_summary(
     row.map(|row| summary_from_row(enc, row)).transpose()
 }
 
-/// An app with its page, stamping when it was opened.
+/// A starter app's copy follows the page this build ships: starters are
+/// never edited by the user and are granted nothing when added, so when the
+/// bundled page changes the copy is replaced and its minor version bumped.
+/// A newly declared site still asks on first use.
+async fn refresh_starter(pool: &SqlitePool, enc: &Encryption, id: &str) -> Result<(), DbError> {
+    let row: Option<(Option<String>, String)> =
+        sqlx::query_as("SELECT starter_id, content_hash FROM apps WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    let Some((Some(starter_id), hash)) = row else {
+        return Ok(());
+    };
+    let Some(starter) = crate::starter_apps::find(&starter_id) else {
+        return Ok(());
+    };
+    let bundled = sha256_hex(starter.html.as_bytes());
+    if bundled == hash {
+        return Ok(());
+    }
+    let old = stored_manifest(pool, enc, id).await?;
+    let meta = AppMeta {
+        name: old.name.clone(),
+        description: old.description.clone(),
+        icon: old.icon.clone(),
+        category: old.category,
+    };
+    let version = bump_minor(&old.version);
+    let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
+    let manifest = manifest_from(id, &meta, &version, hosts, false);
+    sqlx::query(
+        "UPDATE apps SET version = ?, manifest_json = ?, payload = ?, content_hash = ?,                          updated_at = ? WHERE id = ?",
+    )
+    .bind(&version)
+    .bind(encode_manifest(enc, &manifest)?)
+    .bind(enc.encrypt(starter.html)?)
+    .bind(bundled)
+    .bind(now_iso8601())
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// An app with its page, stamping when it was opened. A starter app is
+/// first brought up to the page this build ships.
 pub async fn open(
     pool: &SqlitePool,
     enc: &Encryption,
     id: &str,
 ) -> Result<Option<AppDetail>, DbError> {
+    refresh_starter(pool, enc, id).await?;
     sqlx::query("UPDATE apps SET last_opened_at = ? WHERE id = ?")
         .bind(now_iso8601())
         .bind(id)

@@ -163,6 +163,8 @@
 .app-view-spacer { flex: 1; }
 .app-view-update { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); }
 .app-view-update svg { width: 14px; height: 14px; }
+.app-view-inputs { display: inline-flex; align-items: center; gap: 6px; }
+.app-view-inputs svg { width: 14px; height: 14px; }
 .app-view-frame { flex: 1; min-height: 0; display: flex; }
 .app-view-frame > * { flex: 1; min-width: 0; }
 .app-view-error { margin: var(--sp-5); color: var(--err); }
@@ -234,6 +236,40 @@
 .app-details-asks { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.4; }
 .app-details-error { margin: 0; color: var(--err); font-size: var(--fs-xl); }
 .app-details-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ── App inputs (ADR-013) ─────────────────────────────────────────────── */
+.app-inputs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .45);
+}
+.app-inputs-dialog {
+  display: grid;
+  gap: 14px;
+  width: 90%;
+  max-width: 420px;
+  max-height: 85vh;
+  overflow: auto;
+  padding: 24px;
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-modal);
+}
+.app-inputs-dialog h2 { margin: 0; font-size: var(--fs-8xl); font-weight: 700; letter-spacing: -.01em; }
+.app-field-required {
+  margin-left: 6px;
+  color: var(--ink-3);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.app-field input[type="checkbox"] { width: auto; }
+.app-inputs-field-error { color: var(--err); font-size: var(--fs-md); }
+.app-inputs-error { margin: 0; color: var(--err); font-size: var(--fs-xl); }
 
 /* ── New chat: "Your apps" ────────────────────────────────────────────── */
 .your-apps {

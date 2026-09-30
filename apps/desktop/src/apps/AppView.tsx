@@ -23,10 +23,19 @@ import {
 } from '../workspace/ArtifactNetwork';
 import { OpenExternalLinkDialog } from '../workspace/OpenExternalLinkDialog';
 import { Menu } from '../workspace/Menu';
-import { ChevronLeft, MoreIcon, PencilIcon, RetryIcon, TrashIcon } from '../icons';
-import { appPrincipal, openApp, openExternalUrl, pageStorageClear, pageStorageUsage, type PageStorageUsage } from '../ipc/client';
+import { ChevronLeft, MoreIcon, PencilIcon, RetryIcon, SlidersIcon, TrashIcon } from '../icons';
+import {
+  appPrincipal,
+  getAppInputs,
+  openApp,
+  openExternalUrl,
+  pageStorageClear,
+  pageStorageUsage,
+  type PageStorageUsage,
+} from '../ipc/client';
 import type { AppDetail, AppSummary } from '../ipc/contracts';
 import { AppTile } from './AppTile';
+import { AppInputsDialog } from './AppInputsDialog';
 
 export interface AppViewProps {
   appId: string;
@@ -87,6 +96,54 @@ export function AppView({
       cancelled = true;
     };
   }, [appId, revision]);
+
+  // Launch inputs (ADR-013): the effective values (stored-or-default), fetched
+  // once per `app` load. `null` while that fetch is out — the frame is held
+  // back until it lands, so `window.conduit.inputs` is never baked with a
+  // placeholder the page would have to un-learn a moment later.
+  const [inputValues, setInputValues] = useState<Record<string, unknown> | null>(null);
+  const [inputsRevision, setInputsRevision] = useState(0);
+  const [inputsDialogOpen, setInputsDialogOpen] = useState(false);
+  // Which app id the dialog has already auto-opened for — an app whose
+  // required input the user dismissed without filling should not re-open the
+  // dialog on every render, only the first time this app is seen open.
+  const autoOpenedInputsForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!app) {
+      setInputValues(null);
+      return;
+    }
+    if (app.inputs.length === 0) {
+      setInputValues({});
+      return;
+    }
+    let cancelled = false;
+    setInputValues(null);
+    getAppInputs(app.id)
+      .then((values) => {
+        if (!cancelled) setInputValues(values);
+      })
+      .catch(() => {
+        if (!cancelled) setInputValues({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [app]);
+
+  useEffect(() => {
+    if (app?.inputsMissing && autoOpenedInputsForRef.current !== app.id) {
+      autoOpenedInputsForRef.current = app.id;
+      setInputsDialogOpen(true);
+    }
+  }, [app]);
+
+  const handleInputsSaved = useCallback((values: Record<string, unknown>) => {
+    setInputValues(values);
+    setInputsRevision((r) => r + 1);
+    setInputsDialogOpen(false);
+  }, []);
 
   const html = app?.html ?? '';
   const network = useArtifactNetwork(app ? appPrincipal(app.id) : null, html, networkPolicyKey);
@@ -187,7 +244,7 @@ export function AppView({
       </section>
     );
   }
-  if (!app) {
+  if (!app || inputValues === null) {
     return (
       <section className="app-view" aria-busy="true">
         <div className="app-view-head">
@@ -222,6 +279,12 @@ export function AppView({
           <button type="button" className="btn app-view-update" onClick={() => onUpdateFromSource(summary)}>
             <RetryIcon />
             {t('apps.card.update')}
+          </button>
+        )}
+        {app.inputs.length > 0 && (
+          <button type="button" className="btn ghost app-view-inputs" onClick={() => setInputsDialogOpen(true)}>
+            <SlidersIcon />
+            {t('apps.view.inputs')}
           </button>
         )}
         <ArtifactNetworkChip
@@ -323,6 +386,8 @@ export function AppView({
           onExternalLink={handleExternalLink}
           network={network.handler}
           bridge={bridge}
+          inputValues={inputValues}
+          inputsRevision={inputsRevision}
         />
       </div>
 
@@ -381,6 +446,13 @@ export function AppView({
         cancelLabel={t('common.actions.cancel')}
         onCancel={() => setClearConfirmOpen(false)}
         onConfirm={() => void handleClearData()}
+      />
+      <AppInputsDialog
+        appId={inputsDialogOpen ? summary.id : null}
+        inputs={app.inputs}
+        values={inputValues}
+        onClose={() => setInputsDialogOpen(false)}
+        onSaved={handleInputsSaved}
       />
     </section>
   );

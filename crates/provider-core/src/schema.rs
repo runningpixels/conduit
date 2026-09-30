@@ -1216,9 +1216,64 @@ pub struct AppCreatedWith {
     pub from_artifact: bool,
 }
 
+/// A page's launch input declaration (ADR-013): a city, units, a currency
+/// pair — a value Conduit asks for in a form it draws itself, stores per app,
+/// and hands to the page as `window.conduit.inputs`.
+///
+/// Unknown fields are rejected, not ignored, so a declaration can't smuggle in
+/// a shape this version doesn't understand. `default` and `options` are
+/// `serde_json::Value`/`Vec<String>` rather than typed per-kind, matching
+/// `AppInput`'s own kind switch: `provider_core::app_inputs` is what actually
+/// checks a value fits its declared kind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_input.ts"
+)]
+pub struct AppInput {
+    /// 1-40 characters: letters, digits, `-` and `_`.
+    pub id: String,
+    /// 1-60 characters, non-empty once trimmed.
+    pub label: String,
+    #[serde(rename = "type")]
+    pub kind: AppInputKind,
+    #[serde(default)]
+    pub required: bool,
+    /// Must be a valid value of this input when present (`app_inputs::validate_value`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "unknown")]
+    pub default: Option<serde_json::Value>,
+    /// `enum` only: 1-50 options, each 1-60 characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub options: Option<Vec<String>>,
+}
+
+/// The type of one [`AppInput`]. There is deliberately no secret type —
+/// credentials are a Rust concern per host, not something a page's own launch
+/// form collects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_input_kind.ts"
+)]
+pub enum AppInputKind {
+    /// At most 500 characters.
+    String,
+    /// A finite number.
+    Number,
+    Boolean,
+    /// One of the input's declared `options`.
+    Enum,
+    /// `YYYY-MM-DD`, a real calendar date.
+    Date,
+}
+
 /// An app's manifest: stored with the app, and the `manifest.json` of a
 /// `.conduitapp` file once export exists.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(
     export,
@@ -1239,6 +1294,9 @@ pub struct AppManifest {
     #[serde(default)]
     pub capabilities: AppCapabilities,
     pub created_with: AppCreatedWith,
+    /// Launch inputs the page declares (ADR-013).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<AppInput>,
 }
 
 /// One app in the Apps list.
@@ -1274,6 +1332,11 @@ pub struct AppSummary {
     pub last_opened_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Launch inputs the app declares, from the manifest (ADR-013).
+    pub inputs: Vec<AppInput>,
+    /// A required input has no stored value and no default: the app view
+    /// opens the Inputs form on first open instead of the page.
+    pub inputs_missing: bool,
 }
 
 /// A ready-made app bundled with Conduit, as the Apps page lists it. Its

@@ -48,23 +48,42 @@ export type PageBridgeHandler = (
 ) => Promise<PageBridgeOutcome>;
 
 /// The in-frame script: defines `window.conduit`, frozen, with a `storage`
-/// namespace only when `'storage'` is among `capabilities`. Each storage call
-/// posts `{ type, id, method, params }` to `parent` and resolves/rejects on
-/// the matching `{ type, id, ok, result | error }` reply; replies from
-/// anywhere but `parent` are ignored. `set` validates the value is
-/// JSON-serializable *in the page* before posting anything — a value that
-/// isn't (a function, a circular reference, a bigint) rejects with `invalid`
-/// locally, the same code Rust would have used, without a round trip.
-export function buildPageBridgeScript(capabilities: string[]): string {
+/// namespace only when `'storage'` is among `capabilities`, and an `inputs`
+/// getter only when `inputs` is non-null (ADR-013) — independent of
+/// `capabilities`, since a page can declare launch inputs without declaring
+/// any capability at all. Each storage call posts `{ type, id, method,
+/// params }` to `parent` and resolves/rejects on the matching `{ type, id,
+/// ok, result | error }` reply; replies from anywhere but `parent` are
+/// ignored. `set` validates the value is JSON-serializable *in the page*
+/// before posting anything — a value that isn't (a function, a circular
+/// reference, a bigint) rejects with `invalid` locally, the same code Rust
+/// would have used, without a round trip.
+///
+/// `inputs`, when given, seeds `window.conduit.inputs` with a frozen copy of
+/// those values (`Object.defineProperty`'d before the whole object is
+/// frozen, so the getter itself survives the freeze). A later `{ type,
+/// event: 'inputs-changed', inputs }` message from `parent` swaps the
+/// current values and dispatches `new CustomEvent('conduit:inputs-changed',
+/// { detail: inputs })` on `window` — the page's only way to learn a value
+/// changed, since `window.conduit` itself stays the same frozen object.
+export function buildPageBridgeScript(capabilities: string[], inputs?: Record<string, unknown> | null): string {
   const hasStorage = capabilities.includes('storage');
+  const hasInputs = inputs != null;
   const capsLiteral = JSON.stringify(capabilities);
+  const inputsLiteral = hasInputs ? JSON.stringify(inputs) : 'null';
   return (
     `(function(){var TYPE='${PAGE_BRIDGE_MESSAGE_TYPE}';var seq=0,pending={};` +
     `function call(method,params){return new Promise(function(resolve,reject){` +
     `var id='b'+(++seq);pending[id]={resolve:resolve,reject:reject};` +
     `parent.postMessage({type:TYPE,id:id,method:method,params:params},'*');});}` +
+    (hasInputs ? `var currentInputs=${inputsLiteral};` : '') +
     `window.addEventListener('message',function(e){if(e.source!==parent)return;var d=e.data;` +
-    `if(!d||d.type!==TYPE)return;var p=pending[d.id];if(!p)return;delete pending[d.id];` +
+    `if(!d||d.type!==TYPE)return;` +
+    (hasInputs
+      ? `if(d.event==='inputs-changed'){currentInputs=d.inputs||{};` +
+        `window.dispatchEvent(new CustomEvent('conduit:inputs-changed',{detail:currentInputs}));return;}`
+      : '') +
+    `var p=pending[d.id];if(!p)return;delete pending[d.id];` +
     `if(d.ok){p.resolve(d.result);return;}` +
     `var info=d.error||{};var err=new Error(info.message||'Storage error.');` +
     `if(info.code)err.code=info.code;p.reject(err);});` +
@@ -81,7 +100,12 @@ export function buildPageBridgeScript(capabilities: string[]): string {
       : '') +
     `var conduit={version:2,capabilities:${capsLiteral}` +
     (hasStorage ? `,storage:storage` : '') +
-    `};window.conduit=Object.freeze(conduit);` +
+    `};` +
+    (hasInputs
+      ? `Object.defineProperty(conduit,'inputs',{enumerable:true,get:function(){` +
+        `return Object.freeze(Object.assign({},currentInputs));}});`
+      : '') +
+    `window.conduit=Object.freeze(conduit);` +
     `})();`
   );
 }

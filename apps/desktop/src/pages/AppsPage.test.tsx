@@ -22,13 +22,19 @@ const ipc = vi.hoisted(() => ({
   openExternalUrl: vi.fn(),
   pageStorageUsage: vi.fn(),
   pageStorageClear: vi.fn(),
+  getAppInputs: vi.fn(),
+  setAppInputs: vi.fn(),
   artifactPrincipal: (id: string) => `artifact:${id}`,
   appPrincipal: (id: string) => `app:${id}`,
 }));
 
 vi.mock('../ipc/client', () => ipc);
 
-const weather: AppSummary = {
+// Local until `@conduit/config-schema` grows `inputs`/`inputsMissing`
+// (ADR-013) — the generated `AppSummary`.
+type AppSummaryFixture = AppSummary & { inputs: unknown[]; inputsMissing: boolean };
+
+const weather: AppSummaryFixture = {
   id: 'a1',
   name: 'Lisbon weather',
   description: 'Seven days for one city',
@@ -43,9 +49,11 @@ const weather: AppSummary = {
   lastOpenedAt: undefined,
   createdAt: '2026-09-29T08:00:00Z',
   updatedAt: '2026-09-29T08:00:00Z',
+  inputs: [],
+  inputsMissing: false,
 };
 
-const timer: AppSummary = {
+const timer: AppSummaryFixture = {
   ...weather,
   id: 'a2',
   name: 'Pomodoro timer',
@@ -60,6 +68,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   ipc.listApps.mockResolvedValue([weather, timer]);
   ipc.getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: [], session: [] });
+  ipc.getAppInputs.mockResolvedValue({});
 });
 
 describe('AppsPage', () => {
@@ -107,7 +116,9 @@ describe('AppsPage', () => {
       />,
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Update' }));
-    await waitFor(() => expect(ipc.updateAppFromArtifact).toHaveBeenCalledWith('a1', ['https://api.github.com'], []));
+    await waitFor(() =>
+      expect(ipc.updateAppFromArtifact).toHaveBeenCalledWith('a1', ['https://api.github.com'], [], []),
+    );
     await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Updated “Lisbon weather” to v1.1.0.'));
   });
 
@@ -211,6 +222,7 @@ describe('AppDetailsDialog', () => {
         { name: 'Lisbon weather', icon: null, description: null, category: 'live-data' },
         ['https://geocoding-api.open-meteo.com'],
         ['https://api.open-meteo.com'],
+        [],
         [],
       ),
     );

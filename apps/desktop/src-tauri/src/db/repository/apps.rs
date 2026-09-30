@@ -6,9 +6,10 @@
 
 use std::path::Path;
 
+use provider_core::app_inputs;
 use provider_core::schema::{
-    AppCapabilities, AppCategory, AppCreatedWith, AppDetail, AppManifest, AppNetwork, AppOrigin,
-    AppStorage, AppSummary,
+    AppCapabilities, AppCategory, AppCreatedWith, AppDetail, AppInput, AppManifest, AppNetwork,
+    AppOrigin, AppStorage, AppSummary,
 };
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
@@ -17,6 +18,7 @@ use uuid::Uuid;
 use crate::{
     db::{
         repository::{
+            app_inputs as app_inputs_repo,
             artifact_network::{self as grants, Principal},
             artifacts, page_storage,
         },
@@ -155,8 +157,9 @@ fn manifest(
     version: &str,
     hosts: Vec<String>,
     has_storage: bool,
+    inputs: Vec<AppInput>,
 ) -> AppManifest {
-    manifest_from(id, meta, version, hosts, has_storage, true)
+    manifest_from(id, meta, version, hosts, has_storage, inputs, true)
 }
 
 fn manifest_from(
@@ -165,6 +168,7 @@ fn manifest_from(
     version: &str,
     hosts: Vec<String>,
     has_storage: bool,
+    inputs: Vec<AppInput>,
     from_artifact: bool,
 ) -> AppManifest {
     AppManifest {
@@ -185,7 +189,17 @@ fn manifest_from(
             conduit: env!("CARGO_PKG_VERSION").to_string(),
             from_artifact,
         },
+        inputs,
     }
+}
+
+/// Parse a starter's `inputs_json` into its declared inputs. Starters are
+/// bundled compile-time constants, not user input, so a parse failure here is
+/// a programming bug caught by `starter_apps`'s own guard tests, not
+/// something a running app needs to recover from.
+fn starter_inputs(starter: &StarterApp) -> Vec<AppInput> {
+    serde_json::from_str(starter.inputs_json)
+        .unwrap_or_else(|e| panic!("{}: invalid inputs_json: {e}", starter.id))
 }
 
 fn encode_manifest(enc: &Encryption, manifest: &AppManifest) -> Result<String, DbError> {
@@ -207,7 +221,10 @@ fn decode_manifest(enc: &Encryption, stored: &str) -> Result<AppManifest, DbErro
 /// over; each must really be one of them, so a caller can't mint a grant here.
 /// `has_storage` is whether the page declared the `storage` capability
 /// (validated by the caller); when it did, the artifact's `page_storage` rows
-/// are copied to the new app so a tracker keeps its entries.
+/// are copied to the new app so a tracker keeps its entries. `declared_inputs`
+/// is the page's launch-input declaration (ADR-013), already validated by the
+/// caller (`provider_core::app_inputs::validate_declaration`); a brand-new app
+/// has no stored input values yet, so there is nothing to carry over here.
 // Each argument is one thing the Save as app form or the page declared;
 // bundling them would only hide which is which at the call site.
 #[allow(clippy::too_many_arguments)]
@@ -219,6 +236,7 @@ pub async fn save_from_artifact(
     meta: AppMeta,
     declared_hosts: Vec<String>,
     has_storage: bool,
+    declared_inputs: Vec<AppInput>,
     keep_hosts: &[String],
 ) -> Result<AppSummary, DbError> {
     let html = artifact_html(pool, artifacts_dir, enc, artifact_id).await?;
@@ -236,7 +254,7 @@ pub async fn save_from_artifact(
     let id = Uuid::new_v4().to_string();
     let version = "1.0.0";
     let hosts = sorted_hosts(declared_hosts.into_iter().chain(keep_hosts.iter().cloned()));
-    let manifest = manifest(&id, &meta, version, hosts, has_storage);
+    let manifest = manifest(&id, &meta, version, hosts, has_storage, declared_inputs);
     let now = now_iso8601();
     sqlx::query(
         "INSERT INTO apps (id, name, description, icon, category, version, source_artifact_id, \
@@ -273,12 +291,16 @@ pub async fn save_from_artifact(
         .ok_or_else(|| invalid("The app wasn't saved."))
 }
 
-/// Columns every read selects, plus the source artifact's current hash.
+/// Columns every read selects, plus the source artifact's current hash and
+/// this app's stored input values (for `inputs_missing`; a LEFT JOIN rather
+/// than a second query per row).
 const SELECT: &str = "SELECT p.id, p.name, p.description, p.icon, p.category, p.version, \
         p.origin, p.manifest_json, p.source_artifact_id, p.content_hash, a.content_hash, \
-        p.last_opened_at, p.created_at, p.updated_at, p.starter_id \
-     FROM apps p LEFT JOIN artifacts a ON a.id = p.source_artifact_id";
+        p.last_opened_at, p.created_at, p.updated_at, p.starter_id, i.values_json \
+     FROM apps p LEFT JOIN artifacts a ON a.id = p.source_artifact_id \
+     LEFT JOIN app_inputs i ON i.app_id = p.id";
 
+#[allow(clippy::type_complexity)]
 type AppRow = (
     String,
     String,
@@ -294,6 +316,7 @@ type AppRow = (
     Option<String>,
     String,
     String,
+    Option<String>,
     Option<String>,
 );
 
@@ -314,8 +337,20 @@ fn summary_from_row(enc: &Encryption, row: AppRow) -> Result<AppSummary, DbError
         created_at,
         updated_at,
         starter_id,
+        input_values_json,
     ) = row;
     let manifest = decode_manifest(enc, &manifest_json)?;
+    let stored_input_values: serde_json::Map<String, serde_json::Value> = match input_values_json {
+        Some(stored) => match serde_json::from_str(&enc.decrypt(&stored)?) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        },
+        None => serde_json::Map::new(),
+    };
+    let inputs_missing = manifest
+        .inputs
+        .iter()
+        .any(|input| app_inputs::is_missing(input, stored_input_values.get(&input.id)));
     Ok(AppSummary {
         id,
         name,
@@ -336,6 +371,8 @@ fn summary_from_row(enc: &Encryption, row: AppRow) -> Result<AppSummary, DbError
         last_opened_at,
         created_at,
         updated_at,
+        inputs: manifest.inputs,
+        inputs_missing,
     })
 }
 
@@ -394,7 +431,16 @@ async fn refresh_starter(pool: &SqlitePool, enc: &Encryption, id: &str) -> Resul
     let version = bump_minor(&old.version);
     let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
     let has_storage = starter.capabilities.contains(&"storage");
-    let manifest = manifest_from(id, &meta, &version, hosts, has_storage, false);
+    let inputs = starter_inputs(starter);
+    let manifest = manifest_from(
+        id,
+        &meta,
+        &version,
+        hosts,
+        has_storage,
+        inputs.clone(),
+        false,
+    );
     sqlx::query(
         "UPDATE apps SET version = ?, manifest_json = ?, payload = ?, content_hash = ?,                          updated_at = ? WHERE id = ?",
     )
@@ -406,6 +452,9 @@ async fn refresh_starter(pool: &SqlitePool, enc: &Encryption, id: &str) -> Resul
     .bind(id)
     .execute(pool)
     .await?;
+    app_inputs_repo::prune_to_declaration(pool, enc, id, &inputs)
+        .await
+        .map_err(DbError::from)?;
     Ok(())
 }
 
@@ -435,7 +484,9 @@ pub async fn open(
     }))
 }
 
-async fn stored_manifest(
+/// The app's current manifest — including its declared inputs, so
+/// `get_app_inputs`/`set_app_inputs` know what they're resolving against.
+pub async fn stored_manifest(
     pool: &SqlitePool,
     enc: &Encryption,
     id: &str,
@@ -462,7 +513,7 @@ pub async fn update_meta(
         .map(|n| n.hosts)
         .unwrap_or_default();
     let has_storage = old.capabilities.storage.is_some();
-    let manifest = manifest(id, &meta, &old.version, hosts, has_storage);
+    let manifest = manifest(id, &meta, &old.version, hosts, has_storage, old.inputs);
     sqlx::query(
         "UPDATE apps SET name = ?, description = ?, icon = ?, category = ?, manifest_json = ?, \
                          updated_at = ? WHERE id = ?",
@@ -486,7 +537,9 @@ pub async fn update_meta(
 /// stay (the user gave them to this app), and a newly declared host still asks
 /// on first use. The app's `page_storage` rows are untouched either way — only
 /// the manifest's `storage` capability is recomputed from `has_storage`, the
-/// new page's own declaration.
+/// new page's own declaration. `declared_inputs` (already validated by the
+/// caller) replaces the manifest's inputs; stored values for inputs no longer
+/// declared, or that no longer fit, are dropped (ADR-013), the rest kept.
 pub async fn update_from_artifact(
     pool: &SqlitePool,
     artifacts_dir: &Path,
@@ -494,6 +547,7 @@ pub async fn update_from_artifact(
     id: &str,
     declared_hosts: Vec<String>,
     has_storage: bool,
+    declared_inputs: Vec<AppInput>,
 ) -> Result<AppSummary, DbError> {
     let summary = get_summary(pool, enc, id)
         .await?
@@ -516,7 +570,14 @@ pub async fn update_from_artifact(
         category: old.category,
     };
     let version = bump_minor(&old.version);
-    let manifest = manifest(id, &meta, &version, hosts, has_storage);
+    let manifest = manifest(
+        id,
+        &meta,
+        &version,
+        hosts,
+        has_storage,
+        declared_inputs.clone(),
+    );
     sqlx::query(
         "UPDATE apps SET version = ?, manifest_json = ?, payload = ?, content_hash = ?, \
                          updated_at = ? WHERE id = ?",
@@ -529,6 +590,9 @@ pub async fn update_from_artifact(
     .bind(id)
     .execute(pool)
     .await?;
+    app_inputs_repo::prune_to_declaration(pool, enc, id, &declared_inputs)
+        .await
+        .map_err(DbError::from)?;
     get_summary(pool, enc, id)
         .await?
         .ok_or_else(|| invalid("That app no longer exists."))
@@ -562,7 +626,15 @@ pub async fn install_starter(
     let version = "1.0.0";
     let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
     let has_storage = starter.capabilities.contains(&"storage");
-    let manifest = manifest_from(&id, &meta, version, hosts, has_storage, false);
+    let manifest = manifest_from(
+        &id,
+        &meta,
+        version,
+        hosts,
+        has_storage,
+        starter_inputs(starter),
+        false,
+    );
     let now = now_iso8601();
     sqlx::query(
         "INSERT INTO apps (id, name, description, icon, category, version, source_artifact_id, \
@@ -590,13 +662,14 @@ pub async fn install_starter(
         .ok_or_else(|| invalid("The app wasn't added."))
 }
 
-/// Delete an app, its grants, and its storage.
+/// Delete an app, its grants, its storage, and its input values.
 pub async fn delete(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
     let app = Principal::app(id);
     grants::clear(pool, Some(&app)).await?;
     page_storage::clear(pool, &app)
         .await
         .map_err(DbError::from)?;
+    app_inputs_repo::delete(pool, id).await?;
     sqlx::query("DELETE FROM apps WHERE id = ?")
         .bind(id)
         .execute(pool)

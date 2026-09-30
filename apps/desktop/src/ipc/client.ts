@@ -7,6 +7,7 @@ import type {
   AddRemoteConnectorRequest,
   AppCategory,
   AppDetail,
+  AppInput,
   AppPaths,
   AppSummary,
   StarterAppInfo,
@@ -1368,15 +1369,25 @@ export interface AppMetaInput {
  *  the user chose to carry over (Rust refuses any it doesn't have).
  *  `declaredCapabilities` comes from the page's `conduit-capability` meta
  *  tags (`declaredCapabilities` in `artifacts/networkHosts.ts`); Rust rejects
- *  anything it doesn't recognise (ADR-012). */
+ *  anything it doesn't recognise (ADR-012). `declaredInputs` comes from the
+ *  page's `application/conduit-inputs+json` block (`declaredInputs` in
+ *  `artifacts/networkHosts.ts`); Rust re-validates the declaration (ADR-013). */
 export async function saveApp(
   artifactId: string,
   meta: AppMetaInput,
   declaredHosts: string[],
   keepHosts: string[],
   declaredCapabilities: string[],
+  declaredInputs: AppInput[],
 ): Promise<AppSummary> {
-  return invokeCommand<AppSummary>('save_app', { artifactId, meta, declaredHosts, keepHosts, declaredCapabilities });
+  return invokeCommand<AppSummary>('save_app', {
+    artifactId,
+    meta,
+    declaredHosts,
+    keepHosts,
+    declaredCapabilities,
+    declaredInputs,
+  });
 }
 
 export async function listApps(): Promise<AppSummary[]> {
@@ -1392,12 +1403,21 @@ export async function updateApp(id: string, meta: AppMetaInput): Promise<AppSumm
   return invokeCommand<AppSummary>('update_app', { id, meta });
 }
 
+/** Refresh a saved app from its still-open source artifact. Values for
+ *  inputs that are still declared (and still valid) survive; the rest are
+ *  dropped (ADR-013). */
 export async function updateAppFromArtifact(
   id: string,
   declaredHosts: string[],
   declaredCapabilities: string[],
+  declaredInputs: AppInput[],
 ): Promise<AppSummary> {
-  return invokeCommand<AppSummary>('update_app_from_artifact', { id, declaredHosts, declaredCapabilities });
+  return invokeCommand<AppSummary>('update_app_from_artifact', {
+    id,
+    declaredHosts,
+    declaredCapabilities,
+    declaredInputs,
+  });
 }
 
 export async function deleteApp(id: string): Promise<void> {
@@ -1411,8 +1431,30 @@ export async function listStarterApps(): Promise<StarterAppInfo[]> {
 
 /** Add a starter app — or get the copy already added. `name` and
  *  `description` are its Ideas strings in the user's language. */
-export async function installStarterApp(id: string, name: string, description: string | null): Promise<AppSummary> {
+export async function installStarterApp(
+  id: string,
+  name: string,
+  description: string | null,
+): Promise<AppSummary> {
   return invokeCommand<AppSummary>('install_starter_app', { id, name, description });
+}
+
+// =============================================================================
+// Launch inputs (ADR-013)
+// =============================================================================
+
+/** The app's current effective input values: every declared input that has a
+ *  stored-and-valid value or a default. Read on opening the app view, and
+ *  after `set_app_inputs` (which returns the same shape). */
+export async function getAppInputs(id: string): Promise<Record<string, unknown>> {
+  return invokeCommand<Record<string, unknown>>('get_app_inputs', { id });
+}
+
+/** Replaces every stored value for the app in one call: an id not declared
+ *  is refused, and `null` clears one. Rejects with `invalid: …` for a value
+ *  that does not fit its input. Returns the new effective values. */
+export async function setAppInputs(id: string, values: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return invokeCommand<Record<string, unknown>>('set_app_inputs', { id, values });
 }
 
 export async function listWorkflows(): Promise<WorkflowSummary[]> {

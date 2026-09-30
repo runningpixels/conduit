@@ -2,7 +2,7 @@
 //! from its source, delete. Network access for an app goes through the
 //! `artifact_network` commands with principal `app:<id>`.
 
-use provider_core::schema::{AppCategory, AppDetail, AppSummary, StarterAppInfo};
+use provider_core::schema::{AppCategory, AppDetail, AppInput, AppSummary, StarterAppInfo};
 use serde::Deserialize;
 use tauri::State;
 
@@ -53,9 +53,12 @@ pub async fn save_app(
     meta: AppMetaInput,
     declared_hosts: Vec<String>,
     declared_capabilities: Vec<String>,
+    declared_inputs: Vec<AppInput>,
     keep_hosts: Vec<String>,
 ) -> Result<AppSummary, String> {
     let has_storage = apps::validate_capabilities(&declared_capabilities)?;
+    provider_core::app_inputs::validate_declaration(&declared_inputs)
+        .map_err(|e| format!("invalid: {e}"))?;
     apps::save_from_artifact(
         &state.db,
         &state.paths.artifacts,
@@ -64,6 +67,7 @@ pub async fn save_app(
         meta.validated()?,
         declared_origins(declared_hosts),
         has_storage,
+        declared_inputs,
         &keep_hosts,
     )
     .await
@@ -103,8 +107,11 @@ pub async fn update_app_from_artifact(
     id: String,
     declared_hosts: Vec<String>,
     declared_capabilities: Vec<String>,
+    declared_inputs: Vec<AppInput>,
 ) -> Result<AppSummary, String> {
     let has_storage = apps::validate_capabilities(&declared_capabilities)?;
+    provider_core::app_inputs::validate_declaration(&declared_inputs)
+        .map_err(|e| format!("invalid: {e}"))?;
     apps::update_from_artifact(
         &state.db,
         &state.paths.artifacts,
@@ -112,6 +119,7 @@ pub async fn update_app_from_artifact(
         &id,
         declared_origins(declared_hosts),
         has_storage,
+        declared_inputs,
     )
     .await
     .map_err(|e| e.to_string())

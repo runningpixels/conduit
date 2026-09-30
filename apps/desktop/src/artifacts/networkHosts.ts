@@ -109,3 +109,108 @@ export function hostLabel(origin: string): string {
     return origin;
   }
 }
+
+// =============================================================================
+// Launch inputs (ADR-013)
+// =============================================================================
+
+import type { AppInput, AppInputKind } from '@conduit/config-schema';
+export type { AppInput, AppInputKind };
+
+const APP_INPUT_KINDS: ReadonlySet<string> = new Set<AppInputKind>(['string', 'number', 'boolean', 'enum', 'date']);
+const APP_INPUT_ID_REGEX = /^[A-Za-z0-9_-]{1,40}$/;
+const APP_INPUT_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_APP_INPUTS = 20;
+const MAX_ENUM_OPTIONS = 50;
+
+/// A real calendar date, not just digits in the right shape — `2024-02-30`
+/// fails this the way `Date` would round it into March otherwise.
+function isRealCalendarDate(value: string): boolean {
+  if (!APP_INPUT_DATE_REGEX.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
+/// Whether `value` is a valid value for this input's type — the same rules
+/// Rust re-validates: a string up to 500 characters, a finite number, a
+/// boolean, one of an enum's options, or a real `YYYY-MM-DD` date.
+function fitsAppInput(input: { type: AppInputKind; options?: string[] }, value: unknown): boolean {
+  switch (input.type) {
+    case 'string':
+      return typeof value === 'string' && value.length <= 500;
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'enum':
+      return typeof value === 'string' && (input.options ?? []).includes(value);
+    case 'date':
+      return typeof value === 'string' && isRealCalendarDate(value);
+    default:
+      return false;
+  }
+}
+
+/// `null` unless `raw` is a well-formed `AppInput`: a 1–40 character id of
+/// letters, digits, `-`/`_`; a 1–60 character label; a known type; `options`
+/// present if and only if the type is `enum` (1–50 entries, each 1–60
+/// characters); and, if given, a `default` that fits the type.
+function parseAppInput(raw: unknown): AppInput | null {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || !APP_INPUT_ID_REGEX.test(r.id)) return null;
+  if (typeof r.label !== 'string' || r.label.trim().length === 0 || r.label.length > 60) return null;
+  if (typeof r.type !== 'string' || !APP_INPUT_KINDS.has(r.type)) return null;
+  const type = r.type as AppInputKind;
+  if (r.required !== undefined && typeof r.required !== 'boolean') return null;
+
+  let options: string[] | undefined;
+  if (type === 'enum') {
+    if (!Array.isArray(r.options) || r.options.length === 0 || r.options.length > MAX_ENUM_OPTIONS) return null;
+    if (!r.options.every((o) => typeof o === 'string' && o.length >= 1 && o.length <= 60)) return null;
+    options = r.options as string[];
+  } else if (r.options !== undefined) {
+    return null; // `options` is enum-only.
+  }
+
+  let defaultValue: unknown;
+  if (r.default !== undefined) {
+    if (!fitsAppInput({ type, options }, r.default)) return null;
+    defaultValue = r.default;
+  }
+
+  const input: AppInput = { id: r.id, label: r.label, type, required: r.required === true };
+  if (defaultValue !== undefined) input.default = defaultValue;
+  if (options) input.options = options;
+  return input;
+}
+
+/// The page's launch inputs (ADR-013): the JSON array inside the first
+/// `<script type="application/conduit-inputs+json">` (a script of that type
+/// never runs). Malformed JSON, a non-array, or the tag's absence all yield
+/// `[]`; individual malformed entries and duplicate ids are dropped rather
+/// than failing the whole block, capped at 20. Rust re-validates the
+/// declaration again on save/update.
+export function declaredInputs(html: string): AppInput[] {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const script = doc.querySelector('script[type="application/conduit-inputs+json"]');
+  if (!script?.textContent) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(script.textContent);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const seen = new Set<string>();
+  const out: AppInput[] = [];
+  for (const raw of parsed) {
+    if (out.length >= MAX_APP_INPUTS) break;
+    const input = parseAppInput(raw);
+    if (!input || seen.has(input.id)) continue;
+    seen.add(input.id);
+    out.push(input);
+  }
+  return out;
+}

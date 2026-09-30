@@ -20,6 +20,10 @@ pub struct StarterApp {
     /// The capabilities the page declares (its `conduit-capability` meta
     /// tags), e.g. `&["storage"]`. All starters declare none today.
     pub capabilities: &'static [&'static str],
+    /// The launch inputs the page declares (ADR-013), as the JSON array from
+    /// its `application/conduit-inputs+json` script block. `"[]"` for every
+    /// starter but weather, which declares `city` and `units`.
+    pub inputs_json: &'static str,
     pub html: &'static str,
 }
 
@@ -31,6 +35,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         icon: "25:00",
         hosts: &[],
         capabilities: &[],
+        inputs_json: "[]",
         html: include_str!("../starter_apps/pomodoro-timer.html"),
     },
     StarterApp {
@@ -40,6 +45,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         icon: "⇄",
         hosts: &[],
         capabilities: &[],
+        inputs_json: "[]",
         html: include_str!("../starter_apps/unit-converter.html"),
     },
     StarterApp {
@@ -52,6 +58,10 @@ pub const STARTER_APPS: &[StarterApp] = &[
             "https://geocoding-api.open-meteo.com",
         ],
         capabilities: &[],
+        // Keep in sync with the `application/conduit-inputs+json` block in
+        // weather-dashboard.html (guarded by
+        // `starter_inputs_json_matches_the_page_declaration` below).
+        inputs_json: r#"[{"id":"city","label":"City","type":"string","default":"Paris","required":true},{"id":"units","label":"Units","type":"enum","options":["metric","imperial"],"default":"metric"}]"#,
         html: include_str!("../starter_apps/weather-dashboard.html"),
     },
     StarterApp {
@@ -61,6 +71,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         icon: "€ $",
         hosts: &["https://api.frankfurter.dev"],
         capabilities: &[],
+        inputs_json: "[]",
         html: include_str!("../starter_apps/currency-converter.html"),
     },
     StarterApp {
@@ -70,6 +81,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         icon: "▚▚▚",
         hosts: &[],
         capabilities: &[],
+        inputs_json: "[]",
         html: include_str!("../starter_apps/snake.html"),
     },
     StarterApp {
@@ -79,6 +91,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         icon: "◆◇",
         hosts: &[],
         capabilities: &[],
+        inputs_json: "[]",
         html: include_str!("../starter_apps/memory-game.html"),
     },
     StarterApp {
@@ -88,6 +101,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         icon: "?",
         hosts: &[],
         capabilities: &[],
+        inputs_json: "[]",
         html: include_str!("../starter_apps/capitals-quiz.html"),
     },
     StarterApp {
@@ -97,6 +111,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         icon: "+ −",
         hosts: &[],
         capabilities: &["storage"],
+        inputs_json: "[]",
         html: include_str!("../starter_apps/budget-tracker.html"),
     },
 ];
@@ -207,5 +222,50 @@ mod tests {
         ids.sort();
         ids.dedup();
         assert_eq!(ids.len(), STARTER_APPS.len());
+    }
+
+    /// The JSON array a page declares in its `application/conduit-inputs+json`
+    /// script block, if any.
+    fn declared_inputs_block(html: &str) -> Option<serde_json::Value> {
+        let start_tag = html.find("type=\"application/conduit-inputs+json\"")?;
+        let after_tag = &html[start_tag..];
+        let content_start = after_tag.find('>')? + 1;
+        let content = &after_tag[content_start..];
+        let end = content.find("</script>")?;
+        serde_json::from_str(content[..end].trim()).ok()
+    }
+
+    /// `StarterApp::inputs_json` (ADR-013) is what `apps::install_starter` and
+    /// `apps::refresh_starter` put in the manifest; it must be exactly what the
+    /// page itself declares, or the two would silently drift.
+    #[test]
+    fn starter_inputs_json_matches_the_page_declaration() {
+        for s in STARTER_APPS {
+            let declared: serde_json::Value = serde_json::from_str(s.inputs_json)
+                .unwrap_or_else(|e| panic!("{}: inputs_json doesn't parse: {e}", s.id));
+            match declared_inputs_block(s.html) {
+                Some(from_page) => assert_eq!(
+                    from_page, declared,
+                    "{}: inputs_json vs the page's own declaration",
+                    s.id
+                ),
+                None => assert_eq!(
+                    declared,
+                    serde_json::json!([]),
+                    "{}: page declares no inputs block, but inputs_json isn't []",
+                    s.id
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn starter_inputs_json_is_a_valid_declaration() {
+        for s in STARTER_APPS {
+            let inputs: Vec<provider_core::schema::AppInput> = serde_json::from_str(s.inputs_json)
+                .unwrap_or_else(|e| panic!("{}: inputs_json isn't valid AppInput[]: {e}", s.id));
+            provider_core::app_inputs::validate_declaration(&inputs)
+                .unwrap_or_else(|e| panic!("{}: {e}", s.id));
+        }
     }
 }

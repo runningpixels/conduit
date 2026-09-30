@@ -2,13 +2,14 @@
 //! from its source, delete. Network access for an app goes through the
 //! `artifact_network` commands with principal `app:<id>`.
 
-use provider_core::schema::{AppCategory, AppDetail, AppSummary};
+use provider_core::schema::{AppCategory, AppDetail, AppSummary, StarterAppInfo};
 use serde::Deserialize;
 use tauri::State;
 
 use crate::{
     artifact_network,
     db::repository::apps::{self, AppMeta},
+    starter_apps::{self, STARTER_APPS},
     state::AppState,
 };
 
@@ -108,6 +109,48 @@ pub async fn update_app_from_artifact(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+/// The ready-made apps, and which of them the user has added.
+#[tauri::command]
+pub async fn list_starter_apps(state: State<'_, AppState>) -> Result<Vec<StarterAppInfo>, String> {
+    let installed = apps::installed_starters(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(STARTER_APPS
+        .iter()
+        .map(|s| StarterAppInfo {
+            id: s.id.to_string(),
+            idea_id: s.idea_id.to_string(),
+            category: s.category,
+            icon: s.icon.to_string(),
+            hosts: s.hosts.iter().map(|h| h.to_string()).collect(),
+            installed_app_id: installed.get(s.id).cloned(),
+        })
+        .collect())
+}
+
+/// Add a starter app (or return the copy the user already has). `meta`
+/// carries the name and description in the user's language; the category
+/// and mark are the starter's own.
+#[tauri::command]
+pub async fn install_starter_app(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    description: Option<String>,
+) -> Result<AppSummary, String> {
+    let starter = starter_apps::find(&id).ok_or_else(|| format!("No starter app called {id}."))?;
+    let meta = AppMeta {
+        name,
+        description,
+        icon: Some(starter.icon.to_string()),
+        category: starter.category,
+    }
+    .validated()?;
+    apps::install_starter(&state.db, &state.encryption, starter, meta)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

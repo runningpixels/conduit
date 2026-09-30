@@ -23,6 +23,7 @@ use crate::{
         DbError,
     },
     encryption::Encryption,
+    starter_apps::StarterApp,
     time::now_iso8601,
 };
 
@@ -132,6 +133,16 @@ fn sorted_hosts(hosts: impl IntoIterator<Item = String>) -> Vec<String> {
 }
 
 fn manifest(id: &str, meta: &AppMeta, version: &str, hosts: Vec<String>) -> AppManifest {
+    manifest_from(id, meta, version, hosts, true)
+}
+
+fn manifest_from(
+    id: &str,
+    meta: &AppMeta,
+    version: &str,
+    hosts: Vec<String>,
+    from_artifact: bool,
+) -> AppManifest {
     AppManifest {
         manifest_version: 1,
         id: id.to_string(),
@@ -145,7 +156,7 @@ fn manifest(id: &str, meta: &AppMeta, version: &str, hosts: Vec<String>) -> AppM
         },
         created_with: AppCreatedWith {
             conduit: env!("CARGO_PKG_VERSION").to_string(),
-            from_artifact: true,
+            from_artifact,
         },
     }
 }
@@ -226,7 +237,7 @@ pub async fn save_from_artifact(
 /// Columns every read selects, plus the source artifact's current hash.
 const SELECT: &str = "SELECT p.id, p.name, p.description, p.icon, p.category, p.version, \
         p.origin, p.manifest_json, p.source_artifact_id, p.content_hash, a.content_hash, \
-        p.last_opened_at, p.created_at, p.updated_at \
+        p.last_opened_at, p.created_at, p.updated_at, p.starter_id \
      FROM apps p LEFT JOIN artifacts a ON a.id = p.source_artifact_id";
 
 type AppRow = (
@@ -244,6 +255,7 @@ type AppRow = (
     Option<String>,
     String,
     String,
+    Option<String>,
 );
 
 fn summary_from_row(enc: &Encryption, row: AppRow) -> Result<AppSummary, DbError> {
@@ -262,6 +274,7 @@ fn summary_from_row(enc: &Encryption, row: AppRow) -> Result<AppSummary, DbError
         last_opened_at,
         created_at,
         updated_at,
+        starter_id,
     ) = row;
     let manifest = decode_manifest(enc, &manifest_json)?;
     Ok(AppSummary {
@@ -279,6 +292,7 @@ fn summary_from_row(enc: &Encryption, row: AppRow) -> Result<AppSummary, DbError
             .unwrap_or_default(),
         source_changed: source_hash.is_some_and(|h| h != content_hash),
         source_artifact_id,
+        starter_id,
         last_opened_at,
         created_at,
         updated_at,
@@ -310,12 +324,58 @@ pub async fn get_summary(
     row.map(|row| summary_from_row(enc, row)).transpose()
 }
 
-/// An app with its page, stamping when it was opened.
+/// A starter app's copy follows the page this build ships: starters are
+/// never edited by the user and are granted nothing when added, so when the
+/// bundled page changes the copy is replaced and its minor version bumped.
+/// A newly declared site still asks on first use.
+async fn refresh_starter(pool: &SqlitePool, enc: &Encryption, id: &str) -> Result<(), DbError> {
+    let row: Option<(Option<String>, String)> =
+        sqlx::query_as("SELECT starter_id, content_hash FROM apps WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    let Some((Some(starter_id), hash)) = row else {
+        return Ok(());
+    };
+    let Some(starter) = crate::starter_apps::find(&starter_id) else {
+        return Ok(());
+    };
+    let bundled = sha256_hex(starter.html.as_bytes());
+    if bundled == hash {
+        return Ok(());
+    }
+    let old = stored_manifest(pool, enc, id).await?;
+    let meta = AppMeta {
+        name: old.name.clone(),
+        description: old.description.clone(),
+        icon: old.icon.clone(),
+        category: old.category,
+    };
+    let version = bump_minor(&old.version);
+    let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
+    let manifest = manifest_from(id, &meta, &version, hosts, false);
+    sqlx::query(
+        "UPDATE apps SET version = ?, manifest_json = ?, payload = ?, content_hash = ?,                          updated_at = ? WHERE id = ?",
+    )
+    .bind(&version)
+    .bind(encode_manifest(enc, &manifest)?)
+    .bind(enc.encrypt(starter.html)?)
+    .bind(bundled)
+    .bind(now_iso8601())
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// An app with its page, stamping when it was opened. A starter app is
+/// first brought up to the page this build ships.
 pub async fn open(
     pool: &SqlitePool,
     enc: &Encryption,
     id: &str,
 ) -> Result<Option<AppDetail>, DbError> {
+    refresh_starter(pool, enc, id).await?;
     sqlx::query("UPDATE apps SET last_opened_at = ? WHERE id = ?")
         .bind(now_iso8601())
         .bind(id)
@@ -427,6 +487,61 @@ pub async fn update_from_artifact(
     get_summary(pool, enc, id)
         .await?
         .ok_or_else(|| invalid("That app no longer exists."))
+}
+
+/// The user's copy of a starter app, if they added it.
+pub async fn installed_starters(
+    pool: &SqlitePool,
+) -> Result<std::collections::HashMap<String, String>, DbError> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT starter_id, id FROM apps WHERE starter_id IS NOT NULL")
+            .fetch_all(pool)
+            .await?;
+    Ok(rows.into_iter().collect())
+}
+
+/// Add a starter app to the user's apps, or return the copy they already
+/// have. Nothing is granted: its sites still ask on first use.
+pub async fn install_starter(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    starter: &StarterApp,
+    meta: AppMeta,
+) -> Result<AppSummary, DbError> {
+    if let Some(existing) = installed_starters(pool).await?.get(starter.id) {
+        return get_summary(pool, enc, existing)
+            .await?
+            .ok_or_else(|| invalid("That app no longer exists."));
+    }
+    let id = Uuid::new_v4().to_string();
+    let version = "1.0.0";
+    let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
+    let manifest = manifest_from(&id, &meta, version, hosts, false);
+    let now = now_iso8601();
+    sqlx::query(
+        "INSERT INTO apps (id, name, description, icon, category, version, source_artifact_id, \
+                           origin, manifest_json, payload, content_hash, created_at, updated_at, \
+                           starter_id) \
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(&meta.name)
+    .bind(&meta.description)
+    .bind(&meta.icon)
+    .bind(meta.category.as_str())
+    .bind(version)
+    .bind(AppOrigin::Starter.as_str())
+    .bind(encode_manifest(enc, &manifest)?)
+    .bind(enc.encrypt(starter.html)?)
+    .bind(sha256_hex(starter.html.as_bytes()))
+    .bind(&now)
+    .bind(&now)
+    .bind(starter.id)
+    .execute(pool)
+    .await?;
+    get_summary(pool, enc, &id)
+        .await?
+        .ok_or_else(|| invalid("The app wasn't added."))
 }
 
 /// Delete an app and its grants.

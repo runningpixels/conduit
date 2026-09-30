@@ -1,0 +1,480 @@
+<meta charset="utf-8">
+<style>
+  html[data-theme="dark"], html:not([data-theme]) {
+    --bg:#0b0d12; --surface:#11141b; --surface-hi:#161a23; --line:#1c2130; --line-hi:#262c3c;
+    --ink:#e8eaf0; --ink-2:#b8becc; --ink-3:#8990a2; --accent:#ff7a59; --accent-ink:#1a0b06;
+    --accent-soft: rgba(255,122,89,.14); --signal:#7cc4ff; --ok:#7cffb2; --warn:#febc2e; --err:#ff9c82;
+    color-scheme: dark;
+  }
+  html[data-theme="light"] {
+    --bg:#f6f6f8; --surface:#ffffff; --surface-hi:#f1f2f5; --line:#e1e3ea; --line-hi:#dadce3;
+    --ink:#16181d; --ink-2:#3a3f4a; --ink-3:#5f6573; --accent:#4b4ded; --accent-ink:#ffffff;
+    --accent-soft:#eef0ff; --signal:#1f86e8; --ok:#137a3a; --warn:#9a5300; --err:#b4380f;
+    color-scheme: light;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    margin: 0;
+    padding: 0;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+
+  .quiz-app {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: clamp(16px, 4vw, 40px) 20px 48px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .counter, .score {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--ink-3);
+    letter-spacing: .01em;
+  }
+
+  .score { color: var(--ink-2); }
+
+  .progress-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width .25s ease;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: clamp(20px, 5vw, 32px);
+  }
+
+  .question-label {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .country-name {
+    margin: 0 0 24px;
+    font-size: clamp(24px, 5vw, 32px);
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+
+  .options {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  @media (min-width: 480px) {
+    .options { grid-template-columns: 1fr 1fr; }
+  }
+
+  .option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--surface-hi);
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease, transform .1s ease;
+  }
+
+  .option:hover:not(:disabled) {
+    border-color: var(--line-hi);
+    background: var(--surface);
+  }
+
+  .option:active:not(:disabled) {
+    transform: scale(.99);
+  }
+
+  .option:disabled {
+    cursor: default;
+  }
+
+  .option:disabled:not(.correct):not(.wrong) {
+    opacity: .5;
+  }
+
+  .option.correct {
+    border-color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 16%, var(--surface));
+    color: var(--ink);
+    opacity: 1;
+  }
+
+  .option.wrong {
+    border-color: var(--err);
+    background: color-mix(in srgb, var(--err) 16%, var(--surface));
+    color: var(--ink);
+    opacity: 1;
+  }
+
+  .opt-tag {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .option.correct .opt-tag { color: var(--ok); }
+  .option.wrong .opt-tag { color: var(--err); }
+
+  .feedback {
+    margin-top: 18px;
+    min-height: 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+
+  .feedback.is-correct { color: var(--ok); }
+  .feedback.is-wrong { color: var(--err); }
+
+  .btn-next, .btn-primary {
+    display: block;
+    margin-top: 18px;
+    width: 100%;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent-ink);
+    background: var(--accent);
+    border: none;
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: opacity .15s ease, transform .1s ease;
+  }
+
+  .btn-next:hover, .btn-primary:hover { opacity: .9; }
+  .btn-next:active, .btn-primary:active { transform: scale(.99); }
+
+  .score-card {
+    text-align: center;
+  }
+
+  .score-card h2 {
+    margin: 4px 0 22px;
+    font-size: clamp(20px, 5vw, 26px);
+    font-weight: 700;
+  }
+
+  .score-card .score-sub {
+    margin: -14px 0 22px;
+    font-size: 14px;
+    color: var(--ink-3);
+  }
+
+  [hidden] { display: none !important; }
+
+  :focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+</style>
+
+<div class="quiz-app" id="app">
+  <div class="topbar">
+    <span class="counter" id="counter">Question 1 of 10</span>
+    <span class="score" id="scoreDisplay">Score: 0</span>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+
+  <div class="card" id="questionCard">
+    <h1 class="question-label">Capital of</h1>
+    <h2 class="country-name" id="countryName">&mdash;</h2>
+    <div class="options" id="options"></div>
+    <div class="feedback" id="feedback" aria-live="polite"></div>
+    <button type="button" class="btn-next" id="nextBtn" hidden>Next question</button>
+  </div>
+
+  <div class="card score-card" id="scoreCard" hidden>
+    <h2 id="finalScoreText" aria-live="polite">You scored 0 out of 10</h2>
+    <p class="score-sub" id="finalScoreSub"></p>
+    <button type="button" class="btn-primary" id="playAgainBtn">Play again</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var COUNTRIES = [
+    { country: "France", capital: "Paris" },
+    { country: "Japan", capital: "Tokyo" },
+    { country: "Australia", capital: "Canberra" },
+    { country: "Brazil", capital: "Brasília" },
+    { country: "Egypt", capital: "Cairo" },
+    { country: "Canada", capital: "Ottawa" },
+    { country: "Germany", capital: "Berlin" },
+    { country: "Italy", capital: "Rome" },
+    { country: "Spain", capital: "Madrid" },
+    { country: "Mexico", capital: "Mexico City" },
+    { country: "India", capital: "New Delhi" },
+    { country: "China", capital: "Beijing" },
+    { country: "Russia", capital: "Moscow" },
+    { country: "South Africa", capital: "Pretoria" },
+    { country: "Argentina", capital: "Buenos Aires" },
+    { country: "Nigeria", capital: "Abuja" },
+    { country: "Kenya", capital: "Nairobi" },
+    { country: "Thailand", capital: "Bangkok" },
+    { country: "Vietnam", capital: "Hanoi" },
+    { country: "South Korea", capital: "Seoul" },
+    { country: "Indonesia", capital: "Jakarta" },
+    { country: "Turkey", capital: "Ankara" },
+    { country: "Greece", capital: "Athens" },
+    { country: "Poland", capital: "Warsaw" },
+    { country: "Sweden", capital: "Stockholm" },
+    { country: "Norway", capital: "Oslo" },
+    { country: "Finland", capital: "Helsinki" },
+    { country: "Denmark", capital: "Copenhagen" },
+    { country: "Netherlands", capital: "Amsterdam" },
+    { country: "Belgium", capital: "Brussels" },
+    { country: "Switzerland", capital: "Bern" },
+    { country: "Austria", capital: "Vienna" },
+    { country: "Portugal", capital: "Lisbon" },
+    { country: "Ireland", capital: "Dublin" },
+    { country: "New Zealand", capital: "Wellington" },
+    { country: "Chile", capital: "Santiago" },
+    { country: "Peru", capital: "Lima" },
+    { country: "Colombia", capital: "Bogotá" },
+    { country: "Saudi Arabia", capital: "Riyadh" },
+    { country: "United Arab Emirates", capital: "Abu Dhabi" },
+    { country: "Israel", capital: "Jerusalem" },
+    { country: "Ukraine", capital: "Kyiv" },
+    { country: "Czechia", capital: "Prague" },
+    { country: "Hungary", capital: "Budapest" },
+    { country: "Romania", capital: "Bucharest" },
+    { country: "Morocco", capital: "Rabat" },
+    { country: "Philippines", capital: "Manila" },
+    { country: "Malaysia", capital: "Kuala Lumpur" },
+    { country: "Pakistan", capital: "Islamabad" },
+    { country: "Bangladesh", capital: "Dhaka" }
+  ];
+
+  var QUESTIONS_PER_GAME = 10;
+  var OPTIONS_PER_QUESTION = 4;
+
+  var state = {
+    questions: [],
+    index: 0,
+    score: 0,
+    answered: false
+  };
+
+  var els = {
+    counter: document.getElementById("counter"),
+    scoreDisplay: document.getElementById("scoreDisplay"),
+    progressFill: document.getElementById("progressFill"),
+    questionCard: document.getElementById("questionCard"),
+    countryName: document.getElementById("countryName"),
+    options: document.getElementById("options"),
+    feedback: document.getElementById("feedback"),
+    nextBtn: document.getElementById("nextBtn"),
+    scoreCard: document.getElementById("scoreCard"),
+    finalScoreText: document.getElementById("finalScoreText"),
+    finalScoreSub: document.getElementById("finalScoreSub"),
+    playAgainBtn: document.getElementById("playAgainBtn")
+  };
+
+  function shuffle(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = a[i];
+      a[i] = a[j];
+      a[j] = tmp;
+    }
+    return a;
+  }
+
+  function buildQuestion(entry) {
+    var others = COUNTRIES.filter(function (c) { return c.country !== entry.country; });
+    var shuffledOthers = shuffle(others);
+
+    var wrongCapitals = [];
+    var seen = {};
+    seen[entry.capital] = true;
+
+    for (var i = 0; i < shuffledOthers.length && wrongCapitals.length < (OPTIONS_PER_QUESTION - 1); i++) {
+      var cap = shuffledOthers[i].capital;
+      if (!seen[cap]) {
+        seen[cap] = true;
+        wrongCapitals.push(cap);
+      }
+    }
+
+    var optionValues = shuffle([entry.capital].concat(wrongCapitals));
+
+    return {
+      country: entry.country,
+      correctCapital: entry.capital,
+      options: optionValues
+    };
+  }
+
+  function startGame() {
+    var pool = shuffle(COUNTRIES).slice(0, QUESTIONS_PER_GAME);
+    state.questions = pool.map(buildQuestion);
+    state.index = 0;
+    state.score = 0;
+    state.answered = false;
+
+    els.scoreCard.hidden = true;
+    els.questionCard.hidden = false;
+
+    renderQuestion();
+  }
+
+  function renderQuestion() {
+    var q = state.questions[state.index];
+    state.answered = false;
+
+    els.counter.textContent = "Question " + (state.index + 1) + " of " + QUESTIONS_PER_GAME;
+    els.scoreDisplay.textContent = "Score: " + state.score;
+    els.progressFill.style.width = ((state.index) / QUESTIONS_PER_GAME * 100) + "%";
+
+    els.countryName.textContent = q.country;
+    els.feedback.textContent = "";
+    els.feedback.className = "feedback";
+    els.nextBtn.hidden = true;
+
+    els.options.innerHTML = "";
+
+    q.options.forEach(function (capital) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "option";
+
+      var textSpan = document.createElement("span");
+      textSpan.className = "opt-text";
+      textSpan.textContent = capital;
+
+      var tagSpan = document.createElement("span");
+      tagSpan.className = "opt-tag";
+
+      btn.appendChild(textSpan);
+      btn.appendChild(tagSpan);
+
+      btn.addEventListener("click", function () {
+        handleAnswer(capital, btn);
+      });
+
+      els.options.appendChild(btn);
+    });
+  }
+
+  function handleAnswer(selectedCapital, selectedBtn) {
+    if (state.answered) { return; }
+    state.answered = true;
+
+    var q = state.questions[state.index];
+    var isCorrect = selectedCapital === q.correctCapital;
+
+    if (isCorrect) {
+      state.score++;
+    }
+
+    var buttons = els.options.querySelectorAll(".option");
+    buttons.forEach(function (btn) {
+      btn.disabled = true;
+      var text = btn.querySelector(".opt-text").textContent;
+      var tag = btn.querySelector(".opt-tag");
+
+      if (text === q.correctCapital) {
+        btn.classList.add("correct");
+        tag.textContent = "Correct";
+      } else if (btn === selectedBtn) {
+        btn.classList.add("wrong");
+        tag.textContent = "Your answer";
+      }
+    });
+
+    els.scoreDisplay.textContent = "Score: " + state.score;
+
+    if (isCorrect) {
+      els.feedback.textContent = "Correct! The capital of " + q.country + " is " + q.correctCapital + ".";
+      els.feedback.className = "feedback is-correct";
+    } else {
+      els.feedback.textContent = "Incorrect. The capital of " + q.country + " is " + q.correctCapital + ".";
+      els.feedback.className = "feedback is-wrong";
+    }
+
+    els.nextBtn.hidden = false;
+    els.nextBtn.focus();
+  }
+
+  function goNext() {
+    state.index++;
+    if (state.index >= QUESTIONS_PER_GAME) {
+      showScore();
+    } else {
+      renderQuestion();
+    }
+  }
+
+  function showScore() {
+    els.progressFill.style.width = "100%";
+    els.questionCard.hidden = true;
+    els.scoreCard.hidden = false;
+
+    els.finalScoreText.textContent = "You scored " + state.score + " out of " + QUESTIONS_PER_GAME;
+
+    var pct = Math.round((state.score / QUESTIONS_PER_GAME) * 100);
+    els.finalScoreSub.textContent = pct + "% correct";
+
+    els.playAgainBtn.focus();
+  }
+
+  els.nextBtn.addEventListener("click", goNext);
+  els.playAgainBtn.addEventListener("click", startGame);
+
+  startGame();
+})();
+</script>

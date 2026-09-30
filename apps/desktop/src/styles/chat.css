@@ -1961,6 +1961,26 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A ready-made app for this idea: a pill in the card's corner, a sibling of
+ * the card button (buttons can't nest). */
+.idea-gallery-item { position: relative; }
+.idea-gallery-open {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 3px 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--tap);
+}
+.idea-gallery-open:hover { border-color: var(--accent); }
+/* Keep the meta line clear of the pill. */
+.idea-gallery-item:has(.idea-gallery-open) .idea-gallery-meta { padding-right: 84px; }
 .idea-gallery-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); }
 
 /* P2.4 — pane cross-fade */

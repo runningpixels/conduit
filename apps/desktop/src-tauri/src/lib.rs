@@ -33,6 +33,7 @@ pub mod message_preview;
 pub mod paths;
 pub mod search;
 pub mod skills;
+pub mod starter_apps;
 pub mod state;
 pub mod stream_manager;
 pub mod stream_persistence;

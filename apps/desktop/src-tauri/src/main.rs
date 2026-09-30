@@ -201,6 +201,8 @@ fn main() {
             update_app,
             update_app_from_artifact,
             delete_app,
+            list_starter_apps,
+            install_starter_app,
             revoke_artifact_network_grant,
             clear_artifact_network_grants,
             search_messages,

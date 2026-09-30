@@ -43,6 +43,28 @@ describe('galleryIdeas', () => {
   });
 });
 
+describe('IdeaGallery ready-made apps', () => {
+  it('puts "Open app" on cards whose idea has a starter app', () => {
+    const onOpen = vi.fn();
+    const onPick = vi.fn();
+    render(
+      <IdeaGallery
+        caps={caps()}
+        state={getIdeaState()}
+        onPick={onPick}
+        readyMade={new Set(['snakeGame'])}
+        onOpenReadyMade={onOpen}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Play', pressed: false }));
+    const pills = screen.getAllByRole('button', { name: /^Open the ready-made/ });
+    expect(pills).toHaveLength(1);
+    fireEvent.click(pills[0]);
+    expect(onOpen.mock.calls[0][0].id).toBe('snakeGame');
+    expect(onPick).not.toHaveBeenCalled();
+  });
+});
+
 describe('IdeaGallery', () => {
   it('picks an idea, switches category, and offers more and hide', () => {
     const onPick = vi.fn();

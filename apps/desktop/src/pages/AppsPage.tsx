@@ -11,7 +11,7 @@ import { PageEmpty, PageFrame } from '../shell/PageFrame';
 import { declaredHosts } from '../artifacts/networkHosts';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { deleteApp, getArtifact, getArtifactContentBytes, listApps, updateAppFromArtifact } from '../ipc/client';
-import type { AppSummary } from '../ipc/contracts';
+import type { AppSummary, StarterAppInfo } from '../ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from '../apps/AppDetailsDialog';
 import { AppTile } from '../apps/AppTile';
 import { AppView } from '../apps/AppView';
@@ -27,6 +27,9 @@ export interface AppsPageProps {
   networkPolicyKey?: string;
   /** The apps changed (saved, edited, deleted) — for the new-chat row. */
   onAppsChanged?: () => void;
+  /** Ready-made apps bundled with Conduit. */
+  starters?: readonly StarterAppInfo[];
+  onAddStarter?: (starter: StarterAppInfo) => void;
   onStatus?: (message: string) => void;
 }
 
@@ -46,6 +49,8 @@ export function AppsPage({
   colorScheme,
   networkPolicyKey,
   onAppsChanged,
+  starters = [],
+  onAddStarter,
   onStatus,
 }: AppsPageProps) {
   const t = useT();
@@ -66,9 +71,11 @@ export function AppsPage({
     }
   }, []);
 
+  // Reload when an app opens or closes, and when a starter is added (the
+  // starter list changes identity), so My apps shows it straight away.
   useEffect(() => {
     void refresh();
-  }, [refresh, openAppId]);
+  }, [refresh, openAppId, starters]);
 
   const changed = useCallback(async () => {
     setRevision((r) => r + 1);
@@ -158,8 +165,11 @@ export function AppsPage({
           {loadError}
         </p>
       )}
-      {apps && apps.length === 0 && !loadError ? (
+      {apps && apps.length === 0 && !loadError && starters.length === 0 ? (
         <PageEmpty title={t('apps.page.emptyTitle')} body={t('apps.page.emptyBody')} />
+      ) : null}
+      {apps && apps.length === 0 && !loadError && starters.length > 0 ? (
+        <p className="apps-empty-note">{t('apps.page.emptyBody')}</p>
       ) : null}
       {apps && apps.length > 0 && (
         <section className="apps-section" aria-labelledby="apps-mine">
@@ -215,6 +225,56 @@ export function AppsPage({
                 </div>
               </li>
             ))}
+          </ul>
+        </section>
+      )}
+      {starters.length > 0 && (
+        <section className="apps-section" aria-labelledby="apps-starters">
+          <div className="apps-section-head">
+            <h3 id="apps-starters" className="apps-section-title">
+              {t('apps.page.starters')}
+            </h3>
+            <span className="apps-section-note">{t('apps.page.startersNote')}</span>
+          </div>
+          <ul className="apps-starters">
+            {starters.map((starter) => {
+              const name = t(`ideas.item.${starter.ideaId}.title`);
+              return (
+                <li key={starter.id} className="starter-card">
+                  <AppTile icon={starter.icon} name={name} category={starter.category} />
+                  <span className="starter-text">
+                    <span className="starter-name">{name}</span>
+                    <span className="starter-blurb">{t(`ideas.item.${starter.ideaId}.blurb`)}</span>
+                    {starter.hosts.length > 0 && (
+                      <span className="starter-hosts" title={starter.hosts.map(siteLabel).join(', ')}>
+                        <span className="app-view-dot" data-tone="net" aria-hidden="true" />
+                        {t('apps.card.usesInternet')}
+                      </span>
+                    )}
+                  </span>
+                  {starter.installedAppId ? (
+                    <button
+                      type="button"
+                      className="btn app-card-open"
+                      aria-label={t('apps.card.openAriaLabel', { name })}
+                      onClick={() => onOpenAppIdChange(starter.installedAppId ?? null)}
+                    >
+                      {t('apps.card.open')}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn"
+                      aria-label={t('apps.card.addAriaLabel', { name })}
+                      disabled={!onAddStarter}
+                      onClick={() => onAddStarter?.(starter)}
+                    >
+                      {t('apps.card.add')}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

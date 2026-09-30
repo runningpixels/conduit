@@ -1,0 +1,492 @@
+<meta name="conduit-network" content="https://api.frankfurter.dev — live currency exchange rates">
+<style>
+  html:not([data-theme]), html[data-theme="dark"] {
+    --bg:#0b0d12; --surface:#11141b; --surface-hi:#161a23; --line:#1c2130; --line-hi:#262c3c;
+    --ink:#e8eaf0; --ink-2:#b8becc; --ink-3:#8990a2; --accent:#ff7a59; --accent-ink:#1a0b06;
+    --accent-soft: rgba(255,122,89,.14); --signal:#7cc4ff; --ok:#7cffb2; --warn:#febc2e; --err:#ff9c82;
+    color-scheme: dark;
+  }
+  html[data-theme="light"] {
+    --bg:#f6f6f8; --surface:#ffffff; --surface-hi:#f1f2f5; --line:#e1e3ea; --line-hi:#dadce3;
+    --ink:#16181d; --ink-2:#3a3f4a; --ink-3:#5f6573; --accent:#4b4ded; --accent-ink:#ffffff;
+    --accent-soft:#eef0ff; --signal:#1f86e8; --ok:#137a3a; --warn:#9a5300; --err:#b4380f;
+    color-scheme: light;
+  }
+
+  html, body {
+    background: var(--bg);
+    margin: 0;
+    padding: 0;
+  }
+
+  * { box-sizing: border-box; }
+
+  [hidden] { display: none !important; }
+
+  .cc-app {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    max-width: 560px;
+    min-width: 0;
+    margin: 0 auto;
+    padding: 28px 16px 40px;
+  }
+
+  .cc-header { margin-bottom: 18px; }
+
+  .cc-title {
+    font-size: 1.35rem;
+    font-weight: 650;
+    margin: 0 0 4px;
+    letter-spacing: -.01em;
+  }
+
+  .cc-subtitle {
+    margin: 0;
+    color: var(--ink-3);
+    font-size: .9rem;
+  }
+
+  .cc-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px;
+  }
+
+  .cc-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+  .cc-field:last-of-type { margin-bottom: 0; }
+
+  .cc-field label {
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  input, select, button { font-family: inherit; }
+
+  #cc-amount {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.15rem;
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 11px 14px;
+    color: var(--ink);
+    width: 100%;
+  }
+
+  select {
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 11px 12px;
+    color: var(--ink);
+    width: 100%;
+    font-size: .95rem;
+  }
+
+  input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+
+  .cc-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+
+  .cc-field-currency {
+    flex: 1 1 160px;
+    min-width: 140px;
+    margin-bottom: 0;
+  }
+
+  .cc-swap-btn {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid var(--line-hi);
+    background: var(--surface-hi);
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 1px;
+  }
+
+  .cc-swap-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .cc-swap-btn svg { width: 20px; height: 20px; }
+
+  .cc-status {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--ink-2);
+    font-size: .88rem;
+    padding: 4px 0;
+  }
+
+  .cc-spinner {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 2px solid var(--line-hi);
+    border-top-color: var(--accent);
+    animation: cc-spin .8s linear infinite;
+    flex: 0 0 auto;
+  }
+
+  @keyframes cc-spin { to { transform: rotate(360deg); } }
+
+  .cc-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: var(--surface-hi);
+    border: 1px solid var(--err);
+    color: var(--err);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: .88rem;
+    margin: 6px 0;
+  }
+
+  .cc-retry-btn {
+    border: 1px solid var(--err);
+    background: transparent;
+    color: var(--err);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+
+  .cc-retry-btn:hover {
+    background: var(--err);
+    color: var(--surface);
+  }
+
+  .cc-result-area { margin-top: 4px; }
+
+  .cc-result-block {
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    text-align: center;
+  }
+
+  .cc-result {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.7rem;
+    font-weight: 650;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  .cc-rate-line {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+    font-size: .92rem;
+    margin-top: 8px;
+  }
+
+  .cc-date-line {
+    color: var(--ink-3);
+    font-size: .8rem;
+    margin-top: 4px;
+  }
+
+  @media (max-width: 380px) {
+    .cc-title { font-size: 1.2rem; }
+    .cc-card { padding: 16px; }
+    .cc-result { font-size: 1.4rem; }
+  }
+</style>
+
+<div class="cc-app">
+  <header class="cc-header">
+    <h1 class="cc-title">Currency Converter</h1>
+    <p class="cc-subtitle">Live exchange rates from Frankfurter</p>
+  </header>
+
+  <div class="cc-card">
+    <div class="cc-field">
+      <label for="cc-amount">Amount</label>
+      <input id="cc-amount" type="number" inputmode="decimal" min="0" step="any" value="1" />
+    </div>
+
+    <div class="cc-row">
+      <div class="cc-field cc-field-currency">
+        <label for="cc-from">From</label>
+        <select id="cc-from"></select>
+      </div>
+
+      <button type="button" id="cc-swap" class="cc-swap-btn" aria-label="Swap from and to currencies" title="Swap currencies">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 4v13" />
+          <path d="M3 13l4 4 4-4" />
+          <path d="M17 20V7" />
+          <path d="M21 11l-4-4-4 4" />
+        </svg>
+      </button>
+
+      <div class="cc-field cc-field-currency">
+        <label for="cc-to">To</label>
+        <select id="cc-to"></select>
+      </div>
+    </div>
+
+    <div id="cc-currencies-loading" class="cc-status" hidden>
+      <span class="cc-spinner" aria-hidden="true"></span>
+      <span>Loading currency list…</span>
+    </div>
+    <div id="cc-currencies-error" class="cc-error" role="alert" hidden>
+      <span id="cc-currencies-error-text"></span>
+      <button type="button" id="cc-currencies-retry" class="cc-retry-btn">Retry</button>
+    </div>
+
+    <div class="cc-result-area" aria-live="polite">
+      <div id="cc-rates-loading" class="cc-status" hidden>
+        <span class="cc-spinner" aria-hidden="true"></span>
+        <span>Loading exchange rates…</span>
+      </div>
+      <div id="cc-rates-error" class="cc-error" role="alert" hidden>
+        <span id="cc-rates-error-text"></span>
+        <button type="button" id="cc-rates-retry" class="cc-retry-btn">Retry</button>
+      </div>
+      <div id="cc-result-block" class="cc-result-block" hidden>
+        <div class="cc-result" id="cc-result">—</div>
+        <div class="cc-rate-line" id="cc-rate-line"></div>
+        <div class="cc-date-line" id="cc-date-line"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var FALLBACK_CURRENCIES = {
+    USD: "US Dollar", EUR: "Euro", GBP: "British Pound", JPY: "Japanese Yen",
+    AUD: "Australian Dollar", CAD: "Canadian Dollar", CHF: "Swiss Franc",
+    CNY: "Chinese Yuan", INR: "Indian Rupee", BRL: "Brazilian Real",
+    MXN: "Mexican Peso", ZAR: "South African Rand", SEK: "Swedish Krona",
+    NOK: "Norwegian Krone", NZD: "New Zealand Dollar", SGD: "Singapore Dollar",
+    HKD: "Hong Kong Dollar", KRW: "South Korean Won", PLN: "Polish Zloty",
+    TRY: "Turkish Lira"
+  };
+
+  var state = {
+    currencies: {},
+    fromCode: "EUR",
+    toCode: "USD",
+    rates: null,
+    ratesDate: "",
+    currenciesLoading: false,
+    ratesLoading: false,
+    currenciesError: null,
+    ratesError: null
+  };
+
+  var amountEl = document.getElementById("cc-amount");
+  var fromEl = document.getElementById("cc-from");
+  var toEl = document.getElementById("cc-to");
+  var swapBtn = document.getElementById("cc-swap");
+
+  var currenciesLoadingEl = document.getElementById("cc-currencies-loading");
+  var currenciesErrorEl = document.getElementById("cc-currencies-error");
+  var currenciesErrorTextEl = document.getElementById("cc-currencies-error-text");
+  var currenciesRetryBtn = document.getElementById("cc-currencies-retry");
+
+  var ratesLoadingEl = document.getElementById("cc-rates-loading");
+  var ratesErrorEl = document.getElementById("cc-rates-error");
+  var ratesErrorTextEl = document.getElementById("cc-rates-error-text");
+  var ratesRetryBtn = document.getElementById("cc-rates-retry");
+
+  var resultBlockEl = document.getElementById("cc-result-block");
+  var resultEl = document.getElementById("cc-result");
+  var rateLineEl = document.getElementById("cc-rate-line");
+  var dateLineEl = document.getElementById("cc-date-line");
+
+  function trimNumber(n) {
+    if (!isFinite(n)) return String(n);
+    return Number(n.toPrecision(6)).toString();
+  }
+
+  function formatResult(n) {
+    try {
+      return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } catch (e) {
+      return n.toFixed(2);
+    }
+  }
+
+  function populateSelects(map) {
+    var codes = Object.keys(map).sort();
+    if (codes.length === 0) return;
+
+    var prevFrom = state.fromCode;
+    var prevTo = state.toCode;
+
+    fromEl.innerHTML = "";
+    toEl.innerHTML = "";
+
+    codes.forEach(function (code) {
+      var label = code + " — " + map[code];
+      var opt1 = document.createElement("option");
+      opt1.value = code;
+      opt1.textContent = label;
+      fromEl.appendChild(opt1);
+
+      var opt2 = document.createElement("option");
+      opt2.value = code;
+      opt2.textContent = label;
+      toEl.appendChild(opt2);
+    });
+
+    state.fromCode = codes.indexOf(prevFrom) !== -1 ? prevFrom : (codes.indexOf("EUR") !== -1 ? "EUR" : codes[0]);
+    state.toCode = codes.indexOf(prevTo) !== -1 ? prevTo : (codes.indexOf("USD") !== -1 ? "USD" : codes[Math.min(1, codes.length - 1)]);
+
+    fromEl.value = state.fromCode;
+    toEl.value = state.toCode;
+  }
+
+  function render() {
+    currenciesLoadingEl.hidden = !state.currenciesLoading;
+    currenciesErrorEl.hidden = !state.currenciesError;
+    if (state.currenciesError) currenciesErrorTextEl.textContent = state.currenciesError;
+
+    ratesLoadingEl.hidden = !state.ratesLoading;
+    ratesErrorEl.hidden = !state.ratesError;
+    if (state.ratesError) ratesErrorTextEl.textContent = state.ratesError;
+
+    var showResult = !state.ratesLoading && !state.ratesError && state.rates;
+    resultBlockEl.hidden = !showResult;
+
+    if (showResult) {
+      var amount = parseFloat(amountEl.value);
+      var rate = state.rates[state.toCode];
+
+      if (!isFinite(amount) || amount < 0) {
+        resultEl.textContent = "Enter an amount to convert";
+      } else if (typeof rate !== "number") {
+        resultEl.textContent = "—";
+      } else {
+        var converted = amount * rate;
+        resultEl.textContent = formatResult(converted) + " " + state.toCode;
+      }
+
+      if (typeof rate === "number") {
+        rateLineEl.textContent = "1 " + state.fromCode + " = " + trimNumber(rate) + " " + state.toCode;
+        dateLineEl.textContent = state.ratesDate ? "Rates as of " + state.ratesDate : "";
+      } else {
+        rateLineEl.textContent = "";
+        dateLineEl.textContent = "";
+      }
+    }
+  }
+
+  function loadCurrencies() {
+    state.currenciesLoading = true;
+    state.currenciesError = null;
+    render();
+
+    fetch("https://api.frankfurter.dev/v1/currencies")
+      .then(function (r) {
+        if (!r.ok) throw new Error("Request failed (" + r.status + ")");
+        return r.json();
+      })
+      .then(function (data) {
+        state.currencies = data;
+        populateSelects(state.currencies);
+      })
+      .catch(function () {
+        state.currencies = FALLBACK_CURRENCIES;
+        populateSelects(state.currencies);
+        state.currenciesError = "Could not load the full currency list. Showing a short built-in list instead.";
+      })
+      .then(function () {
+        state.currenciesLoading = false;
+        render();
+      });
+  }
+
+  function loadRates(base) {
+    state.ratesLoading = true;
+    state.ratesError = null;
+    render();
+
+    fetch("https://api.frankfurter.dev/v1/latest?base=" + encodeURIComponent(base))
+      .then(function (r) {
+        if (!r.ok) throw new Error("Request failed (" + r.status + ")");
+        return r.json();
+      })
+      .then(function (data) {
+        var rates = data.rates || {};
+        rates[data.base] = 1;
+        state.rates = rates;
+        state.ratesDate = data.date || "";
+      })
+      .catch(function () {
+        state.rates = null;
+        state.ratesDate = "";
+        state.ratesError = "Could not load exchange rates. Check your connection or permission, then retry.";
+      })
+      .then(function () {
+        state.ratesLoading = false;
+        render();
+      });
+  }
+
+  amountEl.addEventListener("input", render);
+
+  fromEl.addEventListener("change", function () {
+    state.fromCode = fromEl.value;
+    loadRates(state.fromCode);
+  });
+
+  toEl.addEventListener("change", function () {
+    state.toCode = toEl.value;
+    render();
+  });
+
+  swapBtn.addEventListener("click", function () {
+    var tmp = state.fromCode;
+    state.fromCode = state.toCode;
+    state.toCode = tmp;
+    fromEl.value = state.fromCode;
+    toEl.value = state.toCode;
+    loadRates(state.fromCode);
+  });
+
+  currenciesRetryBtn.addEventListener("click", loadCurrencies);
+  ratesRetryBtn.addEventListener("click", function () {
+    loadRates(state.fromCode);
+  });
+
+  populateSelects(FALLBACK_CURRENCIES);
+  loadCurrencies();
+  loadRates(state.fromCode);
+})();
+</script>

@@ -8,6 +8,7 @@ import type {
   AppDetail,
   AppPaths,
   AppSummary,
+  StarterAppInfo,
   AppSettings,
   Artifact,
   ArtifactContent,
@@ -1321,6 +1322,17 @@ export async function updateAppFromArtifact(id: string, declaredHosts: string[])
 
 export async function deleteApp(id: string): Promise<void> {
   await invokeCommand('delete_app', { id });
+}
+
+/** The ready-made apps bundled with Conduit, and which the user has added. */
+export async function listStarterApps(): Promise<StarterAppInfo[]> {
+  return invokeCommand<StarterAppInfo[]>('list_starter_apps');
+}
+
+/** Add a starter app — or get the copy already added. `name` and
+ *  `description` are its Ideas strings in the user's language. */
+export async function installStarterApp(id: string, name: string, description: string | null): Promise<AppSummary> {
+  return invokeCommand<AppSummary>('install_starter_app', { id, name, description });
 }
 
 export async function listWorkflows(): Promise<WorkflowSummary[]> {

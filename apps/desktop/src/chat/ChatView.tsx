@@ -273,6 +273,9 @@ interface ChatViewProps {
   ideaGallery?: { caps: Capabilities; state: IdeaState } | null;
   /// Saved apps for the new-chat "Your apps" row, most recently opened first.
   yourApps?: readonly AppSummary[];
+  /// Ideas that have a ready-made starter app, and opening one.
+  readyMadeIdeas?: ReadonlySet<string>;
+  onOpenReadyMade?: (idea: Idea) => void;
   onOpenApp?: (id: string) => void;
   onAllApps?: () => void;
   /// UI revamp: a turn's step line was clicked — open Activity on it.
@@ -750,6 +753,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onOpenSettings,
     ideaGallery,
     yourApps = [],
+    readyMadeIdeas,
+    onOpenReadyMade,
     onOpenApp,
     onAllApps,
     onOpenActivity,
@@ -3264,6 +3269,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           onPick={onPickIdea}
           onMore={onMoreIdeas}
           onHide={onHideIdeas}
+          readyMade={readyMadeIdeas}
+          onOpenReadyMade={onOpenReadyMade}
         />
       )}
       <div id="composer-anchor" tabIndex={-1} />

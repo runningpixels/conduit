@@ -29,6 +29,31 @@
 /* ── List ─────────────────────────────────────────────────────────────── */
 .apps-error { margin: 0 0 var(--sp-3); color: var(--err); font-size: var(--fs-2xl); }
 .apps-section { display: grid; gap: 12px; }
+.apps-section + .apps-section { margin-top: var(--sp-6); }
+.apps-section-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+.apps-section-note { color: var(--ink-3); font-size: var(--fs-xl); }
+.apps-empty-note { margin: 0 0 var(--sp-5); color: var(--ink-2); font-size: var(--fs-2xl); max-width: 64ch; }
+.apps-starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.starter-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.starter-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.starter-name { font-size: var(--fs-2xl); font-weight: 600; }
+.starter-blurb { color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.4; }
+.starter-hosts { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: var(--fs-md); }
 .apps-section-title {
   margin: 0;
   color: var(--ink-3);

@@ -1,0 +1,451 @@
+<meta charset="UTF-8">
+<style>
+html[data-theme="dark"],
+html:not([data-theme]) {
+  --bg:#0b0d12; --surface:#11141b; --surface-hi:#161a23; --line:#1c2130; --line-hi:#262c3c;
+  --ink:#e8eaf0; --ink-2:#b8becc; --ink-3:#8990a2; --accent:#ff7a59; --accent-ink:#1a0b06;
+  --accent-soft: rgba(255,122,89,.14); --signal:#7cc4ff; --ok:#7cffb2; --warn:#febc2e; --err:#ff9c82;
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  --bg:#f6f6f8; --surface:#ffffff; --surface-hi:#f1f2f5; --line:#e1e3ea; --line-hi:#dadce3;
+  --ink:#16181d; --ink-2:#3a3f4a; --ink-3:#5f6573; --accent:#4b4ded; --accent-ink:#ffffff;
+  --accent-soft:#eef0ff; --signal:#1f86e8; --ok:#137a3a; --warn:#9a5300; --err:#b4380f;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  background: var(--bg);
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.uc-app {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+.uc-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+
+.uc-header p {
+  margin: 0 0 24px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.uc-tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+
+.uc-tab {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.uc-tab:hover { color: var(--ink); }
+
+.uc-tab.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.uc-tab:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.uc-converter {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.uc-field {
+  flex: 1 1 200px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.uc-field label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ink-3);
+}
+
+.uc-input {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-hi);
+  background: var(--surface-hi);
+  color: var(--ink);
+  width: 100%;
+}
+
+.uc-input::placeholder { color: var(--ink-3); }
+
+.uc-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-color: transparent;
+}
+
+.uc-select {
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-hi);
+  background: var(--surface-hi);
+  color: var(--ink);
+  width: 100%;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.uc-select:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.uc-swap-btn {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 1px;
+  border-radius: 10px;
+  border: 1px solid var(--line-hi);
+  background: var(--surface-hi);
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease;
+}
+
+.uc-swap-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.uc-swap-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.uc-swap-btn svg {
+  width: 18px;
+  height: 18px;
+  transition: transform .15s ease;
+}
+
+.uc-status {
+  min-height: 18px;
+  margin: 16px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+@media (max-width: 420px) {
+  .uc-converter { padding: 16px; }
+  .uc-field:nth-of-type(1) { order: 1; }
+  .uc-swap-btn { order: 2; margin: 4px 0; align-self: center; }
+  .uc-field:nth-of-type(2) { order: 3; }
+  .uc-swap-btn svg { transform: rotate(90deg); }
+}
+</style>
+
+<div class="uc-app">
+  <div class="uc-header">
+    <h1>Unit Converter</h1>
+    <p>Type a value on either side to convert instantly.</p>
+  </div>
+
+  <div class="uc-tabs" role="tablist" aria-label="Unit category">
+    <button type="button" class="uc-tab is-active" role="tab" aria-selected="true" aria-controls="uc-panel" id="uc-tab-length" data-category="length">Length</button>
+    <button type="button" class="uc-tab" role="tab" aria-selected="false" aria-controls="uc-panel" id="uc-tab-weight" data-category="weight">Weight</button>
+    <button type="button" class="uc-tab" role="tab" aria-selected="false" aria-controls="uc-panel" id="uc-tab-temperature" data-category="temperature">Temperature</button>
+  </div>
+
+  <div class="uc-converter" id="uc-panel" role="tabpanel" aria-labelledby="uc-tab-length">
+    <div class="uc-field">
+      <label for="uc-input-a">Value A</label>
+      <input type="text" inputmode="decimal" id="uc-input-a" class="uc-input" autocomplete="off" spellcheck="false" placeholder="0">
+      <select id="uc-unit-a" class="uc-select" aria-label="Unit for value A"></select>
+    </div>
+
+    <button type="button" id="uc-swap" class="uc-swap-btn" aria-label="Swap units and values">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="M16 3l4 4-4 4"></path>
+        <path d="M20 7H4"></path>
+        <path d="M8 21l-4-4 4-4"></path>
+        <path d="M4 17h16"></path>
+      </svg>
+    </button>
+
+    <div class="uc-field">
+      <label for="uc-input-b">Value B</label>
+      <input type="text" inputmode="decimal" id="uc-input-b" class="uc-input" autocomplete="off" spellcheck="false" placeholder="0">
+      <select id="uc-unit-b" class="uc-select" aria-label="Unit for value B"></select>
+    </div>
+  </div>
+
+  <p id="uc-status" class="uc-status" aria-live="polite"></p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var CATEGORIES = {
+    length: {
+      units: [
+        { key: "mm", label: "Millimeters (mm)", toBase: 0.001 },
+        { key: "cm", label: "Centimeters (cm)", toBase: 0.01 },
+        { key: "m",  label: "Meters (m)",        toBase: 1 },
+        { key: "km", label: "Kilometers (km)",   toBase: 1000 },
+        { key: "in", label: "Inches (in)",       toBase: 0.0254 },
+        { key: "ft", label: "Feet (ft)",         toBase: 0.3048 },
+        { key: "yd", label: "Yards (yd)",        toBase: 0.9144 },
+        { key: "mi", label: "Miles (mi)",        toBase: 1609.344 }
+      ],
+      defaultA: "cm",
+      defaultB: "in"
+    },
+    weight: {
+      units: [
+        { key: "mg", label: "Milligrams (mg)",   toBase: 0.001 },
+        { key: "g",  label: "Grams (g)",          toBase: 1 },
+        { key: "kg", label: "Kilograms (kg)",     toBase: 1000 },
+        { key: "t",  label: "Metric tons (t)",    toBase: 1000000 },
+        { key: "oz", label: "Ounces (oz)",        toBase: 28.349523125 },
+        { key: "lb", label: "Pounds (lb)",        toBase: 453.59237 },
+        { key: "st", label: "Stone (st)",         toBase: 6350.29318 }
+      ],
+      defaultA: "kg",
+      defaultB: "lb"
+    },
+    temperature: {
+      units: [
+        { key: "c", label: "Celsius (°C)" },
+        { key: "f", label: "Fahrenheit (°F)" },
+        { key: "k", label: "Kelvin (K)" }
+      ],
+      defaultA: "c",
+      defaultB: "f"
+    }
+  };
+
+  var TO_CELSIUS = {
+    c: function (v) { return v; },
+    f: function (v) { return (v - 32) * 5 / 9; },
+    k: function (v) { return v - 273.15; }
+  };
+  var FROM_CELSIUS = {
+    c: function (v) { return v; },
+    f: function (v) { return v * 9 / 5 + 32; },
+    k: function (v) { return v + 273.15; }
+  };
+
+  var category = "length";
+  var lastEdited = "a";
+
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".uc-tab"));
+  var panel = document.getElementById("uc-panel");
+  var inputA = document.getElementById("uc-input-a");
+  var inputB = document.getElementById("uc-input-b");
+  var unitA = document.getElementById("uc-unit-a");
+  var unitB = document.getElementById("uc-unit-b");
+  var swapBtn = document.getElementById("uc-swap");
+  var status = document.getElementById("uc-status");
+
+  function findUnit(cat, key) {
+    var units = CATEGORIES[cat].units;
+    for (var i = 0; i < units.length; i++) {
+      if (units[i].key === key) return units[i];
+    }
+    return null;
+  }
+
+  function unitLabel(cat, key) {
+    var u = findUnit(cat, key);
+    return u ? u.label : key;
+  }
+
+  function convert(value, fromKey, toKey, cat) {
+    if (cat === "temperature") {
+      return FROM_CELSIUS[toKey](TO_CELSIUS[fromKey](value));
+    }
+    var fromUnit = findUnit(cat, fromKey);
+    var toUnit = findUnit(cat, toKey);
+    if (!fromUnit || !toUnit) return NaN;
+    return value * fromUnit.toBase / toUnit.toBase;
+  }
+
+  function formatNumber(num) {
+    if (num === 0) return "0";
+    if (!isFinite(num)) return "";
+    var abs = Math.abs(num);
+    var precision = 6;
+    var exponent = Math.floor(Math.log10(abs));
+    var decimals = precision - exponent - 1;
+    if (decimals < 0) decimals = 0;
+    if (decimals > 20) decimals = 20;
+    var str = num.toFixed(decimals);
+    if (str.indexOf(".") !== -1) {
+      str = str.replace(/0+$/, "").replace(/\.$/, "");
+    }
+    return str;
+  }
+
+  function updateStatus(text) {
+    status.textContent = text;
+  }
+
+  function populateSelects(cat) {
+    var def = CATEGORIES[cat];
+    unitA.innerHTML = "";
+    unitB.innerHTML = "";
+    def.units.forEach(function (u) {
+      var optA = document.createElement("option");
+      optA.value = u.key;
+      optA.textContent = u.label;
+      unitA.appendChild(optA);
+
+      var optB = document.createElement("option");
+      optB.value = u.key;
+      optB.textContent = u.label;
+      unitB.appendChild(optB);
+    });
+    unitA.value = def.defaultA;
+    unitB.value = def.defaultB;
+  }
+
+  function recompute() {
+    var sourceIsA = lastEdited === "a";
+    var sourceInput = sourceIsA ? inputA : inputB;
+    var targetInput = sourceIsA ? inputB : inputA;
+    var sourceUnit = (sourceIsA ? unitA : unitB).value;
+    var targetUnit = (sourceIsA ? unitB : unitA).value;
+
+    var raw = sourceInput.value.trim();
+    if (raw === "") {
+      targetInput.value = "";
+      updateStatus("");
+      return;
+    }
+
+    var num = Number(raw);
+    if (!isFinite(num)) {
+      targetInput.value = "";
+      updateStatus("");
+      return;
+    }
+
+    var result = convert(num, sourceUnit, targetUnit, category);
+    if (!isFinite(result)) {
+      targetInput.value = "";
+      updateStatus("");
+      return;
+    }
+
+    targetInput.value = formatNumber(result);
+    updateStatus(
+      formatNumber(num) + " " + unitLabel(category, sourceUnit) +
+      " equals " + formatNumber(result) + " " + unitLabel(category, targetUnit)
+    );
+  }
+
+  function swapUnitsAndValues() {
+    var tmpUnit = unitA.value;
+    unitA.value = unitB.value;
+    unitB.value = tmpUnit;
+
+    var tmpVal = inputA.value;
+    inputA.value = inputB.value;
+    inputB.value = tmpVal;
+
+    updateStatus("Units swapped.");
+  }
+
+  function activateTab(tab) {
+    var cat = tab.getAttribute("data-category");
+    if (cat === category) return;
+    category = cat;
+
+    tabs.forEach(function (t) {
+      var active = t === tab;
+      t.setAttribute("aria-selected", active ? "true" : "false");
+      t.classList.toggle("is-active", active);
+    });
+    panel.setAttribute("aria-labelledby", tab.id);
+
+    populateSelects(category);
+    inputA.value = "";
+    inputB.value = "";
+    lastEdited = "a";
+    updateStatus("");
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () { activateTab(tab); });
+  });
+
+  inputA.addEventListener("input", function () {
+    lastEdited = "a";
+    recompute();
+  });
+  inputB.addEventListener("input", function () {
+    lastEdited = "b";
+    recompute();
+  });
+  unitA.addEventListener("change", recompute);
+  unitB.addEventListener("change", recompute);
+  swapBtn.addEventListener("click", swapUnitsAndValues);
+
+  populateSelects(category);
+})();
+</script>

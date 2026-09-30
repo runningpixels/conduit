@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { AppSummary } from '../ipc/contracts';
+import type { AppSummary, StarterAppInfo } from '../ipc/contracts';
 import { AppsPage } from './AppsPage';
 import { AppDetailsDialog } from '../apps/AppDetailsDialog';
 import { YourAppsRow } from '../apps/YourAppsRow';
@@ -120,6 +120,61 @@ describe('AppsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(ipc.deleteApp).toHaveBeenCalledWith('a2'));
     expect(onOpen).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('AppsPage starter apps', () => {
+  const starters: StarterAppInfo[] = [
+    { id: 'snake', ideaId: 'snakeGame', category: 'play', icon: '▚▚▚', hosts: [], installedAppId: undefined },
+    {
+      id: 'weather-dashboard',
+      ideaId: 'weatherDashboard',
+      category: 'live-data',
+      icon: '18°',
+      hosts: ['https://api.open-meteo.com'],
+      installedAppId: 'a9',
+    },
+  ];
+
+  it('offers each starter by its idea name: Add when new, Open once added', async () => {
+    ipc.listApps.mockResolvedValue([]);
+    const onAdd = vi.fn();
+    const onOpen = vi.fn();
+    render(
+      <AppsPage
+        openAppId={null}
+        onOpenAppIdChange={onOpen}
+        allowlist={[]}
+        styledPreview={false}
+        colorScheme="dark"
+        starters={starters}
+        onAddStarter={onAdd}
+      />,
+    );
+    expect(await screen.findByText('Starter apps')).toBeTruthy();
+    expect(screen.queryByText('No apps yet')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Snake to your apps' }));
+    expect(onAdd).toHaveBeenCalledWith(starters[0]);
+    expect(screen.getByText('Uses the internet, asks first')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Weather dashboard' }));
+    expect(onOpen).toHaveBeenCalledWith('a9');
+  });
+
+  it('lists a starter under My apps as soon as it is added', async () => {
+    ipc.listApps.mockResolvedValue([]);
+    const props = {
+      openAppId: null,
+      onOpenAppIdChange: vi.fn(),
+      allowlist: [],
+      styledPreview: false,
+      colorScheme: 'dark' as const,
+    };
+    const { rerender } = render(<AppsPage {...props} starters={starters} />);
+    await screen.findByText('Starter apps');
+    expect(screen.queryByRole('heading', { name: /My apps/ })).toBeNull();
+    ipc.listApps.mockResolvedValue([timer]);
+    rerender(<AppsPage {...props} starters={starters.map((s) => ({ ...s, installedAppId: 'a2' }))} />);
+    expect(await screen.findByRole('heading', { name: 'My apps · 1' })).toBeTruthy();
   });
 });
 

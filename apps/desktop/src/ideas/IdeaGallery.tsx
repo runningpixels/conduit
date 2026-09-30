@@ -52,6 +52,9 @@ export interface IdeaGalleryProps {
   onPick: (idea: Idea) => void;
   onMore?: () => void;
   onHide?: () => void;
+  /** Ideas with a ready-made starter app: their card gets "Open app". */
+  readyMade?: ReadonlySet<string>;
+  onOpenReadyMade?: (idea: Idea) => void;
 }
 
 /// The ideas the gallery shows for `filter`: "All" is the Ideas page's "For
@@ -62,7 +65,7 @@ export function galleryIdeas(filter: Filter, caps: Capabilities, state: IdeaStat
   return IDEAS.filter((idea) => idea.category === filter && ideaStatus(idea, caps) === 'ready').slice(0, GALLERY_SIZE);
 }
 
-export function IdeaGallery({ caps, state, onPick, onMore, onHide }: IdeaGalleryProps) {
+export function IdeaGallery({ caps, state, onPick, onMore, onHide, readyMade, onOpenReadyMade }: IdeaGalleryProps) {
   const t = useT();
   const labelId = useId();
   const [filter, setFilter] = useState<Filter>('all');
@@ -108,7 +111,7 @@ export function IdeaGallery({ caps, state, onPick, onMore, onHide }: IdeaGallery
             const cost = caps.localModel ? t('ideas.cost.local') : t(`ideas.cost.${idea.size}`);
             const meta = [cost, ...idea.needs.map((n) => t(`ideas.badge.${n}`))].join(' · ');
             return (
-              <li key={idea.id}>
+              <li key={idea.id} className="idea-gallery-item">
                 <button
                   type="button"
                   className="idea-gallery-card"
@@ -127,6 +130,16 @@ export function IdeaGallery({ caps, state, onPick, onMore, onHide }: IdeaGallery
                     </span>
                   </span>
                 </button>
+                {onOpenReadyMade && readyMade?.has(idea.id) && (
+                  <button
+                    type="button"
+                    className="idea-gallery-open"
+                    aria-label={t('ideas.card.openAppAriaLabel', { title })}
+                    onClick={() => onOpenReadyMade(idea)}
+                  >
+                    {t('ideas.card.openApp')}
+                  </button>
+                )}
               </li>
             );
           })}

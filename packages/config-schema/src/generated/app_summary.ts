@@ -14,4 +14,8 @@ hosts: Array<string>, sourceArtifactId?: string,
  * The source artifact still exists and its content differs from this
  * app's snapshot.
  */
-sourceChanged: boolean, lastOpenedAt?: string, createdAt: string, updatedAt: string, };
+sourceChanged: boolean, 
+/**
+ * The starter app this is a copy of, for apps added from Starter apps.
+ */
+starterId?: string, lastOpenedAt?: string, createdAt: string, updatedAt: string, };

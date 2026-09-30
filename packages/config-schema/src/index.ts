@@ -64,6 +64,7 @@ export type { AppCreatedWith } from './generated/app_created_with';
 export type { AppManifest } from './generated/app_manifest';
 export type { AppSummary } from './generated/app_summary';
 export type { AppDetail } from './generated/app_detail';
+export type { StarterAppInfo } from './generated/starter_app_info';
 
 // Attachments
 export type { RetentionState } from './generated/retention_state';

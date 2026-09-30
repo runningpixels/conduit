@@ -20,6 +20,8 @@ const ipc = vi.hoisted(() => ({
   revokeArtifactNetworkGrant: vi.fn(),
   artifactFetch: vi.fn(),
   openExternalUrl: vi.fn(),
+  pageStorageUsage: vi.fn(),
+  pageStorageClear: vi.fn(),
   artifactPrincipal: (id: string) => `artifact:${id}`,
   appPrincipal: (id: string) => `app:${id}`,
 }));
@@ -35,6 +37,7 @@ const weather: AppSummary = {
   version: '1.0.0',
   origin: 'saved',
   hosts: ['https://api.open-meteo.com'],
+  storage: false,
   sourceArtifactId: 'art-1',
   sourceChanged: true,
   lastOpenedAt: undefined,
@@ -104,7 +107,7 @@ describe('AppsPage', () => {
       />,
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Update' }));
-    await waitFor(() => expect(ipc.updateAppFromArtifact).toHaveBeenCalledWith('a1', ['https://api.github.com']));
+    await waitFor(() => expect(ipc.updateAppFromArtifact).toHaveBeenCalledWith('a1', ['https://api.github.com'], []));
     await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Updated “Lisbon weather” to v1.1.0.'));
   });
 
@@ -208,6 +211,7 @@ describe('AppDetailsDialog', () => {
         { name: 'Lisbon weather', icon: null, description: null, category: 'live-data' },
         ['https://geocoding-api.open-meteo.com'],
         ['https://api.open-meteo.com'],
+        [],
       ),
     );
     expect(onSaved).toHaveBeenCalledWith(weather, 'save');

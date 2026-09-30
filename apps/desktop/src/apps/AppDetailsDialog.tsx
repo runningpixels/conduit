@@ -9,7 +9,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
 import { useT } from '../i18n';
-import { declaredHosts } from '../artifacts/networkHosts';
+import { declaredCapabilities, declaredHosts } from '../artifacts/networkHosts';
 import { useSiteLabel } from '../workspace/ArtifactNetwork';
 import {
   artifactPrincipal,
@@ -57,6 +57,10 @@ export function AppDetailsDialog({
 
   const declared = useMemo(
     () => (target?.mode === 'save' ? declaredHosts(target.html).map((d) => d.origin) : []),
+    [target],
+  );
+  const capabilities = useMemo(
+    () => (target?.mode === 'save' ? declaredCapabilities(target.html) : []),
     [target],
   );
 
@@ -121,7 +125,7 @@ export function AppDetailsDialog({
     try {
       const app =
         target.mode === 'save'
-          ? await saveApp(target.artifactId, meta, declared, [...keep])
+          ? await saveApp(target.artifactId, meta, declared, [...keep], capabilities)
           : await updateApp(target.app.id, meta);
       onSaved(app, target.mode);
     } catch (e) {

@@ -17,6 +17,9 @@ pub struct StarterApp {
     pub icon: &'static str,
     /// The https origins the page declares (its `conduit-network` meta tags).
     pub hosts: &'static [&'static str],
+    /// The capabilities the page declares (its `conduit-capability` meta
+    /// tags), e.g. `&["storage"]`. All starters declare none today.
+    pub capabilities: &'static [&'static str],
     pub html: &'static str,
 }
 
@@ -27,6 +30,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         category: AppCategory::Tools,
         icon: "25:00",
         hosts: &[],
+        capabilities: &[],
         html: include_str!("../starter_apps/pomodoro-timer.html"),
     },
     StarterApp {
@@ -35,6 +39,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         category: AppCategory::Tools,
         icon: "⇄",
         hosts: &[],
+        capabilities: &[],
         html: include_str!("../starter_apps/unit-converter.html"),
     },
     StarterApp {
@@ -46,6 +51,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
             "https://api.open-meteo.com",
             "https://geocoding-api.open-meteo.com",
         ],
+        capabilities: &[],
         html: include_str!("../starter_apps/weather-dashboard.html"),
     },
     StarterApp {
@@ -54,6 +60,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         category: AppCategory::LiveData,
         icon: "€ $",
         hosts: &["https://api.frankfurter.dev"],
+        capabilities: &[],
         html: include_str!("../starter_apps/currency-converter.html"),
     },
     StarterApp {
@@ -62,6 +69,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         category: AppCategory::Play,
         icon: "▚▚▚",
         hosts: &[],
+        capabilities: &[],
         html: include_str!("../starter_apps/snake.html"),
     },
     StarterApp {
@@ -70,6 +78,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         category: AppCategory::Play,
         icon: "◆◇",
         hosts: &[],
+        capabilities: &[],
         html: include_str!("../starter_apps/memory-game.html"),
     },
     StarterApp {
@@ -78,7 +87,17 @@ pub const STARTER_APPS: &[StarterApp] = &[
         category: AppCategory::Play,
         icon: "?",
         hosts: &[],
+        capabilities: &[],
         html: include_str!("../starter_apps/capitals-quiz.html"),
+    },
+    StarterApp {
+        id: "budget-tracker",
+        idea_id: "budgetTracker",
+        category: AppCategory::Tools,
+        icon: "+ −",
+        hosts: &[],
+        capabilities: &["storage"],
+        html: include_str!("../starter_apps/budget-tracker.html"),
     },
 ];
 
@@ -141,6 +160,42 @@ mod tests {
             assert!(
                 !s.html.trim_start().starts_with("<!doctype"),
                 "{} must be a body fragment",
+                s.id
+            );
+        }
+    }
+
+    /// The capabilities a page declares in `<meta name="conduit-capability"
+    /// content="name — reason">` tags.
+    fn declared_capabilities(html: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for (i, _) in html.match_indices("name=\"conduit-capability\"") {
+            let rest = &html[i..];
+            if let Some(start) = rest.find("content=\"").map(|c| c + 9) {
+                let content = &rest[start..];
+                let end = content.find('"').unwrap_or(content.len());
+                out.push(
+                    content[..end]
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_string(),
+                );
+            }
+        }
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn every_starter_declares_exactly_its_capabilities() {
+        for s in STARTER_APPS {
+            let mut caps: Vec<String> = s.capabilities.iter().map(|c| c.to_string()).collect();
+            caps.sort();
+            assert_eq!(
+                declared_capabilities(s.html),
+                caps,
+                "{}: declared capabilities",
                 s.id
             );
         }

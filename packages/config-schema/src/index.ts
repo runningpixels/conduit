@@ -59,11 +59,13 @@ export type { Artifact } from './generated/artifact';
 export type { AppCategory } from './generated/app_category';
 export type { AppOrigin } from './generated/app_origin';
 export type { AppNetwork } from './generated/app_network';
+export type { AppStorage } from './generated/app_storage';
 export type { AppCapabilities } from './generated/app_capabilities';
 export type { AppCreatedWith } from './generated/app_created_with';
 export type { AppManifest } from './generated/app_manifest';
 export type { AppSummary } from './generated/app_summary';
 export type { AppDetail } from './generated/app_detail';
+export type { PageStorageUsage } from './generated/page_storage_usage';
 export type { StarterAppInfo } from './generated/starter_app_info';
 
 // Attachments

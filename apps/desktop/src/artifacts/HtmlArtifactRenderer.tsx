@@ -65,6 +65,14 @@ import {
   parseArtifactFetchMessage,
   type ArtifactNetworkHandler,
 } from './networkBridge';
+import {
+  PAGE_BRIDGE_MESSAGE_TYPE,
+  buildPageBridgeScript,
+  parsePageBridgeRequest,
+  type PageBridgeHandler,
+  type PageBridgeOutcome,
+} from './pageBridge';
+import { declaredCapabilities } from './networkHosts';
 
 export type ArtifactColorScheme = 'light' | 'dark';
 
@@ -86,6 +94,13 @@ export interface HtmlArtifactRendererProps {
    * the page has no network at all — the streaming preview never gets one.
    */
   network?: ArtifactNetworkHandler;
+  /**
+   * Handles `window.conduit.storage` calls (ADR-012). The bridge script is
+   * injected only when the page declares a capability and this is given; a
+   * page shown without it (the streaming preview) has no `window.conduit`, so
+   * it can feature-detect with `window.conduit?.storage`.
+   */
+  bridge?: PageBridgeHandler;
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -197,6 +212,17 @@ export const ARTIFACT_LINK_INTERCEPTOR_SCRIPT =
 /// reset/styled literals with `buildTokensArtifactStyle`'s output (falling
 /// back to the existing light/dark literals if it can't fully build one);
 /// omitted, this is byte-for-byte what it always was.
+/// On Windows, WebView2 runs Tauri's init scripts in every frame (wry can't
+/// scope them to the main frame there), so a page finds `__TAURI_INTERNALS__`
+/// and `chrome.webview`. Tauri already refuses every call from this origin
+/// (no capability grants it). This cuts the channel itself before any page
+/// script runs: Tauri's `invoke` and wry's `ipc` are non-writable, but both
+/// end in `chrome.webview.postMessage` (the custom-protocol path is blocked by
+/// the page's `connect-src 'none'`), which is writable in the frame. Checked
+/// live in a release build. ADR 007.
+export const ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT =
+  '(function(){try{var w=window.chrome&&window.chrome.webview;if(w){w.postMessage=function(){};}}catch(e){}})();';
+
 export function assembleArtifactDoc(
   html: string,
   allowlist: string[],
@@ -204,6 +230,7 @@ export function assembleArtifactDoc(
   colorScheme: ArtifactColorScheme = 'light',
   tokens?: ResolvedTokens,
   network = false,
+  capabilities: string[] = [],
 ): string {
   const csp = buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP;
   const tokensStyle = tokens && buildTokensArtifactStyle(tokens);
@@ -215,7 +242,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_WEBRTC_BLOCK_SCRIPT}${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}</script>` +
+    `<script>${ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT}${ARTIFACT_WEBRTC_BLOCK_SCRIPT}${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}${capabilities.length > 0 ? buildPageBridgeScript(capabilities) : ''}</script>` +
     `</head><body>${html}</body></html>`
   );
 }
@@ -228,6 +255,7 @@ export function HtmlArtifactRenderer({
   onExternalLink,
   onAskToFix,
   network,
+  bridge,
 }: HtmlArtifactRendererProps) {
   const t = useT();
   const themingKind = activeRendererTheming('iframe');
@@ -238,6 +266,12 @@ export function HtmlArtifactRenderer({
   const hasNetwork = network != null;
   const networkRef = useRef(network);
   networkRef.current = network;
+  const bridgeRef = useRef(bridge);
+  bridgeRef.current = bridge;
+  // The script is only worth injecting when both the page asked for a
+  // capability and something can actually answer it — a handler with nothing
+  // declared would just be dead code in every other artifact's srcdoc.
+  const capabilities = useMemo(() => (bridge ? declaredCapabilities(html) : []), [bridge, html]);
   const srcdoc = useMemo(
     () =>
       assembleArtifactDoc(
@@ -247,8 +281,9 @@ export function HtmlArtifactRenderer({
         colorScheme,
         themingKind === 'tokens' ? readResolvedTokens() : undefined,
         hasNetwork,
+        capabilities,
       ),
-    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork],
+    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities],
   );
   const frameSource = useArtifactFrameSource(srcdoc);
   const [loaded, setLoaded] = useState(false);
@@ -295,6 +330,29 @@ export function HtmlArtifactRenderer({
         };
         if (!handler) reply({ ok: false, error: 'This page has no network access.' });
         else void handler.request(request).then(reply, (error: unknown) => reply({ ok: false, error: String(error) }));
+        return;
+      }
+      const bridgeRequest = parsePageBridgeRequest(event.data);
+      if (bridgeRequest) {
+        const handler = bridgeRef.current;
+        const target = frame.contentWindow;
+        const reply = (outcome: PageBridgeOutcome) => {
+          // The page may have been replaced while the call was out.
+          if (!target || iframeRef.current?.contentWindow !== target) return;
+          target.postMessage({ type: PAGE_BRIDGE_MESSAGE_TYPE, id: bridgeRequest.id, ...outcome }, '*');
+        };
+        const unavailable = (): PageBridgeOutcome => ({
+          ok: false,
+          error: { code: 'unavailable', message: 'This page has no storage.' },
+        });
+        if (!handler) reply(unavailable());
+        else {
+          try {
+            void handler(bridgeRequest.method, bridgeRequest.params).then(reply, () => reply(unavailable()));
+          } catch {
+            reply(unavailable());
+          }
+        }
         return;
       }
       const href = parseArtifactExternalLinkMessage(event.data);

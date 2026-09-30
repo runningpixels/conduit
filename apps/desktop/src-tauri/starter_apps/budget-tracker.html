@@ -1,0 +1,1015 @@
+<meta name="conduit-capability" content="storage — keeps your expenses between launches">
+<style>
+  html:not([data-theme]), html[data-theme="dark"] {
+    --bg:#0b0d12; --surface:#11141b; --surface-hi:#161a23; --line:#1c2130; --line-hi:#262c3c;
+    --ink:#e8eaf0; --ink-2:#b8becc; --ink-3:#8990a2; --accent:#ff7a59; --accent-ink:#1a0b06;
+    --accent-soft: rgba(255,122,89,.14); --signal:#7cc4ff; --ok:#7cffb2; --warn:#febc2e; --err:#ff9c82;
+    color-scheme: dark;
+  }
+  html[data-theme="light"] {
+    --bg:#f6f6f8; --surface:#ffffff; --surface-hi:#f1f2f5; --line:#e1e3ea; --line-hi:#dadce3;
+    --ink:#16181d; --ink-2:#3a3f4a; --ink-3:#5f6573; --accent:#4b4ded; --accent-ink:#ffffff;
+    --accent-soft:#eef0ff; --signal:#1f86e8; --ok:#137a3a; --warn:#9a5300; --err:#b4380f;
+    color-scheme: light;
+  }
+
+  html, body {
+    background: var(--bg);
+    margin: 0;
+    padding: 0;
+  }
+
+  * { box-sizing: border-box; }
+
+  [hidden] { display: none !important; }
+
+  .bt-app {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    max-width: 640px;
+    min-width: 0;
+    margin: 0 auto;
+    padding: 28px 16px 44px;
+  }
+
+  .bt-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+
+  .bt-title {
+    font-size: 1.35rem;
+    font-weight: 650;
+    margin: 0 0 4px;
+    letter-spacing: -.01em;
+  }
+
+  .bt-subtitle {
+    margin: 0;
+    color: var(--ink-3);
+    font-size: .9rem;
+  }
+
+  .bt-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-3);
+    font-size: .78rem;
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 11px;
+    white-space: nowrap;
+  }
+
+  .bt-note[data-tone="warn"] {
+    color: var(--warn);
+    border-color: var(--warn);
+  }
+
+  .bt-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px;
+    margin-bottom: 16px;
+  }
+
+  .bt-card-title {
+    font-size: .82rem;
+    font-weight: 650;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 16px;
+  }
+
+  input, select, button, textarea { font-family: inherit; }
+
+  .bt-field { display: flex; flex-direction: column; gap: 6px; }
+
+  .bt-field label {
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .bt-input, select {
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 11px 12px;
+    color: var(--ink);
+    width: 100%;
+    font-size: .95rem;
+  }
+
+  .bt-amount-input {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.05rem;
+  }
+
+  input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+
+  .bt-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .bt-form-grid .bt-field-wide { grid-column: 1 / -1; }
+
+  .bt-amount-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .bt-currency-select {
+    flex: 0 0 74px;
+    width: 74px;
+  }
+
+  .bt-add-row {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  button {
+    font-family: inherit;
+    font-size: .9rem;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 10px 20px;
+    border: 1px solid var(--line);
+    background: var(--surface-hi);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  button:hover { border-color: var(--line-hi); }
+  button:active { transform: translateY(1px); }
+
+  button.bt-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    min-width: 110px;
+  }
+
+  .bt-month-switcher {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .bt-month-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .bt-month-label {
+    font-weight: 650;
+    font-size: 1.02rem;
+    min-width: 168px;
+    text-align: center;
+  }
+
+  .bt-settings-row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 0;
+  }
+
+  .bt-settings-row .bt-field { flex: 1 1 140px; min-width: 120px; }
+
+  .bt-budget-status {
+    margin-top: 16px;
+  }
+
+  .bt-budget-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: .88rem;
+    color: var(--ink-2);
+    margin-bottom: 8px;
+  }
+
+  .bt-budget-line strong {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    font-size: .95rem;
+  }
+
+  .bt-progress-track {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  .bt-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width .25s ease, background .25s ease;
+  }
+
+  .bt-progress-fill[data-level="warn"] { background: var(--warn); }
+  .bt-progress-fill[data-level="err"] { background: var(--err); }
+
+  .bt-total-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 14px;
+    font-size: .92rem;
+    color: var(--ink-2);
+  }
+
+  .bt-total-line strong {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    font-size: 1.15rem;
+  }
+
+  .bt-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .bt-chart-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .bt-chart-row-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .bt-chart-label {
+    font-size: .84rem;
+    font-weight: 600;
+    color: var(--ink-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .bt-chart-track {
+    height: 18px;
+    border-radius: 6px;
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .bt-chart-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 5px 0 0 5px;
+    min-width: 3px;
+    transition: width .25s ease;
+  }
+
+  .bt-chart-amount {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: .82rem;
+    color: var(--ink-2);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .bt-empty {
+    color: var(--ink-3);
+    font-size: .88rem;
+    text-align: center;
+    padding: 18px 0;
+  }
+
+  .bt-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .bt-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface-hi);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+
+  .bt-entry-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .bt-entry-top {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+
+  .bt-entry-category {
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--ink);
+  }
+
+  .bt-entry-date {
+    font-size: .76rem;
+    color: var(--ink-3);
+  }
+
+  .bt-entry-note {
+    font-size: .82rem;
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bt-entry-amount {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+    font-size: .95rem;
+    white-space: nowrap;
+  }
+
+  .bt-delete-btn {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-3);
+    background: transparent;
+    border: 1px solid var(--line);
+  }
+
+  .bt-delete-btn:hover {
+    color: var(--err);
+    border-color: var(--err);
+  }
+
+  .bt-delete-btn svg { width: 15px; height: 15px; }
+
+  .bt-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface-hi);
+    border: 1px solid var(--err);
+    color: var(--err);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: .85rem;
+    margin-bottom: 14px;
+  }
+
+  .bt-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 380px) {
+    .bt-title { font-size: 1.2rem; }
+    .bt-card { padding: 16px; }
+    .bt-form-grid { grid-template-columns: 1fr; }
+    .bt-month-label { min-width: 0; font-size: .92rem; }
+  }
+</style>
+
+<div class="bt-app">
+  <header class="bt-header">
+    <div>
+      <h1 class="bt-title">Budget Tracker</h1>
+      <p class="bt-subtitle">Track spending by category, month by month</p>
+    </div>
+    <div class="bt-note" id="bt-storage-note" hidden></div>
+  </header>
+
+  <div id="bt-error" class="bt-error" role="alert" hidden></div>
+
+  <div class="bt-card">
+    <h2 class="bt-card-title">Add expense</h2>
+    <form id="bt-form" novalidate>
+      <div class="bt-form-grid">
+        <div class="bt-field">
+          <label for="bt-amount">Amount</label>
+          <div class="bt-amount-row">
+            <select id="bt-currency" class="bt-currency-select" aria-label="Currency">
+              <option value="€">€</option>
+              <option value="$">$</option>
+              <option value="£">£</option>
+              <option value="¥">¥</option>
+            </select>
+            <input id="bt-amount" class="bt-input bt-amount-input" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
+          </div>
+        </div>
+        <div class="bt-field">
+          <label for="bt-category">Category</label>
+          <select id="bt-category" class="bt-input">
+            <option>Groceries</option>
+            <option>Housing</option>
+            <option>Transport</option>
+            <option>Eating out</option>
+            <option>Fun</option>
+            <option>Health</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="bt-field">
+          <label for="bt-date">Date</label>
+          <input id="bt-date" class="bt-input" type="date" />
+        </div>
+        <div class="bt-field bt-field-wide">
+          <label for="bt-note">Note (optional)</label>
+          <input id="bt-note" class="bt-input" type="text" maxlength="120" placeholder="What was this for?" />
+        </div>
+      </div>
+      <div class="bt-add-row">
+        <button type="submit" class="bt-primary">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="bt-month-switcher">
+    <button type="button" id="bt-prev-month" class="bt-month-btn" aria-label="Previous month">‹</button>
+    <div class="bt-month-label" id="bt-month-label" aria-live="polite">September 2026</div>
+    <button type="button" id="bt-next-month" class="bt-month-btn" aria-label="Next month">›</button>
+  </div>
+
+  <div class="bt-card">
+    <h2 class="bt-card-title">Currency &amp; budget</h2>
+    <div class="bt-settings-row">
+      <div class="bt-field">
+        <label for="bt-default-currency">Currency</label>
+        <select id="bt-default-currency" class="bt-input">
+          <option value="€">€ Euro</option>
+          <option value="$">$ Dollar</option>
+          <option value="£">£ Pound</option>
+          <option value="¥">¥ Yen</option>
+        </select>
+      </div>
+      <div class="bt-field">
+        <label for="bt-budget">Monthly budget (optional)</label>
+        <input id="bt-budget" class="bt-input bt-amount-input" type="number" inputmode="decimal" min="0" step="0.01" placeholder="No budget set" />
+      </div>
+    </div>
+    <div class="bt-budget-status" id="bt-budget-status" hidden>
+      <div class="bt-budget-line">
+        <span>Spent this month</span>
+        <strong id="bt-budget-text"></strong>
+      </div>
+      <div class="bt-progress-track">
+        <div class="bt-progress-fill" id="bt-progress-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bt-card">
+    <h2 class="bt-card-title">This month by category</h2>
+    <div class="bt-total-line">
+      <span>Total spent</span>
+      <strong id="bt-total-amount">0.00</strong>
+    </div>
+    <div class="bt-chart" id="bt-chart"></div>
+    <div class="bt-empty" id="bt-chart-empty" hidden>No expenses yet this month.</div>
+  </div>
+
+  <div class="bt-card">
+    <h2 class="bt-card-title">Entries</h2>
+    <div class="bt-entries" id="bt-entries"></div>
+    <div class="bt-empty" id="bt-entries-empty" hidden>No expenses recorded for this month.</div>
+  </div>
+
+  <div class="bt-visually-hidden" id="bt-status" aria-live="polite"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var CATEGORIES = ["Groceries", "Housing", "Transport", "Eating out", "Fun", "Health", "Other"];
+  var MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  var hasStorage = !!(window.conduit && window.conduit.storage);
+
+  var state = {
+    year: 0,
+    month: 0, // 0-11
+    entries: [],
+    currency: "€",
+    budget: null,
+    nextId: 1,
+    savedOk: hasStorage
+  };
+
+  var formEl = document.getElementById("bt-form");
+  var amountEl = document.getElementById("bt-amount");
+  var currencySelectEl = document.getElementById("bt-currency");
+  var categoryEl = document.getElementById("bt-category");
+  var dateEl = document.getElementById("bt-date");
+  var noteEl = document.getElementById("bt-note");
+
+  var prevMonthBtn = document.getElementById("bt-prev-month");
+  var nextMonthBtn = document.getElementById("bt-next-month");
+  var monthLabelEl = document.getElementById("bt-month-label");
+
+  var defaultCurrencyEl = document.getElementById("bt-default-currency");
+  var budgetEl = document.getElementById("bt-budget");
+  var budgetStatusEl = document.getElementById("bt-budget-status");
+  var budgetTextEl = document.getElementById("bt-budget-text");
+  var progressFillEl = document.getElementById("bt-progress-fill");
+
+  var totalAmountEl = document.getElementById("bt-total-amount");
+  var chartEl = document.getElementById("bt-chart");
+  var chartEmptyEl = document.getElementById("bt-chart-empty");
+
+  var entriesEl = document.getElementById("bt-entries");
+  var entriesEmptyEl = document.getElementById("bt-entries-empty");
+
+  var storageNoteEl = document.getElementById("bt-storage-note");
+  var errorEl = document.getElementById("bt-error");
+  var statusEl = document.getElementById("bt-status");
+
+  function pad2(n) { return n < 10 ? "0" + n : String(n); }
+
+  function monthKey(year, month) {
+    return year + "-" + pad2(month + 1);
+  }
+
+  function todayISO() {
+    var d = new Date();
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+
+  function formatAmount(n) {
+    if (!isFinite(n)) n = 0;
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function formatDate(iso) {
+    var parts = String(iso || "").split("-");
+    if (parts.length !== 3) return iso || "";
+    var y = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    var d = parseInt(parts[2], 10);
+    if (!isFinite(y) || !isFinite(m) || !isFinite(d)) return iso;
+    return MONTH_NAMES[m - 1].slice(0, 3) + " " + d + ", " + y;
+  }
+
+  function announce(message) {
+    statusEl.textContent = message;
+  }
+
+  function showError(message) {
+    if (!message) {
+      errorEl.hidden = true;
+      errorEl.textContent = "";
+      return;
+    }
+    errorEl.hidden = false;
+    errorEl.textContent = message;
+  }
+
+  function errorMessageFor(err) {
+    var code = err && err.code;
+    if (code === "quota") return "Storage is full — this expense wasn't saved.";
+    if (code === "rate_limited") return "Too many changes at once — this expense wasn't saved. Try again in a moment.";
+    if (code === "invalid") return "That couldn't be saved (invalid data).";
+    if (code === "unavailable") return "Storage is unavailable right now — this expense wasn't saved.";
+    return "Couldn't save that change — it's kept for this session only.";
+  }
+
+  function updateStorageNote() {
+    if (!hasStorage) {
+      storageNoteEl.hidden = false;
+      storageNoteEl.textContent = "Not saved — this view can't keep data";
+      storageNoteEl.removeAttribute("data-tone");
+      return;
+    }
+    if (!state.savedOk) {
+      storageNoteEl.hidden = false;
+      storageNoteEl.textContent = "Not saved — a recent change wasn't stored";
+      storageNoteEl.setAttribute("data-tone", "warn");
+      return;
+    }
+    storageNoteEl.hidden = true;
+  }
+
+  function saveSettings() {
+    if (!hasStorage) return;
+    window.conduit.storage.set("settings", { currency: state.currency, budget: state.budget })
+      .then(function () {
+        state.savedOk = true;
+        updateStorageNote();
+      })
+      .catch(function (err) {
+        state.savedOk = false;
+        showError(errorMessageFor(err));
+        updateStorageNote();
+      });
+  }
+
+  function saveMonth(year, month) {
+    if (!hasStorage) return;
+    var key = "expenses:" + monthKey(year, month);
+    var list = (year === state.year && month === state.month) ? state.entries : null;
+    if (!list) return;
+    window.conduit.storage.set(key, list)
+      .then(function () {
+        state.savedOk = true;
+        updateStorageNote();
+      })
+      .catch(function (err) {
+        state.savedOk = false;
+        showError(errorMessageFor(err));
+        updateStorageNote();
+      });
+  }
+
+  function renderMonthLabel() {
+    monthLabelEl.textContent = MONTH_NAMES[state.month] + " " + state.year;
+  }
+
+  function renderSettings() {
+    defaultCurrencyEl.value = state.currency;
+    currencySelectEl.value = state.currency;
+    budgetEl.value = state.budget === null || state.budget === undefined ? "" : String(state.budget);
+  }
+
+  function categoryTotals() {
+    var totals = {};
+    var i;
+    for (i = 0; i < CATEGORIES.length; i++) totals[CATEGORIES[i]] = 0;
+    var total = 0;
+    for (i = 0; i < state.entries.length; i++) {
+      var e = state.entries[i];
+      var cat = totals.hasOwnProperty(e.category) ? e.category : "Other";
+      totals[cat] += e.amount;
+      total += e.amount;
+    }
+    return { totals: totals, total: total };
+  }
+
+  function renderChart() {
+    var result = categoryTotals();
+    var total = result.total;
+    var totals = result.totals;
+
+    totalAmountEl.textContent = state.currency + formatAmount(total);
+
+    var rows = CATEGORIES
+      .map(function (cat) { return { cat: cat, amount: totals[cat] }; })
+      .filter(function (row) { return row.amount > 0; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+
+    chartEl.innerHTML = "";
+    chartEmptyEl.hidden = rows.length > 0;
+
+    var maxAmount = rows.length ? rows[0].amount : 0;
+
+    rows.forEach(function (row) {
+      var share = total > 0 ? (row.amount / total) * 100 : 0;
+      var width = maxAmount > 0 ? (row.amount / maxAmount) * 100 : 0;
+
+      var rowEl = document.createElement("div");
+      rowEl.className = "bt-chart-row";
+
+      var topEl = document.createElement("div");
+      topEl.className = "bt-chart-row-top";
+
+      var labelEl = document.createElement("div");
+      labelEl.className = "bt-chart-label";
+      labelEl.textContent = row.cat;
+
+      var amountEl2 = document.createElement("div");
+      amountEl2.className = "bt-chart-amount";
+      amountEl2.textContent = state.currency + formatAmount(row.amount) + " · " + Math.round(share) + "%";
+
+      topEl.appendChild(labelEl);
+      topEl.appendChild(amountEl2);
+
+      var trackEl = document.createElement("div");
+      trackEl.className = "bt-chart-track";
+      var barEl = document.createElement("div");
+      barEl.className = "bt-chart-bar";
+      barEl.style.width = Math.max(width, row.amount > 0 ? 2 : 0) + "%";
+      trackEl.appendChild(barEl);
+
+      rowEl.appendChild(topEl);
+      rowEl.appendChild(trackEl);
+      chartEl.appendChild(rowEl);
+    });
+
+    return total;
+  }
+
+  function renderBudget(total) {
+    if (state.budget === null || state.budget === undefined || !(state.budget > 0)) {
+      budgetStatusEl.hidden = true;
+      return;
+    }
+    budgetStatusEl.hidden = false;
+    budgetTextEl.textContent = state.currency + formatAmount(total) + " of " + state.currency + formatAmount(state.budget);
+
+    var fraction = state.budget > 0 ? total / state.budget : 0;
+    var pct = Math.max(0, Math.min(100, fraction * 100));
+    progressFillEl.style.width = pct + "%";
+
+    if (fraction >= 1) {
+      progressFillEl.setAttribute("data-level", "err");
+    } else if (fraction >= 0.85) {
+      progressFillEl.setAttribute("data-level", "warn");
+    } else {
+      progressFillEl.removeAttribute("data-level");
+    }
+  }
+
+  function renderEntries() {
+    var sorted = state.entries.slice().sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return b.id - a.id;
+    });
+
+    entriesEl.innerHTML = "";
+    entriesEmptyEl.hidden = sorted.length > 0;
+
+    sorted.forEach(function (entry) {
+      var row = document.createElement("div");
+      row.className = "bt-entry";
+
+      var main = document.createElement("div");
+      main.className = "bt-entry-main";
+
+      var top = document.createElement("div");
+      top.className = "bt-entry-top";
+      var catEl = document.createElement("span");
+      catEl.className = "bt-entry-category";
+      catEl.textContent = entry.category;
+      var dateEl2 = document.createElement("span");
+      dateEl2.className = "bt-entry-date";
+      dateEl2.textContent = formatDate(entry.date);
+      top.appendChild(catEl);
+      top.appendChild(dateEl2);
+      main.appendChild(top);
+
+      if (entry.note) {
+        var noteEl2 = document.createElement("div");
+        noteEl2.className = "bt-entry-note";
+        noteEl2.textContent = entry.note;
+        main.appendChild(noteEl2);
+      }
+
+      var amountEl3 = document.createElement("div");
+      amountEl3.className = "bt-entry-amount";
+      amountEl3.textContent = state.currency + formatAmount(entry.amount);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "bt-delete-btn";
+      deleteBtn.setAttribute("aria-label", "Delete expense: " + entry.category + " " + state.currency + formatAmount(entry.amount));
+      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+      deleteBtn.addEventListener("click", function () { deleteEntry(entry.id); });
+
+      row.appendChild(main);
+      row.appendChild(amountEl3);
+      row.appendChild(deleteBtn);
+      entriesEl.appendChild(row);
+    });
+  }
+
+  function render() {
+    renderMonthLabel();
+    renderSettings();
+    var total = renderChart();
+    renderBudget(total);
+    renderEntries();
+    updateStorageNote();
+  }
+
+  function loadMonth(year, month, callback) {
+    if (!hasStorage) {
+      callback([]);
+      return;
+    }
+    window.conduit.storage.get("expenses:" + monthKey(year, month))
+      .then(function (value) {
+        callback(Array.isArray(value) ? value : []);
+      })
+      .catch(function () {
+        callback([]);
+      });
+  }
+
+  function switchMonth(delta) {
+    var newMonth = state.month + delta;
+    var newYear = state.year;
+    if (newMonth < 0) { newMonth = 11; newYear -= 1; }
+    if (newMonth > 11) { newMonth = 0; newYear += 1; }
+
+    loadMonth(newYear, newMonth, function (entries) {
+      state.year = newYear;
+      state.month = newMonth;
+      state.entries = entries;
+      var maxId = 0;
+      entries.forEach(function (e) { if (typeof e.id === "number" && e.id > maxId) maxId = e.id; });
+      state.nextId = maxId + 1;
+      dateEl.value = (newYear === new Date().getFullYear() && newMonth === new Date().getMonth()) ? todayISO() : monthKey(newYear, newMonth) + "-01";
+      render();
+    });
+  }
+
+  function addEntry(entry) {
+    state.entries.push(entry);
+    render();
+    saveMonth(state.year, state.month);
+    announce("Added " + entry.category + " expense of " + state.currency + formatAmount(entry.amount) + ".");
+  }
+
+  function deleteEntry(id) {
+    var idx = -1;
+    for (var i = 0; i < state.entries.length; i++) {
+      if (state.entries[i].id === id) { idx = i; break; }
+    }
+    if (idx === -1) return;
+    var removed = state.entries[idx];
+    state.entries.splice(idx, 1);
+    render();
+    saveMonth(state.year, state.month);
+    announce("Deleted " + removed.category + " expense.");
+  }
+
+  formEl.addEventListener("submit", function (event) {
+    event.preventDefault();
+    showError(null);
+
+    var amount = parseFloat(amountEl.value);
+    if (!isFinite(amount) || amount <= 0) {
+      showError("Enter an amount greater than zero.");
+      amountEl.focus();
+      return;
+    }
+
+    var date = dateEl.value || todayISO();
+    var entryYear = parseInt(date.slice(0, 4), 10);
+    var entryMonth = parseInt(date.slice(5, 7), 10) - 1;
+
+    var entry = {
+      id: state.nextId++,
+      amount: Math.round(amount * 100) / 100,
+      category: categoryEl.value,
+      note: noteEl.value.trim().slice(0, 120),
+      date: date
+    };
+
+    if (currencySelectEl.value !== state.currency) {
+      state.currency = currencySelectEl.value;
+      saveSettings();
+    }
+
+    if (entryYear === state.year && entryMonth === state.month) {
+      addEntry(entry);
+    } else {
+      // Entry belongs to a different month than the one being viewed:
+      // save it there directly, then jump the view to that month.
+      loadMonth(entryYear, entryMonth, function (entries) {
+        var maxId = 0;
+        entries.forEach(function (e) { if (typeof e.id === "number" && e.id > maxId) maxId = e.id; });
+        entry.id = maxId + 1;
+        entries.push(entry);
+        if (hasStorage) {
+          window.conduit.storage.set("expenses:" + monthKey(entryYear, entryMonth), entries)
+            .then(function () { state.savedOk = true; updateStorageNote(); })
+            .catch(function (err) { state.savedOk = false; showError(errorMessageFor(err)); updateStorageNote(); });
+        }
+        state.year = entryYear;
+        state.month = entryMonth;
+        state.entries = entries;
+        var m2 = 0;
+        entries.forEach(function (e) { if (typeof e.id === "number" && e.id > m2) m2 = e.id; });
+        state.nextId = m2 + 1;
+        render();
+        announce("Added " + entry.category + " expense of " + state.currency + formatAmount(entry.amount) + " to " + MONTH_NAMES[entryMonth] + " " + entryYear + ".");
+      });
+    }
+
+    amountEl.value = "";
+    noteEl.value = "";
+    amountEl.focus();
+  });
+
+  prevMonthBtn.addEventListener("click", function () { switchMonth(-1); });
+  nextMonthBtn.addEventListener("click", function () { switchMonth(1); });
+
+  defaultCurrencyEl.addEventListener("change", function () {
+    state.currency = defaultCurrencyEl.value;
+    currencySelectEl.value = state.currency;
+    render();
+    saveSettings();
+  });
+
+  budgetEl.addEventListener("change", function () {
+    var value = parseFloat(budgetEl.value);
+    state.budget = isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : null;
+    render();
+    saveSettings();
+  });
+
+  function init() {
+    var now = new Date();
+    state.year = now.getFullYear();
+    state.month = now.getMonth();
+    dateEl.value = todayISO();
+    categoryEl.value = CATEGORIES[0];
+
+    updateStorageNote();
+
+    if (!hasStorage) {
+      loadMonth(state.year, state.month, function (entries) {
+        state.entries = entries;
+        render();
+      });
+      return;
+    }
+
+    window.conduit.storage.get("settings")
+      .then(function (settings) {
+        if (settings && typeof settings === "object") {
+          if (typeof settings.currency === "string" && settings.currency) {
+            state.currency = settings.currency;
+          }
+          if (typeof settings.budget === "number" && isFinite(settings.budget) && settings.budget > 0) {
+            state.budget = settings.budget;
+          }
+        }
+      })
+      .catch(function () {
+        // Keep defaults; settings will be written fresh on the next change.
+      })
+      .then(function () {
+        loadMonth(state.year, state.month, function (entries) {
+          state.entries = entries;
+          var maxId = 0;
+          entries.forEach(function (e) { if (typeof e.id === "number" && e.id > maxId) maxId = e.id; });
+          state.nextId = maxId + 1;
+          render();
+        });
+      });
+  }
+
+  init();
+})();
+</script>

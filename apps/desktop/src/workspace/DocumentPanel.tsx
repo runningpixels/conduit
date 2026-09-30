@@ -13,6 +13,7 @@ import {
 import { buildPreviewProps, resolveKind, selectRenderer } from '../artifacts/selectRenderer';
 import { declaredHosts, scriptedHosts } from '../artifacts/networkHosts';
 import { useArtifactNetwork } from './useArtifactNetwork';
+import { usePageBridge } from './usePageBridge';
 import { ArtifactNetworkBanner, ArtifactNetworkChip, ArtifactNetworkDialog } from './ArtifactNetwork';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
@@ -414,6 +415,9 @@ export function DocumentPanel({
     sourceText,
     networkPolicyKey,
   );
+  // window.conduit.storage for a saved HTML page (ADR-012), same principal as
+  // the network bridge above.
+  const bridge = usePageBridge(networkArtifactId ? artifactPrincipal(networkArtifactId) : null);
   const networkDeclared = useMemo(() => (networkArtifactId ? declaredHosts(sourceText) : []), [networkArtifactId, sourceText]);
   const networkScripted = useMemo(() => {
     if (!networkArtifactId) return [];
@@ -1192,6 +1196,7 @@ export function DocumentPanel({
                   onExternalLink={handleExternalLink}
                   onAskToFix={onAskToFix}
                   network={networkArtifactId ? network.handler : undefined}
+                  bridge={networkArtifactId ? bridge : undefined}
                 />
               );
             })()}

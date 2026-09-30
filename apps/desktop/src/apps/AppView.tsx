@@ -6,12 +6,15 @@
 /// grant made here belongs to the app and survives the chat it came from.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ConfirmDialog } from '@conduit/ui';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { HtmlArtifactRenderer, type ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
-import { declaredHosts, scriptedHosts } from '../artifacts/networkHosts';
+import { declaredCapabilities, declaredHosts, scriptedHosts } from '../artifacts/networkHosts';
 import { isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { useArtifactNetwork } from '../workspace/useArtifactNetwork';
+import { usePageBridge } from '../workspace/usePageBridge';
+import type { PageBridgeHandler } from '../artifacts/pageBridge';
 import {
   ArtifactNetworkBanner,
   ArtifactNetworkChip,
@@ -21,7 +24,7 @@ import {
 import { OpenExternalLinkDialog } from '../workspace/OpenExternalLinkDialog';
 import { Menu } from '../workspace/Menu';
 import { ChevronLeft, MoreIcon, PencilIcon, RetryIcon, TrashIcon } from '../icons';
-import { appPrincipal, openApp, openExternalUrl } from '../ipc/client';
+import { appPrincipal, openApp, openExternalUrl, pageStorageClear, pageStorageUsage, type PageStorageUsage } from '../ipc/client';
 import type { AppDetail, AppSummary } from '../ipc/contracts';
 import { AppTile } from './AppTile';
 
@@ -64,6 +67,11 @@ export function AppView({
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [storageUsage, setStorageUsage] = useState<PageStorageUsage | null>(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  // Bumped after "Clear data" so the frame's key changes and it reloads with
+  // an empty store, the same way a source update bumps `revision`.
+  const [clearRevision, setClearRevision] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +90,26 @@ export function AppView({
 
   const html = app?.html ?? '';
   const network = useArtifactNetwork(app ? appPrincipal(app.id) : null, html, networkPolicyKey);
+  const pageBridge = usePageBridge(app ? appPrincipal(app.id) : null);
+  // After the page writes, re-read how much it stores — debounced, since a
+  // tracker may save on every keystroke.
+  const [writeRevision, setWriteRevision] = useState(0);
+  const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (writeTimer.current) clearTimeout(writeTimer.current);
+  }, []);
+  const bridge = useMemo<PageBridgeHandler | undefined>(() => {
+    if (!pageBridge) return undefined;
+    return async (method, params) => {
+      const outcome = await pageBridge(method, params);
+      if (outcome.ok && method !== 'storage.get' && method !== 'storage.keys') {
+        if (writeTimer.current) clearTimeout(writeTimer.current);
+        writeTimer.current = setTimeout(() => setWriteRevision((r) => r + 1), 600);
+      }
+      return outcome;
+    };
+  }, [pageBridge]);
+  const declaresStorage = useMemo(() => declaredCapabilities(html).includes('storage'), [html]);
   const declared = useMemo(() => declaredHosts(html), [html]);
   const scripted = useMemo(() => {
     const known = new Set(declared.map((d) => d.origin));
@@ -110,6 +138,39 @@ export function AppView({
     openExternalUrl(url).catch((e) => onStatus?.(e instanceof Error ? e.message : String(e)));
   }, [pendingUrl, onStatus]);
   const cancelExternalLink = useCallback(() => setPendingUrl(null), []);
+
+  // How much the page has stored (ADR-012): read on open, after "Clear
+  // data", and shortly after the page writes.
+  const openedAppId = app?.id;
+  useEffect(() => {
+    if (!openedAppId || !declaresStorage) {
+      setStorageUsage(null);
+      return;
+    }
+    let cancelled = false;
+    pageStorageUsage(appPrincipal(openedAppId))
+      .then((usage) => {
+        if (!cancelled) setStorageUsage(usage);
+      })
+      .catch(() => {
+        if (!cancelled) setStorageUsage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openedAppId, declaresStorage, clearRevision, writeRevision]);
+
+  const handleClearData = useCallback(async () => {
+    setClearConfirmOpen(false);
+    if (!app) return;
+    try {
+      await pageStorageClear(appPrincipal(app.id));
+      setClearRevision((r) => r + 1);
+      onStatus?.(t('apps.status.cleared', { name: app.name }));
+    } catch (e) {
+      onStatus?.(e instanceof Error ? e.message : String(e));
+    }
+  }, [app, onStatus, t]);
 
   if (error) {
     return (
@@ -216,6 +277,20 @@ export function AppView({
               {t('apps.menu.update')}
             </button>
           )}
+          {declaresStorage && (
+            <button
+              type="button"
+              className="menu-item"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setClearConfirmOpen(true);
+              }}
+            >
+              <TrashIcon />
+              {t('apps.menu.clearData')}
+            </button>
+          )}
           <div className="menu-sep" role="separator" />
           <button
             type="button"
@@ -240,13 +315,14 @@ export function AppView({
 
       <div className="app-view-frame">
         <HtmlArtifactRenderer
-          key={`${summary.id}:${summary.version}:${revision}`}
+          key={`${summary.id}:${summary.version}:${revision}:${clearRevision}`}
           html={html}
           allowlist={allowlist}
           styledPreview={styledPreview}
           colorScheme={colorScheme}
           onExternalLink={handleExternalLink}
           network={network.handler}
+          bridge={bridge}
         />
       </div>
 
@@ -278,6 +354,12 @@ export function AppView({
             {t('apps.card.sourceChanged')}
           </span>
         )}
+        {declaresStorage && storageUsage && storageUsage.bytes > 0 && (
+          <span className="app-view-fact">
+            <span className="app-view-dot" data-tone="net" aria-hidden="true" />
+            {t('apps.view.stores', { size: fmt.size(storageUsage.bytes) })}
+          </span>
+        )}
         <span className="app-view-when">
           {t('apps.view.saved', { when: fmt.timeAgo(summary.createdAt) })}
         </span>
@@ -290,6 +372,15 @@ export function AppView({
         sites={network.pending}
         declared={declared}
         onDecide={handleDecision}
+      />
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        title={t('apps.clearData.title')}
+        description={t('apps.clearData.description')}
+        confirmLabel={t('apps.clearData.confirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onCancel={() => setClearConfirmOpen(false)}
+        onConfirm={() => void handleClearData()}
       />
     </section>
   );

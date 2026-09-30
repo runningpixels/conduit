@@ -40,6 +40,7 @@ const EXPECTED_TABLES: &[&str] = &[
     "workflow_permissions",
     "principal_grants",
     "apps",
+    "page_storage",
 ];
 
 #[tokio::test]
@@ -79,7 +80,7 @@ async fn all_tables_created_by_initial_migration() {
     // grants + 0019 conversation excluded documents + 0020 workflows
     // + 0021 workflow schedules + 0022 workflow permissions
     // + 0023 workflow run inputs + 0024 principal grants + 0025 apps
-    // + 0026 app starter id).
+    // + 0026 app starter id + 0027 page storage).
     let (public,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
         .fetch_one(&pool)
         .await
@@ -90,7 +91,7 @@ async fn all_tables_created_by_initial_migration() {
             .await
             .unwrap();
     assert_eq!(public, internal, "schema_migrations out of sync");
-    assert_eq!(public, 24, "expected all shipped migrations applied");
+    assert_eq!(public, 25, "expected all shipped migrations applied");
 }
 
 #[tokio::test]

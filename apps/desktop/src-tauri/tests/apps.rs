@@ -8,7 +8,7 @@ use conduit_desktop::db::repository::{
     apps::{self, AppMeta},
     artifact_network::{self as grants, Principal},
     artifacts::{self, ArtifactContent},
-    conversations,
+    conversations, page_storage,
 };
 use conduit_desktop::starter_apps;
 use provider_core::schema::{AppCategory, AppOrigin};
@@ -72,6 +72,7 @@ async fn an_app_outlives_its_chat_and_keeps_only_the_grants_the_user_chose() {
         &art,
         meta("Weather"),
         vec!["https://geocoding-api.open-meteo.com".to_string()],
+        false,
         &["https://api.open-meteo.com".to_string()],
     )
     .await
@@ -139,6 +140,7 @@ async fn keeping_a_host_the_page_was_never_granted_is_refused() {
         &art,
         meta("Weather"),
         vec![],
+        false,
         &["https://evil.example".to_string()],
     )
     .await;
@@ -174,6 +176,7 @@ async fn only_html_pages_become_apps() {
         &notes.id,
         meta("Notes"),
         vec![],
+        false,
         &[]
     )
     .await
@@ -187,9 +190,10 @@ async fn a_changed_source_offers_an_update_that_bumps_the_version() {
     let enc = common::setup_encryption();
     let conv = conversations::create(&pool, None).await.unwrap();
     let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
-    let app = apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], &[])
-        .await
-        .unwrap();
+    let app =
+        apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], false, &[])
+            .await
+            .unwrap();
     grants::grant(
         &pool,
         &Principal::app(&app.id),
@@ -219,6 +223,7 @@ async fn a_changed_source_offers_an_update_that_bumps_the_version() {
         &enc,
         &app.id,
         vec!["https://api.github.com".to_string()],
+        false,
     )
     .await
     .unwrap();
@@ -248,9 +253,10 @@ async fn editing_and_deleting_an_app() {
     let enc = common::setup_encryption();
     let conv = conversations::create(&pool, None).await.unwrap();
     let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
-    let app = apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], &[])
-        .await
-        .unwrap();
+    let app =
+        apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], false, &[])
+            .await
+            .unwrap();
     grants::grant(
         &pool,
         &Principal::app(&app.id),
@@ -348,4 +354,143 @@ async fn an_added_starter_follows_the_page_this_build_ships() {
         again.summary.version, "1.1.0",
         "an up-to-date copy is left alone"
     );
+}
+
+#[tokio::test]
+async fn saving_a_page_that_declares_storage_copies_it_and_the_app_keeps_it_after_the_chat_is_deleted(
+) {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
+    let page = Principal::artifact(&art);
+    page_storage::set(&pool, &enc, &page, "count", &serde_json::json!(1))
+        .await
+        .unwrap();
+
+    let app = apps::save_from_artifact(
+        &pool,
+        dir.path(),
+        &enc,
+        &art,
+        meta("Tracker"),
+        vec![],
+        true,
+        &[],
+    )
+    .await
+    .unwrap();
+    assert!(app.storage, "the manifest declares storage");
+
+    let app_p = Principal::app(&app.id);
+    assert_eq!(
+        page_storage::get(&pool, &enc, &app_p, "count")
+            .await
+            .unwrap(),
+        Some(serde_json::json!(1)),
+        "the app's storage starts as a copy of the page's"
+    );
+
+    conversations::delete(&pool, &conv.id).await.unwrap();
+    assert_eq!(
+        page_storage::get(&pool, &enc, &app_p, "count")
+            .await
+            .unwrap(),
+        Some(serde_json::json!(1)),
+        "the app's storage survives the chat"
+    );
+    assert_eq!(
+        page_storage::get(&pool, &enc, &page, "count")
+            .await
+            .unwrap(),
+        None,
+        "the artifact's storage went with the chat (the 0027 trigger)"
+    );
+}
+
+#[tokio::test]
+async fn a_page_that_does_not_declare_storage_copies_nothing() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
+    let page = Principal::artifact(&art);
+    page_storage::set(&pool, &enc, &page, "count", &serde_json::json!(1))
+        .await
+        .unwrap();
+
+    let app = apps::save_from_artifact(
+        &pool,
+        dir.path(),
+        &enc,
+        &art,
+        meta("Tracker"),
+        vec![],
+        false,
+        &[],
+    )
+    .await
+    .unwrap();
+    assert!(!app.storage, "the manifest doesn't declare storage");
+    assert_eq!(
+        page_storage::usage(&pool, &Principal::app(&app.id))
+            .await
+            .unwrap()
+            .keys,
+        0,
+        "nothing was copied"
+    );
+}
+
+#[tokio::test]
+async fn deleting_an_app_deletes_its_storage() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
+    let app = apps::save_from_artifact(&pool, dir.path(), &enc, &art, meta("W"), vec![], true, &[])
+        .await
+        .unwrap();
+    let app_p = Principal::app(&app.id);
+    page_storage::set(&pool, &enc, &app_p, "k", &serde_json::json!(1))
+        .await
+        .unwrap();
+
+    apps::delete(&pool, &app.id).await.unwrap();
+    assert_eq!(page_storage::usage(&pool, &app_p).await.unwrap().keys, 0);
+}
+
+#[tokio::test]
+async fn deleting_an_artifact_deletes_its_storage() {
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let enc = common::setup_encryption();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let art = html_artifact(&pool, dir.path(), &conv.id, PAGE_V1).await;
+    let page = Principal::artifact(&art);
+    page_storage::set(&pool, &enc, &page, "k", &serde_json::json!(1))
+        .await
+        .unwrap();
+
+    sqlx::query("DELETE FROM artifacts WHERE id = ?")
+        .bind(&art)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        page_storage::usage(&pool, &page).await.unwrap().keys,
+        0,
+        "the trigger clears the artifact's storage"
+    );
+}
+
+#[test]
+fn an_unknown_declared_capability_is_refused() {
+    assert!(apps::validate_capabilities(&["storage".to_string()]).unwrap());
+    assert!(!apps::validate_capabilities(&[]).unwrap());
+    let err = apps::validate_capabilities(&["flux-capacitor".to_string()]).unwrap_err();
+    assert!(err.starts_with("invalid:"), "{err}");
 }

@@ -12,20 +12,21 @@
 
 use provider_core::schema::{
     AccentOverride, AgentGuardrails, AppCapabilities, AppCategory, AppCreatedWith, AppDetail,
-    AppError, AppManifest, AppNetwork, AppOrigin, AppSettings, AppSummary, Artifact, ArtifactKind,
-    AskUserField, Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo,
-    BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
-    ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
-    ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
-    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
-    GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
-    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PermissionLevel,
-    PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
-    ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
-    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
-    StarterAppInfo, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
-    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation,
-    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
+    AppError, AppManifest, AppNetwork, AppOrigin, AppSettings, AppStorage, AppSummary, Artifact,
+    ArtifactKind, AskUserField, Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity,
+    BrandLogo, BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition,
+    ConnectorGrant, ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo,
+    ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation,
+    Conversation, ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls,
+    GrantScope, GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend,
+    Message, MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageStorageUsage,
+    PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent,
+    ProviderRequest, ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef,
+    ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
+    SettingsPatch, SkippedResource, StarterAppInfo, SupportState, TenantConfig, TenantIdentity,
+    Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport,
+    UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
+    WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -77,11 +78,13 @@ fn main() {
     AppCategory::export().expect("export AppCategory");
     AppOrigin::export().expect("export AppOrigin");
     AppNetwork::export().expect("export AppNetwork");
+    AppStorage::export().expect("export AppStorage");
     AppCapabilities::export().expect("export AppCapabilities");
     AppCreatedWith::export().expect("export AppCreatedWith");
     AppManifest::export().expect("export AppManifest");
     AppSummary::export().expect("export AppSummary");
     AppDetail::export().expect("export AppDetail");
+    PageStorageUsage::export().expect("export PageStorageUsage");
     StarterAppInfo::export().expect("export StarterAppInfo");
 
     // Attachments

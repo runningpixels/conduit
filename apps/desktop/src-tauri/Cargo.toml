@@ -153,6 +153,8 @@ async-trait = "0.1"
 # Already in the graph through tauri on Linux.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 gtk = "0.18"
+# For `ValueExt::to_str` on the script result; the version wry pins.
+javascriptcore-rs = "=1.1.2"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

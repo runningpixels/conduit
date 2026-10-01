@@ -714,6 +714,7 @@ dependencies = [
  "glob",
  "gtk",
  "infer 0.22.0",
+ "javascriptcore-rs",
  "keyring",
  "libsqlite3-sys",
  "mcp-runtime",

@@ -7,6 +7,7 @@
 //! whether this WebKitGTK exposes WebRTC at all when the setting is on.
 #![cfg(target_os = "linux")]
 
+use javascriptcore::ValueExt;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};

@@ -79,4 +79,9 @@ fn turning_webrtc_off_removes_rtc_peer_connection_from_every_frame() {
     let off = rtc_types(false);
     println!("WebKitGTK typeof RTCPeerConnection (page / child frame): on = {on}; off = {off}");
     assert_eq!(off, "undefined / undefined");
+    // WebKitGTK aborts the process when its objects are torn down at exit on
+    // libtest's worker thread (SIGABRT after the test has passed). The check
+    // is done, so leave before that teardown; a failed assert above still
+    // fails the run normally.
+    std::process::exit(0);
 }

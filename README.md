@@ -234,12 +234,12 @@ left is checking it on real installs before calling it final.
 
 ### Known issues
 
-- **macOS and Linux: a page can open a WebRTC connection.** A page's content
-  security policy doesn't cover WebRTC, so on macOS and Linux a page's script
-  could reach a host through STUN/TURN even when it has no network permission.
-  On Windows this is blocked in the webview itself; the macOS and Linux fixes
-  haven't been built and verified yet. Until they are, open HTML pages and apps
-  you got from someone else with care on those systems.
+- **macOS: a page can open a WebRTC connection.** A page's content security
+  policy doesn't cover WebRTC, so on macOS a page's script could reach a host
+  through STUN/TURN even when it has no network permission. Windows and Linux
+  block it in the webview itself; macOS has no webview setting for it, so there
+  only the page's own script removes it, which isn't a boundary. Open HTML
+  pages and apps you got from someone else with care on macOS.
 
 ## Building from source
 

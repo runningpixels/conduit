@@ -7,6 +7,58 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2026-10-01
+
+### Added
+
+- **App settings.** Every saved app has a **Settings** page (the gear in the
+  app's header, or ⋯ → Settings); the app keeps running behind it.
+  - **Model:** choose which model answers the app's *Main* and *Quick*
+    requests, or let them follow your active model. Only providers you've set
+    up are offered. Switching to a new provider asks for permission again.
+  - **Usage:** tokens per day for the last week, and a **daily limit for
+    cloud models** (100,000 tokens by default). Past it, the app's model
+    requests stop until midnight. Models on this computer are never limited.
+  - **Data:** what the app keeps, key by key, with **Export data** (a JSON
+    file) and **Clear data**.
+  - **Permissions:** the sites and model providers the app may use, each one
+    revocable.
+  - **Activity:** a week of one-line records of the app's model requests, site
+    requests and saved-data changes. Prompts, replies, addresses and saved
+    values are never recorded.
+- **Starter apps speak your language.** The eight starter apps show their text
+  in the interface language, with numbers, dates and currencies formatted to
+  match. The weather app's **Inputs** form is translated too.
+- **Apps can ask for a quick model.** A page may mark a request as quick
+  (short and cheap); it uses the app's *Quick* model.
+
+### Changed
+
+- **Byte sizes read naturally** ("100 bytes", was "100 byte").
+- **Unit converter** accepts either decimal mark (2,5 or 2.5) and writes
+  your language's own.
+- **Updated dependencies,** including Tauri 2.12, React 19.3, Mermaid 12 and
+  react-intl 12.
+
+### Fixed
+
+- **White-label branding on the new design.** The Branding form starts from
+  the current colours instead of the retired theme's; a brand's main colour
+  now reaches every accent (glows, tiles, hovers) instead of only some; and
+  turning branding on loads your `brand.md` into the form, while turning it
+  off no longer leaves the window branded.
+- **Word documents keep their special characters** ("R&D", "Café") when
+  added to Documents.
+
+### Security
+
+- **WebRTC is off in pages on Linux.** The webview now starts with WebKitGTK's
+  WebRTC setting off, so a page's script can't open a WebRTC connection. On
+  Ubuntu's WebKitGTK it was never available; this covers distributions whose
+  WebKitGTK includes it.
+- **Known issue: WebRTC on macOS.** Blocking WebRTC in pages still relies on
+  the page's own script on macOS, which has no webview setting for it.
+
 ## [1.0.0-rc.1] - 2026-09-30
 
 ### Added

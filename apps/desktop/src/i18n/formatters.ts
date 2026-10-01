@@ -92,7 +92,8 @@ export function formatSize(bytes: number | undefined, ctx: FormatContext, fallba
     unitDisplay: 'short',
     maximumFractionDigits: 1,
   };
-  if (bytes < 1024) return number(ctx.locale, { ...opts, unit: 'byte' }).format(bytes);
+  // Spelled out below 1 kB: the short form is "100 byte" in English.
+  if (bytes < 1024) return number(ctx.locale, { ...opts, unit: 'byte', unitDisplay: 'long' }).format(bytes);
   if (bytes < 1024 * 1024) {
     return number(ctx.locale, { ...opts, unit: 'kilobyte' }).format(bytes / 1024);
   }

@@ -65,10 +65,63 @@ pub async fn revoke(pool: &SqlitePool, principal: &Principal) -> Result<(), DbEr
     Ok(())
 }
 
+/// Every provider `principal` is always allowed to use: `(provider_id,
+/// granted_at)`, oldest first.
+pub async fn list_grants(
+    pool: &SqlitePool,
+    principal: &Principal,
+) -> Result<Vec<(String, String)>, DbError> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT target, granted_at FROM principal_grants \
+         WHERE principal = ? AND capability = ? ORDER BY granted_at, target",
+    )
+    .bind(principal.key())
+    .bind(LLM)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// Forget the stored grant for one provider, leaving the others.
+pub async fn revoke_provider(
+    pool: &SqlitePool,
+    principal: &Principal,
+    provider_id: &str,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "DELETE FROM principal_grants WHERE principal = ? AND capability = ? AND target = ?",
+    )
+    .bind(principal.key())
+    .bind(LLM)
+    .bind(provider_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn grants_list_and_revoke_per_provider() {
+        let pool = pool().await;
+        let p = Principal::app("g1");
+        grant(&pool, &p, "anthropic").await.unwrap();
+        grant(&pool, &p, "ollama").await.unwrap();
+        grant(&pool, &Principal::app("g2"), "openai").await.unwrap();
+        let listed = list_grants(&pool, &p).await.unwrap();
+        let ids: Vec<&str> = listed.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"anthropic") && ids.contains(&"ollama"));
+        revoke_provider(&pool, &p, "anthropic").await.unwrap();
+        assert!(!is_granted(&pool, &p, "anthropic").await.unwrap());
+        assert!(is_granted(&pool, &p, "ollama").await.unwrap());
+        assert!(is_granted(&pool, &Principal::app("g2"), "openai")
+            .await
+            .unwrap());
+    }
 
     async fn pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()

@@ -1493,6 +1493,11 @@ pub struct PageLlmRequest {
     /// itself.
     #[ts(optional)]
     pub json: Option<bool>,
+    /// Which of an app's model mappings answers; defaults to `default`.
+    /// Ignored for pages in a chat, which always use the active model.
+    #[serde(default)]
+    #[ts(optional)]
+    pub slot: Option<AppLlmSlot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1503,6 +1508,155 @@ pub struct PageLlmRequest {
 )]
 pub struct PageLlmReply {
     pub text: String,
+}
+
+// =============================================================================
+// App settings (per-app model slots, daily cap, activity)
+// =============================================================================
+
+/// Which of an app's two model mappings a page call uses. `quick` is for
+/// short, cheap calls; unset, it follows `default`, which follows the
+/// active model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_llm_slot.ts"
+)]
+pub enum AppLlmSlot {
+    Default,
+    Quick,
+}
+
+/// A specific provider and model an app's slot is mapped to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_model_choice.ts"
+)]
+pub struct AppModelChoice {
+    pub provider_id: String,
+    pub model: String,
+}
+
+/// An app's slot mappings; `None` follows the fallback (see [`AppLlmSlot`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_model_slots.ts"
+)]
+pub struct AppModelSlots {
+    pub default: Option<AppModelChoice>,
+    pub quick: Option<AppModelChoice>,
+}
+
+/// One local day of an app's model use.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_usage_day.ts"
+)]
+pub struct AppUsageDay {
+    /// `YYYY-MM-DD`, local time.
+    pub day: String,
+    #[ts(type = "number")]
+    pub input_tokens: u64,
+    #[ts(type = "number")]
+    pub output_tokens: u64,
+    pub calls: u32,
+}
+
+/// What the app settings page shows about models and usage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_settings_view.ts"
+)]
+pub struct AppSettingsView {
+    pub slots: AppModelSlots,
+    /// The user's own daily limit for cloud models; `None` uses the default.
+    #[ts(type = "number | null")]
+    pub daily_token_cap: Option<u64>,
+    #[ts(type = "number")]
+    pub default_daily_token_cap: u64,
+    /// Cloud-model tokens used today (local day), which count against the limit.
+    #[ts(type = "number")]
+    pub cloud_tokens_today: u64,
+    /// The last 7 local days, oldest first, days without use included.
+    pub usage: Vec<AppUsageDay>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_activity_kind.ts"
+)]
+pub enum AppActivityKind {
+    Model,
+    Fetch,
+    Storage,
+}
+
+/// One line of an app's activity log. Never carries prompts, replies, URL
+/// paths or stored values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_activity_entry.ts"
+)]
+pub struct AppActivityEntry {
+    /// RFC 3339. For a storage line, the day's latest write.
+    pub at: String,
+    pub kind: AppActivityKind,
+    pub ok: bool,
+    pub provider_id: Option<String>,
+    pub model: Option<String>,
+    #[ts(type = "number | null")]
+    pub input_tokens: Option<u64>,
+    #[ts(type = "number | null")]
+    pub output_tokens: Option<u64>,
+    /// The origin, e.g. `https://api.open-meteo.com`.
+    pub host: Option<String>,
+    pub method: Option<String>,
+    pub status: Option<u16>,
+    /// A bridge error code (`quota`, `not_granted`, …), never a message.
+    pub error: Option<String>,
+    /// 1, or the number of storage writes that day.
+    pub count: u32,
+}
+
+/// One stored key of a page or app, for the data viewer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/page_storage_entry.ts"
+)]
+pub struct PageStorageEntry {
+    pub key: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    pub updated_at: String,
+}
+
+/// A provider a page or app has been allowed to send prompts to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/page_llm_provider_grant.ts"
+)]
+pub struct PageLlmProviderGrant {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub is_local: bool,
+    pub created_at: String,
 }
 
 // =============================================================================

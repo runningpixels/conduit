@@ -56,7 +56,7 @@ describe('durations', () => {
 
 describe('sizes', () => {
   it('keeps English readable', () => {
-    expect(formatSize(512, en)).toBe('512 byte');
+    expect(formatSize(512, en)).toBe('512 bytes');
     expect(formatSize(4300, en)).toBe('4.2 kB');
     expect(formatSize(2_621_440, en)).toBe('2.5 MB');
   });

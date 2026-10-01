@@ -5,6 +5,7 @@
 //! and `tauri::generate_handler![...]` continue to resolve.
 
 pub mod app_inputs;
+pub mod app_settings;
 pub mod apps;
 pub mod artifact_frames;
 pub mod artifact_network;
@@ -23,6 +24,7 @@ pub mod tray;
 pub mod workflows;
 
 pub use app_inputs::*;
+pub use app_settings::*;
 pub use apps::*;
 pub use artifact_frames::*;
 pub use artifact_network::*;

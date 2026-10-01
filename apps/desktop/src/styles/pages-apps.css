@@ -186,6 +186,88 @@
 .app-view-dot[data-tone="net"] { background: var(--signal); }
 .app-view-dot[data-tone="warn"] { background: var(--warn); }
 
+/* ── App settings ─────────────────────────────────────────────────────── */
+.app-view-frame[hidden] { display: none; }
+.app-settings { flex: 1; min-height: 0; overflow: auto; }
+.app-settings-inner {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-5);
+}
+.app-settings-head { display: flex; align-items: center; gap: 12px; }
+.app-settings-title { margin: 0; font-size: var(--fs-6xl); font-weight: 700; letter-spacing: -.01em; outline: none; }
+.app-settings-section {
+  display: grid;
+  gap: 10px;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.app-settings-section h3 { margin: 0; font-size: var(--fs-4xl); font-weight: 700; }
+.app-settings-section h4 { margin: 6px 0 0; color: var(--ink-2); font-size: var(--fs-xl); font-weight: 600; }
+.app-settings-hint { margin: 0; color: var(--ink-3); font-size: var(--fs-md); }
+.app-settings-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); }
+.app-settings-summary { margin: 0; color: var(--ink); font-size: var(--fs-xl); }
+.app-settings-error { margin: 0; color: var(--err); font-size: var(--fs-xl); }
+.app-settings-list { display: grid; margin: 0; padding: 0; list-style: none; }
+.app-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--fs-xl);
+}
+.app-settings-row:last-child { border-bottom: 0; }
+.app-settings-key { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--fs-lg, var(--fs-xl)); }
+.app-settings-meta { flex: none; color: var(--ink-3); font-size: var(--fs-md); white-space: nowrap; }
+.app-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.app-settings-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.app-settings-actions .btn svg { width: 14px; height: 14px; }
+.app-settings-slot { display: grid; gap: 6px; }
+.app-settings-slot-name { color: var(--ink-2); font-size: var(--fs-xl); font-weight: 600; }
+.app-settings-slot-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.app-settings-slot-controls select,
+.app-settings-slot-controls input,
+.app-settings-cap-row input {
+  box-sizing: border-box;
+  height: 30px;
+  max-width: 100%;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+.app-settings-slot-controls select:focus-visible,
+.app-settings-slot-controls input:focus-visible,
+.app-settings-cap-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.app-settings-modelid { display: flex; gap: 8px; }
+.app-settings-meter { width: 100%; height: 8px; accent-color: var(--accent); }
+.app-settings-bars { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.app-settings-bar { display: grid; grid-template-columns: 64px 1fr 56px; align-items: center; gap: 10px; font-size: var(--fs-md); color: var(--ink-2); }
+.app-settings-bar-day { white-space: nowrap; }
+.app-settings-bar-track { height: 8px; border-radius: var(--r-round); background: var(--line-soft); overflow: hidden; }
+.app-settings-bar-fill { display: block; height: 100%; border-radius: var(--r-round); background: var(--accent); }
+.app-settings-bar-value { text-align: right; font-family: var(--font-mono); color: var(--ink-3); }
+.app-settings-cap { display: grid; gap: 6px; margin-top: 6px; }
+.app-settings-cap label { color: var(--ink-2); font-size: var(--fs-xl); font-weight: 600; }
+.app-settings-cap-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.app-settings-cap-row input { width: 140px; font-family: var(--font-mono); }
+.app-settings-activity .app-settings-row { gap: 8px; }
+.app-settings-when { flex: none; width: 76px; color: var(--ink-3); font-size: var(--fs-md); white-space: nowrap; }
+.app-settings-kind { flex: none; display: inline-flex; color: var(--ink-3); }
+.app-settings-kind svg { width: 14px; height: 14px; }
+.app-settings-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-settings-row[data-ok="false"] .app-settings-text { color: var(--err); }
+
 /* ── Save as app / edit ───────────────────────────────────────────────── */
 .app-details-overlay {
   position: fixed;

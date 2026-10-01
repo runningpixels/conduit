@@ -77,6 +77,15 @@ export type { PageLlmGrant } from './generated/page_llm_grant';
 export type { PageLlmState } from './generated/page_llm_state';
 export type { PageLlmRequest } from './generated/page_llm_request';
 export type { PageLlmReply } from './generated/page_llm_reply';
+export type { AppLlmSlot } from './generated/app_llm_slot';
+export type { AppModelChoice } from './generated/app_model_choice';
+export type { AppModelSlots } from './generated/app_model_slots';
+export type { AppUsageDay } from './generated/app_usage_day';
+export type { AppSettingsView } from './generated/app_settings_view';
+export type { AppActivityKind } from './generated/app_activity_kind';
+export type { AppActivityEntry } from './generated/app_activity_entry';
+export type { PageStorageEntry } from './generated/page_storage_entry';
+export type { PageLlmProviderGrant } from './generated/page_llm_provider_grant';
 
 // Attachments
 export type { RetentionState } from './generated/retention_state';

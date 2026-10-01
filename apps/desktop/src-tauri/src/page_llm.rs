@@ -575,6 +575,7 @@ mod tests {
             system: None,
             max_tokens: None,
             json: None,
+            slot: None,
         }
     }
 

@@ -20,6 +20,13 @@
 //!
 //! Passing browser arguments replaces wry's defaults, so they are repeated in
 //! [`BASE_ARGS`].
+//!
+//! Linux (WebKitGTK) has no browser arguments; [`disable_webrtc`] turns the
+//! engine's `enable-webrtc` setting off instead, which removes
+//! `RTCPeerConnection` from every frame of the webview. macOS (WKWebView) has
+//! no public switch: there, a page's own `RTCPeerConnection` is only removed
+//! by the script in its frame (`artifacts/webrtcBlock.ts`), which is not a
+//! boundary on its own.
 
 /// What wry passes by default (see `wry::WebViewBuilderExtWindows`), which
 /// setting our own arguments would otherwise drop.
@@ -57,6 +64,19 @@ fn bypass_rule(entry: &str) -> Option<String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
     host_ok.then_some(origin)
+}
+
+/// Linux: WebKitGTK's `enable-webrtc` (2.38+) off for the main webview, which
+/// hosts every artifact frame. Nothing in the app itself uses WebRTC. Media
+/// capture (`enable-media-stream`) is a separate setting and isn't touched.
+#[cfg(target_os = "linux")]
+pub fn disable_webrtc(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    window.with_webview(|webview| {
+        use webkit2gtk::{SettingsExt, WebViewExt};
+        if let Some(settings) = webview.inner().settings() {
+            settings.set_enable_webrtc(false);
+        }
+    })
 }
 
 #[cfg(test)]

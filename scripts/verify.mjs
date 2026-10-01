@@ -42,6 +42,11 @@ const STEPS = [
   },
   { ci: 'Rust tests', cmd: ['cargo', 'test', '--workspace'] },
   {
+    ci: 'WebKitGTK WebRTC switch (Linux)',
+    linuxOnly: true,
+    cmd: ['xvfb-run', '-a', 'cargo', 'test', '-p', 'conduit-desktop', '--test', 'webkit_webrtc_linux', '--', '--ignored', '--nocapture'],
+  },
+  {
     ci: 'Dependency audit (cargo-deny)',
     optionalTool: 'cargo-deny',
     cmd: ['cargo', 'deny', 'check', 'advisories', 'licenses', 'bans', 'sources'],
@@ -144,6 +149,11 @@ console.log(bold(`\nverify${fast ? ' --fast' : ''}: ${steps.length} step(s), in 
 
 const results = [];
 for (const step of steps) {
+  if (step.linuxOnly && process.platform !== 'linux') {
+    console.log(yellow(`- ${step.ci}: skipped (Linux only; CI runs it)`));
+    results.push([step.ci, 'skipped']);
+    continue;
+  }
   if (step.optionalTool && !hasTool(step.optionalTool)) {
     console.log(yellow(`- ${step.ci}: skipped (${step.optionalTool} isn't installed: cargo install ${step.optionalTool})`));
     results.push([step.ci, 'skipped']);

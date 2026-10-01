@@ -137,11 +137,24 @@ tauri-plugin-autostart = "~2.5"
 # Also used by in-crate tests, so it lives in `[dependencies]` (not dev-only).
 tempfile = "3"
 
+# Linux only: the WebKitGTK settings object, to turn WebRTC off in the main
+# webview (`webview_args::disable_webrtc`). Same crate and version tauri/wry
+# already link; `v2_38` exposes `set_enable_webrtc`.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "2.0", features = ["v2_38"] }
+
 [dev-dependencies]
 # The scripted provider adapter in tests/agent_turn.rs implements
 # `provider_core::ProviderAdapter`, an `#[async_trait]` trait. Already in the
 # graph through provider-core.
 async-trait = "0.1"
+
+# tests/webkit_webrtc_linux.rs initialises GTK for a bare WebKitGTK view.
+# Already in the graph through tauri on Linux.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gtk = "0.18"
+# For `ValueExt::to_str` on the script result; the version wry pins.
+javascriptcore-rs = "=1.1.2"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

@@ -15,13 +15,16 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-![Conduit in the Orange Charcoal theme, with a generated bakery logo open in the artifact panel](./docs/assets/screenshot-theme-orange-charcoal.png)
+![Conduit with a chat about a bakery and the live morning dashboard it built, open in the side panel](./docs/assets/screenshot-hero.png)
 
 Conduit is a desktop chat client for large language models, built on Tauri 2
 with a Rust core and a React renderer. You bring your own API key, talk to any
 of seventeen providers, and everything — conversations, attachments, artifacts —
 is stored locally in a SQLite database on your own disk, with optional
 encryption at rest. There is no Conduit account, no backend, and no telemetry.
+
+Pages the assistant builds can be kept as **apps** you open from the rail, and
+**workflows** run routines for you on a schedule.
 
 ## Why Conduit
 
@@ -45,10 +48,11 @@ encryption at rest. There is no Conduit account, no backend, and no telemetry.
   prompt.
 - **Artifacts that can't phone home without your say-so.** Model-generated
   HTML renders in a null-origin sandboxed iframe under a strict CSP with
-  `connect-src 'none'` and no Tauri bridge. A page that needs live data asks,
-  per site, before Conduit fetches it on the page's behalf — https only, no
-  cookies or credentials, never your local network, and never in local-only
-  mode. Text, code, JSON and Markdown render through React-escaped
+  `connect-src 'none'`, with no way to call the app's own commands. A page that
+  needs live data asks, per site, before Conduit fetches it on the page's
+  behalf — https only, no cookies or credentials, never your local network,
+  and never in local-only mode. A page that wants your AI model asks too, and
+  gets text in and text out: no tools, chat history, memory or documents. Text, code, JSON and Markdown render through React-escaped
   renderers with no `dangerouslySetInnerHTML` anywhere in the safe path.
 - **No telemetry.** Update checks are opt-in and send only
   `Conduit-Updater/<version>`. Checking is manual by default; background
@@ -75,7 +79,7 @@ Until you create a collection, nothing in the chat changes.
 
 On OpenAI, Gemini and OpenRouter, ask for a picture — "draw me a simple logo
 for a bakery" — and you get one, saved with the chat and shown in the artifact
-panel (the screenshot at the top). Images are stored locally, not linked from
+panel. Images are stored locally, not linked from
 the provider, so they do not vanish when a remote URL expires. Each image is
 billed, so Conduit asks once before the first one.
 
@@ -96,7 +100,48 @@ time keeps what it wrote and offers **Continue building**. Revisions change only
 the part that differs. The panel can be expanded (`Ctrl+Shift+E`) to take
 everything but a narrow chat column.
 
-![Artifact side panel showing TypeScript source alongside the conversation](./docs/assets/screenshot-artifacts.png)
+### Apps
+
+A good page shouldn't disappear when its chat scrolls away. **Save as app**
+(in the page's ⋯ menu) keeps a copy you open from **Apps** on the rail, or from
+**Your apps** on the new-chat screen — and it keeps working after you delete
+the chat. Saving asks which of the page's site permissions to keep, one by one;
+none carry over unless you tick them.
+
+![The Apps page: three of your apps, and the starter apps you can add](./docs/assets/screenshot-apps.png)
+
+Eight **starter apps** come built in — a Pomodoro timer, a unit converter,
+Snake, a memory game, a world-capitals quiz, a budget tracker, and a weather
+dashboard and a currency converter that use live data. Ideas on the new-chat
+screen that have one show **Open app**.
+
+Apps (and pages in a chat) can do three things a plain web page in a sandbox
+can't, each declared by the page and checked by Conduit:
+
+- **Keep data between launches** — a small store per app (up to 5 MB), kept
+  with the rest of your data and encrypted when encryption at rest is on. The app's status line shows how much it
+  keeps, and Clear data is one click away.
+- **Take settings** — a page declares a few inputs, like a city and units, and
+  Conduit draws the form. Changing them updates the running app without
+  reloading it.
+- **Ask your AI model** — after you allow it for that page. The prompt names
+  the provider and says plainly when text would leave your device; the page
+  gets an answer and nothing else.
+
+![The budget tracker app, with this month's spending by category and the entries](./docs/assets/screenshot-app-budget.png)
+
+![A page asking to use the AI model: the prompt names LM Studio and says it runs on this device](./docs/assets/screenshot-llm-consent.png)
+
+### Workflows
+
+**Workflows** run routines for you: fetch pages, search the web, have the model
+summarize, and save the result as a document. Start from a ready-made one — a
+morning briefing, a page summary, a topic watch — or build your own step by
+step, then run it now or on a schedule. Turning a schedule on first shows
+everything the workflow will be allowed to do on its own, for you to approve,
+and a run that needs more pauses and asks.
+
+![A morning-briefing workflow: its steps, the sites it reads, Run now and the schedule](./docs/assets/screenshot-workflows.png)
 
 ### MCP connectors
 
@@ -110,14 +155,14 @@ its tools. The prompt picker fills in the arguments a prompt declares and drops
 the result into the composer for you to edit; the resource picker attaches a
 document to the next message, checked before it reaches the model.
 
-![Two MCP tool calls, uuid and calculator, with their results shown inline](./docs/assets/screenshot-connectors.png)
-
 ### Appearance
 
 One design in two modes: dark, light, or following your system. You can pick
 the main colour — the accent on buttons, selection and the active item —
 separately for each mode in Settings → Appearance; a colour that would be
 hard to read is refused.
+
+![The Apps page in light mode](./docs/assets/screenshot-apps-light.png)
 
 ### Eight languages
 
@@ -135,9 +180,10 @@ follow it rather than the machine's region.
 - **First-run setup** starts with language, theme and text size, covers
   local-only mode, key storage, update checks and diagnostics, and ends on a
   review of what was configured.
-- **A side rail** — Chats, Ideas, Documents, Library (prompts and skills),
-  Connectors, Memory and Settings — so every feature has one place, with
-  icons only or icons and labels.
+- **A side rail** — Chats, Apps, Documents, Library (prompts and skills),
+  Workflows, Connectors, Memory and Settings — so every feature has one place.
+- **Ideas on the new-chat screen** — things to try, by category, that fill in
+  the prompt for you; your most recent apps sit above them.
 - **An inspector** beside the chat with the page, the turn's **Activity**
   (each tool call, search and site, with timings) and its **Sources**; the
   chat itself shows one line per turn instead of tool cards.
@@ -154,13 +200,13 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v0.1.0-rc.6 — pre-release.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.1 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
 
-This is a working application, not a prototype, but it is a release candidate
-rather than a 1.0. Expect rough edges.
+This is the release candidate for 1.0: everything below works, and what's
+left is checking it on real installs before calling it final.
 
 | Area | State |
 |---|---|
@@ -178,11 +224,22 @@ rather than a 1.0. Expect rough edges.
 | Knowledge base — document collections with hybrid retrieval and citations | Working |
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
-| Themes (nine built in) and user `.theme.md` themes | Working |
+| One design in dark and light, with a main-colour setting | Working |
+| Workflows — ready-made and custom, run now or on a schedule, with approval | Working |
+| Apps — save a page, eight starter apps, per-app storage, settings and model access | Working |
 | Interface in eight languages | Working |
 | Update/packaging pipeline, with opt-in automatic updates | Working — rc.6 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
+
+### Known issues
+
+- **macOS and Linux: a page can open a WebRTC connection.** A page's content
+  security policy doesn't cover WebRTC, so on macOS and Linux a page's script
+  could reach a host through STUN/TURN even when it has no network permission.
+  On Windows this is blocked in the webview itself; the macOS and Linux fixes
+  haven't been built and verified yet. Until they are, open HTML pages and apps
+  you got from someone else with care on those systems.
 
 ## Building from source
 

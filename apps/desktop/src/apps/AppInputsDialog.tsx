@@ -11,8 +11,8 @@
 
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
-import { useT } from '../i18n';
-import type { AppInput } from '../artifacts/networkHosts';
+import { useLocale, useT } from '../i18n';
+import { inputLabel, inputOptionLabel, type AppInput } from '../artifacts/networkHosts';
 import { setAppInputs } from '../ipc/client';
 
 export interface AppInputsDialogProps {
@@ -35,8 +35,10 @@ function AppInputControl({
   input,
   value,
   onChange,
+  locale,
 }: {
   input: AppInput;
+  locale: string;
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
@@ -66,7 +68,7 @@ function AppInputControl({
           <option value="" disabled hidden />
           {(input.options ?? []).map((option) => (
             <option key={option} value={option}>
-              {option}
+              {inputOptionLabel(input, option, locale)}
             </option>
           ))}
         </select>
@@ -82,6 +84,7 @@ function AppInputControl({
 
 export function AppInputsDialog({ appId, inputs, values, onClose, onSaved }: AppInputsDialogProps) {
   const t = useT();
+  const { locale } = useLocale();
   const titleId = useId();
   const dialogRef = useRef<HTMLFormElement>(null);
   const open = appId != null;
@@ -173,12 +176,12 @@ export function AppInputsDialog({ appId, inputs, values, onClose, onSaved }: App
         {inputs.map((input) => (
           <label key={input.id} className="app-field">
             <span className="app-field-label">
-              {input.label}
+              {inputLabel(input, locale)}
               {input.required && (
                 <span className="app-field-required">{' '}{t('apps.inputs.requiredMark')}</span>
               )}
             </span>
-            <AppInputControl input={input} value={draft[input.id]} onChange={(value) => setValue(input.id, value)} />
+            <AppInputControl input={input} locale={locale} value={draft[input.id]} onChange={(value) => setValue(input.id, value)} />
             {fieldErrors[input.id] && (
               <span className="app-inputs-field-error" role="alert">
                 {fieldErrors[input.id]}

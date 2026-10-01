@@ -51,7 +51,7 @@ import {
   useThemeRevision,
   type ResolvedTokens,
 } from '../themes/resolvedTokens';
-import { useT } from '../i18n';
+import { useLocale, useT } from '../i18n';
 import { markPlaceholdersInHtml } from '../chat/documentBuild';
 import {
   ARTIFACT_RUNTIME_ERROR_SCRIPT,
@@ -241,6 +241,11 @@ export const ARTIFACT_LINK_INTERCEPTOR_SCRIPT =
 export const ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT =
   '(function(){try{var w=window.chrome&&window.chrome.webview;if(w){w.postMessage=function(){};}}catch(e){}})();';
 
+/// The interface language a page sees as `<html lang>` (ADR-013's starter
+/// apps read it to pick their strings). Only a plain language tag is ever
+/// written into the attribute.
+const ARTIFACT_LANG_REGEX = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$/;
+
 export function assembleArtifactDoc(
   html: string,
   allowlist: string[],
@@ -250,6 +255,7 @@ export function assembleArtifactDoc(
   network = false,
   capabilities: string[] = [],
   inputs: Record<string, unknown> | null = null,
+  lang?: string,
 ): string {
   const csp = buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP;
   const tokensStyle = tokens && buildTokensArtifactStyle(tokens);
@@ -258,7 +264,7 @@ export function assembleArtifactDoc(
   const extra = styledPreview ? `<style>${styled}</style>` : '';
   const hasPageBridge = capabilities.length > 0 || inputs != null;
   return (
-    `<!doctype html><html data-theme="${colorScheme}"><head>` +
+    `<!doctype html><html data-theme="${colorScheme}"${lang && ARTIFACT_LANG_REGEX.test(lang) ? ` lang="${lang}"` : ''}><head>` +
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
@@ -280,6 +286,7 @@ export function HtmlArtifactRenderer({
   inputsRevision,
 }: HtmlArtifactRendererProps) {
   const t = useT();
+  const { locale } = useLocale();
   const themingKind = activeRendererTheming('iframe');
   // Neither the srcdoc's colours nor its own data-theme depend on React
   // props for a tokens-themed artifact, so nothing else forces a re-render
@@ -320,8 +327,9 @@ export function HtmlArtifactRenderer({
         hasNetwork,
         capabilities,
         bakedInputs,
+        locale,
       ),
-    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities, bakedInputs],
+    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities, bakedInputs, locale],
   );
   const frameSource = useArtifactFrameSource(srcdoc);
   const [loaded, setLoaded] = useState(false);

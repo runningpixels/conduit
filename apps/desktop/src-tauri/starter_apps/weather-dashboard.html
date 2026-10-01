@@ -1,7 +1,7 @@
 <meta name="conduit-network" content="https://geocoding-api.open-meteo.com — look up a city's coordinates">
 <meta name="conduit-network" content="https://api.open-meteo.com — fetch current weather and forecast">
 <script type="application/conduit-inputs+json">
-[{"id":"city","label":"City","type":"string","default":"Paris","required":true},{"id":"units","label":"Units","type":"enum","options":["metric","imperial"],"default":"metric"}]
+[{"id":"city","label":"City","type":"string","default":"Paris","required":true,"translations":{"de":{"label":"Stadt"},"es":{"label":"Ciudad"},"fr":{"label":"Ville"},"ja":{"label":"都市"},"ko":{"label":"도시"},"pt-BR":{"label":"Cidade"},"zh-CN":{"label":"城市"}}},{"id":"units","label":"Units","type":"enum","options":["metric","imperial"],"default":"metric","translations":{"de":{"label":"Einheiten","options":{"metric":"Metrisch","imperial":"Imperial"}},"es":{"label":"Unidades","options":{"metric":"Métrico","imperial":"Imperial"}},"fr":{"label":"Unités","options":{"metric":"Métrique","imperial":"Impérial"}},"ja":{"label":"単位","options":{"metric":"メートル法","imperial":"ヤード・ポンド法"}},"ko":{"label":"단위","options":{"metric":"미터법","imperial":"야드파운드법"}},"pt-BR":{"label":"Unidades","options":{"metric":"Métrico","imperial":"Imperial"}},"zh-CN":{"label":"单位","options":{"metric":"公制","imperial":"英制"}}}}]
 </script>
 <style>
   html[data-theme="dark"], html:not([data-theme]) {
@@ -263,17 +263,17 @@
 </style>
 <div class="wx-app">
   <div class="wx-header">
-    <h1>Weather Dashboard</h1>
-    <div class="unit-toggle" role="group" aria-label="Temperature unit">
+    <h1 data-i18n="title">Weather Dashboard</h1>
+    <div class="unit-toggle" role="group" aria-label="Temperature unit" data-i18n-aria="unit">
       <button type="button" id="unitCBtn" class="active" aria-pressed="true">&deg;C</button>
       <button type="button" id="unitFBtn" aria-pressed="false">&deg;F</button>
     </div>
   </div>
 
   <form id="searchForm" class="search-row">
-    <label for="cityInput" class="visually-hidden">City name</label>
-    <input type="text" id="cityInput" placeholder="Search for a city&hellip;" autocomplete="off">
-    <button type="submit">Search</button>
+    <label for="cityInput" class="visually-hidden" data-i18n="city">City name</label>
+    <input type="text" id="cityInput" placeholder="Search for a city&hellip;" data-i18n-placeholder="ph" autocomplete="off">
+    <button type="submit" data-i18n="go">Search</button>
   </form>
 
   <p class="location-label" id="locationLabel">Showing weather for: Paris, France</p>
@@ -281,19 +281,145 @@
   <div class="live-region" aria-live="polite">
     <div class="error-box" id="errorBox" hidden role="alert">
       <span id="errorText"></span>
-      <button type="button" id="retryBtn">Retry</button>
+      <button type="button" id="retryBtn" data-i18n="retry">Retry</button>
     </div>
     <div class="current-card" id="currentWeather"></div>
   </div>
 
   <div class="forecast-section" id="forecastSection">
-    <h2>7-Day Forecast</h2>
+    <h2 data-i18n="fc">7-Day Forecast</h2>
     <div class="forecast-row" id="forecastRow"></div>
   </div>
 </div>
 <script>
 (function () {
   "use strict";
+
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      title: "Weather Dashboard", unit: "Temperature unit", city: "City name", ph: "Search for a city…", go: "Search",
+      place: "Showing weather for: {place}", retry: "Retry", fc: "7-Day Forecast", load: "Loading weather…", unk: "Unknown conditions",
+      eW: "We couldn't load the weather right now. This can happen if the network request failed or permission to reach the weather service was not granted.",
+      eG: "We couldn't search for that city right now. This can happen if the network request failed or permission to reach the geocoding service was not granted.",
+      eNF: "City not found: we couldn’t find \"{city}\". Try a different spelling or a nearby larger city.",
+      w0: "Clear sky", w1: "Mainly clear", w2: "Partly cloudy", w3: "Overcast", w45: "Fog", w48: "Depositing rime fog",
+      w51: "Light drizzle", w53: "Moderate drizzle", w55: "Dense drizzle", w56: "Light freezing drizzle", w57: "Dense freezing drizzle",
+      w61: "Slight rain", w63: "Moderate rain", w65: "Heavy rain", w66: "Light freezing rain", w67: "Heavy freezing rain",
+      w71: "Slight snow fall", w73: "Moderate snow fall", w75: "Heavy snow fall", w77: "Snow grains",
+      w80: "Slight rain showers", w81: "Moderate rain showers", w82: "Violent rain showers", w85: "Slight snow showers", w86: "Heavy snow showers",
+      w95: "Thunderstorm", w96: "Thunderstorm with slight hail", w99: "Thunderstorm with heavy hail"
+    },
+    de: {
+      title: "Wetter-Dashboard", unit: "Temperatureinheit", city: "Name der Stadt", ph: "Stadt suchen…", go: "Suchen",
+      place: "Wetter für: {place}", retry: "Erneut versuchen", fc: "7-Tage-Vorhersage", load: "Wetter wird geladen…", unk: "Wetterlage unbekannt",
+      eW: "Das Wetter konnte gerade nicht geladen werden. Möglicherweise ist die Netzwerkanfrage fehlgeschlagen oder der Zugriff auf den Wetterdienst wurde nicht erlaubt.",
+      eG: "Die Suche nach dieser Stadt war gerade nicht möglich. Möglicherweise ist die Netzwerkanfrage fehlgeschlagen oder der Zugriff auf den Geocoding-Dienst wurde nicht erlaubt.",
+      eNF: "Stadt nicht gefunden: „{city}“ wurde nicht gefunden. Versuche es mit einer anderen Schreibweise oder einer größeren Stadt in der Nähe.",
+      w0: "Klarer Himmel", w1: "Überwiegend klar", w2: "Teilweise bewölkt", w3: "Bedeckt", w45: "Nebel", w48: "Reifnebel",
+      w51: "Leichter Nieselregen", w53: "Mäßiger Nieselregen", w55: "Starker Nieselregen", w56: "Leichter gefrierender Nieselregen", w57: "Starker gefrierender Nieselregen",
+      w61: "Leichter Regen", w63: "Mäßiger Regen", w65: "Starker Regen", w66: "Leichter Eisregen", w67: "Starker Eisregen",
+      w71: "Leichter Schneefall", w73: "Mäßiger Schneefall", w75: "Starker Schneefall", w77: "Schneegriesel",
+      w80: "Leichte Regenschauer", w81: "Mäßige Regenschauer", w82: "Heftige Regenschauer", w85: "Leichte Schneeschauer", w86: "Starke Schneeschauer",
+      w95: "Gewitter", w96: "Gewitter mit leichtem Hagel", w99: "Gewitter mit starkem Hagel"
+    },
+    es: {
+      title: "Panel del tiempo", unit: "Unidad de temperatura", city: "Nombre de la ciudad", ph: "Buscar una ciudad…", go: "Buscar",
+      place: "Mostrando el tiempo en: {place}", retry: "Reintentar", fc: "Previsión a 7 días", load: "Cargando el tiempo…", unk: "Condiciones desconocidas",
+      eW: "No se pudo cargar el tiempo en este momento. Puede ocurrir si falló la solicitud de red o si no se concedió permiso para acceder al servicio meteorológico.",
+      eG: "No se pudo buscar esa ciudad en este momento. Puede ocurrir si falló la solicitud de red o si no se concedió permiso para acceder al servicio de geocodificación.",
+      eNF: "Ciudad no encontrada: no se encontró «{city}». Prueba con otra ortografía o con una ciudad cercana más grande.",
+      w0: "Cielo despejado", w1: "Mayormente despejado", w2: "Parcialmente nublado", w3: "Nublado", w45: "Niebla", w48: "Niebla con escarcha",
+      w51: "Llovizna ligera", w53: "Llovizna moderada", w55: "Llovizna densa", w56: "Llovizna helada ligera", w57: "Llovizna helada densa",
+      w61: "Lluvia ligera", w63: "Lluvia moderada", w65: "Lluvia intensa", w66: "Lluvia helada ligera", w67: "Lluvia helada intensa",
+      w71: "Nevada ligera", w73: "Nevada moderada", w75: "Nevada intensa", w77: "Granos de nieve",
+      w80: "Chubascos ligeros", w81: "Chubascos moderados", w82: "Chubascos violentos", w85: "Chubascos de nieve ligeros", w86: "Chubascos de nieve intensos",
+      w95: "Tormenta", w96: "Tormenta con granizo ligero", w99: "Tormenta con granizo fuerte"
+    },
+    fr: {
+      title: "Tableau météo", unit: "Unité de température", city: "Nom de la ville", ph: "Rechercher une ville…", go: "Rechercher",
+      place: "Météo affichée pour : {place}", retry: "Réessayer", fc: "Prévisions à 7 jours", load: "Chargement de la météo…", unk: "Conditions inconnues",
+      eW: "Impossible de charger la météo pour le moment. Cela peut arriver si la requête réseau a échoué ou si l’autorisation d’accéder au service météo n’a pas été accordée.",
+      eG: "Impossible de rechercher cette ville pour le moment. Cela peut arriver si la requête réseau a échoué ou si l’autorisation d’accéder au service de géocodage n’a pas été accordée.",
+      eNF: "Ville introuvable : « {city} » est introuvable. Essayez une autre orthographe ou une grande ville voisine.",
+      w0: "Ciel dégagé", w1: "Plutôt dégagé", w2: "Partiellement nuageux", w3: "Couvert", w45: "Brouillard", w48: "Brouillard givrant",
+      w51: "Bruine légère", w53: "Bruine modérée", w55: "Bruine dense", w56: "Bruine verglaçante légère", w57: "Bruine verglaçante dense",
+      w61: "Pluie faible", w63: "Pluie modérée", w65: "Forte pluie", w66: "Pluie verglaçante faible", w67: "Forte pluie verglaçante",
+      w71: "Faible chute de neige", w73: "Chute de neige modérée", w75: "Forte chute de neige", w77: "Grains de neige",
+      w80: "Averses de pluie faibles", w81: "Averses de pluie modérées", w82: "Averses de pluie violentes", w85: "Averses de neige faibles", w86: "Fortes averses de neige",
+      w95: "Orage", w96: "Orage avec grêle faible", w99: "Orage avec forte grêle"
+    },
+    ja: {
+      title: "天気ダッシュボード", unit: "温度の単位", city: "都市名", ph: "都市を検索…", go: "検索",
+      place: "{place}の天気を表示中", retry: "再試行", fc: "7日間の予報", load: "天気を読み込み中…", unk: "天候不明",
+      eW: "現在、天気を読み込めませんでした。ネットワークリクエストが失敗したか、天気サービスへのアクセスが許可されていない可能性があります。",
+      eG: "現在、その都市を検索できませんでした。ネットワークリクエストが失敗したか、ジオコーディングサービスへのアクセスが許可されていない可能性があります。",
+      eNF: "都市が見つかりません: 「{city}」は見つかりませんでした。別の表記を試すか、近くの大きな都市を指定してください。",
+      w0: "快晴", w1: "おおむね晴れ", w2: "一部曇り", w3: "曇り", w45: "霧", w48: "霧氷を伴う霧",
+      w51: "弱い霧雨", w53: "並の霧雨", w55: "強い霧雨", w56: "弱い着氷性の霧雨", w57: "強い着氷性の霧雨",
+      w61: "弱い雨", w63: "並の雨", w65: "強い雨", w66: "弱い着氷性の雨", w67: "強い着氷性の雨",
+      w71: "弱い雪", w73: "並の雪", w75: "強い雪", w77: "霧雪",
+      w80: "弱いにわか雨", w81: "並のにわか雨", w82: "激しいにわか雨", w85: "弱いにわか雪", w86: "強いにわか雪",
+      w95: "雷雨", w96: "弱い雹を伴う雷雨", w99: "強い雹を伴う雷雨"
+    },
+    ko: {
+      title: "날씨 대시보드", unit: "온도 단위", city: "도시 이름", ph: "도시 검색…", go: "검색",
+      place: "{place}의 날씨를 표시하는 중", retry: "다시 시도", fc: "7일 예보", load: "날씨를 불러오는 중…", unk: "알 수 없는 날씨",
+      eW: "지금은 날씨를 불러올 수 없습니다. 네트워크 요청이 실패했거나 날씨 서비스에 접근할 권한이 허용되지 않았을 수 있습니다.",
+      eG: "지금은 해당 도시를 검색할 수 없습니다. 네트워크 요청이 실패했거나 지오코딩 서비스에 접근할 권한이 허용되지 않았을 수 있습니다.",
+      eNF: "도시를 찾을 수 없음: \"{city}\"을(를) 찾을 수 없습니다. 철자를 바꾸거나 근처의 더 큰 도시를 입력해 보세요.",
+      w0: "맑음", w1: "대체로 맑음", w2: "구름 조금", w3: "흐림", w45: "안개", w48: "서리 안개",
+      w51: "약한 이슬비", w53: "보통 이슬비", w55: "강한 이슬비", w56: "약한 어는 이슬비", w57: "강한 어는 이슬비",
+      w61: "약한 비", w63: "보통 비", w65: "강한 비", w66: "약한 어는 비", w67: "강한 어는 비",
+      w71: "약한 눈", w73: "보통 눈", w75: "강한 눈", w77: "싸락눈",
+      w80: "약한 소나기", w81: "보통 소나기", w82: "매우 강한 소나기", w85: "약한 소낙눈", w86: "강한 소낙눈",
+      w95: "뇌우", w96: "약한 우박을 동반한 뇌우", w99: "강한 우박을 동반한 뇌우"
+    },
+    "pt-BR": {
+      title: "Painel do tempo", unit: "Unidade de temperatura", city: "Nome da cidade", ph: "Buscar uma cidade…", go: "Buscar",
+      place: "Mostrando o tempo em: {place}", retry: "Tentar novamente", fc: "Previsão de 7 dias", load: "Carregando o tempo…", unk: "Condições desconhecidas",
+      eW: "Não foi possível carregar o tempo agora. Isso pode acontecer se a solicitação de rede falhou ou se a permissão para acessar o serviço de meteorologia não foi concedida.",
+      eG: "Não foi possível buscar essa cidade agora. Isso pode acontecer se a solicitação de rede falhou ou se a permissão para acessar o serviço de geocodificação não foi concedida.",
+      eNF: "Cidade não encontrada: não foi possível encontrar \"{city}\". Tente outra grafia ou uma cidade maior por perto.",
+      w0: "Céu limpo", w1: "Predominantemente limpo", w2: "Parcialmente nublado", w3: "Nublado", w45: "Nevoeiro", w48: "Nevoeiro com geada",
+      w51: "Garoa fraca", w53: "Garoa moderada", w55: "Garoa forte", w56: "Garoa congelante fraca", w57: "Garoa congelante forte",
+      w61: "Chuva fraca", w63: "Chuva moderada", w65: "Chuva forte", w66: "Chuva congelante fraca", w67: "Chuva congelante forte",
+      w71: "Neve fraca", w73: "Neve moderada", w75: "Neve forte", w77: "Grãos de neve",
+      w80: "Pancadas de chuva fracas", w81: "Pancadas de chuva moderadas", w82: "Pancadas de chuva violentas", w85: "Pancadas de neve fracas", w86: "Pancadas de neve fortes",
+      w95: "Tempestade", w96: "Tempestade com granizo fraco", w99: "Tempestade com granizo forte"
+    },
+    "zh-CN": {
+      title: "天气面板", unit: "温度单位", city: "城市名称", ph: "搜索城市…", go: "搜索",
+      place: "当前显示天气：{place}", retry: "重试", fc: "7 天预报", load: "正在加载天气…", unk: "天气状况未知",
+      eW: "暂时无法加载天气。可能是网络请求失败，或未获得访问天气服务的权限。",
+      eG: "暂时无法搜索该城市。可能是网络请求失败，或未获得访问地理编码服务的权限。",
+      eNF: "未找到城市：找不到“{city}”。请尝试其他拼写，或改用附近较大的城市。",
+      w0: "晴朗", w1: "大部晴朗", w2: "局部多云", w3: "阴", w45: "雾", w48: "雾凇",
+      w51: "小毛毛雨", w53: "中毛毛雨", w55: "大毛毛雨", w56: "小冻毛毛雨", w57: "大冻毛毛雨",
+      w61: "小雨", w63: "中雨", w65: "大雨", w66: "小冻雨", w67: "大冻雨",
+      w71: "小雪", w73: "中雪", w75: "大雪", w77: "米雪",
+      w80: "小阵雨", w81: "中阵雨", w82: "强阵雨", w85: "小阵雪", w86: "大阵雪",
+      w95: "雷暴", w96: "雷暴伴小冰雹", w99: "雷暴伴大冰雹"
+    }
+  };
+  var L = STRINGS.hasOwnProperty(LANG) ? STRINGS[LANG] : (STRINGS.hasOwnProperty(LANG.split('-')[0]) ? STRINGS[LANG.split('-')[0]] : STRINGS.en);
+  function t(key, vars) {
+    var s = L.hasOwnProperty(key) ? L[key] : STRINGS.en[key];
+    return s.replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] !== undefined ? vars[k] : m; });
+  }
+  function applyI18n() {
+    var attrs = { "data-i18n": "", "data-i18n-aria": "aria-label", "data-i18n-placeholder": "placeholder", "data-i18n-title": "title" };
+    Object.keys(attrs).forEach(function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll("[" + a + "]"), function (el) {
+        var v = t(el.getAttribute(a));
+        if (attrs[a]) el.setAttribute(attrs[a], v); else el.textContent = v;
+      });
+    });
+  }
+  function fmtInt(n) {
+    try { return new Intl.NumberFormat(LANG, { maximumFractionDigits: 0 }).format(n); }
+    catch (e) { return new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(n); }
+  }
 
   var DEFAULT_CITY = "Paris", DEFAULT_UNITS = "metric";
 
@@ -308,37 +434,6 @@
     var units = inputs.units === "imperial" ? "imperial" : DEFAULT_UNITS;
     return { city: city, units: units };
   }
-
-  var WMO_TEXT = {
-    0: "Clear sky",
-    1: "Mainly clear",
-    2: "Partly cloudy",
-    3: "Overcast",
-    45: "Fog",
-    48: "Depositing rime fog",
-    51: "Light drizzle",
-    53: "Moderate drizzle",
-    55: "Dense drizzle",
-    56: "Light freezing drizzle",
-    57: "Dense freezing drizzle",
-    61: "Slight rain",
-    63: "Moderate rain",
-    65: "Heavy rain",
-    66: "Light freezing rain",
-    67: "Heavy freezing rain",
-    71: "Slight snow fall",
-    73: "Moderate snow fall",
-    75: "Heavy snow fall",
-    77: "Snow grains",
-    80: "Slight rain showers",
-    81: "Moderate rain showers",
-    82: "Violent rain showers",
-    85: "Slight snow showers",
-    86: "Heavy snow showers",
-    95: "Thunderstorm",
-    96: "Thunderstorm with slight hail",
-    99: "Thunderstorm with heavy hail"
-  };
 
   var ICON_KEY_MAP = {
     0: "clear",
@@ -418,8 +513,8 @@
   }
 
   function wmoText(code) {
-    if (Object.prototype.hasOwnProperty.call(WMO_TEXT, code)) return WMO_TEXT[code];
-    return "Unknown conditions";
+    if (Object.prototype.hasOwnProperty.call(ICON_KEY_MAP, code)) return t("w" + code);
+    return t("unk");
   }
 
   function wmoIconKey(code) {
@@ -434,7 +529,8 @@
   function dayName(dateStr) {
     var parts = dateStr.split("-").map(Number);
     var dt = new Date(parts[0], parts[1] - 1, parts[2]);
-    return dt.toLocaleDateString("en-US", { weekday: "short" });
+    try { return new Intl.DateTimeFormat(LANG, { weekday: "short" }).format(dt); }
+    catch (e) { return new Intl.DateTimeFormat("en", { weekday: "short" }).format(dt); }
   }
 
   var state = {
@@ -457,7 +553,7 @@
   function formatTemp(c) {
     if (c === null || c === undefined || isNaN(c)) return "--";
     var val = state.unit === "C" ? c : celsiusToF(c);
-    return Math.round(val) + "°" + state.unit;
+    return fmtInt(Math.round(val) + 0) + "°" + state.unit;
   }
 
   function hideError() {
@@ -482,7 +578,7 @@
   function showLoading() {
     setDataVisible(true);
     currentWeatherEl.innerHTML =
-      '<div class="loading"><span class="spinner"></span><span>Loading weather&hellip;</span></div>';
+      '<div class="loading"><span class="spinner"></span><span>' + t("load") + '</span></div>';
     forecastRowEl.innerHTML = "";
   }
 
@@ -547,14 +643,14 @@
           code: data.daily.weather_code[i]
         };
       });
-      locationLabelEl.textContent = "Showing weather for: " + label;
+      locationLabelEl.textContent = t("place", { place: label });
       hideError();
       renderCurrent();
       renderForecast();
     }).catch(function () {
       restorePrevious();
       showError(
-        "We couldn't load the weather right now. This can happen if the network request failed or permission to reach the weather service was not granted.",
+        t("eW"),
         function () { fetchWeather(lat, lon, label); }
       );
     });
@@ -571,7 +667,7 @@
       if (!data.results || data.results.length === 0) {
         restorePrevious();
         showError(
-          'City not found: we couldn’t find "' + city + '". Try a different spelling or a nearby larger city.',
+          t("eNF", { city: city }),
           function () { geocodeAndFetch(city); }
         );
         return;
@@ -582,7 +678,7 @@
     }).catch(function () {
       restorePrevious();
       showError(
-        "We couldn't search for that city right now. This can happen if the network request failed or permission to reach the geocoding service was not granted.",
+        t("eG"),
         function () { geocodeAndFetch(city); }
       );
     });
@@ -615,12 +711,13 @@
   function applyInputs() {
     var inputs = readInputs();
     setUnit(inputs.units === "imperial" ? "F" : "C");
-    locationLabelEl.textContent = "Showing weather for: " + inputs.city;
+    locationLabelEl.textContent = t("place", { place: inputs.city });
     geocodeAndFetch(inputs.city);
   }
 
   window.addEventListener("conduit:inputs-changed", applyInputs);
 
+  applyI18n();
   applyInputs();
 })();
 </script>

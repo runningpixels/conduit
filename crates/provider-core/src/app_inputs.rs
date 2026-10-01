@@ -106,6 +106,77 @@ pub fn validate_declaration(inputs: &[AppInput]) -> Result<(), String> {
             validate_value(input, default)
                 .map_err(|e| format!("{:?}'s default is invalid: {e}", input.id))?;
         }
+        if let Some(translations) = &input.translations {
+            validate_translations(input, translations)?;
+        }
+    }
+    Ok(())
+}
+
+/// A declaration may translate each input into at most this many languages.
+pub const MAX_TRANSLATIONS: usize = 16;
+
+/// `en`, `pt-BR`, `zh-Hant-TW`: a 2-3 letter language and up to two 2-8
+/// character subtags. A key into display text, never into markup.
+fn valid_language_tag(tag: &str) -> bool {
+    let mut parts = tag.split('-');
+    let lang_ok = parts
+        .next()
+        .is_some_and(|l| (2..=3).contains(&l.len()) && l.chars().all(|c| c.is_ascii_alphabetic()));
+    let rest: Vec<&str> = parts.collect();
+    lang_ok
+        && rest.len() <= 2
+        && rest
+            .iter()
+            .all(|p| (2..=8).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphanumeric()))
+}
+
+/// Translations follow the same limits as what they translate: a label like
+/// `label`, option names like `options` and only for options the input
+/// declares (so only on an `enum`).
+fn validate_translations(
+    input: &AppInput,
+    translations: &std::collections::BTreeMap<String, crate::schema::AppInputTranslation>,
+) -> Result<(), String> {
+    if translations.len() > MAX_TRANSLATIONS {
+        return Err(format!(
+            "{:?} can be translated into at most {MAX_TRANSLATIONS} languages.",
+            input.id
+        ));
+    }
+    for (tag, translation) in translations {
+        if !valid_language_tag(tag) {
+            return Err(format!(
+                "{:?} has a translation under {tag:?}, which isn't a language tag.",
+                input.id
+            ));
+        }
+        if let Some(label) = &translation.label {
+            if !valid_label(label) {
+                return Err(format!(
+                    "{:?}'s {tag} label must be 1-{MAX_LABEL_CHARS} characters.",
+                    input.id
+                ));
+            }
+        }
+        if let Some(names) = &translation.options {
+            let declared = input.options.as_deref().unwrap_or_default();
+            for (value, name) in names {
+                if !declared.iter().any(|o| o == value) {
+                    return Err(format!(
+                        "{:?}'s {tag} translation names {value:?}, which isn't one of its options.",
+                        input.id
+                    ));
+                }
+                let trimmed = name.trim();
+                if trimmed.is_empty() || trimmed.chars().count() > MAX_OPTION_CHARS {
+                    return Err(format!(
+                        "{:?}'s {tag} option names must each be 1-{MAX_OPTION_CHARS} characters.",
+                        input.id
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -212,6 +283,7 @@ mod tests {
             required: false,
             default: None,
             options: None,
+            translations: None,
         }
     }
 
@@ -223,6 +295,7 @@ mod tests {
             required: false,
             default: None,
             options: Some(options.iter().map(|s| s.to_string()).collect()),
+            translations: None,
         }
     }
 
@@ -270,6 +343,7 @@ mod tests {
 
         let missing_options = AppInput {
             options: None,
+            translations: None,
             ..enum_input(&["metric"])
         };
         assert!(validate_declaration(&[missing_options]).is_err());
@@ -399,5 +473,115 @@ mod tests {
         let mut optional = string_input("note");
         optional.required = false;
         assert!(!is_missing(&optional, None), "optional is never missing");
+    }
+
+    fn translated(
+        input: AppInput,
+        tag: &str,
+        label: Option<&str>,
+        options: &[(&str, &str)],
+    ) -> AppInput {
+        let translation = crate::schema::AppInputTranslation {
+            label: label.map(str::to_string),
+            options: if options.is_empty() {
+                None
+            } else {
+                Some(
+                    options
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                )
+            },
+        };
+        AppInput {
+            translations: Some([(tag.to_string(), translation)].into_iter().collect()),
+            ..input
+        }
+    }
+
+    #[test]
+    fn translations_of_label_and_options_are_accepted() {
+        let units = translated(
+            enum_input(&["metric", "imperial"]),
+            "pt-BR",
+            Some("Unidades"),
+            &[("metric", "Métrico"), ("imperial", "Imperial")],
+        );
+        assert!(validate_declaration(&[units]).is_ok());
+        let city = translated(string_input("city"), "ja", Some("都市"), &[]);
+        assert!(validate_declaration(&[city]).is_ok());
+    }
+
+    #[test]
+    fn translation_keys_must_be_language_tags() {
+        for tag in ["en", "pt-BR", "zh-Hant-TW", "fil"] {
+            assert!(valid_language_tag(tag), "{tag}");
+        }
+        for tag in ["", "e", "english", "pt_BR", "pt-", "a-b-c-d", "<x>"] {
+            assert!(!valid_language_tag(tag), "{tag}");
+        }
+        let bad = translated(string_input("city"), "pt_BR", Some("Cidade"), &[]);
+        assert!(validate_declaration(&[bad]).is_err());
+    }
+
+    #[test]
+    fn translated_labels_follow_label_limits() {
+        let blank = translated(string_input("city"), "de", Some("  "), &[]);
+        assert!(validate_declaration(&[blank]).is_err());
+        let long = "x".repeat(MAX_LABEL_CHARS + 1);
+        let long = translated(string_input("city"), "de", Some(&long), &[]);
+        assert!(validate_declaration(&[long]).is_err());
+    }
+
+    #[test]
+    fn option_names_only_for_declared_options() {
+        let unknown = translated(enum_input(&["metric"]), "de", None, &[("kelvin", "Kelvin")]);
+        assert!(validate_declaration(&[unknown]).is_err());
+        let not_enum = translated(string_input("city"), "de", None, &[("x", "y")]);
+        assert!(validate_declaration(&[not_enum]).is_err());
+        let blank = translated(enum_input(&["metric"]), "de", None, &[("metric", " ")]);
+        assert!(validate_declaration(&[blank]).is_err());
+    }
+
+    #[test]
+    fn at_most_sixteen_translations() {
+        let tags: Vec<String> = (0..=MAX_TRANSLATIONS)
+            .map(|i| format!("x{}", (b'a' + i as u8) as char))
+            .collect();
+        let mut input = string_input("city");
+        input.translations = Some(
+            tags.iter()
+                .map(|t| {
+                    (
+                        t.clone(),
+                        crate::schema::AppInputTranslation {
+                            label: Some("L".into()),
+                            options: None,
+                        },
+                    )
+                })
+                .collect(),
+        );
+        assert!(validate_declaration(std::slice::from_ref(&input)).is_err());
+        input.translations.as_mut().unwrap().pop_first();
+        assert!(validate_declaration(&[input]).is_ok());
+    }
+
+    #[test]
+    fn translations_round_trip_and_are_omitted_when_absent() {
+        let units = translated(
+            enum_input(&["metric"]),
+            "de",
+            Some("Einheiten"),
+            &[("metric", "Metrisch")],
+        );
+        let json = serde_json::to_value(&units).unwrap();
+        assert_eq!(json["translations"]["de"]["options"]["metric"], "Metrisch");
+        assert_eq!(serde_json::from_value::<AppInput>(json).unwrap(), units);
+        let plain = serde_json::to_value(string_input("city")).unwrap();
+        assert!(plain.get("translations").is_none());
+        let unknown = json!({"id": "c", "label": "C", "type": "string", "translations": {"de": {"hint": "x"}}});
+        assert!(serde_json::from_value::<AppInput>(unknown).is_err());
     }
 }

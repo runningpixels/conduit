@@ -140,6 +140,7 @@
   }
 
   button {
+    white-space: normal;
     font-family: inherit;
     font-size: 15px;
     font-weight: 600;
@@ -214,12 +215,12 @@
 
   <div class="controls">
     <button type="button" class="primary" id="toggleBtn">Start</button>
-    <button type="button" id="resetBtn">Reset</button>
-    <button type="button" id="skipBtn">Skip</button>
+    <button type="button" id="resetBtn" data-i18n="reset">Reset</button>
+    <button type="button" id="skipBtn" data-i18n="skip">Skip</button>
   </div>
 
   <div class="stat">
-    Focus sessions completed: <strong id="sessionCount">0</strong>
+    <span data-i18n="sessionsLabel">Focus sessions completed:</span> <strong id="sessionCount">0</strong>
   </div>
 
   <div class="visually-hidden" id="statusRegion" aria-live="polite"></div>
@@ -232,11 +233,85 @@
     short: 5 * 60 * 1000,
     long: 15 * 60 * 1000
   };
-  var LABELS = {
-    focus: 'Focus',
-    short: 'Short Break',
-    long: 'Long Break'
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      focus: 'Focus', shortBreak: 'Short Break', longBreak: 'Long Break',
+      start: 'Start', pause: 'Pause', resume: 'Resume', reset: 'Reset', skip: 'Skip',
+      sessionsLabel: 'Focus sessions completed:',
+      started: '{phase} started.', paused: '{phase} paused.', running: '{phase} running.', wasReset: '{phase} reset.'
+    },
+    de: {
+      focus: 'Fokus', shortBreak: 'Kurze Pause', longBreak: 'Lange Pause',
+      start: 'Start', pause: 'Pausieren', resume: 'Fortsetzen', reset: 'Zurücksetzen', skip: 'Überspringen',
+      sessionsLabel: 'Abgeschlossene Fokus-Sitzungen:',
+      started: '{phase} gestartet.', paused: '{phase} pausiert.', running: '{phase} läuft.', wasReset: '{phase} zurückgesetzt.'
+    },
+    es: {
+      focus: 'Concentración', shortBreak: 'Descanso corto', longBreak: 'Descanso largo',
+      start: 'Iniciar', pause: 'Pausar', resume: 'Reanudar', reset: 'Restablecer', skip: 'Omitir',
+      sessionsLabel: 'Sesiones de concentración completadas:',
+      started: '{phase}: iniciado.', paused: '{phase}: en pausa.', running: '{phase}: en curso.', wasReset: '{phase}: restablecido.'
+    },
+    fr: {
+      focus: 'Concentration', shortBreak: 'Pause courte', longBreak: 'Pause longue',
+      start: 'Démarrer', pause: 'Pause', resume: 'Reprendre', reset: 'Réinitialiser', skip: 'Passer',
+      sessionsLabel: 'Sessions de concentration terminées :',
+      started: '{phase} : démarrée.', paused: '{phase} : en pause.', running: '{phase} : en cours.', wasReset: '{phase} : réinitialisée.'
+    },
+    ja: {
+      focus: '集中', shortBreak: '短い休憩', longBreak: '長い休憩',
+      start: '開始', pause: '一時停止', resume: '再開', reset: 'リセット', skip: 'スキップ',
+      sessionsLabel: '完了した集中セッション:',
+      started: '{phase}を開始しました。', paused: '{phase}を一時停止しました。', running: '{phase}を実行中です。', wasReset: '{phase}をリセットしました。'
+    },
+    ko: {
+      focus: '집중', shortBreak: '짧은 휴식', longBreak: '긴 휴식',
+      start: '시작', pause: '일시정지', resume: '계속', reset: '초기화', skip: '건너뛰기',
+      sessionsLabel: '완료한 집중 세션:',
+      started: '{phase} 시작됨.', paused: '{phase} 일시정지됨.', running: '{phase} 진행 중.', wasReset: '{phase} 초기화됨.'
+    },
+    "pt-BR": {
+      focus: 'Foco', shortBreak: 'Pausa curta', longBreak: 'Pausa longa',
+      start: 'Iniciar', pause: 'Pausar', resume: 'Retomar', reset: 'Redefinir', skip: 'Pular',
+      sessionsLabel: 'Sessões de foco concluídas:',
+      started: '{phase}: iniciado.', paused: '{phase}: pausado.', running: '{phase}: em andamento.', wasReset: '{phase}: redefinido.'
+    },
+    "zh-CN": {
+      focus: '专注', shortBreak: '短休息', longBreak: '长休息',
+      start: '开始', pause: '暂停', resume: '继续', reset: '重置', skip: '跳过',
+      sessionsLabel: '已完成的专注时段:',
+      started: '{phase}已开始。', paused: '{phase}已暂停。', running: '{phase}进行中。', wasReset: '{phase}已重置。'
+    }
   };
+  var LOC = (function () {
+    var l = String(LANG);
+    if (STRINGS[l]) return l;
+    var b = l.split('-')[0].toLowerCase();
+    if (STRINGS[b]) return b;
+    for (var k in STRINGS) { if (k.split('-')[0] === b) return k; }
+    return 'en';
+  })();
+  function t(key, vars) {
+    var s = STRINGS[LOC][key];
+    if (s == null) s = STRINGS.en[key];
+    if (vars) {
+      s = s.replace(/\{(\w+)\}/g, function (m, n) { return vars[n] != null ? vars[n] : m; });
+    }
+    return s;
+  }
+  function fmtInt(n) {
+    try { return new Intl.NumberFormat(LANG).format(n); }
+    catch (e) { return new Intl.NumberFormat('en').format(n); }
+  }
+  var LABELS = {
+    focus: t('focus'),
+    short: t('shortBreak'),
+    long: t('longBreak')
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
 
   var RADIUS = 90;
   var CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -279,14 +354,14 @@
     var offset = CIRCUMFERENCE * (1 - fraction);
     ringProgressEl.setAttribute('stroke-dashoffset', String(offset));
 
-    sessionCountEl.textContent = String(completedFocusCount);
+    sessionCountEl.textContent = fmtInt(completedFocusCount);
 
     if (running) {
-      toggleBtn.textContent = 'Pause';
+      toggleBtn.textContent = t('pause');
     } else if (remaining < duration) {
-      toggleBtn.textContent = 'Resume';
+      toggleBtn.textContent = t('resume');
     } else {
-      toggleBtn.textContent = 'Start';
+      toggleBtn.textContent = t('start');
     }
 
     var dots = cycleDotsEl.children;
@@ -326,7 +401,7 @@
       endTime = null;
     }
 
-    announce(LABELS[phase] + ' started.');
+    announce(t('started', { phase: LABELS[phase] }));
     render();
   }
 
@@ -348,14 +423,14 @@
       remaining = Math.max(0, endTime - Date.now());
       running = false;
       endTime = null;
-      announce(LABELS[phase] + ' paused.');
+      announce(t('paused', { phase: LABELS[phase] }));
     } else {
       if (remaining <= 0) {
         remaining = DURATIONS[phase];
       }
       endTime = Date.now() + remaining;
       running = true;
-      announce(LABELS[phase] + ' running.');
+      announce(t('running', { phase: LABELS[phase] }));
     }
     render();
   }
@@ -364,7 +439,7 @@
     running = false;
     endTime = null;
     remaining = DURATIONS[phase];
-    announce(LABELS[phase] + ' reset.');
+    announce(t('wasReset', { phase: LABELS[phase] }));
     render();
   }
 

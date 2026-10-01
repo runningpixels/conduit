@@ -53,6 +53,7 @@
   }
 
   .mg-btn {
+    max-width: 100%;
     font: inherit;
     font-weight: 600;
     font-size: 0.92rem;
@@ -150,18 +151,18 @@
 
 <div class="mg-app">
   <div class="mg-header">
-    <h1>Memory Match</h1>
-    <p>Find all 8 matching pairs in as few moves as possible.</p>
+    <h1 data-i18n="title">Memory Match</h1>
+    <p id="mg-subtitle">Find all 8 matching pairs in as few moves as possible.</p>
   </div>
 
   <div class="mg-controls">
-    <button type="button" class="mg-btn" id="mg-new-game">New game</button>
+    <button type="button" class="mg-btn" id="mg-new-game" data-i18n="newGame">New game</button>
     <div class="mg-stats">
       <span>
-        <span class="mg-stat-label">Moves</span><span id="mg-moves" aria-live="polite" aria-atomic="true">0</span>
+        <span class="mg-stat-label" data-i18n="moves">Moves</span><span id="mg-moves" aria-live="polite" aria-atomic="true">0</span>
       </span>
       <span>
-        <span class="mg-stat-label">Time</span><span id="mg-timer">00:00</span>
+        <span class="mg-stat-label" data-i18n="time">Time</span><span id="mg-timer">00:00</span>
       </span>
     </div>
   </div>
@@ -173,7 +174,134 @@
 
 <script>
 (function () {
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      title: "Memory Match",
+      subtitle: "Find all {pairs} matching pairs in as few moves as possible.",
+      newGame: "New game",
+      moves: "Moves",
+      time: "Time",
+      match: "Match!",
+      noMatch: "No match, try again.",
+      win: "You won in {moves} moves and {time}.",
+      cardShown: "Card {n}, {emoji}",
+      cardHidden: "Card {n}, hidden"
+    },
+    de: {
+      title: "Memory",
+      subtitle: "Finde alle {pairs} passenden Paare mit möglichst wenigen Zügen.",
+      newGame: "Neues Spiel",
+      moves: "Züge",
+      time: "Zeit",
+      match: "Treffer!",
+      noMatch: "Kein Treffer, versuch es noch einmal.",
+      win: "Gewonnen! {moves} Züge in {time}.",
+      cardShown: "Karte {n}, {emoji}",
+      cardHidden: "Karte {n}, verdeckt"
+    },
+    es: {
+      title: "Juego de memoria",
+      subtitle: "Encuentra las {pairs} parejas con el menor número de movimientos posible.",
+      newGame: "Nueva partida",
+      moves: "Movimientos",
+      time: "Tiempo",
+      match: "¡Pareja!",
+      noMatch: "No coinciden, inténtalo de nuevo.",
+      win: "Has ganado en {moves} movimientos y {time}.",
+      cardShown: "Carta {n}, {emoji}",
+      cardHidden: "Carta {n}, boca abajo"
+    },
+    fr: {
+      title: "Memory",
+      subtitle: "Trouvez les {pairs} paires identiques en un minimum de coups.",
+      newGame: "Nouvelle partie",
+      moves: "Coups",
+      time: "Temps",
+      match: "Paire trouvée !",
+      noMatch: "Pas de paire, essayez encore.",
+      win: "Gagné en {moves} coups et {time}.",
+      cardShown: "Carte {n}, {emoji}",
+      cardHidden: "Carte {n}, face cachée"
+    },
+    ja: {
+      title: "神経衰弱",
+      subtitle: "できるだけ少ない手数で、{pairs}組のペアをすべて見つけましょう。",
+      newGame: "新しいゲーム",
+      moves: "手数",
+      time: "時間",
+      match: "ペア成立！",
+      noMatch: "ペアではありません。もう一度どうぞ。",
+      win: "{moves}手、{time}でクリアしました。",
+      cardShown: "カード {n}、{emoji}",
+      cardHidden: "カード {n}、裏向き"
+    },
+    ko: {
+      title: "카드 짝 맞추기",
+      subtitle: "가능한 한 적은 횟수로 {pairs}쌍을 모두 찾아보세요.",
+      newGame: "새 게임",
+      moves: "횟수",
+      time: "시간",
+      match: "짝이 맞았어요!",
+      noMatch: "짝이 맞지 않아요. 다시 시도해 보세요.",
+      win: "{moves}번, {time} 만에 성공했습니다.",
+      cardShown: "카드 {n}, {emoji}",
+      cardHidden: "카드 {n}, 뒷면"
+    },
+    "pt-BR": {
+      title: "Jogo da memória",
+      subtitle: "Encontre todos os {pairs} pares com o menor número de jogadas possível.",
+      newGame: "Novo jogo",
+      moves: "Jogadas",
+      time: "Tempo",
+      match: "Par encontrado!",
+      noMatch: "Não combinam, tente de novo.",
+      win: "Você venceu em {moves} jogadas e {time}.",
+      cardShown: "Carta {n}, {emoji}",
+      cardHidden: "Carta {n}, virada para baixo"
+    },
+    "zh-CN": {
+      title: "记忆配对",
+      subtitle: "用尽可能少的步数找出全部 {pairs} 对相同的牌。",
+      newGame: "新游戏",
+      moves: "步数",
+      time: "时间",
+      match: "配对成功！",
+      noMatch: "不匹配，再试一次。",
+      win: "你赢了！用了 {moves} 步，耗时 {time}。",
+      cardShown: "第 {n} 张牌，{emoji}",
+      cardHidden: "第 {n} 张牌，背面朝上"
+    }
+  };
+  var LOC = (function () {
+    var l = String(LANG);
+    if (STRINGS[l]) return l;
+    var b = l.split('-')[0].toLowerCase();
+    if (STRINGS[b]) return b;
+    for (var k in STRINGS) { if (k.split('-')[0] === b) return k; }
+    return 'en';
+  })();
+  function t(key, vars) {
+    var s = STRINGS[LOC][key];
+    if (s == null) s = STRINGS.en[key];
+    if (vars) {
+      s = s.replace(/\{(\w+)\}/g, function (m, n) { return vars[n] != null ? vars[n] : m; });
+    }
+    return s;
+  }
+  function fmtInt(n) {
+    try { return new Intl.NumberFormat(LANG).format(n); }
+    catch (e) { return new Intl.NumberFormat('en').format(n); }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-aria]'), function (el) {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
+  
   var EMOJIS = ['🍎', '🍌', '🍇', '🍓', '🍒', '🍑', '🥝', '🍉'];
+  document.getElementById('mg-subtitle').textContent = t('subtitle', { pairs: fmtInt(EMOJIS.length) });
 
   var boardEl = document.getElementById('mg-board');
   var movesEl = document.getElementById('mg-moves');
@@ -231,16 +359,16 @@
       btn.classList.add('mg-matched');
       btn.classList.remove('mg-flipped');
       btn.textContent = card.emoji;
-      btn.setAttribute('aria-label', 'Card ' + position + ', ' + card.emoji);
+      btn.setAttribute('aria-label', t('cardShown', { n: fmtInt(position), emoji: card.emoji }));
     } else if (card.flipped) {
       btn.classList.add('mg-flipped');
       btn.classList.remove('mg-matched');
       btn.textContent = card.emoji;
-      btn.setAttribute('aria-label', 'Card ' + position + ', ' + card.emoji);
+      btn.setAttribute('aria-label', t('cardShown', { n: fmtInt(position), emoji: card.emoji }));
     } else {
       btn.classList.remove('mg-flipped', 'mg-matched');
       btn.textContent = '';
-      btn.setAttribute('aria-label', 'Card ' + position + ', hidden');
+      btn.setAttribute('aria-label', t('cardHidden', { n: fmtInt(position) }));
     }
   }
 
@@ -279,7 +407,7 @@
     }
     var elapsed = Math.floor((Date.now() - startTime) / 1000);
     timerEl.textContent = formatTime(elapsed);
-    setStatus('You won in ' + moves + ' moves and ' + formatTime(elapsed) + '.', true);
+    setStatus(t('win', { moves: fmtInt(moves), time: formatTime(elapsed) }), true);
   }
 
   function onCardClick(index) {
@@ -299,7 +427,7 @@
 
     secondIndex = index;
     moves++;
-    movesEl.textContent = String(moves);
+    movesEl.textContent = fmtInt(moves);
     lock = true;
 
     var a = deck[firstIndex];
@@ -311,7 +439,7 @@
       updateCardUI(firstIndex);
       updateCardUI(secondIndex);
       matchesFound++;
-      setStatus('Match!');
+      setStatus(t('match'));
       firstIndex = null;
       secondIndex = null;
       lock = false;
@@ -320,7 +448,7 @@
         finishGame();
       }
     } else {
-      setStatus('No match, try again.');
+      setStatus(t('noMatch'));
       var fIndex = firstIndex;
       var sIndex = secondIndex;
       resolveTimeout = setTimeout(function () {
@@ -355,7 +483,7 @@
     gameStarted = false;
     startTime = null;
 
-    movesEl.textContent = '0';
+    movesEl.textContent = fmtInt(0);
     timerEl.textContent = '00:00';
     setStatus('');
 

@@ -1266,6 +1266,30 @@ pub struct AppInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub options: Option<Vec<String>>,
+    /// What the form shows in other interface languages, keyed by language
+    /// tag (`de`, `pt-BR`). Display only: values stay `options` entries and
+    /// `label` is the fallback. At most 16 tags (`app_inputs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub translations: Option<std::collections::BTreeMap<String, AppInputTranslation>>,
+}
+
+/// One language's display text for an [`AppInput`]: its label, and names for
+/// any of an `enum` input's options (keyed by the option value). Either may be
+/// left out, and an untranslated option shows its value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_input_translation.ts"
+)]
+pub struct AppInputTranslation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub options: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// The type of one [`AppInput`]. There is deliberately no secret type —

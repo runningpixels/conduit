@@ -433,8 +433,8 @@
 <div class="bt-app">
   <header class="bt-header">
     <div>
-      <h1 class="bt-title">Budget Tracker</h1>
-      <p class="bt-subtitle">Track spending by category, month by month</p>
+      <h1 class="bt-title" data-i18n="title">Budget Tracker</h1>
+      <p class="bt-subtitle" data-i18n="sub">Track spending by category, month by month</p>
     </div>
     <div class="bt-note" id="bt-storage-note" hidden></div>
   </header>
@@ -442,13 +442,13 @@
   <div id="bt-error" class="bt-error" role="alert" hidden></div>
 
   <div class="bt-card">
-    <h2 class="bt-card-title">Add expense</h2>
+    <h2 class="bt-card-title" data-i18n="addExp">Add expense</h2>
     <form id="bt-form" novalidate>
       <div class="bt-form-grid">
         <div class="bt-field">
-          <label for="bt-amount">Amount</label>
+          <label for="bt-amount" data-i18n="amount">Amount</label>
           <div class="bt-amount-row">
-            <select id="bt-currency" class="bt-currency-select" aria-label="Currency">
+            <select id="bt-currency" class="bt-currency-select" aria-label="Currency" data-i18n-aria="curAria">
               <option value="€">€</option>
               <option value="$">$</option>
               <option value="£">£</option>
@@ -458,58 +458,58 @@
           </div>
         </div>
         <div class="bt-field">
-          <label for="bt-category">Category</label>
+          <label for="bt-category" data-i18n="cat">Category</label>
           <select id="bt-category" class="bt-input">
-            <option>Groceries</option>
-            <option>Housing</option>
-            <option>Transport</option>
-            <option>Eating out</option>
-            <option>Fun</option>
-            <option>Health</option>
-            <option>Other</option>
+            <option value="Groceries" data-i18n="c0">Groceries</option>
+            <option value="Housing" data-i18n="c1">Housing</option>
+            <option value="Transport" data-i18n="c2">Transport</option>
+            <option value="Eating out" data-i18n="c3">Eating out</option>
+            <option value="Fun" data-i18n="c4">Fun</option>
+            <option value="Health" data-i18n="c5">Health</option>
+            <option value="Other" data-i18n="c6">Other</option>
           </select>
         </div>
         <div class="bt-field">
-          <label for="bt-date">Date</label>
+          <label for="bt-date" data-i18n="date">Date</label>
           <input id="bt-date" class="bt-input" type="date" />
         </div>
         <div class="bt-field bt-field-wide">
-          <label for="bt-note">Note (optional)</label>
-          <input id="bt-note" class="bt-input" type="text" maxlength="120" placeholder="What was this for?" />
+          <label for="bt-note" data-i18n="note">Note (optional)</label>
+          <input id="bt-note" class="bt-input" type="text" maxlength="120" placeholder="What was this for?" data-i18n-placeholder="notePh" />
         </div>
       </div>
       <div class="bt-add-row">
-        <button type="submit" class="bt-primary">Add</button>
+        <button type="submit" class="bt-primary" data-i18n="add">Add</button>
       </div>
     </form>
   </div>
 
   <div class="bt-month-switcher">
-    <button type="button" id="bt-prev-month" class="bt-month-btn" aria-label="Previous month">‹</button>
+    <button type="button" id="bt-prev-month" class="bt-month-btn" aria-label="Previous month" data-i18n-aria="prevM">‹</button>
     <div class="bt-month-label" id="bt-month-label" aria-live="polite">September 2026</div>
-    <button type="button" id="bt-next-month" class="bt-month-btn" aria-label="Next month">›</button>
+    <button type="button" id="bt-next-month" class="bt-month-btn" aria-label="Next month" data-i18n-aria="nextM">›</button>
   </div>
 
   <div class="bt-card">
-    <h2 class="bt-card-title">Currency &amp; budget</h2>
+    <h2 class="bt-card-title" data-i18n="curBud">Currency &amp; budget</h2>
     <div class="bt-settings-row">
       <div class="bt-field">
-        <label for="bt-default-currency">Currency</label>
+        <label for="bt-default-currency" data-i18n="cur">Currency</label>
         <select id="bt-default-currency" class="bt-input">
-          <option value="€">€ Euro</option>
-          <option value="$">$ Dollar</option>
-          <option value="£">£ Pound</option>
-          <option value="¥">¥ Yen</option>
+          <option value="€" data-i18n="kE">€ Euro</option>
+          <option value="$" data-i18n="kU">$ Dollar</option>
+          <option value="£" data-i18n="kG">£ Pound</option>
+          <option value="¥" data-i18n="kY">¥ Yen</option>
         </select>
       </div>
       <div class="bt-field">
-        <label for="bt-budget">Monthly budget (optional)</label>
-        <input id="bt-budget" class="bt-input bt-amount-input" type="number" inputmode="decimal" min="0" step="0.01" placeholder="No budget set" />
+        <label for="bt-budget" data-i18n="budget">Monthly budget (optional)</label>
+        <input id="bt-budget" class="bt-input bt-amount-input" type="number" inputmode="decimal" min="0" step="0.01" placeholder="No budget set" data-i18n-placeholder="budPh" />
       </div>
     </div>
     <div class="bt-budget-status" id="bt-budget-status" hidden>
       <div class="bt-budget-line">
-        <span>Spent this month</span>
+        <span data-i18n="spent">Spent this month</span>
         <strong id="bt-budget-text"></strong>
       </div>
       <div class="bt-progress-track">
@@ -519,19 +519,19 @@
   </div>
 
   <div class="bt-card">
-    <h2 class="bt-card-title">This month by category</h2>
+    <h2 class="bt-card-title" data-i18n="byCat">This month by category</h2>
     <div class="bt-total-line">
-      <span>Total spent</span>
+      <span data-i18n="total">Total spent</span>
       <strong id="bt-total-amount">0.00</strong>
     </div>
     <div class="bt-chart" id="bt-chart"></div>
-    <div class="bt-empty" id="bt-chart-empty" hidden>No expenses yet this month.</div>
+    <div class="bt-empty" id="bt-chart-empty" data-i18n="none" hidden>No expenses yet this month.</div>
   </div>
 
   <div class="bt-card">
-    <h2 class="bt-card-title">Entries</h2>
+    <h2 class="bt-card-title" data-i18n="entries">Entries</h2>
     <div class="bt-entries" id="bt-entries"></div>
-    <div class="bt-empty" id="bt-entries-empty" hidden>No expenses recorded for this month.</div>
+    <div class="bt-empty" id="bt-entries-empty" data-i18n="noEntries" hidden>No expenses recorded for this month.</div>
   </div>
 
   <div class="bt-visually-hidden" id="bt-status" aria-live="polite"></div>
@@ -541,8 +541,186 @@
 (function () {
   "use strict";
 
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      title: "Budget Tracker", sub: "Track spending by category, month by month",
+      ns1: "Not saved — this view can't keep data", ns2: "Not saved — a recent change wasn't stored",
+      addExp: "Add expense", amount: "Amount", curAria: "Currency", cat: "Category", date: "Date",
+      note: "Note (optional)", notePh: "What was this for?", add: "Add", prevM: "Previous month", nextM: "Next month",
+      curBud: "Currency & budget", cur: "Currency", budget: "Monthly budget (optional)", budPh: "No budget set",
+      spent: "Spent this month", budOf: "{spent} of {budget}", byCat: "This month by category", total: "Total spent",
+      none: "No expenses yet this month.", entries: "Entries", noEntries: "No expenses recorded for this month.",
+      delAria: "Delete expense: {cat} {amount}",
+      eQuota: "Storage is full — this expense wasn't saved.",
+      eRate: "Too many changes at once — this expense wasn't saved. Try again in a moment.",
+      eInv: "That couldn't be saved (invalid data).",
+      eUnav: "Storage is unavailable right now — this expense wasn't saved.",
+      eGen: "Couldn't save that change — it's kept for this session only.",
+      eAmt: "Enter an amount greater than zero.",
+      aAdd: "Added {cat} expense of {amount}.", aAddM: "Added {cat} expense of {amount} to {month}.", aDel: "Deleted {cat} expense.",
+      c0: "Groceries", c1: "Housing", c2: "Transport", c3: "Eating out", c4: "Fun", c5: "Health", c6: "Other",
+      kE: "€ Euro", kU: "$ Dollar", kG: "£ Pound", kY: "¥ Yen"
+    },
+    de: {
+      title: "Budgettracker", sub: "Ausgaben nach Kategorie verfolgen, Monat für Monat",
+      ns1: "Nicht gespeichert – diese Ansicht kann keine Daten behalten", ns2: "Nicht gespeichert – eine letzte Änderung wurde nicht gesichert",
+      addExp: "Ausgabe hinzufügen", amount: "Betrag", curAria: "Währung", cat: "Kategorie", date: "Datum",
+      note: "Notiz (optional)", notePh: "Wofür war das?", add: "Hinzufügen", prevM: "Vorheriger Monat", nextM: "Nächster Monat",
+      curBud: "Währung & Budget", cur: "Währung", budget: "Monatsbudget (optional)", budPh: "Kein Budget festgelegt",
+      spent: "In diesem Monat ausgegeben", budOf: "{spent} von {budget}", byCat: "Dieser Monat nach Kategorie", total: "Gesamtausgaben",
+      none: "In diesem Monat noch keine Ausgaben.", entries: "Einträge", noEntries: "Für diesen Monat sind keine Ausgaben erfasst.",
+      delAria: "Ausgabe löschen: {cat} {amount}",
+      eQuota: "Der Speicher ist voll – diese Ausgabe wurde nicht gespeichert.",
+      eRate: "Zu viele Änderungen auf einmal – diese Ausgabe wurde nicht gespeichert. Versuche es gleich noch einmal.",
+      eInv: "Das konnte nicht gespeichert werden (ungültige Daten).",
+      eUnav: "Der Speicher ist gerade nicht verfügbar – diese Ausgabe wurde nicht gespeichert.",
+      eGen: "Diese Änderung konnte nicht gespeichert werden – sie bleibt nur für diese Sitzung erhalten.",
+      eAmt: "Gib einen Betrag größer als null ein.",
+      aAdd: "Ausgabe „{cat}“ über {amount} hinzugefügt.", aAddM: "Ausgabe „{cat}“ über {amount} zu {month} hinzugefügt.", aDel: "Ausgabe „{cat}“ gelöscht.",
+      c0: "Lebensmittel", c1: "Wohnen", c2: "Verkehr", c3: "Essen gehen", c4: "Freizeit", c5: "Gesundheit", c6: "Sonstiges",
+      kE: "€ Euro", kU: "$ Dollar", kG: "£ Pfund", kY: "¥ Yen"
+    },
+    es: {
+      title: "Control de gastos", sub: "Sigue tus gastos por categoría, mes a mes",
+      ns1: "Sin guardar: esta vista no puede conservar datos", ns2: "Sin guardar: un cambio reciente no se almacenó",
+      addExp: "Añadir gasto", amount: "Importe", curAria: "Moneda", cat: "Categoría", date: "Fecha",
+      note: "Nota (opcional)", notePh: "¿Para qué fue?", add: "Añadir", prevM: "Mes anterior", nextM: "Mes siguiente",
+      curBud: "Moneda y presupuesto", cur: "Moneda", budget: "Presupuesto mensual (opcional)", budPh: "Sin presupuesto",
+      spent: "Gastado este mes", budOf: "{spent} de {budget}", byCat: "Este mes por categoría", total: "Total gastado",
+      none: "Aún no hay gastos este mes.", entries: "Movimientos", noEntries: "No hay gastos registrados este mes.",
+      delAria: "Eliminar gasto: {cat} {amount}",
+      eQuota: "El almacenamiento está lleno: este gasto no se guardó.",
+      eRate: "Demasiados cambios a la vez: este gasto no se guardó. Inténtalo de nuevo en un momento.",
+      eInv: "No se pudo guardar (datos no válidos).",
+      eUnav: "El almacenamiento no está disponible ahora: este gasto no se guardó.",
+      eGen: "No se pudo guardar ese cambio: solo se conserva durante esta sesión.",
+      eAmt: "Introduce un importe mayor que cero.",
+      aAdd: "Gasto de {cat} por {amount} añadido.", aAddM: "Gasto de {cat} por {amount} añadido a {month}.", aDel: "Gasto de {cat} eliminado.",
+      c0: "Supermercado", c1: "Vivienda", c2: "Transporte", c3: "Restaurantes", c4: "Ocio", c5: "Salud", c6: "Otros",
+      kE: "€ Euro", kU: "$ Dólar", kG: "£ Libra", kY: "¥ Yen"
+    },
+    fr: {
+      title: "Suivi de budget", sub: "Suivez vos dépenses par catégorie, mois après mois",
+      ns1: "Non enregistré : cette vue ne peut pas conserver de données", ns2: "Non enregistré : une modification récente n’a pas été stockée",
+      addExp: "Ajouter une dépense", amount: "Montant", curAria: "Devise", cat: "Catégorie", date: "Date",
+      note: "Note (facultative)", notePh: "À quoi correspondait-elle ?", add: "Ajouter", prevM: "Mois précédent", nextM: "Mois suivant",
+      curBud: "Devise et budget", cur: "Devise", budget: "Budget mensuel (facultatif)", budPh: "Aucun budget défini",
+      spent: "Dépensé ce mois-ci", budOf: "{spent} sur {budget}", byCat: "Ce mois-ci par catégorie", total: "Total dépensé",
+      none: "Aucune dépense pour le moment ce mois-ci.", entries: "Entrées", noEntries: "Aucune dépense enregistrée pour ce mois.",
+      delAria: "Supprimer la dépense : {cat} {amount}",
+      eQuota: "Le stockage est plein : cette dépense n’a pas été enregistrée.",
+      eRate: "Trop de modifications à la fois : cette dépense n’a pas été enregistrée. Réessayez dans un instant.",
+      eInv: "Impossible d’enregistrer (données non valides).",
+      eUnav: "Le stockage est indisponible pour le moment : cette dépense n’a pas été enregistrée.",
+      eGen: "Impossible d’enregistrer cette modification : elle est conservée pour cette session uniquement.",
+      eAmt: "Saisissez un montant supérieur à zéro.",
+      aAdd: "Dépense « {cat} » de {amount} ajoutée.", aAddM: "Dépense « {cat} » de {amount} ajoutée à {month}.", aDel: "Dépense « {cat} » supprimée.",
+      c0: "Courses", c1: "Logement", c2: "Transports", c3: "Restaurants", c4: "Loisirs", c5: "Santé", c6: "Autre",
+      kE: "€ Euro", kU: "$ Dollar", kG: "£ Livre", kY: "¥ Yen"
+    },
+    ja: {
+      title: "家計簿", sub: "カテゴリ別に毎月の支出を記録",
+      ns1: "保存されていません — このビューではデータを保持できません", ns2: "保存されていません — 直前の変更が保存されませんでした",
+      addExp: "支出を追加", amount: "金額", curAria: "通貨", cat: "カテゴリ", date: "日付",
+      note: "メモ（任意）", notePh: "何の支出ですか?", add: "追加", prevM: "前の月", nextM: "次の月",
+      curBud: "通貨と予算", cur: "通貨", budget: "月の予算（任意）", budPh: "予算未設定",
+      spent: "今月の支出", budOf: "{spent} / {budget}", byCat: "今月のカテゴリ別支出", total: "支出合計",
+      none: "今月はまだ支出がありません。", entries: "履歴", noEntries: "今月の支出は記録されていません。",
+      delAria: "支出を削除: {cat} {amount}",
+      eQuota: "ストレージがいっぱいです — この支出は保存されませんでした。",
+      eRate: "一度に変更が多すぎます — この支出は保存されませんでした。しばらくしてからもう一度お試しください。",
+      eInv: "保存できませんでした（無効なデータ）。",
+      eUnav: "ストレージを現在利用できません — この支出は保存されませんでした。",
+      eGen: "この変更を保存できませんでした — このセッションの間のみ保持されます。",
+      eAmt: "0より大きい金額を入力してください。",
+      aAdd: "{cat}の支出{amount}を追加しました。", aAddM: "{month}に{cat}の支出{amount}を追加しました。", aDel: "{cat}の支出を削除しました。",
+      c0: "食料品", c1: "住居", c2: "交通", c3: "外食", c4: "娯楽", c5: "健康", c6: "その他",
+      kE: "€ ユーロ", kU: "$ ドル", kG: "£ ポンド", kY: "¥ 円"
+    },
+    ko: {
+      title: "가계부", sub: "카테고리별 지출을 월별로 기록하세요",
+      ns1: "저장되지 않음 — 이 화면은 데이터를 보관할 수 없습니다", ns2: "저장되지 않음 — 최근 변경 사항이 저장되지 않았습니다",
+      addExp: "지출 추가", amount: "금액", curAria: "통화", cat: "카테고리", date: "날짜",
+      note: "메모(선택)", notePh: "어떤 지출인가요?", add: "추가", prevM: "이전 달", nextM: "다음 달",
+      curBud: "통화 및 예산", cur: "통화", budget: "월 예산(선택)", budPh: "예산 미설정",
+      spent: "이번 달 지출", budOf: "{budget} 중 {spent}", byCat: "이번 달 카테고리별 지출", total: "총 지출",
+      none: "이번 달에는 아직 지출이 없습니다.", entries: "내역", noEntries: "이번 달에 기록된 지출이 없습니다.",
+      delAria: "지출 삭제: {cat} {amount}",
+      eQuota: "저장 공간이 가득 차서 이 지출이 저장되지 않았습니다.",
+      eRate: "한꺼번에 너무 많이 변경해 이 지출이 저장되지 않았습니다. 잠시 후 다시 시도하세요.",
+      eInv: "저장할 수 없습니다(잘못된 데이터).",
+      eUnav: "지금은 저장 공간을 사용할 수 없어 이 지출이 저장되지 않았습니다.",
+      eGen: "변경 사항을 저장할 수 없습니다. 이번 세션에서만 유지됩니다.",
+      eAmt: "0보다 큰 금액을 입력하세요.",
+      aAdd: "{cat} 지출 {amount}을(를) 추가했습니다.", aAddM: "{month}에 {cat} 지출 {amount}을(를) 추가했습니다.", aDel: "{cat} 지출을 삭제했습니다.",
+      c0: "식료품", c1: "주거", c2: "교통", c3: "외식", c4: "여가", c5: "건강", c6: "기타",
+      kE: "€ 유로", kU: "$ 달러", kG: "£ 파운드", kY: "¥ 엔"
+    },
+    "pt-BR": {
+      title: "Controle de gastos", sub: "Acompanhe seus gastos por categoria, mês a mês",
+      ns1: "Não salvo — esta visualização não consegue guardar dados", ns2: "Não salvo — uma alteração recente não foi armazenada",
+      addExp: "Adicionar gasto", amount: "Valor", curAria: "Moeda", cat: "Categoria", date: "Data",
+      note: "Observação (opcional)", notePh: "Para que foi?", add: "Adicionar", prevM: "Mês anterior", nextM: "Próximo mês",
+      curBud: "Moeda e orçamento", cur: "Moeda", budget: "Orçamento mensal (opcional)", budPh: "Nenhum orçamento definido",
+      spent: "Gasto neste mês", budOf: "{spent} de {budget}", byCat: "Este mês por categoria", total: "Total gasto",
+      none: "Ainda não há gastos neste mês.", entries: "Lançamentos", noEntries: "Nenhum gasto registrado neste mês.",
+      delAria: "Excluir gasto: {cat} {amount}",
+      eQuota: "O armazenamento está cheio — este gasto não foi salvo.",
+      eRate: "Alterações demais de uma vez — este gasto não foi salvo. Tente novamente em instantes.",
+      eInv: "Não foi possível salvar (dados inválidos).",
+      eUnav: "O armazenamento está indisponível no momento — este gasto não foi salvo.",
+      eGen: "Não foi possível salvar essa alteração — ela fica só nesta sessão.",
+      eAmt: "Digite um valor maior que zero.",
+      aAdd: "Gasto de {cat} no valor de {amount} adicionado.", aAddM: "Gasto de {cat} no valor de {amount} adicionado a {month}.", aDel: "Gasto de {cat} excluído.",
+      c0: "Supermercado", c1: "Moradia", c2: "Transporte", c3: "Restaurantes", c4: "Lazer", c5: "Saúde", c6: "Outros",
+      kE: "€ Euro", kU: "$ Dólar", kG: "£ Libra", kY: "¥ Iene"
+    },
+    "zh-CN": {
+      title: "预算记账", sub: "按类别逐月记录支出",
+      ns1: "未保存——此视图无法保留数据", ns2: "未保存——最近的一次更改未能存储",
+      addExp: "添加支出", amount: "金额", curAria: "货币", cat: "类别", date: "日期",
+      note: "备注（可选）", notePh: "这笔钱花在哪里？", add: "添加", prevM: "上个月", nextM: "下个月",
+      curBud: "货币与预算", cur: "货币", budget: "月度预算（可选）", budPh: "未设置预算",
+      spent: "本月已支出", budOf: "{spent} / {budget}", byCat: "本月分类支出", total: "总支出",
+      none: "本月暂无支出。", entries: "记录", noEntries: "本月没有支出记录。",
+      delAria: "删除支出：{cat} {amount}",
+      eQuota: "存储空间已满——这笔支出未保存。",
+      eRate: "短时间内更改过多——这笔支出未保存。请稍后重试。",
+      eInv: "无法保存（数据无效）。",
+      eUnav: "存储暂时不可用——这笔支出未保存。",
+      eGen: "无法保存该更改——仅在本次会话中保留。",
+      eAmt: "请输入大于零的金额。",
+      aAdd: "已添加{cat}支出 {amount}。", aAddM: "已向{month}添加{cat}支出 {amount}。", aDel: "已删除{cat}支出。",
+      c0: "食品杂货", c1: "住房", c2: "交通", c3: "外出就餐", c4: "娱乐", c5: "健康", c6: "其他",
+      kE: "€ 欧元", kU: "$ 美元", kG: "£ 英镑", kY: "¥ 日元"
+    }
+  };
+  var L = STRINGS.hasOwnProperty(LANG) ? STRINGS[LANG] : (STRINGS.hasOwnProperty(LANG.split('-')[0]) ? STRINGS[LANG.split('-')[0]] : STRINGS.en);
+  function t(key, vars) {
+    var s = L.hasOwnProperty(key) ? L[key] : STRINGS.en[key];
+    return s.replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] !== undefined ? vars[k] : m; });
+  }
+  function applyI18n() {
+    var attrs = { "data-i18n": "", "data-i18n-aria": "aria-label", "data-i18n-placeholder": "placeholder", "data-i18n-title": "title" };
+    Object.keys(attrs).forEach(function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll("[" + a + "]"), function (el) {
+        var v = t(el.getAttribute(a));
+        if (attrs[a]) el.setAttribute(attrs[a], v); else el.textContent = v;
+      });
+    });
+  }
+  function nf(opts) {
+    try { return new Intl.NumberFormat(LANG, opts); } catch (e) { return new Intl.NumberFormat("en", opts); }
+  }
+  function dtf(opts) {
+    try { return new Intl.DateTimeFormat(LANG, opts); } catch (e) { return new Intl.DateTimeFormat("en", opts); }
+  }
+
   var CATEGORIES = ["Groceries", "Housing", "Transport", "Eating out", "Fun", "Health", "Other"];
-  var MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  // Stored category ids stay these canonical English strings; only the labels are translated.
+  function catLabel(id) { var i = CATEGORIES.indexOf(id); return i < 0 ? id : t("c" + i); }
+  function monthName(y, m) { return dtf({ month: "long", year: "numeric" }).format(new Date(y, m, 1)); }
 
   var hasStorage = !!(window.conduit && window.conduit.storage);
 
@@ -597,7 +775,7 @@
 
   function formatAmount(n) {
     if (!isFinite(n)) n = 0;
-    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return nf({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
   }
 
   function formatDate(iso) {
@@ -607,7 +785,7 @@
     var m = parseInt(parts[1], 10);
     var d = parseInt(parts[2], 10);
     if (!isFinite(y) || !isFinite(m) || !isFinite(d)) return iso;
-    return MONTH_NAMES[m - 1].slice(0, 3) + " " + d + ", " + y;
+    return dtf({ dateStyle: "medium" }).format(new Date(y, m - 1, d));
   }
 
   function announce(message) {
@@ -626,23 +804,23 @@
 
   function errorMessageFor(err) {
     var code = err && err.code;
-    if (code === "quota") return "Storage is full — this expense wasn't saved.";
-    if (code === "rate_limited") return "Too many changes at once — this expense wasn't saved. Try again in a moment.";
-    if (code === "invalid") return "That couldn't be saved (invalid data).";
-    if (code === "unavailable") return "Storage is unavailable right now — this expense wasn't saved.";
-    return "Couldn't save that change — it's kept for this session only.";
+    if (code === "quota") return t("eQuota");
+    if (code === "rate_limited") return t("eRate");
+    if (code === "invalid") return t("eInv");
+    if (code === "unavailable") return t("eUnav");
+    return t("eGen");
   }
 
   function updateStorageNote() {
     if (!hasStorage) {
       storageNoteEl.hidden = false;
-      storageNoteEl.textContent = "Not saved — this view can't keep data";
+      storageNoteEl.textContent = t("ns1");
       storageNoteEl.removeAttribute("data-tone");
       return;
     }
     if (!state.savedOk) {
       storageNoteEl.hidden = false;
-      storageNoteEl.textContent = "Not saved — a recent change wasn't stored";
+      storageNoteEl.textContent = t("ns2");
       storageNoteEl.setAttribute("data-tone", "warn");
       return;
     }
@@ -681,7 +859,7 @@
   }
 
   function renderMonthLabel() {
-    monthLabelEl.textContent = MONTH_NAMES[state.month] + " " + state.year;
+    monthLabelEl.textContent = monthName(state.year, state.month);
   }
 
   function renderSettings() {
@@ -733,11 +911,11 @@
 
       var labelEl = document.createElement("div");
       labelEl.className = "bt-chart-label";
-      labelEl.textContent = row.cat;
+      labelEl.textContent = catLabel(row.cat);
 
       var amountEl2 = document.createElement("div");
       amountEl2.className = "bt-chart-amount";
-      amountEl2.textContent = state.currency + formatAmount(row.amount) + " · " + Math.round(share) + "%";
+      amountEl2.textContent = state.currency + formatAmount(row.amount) + " · " + nf({ style: "percent", maximumFractionDigits: 0 }).format(share / 100);
 
       topEl.appendChild(labelEl);
       topEl.appendChild(amountEl2);
@@ -763,7 +941,7 @@
       return;
     }
     budgetStatusEl.hidden = false;
-    budgetTextEl.textContent = state.currency + formatAmount(total) + " of " + state.currency + formatAmount(state.budget);
+    budgetTextEl.textContent = t("budOf", { spent: state.currency + formatAmount(total), budget: state.currency + formatAmount(state.budget) });
 
     var fraction = state.budget > 0 ? total / state.budget : 0;
     var pct = Math.max(0, Math.min(100, fraction * 100));
@@ -798,7 +976,7 @@
       top.className = "bt-entry-top";
       var catEl = document.createElement("span");
       catEl.className = "bt-entry-category";
-      catEl.textContent = entry.category;
+      catEl.textContent = catLabel(entry.category);
       var dateEl2 = document.createElement("span");
       dateEl2.className = "bt-entry-date";
       dateEl2.textContent = formatDate(entry.date);
@@ -820,7 +998,7 @@
       var deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
       deleteBtn.className = "bt-delete-btn";
-      deleteBtn.setAttribute("aria-label", "Delete expense: " + entry.category + " " + state.currency + formatAmount(entry.amount));
+      deleteBtn.setAttribute("aria-label", t("delAria", { cat: catLabel(entry.category), amount: state.currency + formatAmount(entry.amount) }));
       deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
       deleteBtn.addEventListener("click", function () { deleteEntry(entry.id); });
 
@@ -876,7 +1054,7 @@
     state.entries.push(entry);
     render();
     saveMonth(state.year, state.month);
-    announce("Added " + entry.category + " expense of " + state.currency + formatAmount(entry.amount) + ".");
+    announce(t("aAdd", { cat: catLabel(entry.category), amount: state.currency + formatAmount(entry.amount) }));
   }
 
   function deleteEntry(id) {
@@ -889,7 +1067,7 @@
     state.entries.splice(idx, 1);
     render();
     saveMonth(state.year, state.month);
-    announce("Deleted " + removed.category + " expense.");
+    announce(t("aDel", { cat: catLabel(removed.category) }));
   }
 
   formEl.addEventListener("submit", function (event) {
@@ -898,7 +1076,7 @@
 
     var amount = parseFloat(amountEl.value);
     if (!isFinite(amount) || amount <= 0) {
-      showError("Enter an amount greater than zero.");
+      showError(t("eAmt"));
       amountEl.focus();
       return;
     }
@@ -942,7 +1120,7 @@
         entries.forEach(function (e) { if (typeof e.id === "number" && e.id > m2) m2 = e.id; });
         state.nextId = m2 + 1;
         render();
-        announce("Added " + entry.category + " expense of " + state.currency + formatAmount(entry.amount) + " to " + MONTH_NAMES[entryMonth] + " " + entryYear + ".");
+        announce(t("aAddM", { cat: catLabel(entry.category), amount: state.currency + formatAmount(entry.amount), month: monthName(entryYear, entryMonth) }));
       });
     }
 
@@ -969,6 +1147,7 @@
   });
 
   function init() {
+    applyI18n();
     var now = new Date();
     state.year = now.getFullYear();
     state.month = now.getMonth();

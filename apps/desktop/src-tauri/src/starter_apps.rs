@@ -61,7 +61,7 @@ pub const STARTER_APPS: &[StarterApp] = &[
         // Keep in sync with the `application/conduit-inputs+json` block in
         // weather-dashboard.html (guarded by
         // `starter_inputs_json_matches_the_page_declaration` below).
-        inputs_json: r#"[{"id":"city","label":"City","type":"string","default":"Paris","required":true},{"id":"units","label":"Units","type":"enum","options":["metric","imperial"],"default":"metric"}]"#,
+        inputs_json: r#"[{"id":"city","label":"City","type":"string","default":"Paris","required":true,"translations":{"de":{"label":"Stadt"},"es":{"label":"Ciudad"},"fr":{"label":"Ville"},"ja":{"label":"都市"},"ko":{"label":"도시"},"pt-BR":{"label":"Cidade"},"zh-CN":{"label":"城市"}}},{"id":"units","label":"Units","type":"enum","options":["metric","imperial"],"default":"metric","translations":{"de":{"label":"Einheiten","options":{"metric":"Metrisch","imperial":"Imperial"}},"es":{"label":"Unidades","options":{"metric":"Métrico","imperial":"Imperial"}},"fr":{"label":"Unités","options":{"metric":"Métrique","imperial":"Impérial"}},"ja":{"label":"単位","options":{"metric":"メートル法","imperial":"ヤード・ポンド法"}},"ko":{"label":"단위","options":{"metric":"미터법","imperial":"야드파운드법"}},"pt-BR":{"label":"Unidades","options":{"metric":"Métrico","imperial":"Imperial"}},"zh-CN":{"label":"单位","options":{"metric":"公制","imperial":"英制"}}}}]"#,
         html: include_str!("../starter_apps/weather-dashboard.html"),
     },
     StarterApp {
@@ -171,7 +171,7 @@ mod tests {
             ] {
                 assert!(!s.html.contains(banned), "{} uses {banned}", s.id);
             }
-            assert!(s.html.len() < 40 * 1024, "{} is over 40 KB", s.id);
+            assert!(s.html.len() < 64 * 1024, "{} is over 64 KB", s.id);
             assert!(
                 !s.html.trim_start().starts_with("<!doctype"),
                 "{} must be a body fragment",

@@ -26,6 +26,16 @@ vi.mock('../themes/resolvedTokens', () => ({
 /// `docs/decisions/artifact-rendering-security.md`.
 
 describe('assembleArtifactDoc', () => {
+  it('tells the page the interface language as <html lang>, and only a real language tag', () => {
+    expect(assembleArtifactDoc('<p>x</p>', [], true, 'dark', undefined, false, [], null, 'pt-BR')).toContain(
+      '<html data-theme="dark" lang="pt-BR">',
+    );
+    expect(assembleArtifactDoc('<p>x</p>', [], true, 'dark')).toContain('<html data-theme="dark"><head>');
+    const hostile = assembleArtifactDoc('<p>x</p>', [], true, 'dark', undefined, false, [], null, 'en" onload="x');
+    expect(hostile).toContain('<html data-theme="dark"><head>');
+    expect(hostile).not.toContain('onload');
+  });
+
   it('places the CSP <meta> as the FIRST element in <head>', () => {
     const doc = assembleArtifactDoc('<p>hi</p>', []);
     const headOpen = doc.indexOf('<head>');

@@ -183,7 +183,63 @@ function parseAppInput(raw: unknown): AppInput | null {
   const input: AppInput = { id: r.id, label: r.label, type, required: r.required === true };
   if (defaultValue !== undefined) input.default = defaultValue;
   if (options) input.options = options;
+  const translations = parseInputTranslations(r.translations, options);
+  if (translations) input.translations = translations;
   return input;
+}
+
+const LANGUAGE_TAG_REGEX = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$/;
+const MAX_INPUT_TRANSLATIONS = 16;
+
+function displayText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 60;
+}
+
+/// The valid part of an input's `translations` (display text per language
+/// tag, ADR-013), or `undefined` when nothing in it is usable. Lenient like
+/// the rest of the parse: a bad tag, label or option name is dropped rather
+/// than failing the input, so what reaches Rust's strict re-check is clean.
+function parseInputTranslations(raw: unknown, options: string[] | undefined): AppInput['translations'] {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: NonNullable<AppInput['translations']> = {};
+  let count = 0;
+  for (const [tag, entry] of Object.entries(raw as Record<string, unknown>)) {
+    if (count >= MAX_INPUT_TRANSLATIONS) break;
+    if (!LANGUAGE_TAG_REGEX.test(tag) || entry == null || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const e = entry as Record<string, unknown>;
+    const translation: NonNullable<AppInput['translations']>[string] = {};
+    if (displayText(e.label)) translation.label = e.label;
+    if (options && e.options != null && typeof e.options === 'object' && !Array.isArray(e.options)) {
+      const names: Record<string, string> = {};
+      for (const [value, name] of Object.entries(e.options as Record<string, unknown>)) {
+        if (options.includes(value) && displayText(name)) names[value] = name;
+      }
+      if (Object.keys(names).length > 0) translation.options = names;
+    }
+    if (translation.label === undefined && translation.options === undefined) continue;
+    out[tag] = translation;
+    count += 1;
+  }
+  return count > 0 ? out : undefined;
+}
+
+/// The translation for `locale`: the exact tag, else its language alone
+/// (`pt-BR` falls back to `pt`).
+function translationFor(input: AppInput, locale: string) {
+  const all = input.translations;
+  if (!all) return undefined;
+  return all[locale] ?? all[locale.split('-')[0]];
+}
+
+/// What the form shows as `input`'s label in `locale`.
+export function inputLabel(input: AppInput, locale: string): string {
+  return translationFor(input, locale)?.label ?? input.label;
+}
+
+/// What the form shows for one of an `enum` input's options in `locale`; the
+/// stored value is always the option itself.
+export function inputOptionLabel(input: AppInput, option: string, locale: string): string {
+  return translationFor(input, locale)?.options?.[option] ?? option;
 }
 
 /// The page's launch inputs (ADR-013): the JSON array inside the first

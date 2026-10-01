@@ -227,17 +227,17 @@
   </div>
 
   <div class="card" id="questionCard">
-    <h1 class="question-label">Capital of</h1>
+    <h1 class="question-label" data-i18n="capOf">Capital of</h1>
     <h2 class="country-name" id="countryName">&mdash;</h2>
     <div class="options" id="options"></div>
     <div class="feedback" id="feedback" aria-live="polite"></div>
-    <button type="button" class="btn-next" id="nextBtn" hidden>Next question</button>
+    <button type="button" class="btn-next" id="nextBtn" data-i18n="next" hidden>Next question</button>
   </div>
 
   <div class="card score-card" id="scoreCard" hidden>
     <h2 id="finalScoreText" aria-live="polite">You scored 0 out of 10</h2>
     <p class="score-sub" id="finalScoreSub"></p>
-    <button type="button" class="btn-primary" id="playAgainBtn">Play again</button>
+    <button type="button" class="btn-primary" id="playAgainBtn" data-i18n="again">Play again</button>
   </div>
 </div>
 
@@ -245,57 +245,138 @@
 (function () {
   "use strict";
 
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      capOf: "Capital of", counter: "Question {n} of {total}", score: "Score: {n}", correct: "Correct", yours: "Your answer",
+      ok: "Correct! The capital of {country} is {capital}.", bad: "Incorrect. The capital of {country} is {capital}.",
+      next: "Next question", final: "You scored {n} out of {total}", pct: "{pct} correct", again: "Play again"
+    },
+    de: {
+      capOf: "Hauptstadt des Landes", counter: "Frage {n} von {total}", score: "Punkte: {n}", correct: "Richtig", yours: "Deine Antwort",
+      ok: "Richtig! {country}: Die Hauptstadt ist {capital}.", bad: "Falsch. {country}: Die Hauptstadt ist {capital}.",
+      next: "Nächste Frage", final: "Du hast {n} von {total} Punkten erreicht", pct: "{pct} richtig", again: "Nochmal spielen"
+    },
+    es: {
+      capOf: "Capital del país", counter: "Pregunta {n} de {total}", score: "Puntos: {n}", correct: "Correcto", yours: "Tu respuesta",
+      ok: "¡Correcto! {country}: la capital es {capital}.", bad: "Incorrecto. {country}: la capital es {capital}.",
+      next: "Siguiente pregunta", final: "Has acertado {n} de {total}", pct: "{pct} de aciertos", again: "Jugar de nuevo"
+    },
+    fr: {
+      capOf: "Capitale du pays", counter: "Question {n} sur {total}", score: "Score : {n}", correct: "Correct", yours: "Votre réponse",
+      ok: "Correct ! {country} : la capitale est {capital}.", bad: "Incorrect. {country} : la capitale est {capital}.",
+      next: "Question suivante", final: "Vous avez obtenu {n} sur {total}", pct: "{pct} de bonnes réponses", again: "Rejouer"
+    },
+    ja: {
+      capOf: "次の国の首都は?", counter: "第{n}問 / 全{total}問", score: "スコア: {n}", correct: "正解", yours: "あなたの回答",
+      ok: "正解! {country}の首都は{capital}です。", bad: "不正解。{country}の首都は{capital}です。",
+      next: "次の問題", final: "{total}問中{n}問正解", pct: "正答率 {pct}", again: "もう一度プレイ"
+    },
+    ko: {
+      capOf: "다음 나라의 수도는?", counter: "{total}문제 중 {n}번째", score: "점수: {n}", correct: "정답", yours: "내 답",
+      ok: "정답입니다! {country}의 수도는 {capital}입니다.", bad: "오답입니다. {country}의 수도는 {capital}입니다.",
+      next: "다음 문제", final: "{total}문제 중 {n}문제를 맞혔습니다", pct: "정답률 {pct}", again: "다시 하기"
+    },
+    "pt-BR": {
+      capOf: "Capital do país", counter: "Pergunta {n} de {total}", score: "Pontos: {n}", correct: "Correto", yours: "Sua resposta",
+      ok: "Correto! {country}: a capital é {capital}.", bad: "Incorreto. {country}: a capital é {capital}.",
+      next: "Próxima pergunta", final: "Você acertou {n} de {total}", pct: "{pct} de acertos", again: "Jogar novamente"
+    },
+    "zh-CN": {
+      capOf: "下列国家的首都是", counter: "第 {n} 题，共 {total} 题", score: "得分：{n}", correct: "正确", yours: "你的答案",
+      ok: "回答正确！{country}的首都是{capital}。", bad: "回答错误。{country}的首都是{capital}。",
+      next: "下一题", final: "你答对了 {n} 题，共 {total} 题", pct: "正确率 {pct}", again: "再玩一次"
+    }
+  };
+  var L = STRINGS.hasOwnProperty(LANG) ? STRINGS[LANG] : (STRINGS.hasOwnProperty(LANG.split('-')[0]) ? STRINGS[LANG.split('-')[0]] : STRINGS.en);
+  function t(key, vars) {
+    var s = L.hasOwnProperty(key) ? L[key] : STRINGS.en[key];
+    return s.replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] !== undefined ? vars[k] : m; });
+  }
+  function applyI18n() {
+    var attrs = { "data-i18n": "", "data-i18n-aria": "aria-label", "data-i18n-placeholder": "placeholder", "data-i18n-title": "title" };
+    Object.keys(attrs).forEach(function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll("[" + a + "]"), function (el) {
+        var v = t(el.getAttribute(a));
+        if (attrs[a]) el.setAttribute(attrs[a], v); else el.textContent = v;
+      });
+    });
+  }
+  
+  // Capital city names where the local name differs from English; anything missing falls back to English.
+  var CAPS = {
+    de: { Cairo: "Kairo", "Mexico City": "Mexiko-Stadt", "New Delhi": "Neu-Delhi", Beijing: "Peking", Moscow: "Moskau", Athens: "Athen", Warsaw: "Warschau", Copenhagen: "Kopenhagen", Brussels: "Brüssel", Vienna: "Wien", Lisbon: "Lissabon", Prague: "Prag", Bucharest: "Bukarest", Riyadh: "Riad", Kyiv: "Kiew", Rome: "Rom" },
+    es: { Paris: "París", Tokyo: "Tokio", "Brasília": "Brasilia", Cairo: "El Cairo", Berlin: "Berlín", Rome: "Roma", "Mexico City": "Ciudad de México", "New Delhi": "Nueva Delhi", Beijing: "Pekín", Moscow: "Moscú", Seoul: "Seúl", Jakarta: "Yakarta", Hanoi: "Hanói", Athens: "Atenas", Warsaw: "Varsovia", Stockholm: "Estocolmo", Copenhagen: "Copenhague", Amsterdam: "Ámsterdam", Brussels: "Bruselas", Bern: "Berna", Vienna: "Viena", Lisbon: "Lisboa", Dublin: "Dublín", Riyadh: "Riad", "Abu Dhabi": "Abu Dabi", Jerusalem: "Jerusalén", Kyiv: "Kiev", Prague: "Praga", Bucharest: "Bucarest", Dhaka: "Daca" },
+    fr: { Cairo: "Le Caire", "Mexico City": "Mexico", Beijing: "Pékin", Moscow: "Moscou", Seoul: "Séoul", Hanoi: "Hanoï", Athens: "Athènes", Warsaw: "Varsovie", Copenhagen: "Copenhague", Brussels: "Bruxelles", Bern: "Berne", Vienna: "Vienne", Lisbon: "Lisbonne", Riyadh: "Riyad", "Abu Dhabi": "Abou Dabi", Jerusalem: "Jérusalem", Kyiv: "Kiev", Bucharest: "Bucarest", Dhaka: "Dacca", "Brasília": "Brasilia" },
+    ja: { Paris: "パリ", Tokyo: "東京", Canberra: "キャンベラ", "Brasília": "ブラジリア", Cairo: "カイロ", Ottawa: "オタワ", Berlin: "ベルリン", Rome: "ローマ", Madrid: "マドリード", "Mexico City": "メキシコシティ", "New Delhi": "ニューデリー", Beijing: "北京", Moscow: "モスクワ", Pretoria: "プレトリア", "Buenos Aires": "ブエノスアイレス", Abuja: "アブジャ", Nairobi: "ナイロビ", Bangkok: "バンコク", Hanoi: "ハノイ", Seoul: "ソウル", Jakarta: "ジャカルタ", Ankara: "アンカラ", Athens: "アテネ", Warsaw: "ワルシャワ", Stockholm: "ストックホルム", Oslo: "オスロ", Helsinki: "ヘルシンキ", Copenhagen: "コペンハーゲン", Amsterdam: "アムステルダム", Brussels: "ブリュッセル", Bern: "ベルン", Vienna: "ウィーン", Lisbon: "リスボン", Dublin: "ダブリン", Wellington: "ウェリントン", Santiago: "サンティアゴ", Lima: "リマ", "Bogotá": "ボゴタ", Riyadh: "リヤド", "Abu Dhabi": "アブダビ", Jerusalem: "エルサレム", Kyiv: "キーウ", Prague: "プラハ", Budapest: "ブダペスト", Bucharest: "ブカレスト", Rabat: "ラバト", Manila: "マニラ", "Kuala Lumpur": "クアラルンプール", Islamabad: "イスラマバード", Dhaka: "ダッカ" },
+    ko: { Paris: "파리", Tokyo: "도쿄", Canberra: "캔버라", "Brasília": "브라질리아", Cairo: "카이로", Ottawa: "오타와", Berlin: "베를린", Rome: "로마", Madrid: "마드리드", "Mexico City": "멕시코시티", "New Delhi": "뉴델리", Beijing: "베이징", Moscow: "모스크바", Pretoria: "프리토리아", "Buenos Aires": "부에노스아이레스", Abuja: "아부자", Nairobi: "나이로비", Bangkok: "방콕", Hanoi: "하노이", Seoul: "서울", Jakarta: "자카르타", Ankara: "앙카라", Athens: "아테네", Warsaw: "바르샤바", Stockholm: "스톡홀름", Oslo: "오슬로", Helsinki: "헬싱키", Copenhagen: "코펜하겐", Amsterdam: "암스테르담", Brussels: "브뤼셀", Bern: "베른", Vienna: "빈", Lisbon: "리스본", Dublin: "더블린", Wellington: "웰링턴", Santiago: "산티아고", Lima: "리마", "Bogotá": "보고타", Riyadh: "리야드", "Abu Dhabi": "아부다비", Jerusalem: "예루살렘", Kyiv: "키이우", Prague: "프라하", Budapest: "부다페스트", Bucharest: "부쿠레슈티", Rabat: "라바트", Manila: "마닐라", "Kuala Lumpur": "쿠알라룸푸르", Islamabad: "이슬라마바드", Dhaka: "다카" },
+    "pt-BR": { Tokyo: "Tóquio", Canberra: "Camberra", Berlin: "Berlim", Rome: "Roma", Madrid: "Madri", "Mexico City": "Cidade do México", "New Delhi": "Nova Délhi", Beijing: "Pequim", Moscow: "Moscou", Nairobi: "Nairóbi", Hanoi: "Hanói", Seoul: "Seul", Jakarta: "Jacarta", Ankara: "Ancara", Athens: "Atenas", Warsaw: "Varsóvia", Stockholm: "Estocolmo", Helsinki: "Helsinque", Copenhagen: "Copenhague", Amsterdam: "Amsterdã", Brussels: "Bruxelas", Bern: "Berna", Vienna: "Viena", Lisbon: "Lisboa", Riyadh: "Riade", Jerusalem: "Jerusalém", Kyiv: "Kiev", Prague: "Praga", Budapest: "Budapeste", Bucharest: "Bucareste", Islamabad: "Islamabade", Dhaka: "Daca" },
+    "zh-CN": { Paris: "巴黎", Tokyo: "东京", Canberra: "堪培拉", "Brasília": "巴西利亚", Cairo: "开罗", Ottawa: "渥太华", Berlin: "柏林", Rome: "罗马", Madrid: "马德里", "Mexico City": "墨西哥城", "New Delhi": "新德里", Beijing: "北京", Moscow: "莫斯科", Pretoria: "比勒陀利亚", "Buenos Aires": "布宜诺斯艾利斯", Abuja: "阿布贾", Nairobi: "内罗毕", Bangkok: "曼谷", Hanoi: "河内", Seoul: "首尔", Jakarta: "雅加达", Ankara: "安卡拉", Athens: "雅典", Warsaw: "华沙", Stockholm: "斯德哥尔摩", Oslo: "奥斯陆", Helsinki: "赫尔辛基", Copenhagen: "哥本哈根", Amsterdam: "阿姆斯特丹", Brussels: "布鲁塞尔", Bern: "伯尔尼", Vienna: "维也纳", Lisbon: "里斯本", Dublin: "都柏林", Wellington: "惠灵顿", Santiago: "圣地亚哥", Lima: "利马", "Bogotá": "波哥大", Riyadh: "利雅得", "Abu Dhabi": "阿布扎比", Jerusalem: "耶路撒冷", Kyiv: "基辅", Prague: "布拉格", Budapest: "布达佩斯", Bucharest: "布加勒斯特", Rabat: "拉巴特", Manila: "马尼拉", "Kuala Lumpur": "吉隆坡", Islamabad: "伊斯兰堡", Dhaka: "达卡" }
+  };
+  var CAP = CAPS.hasOwnProperty(LANG) ? CAPS[LANG] : (CAPS.hasOwnProperty(LANG.split('-')[0]) ? CAPS[LANG.split('-')[0]] : {});
+  function capName(c) { return CAP.hasOwnProperty(c) ? CAP[c] : c; }
+  var REGIONS = null;
+  try { if (LANG.split('-')[0] !== 'en') REGIONS = new Intl.DisplayNames([LANG], { type: "region", fallback: "none" }); } catch (e) { REGIONS = null; }
+  function countryName(entry) {
+    var n;
+    try { n = REGIONS ? REGIONS.of(entry.code) : ""; } catch (e) { n = ""; }
+    return n || entry.country;
+  }
+  function fmt(opts, n) {
+    try { return new Intl.NumberFormat(LANG, opts).format(n); } catch (e) { return new Intl.NumberFormat("en", opts).format(n); }
+  }
+
   var COUNTRIES = [
-    { country: "France", capital: "Paris" },
-    { country: "Japan", capital: "Tokyo" },
-    { country: "Australia", capital: "Canberra" },
-    { country: "Brazil", capital: "Brasília" },
-    { country: "Egypt", capital: "Cairo" },
-    { country: "Canada", capital: "Ottawa" },
-    { country: "Germany", capital: "Berlin" },
-    { country: "Italy", capital: "Rome" },
-    { country: "Spain", capital: "Madrid" },
-    { country: "Mexico", capital: "Mexico City" },
-    { country: "India", capital: "New Delhi" },
-    { country: "China", capital: "Beijing" },
-    { country: "Russia", capital: "Moscow" },
-    { country: "South Africa", capital: "Pretoria" },
-    { country: "Argentina", capital: "Buenos Aires" },
-    { country: "Nigeria", capital: "Abuja" },
-    { country: "Kenya", capital: "Nairobi" },
-    { country: "Thailand", capital: "Bangkok" },
-    { country: "Vietnam", capital: "Hanoi" },
-    { country: "South Korea", capital: "Seoul" },
-    { country: "Indonesia", capital: "Jakarta" },
-    { country: "Turkey", capital: "Ankara" },
-    { country: "Greece", capital: "Athens" },
-    { country: "Poland", capital: "Warsaw" },
-    { country: "Sweden", capital: "Stockholm" },
-    { country: "Norway", capital: "Oslo" },
-    { country: "Finland", capital: "Helsinki" },
-    { country: "Denmark", capital: "Copenhagen" },
-    { country: "Netherlands", capital: "Amsterdam" },
-    { country: "Belgium", capital: "Brussels" },
-    { country: "Switzerland", capital: "Bern" },
-    { country: "Austria", capital: "Vienna" },
-    { country: "Portugal", capital: "Lisbon" },
-    { country: "Ireland", capital: "Dublin" },
-    { country: "New Zealand", capital: "Wellington" },
-    { country: "Chile", capital: "Santiago" },
-    { country: "Peru", capital: "Lima" },
-    { country: "Colombia", capital: "Bogotá" },
-    { country: "Saudi Arabia", capital: "Riyadh" },
-    { country: "United Arab Emirates", capital: "Abu Dhabi" },
-    { country: "Israel", capital: "Jerusalem" },
-    { country: "Ukraine", capital: "Kyiv" },
-    { country: "Czechia", capital: "Prague" },
-    { country: "Hungary", capital: "Budapest" },
-    { country: "Romania", capital: "Bucharest" },
-    { country: "Morocco", capital: "Rabat" },
-    { country: "Philippines", capital: "Manila" },
-    { country: "Malaysia", capital: "Kuala Lumpur" },
-    { country: "Pakistan", capital: "Islamabad" },
-    { country: "Bangladesh", capital: "Dhaka" }
+    { code: "FR", country: "France", capital: "Paris" },
+    { code: "JP", country: "Japan", capital: "Tokyo" },
+    { code: "AU", country: "Australia", capital: "Canberra" },
+    { code: "BR", country: "Brazil", capital: "Brasília" },
+    { code: "EG", country: "Egypt", capital: "Cairo" },
+    { code: "CA", country: "Canada", capital: "Ottawa" },
+    { code: "DE", country: "Germany", capital: "Berlin" },
+    { code: "IT", country: "Italy", capital: "Rome" },
+    { code: "ES", country: "Spain", capital: "Madrid" },
+    { code: "MX", country: "Mexico", capital: "Mexico City" },
+    { code: "IN", country: "India", capital: "New Delhi" },
+    { code: "CN", country: "China", capital: "Beijing" },
+    { code: "RU", country: "Russia", capital: "Moscow" },
+    { code: "ZA", country: "South Africa", capital: "Pretoria" },
+    { code: "AR", country: "Argentina", capital: "Buenos Aires" },
+    { code: "NG", country: "Nigeria", capital: "Abuja" },
+    { code: "KE", country: "Kenya", capital: "Nairobi" },
+    { code: "TH", country: "Thailand", capital: "Bangkok" },
+    { code: "VN", country: "Vietnam", capital: "Hanoi" },
+    { code: "KR", country: "South Korea", capital: "Seoul" },
+    { code: "ID", country: "Indonesia", capital: "Jakarta" },
+    { code: "TR", country: "Turkey", capital: "Ankara" },
+    { code: "GR", country: "Greece", capital: "Athens" },
+    { code: "PL", country: "Poland", capital: "Warsaw" },
+    { code: "SE", country: "Sweden", capital: "Stockholm" },
+    { code: "NO", country: "Norway", capital: "Oslo" },
+    { code: "FI", country: "Finland", capital: "Helsinki" },
+    { code: "DK", country: "Denmark", capital: "Copenhagen" },
+    { code: "NL", country: "Netherlands", capital: "Amsterdam" },
+    { code: "BE", country: "Belgium", capital: "Brussels" },
+    { code: "CH", country: "Switzerland", capital: "Bern" },
+    { code: "AT", country: "Austria", capital: "Vienna" },
+    { code: "PT", country: "Portugal", capital: "Lisbon" },
+    { code: "IE", country: "Ireland", capital: "Dublin" },
+    { code: "NZ", country: "New Zealand", capital: "Wellington" },
+    { code: "CL", country: "Chile", capital: "Santiago" },
+    { code: "PE", country: "Peru", capital: "Lima" },
+    { code: "CO", country: "Colombia", capital: "Bogotá" },
+    { code: "SA", country: "Saudi Arabia", capital: "Riyadh" },
+    { code: "AE", country: "United Arab Emirates", capital: "Abu Dhabi" },
+    { code: "IL", country: "Israel", capital: "Jerusalem" },
+    { code: "UA", country: "Ukraine", capital: "Kyiv" },
+    { code: "CZ", country: "Czechia", capital: "Prague" },
+    { code: "HU", country: "Hungary", capital: "Budapest" },
+    { code: "RO", country: "Romania", capital: "Bucharest" },
+    { code: "MA", country: "Morocco", capital: "Rabat" },
+    { code: "PH", country: "Philippines", capital: "Manila" },
+    { code: "MY", country: "Malaysia", capital: "Kuala Lumpur" },
+    { code: "PK", country: "Pakistan", capital: "Islamabad" },
+    { code: "BD", country: "Bangladesh", capital: "Dhaka" }
   ];
 
   var QUESTIONS_PER_GAME = 10;
@@ -354,6 +435,7 @@
 
     return {
       country: entry.country,
+      entry: entry,
       correctCapital: entry.capital,
       options: optionValues
     };
@@ -376,11 +458,11 @@
     var q = state.questions[state.index];
     state.answered = false;
 
-    els.counter.textContent = "Question " + (state.index + 1) + " of " + QUESTIONS_PER_GAME;
-    els.scoreDisplay.textContent = "Score: " + state.score;
+    els.counter.textContent = t("counter", { n: state.index + 1, total: QUESTIONS_PER_GAME });
+    els.scoreDisplay.textContent = t("score", { n: state.score });
     els.progressFill.style.width = ((state.index) / QUESTIONS_PER_GAME * 100) + "%";
 
-    els.countryName.textContent = q.country;
+    els.countryName.textContent = countryName(q.entry);
     els.feedback.textContent = "";
     els.feedback.className = "feedback";
     els.nextBtn.hidden = true;
@@ -394,7 +476,8 @@
 
       var textSpan = document.createElement("span");
       textSpan.className = "opt-text";
-      textSpan.textContent = capital;
+      textSpan.textContent = capName(capital);
+      btn.setAttribute("data-cap", capital);
 
       var tagSpan = document.createElement("span");
       tagSpan.className = "opt-tag";
@@ -424,25 +507,25 @@
     var buttons = els.options.querySelectorAll(".option");
     buttons.forEach(function (btn) {
       btn.disabled = true;
-      var text = btn.querySelector(".opt-text").textContent;
+      var text = btn.getAttribute("data-cap");
       var tag = btn.querySelector(".opt-tag");
 
       if (text === q.correctCapital) {
         btn.classList.add("correct");
-        tag.textContent = "Correct";
+        tag.textContent = t("correct");
       } else if (btn === selectedBtn) {
         btn.classList.add("wrong");
-        tag.textContent = "Your answer";
+        tag.textContent = t("yours");
       }
     });
 
-    els.scoreDisplay.textContent = "Score: " + state.score;
+    els.scoreDisplay.textContent = t("score", { n: state.score });
 
     if (isCorrect) {
-      els.feedback.textContent = "Correct! The capital of " + q.country + " is " + q.correctCapital + ".";
+      els.feedback.textContent = t("ok", { country: countryName(q.entry), capital: capName(q.correctCapital) });
       els.feedback.className = "feedback is-correct";
     } else {
-      els.feedback.textContent = "Incorrect. The capital of " + q.country + " is " + q.correctCapital + ".";
+      els.feedback.textContent = t("bad", { country: countryName(q.entry), capital: capName(q.correctCapital) });
       els.feedback.className = "feedback is-wrong";
     }
 
@@ -464,10 +547,9 @@
     els.questionCard.hidden = true;
     els.scoreCard.hidden = false;
 
-    els.finalScoreText.textContent = "You scored " + state.score + " out of " + QUESTIONS_PER_GAME;
+    els.finalScoreText.textContent = t("final", { n: state.score, total: QUESTIONS_PER_GAME });
 
-    var pct = Math.round((state.score / QUESTIONS_PER_GAME) * 100);
-    els.finalScoreSub.textContent = pct + "% correct";
+    els.finalScoreSub.textContent = t("pct", { pct: fmt({ style: "percent" }, state.score / QUESTIONS_PER_GAME) });
 
     els.playAgainBtn.focus();
   }
@@ -475,6 +557,7 @@
   els.nextBtn.addEventListener("click", goNext);
   els.playAgainBtn.addEventListener("click", startGame);
 
+  applyI18n();
   startGame();
 })();
 </script>

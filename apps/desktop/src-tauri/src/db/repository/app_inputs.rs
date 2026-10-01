@@ -219,6 +219,7 @@ mod tests {
             required: true,
             default: Some(json!("Paris")),
             options: None,
+            translations: None,
         }
     }
 
@@ -230,6 +231,7 @@ mod tests {
             required: false,
             default: Some(json!("metric")),
             options: Some(vec!["metric".to_string(), "imperial".to_string()]),
+            translations: None,
         }
     }
 

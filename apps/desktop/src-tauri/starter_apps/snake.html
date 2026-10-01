@@ -205,51 +205,273 @@
 
 <div class="snake-app">
   <div class="snake-header">
-    <h1 class="snake-title">Snake</h1>
+    <h1 class="snake-title" data-i18n="title">Snake</h1>
     <div class="snake-scores">
       <div class="snake-score-box">
-        <p class="snake-score-label">Score</p>
+        <p class="snake-score-label" data-i18n="score">Score</p>
         <p class="snake-score-value" id="snake-score">0</p>
       </div>
       <div class="snake-score-box">
-        <p class="snake-score-label">Best</p>
+        <p class="snake-score-label" data-i18n="best">Best</p>
         <p class="snake-score-value" id="snake-best">0</p>
       </div>
     </div>
   </div>
 
   <div class="snake-stage">
-    <canvas id="snake-canvas" tabindex="0" width="400" height="400" role="img" aria-label="Snake game board"></canvas>
+    <canvas id="snake-canvas" tabindex="0" width="400" height="400" role="img" aria-label="Snake game board" data-i18n-aria="boardAria"></canvas>
     <div class="snake-overlay" id="snake-overlay-focus">
-      <p class="snake-overlay-title">Click to play</p>
-      <p class="snake-overlay-sub">Use Arrow keys or WASD</p>
+      <p class="snake-overlay-title" data-i18n="clickToPlay">Click to play</p>
+      <p class="snake-overlay-sub" data-i18n="useKeys">Use Arrow keys or WASD</p>
     </div>
     <div class="snake-overlay" id="snake-overlay-pause" hidden>
-      <p class="snake-overlay-title">Paused</p>
-      <p class="snake-overlay-sub">Press Space or P to resume</p>
+      <p class="snake-overlay-title" data-i18n="paused">Paused</p>
+      <p class="snake-overlay-sub" data-i18n="resumeHint">Press Space or P to resume</p>
     </div>
     <div class="snake-overlay" id="snake-overlay-over" hidden>
-      <p class="snake-overlay-title">Game Over</p>
+      <p class="snake-overlay-title" data-i18n="gameOver">Game Over</p>
       <p class="snake-overlay-sub" id="snake-overlay-final">Score: 0</p>
     </div>
   </div>
 
   <div class="snake-controls">
-    <button type="button" class="snake-btn snake-primary" id="snake-restart">Restart</button>
-    <div class="snake-dpad" role="group" aria-label="Direction controls">
-      <button type="button" class="snake-dpad-btn snake-dpad-up" id="snake-btn-up" aria-label="Move up">&#9650;</button>
-      <button type="button" class="snake-dpad-btn snake-dpad-left" id="snake-btn-left" aria-label="Move left">&#9664;</button>
-      <button type="button" class="snake-dpad-btn snake-dpad-right" id="snake-btn-right" aria-label="Move right">&#9654;</button>
-      <button type="button" class="snake-dpad-btn snake-dpad-down" id="snake-btn-down" aria-label="Move down">&#9660;</button>
+    <button type="button" class="snake-btn snake-primary" id="snake-restart" data-i18n="restart">Restart</button>
+    <div class="snake-dpad" role="group" aria-label="Direction controls" data-i18n-aria="dpadAria">
+      <button type="button" class="snake-dpad-btn snake-dpad-up" id="snake-btn-up" aria-label="Move up" data-i18n-aria="moveUp">&#9650;</button>
+      <button type="button" class="snake-dpad-btn snake-dpad-left" id="snake-btn-left" aria-label="Move left" data-i18n-aria="moveLeft">&#9664;</button>
+      <button type="button" class="snake-dpad-btn snake-dpad-right" id="snake-btn-right" aria-label="Move right" data-i18n-aria="moveRight">&#9654;</button>
+      <button type="button" class="snake-dpad-btn snake-dpad-down" id="snake-btn-down" aria-label="Move down" data-i18n-aria="moveDown">&#9660;</button>
     </div>
   </div>
 
-  <p class="snake-hint">Arrow keys or WASD to move. Space or P to pause.</p>
+  <p class="snake-hint" data-i18n="hint">Arrow keys or WASD to move. Space or P to pause.</p>
   <div class="snake-visually-hidden" id="snake-status" aria-live="polite"></div>
 </div>
 
 <script>
 (function () {
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      title: "Snake",
+      score: "Score",
+      best: "Best",
+      clickToPlay: "Click to play",
+      useKeys: "Use Arrow keys or WASD",
+      paused: "Paused",
+      resumeHint: "Press Space or P to resume",
+      gameOver: "Game Over",
+      finalScore: "Score: {score}",
+      restart: "Restart",
+      boardAria: "Snake game board",
+      dpadAria: "Direction controls",
+      moveUp: "Move up",
+      moveLeft: "Move left",
+      moveRight: "Move right",
+      moveDown: "Move down",
+      hint: "Arrow keys or WASD to move. Space or P to pause.",
+      newGameAnn: "New game started. Score {score}.",
+      pausedAnn: "Paused.",
+      resumedAnn: "Resumed.",
+      scoreAnn: "Score {score}.",
+      gameOverAnn: "Game over. Final score {score}."
+    },
+    de: {
+      title: "Snake",
+      score: "Punkte",
+      best: "Rekord",
+      clickToPlay: "Zum Spielen klicken",
+      useKeys: "Steuerung mit Pfeiltasten oder WASD",
+      paused: "Pausiert",
+      resumeHint: "Zum Fortsetzen Leertaste oder P drücken",
+      gameOver: "Spiel vorbei",
+      finalScore: "Punkte: {score}",
+      restart: "Neustart",
+      boardAria: "Snake-Spielfeld",
+      dpadAria: "Richtungstasten",
+      moveUp: "Nach oben",
+      moveLeft: "Nach links",
+      moveRight: "Nach rechts",
+      moveDown: "Nach unten",
+      hint: "Pfeiltasten oder WASD zum Steuern. Leertaste oder P zum Pausieren.",
+      newGameAnn: "Neues Spiel gestartet. Punkte: {score}.",
+      pausedAnn: "Pausiert.",
+      resumedAnn: "Fortgesetzt.",
+      scoreAnn: "Punkte: {score}.",
+      gameOverAnn: "Spiel vorbei. Endstand: {score} Punkte."
+    },
+    es: {
+      title: "Snake",
+      score: "Puntos",
+      best: "Récord",
+      clickToPlay: "Haz clic para jugar",
+      useKeys: "Usa las flechas o WASD",
+      paused: "En pausa",
+      resumeHint: "Pulsa Espacio o P para reanudar",
+      gameOver: "Fin del juego",
+      finalScore: "Puntos: {score}",
+      restart: "Reiniciar",
+      boardAria: "Tablero del juego Snake",
+      dpadAria: "Controles de dirección",
+      moveUp: "Mover hacia arriba",
+      moveLeft: "Mover hacia la izquierda",
+      moveRight: "Mover hacia la derecha",
+      moveDown: "Mover hacia abajo",
+      hint: "Flechas o WASD para moverte. Espacio o P para pausar.",
+      newGameAnn: "Nueva partida iniciada. Puntos: {score}.",
+      pausedAnn: "En pausa.",
+      resumedAnn: "Reanudado.",
+      scoreAnn: "Puntos: {score}.",
+      gameOverAnn: "Fin del juego. Puntuación final: {score}."
+    },
+    fr: {
+      title: "Snake",
+      score: "Score",
+      best: "Record",
+      clickToPlay: "Cliquez pour jouer",
+      useKeys: "Utilisez les flèches ou WASD",
+      paused: "En pause",
+      resumeHint: "Appuyez sur Espace ou P pour reprendre",
+      gameOver: "Partie terminée",
+      finalScore: "Score : {score}",
+      restart: "Recommencer",
+      boardAria: "Plateau du jeu Snake",
+      dpadAria: "Commandes de direction",
+      moveUp: "Aller vers le haut",
+      moveLeft: "Aller vers la gauche",
+      moveRight: "Aller vers la droite",
+      moveDown: "Aller vers le bas",
+      hint: "Flèches ou WASD pour se déplacer. Espace ou P pour mettre en pause.",
+      newGameAnn: "Nouvelle partie lancée. Score : {score}.",
+      pausedAnn: "En pause.",
+      resumedAnn: "Reprise.",
+      scoreAnn: "Score : {score}.",
+      gameOverAnn: "Partie terminée. Score final : {score}."
+    },
+    ja: {
+      title: "スネーク",
+      score: "スコア",
+      best: "ベスト",
+      clickToPlay: "クリックして開始",
+      useKeys: "矢印キーまたは WASD で操作",
+      paused: "一時停止中",
+      resumeHint: "スペースキーまたは P で再開",
+      gameOver: "ゲームオーバー",
+      finalScore: "スコア: {score}",
+      restart: "リスタート",
+      boardAria: "スネークゲームの盤面",
+      dpadAria: "方向ボタン",
+      moveUp: "上へ移動",
+      moveLeft: "左へ移動",
+      moveRight: "右へ移動",
+      moveDown: "下へ移動",
+      hint: "矢印キーまたは WASD で移動。スペースキーまたは P で一時停止。",
+      newGameAnn: "新しいゲームを開始しました。スコア: {score}。",
+      pausedAnn: "一時停止しました。",
+      resumedAnn: "再開しました。",
+      scoreAnn: "スコア: {score}。",
+      gameOverAnn: "ゲームオーバー。最終スコアは {score} です。"
+    },
+    ko: {
+      title: "스네이크",
+      score: "점수",
+      best: "최고",
+      clickToPlay: "클릭하여 시작",
+      useKeys: "방향키 또는 WASD로 조작",
+      paused: "일시정지됨",
+      resumeHint: "스페이스바 또는 P를 눌러 계속",
+      gameOver: "게임 오버",
+      finalScore: "점수: {score}",
+      restart: "다시 시작",
+      boardAria: "스네이크 게임 판",
+      dpadAria: "방향 버튼",
+      moveUp: "위로 이동",
+      moveLeft: "왼쪽으로 이동",
+      moveRight: "오른쪽으로 이동",
+      moveDown: "아래로 이동",
+      hint: "방향키 또는 WASD로 이동, 스페이스바 또는 P로 일시정지.",
+      newGameAnn: "새 게임을 시작했습니다. 점수: {score}.",
+      pausedAnn: "일시정지됨.",
+      resumedAnn: "계속합니다.",
+      scoreAnn: "점수: {score}.",
+      gameOverAnn: "게임 오버. 최종 점수: {score}."
+    },
+    "pt-BR": {
+      title: "Snake",
+      score: "Pontos",
+      best: "Recorde",
+      clickToPlay: "Clique para jogar",
+      useKeys: "Use as setas ou WASD",
+      paused: "Pausado",
+      resumeHint: "Pressione Espaço ou P para retomar",
+      gameOver: "Fim de jogo",
+      finalScore: "Pontos: {score}",
+      restart: "Reiniciar",
+      boardAria: "Tabuleiro do jogo Snake",
+      dpadAria: "Controles de direção",
+      moveUp: "Mover para cima",
+      moveLeft: "Mover para a esquerda",
+      moveRight: "Mover para a direita",
+      moveDown: "Mover para baixo",
+      hint: "Setas ou WASD para mover. Espaço ou P para pausar.",
+      newGameAnn: "Novo jogo iniciado. Pontos: {score}.",
+      pausedAnn: "Pausado.",
+      resumedAnn: "Retomado.",
+      scoreAnn: "Pontos: {score}.",
+      gameOverAnn: "Fim de jogo. Pontuação final: {score}."
+    },
+    "zh-CN": {
+      title: "贪吃蛇",
+      score: "得分",
+      best: "最高分",
+      clickToPlay: "点击开始游戏",
+      useKeys: "使用方向键或 WASD 控制",
+      paused: "已暂停",
+      resumeHint: "按空格键或 P 继续",
+      gameOver: "游戏结束",
+      finalScore: "得分: {score}",
+      restart: "重新开始",
+      boardAria: "贪吃蛇游戏棋盘",
+      dpadAria: "方向控制",
+      moveUp: "向上移动",
+      moveLeft: "向左移动",
+      moveRight: "向右移动",
+      moveDown: "向下移动",
+      hint: "方向键或 WASD 移动，空格键或 P 暂停。",
+      newGameAnn: "新游戏已开始。得分: {score}。",
+      pausedAnn: "已暂停。",
+      resumedAnn: "已继续。",
+      scoreAnn: "得分: {score}。",
+      gameOverAnn: "游戏结束。最终得分: {score}。"
+    }
+  };
+  var LOC = (function () {
+    var l = String(LANG);
+    if (STRINGS[l]) return l;
+    var b = l.split('-')[0].toLowerCase();
+    if (STRINGS[b]) return b;
+    for (var k in STRINGS) { if (k.split('-')[0] === b) return k; }
+    return 'en';
+  })();
+  function t(key, vars) {
+    var s = STRINGS[LOC][key];
+    if (s == null) s = STRINGS.en[key];
+    if (vars) {
+      s = s.replace(/\{(\w+)\}/g, function (m, n) { return vars[n] != null ? vars[n] : m; });
+    }
+    return s;
+  }
+  function fmtInt(n) {
+    try { return new Intl.NumberFormat(LANG).format(n); }
+    catch (e) { return new Intl.NumberFormat('en').format(n); }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-aria]'), function (el) {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
+  
   var canvas = document.getElementById('snake-canvas');
   var ctx = canvas.getContext('2d');
   var scoreEl = document.getElementById('snake-score');
@@ -318,7 +540,8 @@
     updateScoreDisplay();
     overlayOver.hidden = true;
     overlayPause.hidden = true;
-    announce('New game started. Score 0.');
+    overlayFinal.textContent = t('finalScore', { score: fmtInt(0) });
+    announce(t('newGameAnn', { score: fmtInt(0) }));
   }
 
   function placeFood() {
@@ -340,8 +563,8 @@
   }
 
   function updateScoreDisplay() {
-    scoreEl.textContent = String(score);
-    bestEl.textContent = String(best);
+    scoreEl.textContent = fmtInt(score);
+    bestEl.textContent = fmtInt(best);
   }
 
   function announce(msg) {
@@ -362,7 +585,7 @@
     if (gameOver) return;
     paused = !paused;
     overlayPause.hidden = !paused;
-    announce(paused ? 'Paused.' : 'Resumed.');
+    announce(paused ? t('pausedAnn') : t('resumedAnn'));
   }
 
   function step() {
@@ -395,7 +618,7 @@
         best = score;
       }
       updateScoreDisplay();
-      announce('Score ' + score + '.');
+      announce(t('scoreAnn', { score: fmtInt(score) }));
       placeFood();
       if (foodCount % SPEEDUP_EVERY === 0) {
         tickInterval = Math.max(MIN_INTERVAL, tickInterval - SPEEDUP_STEP);
@@ -409,8 +632,8 @@
     gameOver = true;
     paused = false;
     overlayOver.hidden = false;
-    overlayFinal.textContent = 'Score: ' + score;
-    announce('Game over. Final score ' + score + '.');
+    overlayFinal.textContent = t('finalScore', { score: fmtInt(score) });
+    announce(t('gameOverAnn', { score: fmtInt(score) }));
   }
 
   function draw() {

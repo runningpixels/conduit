@@ -12,15 +12,15 @@
 
 use provider_core::schema::{
     AccentOverride, AgentGuardrails, AppCapabilities, AppCategory, AppCreatedWith, AppDetail,
-    AppError, AppInput, AppInputKind, AppLlm, AppManifest, AppNetwork, AppOrigin, AppSettings,
-    AppStorage, AppSummary, Artifact, ArtifactKind, AskUserField, Attachment, BrandBundle,
-    BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime, BrandThemes,
-    BrandUpdater, ConnectorDefinition, ConnectorGrant, ConnectorPromptArgument,
-    ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent, ConnectorVersion,
-    ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary,
-    CredentialRequest, CredentialSummary, GenerationControls, GrantScope, GrantStatus,
-    KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
-    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageLlmGrant, PageLlmReply,
+    AppError, AppInput, AppInputKind, AppInputTranslation, AppLlm, AppManifest, AppNetwork,
+    AppOrigin, AppSettings, AppStorage, AppSummary, Artifact, ArtifactKind, AskUserField,
+    Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette,
+    BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
+    ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
+    ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
+    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
+    GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
+    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageLlmGrant, PageLlmReply,
     PageLlmRequest, PageLlmState, PageStorageUsage, PermissionLevel, PromptArguments,
     ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
     ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
@@ -85,6 +85,7 @@ fn main() {
     AppCreatedWith::export().expect("export AppCreatedWith");
     AppInputKind::export().expect("export AppInputKind");
     AppInput::export().expect("export AppInput");
+    AppInputTranslation::export().expect("export AppInputTranslation");
     AppManifest::export().expect("export AppManifest");
     AppSummary::export().expect("export AppSummary");
     AppDetail::export().expect("export AppDetail");

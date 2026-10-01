@@ -225,23 +225,23 @@
 
 <div class="cc-app">
   <header class="cc-header">
-    <h1 class="cc-title">Currency Converter</h1>
-    <p class="cc-subtitle">Live exchange rates from Frankfurter</p>
+    <h1 class="cc-title" data-i18n="title">Currency Converter</h1>
+    <p class="cc-subtitle" data-i18n="sub">Live exchange rates from Frankfurter</p>
   </header>
 
   <div class="cc-card">
     <div class="cc-field">
-      <label for="cc-amount">Amount</label>
+      <label for="cc-amount" data-i18n="amount">Amount</label>
       <input id="cc-amount" type="number" inputmode="decimal" min="0" step="any" value="1" />
     </div>
 
     <div class="cc-row">
       <div class="cc-field cc-field-currency">
-        <label for="cc-from">From</label>
+        <label for="cc-from" data-i18n="from">From</label>
         <select id="cc-from"></select>
       </div>
 
-      <button type="button" id="cc-swap" class="cc-swap-btn" aria-label="Swap from and to currencies" title="Swap currencies">
+      <button type="button" id="cc-swap" class="cc-swap-btn" aria-label="Swap from and to currencies" title="Swap currencies" data-i18n-aria="swapAria" data-i18n-title="swapTitle">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M7 4v13" />
           <path d="M3 13l4 4 4-4" />
@@ -251,28 +251,28 @@
       </button>
 
       <div class="cc-field cc-field-currency">
-        <label for="cc-to">To</label>
+        <label for="cc-to" data-i18n="to">To</label>
         <select id="cc-to"></select>
       </div>
     </div>
 
     <div id="cc-currencies-loading" class="cc-status" hidden>
       <span class="cc-spinner" aria-hidden="true"></span>
-      <span>Loading currency list…</span>
+      <span data-i18n="loadC">Loading currency list…</span>
     </div>
     <div id="cc-currencies-error" class="cc-error" role="alert" hidden>
       <span id="cc-currencies-error-text"></span>
-      <button type="button" id="cc-currencies-retry" class="cc-retry-btn">Retry</button>
+      <button type="button" id="cc-currencies-retry" class="cc-retry-btn" data-i18n="retry">Retry</button>
     </div>
 
     <div class="cc-result-area" aria-live="polite">
       <div id="cc-rates-loading" class="cc-status" hidden>
         <span class="cc-spinner" aria-hidden="true"></span>
-        <span>Loading exchange rates…</span>
+        <span data-i18n="loadR">Loading exchange rates…</span>
       </div>
       <div id="cc-rates-error" class="cc-error" role="alert" hidden>
         <span id="cc-rates-error-text"></span>
-        <button type="button" id="cc-rates-retry" class="cc-retry-btn">Retry</button>
+        <button type="button" id="cc-rates-retry" class="cc-retry-btn" data-i18n="retry">Retry</button>
       </div>
       <div id="cc-result-block" class="cc-result-block" hidden>
         <div class="cc-result" id="cc-result">—</div>
@@ -286,6 +286,105 @@
 <script>
 (function () {
   "use strict";
+
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      title: "Currency Converter", sub: "Live exchange rates from Frankfurter", amount: "Amount", from: "From", to: "To",
+      swapAria: "Swap from and to currencies", swapTitle: "Swap currencies",
+      loadC: "Loading currency list…", loadR: "Loading exchange rates…", retry: "Retry",
+      eC: "Could not load the full currency list. Showing a short built-in list instead.",
+      eR: "Could not load exchange rates. Check your connection or permission, then retry.",
+      enter: "Enter an amount to convert", rate: "1 {from} = {rate} {to}", date: "Rates as of {date}"
+    },
+    de: {
+      title: "Währungsrechner", sub: "Aktuelle Wechselkurse von Frankfurter", amount: "Betrag", from: "Von", to: "Nach",
+      swapAria: "Ausgangs- und Zielwährung tauschen", swapTitle: "Währungen tauschen",
+      loadC: "Währungsliste wird geladen…", loadR: "Wechselkurse werden geladen…", retry: "Erneut versuchen",
+      eC: "Die vollständige Währungsliste konnte nicht geladen werden. Stattdessen wird eine kurze integrierte Liste angezeigt.",
+      eR: "Die Wechselkurse konnten nicht geladen werden. Prüfe deine Verbindung oder die Berechtigung und versuche es erneut.",
+      enter: "Gib einen Betrag zum Umrechnen ein", rate: "1 {from} = {rate} {to}", date: "Kurse vom {date}"
+    },
+    es: {
+      title: "Conversor de divisas", sub: "Tipos de cambio en directo de Frankfurter", amount: "Importe", from: "De", to: "A",
+      swapAria: "Intercambiar divisa de origen y de destino", swapTitle: "Intercambiar divisas",
+      loadC: "Cargando la lista de divisas…", loadR: "Cargando los tipos de cambio…", retry: "Reintentar",
+      eC: "No se pudo cargar la lista completa de divisas. Se muestra una lista breve integrada.",
+      eR: "No se pudieron cargar los tipos de cambio. Comprueba tu conexión o el permiso y vuelve a intentarlo.",
+      enter: "Introduce un importe para convertir", rate: "1 {from} = {rate} {to}", date: "Tipos de cambio a {date}"
+    },
+    fr: {
+      title: "Convertisseur de devises", sub: "Taux de change en direct de Frankfurter", amount: "Montant", from: "De", to: "Vers",
+      swapAria: "Inverser les devises de départ et d’arrivée", swapTitle: "Inverser les devises",
+      loadC: "Chargement de la liste des devises…", loadR: "Chargement des taux de change…", retry: "Réessayer",
+      eC: "Impossible de charger la liste complète des devises. Une courte liste intégrée est affichée à la place.",
+      eR: "Impossible de charger les taux de change. Vérifiez votre connexion ou l’autorisation, puis réessayez.",
+      enter: "Saisissez un montant à convertir", rate: "1 {from} = {rate} {to}", date: "Taux au {date}"
+    },
+    ja: {
+      title: "通貨換算", sub: "Frankfurter のリアルタイム為替レート", amount: "金額", from: "換算元", to: "換算先",
+      swapAria: "換算元と換算先の通貨を入れ替える", swapTitle: "通貨を入れ替え",
+      loadC: "通貨リストを読み込み中…", loadR: "為替レートを読み込み中…", retry: "再試行",
+      eC: "通貨リスト全体を読み込めませんでした。代わりに内蔵の短いリストを表示しています。",
+      eR: "為替レートを読み込めませんでした。接続または権限を確認して、再試行してください。",
+      enter: "換算する金額を入力してください", rate: "1 {from} = {rate} {to}", date: "{date}時点のレート"
+    },
+    ko: {
+      title: "환율 계산기", sub: "Frankfurter의 실시간 환율", amount: "금액", from: "기준 통화", to: "변환 통화",
+      swapAria: "기준 통화와 변환 통화 바꾸기", swapTitle: "통화 바꾸기",
+      loadC: "통화 목록을 불러오는 중…", loadR: "환율을 불러오는 중…", retry: "다시 시도",
+      eC: "전체 통화 목록을 불러올 수 없습니다. 대신 기본 제공 목록을 표시합니다.",
+      eR: "환율을 불러올 수 없습니다. 연결 또는 권한을 확인한 후 다시 시도하세요.",
+      enter: "변환할 금액을 입력하세요", rate: "1 {from} = {rate} {to}", date: "{date} 기준 환율"
+    },
+    "pt-BR": {
+      title: "Conversor de moedas", sub: "Taxas de câmbio em tempo real do Frankfurter", amount: "Valor", from: "De", to: "Para",
+      swapAria: "Inverter moedas de origem e de destino", swapTitle: "Inverter moedas",
+      loadC: "Carregando a lista de moedas…", loadR: "Carregando as taxas de câmbio…", retry: "Tentar novamente",
+      eC: "Não foi possível carregar a lista completa de moedas. Mostrando uma lista curta integrada.",
+      eR: "Não foi possível carregar as taxas de câmbio. Verifique sua conexão ou permissão e tente novamente.",
+      enter: "Digite um valor para converter", rate: "1 {from} = {rate} {to}", date: "Taxas de {date}"
+    },
+    "zh-CN": {
+      title: "货币转换器", sub: "来自 Frankfurter 的实时汇率", amount: "金额", from: "从", to: "到",
+      swapAria: "互换源货币和目标货币", swapTitle: "互换货币",
+      loadC: "正在加载货币列表…", loadR: "正在加载汇率…", retry: "重试",
+      eC: "无法加载完整的货币列表，已改为显示内置的简短列表。",
+      eR: "无法加载汇率。请检查网络连接或权限后重试。",
+      enter: "请输入要转换的金额", rate: "1 {from} = {rate} {to}", date: "汇率更新于 {date}"
+    }
+  };
+  var L = STRINGS.hasOwnProperty(LANG) ? STRINGS[LANG] : (STRINGS.hasOwnProperty(LANG.split('-')[0]) ? STRINGS[LANG.split('-')[0]] : STRINGS.en);
+  function t(key, vars) {
+    var s = L.hasOwnProperty(key) ? L[key] : STRINGS.en[key];
+    return s.replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] !== undefined ? vars[k] : m; });
+  }
+  function applyI18n() {
+    var attrs = { "data-i18n": "", "data-i18n-aria": "aria-label", "data-i18n-placeholder": "placeholder", "data-i18n-title": "title" };
+    Object.keys(attrs).forEach(function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll("[" + a + "]"), function (el) {
+        var v = t(el.getAttribute(a));
+        if (attrs[a]) el.setAttribute(attrs[a], v); else el.textContent = v;
+      });
+    });
+  }
+  function nf(opts) {
+    try { return new Intl.NumberFormat(LANG, opts); } catch (e) { return new Intl.NumberFormat("en", opts); }
+  }
+  var DN = null;
+  try { DN = new Intl.DisplayNames([LANG], { type: "currency", fallback: "code" }); } catch (e) { DN = null; }
+  function currencyName(code, fallback) {
+    var n = "";
+    try { n = DN ? DN.of(code) : ""; } catch (e) { n = ""; }
+    return n && n !== code ? n : fallback;
+  }
+  function formatDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return iso;
+    var d = new Date(+m[1], +m[2] - 1, +m[3]);
+    try { return new Intl.DateTimeFormat(LANG, { dateStyle: "medium" }).format(d); }
+    catch (e) { return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(d); }
+  }
 
   var FALLBACK_CURRENCIES = {
     USD: "US Dollar", EUR: "Euro", GBP: "British Pound", JPY: "Japanese Yen",
@@ -331,15 +430,11 @@
 
   function trimNumber(n) {
     if (!isFinite(n)) return String(n);
-    return Number(n.toPrecision(6)).toString();
+    return nf({ maximumSignificantDigits: 6 }).format(n);
   }
 
   function formatResult(n) {
-    try {
-      return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    } catch (e) {
-      return n.toFixed(2);
-    }
+    return nf({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
   }
 
   function populateSelects(map) {
@@ -353,7 +448,7 @@
     toEl.innerHTML = "";
 
     codes.forEach(function (code) {
-      var label = code + " — " + map[code];
+      var label = code + " — " + currencyName(code, map[code]);
       var opt1 = document.createElement("option");
       opt1.value = code;
       opt1.textContent = label;
@@ -389,7 +484,7 @@
       var rate = state.rates[state.toCode];
 
       if (!isFinite(amount) || amount < 0) {
-        resultEl.textContent = "Enter an amount to convert";
+        resultEl.textContent = t("enter");
       } else if (typeof rate !== "number") {
         resultEl.textContent = "—";
       } else {
@@ -398,8 +493,8 @@
       }
 
       if (typeof rate === "number") {
-        rateLineEl.textContent = "1 " + state.fromCode + " = " + trimNumber(rate) + " " + state.toCode;
-        dateLineEl.textContent = state.ratesDate ? "Rates as of " + state.ratesDate : "";
+        rateLineEl.textContent = t("rate", { from: state.fromCode, rate: trimNumber(rate), to: state.toCode });
+        dateLineEl.textContent = state.ratesDate ? t("date", { date: formatDate(state.ratesDate) }) : "";
       } else {
         rateLineEl.textContent = "";
         dateLineEl.textContent = "";
@@ -424,7 +519,7 @@
       .catch(function () {
         state.currencies = FALLBACK_CURRENCIES;
         populateSelects(state.currencies);
-        state.currenciesError = "Could not load the full currency list. Showing a short built-in list instead.";
+        state.currenciesError = t("eC");
       })
       .then(function () {
         state.currenciesLoading = false;
@@ -451,7 +546,7 @@
       .catch(function () {
         state.rates = null;
         state.ratesDate = "";
-        state.ratesError = "Could not load exchange rates. Check your connection or permission, then retry.";
+        state.ratesError = t("eR");
       })
       .then(function () {
         state.ratesLoading = false;
@@ -485,6 +580,7 @@
     loadRates(state.fromCode);
   });
 
+  applyI18n();
   populateSelects(FALLBACK_CURRENCIES);
   loadCurrencies();
   loadRates(state.fromCode);

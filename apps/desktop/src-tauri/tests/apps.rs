@@ -556,6 +556,7 @@ fn city_input() -> AppInput {
         required: true,
         default: Some(json!("Paris")),
         options: None,
+        translations: None,
     }
 }
 
@@ -567,6 +568,7 @@ fn units_input() -> AppInput {
         required: false,
         default: Some(json!("metric")),
         options: Some(vec!["metric".to_string(), "imperial".to_string()]),
+        translations: None,
     }
 }
 
@@ -579,6 +581,7 @@ fn note_input() -> AppInput {
         required: true,
         default: None,
         options: None,
+        translations: None,
     }
 }
 

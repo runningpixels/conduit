@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { declaredCapabilities, declaredHosts, declaredInputs, hostLabel, scriptedHosts } from './networkHosts';
+import {
+  declaredCapabilities,
+  declaredHosts,
+  declaredInputs,
+  hostLabel,
+  inputLabel,
+  inputOptionLabel,
+  scriptedHosts,
+} from './networkHosts';
 
 describe('declaredHosts', () => {
   it('reads each declared site with its reason', () => {
@@ -127,5 +135,56 @@ describe('hostLabel', () => {
   it('shows the host, with a port only when it is not the default', () => {
     expect(hostLabel('https://api.example.com')).toBe('api.example.com');
     expect(hostLabel('https://api.example.com:8443')).toBe('api.example.com:8443');
+  });
+});
+
+describe('input translations', () => {
+  const block = (inputs: unknown) => `<script type="application/conduit-inputs+json">${JSON.stringify(inputs)}</script>`;
+  const units = {
+    id: 'units',
+    label: 'Units',
+    type: 'enum',
+    options: ['metric', 'imperial'],
+    translations: {
+      de: { label: 'Einheiten', options: { metric: 'Metrisch', imperial: 'Imperial' } },
+      pt: { label: 'Unidades' },
+    },
+  };
+
+  it('keeps well-formed translations on the parsed input', () => {
+    const [parsed] = declaredInputs(block([units]));
+    expect(parsed.translations).toEqual(units.translations);
+  });
+
+  it('drops a bad tag, a blank label, and names for options the input does not declare', () => {
+    const [parsed] = declaredInputs(
+      block([
+        {
+          ...units,
+          translations: {
+            'not a tag': { label: 'X' },
+            fr: { label: '   ', options: { metric: 'Métrique', kelvin: 'Kelvin' } },
+            ja: { label: '' },
+          },
+        },
+      ]),
+    );
+    expect(parsed.translations).toEqual({ fr: { options: { metric: 'Métrique' } } });
+  });
+
+  it('ignores option names on an input that is not an enum, and omits empty translations', () => {
+    const [city] = declaredInputs(
+      block([{ id: 'city', label: 'City', type: 'string', translations: { de: { options: { a: 'b' } } } }]),
+    );
+    expect(city.translations).toBeUndefined();
+  });
+
+  it('shows the exact tag, then the language alone, then the declared text', () => {
+    const [parsed] = declaredInputs(block([units]));
+    expect(inputLabel(parsed, 'de')).toBe('Einheiten');
+    expect(inputLabel(parsed, 'pt-BR')).toBe('Unidades');
+    expect(inputLabel(parsed, 'ja')).toBe('Units');
+    expect(inputOptionLabel(parsed, 'metric', 'de')).toBe('Metrisch');
+    expect(inputOptionLabel(parsed, 'metric', 'pt-BR')).toBe('metric');
   });
 });

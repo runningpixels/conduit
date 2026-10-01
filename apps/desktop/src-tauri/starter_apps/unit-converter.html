@@ -60,6 +60,8 @@ body {
 
 .uc-tab {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 10px 12px;
   border: none;
   background: transparent;
@@ -200,24 +202,24 @@ body {
 
 <div class="uc-app">
   <div class="uc-header">
-    <h1>Unit Converter</h1>
-    <p>Type a value on either side to convert instantly.</p>
+    <h1 data-i18n="title">Unit Converter</h1>
+    <p data-i18n="subtitle">Type a value on either side to convert instantly.</p>
   </div>
 
-  <div class="uc-tabs" role="tablist" aria-label="Unit category">
-    <button type="button" class="uc-tab is-active" role="tab" aria-selected="true" aria-controls="uc-panel" id="uc-tab-length" data-category="length">Length</button>
-    <button type="button" class="uc-tab" role="tab" aria-selected="false" aria-controls="uc-panel" id="uc-tab-weight" data-category="weight">Weight</button>
-    <button type="button" class="uc-tab" role="tab" aria-selected="false" aria-controls="uc-panel" id="uc-tab-temperature" data-category="temperature">Temperature</button>
+  <div class="uc-tabs" role="tablist" aria-label="Unit category" data-i18n-aria="categoryAria">
+    <button type="button" class="uc-tab is-active" role="tab" aria-selected="true" aria-controls="uc-panel" id="uc-tab-length" data-category="length" data-i18n="tab_length">Length</button>
+    <button type="button" class="uc-tab" role="tab" aria-selected="false" aria-controls="uc-panel" id="uc-tab-weight" data-category="weight" data-i18n="tab_weight">Weight</button>
+    <button type="button" class="uc-tab" role="tab" aria-selected="false" aria-controls="uc-panel" id="uc-tab-temperature" data-category="temperature" data-i18n="tab_temperature">Temperature</button>
   </div>
 
   <div class="uc-converter" id="uc-panel" role="tabpanel" aria-labelledby="uc-tab-length">
     <div class="uc-field">
-      <label for="uc-input-a">Value A</label>
+      <label for="uc-input-a" data-i18n="valueA">Value A</label>
       <input type="text" inputmode="decimal" id="uc-input-a" class="uc-input" autocomplete="off" spellcheck="false" placeholder="0">
-      <select id="uc-unit-a" class="uc-select" aria-label="Unit for value A"></select>
+      <select id="uc-unit-a" class="uc-select" aria-label="Unit for value A" data-i18n-aria="unitAriaA"></select>
     </div>
 
-    <button type="button" id="uc-swap" class="uc-swap-btn" aria-label="Swap units and values">
+    <button type="button" id="uc-swap" class="uc-swap-btn" aria-label="Swap units and values" data-i18n-aria="swapAria">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
         <path d="M16 3l4 4-4 4"></path>
         <path d="M20 7H4"></path>
@@ -227,9 +229,9 @@ body {
     </button>
 
     <div class="uc-field">
-      <label for="uc-input-b">Value B</label>
+      <label for="uc-input-b" data-i18n="valueB">Value B</label>
       <input type="text" inputmode="decimal" id="uc-input-b" class="uc-input" autocomplete="off" spellcheck="false" placeholder="0">
-      <select id="uc-unit-b" class="uc-select" aria-label="Unit for value B"></select>
+      <select id="uc-unit-b" class="uc-select" aria-label="Unit for value B" data-i18n-aria="unitAriaB"></select>
     </div>
   </div>
 
@@ -240,44 +242,343 @@ body {
 (function () {
   "use strict";
 
+  var LANG = (document.documentElement.getAttribute('lang') || navigator.language || 'en');
+  var STRINGS = {
+    en: {
+      title: "Unit Converter",
+      subtitle: "Type a value on either side to convert instantly.",
+      categoryAria: "Unit category",
+      tab_length: "Length",
+      tab_weight: "Weight",
+      tab_temperature: "Temperature",
+      valueA: "Value A",
+      valueB: "Value B",
+      unitAriaA: "Unit for value A",
+      unitAriaB: "Unit for value B",
+      swapAria: "Swap units and values",
+      swapped: "Units swapped.",
+      equals: "{value} {from} equals {result} {to}",
+      u_mm: "Millimeters (mm)",
+      u_cm: "Centimeters (cm)",
+      u_m: "Meters (m)",
+      u_km: "Kilometers (km)",
+      u_in: "Inches (in)",
+      u_ft: "Feet (ft)",
+      u_yd: "Yards (yd)",
+      u_mi: "Miles (mi)",
+      u_mg: "Milligrams (mg)",
+      u_g: "Grams (g)",
+      u_kg: "Kilograms (kg)",
+      u_t: "Metric tons (t)",
+      u_oz: "Ounces (oz)",
+      u_lb: "Pounds (lb)",
+      u_st: "Stone (st)",
+      u_c: "Celsius (°C)",
+      u_f: "Fahrenheit (°F)",
+      u_k: "Kelvin (K)"
+    },
+    de: {
+      title: "Einheitenumrechner",
+      subtitle: "Gib auf einer Seite einen Wert ein, um sofort umzurechnen.",
+      categoryAria: "Einheitenkategorie",
+      tab_length: "Länge",
+      tab_weight: "Gewicht",
+      tab_temperature: "Temperatur",
+      valueA: "Wert A",
+      valueB: "Wert B",
+      unitAriaA: "Einheit für Wert A",
+      unitAriaB: "Einheit für Wert B",
+      swapAria: "Einheiten und Werte tauschen",
+      swapped: "Einheiten getauscht.",
+      equals: "{value} {from} entsprechen {result} {to}",
+      u_mm: "Millimeter (mm)",
+      u_cm: "Zentimeter (cm)",
+      u_m: "Meter (m)",
+      u_km: "Kilometer (km)",
+      u_in: "Zoll (in)",
+      u_ft: "Fuß (ft)",
+      u_yd: "Yards (yd)",
+      u_mi: "Meilen (mi)",
+      u_mg: "Milligramm (mg)",
+      u_g: "Gramm (g)",
+      u_kg: "Kilogramm (kg)",
+      u_t: "Tonnen (t)",
+      u_oz: "Unzen (oz)",
+      u_lb: "Pfund (lb)",
+      u_st: "Stone (st)",
+      u_c: "Celsius (°C)",
+      u_f: "Fahrenheit (°F)",
+      u_k: "Kelvin (K)"
+    },
+    es: {
+      title: "Conversor de unidades",
+      subtitle: "Escribe un valor en cualquiera de los lados para convertir al instante.",
+      categoryAria: "Categoría de unidades",
+      tab_length: "Longitud",
+      tab_weight: "Peso",
+      tab_temperature: "Temperatura",
+      valueA: "Valor A",
+      valueB: "Valor B",
+      unitAriaA: "Unidad del valor A",
+      unitAriaB: "Unidad del valor B",
+      swapAria: "Intercambiar unidades y valores",
+      swapped: "Unidades intercambiadas.",
+      equals: "{value} {from} equivale a {result} {to}",
+      u_mm: "Milímetros (mm)",
+      u_cm: "Centímetros (cm)",
+      u_m: "Metros (m)",
+      u_km: "Kilómetros (km)",
+      u_in: "Pulgadas (in)",
+      u_ft: "Pies (ft)",
+      u_yd: "Yardas (yd)",
+      u_mi: "Millas (mi)",
+      u_mg: "Miligramos (mg)",
+      u_g: "Gramos (g)",
+      u_kg: "Kilogramos (kg)",
+      u_t: "Toneladas métricas (t)",
+      u_oz: "Onzas (oz)",
+      u_lb: "Libras (lb)",
+      u_st: "Stones (st)",
+      u_c: "Celsius (°C)",
+      u_f: "Fahrenheit (°F)",
+      u_k: "Kelvin (K)"
+    },
+    fr: {
+      title: "Convertisseur d’unités",
+      subtitle: "Saisissez une valeur d’un côté ou de l’autre pour convertir instantanément.",
+      categoryAria: "Catégorie d’unités",
+      tab_length: "Longueur",
+      tab_weight: "Poids",
+      tab_temperature: "Température",
+      valueA: "Valeur A",
+      valueB: "Valeur B",
+      unitAriaA: "Unité de la valeur A",
+      unitAriaB: "Unité de la valeur B",
+      swapAria: "Inverser les unités et les valeurs",
+      swapped: "Unités inversées.",
+      equals: "{value} {from} = {result} {to}",
+      u_mm: "Millimètres (mm)",
+      u_cm: "Centimètres (cm)",
+      u_m: "Mètres (m)",
+      u_km: "Kilomètres (km)",
+      u_in: "Pouces (in)",
+      u_ft: "Pieds (ft)",
+      u_yd: "Yards (yd)",
+      u_mi: "Miles (mi)",
+      u_mg: "Milligrammes (mg)",
+      u_g: "Grammes (g)",
+      u_kg: "Kilogrammes (kg)",
+      u_t: "Tonnes (t)",
+      u_oz: "Onces (oz)",
+      u_lb: "Livres (lb)",
+      u_st: "Stones (st)",
+      u_c: "Celsius (°C)",
+      u_f: "Fahrenheit (°F)",
+      u_k: "Kelvin (K)"
+    },
+    ja: {
+      title: "単位変換",
+      subtitle: "どちらかに値を入力すると、すぐに変換されます。",
+      categoryAria: "単位の種類",
+      tab_length: "長さ",
+      tab_weight: "重さ",
+      tab_temperature: "温度",
+      valueA: "値 A",
+      valueB: "値 B",
+      unitAriaA: "値 A の単位",
+      unitAriaB: "値 B の単位",
+      swapAria: "単位と値を入れ替える",
+      swapped: "単位を入れ替えました。",
+      equals: "{value} {from}は {result} {to}です",
+      u_mm: "ミリメートル (mm)",
+      u_cm: "センチメートル (cm)",
+      u_m: "メートル (m)",
+      u_km: "キロメートル (km)",
+      u_in: "インチ (in)",
+      u_ft: "フィート (ft)",
+      u_yd: "ヤード (yd)",
+      u_mi: "マイル (mi)",
+      u_mg: "ミリグラム (mg)",
+      u_g: "グラム (g)",
+      u_kg: "キログラム (kg)",
+      u_t: "トン (t)",
+      u_oz: "オンス (oz)",
+      u_lb: "ポンド (lb)",
+      u_st: "ストーン (st)",
+      u_c: "摂氏 (°C)",
+      u_f: "華氏 (°F)",
+      u_k: "ケルビン (K)"
+    },
+    ko: {
+      title: "단위 변환기",
+      subtitle: "양쪽 중 한 곳에 값을 입력하면 바로 변환됩니다.",
+      categoryAria: "단위 종류",
+      tab_length: "길이",
+      tab_weight: "무게",
+      tab_temperature: "온도",
+      valueA: "값 A",
+      valueB: "값 B",
+      unitAriaA: "값 A의 단위",
+      unitAriaB: "값 B의 단위",
+      swapAria: "단위와 값 바꾸기",
+      swapped: "단위를 바꿨습니다.",
+      equals: "{value} {from} = {result} {to}",
+      u_mm: "밀리미터 (mm)",
+      u_cm: "센티미터 (cm)",
+      u_m: "미터 (m)",
+      u_km: "킬로미터 (km)",
+      u_in: "인치 (in)",
+      u_ft: "피트 (ft)",
+      u_yd: "야드 (yd)",
+      u_mi: "마일 (mi)",
+      u_mg: "밀리그램 (mg)",
+      u_g: "그램 (g)",
+      u_kg: "킬로그램 (kg)",
+      u_t: "톤 (t)",
+      u_oz: "온스 (oz)",
+      u_lb: "파운드 (lb)",
+      u_st: "스톤 (st)",
+      u_c: "섭씨 (°C)",
+      u_f: "화씨 (°F)",
+      u_k: "켈빈 (K)"
+    },
+    "pt-BR": {
+      title: "Conversor de unidades",
+      subtitle: "Digite um valor em qualquer um dos lados para converter na hora.",
+      categoryAria: "Categoria de unidades",
+      tab_length: "Comprimento",
+      tab_weight: "Peso",
+      tab_temperature: "Temperatura",
+      valueA: "Valor A",
+      valueB: "Valor B",
+      unitAriaA: "Unidade do valor A",
+      unitAriaB: "Unidade do valor B",
+      swapAria: "Trocar unidades e valores",
+      swapped: "Unidades trocadas.",
+      equals: "{value} {from} equivale a {result} {to}",
+      u_mm: "Milímetros (mm)",
+      u_cm: "Centímetros (cm)",
+      u_m: "Metros (m)",
+      u_km: "Quilômetros (km)",
+      u_in: "Polegadas (in)",
+      u_ft: "Pés (ft)",
+      u_yd: "Jardas (yd)",
+      u_mi: "Milhas (mi)",
+      u_mg: "Miligramas (mg)",
+      u_g: "Gramas (g)",
+      u_kg: "Quilogramas (kg)",
+      u_t: "Toneladas métricas (t)",
+      u_oz: "Onças (oz)",
+      u_lb: "Libras (lb)",
+      u_st: "Stones (st)",
+      u_c: "Celsius (°C)",
+      u_f: "Fahrenheit (°F)",
+      u_k: "Kelvin (K)"
+    },
+    "zh-CN": {
+      title: "单位换算器",
+      subtitle: "在任意一侧输入数值，即可即时换算。",
+      categoryAria: "单位类别",
+      tab_length: "长度",
+      tab_weight: "重量",
+      tab_temperature: "温度",
+      valueA: "数值 A",
+      valueB: "数值 B",
+      unitAriaA: "数值 A 的单位",
+      unitAriaB: "数值 B 的单位",
+      swapAria: "交换单位和数值",
+      swapped: "已交换单位。",
+      equals: "{value} {from}等于 {result} {to}",
+      u_mm: "毫米 (mm)",
+      u_cm: "厘米 (cm)",
+      u_m: "米 (m)",
+      u_km: "千米 (km)",
+      u_in: "英寸 (in)",
+      u_ft: "英尺 (ft)",
+      u_yd: "码 (yd)",
+      u_mi: "英里 (mi)",
+      u_mg: "毫克 (mg)",
+      u_g: "克 (g)",
+      u_kg: "千克 (kg)",
+      u_t: "吨 (t)",
+      u_oz: "盎司 (oz)",
+      u_lb: "磅 (lb)",
+      u_st: "英石 (st)",
+      u_c: "摄氏度 (°C)",
+      u_f: "华氏度 (°F)",
+      u_k: "开尔文 (K)"
+    }
+  };
+  var LOC = (function () {
+    var l = String(LANG);
+    if (STRINGS[l]) return l;
+    var b = l.split('-')[0].toLowerCase();
+    if (STRINGS[b]) return b;
+    for (var k in STRINGS) { if (k.split('-')[0] === b) return k; }
+    return 'en';
+  })();
+  function t(key, vars) {
+    var s = STRINGS[LOC][key];
+    if (s == null) s = STRINGS.en[key];
+    if (vars) {
+      s = s.replace(/\{(\w+)\}/g, function (m, n) { return vars[n] != null ? vars[n] : m; });
+    }
+    return s;
+  }
+  function fmtStatusNumber(n) {
+    var opts = { maximumSignificantDigits: 6 };
+    try { return new Intl.NumberFormat(LANG, opts).format(n); }
+    catch (e) { return new Intl.NumberFormat('en', opts).format(n); }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-aria]'), function (el) {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
+
   var CATEGORIES = {
     length: {
       units: [
-        { key: "mm", label: "Millimeters (mm)", toBase: 0.001 },
-        { key: "cm", label: "Centimeters (cm)", toBase: 0.01 },
-        { key: "m",  label: "Meters (m)",        toBase: 1 },
-        { key: "km", label: "Kilometers (km)",   toBase: 1000 },
-        { key: "in", label: "Inches (in)",       toBase: 0.0254 },
-        { key: "ft", label: "Feet (ft)",         toBase: 0.3048 },
-        { key: "yd", label: "Yards (yd)",        toBase: 0.9144 },
-        { key: "mi", label: "Miles (mi)",        toBase: 1609.344 }
+        { key: "mm", toBase: 0.001 },
+        { key: "cm", toBase: 0.01 },
+        { key: "m", toBase: 1 },
+        { key: "km", toBase: 1000 },
+        { key: "in", toBase: 0.0254 },
+        { key: "ft", toBase: 0.3048 },
+        { key: "yd", toBase: 0.9144 },
+        { key: "mi", toBase: 1609.344 }
       ],
       defaultA: "cm",
       defaultB: "in"
     },
     weight: {
       units: [
-        { key: "mg", label: "Milligrams (mg)",   toBase: 0.001 },
-        { key: "g",  label: "Grams (g)",          toBase: 1 },
-        { key: "kg", label: "Kilograms (kg)",     toBase: 1000 },
-        { key: "t",  label: "Metric tons (t)",    toBase: 1000000 },
-        { key: "oz", label: "Ounces (oz)",        toBase: 28.349523125 },
-        { key: "lb", label: "Pounds (lb)",        toBase: 453.59237 },
-        { key: "st", label: "Stone (st)",         toBase: 6350.29318 }
+        { key: "mg", toBase: 0.001 },
+        { key: "g", toBase: 1 },
+        { key: "kg", toBase: 1000 },
+        { key: "t", toBase: 1000000 },
+        { key: "oz", toBase: 28.349523125 },
+        { key: "lb", toBase: 453.59237 },
+        { key: "st", toBase: 6350.29318 }
       ],
       defaultA: "kg",
       defaultB: "lb"
     },
     temperature: {
       units: [
-        { key: "c", label: "Celsius (°C)" },
-        { key: "f", label: "Fahrenheit (°F)" },
-        { key: "k", label: "Kelvin (K)" }
+        { key: "c" },
+        { key: "f" },
+        { key: "k" }
       ],
       defaultA: "c",
       defaultB: "f"
     }
   };
+
+  Object.keys(CATEGORIES).forEach(function (cat) {
+    CATEGORIES[cat].units.forEach(function (u) { u.label = t("u_" + u.key); });
+  });
 
   var TO_CELSIUS = {
     c: function (v) { return v; },
@@ -325,6 +626,18 @@ body {
     return value * fromUnit.toBase / toUnit.toBase;
   }
 
+  // The language's decimal mark ("," in de/fr/es/pt-BR), used for the number
+  // the page writes; typing accepts either mark.
+  var DECIMAL = (function () {
+    try { return (1.5).toLocaleString(LANG).charAt(1) || "."; } catch (e) { return "."; }
+  })();
+
+  function parseNumber(raw) {
+    var s = raw.replace(/\s/g, "");
+    if (s.indexOf(",") !== -1 && s.indexOf(".") === -1) s = s.replace(",", ".");
+    return s === "" ? NaN : Number(s);
+  }
+
   function formatNumber(num) {
     if (num === 0) return "0";
     if (!isFinite(num)) return "";
@@ -338,7 +651,7 @@ body {
     if (str.indexOf(".") !== -1) {
       str = str.replace(/0+$/, "").replace(/\.$/, "");
     }
-    return str;
+    return str.replace(".", DECIMAL);
   }
 
   function updateStatus(text) {
@@ -378,7 +691,7 @@ body {
       return;
     }
 
-    var num = Number(raw);
+    var num = parseNumber(raw);
     if (!isFinite(num)) {
       targetInput.value = "";
       updateStatus("");
@@ -393,10 +706,12 @@ body {
     }
 
     targetInput.value = formatNumber(result);
-    updateStatus(
-      formatNumber(num) + " " + unitLabel(category, sourceUnit) +
-      " equals " + formatNumber(result) + " " + unitLabel(category, targetUnit)
-    );
+    updateStatus(t("equals", {
+      value: fmtStatusNumber(num),
+      from: unitLabel(category, sourceUnit),
+      result: fmtStatusNumber(result),
+      to: unitLabel(category, targetUnit)
+    }));
   }
 
   function swapUnitsAndValues() {
@@ -408,7 +723,7 @@ body {
     inputA.value = inputB.value;
     inputB.value = tmpVal;
 
-    updateStatus("Units swapped.");
+    updateStatus(t("swapped"));
   }
 
   function activateTab(tab) {

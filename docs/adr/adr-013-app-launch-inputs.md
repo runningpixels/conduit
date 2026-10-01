@@ -39,6 +39,15 @@ these, and model-written HTML is never the carrier of the values.
    `conduit:inputs-changed` on `window` with the new values as `detail`.
 6. **Chat pages** get their declared defaults and no form: inputs are an app
    feature, and a page in a chat is edited by asking for a change.
+7. **Other languages** (added for v1.0.0-rc.2). An input may carry
+   `"translations": { "de": { "label": "Einheiten", "options": { "metric": "Metrisch" } } }`:
+   per language tag (at most 16), a label and names for any of an `enum`
+   input's declared options, each held to the limits of what it translates.
+   They are display only: the form shows the exact tag, then the language
+   alone (`pt-BR` → `pt`), then the declared text, and a stored value is
+   always the option itself. Every page also gets the interface language as
+   `<html lang>` on the wrapper Conduit draws around it (next to
+   `data-theme`), so a page can pick its own strings; the starter apps do.
 
 ## Consequences
 - Updating an app from its source keeps stored values for inputs that are

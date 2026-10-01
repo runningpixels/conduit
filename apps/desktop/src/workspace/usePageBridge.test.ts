@@ -70,4 +70,21 @@ describe('usePageBridge', () => {
       error: { code: 'unavailable', message: 'the database is on fire' },
     });
   });
+
+  it('routes llm.complete to the given llm handler', async () => {
+    const llm = vi.fn().mockResolvedValue({ ok: true, result: { text: 'answer' } });
+    const { result } = renderHook(() => usePageBridge('artifact:a1', llm));
+    const bridge = result.current!;
+    await expect(bridge('llm.complete', { prompt: 'hi' })).resolves.toEqual({ ok: true, result: { text: 'answer' } });
+    expect(llm).toHaveBeenCalledWith({ prompt: 'hi' });
+  });
+
+  it('answers unavailable for llm.complete when no llm handler is given', async () => {
+    const { result } = renderHook(() => usePageBridge('artifact:a1'));
+    const bridge = result.current!;
+    await expect(bridge('llm.complete', { prompt: 'hi' })).resolves.toEqual({
+      ok: false,
+      error: { code: 'unavailable', message: 'This page has no model access.' },
+    });
+  });
 });

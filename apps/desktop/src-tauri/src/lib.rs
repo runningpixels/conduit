@@ -30,6 +30,7 @@ pub mod logo;
 pub mod mcp_oauth;
 pub mod mcp_registry;
 pub mod message_preview;
+pub mod page_llm;
 pub mod paths;
 pub mod search;
 pub mod skills;

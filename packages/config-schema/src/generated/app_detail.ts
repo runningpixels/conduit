@@ -14,7 +14,11 @@ hosts: Array<string>,
 /**
  * Whether the manifest declares `storage` (ADR-012).
  */
-storage: boolean, sourceArtifactId?: string, 
+storage: boolean, 
+/**
+ * Whether the manifest declares `llm` (ADR-014).
+ */
+llm: boolean, sourceArtifactId?: string, 
 /**
  * The source artifact still exists and its content differs from this
  * app's snapshot.

@@ -909,6 +909,18 @@ impl StreamManager {
         })
     }
 
+    /// Resolve `provider_id` to its adapter using this manager's own resolver
+    /// (the live registry in production, a fake in tests via
+    /// [`Self::with_adapter_resolver`]). For a caller that needs the adapter
+    /// without going through [`Self::start_chat_stream`] — page model access
+    /// (ADR-014), which must never persist a conversation.
+    pub fn resolve_adapter(
+        &self,
+        provider_id: &str,
+    ) -> Option<Box<dyn provider_core::ProviderAdapter>> {
+        (self.adapter_resolver)(provider_id)
+    }
+
     pub async fn validate_credentials(state: &AppState, provider_id: &str) -> Result<(), String> {
         let adapter = provider_core::get_adapter(provider_id)
             .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;

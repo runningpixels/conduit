@@ -60,6 +60,7 @@ export type { AppCategory } from './generated/app_category';
 export type { AppOrigin } from './generated/app_origin';
 export type { AppNetwork } from './generated/app_network';
 export type { AppStorage } from './generated/app_storage';
+export type { AppLlm } from './generated/app_llm';
 export type { AppCapabilities } from './generated/app_capabilities';
 export type { AppCreatedWith } from './generated/app_created_with';
 export type { AppInputKind } from './generated/app_input_kind';
@@ -69,6 +70,12 @@ export type { AppSummary } from './generated/app_summary';
 export type { AppDetail } from './generated/app_detail';
 export type { PageStorageUsage } from './generated/page_storage_usage';
 export type { StarterAppInfo } from './generated/starter_app_info';
+
+// Page model access (ADR-014)
+export type { PageLlmGrant } from './generated/page_llm_grant';
+export type { PageLlmState } from './generated/page_llm_state';
+export type { PageLlmRequest } from './generated/page_llm_request';
+export type { PageLlmReply } from './generated/page_llm_reply';
 
 // Attachments
 export type { RetentionState } from './generated/retention_state';

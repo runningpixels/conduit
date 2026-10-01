@@ -15,17 +15,30 @@
 export const PAGE_BRIDGE_MESSAGE_TYPE = 'conduit:bridge/v2';
 
 /// Error codes Rust returns for a bridge call, from the `code:` prefix on its
-/// `Err(String)` (see `ipc/client.ts`'s `bridgeErrorFromIpc`).
-export type BridgeErrorCode = 'invalid' | 'quota' | 'unavailable' | 'rate_limited';
+/// `Err(String)` (see `ipc/client.ts`'s `bridgeErrorFromIpc`). `not_granted`
+/// and `timeout` are page-model-access-only (ADR-014); storage never returns
+/// them.
+export type BridgeErrorCode = 'invalid' | 'quota' | 'unavailable' | 'rate_limited' | 'not_granted' | 'timeout';
 
-export type PageBridgeMethod = 'storage.get' | 'storage.set' | 'storage.delete' | 'storage.keys';
+export type PageBridgeMethod = 'storage.get' | 'storage.set' | 'storage.delete' | 'storage.keys' | 'llm.complete';
 
 const PAGE_BRIDGE_METHODS: ReadonlySet<string> = new Set<PageBridgeMethod>([
   'storage.get',
   'storage.set',
   'storage.delete',
   'storage.keys',
+  'llm.complete',
 ]);
+
+/// A page's `window.conduit.llm.complete()` request (ADR-014): text in, text
+/// out, no tools, no history. `system` and `json` are optional; `maxTokens`
+/// is optional and capped by Rust (default 1024, max 2048).
+export interface PageLlmCompleteParams {
+  prompt: string;
+  system?: string;
+  maxTokens?: number;
+  json?: boolean;
+}
 
 /// A validated request from the frame. Untrusted until parsed: the page can
 /// post anything, so every field is checked before Rust ever sees it.
@@ -33,7 +46,8 @@ export type PageBridgeRequest =
   | { id: string; method: 'storage.get'; params: { key: string } }
   | { id: string; method: 'storage.set'; params: { key: string; value: unknown } }
   | { id: string; method: 'storage.delete'; params: { key: string } }
-  | { id: string; method: 'storage.keys'; params: { prefix?: string } };
+  | { id: string; method: 'storage.keys'; params: { prefix?: string } }
+  | { id: string; method: 'llm.complete'; params: PageLlmCompleteParams };
 
 export type PageBridgeOutcome =
   | { ok: true; result: unknown }
@@ -58,16 +72,20 @@ export function scriptSafeJson(value: unknown): string {
 }
 
 /// The in-frame script: defines `window.conduit`, frozen, with a `storage`
-/// namespace only when `'storage'` is among `capabilities`, and an `inputs`
-/// getter only when `inputs` is non-null (ADR-013) — independent of
-/// `capabilities`, since a page can declare launch inputs without declaring
-/// any capability at all. Each storage call posts `{ type, id, method,
-/// params }` to `parent` and resolves/rejects on the matching `{ type, id,
-/// ok, result | error }` reply; replies from anywhere but `parent` are
-/// ignored. `set` validates the value is JSON-serializable *in the page*
-/// before posting anything — a value that isn't (a function, a circular
-/// reference, a bigint) rejects with `invalid` locally, the same code Rust
-/// would have used, without a round trip.
+/// namespace only when `'storage'` is among `capabilities`, an `llm`
+/// namespace only when `'llm'` is (ADR-014), and an `inputs` getter only when
+/// `inputs` is non-null (ADR-013) — independent of `capabilities`, since a
+/// page can declare launch inputs without declaring any capability at all.
+/// Each call posts `{ type, id, method, params }` to `parent` and
+/// resolves/rejects on the matching `{ type, id, ok, result | error }` reply;
+/// replies from anywhere but `parent` are ignored. `storage.set` validates
+/// the value is JSON-serializable *in the page* before posting anything — a
+/// value that isn't (a function, a circular reference, a bigint) rejects with
+/// `invalid` locally, the same code Rust would have used, without a round
+/// trip. `llm.complete` similarly rejects locally with `invalid` when
+/// `prompt` isn't a non-empty string, before anything is posted; `system`,
+/// `maxTokens` and `json` are forwarded only when the page gave them, so Rust
+/// sees its own defaults rather than an explicit `undefined`.
 ///
 /// `inputs`, when given, seeds `window.conduit.inputs` with a frozen copy of
 /// those values (`Object.defineProperty`'d before the whole object is
@@ -79,6 +97,7 @@ export function scriptSafeJson(value: unknown): string {
 
 export function buildPageBridgeScript(capabilities: string[], inputs?: Record<string, unknown> | null): string {
   const hasStorage = capabilities.includes('storage');
+  const hasLlm = capabilities.includes('llm');
   const hasInputs = inputs != null;
   const capsLiteral = JSON.stringify(capabilities);
   const inputsLiteral = hasInputs ? scriptSafeJson(inputs) : 'null';
@@ -109,8 +128,21 @@ export function buildPageBridgeScript(capabilities: string[], inputs?: Record<st
         `keys:function(prefix){return call('storage.keys',{prefix:prefix});}` +
         `});`
       : '') +
+    (hasLlm
+      ? `var llm=Object.freeze({` +
+        `complete:function(req){req=req||{};` +
+        `if(typeof req.prompt!=='string'||req.prompt.length===0){` +
+        `var err=new Error('prompt must be a non-empty string.');err.code='invalid';return Promise.reject(err);}` +
+        `var params={prompt:req.prompt};` +
+        `if(req.system!==undefined)params.system=req.system;` +
+        `if(req.maxTokens!==undefined)params.maxTokens=req.maxTokens;` +
+        `if(req.json!==undefined)params.json=req.json;` +
+        `return call('llm.complete',params);}` +
+        `});`
+      : '') +
     `var conduit={version:2,capabilities:${capsLiteral}` +
     (hasStorage ? `,storage:storage` : '') +
+    (hasLlm ? `,llm:llm` : '') +
     `};` +
     (hasInputs
       ? `Object.defineProperty(conduit,'inputs',{enumerable:true,get:function(){` +
@@ -147,6 +179,17 @@ export function parsePageBridgeRequest(data: unknown): PageBridgeRequest | null 
     case 'storage.keys':
       if (p.prefix !== undefined && typeof p.prefix !== 'string') return null;
       return { id: d.id, method, params: p.prefix === undefined ? {} : { prefix: p.prefix } };
+    case 'llm.complete': {
+      if (typeof p.prompt !== 'string' || p.prompt.length === 0) return null;
+      if (p.system !== undefined && typeof p.system !== 'string') return null;
+      if (p.maxTokens !== undefined && typeof p.maxTokens !== 'number') return null;
+      if (p.json !== undefined && typeof p.json !== 'boolean') return null;
+      const params: PageLlmCompleteParams = { prompt: p.prompt };
+      if (p.system !== undefined) params.system = p.system as string;
+      if (p.maxTokens !== undefined) params.maxTokens = p.maxTokens as number;
+      if (p.json !== undefined) params.json = p.json as boolean;
+      return { id: d.id, method, params };
+    }
     default:
       return null;
   }

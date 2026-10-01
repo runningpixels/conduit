@@ -65,11 +65,11 @@ export function scriptedHosts(html: string): string[] {
   return [...out];
 }
 
-/// Capability names a page may declare (ADR-012). Only `storage` exists today;
-/// anything else is a page asking for something Conduit doesn't grant, and is
-/// silently dropped here the same way an unknown `conduit-network` host would
-/// not be — Rust re-validates the declared list on save/update regardless.
-const KNOWN_CAPABILITIES = new Set(['storage']);
+/// Capability names a page may declare (ADR-012, ADR-014). Anything else is a
+/// page asking for something Conduit doesn't grant, and is silently dropped
+/// here the same way an unknown `conduit-network` host would not be — Rust
+/// re-validates the declared list on save/update regardless.
+const KNOWN_CAPABILITIES = new Set(['storage', 'llm']);
 
 function capabilityContents(html: string): string[] {
   const contents: string[] = [];

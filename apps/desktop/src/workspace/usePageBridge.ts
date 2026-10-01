@@ -1,9 +1,12 @@
-/// Builds the `window.conduit.storage` handler for one page (ADR-012):
-/// `HtmlArtifactRenderer`'s `bridge` prop, wired to the six `page_storage_*`
-/// IPC calls. The view that renders the page supplies the principal
-/// (`artifact:<id>` or `app:<id>`) — the hook never guesses it, and returns
-/// `undefined` when there is none, matching `useArtifactNetwork`'s null-page
-/// convention.
+/// Builds the `window.conduit` bridge handler for one page: `storage` (ADR-012)
+/// wired straight to the four `page_storage_*` IPC calls, and `llm.complete`
+/// (ADR-014) routed to a caller-supplied handler (`usePageLlm`'s `handler`),
+/// since model access needs the hold/consent dance `useArtifactNetwork` and
+/// `usePageLlm` already own — this hook has no opinion on consent, only
+/// routing. `HtmlArtifactRenderer`'s `bridge` prop. The view that renders the
+/// page supplies the principal (`artifact:<id>` or `app:<id>`) — the hook
+/// never guesses it, and returns `undefined` when there is none, matching
+/// `useArtifactNetwork`'s null-page convention.
 
 import { useMemo } from 'react';
 import {
@@ -16,7 +19,11 @@ import {
 } from '../ipc/client';
 import type { PageBridgeHandler, PageBridgeOutcome } from '../artifacts/pageBridge';
 
-export function usePageBridge(principal: PagePrincipal | null): PageBridgeHandler | undefined {
+/** `usePageLlm(principal).handler` — takes the already-validated `llm.complete`
+ *  params and resolves the same outcome shape every bridge method does. */
+export type PageLlmBridgeHandler = (params: unknown) => Promise<PageBridgeOutcome>;
+
+export function usePageBridge(principal: PagePrincipal | null, llm?: PageLlmBridgeHandler): PageBridgeHandler | undefined {
   return useMemo<PageBridgeHandler | undefined>(() => {
     if (!principal) return undefined;
     return async (method, params): Promise<PageBridgeOutcome> => {
@@ -40,6 +47,10 @@ export function usePageBridge(principal: PagePrincipal | null): PageBridgeHandle
             const { prefix } = params as { prefix?: string };
             return { ok: true, result: await pageStorageKeys(principal, prefix) };
           }
+          case 'llm.complete': {
+            if (!llm) return { ok: false, error: { code: 'unavailable', message: 'This page has no model access.' } };
+            return await llm(params);
+          }
           default:
             return { ok: false, error: { code: 'unavailable', message: 'This page has no storage.' } };
         }
@@ -47,5 +58,5 @@ export function usePageBridge(principal: PagePrincipal | null): PageBridgeHandle
         return { ok: false, error: bridgeErrorFromIpc(e) };
       }
     };
-  }, [principal]);
+  }, [principal, llm]);
 }

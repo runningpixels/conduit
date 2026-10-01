@@ -56,7 +56,7 @@ pub async fn save_app(
     declared_inputs: Vec<AppInput>,
     keep_hosts: Vec<String>,
 ) -> Result<AppSummary, String> {
-    let has_storage = apps::validate_capabilities(&declared_capabilities)?;
+    let capabilities = apps::validate_capabilities(&declared_capabilities)?;
     provider_core::app_inputs::validate_declaration(&declared_inputs)
         .map_err(|e| format!("invalid: {e}"))?;
     apps::save_from_artifact(
@@ -66,7 +66,7 @@ pub async fn save_app(
         &artifact_id,
         meta.validated()?,
         declared_origins(declared_hosts),
-        has_storage,
+        capabilities,
         declared_inputs,
         &keep_hosts,
     )
@@ -109,7 +109,7 @@ pub async fn update_app_from_artifact(
     declared_capabilities: Vec<String>,
     declared_inputs: Vec<AppInput>,
 ) -> Result<AppSummary, String> {
-    let has_storage = apps::validate_capabilities(&declared_capabilities)?;
+    let capabilities = apps::validate_capabilities(&declared_capabilities)?;
     provider_core::app_inputs::validate_declaration(&declared_inputs)
         .map_err(|e| format!("invalid: {e}"))?;
     apps::update_from_artifact(
@@ -118,7 +118,7 @@ pub async fn update_app_from_artifact(
         &state.encryption,
         &id,
         declared_origins(declared_hosts),
-        has_storage,
+        capabilities,
         declared_inputs,
     )
     .await

@@ -25,7 +25,7 @@ import {
 } from '../workspace/ArtifactNetwork';
 import { OpenExternalLinkDialog } from '../workspace/OpenExternalLinkDialog';
 import { Menu } from '../workspace/Menu';
-import { ChevronLeft, ModelIcon, MoreIcon, PencilIcon, RetryIcon, SlidersIcon, TrashIcon } from '../icons';
+import { ChevronLeft, ModelIcon, MoreIcon, PencilIcon, RetryIcon, SettingsIcon, SlidersIcon, TrashIcon } from '../icons';
 import {
   appPrincipal,
   getAppInputs,
@@ -38,6 +38,7 @@ import {
 import type { AppDetail, AppSummary } from '../ipc/contracts';
 import { AppTile } from './AppTile';
 import { AppInputsDialog } from './AppInputsDialog';
+import { AppSettingsView } from './AppSettingsView';
 
 export interface AppViewProps {
   appId: string;
@@ -80,6 +81,15 @@ export function AppView({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [storageUsage, setStorageUsage] = useState<PageStorageUsage | null>(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  // The settings page replaces the frame area while open. The frame itself
+  // stays mounted (hidden), so an app mid-task keeps its state.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => setSettingsOpen(false), [appId]);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    settingsButtonRef.current?.focus();
+  }, []);
   // Bumped after "Clear data" so the frame's key changes and it reloads with
   // an empty store, the same way a source update bumps `revision`.
   const [clearRevision, setClearRevision] = useState(0);
@@ -170,7 +180,7 @@ export function AppView({
     };
   }, [pageBridge]);
   const [llmReviewOpen, setLlmReviewOpen] = useState(false);
-  const { decide: decideLlm } = llm;
+  const { decide: decideLlm, refresh: refreshLlm } = llm;
   const handleLlmDecision = useCallback(
     (decision: 'deny' | 'session' | 'page') => {
       setLlmReviewOpen(false);
@@ -315,6 +325,17 @@ export function AppView({
           onRevoke={(origin) => void network.revoke(origin)}
         />
         <button
+          ref={settingsButtonRef}
+          type="button"
+          className="icon-btn"
+          aria-label={t('apps.view.settings')}
+          aria-pressed={settingsOpen}
+          title={t('apps.view.settings')}
+          onClick={() => setSettingsOpen(true)}
+        >
+          <SettingsIcon />
+        </button>
+        <button
           ref={menuTriggerRef}
           type="button"
           className="icon-btn"
@@ -359,6 +380,18 @@ export function AppView({
               {t('apps.menu.update')}
             </button>
           )}
+          <button
+            type="button"
+            className="menu-item"
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              setSettingsOpen(true);
+            }}
+          >
+            <SettingsIcon />
+            {t('apps.view.settings')}
+          </button>
           {declaresStorage && (
             <button
               type="button"
@@ -406,7 +439,26 @@ export function AppView({
         onNotNow={() => handleLlmDecision('deny')}
       />
 
-      <div className="app-view-frame">
+      {settingsOpen && (
+        <AppSettingsView
+          appId={summary.id}
+          appName={summary.name}
+          sites={[
+            ...(network.state?.always ?? []).map((origin) => ({ origin, scope: 'page' as const })),
+            ...(network.state?.session ?? [])
+              .filter((origin) => !(network.state?.always ?? []).includes(origin))
+              .map((origin) => ({ origin, scope: 'session' as const })),
+          ]}
+          siteLabel={siteLabel}
+          onRevokeSite={network.revoke}
+          onLlmRevoked={() => void refreshLlm()}
+          onClearData={() => setClearConfirmOpen(true)}
+          dataRevision={clearRevision + writeRevision}
+          onStatus={onStatus}
+          onBack={closeSettings}
+        />
+      )}
+      <div className="app-view-frame" hidden={settingsOpen}>
         <HtmlArtifactRenderer
           key={`${summary.id}:${summary.version}:${revision}:${clearRevision}`}
           html={html}

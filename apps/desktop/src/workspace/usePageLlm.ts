@@ -16,6 +16,7 @@ import {
   pageLlmComplete,
   pageLlmState,
   revokePageLlm,
+  type AppLlmSlot,
   type PageLlmCompleteRequest,
   type PagePrincipal,
   type PageLlmState,
@@ -46,6 +47,7 @@ function asLlmRequest(params: unknown): PageLlmCompleteRequest | null {
   if (typeof p.system === 'string') request.system = p.system;
   if (typeof p.maxTokens === 'number') request.maxTokens = p.maxTokens;
   if (typeof p.json === 'boolean') request.json = p.json;
+  if (p.slot === 'default' || p.slot === 'quick') request.slot = p.slot;
   return request;
 }
 
@@ -59,12 +61,17 @@ export interface UsePageLlm {
   /** "Stop model access" (AppView's ⋯ menu): clears both the session and any
    *  stored grant, and re-reads the state. */
   revoke: () => Promise<void>;
+  /** Re-reads the state, e.g. after the settings page revoked a provider. */
+  refresh: () => Promise<PageLlmState | null>;
 }
 
 export function usePageLlm(principal: PagePrincipal | null): UsePageLlm {
   const [state, setState] = useState<PageLlmState | null>(null);
   const [pending, setPending] = useState(false);
   const stateRef = useRef<PageLlmState | null>(null);
+  // `quick` can resolve to a different provider than `default`, so consent is
+  // checked against the slot's own state. The default slot's lives in stateRef.
+  const quickStateRef = useRef<PageLlmState | null>(null);
   const heldRef = useRef<HeldCall[]>([]);
   // Remembered only for this page's current load — a fresh mount (a
   // different artifact/app, or this one reopened) may ask again.
@@ -78,12 +85,30 @@ export function usePageLlm(principal: PagePrincipal | null): UsePageLlm {
       const next = await pageLlmState(principal);
       if (idRef.current !== principal) return next;
       stateRef.current = next;
+      quickStateRef.current = null;
       setState(next);
       return next;
     } catch {
       return null;
     }
   }, [principal]);
+
+  /** The state for the provider `slot` resolves to. */
+  const stateForSlot = useCallback(
+    async (slot: AppLlmSlot): Promise<PageLlmState | null> => {
+      if (slot === 'default') return stateRef.current ?? (await refresh());
+      if (quickStateRef.current) return quickStateRef.current;
+      if (!principal) return null;
+      try {
+        const next = await pageLlmState(principal, slot);
+        if (idRef.current === principal) quickStateRef.current = next;
+        return next;
+      } catch {
+        return null;
+      }
+    },
+    [principal, refresh],
+  );
 
   // A different page (or none): forget held calls and this page's denial,
   // and load the new one's state.
@@ -95,6 +120,7 @@ export function usePageLlm(principal: PagePrincipal | null): UsePageLlm {
     setPending(false);
     deniedRef.current = false;
     stateRef.current = null;
+    quickStateRef.current = null;
     setState(null);
     void refresh();
   }, [principal, refresh]);
@@ -124,16 +150,21 @@ export function usePageLlm(principal: PagePrincipal | null): UsePageLlm {
       if (!principal) return { ok: false, error: { code: 'unavailable', message: 'This page has no model access.' } };
       const request = asLlmRequest(params);
       if (!request) return { ok: false, error: { code: 'invalid', message: 'prompt must be a non-empty string.' } };
-      const current = stateRef.current ?? (await refresh());
+      const current = await stateForSlot(request.slot ?? 'default');
       if (!current) return { ok: false, error: { code: 'unavailable', message: 'The model is unavailable.' } };
       if (current.blockedReason) return { ok: false, error: { code: 'unavailable', message: current.blockedReason } };
       if (current.granted) return runComplete(request);
       if (deniedRef.current) {
         return { ok: false, error: { code: 'not_granted', message: "You didn't allow this page to use your model." } };
       }
+      // The consent dialog names the provider that would answer this call.
+      if (request.slot === 'quick') {
+        stateRef.current = null;
+        setState(current);
+      }
       return hold(request);
     },
-    [principal, refresh, runComplete, hold],
+    [principal, stateForSlot, runComplete, hold],
   );
 
   const decide = useCallback(
@@ -150,7 +181,11 @@ export function usePageLlm(principal: PagePrincipal | null): UsePageLlm {
         return;
       }
       try {
-        await grantPageLlm(principal, decision);
+        // Each waiting slot may resolve to a different provider.
+        const slots = [...new Set(held.map((h) => h.request.slot ?? 'default'))];
+        for (const slot of slots.length > 0 ? slots : (['default'] as const)) {
+          await grantPageLlm(principal, decision, slot);
+        }
       } catch (error) {
         const message = errorText(error);
         for (const h of held) h.resolve({ ok: false, error: { code: 'unavailable', message } });
@@ -169,5 +204,5 @@ export function usePageLlm(principal: PagePrincipal | null): UsePageLlm {
     await refresh();
   }, [principal, refresh]);
 
-  return { state, pending, handler, decide, revoke };
+  return { state, pending, handler, decide, revoke, refresh };
 }

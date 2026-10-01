@@ -128,7 +128,7 @@ function ModelIdRow({
 }
 
 /** Resolve `p`, or `fallback` if it takes longer than `ms`. */
-function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+export function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), ms);
     void p

@@ -9,7 +9,7 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::{
-    db::repository::{artifact_network::Principal, page_storage},
+    db::repository::{app_activity, artifact_network::Principal, page_storage},
     state::AppState,
 };
 
@@ -41,7 +41,9 @@ pub async fn page_storage_set(
     let principal = parse_principal(&principal)?;
     page_storage::set(&state.db, &state.encryption, &principal, &key, &value)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    app_activity::record_storage_write(&state.db, &principal).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -53,7 +55,9 @@ pub async fn page_storage_delete(
     let principal = parse_principal(&principal)?;
     page_storage::delete(&state.db, &principal, &key)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    app_activity::record_storage_write(&state.db, &principal).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -87,5 +91,7 @@ pub async fn page_storage_clear(
     let principal = parse_principal(&principal)?;
     page_storage::clear(&state.db, &principal)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    app_activity::record_storage_write(&state.db, &principal).await;
+    Ok(())
 }

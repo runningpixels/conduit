@@ -11,23 +11,25 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AccentOverride, AgentGuardrails, AppCapabilities, AppCategory, AppCreatedWith, AppDetail,
-    AppError, AppInput, AppInputKind, AppInputTranslation, AppLlm, AppManifest, AppNetwork,
-    AppOrigin, AppSettings, AppStorage, AppSummary, Artifact, ArtifactKind, AskUserField,
-    Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo, BrandPalette,
-    BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
+    AccentOverride, AgentGuardrails, AppActivityEntry, AppActivityKind, AppCapabilities,
+    AppCategory, AppCreatedWith, AppDetail, AppError, AppInput, AppInputKind, AppInputTranslation,
+    AppLlm, AppLlmSlot, AppManifest, AppModelChoice, AppModelSlots, AppNetwork, AppOrigin,
+    AppSettings, AppSettingsView, AppStorage, AppSummary, AppUsageDay, Artifact, ArtifactKind,
+    AskUserField, Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo,
+    BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
     ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
     ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
     ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
     GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
-    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageLlmGrant, PageLlmReply,
-    PageLlmRequest, PageLlmState, PageStorageUsage, PermissionLevel, PromptArguments,
-    ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
-    ReasoningEffort, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
-    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
-    StarterAppInfo, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
-    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation,
-    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
+    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageLlmGrant,
+    PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry,
+    PageStorageUsage, PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError,
+    ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef,
+    ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
+    SettingsPatch, SkippedResource, StarterAppInfo, SupportState, TenantConfig, TenantIdentity,
+    Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport,
+    UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
+    WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -97,6 +99,15 @@ fn main() {
     PageLlmState::export().expect("export PageLlmState");
     PageLlmRequest::export().expect("export PageLlmRequest");
     PageLlmReply::export().expect("export PageLlmReply");
+    AppLlmSlot::export().expect("export AppLlmSlot");
+    AppModelChoice::export().expect("export AppModelChoice");
+    AppModelSlots::export().expect("export AppModelSlots");
+    AppUsageDay::export().expect("export AppUsageDay");
+    AppSettingsView::export().expect("export AppSettingsView");
+    AppActivityKind::export().expect("export AppActivityKind");
+    AppActivityEntry::export().expect("export AppActivityEntry");
+    PageStorageEntry::export().expect("export PageStorageEntry");
+    PageLlmProviderGrant::export().expect("export PageLlmProviderGrant");
 
     // Attachments
     RetentionState::export().expect("export RetentionState");

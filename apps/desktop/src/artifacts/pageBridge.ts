@@ -38,6 +38,9 @@ export interface PageLlmCompleteParams {
   system?: string;
   maxTokens?: number;
   json?: boolean;
+  /// Which of an app's model mappings answers (`quick` is for short, cheap
+  /// calls). Ignored by Rust for pages in a chat.
+  slot?: 'default' | 'quick';
 }
 
 /// A validated request from the frame. Untrusted until parsed: the page can
@@ -137,6 +140,9 @@ export function buildPageBridgeScript(capabilities: string[], inputs?: Record<st
         `if(req.system!==undefined)params.system=req.system;` +
         `if(req.maxTokens!==undefined)params.maxTokens=req.maxTokens;` +
         `if(req.json!==undefined)params.json=req.json;` +
+        `if(req.slot!==undefined){if(req.slot!=='default'&&req.slot!=='quick'){` +
+        `var serr=new Error("slot must be 'default' or 'quick'.");serr.code='invalid';return Promise.reject(serr);}` +
+        `params.slot=req.slot;}` +
         `return call('llm.complete',params);}` +
         `});`
       : '') +
@@ -184,10 +190,12 @@ export function parsePageBridgeRequest(data: unknown): PageBridgeRequest | null 
       if (p.system !== undefined && typeof p.system !== 'string') return null;
       if (p.maxTokens !== undefined && typeof p.maxTokens !== 'number') return null;
       if (p.json !== undefined && typeof p.json !== 'boolean') return null;
+      if (p.slot !== undefined && p.slot !== 'default' && p.slot !== 'quick') return null;
       const params: PageLlmCompleteParams = { prompt: p.prompt };
       if (p.system !== undefined) params.system = p.system as string;
       if (p.maxTokens !== undefined) params.maxTokens = p.maxTokens as number;
       if (p.json !== undefined) params.json = p.json as boolean;
+      if (p.slot !== undefined) params.slot = p.slot as 'default' | 'quick';
       return { id: d.id, method, params };
     }
     default:

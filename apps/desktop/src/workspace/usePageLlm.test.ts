@@ -80,6 +80,21 @@ describe('usePageLlm', () => {
     expect(result.current.pending).toBe(false);
   });
 
+  it('quick slot checks consent for the slot provider and passes the slot through', async () => {
+    freshMocks();
+    const id = principal();
+    const LOCAL = { ...CLOUD_STATE, providerId: 'ollama', providerName: 'Ollama', isLocal: true, granted: 'always' };
+    pageLlmState.mockImplementation(async (_p: unknown, slot?: string) => (slot === 'quick' ? LOCAL : CLOUD_STATE));
+    const { result } = renderHook(() => usePageLlm(id));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
+
+    const outcome = await result.current.handler({ prompt: 'Hi', slot: 'quick' });
+    expect(outcome).toEqual({ ok: true, result: { text: 'answer' } });
+    expect(pageLlmState).toHaveBeenCalledWith(id, 'quick');
+    expect(pageLlmComplete).toHaveBeenCalledWith(id, { prompt: 'Hi', slot: 'quick' });
+    expect(result.current.pending).toBe(false);
+  });
+
   it('not granted holds the call until decide("session") grants then runs it', async () => {
     freshMocks();
     const id = principal();
@@ -100,10 +115,27 @@ describe('usePageLlm', () => {
     await act(async () => {
       await result.current.decide('session');
     });
-    expect(grantPageLlm).toHaveBeenCalledWith(id, 'session');
+    expect(grantPageLlm).toHaveBeenCalledWith(id, 'session', 'default');
     await waitFor(() => expect(settled).toEqual({ ok: true, result: { text: 'answer' } }));
     expect(result.current.pending).toBe(false);
     expect(result.current.state?.granted).toBe('session');
+  });
+
+  it('grants the provider of each slot that is waiting', async () => {
+    freshMocks();
+    const id = principal();
+    const { result } = renderHook(() => usePageLlm(id));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
+    act(() => {
+      void result.current.handler({ prompt: 'a', slot: 'quick' });
+    });
+    await waitFor(() => expect(result.current.pending).toBe(true));
+    pageLlmState.mockResolvedValue({ ...CLOUD_STATE, granted: 'always' });
+    await act(async () => {
+      await result.current.decide('page');
+    });
+    expect(grantPageLlm).toHaveBeenCalledTimes(1);
+    expect(grantPageLlm).toHaveBeenCalledWith(id, 'page', 'quick');
   });
 
   it('deny answers not_granted and does not re-prompt on the next call', async () => {

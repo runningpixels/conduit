@@ -45,6 +45,17 @@ function props(over: Partial<DeckWorkspaceProps> = {}): DeckWorkspaceProps {
 }
 
 describe('DeckWorkspace', () => {
+  it('keeps saved custom themes in the theme picker after switching away', () => {
+    const p = props({
+      savedThemes: [{ name: 'Ember', css: '.ember{}', updatedAt: '2026-10-01T10:00:00Z' }],
+    });
+    render(<DeckWorkspace {...p} />);
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Ink', 'Paper', 'Ember']);
+    fireEvent.change(select, { target: { value: 'Ember' } });
+    expect(p.onSetTheme).toHaveBeenCalledWith('Ember', '.ember{}');
+  });
+
   it('shows the storyline editor while the deck is an outline', () => {
     const p = props({
       deck: makeDeck({ stage: 'storyline', slides: [], storyline: [{ id: 'l1', text: 'Why now' }] }),

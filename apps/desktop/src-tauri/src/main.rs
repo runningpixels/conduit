@@ -214,6 +214,8 @@ fn main() {
             list_deck_snapshots,
             snapshot_deck,
             restore_deck_snapshot,
+            list_slide_themes,
+            delete_slide_theme,
             list_starter_apps,
             install_starter_app,
             get_app_inputs,

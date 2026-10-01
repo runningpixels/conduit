@@ -27,10 +27,10 @@ use provider_core::schema::{
     PageStorageUsage, PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError,
     ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef,
     ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
-    SettingsPatch, SkippedResource, StarterAppInfo, StorylineItem, SupportState, TenantConfig,
-    TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind,
-    Transport, UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
-    WebSearchRequest,
+    SettingsPatch, SkippedResource, SlideTheme, StarterAppInfo, StorylineItem, SupportState,
+    TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, WebSearchDefaults,
+    WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -99,6 +99,7 @@ fn main() {
     DeckStage::export().expect("export DeckStage");
     DeckSnapshotCause::export().expect("export DeckSnapshotCause");
     StorylineItem::export().expect("export StorylineItem");
+    SlideTheme::export().expect("export SlideTheme");
     DeckSlide::export().expect("export DeckSlide");
     DeckSummary::export().expect("export DeckSummary");
     DeckDetail::export().expect("export DeckDetail");

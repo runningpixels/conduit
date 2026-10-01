@@ -1483,6 +1483,20 @@ pub struct StorylineItem {
     pub text: String,
 }
 
+/// A saved Slides theme: one the user or the model made, kept in the theme
+/// library so it can be picked again. The built-in themes are not listed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slide_theme.ts"
+)]
+pub struct SlideTheme {
+    pub name: String,
+    pub css: String,
+    pub updated_at: String,
+}
+
 /// One slide of a deck. `html` is the slide's inner HTML.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

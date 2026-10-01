@@ -9,6 +9,7 @@ const ipc = vi.hoisted(() => ({
   createDeck: vi.fn(),
   renameDeck: vi.fn(),
   deleteDeck: vi.fn(),
+  listSlideThemes: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -27,6 +28,7 @@ const deck: DeckSummary = {
 beforeEach(() => {
   Object.values(ipc).forEach((fn) => fn.mockReset());
   ipc.listDecks.mockResolvedValue([deck]);
+  ipc.listSlideThemes.mockResolvedValue([]);
 });
 
 describe('SlidesPage', () => {

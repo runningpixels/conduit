@@ -11,6 +11,7 @@ import type {
   AppPaths,
   AppSummary,
   DeckDetail,
+  SlideTheme,
   DeckSnapshotCause,
   DeckSnapshotSummary,
   DeckStage,
@@ -1614,6 +1615,15 @@ export async function snapshotDeck(
 
 export async function restoreDeckSnapshot(deckId: string, snapshotId: string): Promise<DeckDetail> {
   return invokeCommand<DeckDetail>('restore_deck_snapshot', { deckId, snapshotId });
+}
+
+/** Saved custom Slides themes, most recently used first (built-ins excluded). */
+export async function listSlideThemes(): Promise<SlideTheme[]> {
+  return invokeCommand<SlideTheme[]>('list_slide_themes');
+}
+
+export async function deleteSlideTheme(name: string): Promise<void> {
+  await invokeCommand('delete_slide_theme', { name });
 }
 
 /** The ready-made apps bundled with Conduit, and which the user has added. */

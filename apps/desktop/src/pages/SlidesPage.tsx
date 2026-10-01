@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@conduit/ui';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { PageEmpty, PageFrame } from '../shell/PageFrame';
-import { createDeck, deleteDeck, listDecks, renameDeck } from '../ipc/client';
+import { createDeck, deleteDeck, listDecks, listSlideThemes, renameDeck } from '../ipc/client';
 import type { DeckDetail, DeckSummary } from '../ipc/contracts';
 import { DeckFrame } from '../slides/DeckFrame';
 import { STARTER_THEMES, type StarterTheme } from '../slides/themes';
@@ -62,6 +62,21 @@ export function SlidesPage({ onOpenDeck, onStatus }: SlidesPageProps) {
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
   const [deleting, setDeleting] = useState<DeckSummary | null>(null);
+  // Themes the model or the user made in other decks, offered after the
+  // built-ins.
+  const [savedThemes, setSavedThemes] = useState<StarterTheme[]>([]);
+  useEffect(() => {
+    listSlideThemes()
+      .then((themes) =>
+        setSavedThemes(
+          themes
+            .filter((th) => !STARTER_THEMES.some((s) => s.name.toLowerCase() === th.name.toLowerCase()))
+            .map((th) => ({ name: th.name, label: th.name, css: th.css, dark: false })),
+        ),
+      )
+      .catch(() => setSavedThemes([]));
+  }, []);
+  const allThemes = useMemo(() => [...STARTER_THEMES, ...savedThemes], [savedThemes]);
 
   const refresh = useCallback(async () => {
     try {
@@ -83,7 +98,7 @@ export function SlidesPage({ onOpenDeck, onStatus }: SlidesPageProps) {
   );
 
   const submit = async () => {
-    const theme = STARTER_THEMES.find((th) => th.name === themeName) ?? STARTER_THEMES[0];
+    const theme = allThemes.find((th) => th.name === themeName) ?? STARTER_THEMES[0];
     setBusy(true);
     try {
       const detail = await createDeck(title.trim() || t('slides.new.defaultTitle'), theme.name, theme.css);
@@ -130,8 +145,8 @@ export function SlidesPage({ onOpenDeck, onStatus }: SlidesPageProps) {
   const previewSub = t('slides.new.previewSub');
   const previewTitle = title.trim() || t('slides.new.previewTitle');
   const previews = useMemo(
-    () => STARTER_THEMES.map((th) => ({ theme: th, deck: previewDeck(th, previewTitle, previewKicker, previewSub) })),
-    [previewTitle, previewKicker, previewSub],
+    () => allThemes.map((th) => ({ theme: th, deck: previewDeck(th, previewTitle, previewKicker, previewSub) })),
+    [allThemes, previewTitle, previewKicker, previewSub],
   );
 
   const form = creating && (

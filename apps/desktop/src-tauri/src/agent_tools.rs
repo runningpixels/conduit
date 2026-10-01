@@ -2105,7 +2105,14 @@ async fn set_theme(ctx: &AgentToolContext<'_>, input: SetThemeInput) -> Result<V
         .map(str::trim)
         .filter(|n| !n.is_empty())
         .unwrap_or("Custom");
-    slides::set_theme(ctx.db, ctx.encryption, &deck.id, name, &input.css)
+    // A model-written theme is saved under its name; it must not take a
+    // built-in theme's name, or it would hide behind it in the picker.
+    let name = if slides::is_starter_theme(name) {
+        format!("{name} (custom)")
+    } else {
+        name.to_string()
+    };
+    slides::set_theme(ctx.db, ctx.encryption, &deck.id, &name, &input.css)
         .await
         .map_err(slides::user_message)?;
     Ok(serde_json::json!({ "ok": true }))

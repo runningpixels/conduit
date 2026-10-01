@@ -3,7 +3,8 @@
 //! `agent_tools`).
 
 use provider_core::schema::{
-    DeckDetail, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary, StorylineItem,
+    DeckDetail, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary, SlideTheme,
+    StorylineItem,
 };
 use tauri::State;
 
@@ -18,6 +19,21 @@ use crate::{
 #[tauri::command]
 pub async fn list_decks(state: State<'_, AppState>) -> Result<Vec<DeckSummary>, String> {
     slides::list(&state.db).await.map_err(message)
+}
+
+/// Saved custom themes, most recently used first (built-in themes excluded).
+#[tauri::command]
+pub async fn list_slide_themes(state: State<'_, AppState>) -> Result<Vec<SlideTheme>, String> {
+    slides::list_themes(&state.db, &state.encryption)
+        .await
+        .map_err(message)
+}
+
+#[tauri::command]
+pub async fn delete_slide_theme(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    slides::delete_theme(&state.db, &name)
+        .await
+        .map_err(message)
 }
 
 /// Create a deck with its own chat (titled like the deck) and a `created`

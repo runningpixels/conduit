@@ -322,3 +322,29 @@ async fn update_move_delete_and_theme() {
         .unwrap();
     assert_eq!(deck.theme_name, "Sunrise");
 }
+
+#[tokio::test]
+async fn set_theme_saves_the_model_theme_without_shadowing_a_built_in() {
+    let h = Harness::bound().await;
+    h.ok(
+        SET_THEME_TOOL,
+        json!({ "css": ".ember{}", "name": "Ember" }),
+    )
+    .await;
+    h.ok(SET_THEME_TOOL, json!({ "css": ".mine{}", "name": "Ink" }))
+        .await;
+
+    let deck = slides::get(&h.pool, &h.enc, &h.deck_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(deck.theme_name, "Ink (custom)");
+    let mut saved: Vec<String> = slides::list_themes(&h.pool, &h.enc)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    saved.sort();
+    assert_eq!(saved, vec!["Ember", "Ink (custom)"]);
+}

@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useT } from '../i18n';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
-import type { DeckDetail, DeckSnapshotSummary, StorylineItem } from '../ipc/contracts';
+import type { DeckDetail, DeckSnapshotSummary, SlideTheme, StorylineItem } from '../ipc/contracts';
 import { DeckFrame } from './DeckFrame';
 import { DeckHistory } from './DeckHistory';
 import { StorylineEditor } from './StorylineEditor';
@@ -27,7 +27,11 @@ export interface DeckWorkspaceProps {
   onRestore: (snapshotId: string) => Promise<void>;
   /** Bumps when a snapshot may have been added, so History reloads. */
   historyRevision: number;
+  /** Custom themes kept in the theme library, offered after the built-ins. */
+  savedThemes?: readonly SlideTheme[];
 }
+
+const NO_THEMES: readonly SlideTheme[] = [];
 
 export function DeckWorkspace({
   deck,
@@ -41,6 +45,7 @@ export function DeckWorkspace({
   onListSnapshots,
   onRestore,
   historyRevision,
+  savedThemes = NO_THEMES,
 }: DeckWorkspaceProps) {
   const t = useT();
   const [index, setIndex] = useState(0);
@@ -80,13 +85,20 @@ export function DeckWorkspace({
     el?.scrollIntoView?.({ block: 'nearest' });
   }, [current, count]);
 
-  const themeOptions = useMemo(() => {
-    const starters = STARTER_THEMES.map((th) => ({ value: th.name, label: th.label }));
-    if (deck && !STARTER_THEMES.some((th) => th.name === deck.themeName)) {
-      starters.push({ value: deck.themeName, label: deck.themeName });
+  // Built-in themes, then saved ones (themes the model or the user made), then
+  // the deck's own theme if it is in neither list.
+  const themeChoices = useMemo(() => {
+    const choices = STARTER_THEMES.map((th) => ({ value: th.name, label: th.label, css: th.css as string | null }));
+    for (const saved of savedThemes) {
+      if (!choices.some((c) => c.value.toLowerCase() === saved.name.toLowerCase())) {
+        choices.push({ value: saved.name, label: saved.name, css: saved.css });
+      }
     }
-    return starters;
-  }, [deck]);
+    if (deck && !choices.some((c) => c.value === deck.themeName)) {
+      choices.push({ value: deck.themeName, label: deck.themeName, css: null });
+    }
+    return choices;
+  }, [deck, savedThemes]);
 
   const go = (delta: number) => setIndex(Math.max(0, Math.min(count - 1, current + delta)));
 
@@ -149,11 +161,11 @@ export function DeckWorkspace({
             className="deck-theme-select"
             value={deck.themeName}
             onChange={(e) => {
-              const theme = STARTER_THEMES.find((th) => th.name === e.target.value);
-              if (theme) onSetTheme(theme.name, theme.css);
+              const choice = themeChoices.find((c) => c.value === e.target.value);
+              if (choice?.css) onSetTheme(choice.value, choice.css);
             }}
           >
-            {themeOptions.map((o) => (
+            {themeChoices.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>

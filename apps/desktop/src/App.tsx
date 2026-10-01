@@ -126,10 +126,11 @@ import {
 import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
 import { STARTER_THEMES } from './slides/themes';
-import type { DeckDetail, StorylineItem } from './ipc/contracts';
+import type { DeckDetail, SlideTheme, StorylineItem } from './ipc/contracts';
 import {
   getDeckForConversation,
   listDeckSnapshots,
+  listSlideThemes,
   openDeck,
   renameDeck,
   restoreDeckSnapshot,
@@ -430,6 +431,23 @@ export default function App() {
       cancelled = true;
     };
   }, [activeConversationId]);
+  // The theme library (custom themes). Re-read whenever the deck's theme
+  // changes: moving off a custom theme, or the model writing one, saves it.
+  const [savedSlideThemes, setSavedSlideThemes] = useState<SlideTheme[]>([]);
+  const activeDeckId = activeDeck?.id;
+  const activeDeckThemeName = activeDeck?.themeName;
+  useEffect(() => {
+    if (!activeDeckId) return;
+    let cancelled = false;
+    listSlideThemes()
+      .then((themes) => {
+        if (!cancelled) setSavedSlideThemes(themes);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDeckId, activeDeckThemeName]);
   useEffect(() => {
     const listSettled = activeConversationId == null || artifactsConversationId === activeConversationId;
     if (activeDeck) {
@@ -1026,6 +1044,7 @@ export default function App() {
       try {
         setActiveDeck(await setDeckTheme(deck.id, name, css));
         const label = STARTER_THEMES.find((theme) => theme.name === name)?.label ?? name;
+        void listSlideThemes().then(setSavedSlideThemes, () => {});
         await snapshotDeck(deck.id, 'manual', t('slides.history.themeChanged', { name: label }));
         setDeckHistoryRevision((n) => n + 1);
       } catch (error) {
@@ -2411,6 +2430,7 @@ export default function App() {
               onListSnapshots={handleListDeckSnapshots}
               onRestore={handleRestoreDeck}
               historyRevision={deckHistoryRevision}
+              savedThemes={savedSlideThemes}
             />
           </section>
         ) : (

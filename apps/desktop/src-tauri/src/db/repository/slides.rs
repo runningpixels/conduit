@@ -11,7 +11,7 @@ use std::collections::HashSet;
 
 use provider_core::schema::{
     DeckDetail, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
-    StorylineItem,
+    SlideTheme, StorylineItem,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -566,6 +566,11 @@ pub async fn set_theme(
     theme_css: &str,
 ) -> Result<DeckDetail, DbError> {
     let name = validate_theme(theme_name, theme_css)?;
+    // A custom theme survives the deck moving off it: keep the outgoing one
+    // and the incoming one in the theme library.
+    let current = require(pool, enc, id).await?;
+    remember_theme(pool, enc, &current.theme_name, &current.theme_css).await?;
+    remember_theme(pool, enc, &name, theme_css).await?;
     let done =
         sqlx::query("UPDATE decks SET theme_name = ?, theme_css = ?, updated_at = ? WHERE id = ?")
             .bind(&name)
@@ -578,6 +583,72 @@ pub async fn set_theme(
         return Err(no_deck());
     }
     require(pool, enc, id).await
+}
+
+// ---------------------------------------------------------------------------
+// Theme library
+// ---------------------------------------------------------------------------
+
+/// The built-in themes (`src/slides/themes.ts` `STARTER_THEMES`). They ship
+/// with the app, so the library never stores them.
+pub const STARTER_THEME_NAMES: [&str; 2] = ["ink", "paper"];
+
+pub fn is_starter_theme(name: &str) -> bool {
+    STARTER_THEME_NAMES
+        .iter()
+        .any(|starter| starter.eq_ignore_ascii_case(name.trim()))
+}
+
+/// Keep a custom theme in the library (insert, or replace the CSS of the theme
+/// with that name). Built-in themes and empty CSS are skipped.
+pub async fn remember_theme(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    name: &str,
+    css: &str,
+) -> Result<(), DbError> {
+    let name = name.trim();
+    if name.is_empty() || is_starter_theme(name) || css.trim().is_empty() {
+        return Ok(());
+    }
+    let now = now_iso8601();
+    sqlx::query(
+        "INSERT INTO slide_themes (name, css, created_at, updated_at) VALUES (?, ?, ?, ?) \
+         ON CONFLICT(name) DO UPDATE SET css = excluded.css, updated_at = excluded.updated_at",
+    )
+    .bind(name)
+    .bind(enc.encrypt(css)?)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Saved themes, most recently used first.
+pub async fn list_themes(pool: &SqlitePool, enc: &Encryption) -> Result<Vec<SlideTheme>, DbError> {
+    let rows: Vec<(String, String, String)> =
+        sqlx::query_as("SELECT name, css, updated_at FROM slide_themes ORDER BY updated_at DESC")
+            .fetch_all(pool)
+            .await?;
+    rows.into_iter()
+        .map(|(name, css, updated_at)| {
+            Ok(SlideTheme {
+                name,
+                css: enc.decrypt(&css)?,
+                updated_at,
+            })
+        })
+        .collect()
+}
+
+/// Remove a saved theme. Decks using it keep their copy of the CSS.
+pub async fn delete_theme(pool: &SqlitePool, name: &str) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM slide_themes WHERE name = ?")
+        .bind(name.trim())
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -910,6 +981,8 @@ pub async fn restore_snapshot(
     let (payload, label) = row.ok_or_else(|| invalid("That history entry no longer exists."))?;
     let state: DeckState = serde_json::from_str(&enc.decrypt(&payload)?)
         .map_err(|e| invalid(format!("decode deck snapshot: {e}")))?;
+    // Restoring brings back a theme the deck had moved off; keep it pickable.
+    remember_theme(pool, enc, &state.theme_name, &state.theme_css).await?;
 
     let mut tx = pool.begin().await?;
     let done = sqlx::query(

@@ -457,3 +457,55 @@ async fn deleting_a_deck_removes_slides_and_history() {
     // The chat is the command's to remove; the repository only reports it.
     assert!(conversations::get(&pool, &conv.id).await.unwrap().is_some());
 }
+
+#[tokio::test]
+async fn custom_themes_survive_switching_away_and_restore() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    let names = |themes: Vec<provider_core::schema::SlideTheme>| {
+        themes.into_iter().map(|t| t.name).collect::<Vec<_>>()
+    };
+
+    // Built-in themes are never stored.
+    slides::set_theme(&pool, &enc, &deck.id, "paper", ".paper{}")
+        .await
+        .unwrap();
+    assert!(slides::list_themes(&pool, &enc).await.unwrap().is_empty());
+
+    // A custom theme is kept, and stays pickable after the deck moves off it.
+    slides::set_theme(&pool, &enc, &deck.id, "Ember", ".ember{}")
+        .await
+        .unwrap();
+    let ember_state = slides::snapshot(&pool, &enc, &deck.id, DeckSnapshotCause::AiTurn, "ember")
+        .await
+        .unwrap()
+        .unwrap();
+    slides::set_theme(&pool, &enc, &deck.id, "ink", ".ink{}")
+        .await
+        .unwrap();
+    let saved = slides::list_themes(&pool, &enc).await.unwrap();
+    assert_eq!(names(saved.clone()), vec!["Ember"]);
+    assert_eq!(saved[0].css, ".ember{}");
+
+    // Restoring a version brings its theme back into the library even after
+    // it was removed from it.
+    slides::delete_theme(&pool, "ember").await.unwrap();
+    assert!(slides::list_themes(&pool, &enc).await.unwrap().is_empty());
+    let restored = slides::restore_snapshot(&pool, &enc, &deck.id, &ember_state.id)
+        .await
+        .unwrap();
+    assert_eq!(restored.theme_name, "Ember");
+    assert_eq!(
+        names(slides::list_themes(&pool, &enc).await.unwrap()),
+        vec!["Ember"]
+    );
+
+    // Saving under an existing name (any case) replaces its CSS.
+    slides::remember_theme(&pool, &enc, "EMBER", ".ember{v:2}")
+        .await
+        .unwrap();
+    let saved = slides::list_themes(&pool, &enc).await.unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].css, ".ember{v:2}");
+}

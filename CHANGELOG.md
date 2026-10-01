@@ -9,6 +9,38 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Apps.** Keep a page the assistant built: **Save as app** in the page's ⋯
+  menu makes a copy you open from **Apps** on the rail, or from **Your apps**
+  on the new-chat screen, and it keeps working after you delete the chat.
+  Saving asks which of the page's site permissions to keep, one by one, and
+  keeps none you don't tick. An app shows what it can reach in a status line
+  Conduit draws outside the page; when the chat's page changes, the app offers
+  **Update**. Rename, change the mark and category, or delete an app from its
+  ⋯ menu.
+- **Eight starter apps**, built in: a Pomodoro timer, a unit converter, Snake,
+  a memory game, a world-capitals quiz, a budget tracker, and a weather
+  dashboard and a currency converter that use live data (and ask before they
+  connect). Add one from Apps, or press **Open app** on an idea that has one.
+  A starter you added stays up to date with the version Conduit ships.
+- **Pages can keep data.** A page or an app can store a little data between
+  launches (up to 5 MB each), so a tracker keeps its entries. Saving a page as
+  an app takes its data along. An app's status line shows how much it keeps,
+  and **Clear data** removes it.
+- **App settings.** A page can declare a few settings — a city, units — and
+  Conduit draws the form behind an **Inputs** button. Changing them updates the
+  running app without reloading it. The weather dashboard uses this for its
+  city and units.
+- **Pages can ask your AI model.** After you allow it for that page, a page or
+  an app can send your model a prompt and get the answer back. The prompt
+  names the provider and says when text would leave your device; allow it this
+  once, always for that page, or not at all. The page gets text in and text
+  out: no tools, chat history, memory or documents, and it never learns which
+  model answered. Switching providers asks again; **Stop model access** turns
+  it off for an app.
+- **Ideas on the new-chat screen.** Things to try, by category, under the
+  message box; picking one fills in the prompt. Your most recent apps sit above
+  them.
+
 - **Workflows.** A new Workflows page runs routines for you: fetch pages,
   search the web, have the model summarize, and save the result as a
   document. Start from a ready-made one (a morning briefing, a page
@@ -52,8 +84,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the documents you picked, even from collections the chat hasn't attached,
   and the sent message keeps showing what it referenced.
 
+### Changed
+
+- **A new look, in two modes.** One design, dark or light (or following your
+  system), replaces the theme gallery and theme files. The rail is labeled and
+  carries the name and mark; Ideas moved to the new-chat screen. You can still
+  pick the main colour, per mode, in Settings → Appearance. If you used a theme
+  that was only dark or only light, Conduit keeps that mode. Theme files you
+  added are left on disk but no longer used.
+- **The first few steps of a turn show as rows**, with the rest in the summary
+  line.
+
 ### Security
 
+- **Pages can't reach the app's own commands.** On Windows, the webview also
+  loaded the app's internal command channel into every page's frame. The app
+  already refused every call from a page, and now each page cuts that channel
+  before any of its own script runs.
+- **Known issue: WebRTC on macOS and Linux.** Blocking WebRTC in pages is done
+  in the Windows webview only. On macOS and Linux a page's script could still
+  reach a host through STUN/TURN; the fixes there haven't been built and
+  verified yet.
 - **HTML artifacts can't send data out through WebRTC.** The page's content
   security policy never covered WebRTC, so a page's script could reach any
   host through STUN/TURN even with network access off. Release builds

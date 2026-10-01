@@ -299,20 +299,23 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
 
   async function handleToggleEnabled() {
     const next = !enabled;
-    if (!next) {
-      onUpdate({ ...settings, brandingEnabled: next });
-      clearBrand();
-      onBrandChange?.(null, null);
-      return;
-    }
-    // Turning on: persist before the state flips. The load effect above is
-    // keyed on brandingEnabled and Rust only returns brand.md once the
-    // setting is on disk; the shared autosave is optimistic and writes 250ms
-    // later, so the refetch would race it and show the seeds instead.
+    // Persist before the state flips, both ways. The load effect above is
+    // keyed on brandingEnabled and Rust returns brand.md only while the
+    // setting on disk is on; the shared autosave is optimistic and writes
+    // 250ms later, so its refetch would race it: turning on showed the seeds
+    // instead of brand.md, and turning off fetched the brand again and
+    // re-applied it.
+    let persisted: AppSettings;
     try {
-      onUpdate(await updateSettings({ brandingEnabled: true }));
+      persisted = await updateSettings({ brandingEnabled: next });
     } catch (e) {
       onStatus(t('settings.autoSave.failed', { error: describeError(e) }));
+      return;
+    }
+    onUpdate(persisted);
+    if (!next) {
+      clearBrand();
+      onBrandChange?.(null, null);
     }
   }
 

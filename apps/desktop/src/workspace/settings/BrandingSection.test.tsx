@@ -225,7 +225,27 @@ describe('the enable toggle', () => {
       expect(document.documentElement.style.getPropertyValue('--hue')).toBe('#3366ff'),
     );
     fireEvent.click(screen.getByRole('switch', { name: 'Enable branding' }));
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ brandingEnabled: false }));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ brandingEnabled: false })));
+    expect(document.documentElement.style.getPropertyValue('--hue')).toBe('');
+  });
+
+  it('turning off persists first, so the refetch cannot hand the brand back to be re-applied', async () => {
+    let onDisk = true;
+    vi.mocked(getBrandConfig).mockImplementation(async () => (onDisk ? SAVED_CONFIG : null));
+    vi.mocked(updateSettings).mockImplementation(async (patch) => {
+      onDisk = patch.brandingEnabled ?? onDisk;
+      return { ...baseSettings, ...patch } as AppSettings;
+    });
+    const onBrandChange = vi.fn();
+    function Host() {
+      const [settings, setSettings] = useState<AppSettings>({ ...baseSettings, brandingEnabled: true });
+      return <BrandingSection settings={settings} onUpdate={setSettings} onStatus={() => {}} onBrandChange={onBrandChange} />;
+    }
+    render(<Host />);
+    await waitFor(() => expect(screen.getByLabelText('App name')).toHaveValue('Acme'));
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable branding' }));
+    await waitFor(() => expect(getBrandConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onBrandChange).toHaveBeenLastCalledWith(null, null));
     expect(document.documentElement.style.getPropertyValue('--hue')).toBe('');
   });
 });

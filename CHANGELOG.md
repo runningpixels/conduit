@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-09-30
+
 ### Added
 
 - **Apps.** Keep a page the assistant built: **Save as app** in the page's ⋯
@@ -543,7 +545,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.8...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.8...v1.0.0-rc.1
 [0.1.0-rc.8]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.7...v0.1.0-rc.8
 [0.1.0-rc.7]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.6...v0.1.0-rc.7
 [0.1.0-rc.6]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.5...v0.1.0-rc.6

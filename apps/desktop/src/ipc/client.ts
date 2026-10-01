@@ -14,6 +14,12 @@ import type {
   PageLlmReply,
   PageLlmRequest,
   PageLlmState,
+  AppActivityEntry,
+  AppLlmSlot,
+  AppModelChoice,
+  AppSettingsView,
+  PageLlmProviderGrant,
+  PageStorageEntry,
   AppSettings,
   Artifact,
   ArtifactContent,
@@ -666,6 +672,11 @@ export async function pageStorageClear(principal: PagePrincipal): Promise<void> 
   await invokeCommand('page_storage_clear', { principal });
 }
 
+/** The data viewer's rows: each stored key with its size and last change. */
+export async function pageStorageEntries(principal: PagePrincipal): Promise<PageStorageEntry[]> {
+  return invokeCommand<PageStorageEntry[]>('page_storage_entries', { principal });
+}
+
 const BRIDGE_ERROR_CODES: ReadonlySet<string> = new Set<BridgeErrorCode>([
   'invalid',
   'quota',
@@ -714,13 +725,19 @@ export type PageLlmCompleteResult = PageLlmReply;
 export type PageLlmGrantScope = 'session' | 'page';
 
 /** A page's `window.conduit.llm.complete()` request (ADR-014). */
-export async function pageLlmState(principal: PagePrincipal): Promise<PageLlmState> {
-  return invokeCommand<PageLlmState>('page_llm_state', { principal });
+export async function pageLlmState(principal: PagePrincipal, slot?: AppLlmSlot): Promise<PageLlmState> {
+  return invokeCommand<PageLlmState>('page_llm_state', { principal, slot: slot ?? null });
 }
 
 /** Grants `principal` model access for the CURRENT active provider. */
-export async function grantPageLlm(principal: PagePrincipal, scope: PageLlmGrantScope): Promise<void> {
-  await invokeCommand('grant_page_llm', { principal, scope });
+/** Grants the provider `slot` resolves to for this principal (an app's
+ *  mapping, else the active provider). */
+export async function grantPageLlm(
+  principal: PagePrincipal,
+  scope: PageLlmGrantScope,
+  slot?: AppLlmSlot,
+): Promise<void> {
+  await invokeCommand('grant_page_llm', { principal, scope, slot: slot ?? null });
 }
 
 /** Clears both the session and the stored (page-scoped) grant. */
@@ -736,6 +753,53 @@ export async function pageLlmComplete(
   request: PageLlmCompleteRequest,
 ): Promise<PageLlmCompleteResult> {
   return invokeCommand<PageLlmCompleteResult>('page_llm_complete', { principal, request });
+}
+
+// =============================================================================
+// Per-app settings (docs/private/app-settings-contract.md)
+// =============================================================================
+
+export type { AppActivityEntry, AppLlmSlot, AppModelChoice, AppSettingsView, PageLlmProviderGrant, PageStorageEntry };
+
+export async function getAppSettings(id: string): Promise<AppSettingsView> {
+  return invokeCommand<AppSettingsView>('get_app_settings', { id });
+}
+
+/** `choice: null` returns the slot to following its fallback. */
+/** Providers an app's model slot can be mapped to now (configured and usable). */
+export async function listConfiguredProviders(): Promise<string[]> {
+  return invokeCommand<string[]>('list_configured_providers');
+}
+
+export async function setAppModelSlot(
+  id: string,
+  slot: AppLlmSlot,
+  choice: AppModelChoice | null,
+): Promise<AppSettingsView> {
+  return invokeCommand<AppSettingsView>('set_app_model_slot', { id, slot, choice });
+}
+
+/** `cap: null` returns to the default limit; Rust rejects outside 1,000–10,000,000. */
+export async function setAppDailyTokenCap(id: string, cap: number | null): Promise<AppSettingsView> {
+  return invokeCommand<AppSettingsView>('set_app_daily_token_cap', { id, cap });
+}
+
+/** Newest first. */
+export async function listAppActivity(id: string, limit?: number): Promise<AppActivityEntry[]> {
+  return invokeCommand<AppActivityEntry[]>('list_app_activity', { id, limit: limit ?? null });
+}
+
+/** Opens a save dialog in Rust; the saved path, or `null` when cancelled. */
+export async function exportAppDataDialog(id: string): Promise<string | null> {
+  return invokeCommand<string | null>('export_app_data_dialog', { id });
+}
+
+export async function listPageLlmGrants(principal: PagePrincipal): Promise<PageLlmProviderGrant[]> {
+  return invokeCommand<PageLlmProviderGrant[]>('list_page_llm_grants', { principal });
+}
+
+export async function revokePageLlmProvider(principal: PagePrincipal, providerId: string): Promise<void> {
+  await invokeCommand('revoke_page_llm_provider', { principal, providerId });
 }
 
 // =============================================================================

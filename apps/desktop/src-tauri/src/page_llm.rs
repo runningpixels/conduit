@@ -19,7 +19,7 @@
 //! Every error a command can return is a `"code: message"` string ([`Display`]
 //! on [`PageLlmError`]), matching the convention `page_storage` set: `code`
 //! is one of `not_granted`, `unavailable`, `rate_limited`, `invalid`,
-//! `timeout`. A provider failure is never shown to the page verbatim — it is
+//! `timeout`, `quota`. A provider failure is never shown to the page verbatim — it is
 //! logged with `tracing` and surfaced as the generic
 //! `unavailable: The model couldn't answer.`
 
@@ -30,15 +30,20 @@ use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use provider_core::schema::{
-    GenerationControls, Message, MessagePart, MessagePartKind, MessageRole, PageLlmGrant,
-    PageLlmReply, PageLlmRequest, PageLlmState, ProviderEvent, ProviderRequest,
+    AppLlmSlot, GenerationControls, Message, MessagePart, MessagePartKind, MessageRole,
+    PageLlmGrant, PageLlmReply, PageLlmRequest, PageLlmState, ProviderEvent, ProviderRequest,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
     db::{
-        repository::{artifact_network::Principal, page_llm as store},
+        repository::{
+            app_activity::{self, ModelCall},
+            app_settings,
+            artifact_network::Principal,
+            page_llm as store,
+        },
         DbError,
     },
     state::AppState,
@@ -83,6 +88,8 @@ pub enum PageLlmError {
     RateLimited(String),
     Invalid(String),
     Timeout(String),
+    /// An app has used its daily allowance of cloud-model tokens.
+    Quota(String),
 }
 
 impl fmt::Display for PageLlmError {
@@ -93,6 +100,21 @@ impl fmt::Display for PageLlmError {
             Self::RateLimited(msg) => write!(f, "rate_limited: {msg}"),
             Self::Invalid(msg) => write!(f, "invalid: {msg}"),
             Self::Timeout(msg) => write!(f, "timeout: {msg}"),
+            Self::Quota(msg) => write!(f, "quota: {msg}"),
+        }
+    }
+}
+
+impl PageLlmError {
+    /// The bridge error code, as logged to an app's activity.
+    fn code(&self) -> &'static str {
+        match self {
+            Self::NotGranted(_) => "not_granted",
+            Self::Unavailable(_) => "unavailable",
+            Self::RateLimited(_) => "rate_limited",
+            Self::Invalid(_) => "invalid",
+            Self::Timeout(_) => "timeout",
+            Self::Quota(_) => "quota",
         }
     }
 }
@@ -313,9 +335,9 @@ fn reserve_call(key: &str) -> Result<CallGuard, PageLlmError> {
 
 // ── Provider status: what a page may see before it calls ───────────────────
 
-/// The active provider's readiness for a page-model call, computed once and
-/// shared by [`state`] (the renderer's display copy) and [`complete`] (the
-/// gate it must pass).
+/// A provider's readiness for a page-model call, computed once and shared by
+/// [`state`] (the renderer's display copy) and [`complete`] (the gate it must
+/// pass).
 struct ProviderStatus {
     provider_id: String,
     provider_name: String,
@@ -332,8 +354,9 @@ fn provider_status(
     app_state: &AppState,
     streams: &StreamManager,
     settings: &provider_core::schema::AppSettings,
+    provider_id: &str,
 ) -> ProviderStatus {
-    let provider_id = settings.active_provider.clone();
+    let provider_id = provider_id.to_string();
     let descriptor = provider_core::descriptor(&provider_id);
     let provider_name = descriptor
         .map(|d| d.display_name.to_string())
@@ -358,6 +381,52 @@ fn provider_status(
     }
 }
 
+/// Whether `provider_id` is set up well enough to be chosen for an app's
+/// slot: it resolves to an adapter and its credentials are in place (the same
+/// `build_adapter_context` check a call makes). Local-only mode is *not* part
+/// of this: a configured cloud provider stays configured, and the call is then
+/// refused as `unavailable` for the resolved provider.
+pub(crate) fn provider_configured(
+    app_state: &AppState,
+    streams: &StreamManager,
+    provider_id: &str,
+) -> bool {
+    streams.resolve_adapter(provider_id).is_some()
+        && StreamManager::build_adapter_context(app_state, provider_id).is_ok()
+}
+
+/// The provider and model a call (or a consent prompt) for `principal` uses.
+///
+/// For an `app:` principal the slot picks the mapping: `quick` → the quick
+/// choice, else the default choice, else the active provider/model; `default`
+/// (or no slot) → the default choice, else active. A choice whose provider is
+/// no longer configured is skipped, falling through the same chain. Any other
+/// principal always uses the active provider and model; `slot` is ignored.
+async fn resolve_model(
+    app_state: &AppState,
+    streams: &StreamManager,
+    settings: &provider_core::schema::AppSettings,
+    principal: &Principal,
+    slot: Option<AppLlmSlot>,
+) -> Result<(String, String), PageLlmError> {
+    if let Principal::App(app_id) = principal {
+        let stored = app_settings::get(&app_state.db, app_id).await?;
+        let chain = match slot.unwrap_or(AppLlmSlot::Default) {
+            AppLlmSlot::Quick => vec![stored.slots.quick, stored.slots.default],
+            AppLlmSlot::Default => vec![stored.slots.default],
+        };
+        for choice in chain.into_iter().flatten() {
+            if provider_configured(app_state, streams, &choice.provider_id) {
+                return Ok((choice.provider_id, choice.model));
+            }
+        }
+    }
+    Ok((
+        settings.active_provider.clone(),
+        settings.active_model.clone(),
+    ))
+}
+
 async fn granted_scope(
     app_state: &AppState,
     principal: &Principal,
@@ -374,14 +443,18 @@ async fn granted_scope(
 
 // ── The IPC-facing operations ───────────────────────────────────────────────
 
-/// What a page sees before it calls `window.conduit.llm.complete()`.
+/// What a page sees before it calls `window.conduit.llm.complete()`, for the
+/// provider `slot` resolves to (see [`resolve_model`]).
 pub async fn state(
     app_state: &AppState,
     streams: &StreamManager,
     principal: &Principal,
+    slot: Option<AppLlmSlot>,
 ) -> Result<PageLlmState, PageLlmError> {
     let app_settings = settings(app_state)?;
-    let status = provider_status(app_state, streams, &app_settings);
+    let (provider_id, _model) =
+        resolve_model(app_state, streams, &app_settings, principal, slot).await?;
+    let status = provider_status(app_state, streams, &app_settings, &provider_id);
     let granted = granted_scope(app_state, principal, &status.provider_id).await?;
     Ok(PageLlmState {
         provider_id: status.provider_id,
@@ -400,14 +473,17 @@ pub enum GrantScope {
     Page,
 }
 
-/// Allow the current active provider for `principal`.
+/// Allow the provider `slot` resolves to for `principal`.
 pub async fn grant(
     app_state: &AppState,
+    streams: &StreamManager,
     principal: &Principal,
     scope: GrantScope,
+    slot: Option<AppLlmSlot>,
 ) -> Result<(), PageLlmError> {
     let app_settings = settings(app_state)?;
-    let provider_id = app_settings.active_provider;
+    let (provider_id, _model) =
+        resolve_model(app_state, streams, &app_settings, principal, slot).await?;
     match scope {
         GrantScope::Session => grant_session(&principal.key(), &provider_id),
         GrantScope::Page => store::grant(&app_state.db, principal, &provider_id).await?,
@@ -422,21 +498,107 @@ pub async fn revoke(app_state: &AppState, principal: &Principal) -> Result<(), P
     Ok(())
 }
 
-/// Answer `request` for `principal`: the checks in order are the blocked
-/// reason (local-only with a cloud provider, or no provider configured),
-/// whether `principal` is granted for the current provider, the request's
-/// limits, the rate/one-at-a-time guard, and finally the call itself — under a
-/// 120s timeout. The call never touches the database beyond the grant check
-/// above; it does not go through `StreamManager::start_chat_stream` and
-/// nothing is persisted.
+/// Forget the grant — session and stored — for one provider of `principal`.
+pub async fn revoke_provider(
+    app_state: &AppState,
+    principal: &Principal,
+    provider_id: &str,
+) -> Result<(), PageLlmError> {
+    if let Ok(mut s) = session().lock() {
+        if let Some(set) = s.once.get_mut(&principal.key()) {
+            set.remove(provider_id);
+        }
+    }
+    store::revoke_provider(&app_state.db, principal, provider_id).await?;
+    Ok(())
+}
+
+/// What a finished call is logged with, filled in as the call progresses so a
+/// refusal at any step still names the provider that was resolved.
+#[derive(Default)]
+struct CallRecord {
+    provider_id: Option<String>,
+    model: Option<String>,
+    cloud: bool,
+    usage: Option<Tokens>,
+}
+
+/// Input and output tokens of one call, reported or estimated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Tokens {
+    input: u64,
+    output: u64,
+}
+
+/// `ceil(chars / 4)`, the estimate used when a provider reports no usage.
+fn estimate_tokens(text: &str) -> u64 {
+    (text.chars().count() as u64).div_ceil(4)
+}
+
+/// Answer `request` for `principal`: the checks in order are the request's
+/// limits, the blocked reason for the *resolved* provider (local-only with a
+/// cloud provider, or no provider configured), whether `principal` is granted
+/// for that provider, an app's daily cloud allowance, the rate/one-at-a-time
+/// guard, and finally the call itself — under a 120s timeout. The call never
+/// touches the database beyond the grant check, the app's own settings and
+/// activity log; it does not go through `StreamManager::start_chat_stream` and
+/// no conversation, message or provider event is persisted.
+///
+/// For an `app:` principal the call is logged to the app's activity after the
+/// arguments validate, whatever its outcome (refusals included). For a chat
+/// artifact nothing is logged and `request.slot` is ignored.
 pub async fn complete(
     app_state: &AppState,
     streams: &StreamManager,
     principal: &Principal,
     request: PageLlmRequest,
 ) -> Result<PageLlmReply, PageLlmError> {
+    let (max_tokens, json) = validate_request(&request)?;
+    let mut record = CallRecord::default();
+    let result = run_call(
+        app_state,
+        streams,
+        principal,
+        &request,
+        max_tokens,
+        json,
+        &mut record,
+    )
+    .await;
+    let error_code = result.as_ref().err().map(PageLlmError::code);
+    app_activity::record_model(
+        &app_state.db,
+        principal,
+        &ModelCall {
+            provider_id: record.provider_id.as_deref(),
+            model: record.model.as_deref(),
+            cloud: record.cloud,
+            ok: result.is_ok(),
+            input_tokens: record.usage.map(|t| t.input),
+            output_tokens: record.usage.map(|t| t.output),
+            error: error_code,
+        },
+    )
+    .await;
+    result
+}
+
+async fn run_call(
+    app_state: &AppState,
+    streams: &StreamManager,
+    principal: &Principal,
+    request: &PageLlmRequest,
+    max_tokens: u32,
+    json: bool,
+    record: &mut CallRecord,
+) -> Result<PageLlmReply, PageLlmError> {
     let app_settings = settings(app_state)?;
-    let status = provider_status(app_state, streams, &app_settings);
+    let (provider_id, model) =
+        resolve_model(app_state, streams, &app_settings, principal, request.slot).await?;
+    let status = provider_status(app_state, streams, &app_settings, &provider_id);
+    record.provider_id = Some(status.provider_id.clone());
+    record.model = Some(model.clone());
+    record.cloud = !status.is_local;
     if let Some(reason) = status.blocked_reason {
         return Err(PageLlmError::Unavailable(reason));
     }
@@ -451,7 +613,17 @@ pub async fn complete(
         ));
     }
 
-    let (max_tokens, json) = validate_request(&request)?;
+    if let (Principal::App(app_id), false) = (principal, status.is_local) {
+        let cap = app_settings::get(&app_state.db, app_id)
+            .await?
+            .effective_cap();
+        let used = app_activity::cloud_tokens_today(&app_state.db, app_id).await?;
+        if used >= cap {
+            return Err(PageLlmError::Quota(
+                "This app has used today's model allowance. It resets at midnight.".to_string(),
+            ));
+        }
+    }
 
     let _guard = reserve_call(&principal.key())?;
 
@@ -462,12 +634,13 @@ pub async fn complete(
         })?;
 
     let system_prompt = build_system_prompt(request.system.as_deref(), json);
+    let input_chars = format!("{system_prompt}{}", request.prompt);
     let provider_request = build_provider_request(
         principal,
         &request.prompt,
         system_prompt,
         max_tokens,
-        &app_settings.active_model,
+        &model,
     );
 
     match tokio::time::timeout(
@@ -476,16 +649,33 @@ pub async fn complete(
     )
     .await
     {
-        Ok(result) => result.map(|text| PageLlmReply { text }),
+        Ok(Ok((text, reported))) => {
+            record.usage = Some(Tokens {
+                input: reported
+                    .input
+                    .unwrap_or_else(|| estimate_tokens(&input_chars)),
+                output: reported.output.unwrap_or_else(|| estimate_tokens(&text)),
+            });
+            Ok(PageLlmReply { text })
+        }
+        Ok(Err(err)) => Err(err),
         Err(_elapsed) => Err(PageLlmError::Timeout(
             "The model took too long to answer.".to_string(),
         )),
     }
 }
 
-/// Stream the adapter's reply and concatenate its text. Any provider failure
-/// — the initial `stream_chat` call, or an `Error` event mid-stream — is
-/// logged with its real message and returned to the caller only as the
+/// Token counts a provider reported, each possibly absent.
+#[derive(Debug, Default, Clone, Copy)]
+struct ReportedUsage {
+    input: Option<u64>,
+    output: Option<u64>,
+}
+
+/// Stream the adapter's reply and concatenate its text, noting any usage the
+/// provider reports (the latest value of each count wins). Any provider
+/// failure — the initial `stream_chat` call, or an `Error` event mid-stream —
+/// is logged with its real message and returned to the caller only as the
 /// generic `unavailable: The model couldn't answer.`, per ADR-014 (the page
 /// never learns which provider or model answered, so it certainly never
 /// learns why one failed).
@@ -493,7 +683,7 @@ async fn run_adapter(
     adapter: &dyn provider_core::ProviderAdapter,
     request: ProviderRequest,
     ctx: provider_core::AdapterContext,
-) -> Result<String, PageLlmError> {
+) -> Result<(String, ReportedUsage), PageLlmError> {
     let cancel = CancellationToken::new();
     let stream = adapter
         .stream_chat(request, ctx, cancel)
@@ -504,9 +694,14 @@ async fn run_adapter(
         })?;
     futures::pin_mut!(stream);
     let mut text = String::new();
+    let mut reported = ReportedUsage::default();
     while let Some(event) = stream.next().await {
         match event {
             ProviderEvent::ContentDelta { content, .. } => text.push_str(&content),
+            ProviderEvent::Usage { usage, .. } => {
+                reported.input = usage.input_tokens.or(reported.input);
+                reported.output = usage.output_tokens.or(reported.output);
+            }
             ProviderEvent::Error { error, .. } => {
                 tracing::warn!(error = %error.message, "page_llm: provider error event");
                 return Err(PageLlmError::Unavailable(
@@ -516,7 +711,7 @@ async fn run_adapter(
             _ => {}
         }
     }
-    Ok(text.trim().to_string())
+    Ok((text.trim().to_string(), reported))
 }
 
 #[cfg(test)]
@@ -640,6 +835,7 @@ mod tests {
         );
         assert_eq!(PageLlmError::Invalid("x".into()).to_string(), "invalid: x");
         assert_eq!(PageLlmError::Timeout("x".into()).to_string(), "timeout: x");
+        assert_eq!(PageLlmError::Quota("x".into()).to_string(), "quota: x");
     }
 
     // ── Session grants + rate/concurrency guard ─────────────────────────────
@@ -689,6 +885,8 @@ mod tests {
     #[derive(Clone, Default)]
     struct FakeAdapter {
         is_local: bool,
+        /// Report no `Usage` event, so the call's tokens are estimated.
+        no_usage: bool,
         requests: Arc<std::sync::Mutex<Vec<ProviderRequest>>>,
     }
 
@@ -721,7 +919,7 @@ mod tests {
         {
             self.requests.lock().unwrap().push(request.clone());
             let r = request.request_id;
-            Ok(Box::pin(futures::stream::iter(vec![
+            let mut events = vec![
                 ProviderEvent::MessageStart {
                     request_id: r.clone(),
                     index: 0,
@@ -748,7 +946,11 @@ mod tests {
                     index: 2,
                     finish_reason: "stop".into(),
                 },
-            ])))
+            ];
+            if self.no_usage {
+                events.retain(|e| !matches!(e, ProviderEvent::Usage { .. }));
+            }
+            Ok(Box::pin(futures::stream::iter(events)))
         }
     }
 
@@ -794,7 +996,7 @@ mod tests {
         });
         let principal = Principal::artifact("t1");
 
-        grant(&state, &principal, GrantScope::Session)
+        grant(&state, &streams, &principal, GrantScope::Session, None)
             .await
             .unwrap();
         let reply = complete(&state, &streams, &principal, request("2+2?"))
@@ -842,16 +1044,18 @@ mod tests {
         let settings = settings_with("ollama", false);
         let (_dir, state) = test_state(settings).await;
         let principal = Principal::artifact("t3");
-        grant(&state, &principal, GrantScope::Page).await.unwrap();
+        let streams = streams_with(FakeAdapter {
+            is_local: true,
+            ..Default::default()
+        });
+        grant(&state, &streams, &principal, GrantScope::Page, None)
+            .await
+            .unwrap();
         assert!(store::is_granted(&state.db, &principal, "ollama")
             .await
             .unwrap());
 
         // Switch providers: the stored grant is for "ollama", not "other".
-        let streams = streams_with(FakeAdapter {
-            is_local: true,
-            ..Default::default()
-        });
         let page_state = state
             .settings()
             .map(|mut s| {
@@ -859,7 +1063,7 @@ mod tests {
                 s
             })
             .unwrap();
-        let status = provider_status(&state, &streams, &page_state);
+        let status = provider_status(&state, &streams, &page_state, &page_state.active_provider);
         let granted = granted_scope(&state, &principal, &status.provider_id)
             .await
             .unwrap();
@@ -878,7 +1082,7 @@ mod tests {
             ..Default::default()
         });
         let principal = Principal::artifact("t4");
-        grant(&state, &principal, GrantScope::Session)
+        grant(&state, &streams, &principal, GrantScope::Session, None)
             .await
             .unwrap();
 
@@ -888,7 +1092,463 @@ mod tests {
         assert!(matches!(err, PageLlmError::Unavailable(_)));
 
         let s = state.settings().unwrap();
-        let status = provider_status(&state, &streams, &s);
+        let status = provider_status(&state, &streams, &s, &s.active_provider);
         assert!(status.blocked_reason.is_some());
+    }
+
+    // ── App slots, usage, the daily cap and the activity log ───────────────
+
+    use crate::db::repository::app_activity;
+    use provider_core::schema::{AppActivityKind, AppModelChoice};
+
+    async fn add_app(state: &AppState, id: &str) {
+        sqlx::query(
+            "INSERT INTO apps (id, name, category, version, origin, manifest_json, payload, \
+             content_hash, created_at, updated_at) \
+             VALUES (?, 'T', 'tools', '1.0.0', 'saved', '{}', '', 'h', 'x', 'x')",
+        )
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+
+    fn pick(provider: &str, model: &str) -> AppModelChoice {
+        AppModelChoice {
+            provider_id: provider.to_string(),
+            model: model.to_string(),
+        }
+    }
+
+    async fn map_slot(state: &AppState, app: &str, slot: AppLlmSlot, choice: AppModelChoice) {
+        app_settings::set_slot(&state.db, app, slot, Some(&choice))
+            .await
+            .unwrap();
+    }
+
+    /// A manager whose adapters resolve for every id except `gone`.
+    fn streams_without(adapter: FakeAdapter, gone: &'static str) -> StreamManager {
+        StreamManager::with_adapter_resolver(Arc::new(move |id: &str| {
+            (id != gone).then(|| Box::new(adapter.clone()) as Box<dyn ProviderAdapter>)
+        }))
+    }
+
+    fn local_fake() -> FakeAdapter {
+        FakeAdapter {
+            is_local: true,
+            ..Default::default()
+        }
+    }
+
+    fn cloud_fake() -> FakeAdapter {
+        FakeAdapter {
+            is_local: false,
+            ..Default::default()
+        }
+    }
+
+    fn slot_request(slot: Option<AppLlmSlot>) -> PageLlmRequest {
+        PageLlmRequest {
+            slot,
+            ..request("hello")
+        }
+    }
+
+    #[tokio::test]
+    async fn slot_resolution_follows_quick_then_default_then_active() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        let streams = streams_with(local_fake());
+        add_app(&state, "r1").await;
+        let app = Principal::app("r1");
+        let s = state.settings().unwrap();
+        let resolve = |slot| resolve_model(&state, &streams, &s, &app, slot);
+
+        // Nothing mapped: everything is the active provider and model.
+        let active = ("ollama".to_string(), s.active_model.clone());
+        assert_eq!(resolve(Some(AppLlmSlot::Quick)).await.unwrap(), active);
+        assert_eq!(resolve(Some(AppLlmSlot::Default)).await.unwrap(), active);
+        assert_eq!(resolve(None).await.unwrap(), active);
+
+        // Only default mapped: quick follows it.
+        map_slot(&state, "r1", AppLlmSlot::Default, pick("lmstudio", "d")).await;
+        let default = ("lmstudio".to_string(), "d".to_string());
+        assert_eq!(resolve(Some(AppLlmSlot::Quick)).await.unwrap(), default);
+        assert_eq!(resolve(Some(AppLlmSlot::Default)).await.unwrap(), default);
+        assert_eq!(resolve(None).await.unwrap(), default);
+
+        // Quick mapped too: only the quick slot uses it.
+        map_slot(&state, "r1", AppLlmSlot::Quick, pick("openai_compat", "q")).await;
+        assert_eq!(
+            resolve(Some(AppLlmSlot::Quick)).await.unwrap(),
+            ("openai_compat".to_string(), "q".to_string())
+        );
+        assert_eq!(resolve(Some(AppLlmSlot::Default)).await.unwrap(), default);
+    }
+
+    #[tokio::test]
+    async fn an_unconfigured_choice_falls_back_the_same_way() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        // `openai_compat` no longer resolves to an adapter.
+        let streams = streams_without(local_fake(), "openai_compat");
+        add_app(&state, "r2").await;
+        let app = Principal::app("r2");
+        let s = state.settings().unwrap();
+        map_slot(&state, "r2", AppLlmSlot::Default, pick("lmstudio", "d")).await;
+        map_slot(&state, "r2", AppLlmSlot::Quick, pick("openai_compat", "q")).await;
+        // Quick's provider is gone: default's choice is next.
+        assert_eq!(
+            resolve_model(&state, &streams, &s, &app, Some(AppLlmSlot::Quick))
+                .await
+                .unwrap(),
+            ("lmstudio".to_string(), "d".to_string())
+        );
+        // Default's too: the active provider.
+        map_slot(
+            &state,
+            "r2",
+            AppLlmSlot::Default,
+            pick("openai_compat", "d"),
+        )
+        .await;
+        assert_eq!(
+            resolve_model(&state, &streams, &s, &app, Some(AppLlmSlot::Quick))
+                .await
+                .unwrap(),
+            ("ollama".to_string(), s.active_model.clone())
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_artifacts_always_use_the_active_model_and_ignore_the_slot() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        let streams = streams_with(local_fake());
+        add_app(&state, "r3").await;
+        map_slot(&state, "r3", AppLlmSlot::Quick, pick("lmstudio", "q")).await;
+        let s = state.settings().unwrap();
+        // Same id, but an artifact principal: the app's mapping is not its own.
+        let artifact = Principal::artifact("r3");
+        let (provider, model) =
+            resolve_model(&state, &streams, &s, &artifact, Some(AppLlmSlot::Quick))
+                .await
+                .unwrap();
+        assert_eq!((provider.as_str(), model), ("ollama", s.active_model));
+        let page = state_for(&state, &streams, &artifact, Some(AppLlmSlot::Quick)).await;
+        assert_eq!(page.provider_id, "ollama");
+    }
+
+    async fn state_for(
+        state: &AppState,
+        streams: &StreamManager,
+        principal: &Principal,
+        slot: Option<AppLlmSlot>,
+    ) -> PageLlmState {
+        super::state(state, streams, principal, slot).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn page_llm_state_reports_the_slots_resolved_provider() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        let streams = streams_with(local_fake());
+        add_app(&state, "r4").await;
+        map_slot(&state, "r4", AppLlmSlot::Quick, pick("lmstudio", "q")).await;
+        let app = Principal::app("r4");
+        assert_eq!(
+            state_for(&state, &streams, &app, Some(AppLlmSlot::Quick))
+                .await
+                .provider_id,
+            "lmstudio"
+        );
+        assert_eq!(
+            state_for(&state, &streams, &app, Some(AppLlmSlot::Default))
+                .await
+                .provider_id,
+            "ollama"
+        );
+        // Consent is per resolved provider: granting for quick doesn't cover default.
+        grant(
+            &state,
+            &streams,
+            &app,
+            GrantScope::Page,
+            Some(AppLlmSlot::Quick),
+        )
+        .await
+        .unwrap();
+        assert!(state_for(&state, &streams, &app, Some(AppLlmSlot::Quick))
+            .await
+            .granted
+            .is_some());
+        assert!(state_for(&state, &streams, &app, None)
+            .await
+            .granted
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn the_resolved_provider_is_the_one_called_and_the_one_consent_is_checked_for() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        let adapter = local_fake();
+        let streams = streams_with(adapter.clone());
+        add_app(&state, "r5").await;
+        map_slot(&state, "r5", AppLlmSlot::Quick, pick("lmstudio", "tiny")).await;
+        let app = Principal::app("r5");
+        // Allowed for the active provider only.
+        grant(&state, &streams, &app, GrantScope::Session, None)
+            .await
+            .unwrap();
+        let err = complete(
+            &state,
+            &streams,
+            &app,
+            slot_request(Some(AppLlmSlot::Quick)),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, PageLlmError::NotGranted(_)));
+        assert!(adapter.requests.lock().unwrap().is_empty());
+
+        grant(
+            &state,
+            &streams,
+            &app,
+            GrantScope::Session,
+            Some(AppLlmSlot::Quick),
+        )
+        .await
+        .unwrap();
+        complete(
+            &state,
+            &streams,
+            &app,
+            slot_request(Some(AppLlmSlot::Quick)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(adapter.requests.lock().unwrap()[0].model_id, "tiny");
+    }
+
+    #[tokio::test]
+    async fn local_only_blocks_a_resolved_cloud_choice() {
+        let (_dir, state) = test_state(settings_with("ollama", true)).await;
+        // `lmstudio` is a cloud provider as far as the adapter says.
+        let streams = StreamManager::with_adapter_resolver(Arc::new(|id: &str| {
+            Some(Box::new(FakeAdapter {
+                is_local: id == "ollama",
+                ..Default::default()
+            }) as Box<dyn ProviderAdapter>)
+        }));
+        add_app(&state, "r6").await;
+        map_slot(&state, "r6", AppLlmSlot::Quick, pick("lmstudio", "q")).await;
+        let app = Principal::app("r6");
+        grant(&state, &streams, &app, GrantScope::Session, None)
+            .await
+            .unwrap();
+        grant(
+            &state,
+            &streams,
+            &app,
+            GrantScope::Session,
+            Some(AppLlmSlot::Quick),
+        )
+        .await
+        .unwrap();
+        let err = complete(
+            &state,
+            &streams,
+            &app,
+            slot_request(Some(AppLlmSlot::Quick)),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, PageLlmError::Unavailable(_)), "{err}");
+        // The default slot still reaches the local active provider.
+        assert!(complete(&state, &streams, &app, slot_request(None))
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn reported_usage_is_logged_and_missing_usage_is_estimated() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        add_app(&state, "u1").await;
+        let app = Principal::app("u1");
+        let streams = streams_with(local_fake());
+        grant(&state, &streams, &app, GrantScope::Session, None)
+            .await
+            .unwrap();
+        complete(&state, &streams, &app, request("hello"))
+            .await
+            .unwrap();
+        let rows = app_activity::list(&state.db, "u1", None).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, AppActivityKind::Model);
+        assert!(rows[0].ok);
+        assert_eq!(
+            (rows[0].input_tokens, rows[0].output_tokens),
+            (Some(3), Some(1)),
+            "the provider's own numbers"
+        );
+        assert_eq!(rows[0].provider_id.as_deref(), Some("ollama"));
+
+        let streams = streams_with(FakeAdapter {
+            is_local: true,
+            no_usage: true,
+            ..Default::default()
+        });
+        complete(&state, &streams, &app, request("hello"))
+            .await
+            .unwrap();
+        let rows = app_activity::list(&state.db, "u1", None).await.unwrap();
+        let chars = build_system_prompt(None, false).chars().count() + "hello".chars().count();
+        assert_eq!(rows[0].input_tokens, Some((chars as u64).div_ceil(4)));
+        assert_eq!(rows[0].output_tokens, Some(1), "ceil(4 / 4) for \"pong\"");
+        assert_eq!(estimate_tokens("abcde"), 2);
+        assert_eq!(estimate_tokens(""), 0);
+    }
+
+    #[tokio::test]
+    async fn a_cloud_app_over_its_daily_cap_is_refused_and_the_refusal_is_logged() {
+        let (_dir, state) = test_state(settings_with("lmstudio", false)).await;
+        add_app(&state, "c1").await;
+        app_settings::set_cap(&state.db, "c1", Some(5))
+            .await
+            .unwrap();
+        let app = Principal::app("c1");
+        let adapter = cloud_fake();
+        let streams = streams_with(adapter.clone());
+        grant(&state, &streams, &app, GrantScope::Session, None)
+            .await
+            .unwrap();
+        // 4 tokens a call: 0 < 5 and 4 < 5 pass, 8 >= 5 does not.
+        for _ in 0..2 {
+            complete(&state, &streams, &app, request("hi"))
+                .await
+                .unwrap();
+        }
+        let err = complete(&state, &streams, &app, request("hi"))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "quota: This app has used today's model allowance. It resets at midnight."
+        );
+        assert_eq!(adapter.requests.lock().unwrap().len(), 2, "never called");
+        assert_eq!(
+            app_activity::cloud_tokens_today(&state.db, "c1")
+                .await
+                .unwrap(),
+            8
+        );
+        let rows = app_activity::list(&state.db, "c1", None).await.unwrap();
+        assert_eq!(rows[0].error.as_deref(), Some("quota"));
+        assert!(!rows[0].ok);
+        assert_eq!(rows[0].input_tokens, None);
+        assert_eq!(rows[0].provider_id.as_deref(), Some("lmstudio"));
+    }
+
+    #[tokio::test]
+    async fn local_providers_are_never_capped() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        add_app(&state, "c2").await;
+        app_settings::set_cap(&state.db, "c2", Some(1))
+            .await
+            .unwrap();
+        let app = Principal::app("c2");
+        let streams = streams_with(local_fake());
+        grant(&state, &streams, &app, GrantScope::Session, None)
+            .await
+            .unwrap();
+        for _ in 0..3 {
+            complete(&state, &streams, &app, request("hi"))
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            app_activity::cloud_tokens_today(&state.db, "c2")
+                .await
+                .unwrap(),
+            0,
+            "local tokens don't count against the cloud limit"
+        );
+    }
+
+    #[tokio::test]
+    async fn every_outcome_after_validation_is_logged_for_an_app() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        add_app(&state, "l1").await;
+        let app = Principal::app("l1");
+        let streams = streams_with(local_fake());
+
+        // Invalid arguments: refused before anything is logged.
+        assert!(matches!(
+            complete(&state, &streams, &app, request("  "))
+                .await
+                .unwrap_err(),
+            PageLlmError::Invalid(_)
+        ));
+        assert!(app_activity::list(&state.db, "l1", None)
+            .await
+            .unwrap()
+            .is_empty());
+
+        // Not granted.
+        complete(&state, &streams, &app, request("hi"))
+            .await
+            .unwrap_err();
+        grant(&state, &streams, &app, GrantScope::Session, None)
+            .await
+            .unwrap();
+        // Rate limited: a call already in flight.
+        let held = reserve_call(&app.key()).unwrap();
+        complete(&state, &streams, &app, request("hi"))
+            .await
+            .unwrap_err();
+        drop(held);
+
+        let rows = app_activity::list(&state.db, "l1", None).await.unwrap();
+        let codes: Vec<_> = rows.iter().map(|r| r.error.as_deref()).collect();
+        assert_eq!(codes, [Some("rate_limited"), Some("not_granted")]);
+        assert!(rows.iter().all(|r| !r.ok && r.input_tokens.is_none()));
+    }
+
+    #[tokio::test]
+    async fn chat_artifacts_log_nothing_and_still_write_nothing_else() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        add_app(&state, "x1").await;
+        let streams = streams_with(local_fake());
+        let artifact = Principal::artifact("x1");
+        grant(&state, &streams, &artifact, GrantScope::Session, None)
+            .await
+            .unwrap();
+        complete(
+            &state,
+            &streams,
+            &artifact,
+            slot_request(Some(AppLlmSlot::Quick)),
+        )
+        .await
+        .unwrap();
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM app_activity")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[tokio::test]
+    async fn revoking_one_provider_leaves_the_others() {
+        let (_dir, state) = test_state(settings_with("ollama", false)).await;
+        let app = Principal::app("v1");
+        grant_session(&app.key(), "ollama");
+        grant_session(&app.key(), "lmstudio");
+        store::grant(&state.db, &app, "ollama").await.unwrap();
+        store::grant(&state.db, &app, "lmstudio").await.unwrap();
+        revoke_provider(&state, &app, "ollama").await.unwrap();
+        assert!(!has_session_grant(&app.key(), "ollama"));
+        assert!(has_session_grant(&app.key(), "lmstudio"));
+        assert!(!store::is_granted(&state.db, &app, "ollama").await.unwrap());
+        assert!(store::is_granted(&state.db, &app, "lmstudio")
+            .await
+            .unwrap());
     }
 }

@@ -10,7 +10,10 @@ use tauri::State;
 
 use crate::{
     artifact_network::{self, AddressPolicy, ArtifactFetchRequest, ArtifactFetchResponse},
-    db::repository::artifact_network::{self as grants, NetworkGrant, Principal},
+    db::repository::{
+        app_activity::{self, FetchCall},
+        artifact_network::{self as grants, NetworkGrant, Principal},
+    },
     state::AppState,
 };
 
@@ -46,36 +49,101 @@ async fn principal_exists(state: &AppState, principal: &Principal) -> Result<boo
     Ok(row.is_some())
 }
 
-/// Make a request for a page, to a host the user granted it.
+/// Why a page's request failed: a bridge-style code, kept for an app's
+/// activity log, and the message the page sees.
+struct FetchFailure {
+    code: &'static str,
+    message: String,
+}
+
+impl FetchFailure {
+    fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+/// Make a request for a page, to a host the user granted it. For a saved app
+/// the request is logged (origin, method, status or error code — never the
+/// path, headers or body) to its activity.
 #[tauri::command]
 pub async fn artifact_fetch(
     state: State<'_, AppState>,
     request: ArtifactFetchRequest,
 ) -> Result<ArtifactFetchResponse, String> {
-    if let Some(reason) = network_blocked_reason(&state)? {
-        return Err(reason);
-    }
     let principal = Principal::parse(&request.principal)?;
-    let key = principal.key();
     let host = artifact_network::grant_host(&request.url)?;
+    let result = fetch_for(&state, &request, &principal, &host).await;
+    let (status, error) = match &result {
+        Ok(response) => (Some(response.status), None),
+        Err(failure) => (None, Some(failure.code)),
+    };
+    app_activity::record_fetch(
+        &state.db,
+        &principal,
+        &FetchCall {
+            host: &host,
+            method: &request
+                .method
+                .to_ascii_uppercase()
+                .chars()
+                .take(16)
+                .collect::<String>(),
+            status,
+            error,
+            ok: status.is_some_and(|s| (200..400).contains(&s)),
+        },
+    )
+    .await;
+    result.map_err(|failure| failure.message)
+}
+
+async fn fetch_for(
+    state: &AppState,
+    request: &ArtifactFetchRequest,
+    principal: &Principal,
+    host: &str,
+) -> Result<ArtifactFetchResponse, FetchFailure> {
+    if let Some(reason) =
+        network_blocked_reason(state).map_err(|e| FetchFailure::new("blocked", e))?
+    {
+        return Err(FetchFailure::new("blocked", reason));
+    }
+    let key = principal.key();
+    let host = host.to_string();
     // Everything this page may reach: its remembered and session grants, where
     // ANY_SITE stands for every public https site.
-    let mut reachable: std::collections::HashSet<String> =
-        grants::list(&state.db, Some(&principal))
-            .await
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .map(|g| g.host)
-            .collect();
+    let mut reachable: std::collections::HashSet<String> = grants::list(&state.db, Some(principal))
+        .await
+        .map_err(|e| FetchFailure::new("unavailable", e.to_string()))?
+        .into_iter()
+        .map(|g| g.host)
+        .collect();
     let remembered = reachable.clone();
     reachable.extend(artifact_network::session_hosts(&key));
     let any_site = reachable.contains(artifact_network::ANY_SITE);
     if !any_site && !reachable.contains(&host) {
-        return Err(format!("This page has not been allowed to contact {host}."));
+        return Err(FetchFailure::new(
+            "not_granted",
+            format!("This page has not been allowed to contact {host}."),
+        ));
     }
-    let _slot = artifact_network::reserve_slot(&key).await?;
+    let _slot = artifact_network::reserve_slot(&key)
+        .await
+        .map_err(|e| FetchFailure::new("rate_limited", e))?;
     let allowed = move |origin: &str| any_site || reachable.contains(origin);
-    let response = artifact_network::perform(&request, AddressPolicy::APP, &allowed).await?;
+    let response = artifact_network::perform(request, AddressPolicy::APP, &allowed)
+        .await
+        .map_err(|e| {
+            let code = if e.starts_with(artifact_network::REDIRECT_ERROR_PREFIX) {
+                "redirect"
+            } else {
+                "network"
+            };
+            FetchFailure::new(code, e)
+        })?;
     let grant = if remembered.contains(&host) {
         Some(host.as_str())
     } else if remembered.contains(artifact_network::ANY_SITE) {
@@ -84,7 +152,7 @@ pub async fn artifact_fetch(
         None
     };
     if let Some(grant) = grant {
-        let _ = grants::touch(&state.db, &principal, grant).await;
+        let _ = grants::touch(&state.db, principal, grant).await;
     }
     Ok(response)
 }

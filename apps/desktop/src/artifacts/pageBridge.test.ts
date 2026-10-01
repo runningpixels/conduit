@@ -221,6 +221,16 @@ describe('buildPageBridgeScript — model access (ADR-014)', () => {
     expect(f.posted[0].params).toEqual({ prompt: 'Classify this.', system: 'Be terse.', maxTokens: 64, json: true });
   });
 
+  it('complete() forwards a valid slot and rejects any other with "invalid" before posting', async () => {
+    const f = frame(['llm']);
+    const conduit = f.win.conduit as { llm: { complete: (req: unknown) => Promise<unknown> } };
+    void conduit.llm.complete({ prompt: 'Hi', slot: 'quick' });
+    expect(f.posted[0].params).toEqual({ prompt: 'Hi', slot: 'quick' });
+    await expect(conduit.llm.complete({ prompt: 'Hi', slot: 'fast' })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(conduit.llm.complete({ prompt: 'Hi', slot: 3 })).rejects.toMatchObject({ code: 'invalid' });
+    expect(f.posted).toHaveLength(1);
+  });
+
   it('complete() rejects an empty or missing prompt with "invalid" before posting anything', async () => {
     const f = frame(['llm']);
     const conduit = f.win.conduit as { llm: { complete: (req: unknown) => Promise<unknown> } };
@@ -297,6 +307,17 @@ describe('parsePageBridgeRequest', () => {
     });
   });
 
+  it('keeps a valid llm slot', () => {
+    expect(
+      parsePageBridgeRequest({
+        type: PAGE_BRIDGE_MESSAGE_TYPE,
+        id: 'h',
+        method: 'llm.complete',
+        params: { prompt: 'hi', slot: 'quick' },
+      }),
+    ).toEqual({ id: 'h', method: 'llm.complete', params: { prompt: 'hi', slot: 'quick' } });
+  });
+
   it('rejects anything malformed', () => {
     for (const data of [
       null,
@@ -317,6 +338,7 @@ describe('parsePageBridgeRequest', () => {
       { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 'hi', system: 5 } },
       { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 'hi', maxTokens: '64' } },
       { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 'hi', json: 'true' } },
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 'hi', slot: 'fast' } },
     ]) {
       expect(parsePageBridgeRequest(data)).toBeNull();
     }

@@ -206,6 +206,54 @@ pub async fn usage(
     })
 }
 
+/// Every key with its size and last change, sorted by key — for the data
+/// viewer. Never reads or decrypts a value.
+pub async fn entries(
+    pool: &SqlitePool,
+    principal: &Principal,
+) -> Result<Vec<provider_core::schema::PageStorageEntry>, PageStorageError> {
+    let rows: Vec<(String, i64, String)> = sqlx::query_as(
+        "SELECT key, size_bytes, updated_at FROM page_storage WHERE principal = ? ORDER BY key",
+    )
+    .bind(principal.key())
+    .fetch_all(pool)
+    .await
+    .map_err(DbError::from)?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(key, bytes, updated_at)| provider_core::schema::PageStorageEntry {
+                key,
+                bytes: bytes.max(0) as u64,
+                updated_at,
+            },
+        )
+        .collect())
+}
+
+/// Every key with its decrypted value, for exporting an app's data.
+pub async fn all_values(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    principal: &Principal,
+) -> Result<std::collections::BTreeMap<String, serde_json::Value>, PageStorageError> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT key, value_json FROM page_storage WHERE principal = ? ORDER BY key")
+            .bind(principal.key())
+            .fetch_all(pool)
+            .await
+            .map_err(DbError::from)?;
+    let mut out = std::collections::BTreeMap::new();
+    for (key, stored) in rows {
+        let json = enc.decrypt(&stored)?;
+        let value = serde_json::from_str(&json).map_err(|e| {
+            PageStorageError::Unavailable(DbError::Query(format!("decode stored value: {e}")))
+        })?;
+        out.insert(key, value);
+    }
+    Ok(out)
+}
+
 // ── Writes ───────────────────────────────────────────────────────────────────
 
 /// Store `value` at `key`, replacing anything already there. Refused whole —

@@ -17,6 +17,18 @@ const ipc = vi.hoisted(() => ({
   grantPageLlm: vi.fn(),
   revokePageLlm: vi.fn(),
   pageLlmComplete: vi.fn(),
+  getAppSettings: vi.fn(),
+  setAppModelSlot: vi.fn(),
+  setAppDailyTokenCap: vi.fn(),
+  listAppActivity: vi.fn(),
+  pageStorageEntries: vi.fn(),
+  exportAppDataDialog: vi.fn(),
+  listPageLlmGrants: vi.fn(),
+  revokePageLlmProvider: vi.fn(),
+  listProviderDescriptors: vi.fn(),
+  listConfiguredProviders: vi.fn(),
+  listProviderModels: vi.fn(),
+  getSettings: vi.fn(),
   appPrincipal: (id: string) => `app:${id}`,
 }));
 
@@ -61,6 +73,19 @@ function renderAppView(overrides: Partial<Parameters<typeof AppView>[0]> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ipc.getAppSettings.mockResolvedValue({
+    slots: { default: null, quick: null },
+    dailyTokenCap: null,
+    defaultDailyTokenCap: 100_000,
+    cloudTokensToday: 0,
+    usage: [],
+  });
+  ipc.listAppActivity.mockResolvedValue([]);
+  ipc.pageStorageEntries.mockResolvedValue([]);
+  ipc.listPageLlmGrants.mockResolvedValue([]);
+  ipc.listProviderDescriptors.mockResolvedValue([]);
+  ipc.listConfiguredProviders.mockResolvedValue([]);
+  ipc.getSettings.mockResolvedValue({ activeProvider: 'ollama', activeModel: 'llama3' });
   ipc.getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: [], session: [] });
   ipc.pageLlmState.mockResolvedValue({
     providerId: 'anthropic',
@@ -149,5 +174,28 @@ describe('AppView model access (ADR-014)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Stop model access' }));
     await waitFor(() => expect(ipc.revokePageLlm).toHaveBeenCalledWith('app:a1'));
+  });
+
+  it('the ⋯ menu and the gear open Settings; the app frame stays mounted while it is open', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    const { container } = renderAppView();
+
+    await screen.findByRole('button', { name: 'App actions' });
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Settings' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Settings' }));
+
+    expect(await screen.findByRole('heading', { name: 'Weather dashboard settings' })).toBeInTheDocument();
+    const frame = container.querySelector('.app-view-frame') as HTMLElement;
+    expect(frame).not.toBeNull();
+    expect(frame.hidden).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to app' }));
+    expect(screen.queryByRole('heading', { name: 'Weather dashboard settings' })).toBeNull();
+    expect(frame.hidden).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(await screen.findByRole('heading', { name: 'Weather dashboard settings' })).toBeInTheDocument();
   });
 });

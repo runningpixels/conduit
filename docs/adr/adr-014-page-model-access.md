@@ -44,6 +44,23 @@ which provider or model answered.
 - A page can't reach the network through the model: the model has no tools.
 - A prompt-injected page (one that fetched hostile text) can at worst steer
   its own answer.
-- Per-app model choice (a "quick" and a "default" slot mapped by the user), a
-  daily token budget for cloud models, and an activity log come with the app
-  settings page; the envelope already allows them.
+- Per-app model choice, a daily budget for cloud models and an activity log
+  come with the app settings page (below).
+
+## App settings (added for v1.0.0-rc.2)
+- **Slots.** `llm.complete` takes an optional `slot`, `'default'` or
+  `'quick'` (short, cheap calls). In an app's settings the user maps each
+  slot to a provider and model; `quick` unset follows `default`, which
+  unset follows the active model, as does a mapping whose provider is gone.
+  Consent and local-only mode apply to the provider the slot resolves to, so
+  mapping a slot to a new provider asks again. A page still never learns
+  which model answered. Pages in a chat ignore `slot`.
+- **Daily budget.** An app's calls to a cloud model stop for the rest of the
+  local day once its input and output tokens reach the limit (100,000 by
+  default; the user sets 1,000–10,000,000), with `quota`. Local models are
+  never limited. Tokens are what the provider reports, or about a quarter of
+  the characters when it reports none.
+- **Activity.** Each app keeps 7 days of one-line records: model calls
+  (provider, model, tokens, outcome), site requests (origin, method, status)
+  and a daily count of storage writes. Never prompts, replies, URL paths or
+  stored values. Deleting the app deletes them.

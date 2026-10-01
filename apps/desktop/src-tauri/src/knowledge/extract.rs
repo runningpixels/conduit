@@ -308,10 +308,28 @@ fn extract_text_from_docx_xml(xml: &str) -> Result<String, ExtractFailure> {
                 in_text = false;
             }
             Ok(Event::Text(e)) if in_text => {
-                let decoded = e.unescape().map_err(|err| {
-                    ExtractFailure::Unreadable(format!("word/document.xml entity decode: {err}"))
+                let decoded = e.decode().map_err(|err| {
+                    ExtractFailure::Unreadable(format!("word/document.xml text decode: {err}"))
                 })?;
                 out.push_str(&decoded);
+            }
+            // quick-xml reports `&amp;` / `&#233;` as their own events, not
+            // inside the text around them.
+            Ok(Event::GeneralRef(e)) if in_text => {
+                let unreadable = |err: String| {
+                    ExtractFailure::Unreadable(format!("word/document.xml entity decode: {err}"))
+                };
+                if let Some(ch) = e
+                    .resolve_char_ref()
+                    .map_err(|err| unreadable(err.to_string()))?
+                {
+                    out.push(ch);
+                } else {
+                    let name = e.decode().map_err(|err| unreadable(err.to_string()))?;
+                    let resolved = quick_xml::escape::resolve_predefined_entity(&name)
+                        .ok_or_else(|| unreadable(format!("unknown entity &{name};")))?;
+                    out.push_str(resolved);
+                }
             }
             _ => {}
         }

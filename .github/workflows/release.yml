@@ -152,7 +152,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: pnpm
 
       - name: Install JS deps
@@ -227,7 +227,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Download all signed artifacts
         uses: actions/download-artifact@v8

@@ -245,7 +245,7 @@ left is checking it on real installs before calling it final.
 
 ### Prerequisites
 
-- **Node 20** and **pnpm 10.34.4** (`corepack enable && corepack prepare pnpm@10.34.4 --activate`)
+- **Node 22+** and **pnpm 10.34.4** (`corepack enable && corepack prepare pnpm@10.34.4 --activate`)
 - **Rust stable** ([rustup](https://rustup.rs)) — `rust-toolchain.toml` pins the channel
 - Platform toolchain:
   - **Windows** — Visual Studio 2022 Build Tools with the C++ workload. Run

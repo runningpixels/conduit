@@ -99,13 +99,13 @@ async fn docx_decodes_entities_and_separates_paragraphs() {
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body>
 <w:p><w:r><w:t>Salt &amp; pepper</w:t></w:r></w:p>
-<w:p><w:r><w:t>Second paragraph</w:t></w:r></w:p>
+<w:p><w:r><w:t>Caf&#233; &lt;3 &#x2014; R&amp;D</w:t></w:r></w:p>
 </w:body>
 </w:document>"#;
     fs::write(&path, build_docx(Some(xml))).unwrap();
 
     let extracted = extract_document(&path).await.expect("docx extracts");
-    assert_eq!(extracted.text, "Salt & pepper\nSecond paragraph");
+    assert_eq!(extracted.text, "Salt & pepper\nCafé <3 — R&D");
     assert_eq!(
         extracted.mime_type.as_deref(),
         Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document")

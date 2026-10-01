@@ -10,6 +10,7 @@ import {
   getBrandWarnings,
   importBrandFileDialog,
   saveBrandLogo,
+  updateSettings,
   type BrandWarning,
 } from '../../ipc/client';
 import { applyBrand, applyBrandTheme, clearBrand, isValidHexColor } from '../../brand/applyBrand';
@@ -40,55 +41,52 @@ type EditableIdentity = { appName: string; displayName: string; tagline: string 
 
 /**
  * Seed values only — shown in the colour editor before any brand exists, so
- * the swatches start from the stock look instead of black. They mirror
- * `packages/ui/src/tokens.css`'s `:root` / `[data-theme="light"]` defaults
- * and the `anthropic` provider accent (the shipped one) at the time this was
- * written. Drift here only changes what an *unedited* swatch shows before
- * the user touches it — `applyBrand.ts`'s hex grammar and Rust's own
- * validator are what actually keep an applied brand correct, not this
- * constant, so there is no correctness risk if tokens.css moves on without
- * this being updated.
+ * the swatches start from the stock look instead of black. They are the
+ * design's own tokens (`packages/ui/src/tokens.css`, `:root` for dark and
+ * `[data-theme="light"]` for light; ADR-011), with `hue`/`hueSolid` = `--accent`,
+ * `hueText` = `--accent-text` and `onHue` = `--on-accent`.
+ * BrandingSection.test.tsx checks them against tokens.css so they cannot drift.
  */
-const SEED_PALETTE_DARK: BrandPalette = {
-  bg: '#262624',
-  bgSide: '#1f1e1d',
-  card: '#30302e',
-  cardHi: '#3a3a37',
-  line: '#3d3d3a',
-  lineSoft: '#343431',
-  lineHi: '#4d4d49',
-  ink: '#eceae2',
-  ink2: '#c4c2ba',
-  ink3: '#a6a39d',
-  hue: '#d97757',
-  hueText: '#e08f75',
-  hueSolid: '#c5522d',
-  onHue: '#ffffff',
-  ok: '#4ade80',
-  warn: '#fbbf24',
-  err: '#f97e7e',
-  link: '#9db8e8',
+export const SEED_PALETTE_DARK: BrandPalette = {
+  bg: '#0b0d12',
+  bgSide: '#10131a',
+  card: '#11141b',
+  cardHi: '#161a23',
+  line: '#1c2130',
+  lineSoft: '#161a24',
+  lineHi: '#262c3c',
+  ink: '#e8eaf0',
+  ink2: '#b8becc',
+  ink3: '#8990a2',
+  hue: '#ff7a59',
+  hueText: '#ff9c82',
+  hueSolid: '#ff7a59',
+  onHue: '#1a0b06',
+  ok: '#7cffb2',
+  warn: '#febc2e',
+  err: '#ff9c82',
+  link: '#9dc8ff',
 };
 
-const SEED_PALETTE_LIGHT: BrandPalette = {
-  bg: '#faf9f5',
-  bgSide: '#f0eee6',
+export const SEED_PALETTE_LIGHT: BrandPalette = {
+  bg: '#f6f6f8',
+  bgSide: '#eff0f4',
   card: '#ffffff',
-  cardHi: '#f5f4ee',
-  line: '#e4e1d7',
-  lineSoft: '#edeae1',
-  lineHi: '#cfcbbf',
-  ink: '#29271f',
-  ink2: '#59564c',
-  ink3: '#706c61',
-  hue: '#b04f2b',
-  hueText: '#b04f2b',
-  hueSolid: '#bd5836',
+  cardHi: '#f1f2f5',
+  line: '#e1e3ea',
+  lineSoft: '#eeeff3',
+  lineHi: '#dadce3',
+  ink: '#16181d',
+  ink2: '#3a3f4a',
+  ink3: '#5f6573',
+  hue: '#4b4ded',
+  hueText: '#2a2aa8',
+  hueSolid: '#4b4ded',
   onHue: '#ffffff',
-  ok: '#147c3b',
-  warn: '#af5109',
-  err: '#b91c1c',
-  link: '#1f5fa8',
+  ok: '#137a3a',
+  warn: '#9a5300',
+  err: '#b4380f',
+  link: '#1767b8',
 };
 
 const SEED_THEMES: BrandThemes = { dark: SEED_PALETTE_DARK, light: SEED_PALETTE_LIGHT };
@@ -299,12 +297,22 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
     };
   }, []);
 
-  function handleToggleEnabled() {
+  async function handleToggleEnabled() {
     const next = !enabled;
-    onUpdate({ ...settings, brandingEnabled: next });
     if (!next) {
+      onUpdate({ ...settings, brandingEnabled: next });
       clearBrand();
       onBrandChange?.(null, null);
+      return;
+    }
+    // Turning on: persist before the state flips. The load effect above is
+    // keyed on brandingEnabled and Rust only returns brand.md once the
+    // setting is on disk; the shared autosave is optimistic and writes 250ms
+    // later, so the refetch would race it and show the seeds instead.
+    try {
+      onUpdate(await updateSettings({ brandingEnabled: true }));
+    } catch (e) {
+      onStatus(t('settings.autoSave.failed', { error: describeError(e) }));
     }
   }
 
@@ -523,7 +531,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
           role="switch"
           aria-pressed={enabled}
           aria-label={t('settings.branding.enableToggle.label')}
-          onClick={handleToggleEnabled}
+          onClick={() => void handleToggleEnabled()}
         />
       </div>
 

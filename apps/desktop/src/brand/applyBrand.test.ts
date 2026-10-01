@@ -26,14 +26,17 @@ import {
   applyBrandPalette,
   applyBrandTheme,
   applyCachedBrand,
+  BRAND_ACCENT_PROPERTIES,
   clearBrand,
   clearBrandCache,
+  deriveBrandAccent,
   isValidHexColor,
   PALETTE_PROPERTY_MAP,
   readBrandCache,
   writeBrandCache,
 } from './applyBrand';
 import { appName, brand, resetBrand } from './index';
+import { applyAccent } from '../themes/accent';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CACHE_KEY = 'conduit:v1-brand';
@@ -543,5 +546,55 @@ describe('the pre-paint cache — corrupt / hostile entries are rejected, not pa
     expect(() => readBrandCache()).not.toThrow();
     expect(readBrandCache()).toBeNull();
     spy.mockRestore();
+  });
+});
+
+describe('the accent family under a brand (ADR-011 tokens)', () => {
+  const ACCENT_PROPS = [...BRAND_ACCENT_PROPERTIES];
+  const style = () => document.documentElement.style;
+
+  beforeEach(() => {
+    for (const prop of ACCENT_PROPS) style().removeProperty(prop);
+  });
+
+  it('sets every accent token from the palette, so rules that read --accent directly follow the brand', () => {
+    applyBrandTheme(makeConfig(), 'dark');
+    expect(style().getPropertyValue('--accent')).toBe(DARK_PALETTE.hue);
+    expect(style().getPropertyValue('--accent-text')).toBe(DARK_PALETTE.hueText);
+    expect(style().getPropertyValue('--on-accent')).toBe(DARK_PALETTE.onHue);
+    expect(style().getPropertyValue('--accent-soft')).toBe(`color-mix(in srgb, ${DARK_PALETTE.hue} 14%, transparent)`);
+    expect(style().getPropertyValue('--accent-line')).toBe(`color-mix(in srgb, ${DARK_PALETTE.hue} 40%, transparent)`);
+    expect(style().getPropertyValue('--glow-color')).toBe(`color-mix(in srgb, ${DARK_PALETTE.hue} 16%, transparent)`);
+  });
+
+  it('mixes the light washes over white, as the main colour override does', () => {
+    applyBrandTheme(makeConfig(), 'light');
+    expect(style().getPropertyValue('--accent')).toBe(LIGHT_PALETTE.hue);
+    expect(style().getPropertyValue('--accent-soft')).toBe(`color-mix(in srgb, ${LIGHT_PALETTE.hue} 10%, #ffffff)`);
+    expect(style().getPropertyValue('--accent-line')).toBe(`color-mix(in srgb, ${LIGHT_PALETTE.hue} 28%, #ffffff)`);
+  });
+
+  it('leaves a token to the stylesheet when its source value is out of grammar', () => {
+    const bad = { ...DARK_PALETTE, hue: 'red', onHue: 'url(x)' } as BrandPalette;
+    const derived = deriveBrandAccent(bad, 'dark');
+    expect(derived['--accent']).toBeNull();
+    expect(derived['--accent-soft']).toBeNull();
+    expect(derived['--on-accent']).toBeNull();
+    expect(derived['--accent-text']).toBe(DARK_PALETTE.hueText);
+  });
+
+  it("the user's main colour stands down without erasing the brand's accent", () => {
+    applyBrand(makeConfig(), 'dark');
+    expect(applyAccent({ dark: '#2fd3b5' }, 'dark')).toBeNull();
+    expect(style().getPropertyValue('--accent')).toBe(DARK_PALETTE.hue);
+  });
+
+  it("clearBrand removes the accent tokens, and the main colour applies again", () => {
+    applyBrand(makeConfig(), 'dark');
+    clearBrand();
+    for (const prop of ACCENT_PROPS) expect(style().getPropertyValue(prop)).toBe('');
+    applyAccent({ dark: '#2fd3b5' }, 'dark');
+    expect(style().getPropertyValue('--accent')).toBe('#2fd3b5');
+    applyAccent({}, 'dark');
   });
 });

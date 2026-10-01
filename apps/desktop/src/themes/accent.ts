@@ -154,13 +154,19 @@ function clearInline(): void {
 export function applyAccent(override: AccentOverride | undefined, mode: AccentMode): AccentFamily | null {
   if (typeof document === 'undefined') return null;
   const before = document.documentElement.style.getPropertyValue('--accent');
+  // An active brand has set these same properties from its own palette
+  // (applyBrand.ts deriveBrandAccent), so they are left alone rather than
+  // cleared; clearBrand removes them, and this re-runs when the brand changes.
+  const branded = isBrandActive();
   let applied: AccentFamily | null = null;
   const raw = override?.[mode];
-  if (!isBrandActive() && raw) {
+  if (!branded && raw) {
     const verdict = deriveAccent(raw, mode);
     if (verdict.ok) applied = verdict.family;
   }
-  if (applied) {
+  if (branded) {
+    /* the brand owns the accent family */
+  } else if (applied) {
     const style = document.documentElement.style;
     for (const [key, prop] of Object.entries(PROPERTIES) as [keyof AccentFamily, string][]) {
       style.setProperty(prop, applied[key]);

@@ -44,6 +44,7 @@ const weather: AppSummaryFixture = {
   origin: 'saved',
   hosts: ['https://api.open-meteo.com'],
   storage: false,
+  llm: false,
   sourceArtifactId: 'art-1',
   sourceChanged: true,
   lastOpenedAt: undefined,

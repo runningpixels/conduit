@@ -1188,6 +1188,21 @@ pub struct AppStorage {
     pub quota_bytes: u64,
 }
 
+/// A page's model-access allowance (ADR-014). Declaring `llm` in a
+/// `<meta name="conduit-capability">` tag lets the page ask
+/// `window.conduit.llm.complete()`, once the user grants it — a one-shot,
+/// text-in-text-out completion with no tools, memory or conversation history.
+/// No fields today: the struct exists so a later per-app model choice or
+/// token budget (ADR-014's "Consequences") has somewhere to land without
+/// another manifest version bump.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_llm.ts"
+)]
+pub struct AppLlm {}
+
 /// What an app may ask for. Unknown keys are rejected, not ignored, so a
 /// manifest can't smuggle in a capability this version doesn't understand.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1203,6 +1218,9 @@ pub struct AppCapabilities {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub storage: Option<AppStorage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub llm: Option<AppLlm>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1320,6 +1338,8 @@ pub struct AppSummary {
     pub hosts: Vec<String>,
     /// Whether the manifest declares `storage` (ADR-012).
     pub storage: bool,
+    /// Whether the manifest declares `llm` (ADR-014).
+    pub llm: bool,
     #[ts(optional)]
     pub source_artifact_id: Option<String>,
     /// The source artifact still exists and its content differs from this
@@ -1382,6 +1402,83 @@ pub struct AppDetail {
 pub struct PageStorageUsage {
     pub bytes: u64,
     pub keys: u64,
+}
+
+// =============================================================================
+// Page model access (ADR-014)
+// =============================================================================
+//
+// `window.conduit.llm.complete()`: a page's one-shot, text-in-text-out
+// completion through the user's active provider. No tools, no memory, no
+// conversation history, and the call is never written into any conversation
+// (see `page_llm` in the desktop crate).
+
+/// How a page (or app) was allowed to use the model: for this run of the app
+/// only, or remembered for next time. Mirrors `principal_grants`'s two levels
+/// for other capabilities (compare `net`'s "Allow this time" / "Always allow").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/page_llm_grant.ts"
+)]
+pub enum PageLlmGrant {
+    Always,
+    Session,
+}
+
+/// What a page sees before it calls `window.conduit.llm.complete()`: which
+/// provider would answer, whether it's local, why it can't answer right now
+/// (if it can't), and whether the user has already allowed this page to use
+/// it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/page_llm_state.ts"
+)]
+pub struct PageLlmState {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub is_local: bool,
+    /// Why the page cannot use the model right now (local-only mode with a
+    /// cloud provider active, or no provider configured); `None` when it can.
+    pub blocked_reason: Option<String>,
+    pub granted: Option<PageLlmGrant>,
+}
+
+/// A page's request to `page_llm_complete`. `prompt` is the only required
+/// field; everything else has a default enforced in Rust, not just here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/page_llm_request.ts"
+)]
+pub struct PageLlmRequest {
+    pub prompt: String,
+    /// Fenced into the fixed preamble as `<page-instructions>`; never treated
+    /// as coming from the user or from Conduit.
+    #[ts(optional)]
+    pub system: Option<String>,
+    /// 1..=2048; defaults to 1024.
+    #[ts(optional)]
+    pub max_tokens: Option<u32>,
+    /// Asks the model to reply with only a JSON value. Conduit does not parse
+    /// or validate the reply — the page still gets `{ text }` and parses it
+    /// itself.
+    #[ts(optional)]
+    pub json: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/page_llm_reply.ts"
+)]
+pub struct PageLlmReply {
+    pub text: String,
 }
 
 // =============================================================================

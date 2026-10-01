@@ -6,7 +6,7 @@ mod common;
 
 use conduit_desktop::db::repository::{
     app_inputs,
-    apps::{self, AppMeta},
+    apps::{self, AppMeta, DeclaredCapabilities},
     artifact_network::{self as grants, Principal},
     artifacts::{self, ArtifactContent},
     conversations, page_storage,
@@ -74,7 +74,7 @@ async fn an_app_outlives_its_chat_and_keeps_only_the_grants_the_user_chose() {
         &art,
         meta("Weather"),
         vec!["https://geocoding-api.open-meteo.com".to_string()],
-        false,
+        DeclaredCapabilities::default(),
         vec![],
         &["https://api.open-meteo.com".to_string()],
     )
@@ -143,7 +143,7 @@ async fn keeping_a_host_the_page_was_never_granted_is_refused() {
         &art,
         meta("Weather"),
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         vec![],
         &["https://evil.example".to_string()],
     )
@@ -180,7 +180,7 @@ async fn only_html_pages_become_apps() {
         &notes.id,
         meta("Notes"),
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         vec![],
         &[]
     )
@@ -202,7 +202,7 @@ async fn a_changed_source_offers_an_update_that_bumps_the_version() {
         &art,
         meta("W"),
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         vec![],
         &[],
     )
@@ -237,7 +237,7 @@ async fn a_changed_source_offers_an_update_that_bumps_the_version() {
         &enc,
         &app.id,
         vec!["https://api.github.com".to_string()],
-        false,
+        DeclaredCapabilities::default(),
         vec![],
     )
     .await
@@ -275,7 +275,7 @@ async fn editing_and_deleting_an_app() {
         &art,
         meta("W"),
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         vec![],
         &[],
     )
@@ -400,7 +400,10 @@ async fn saving_a_page_that_declares_storage_copies_it_and_the_app_keeps_it_afte
         &art,
         meta("Tracker"),
         vec![],
-        true,
+        DeclaredCapabilities {
+            storage: true,
+            llm: false,
+        },
         vec![],
         &[],
     )
@@ -453,7 +456,7 @@ async fn a_page_that_does_not_declare_storage_copies_nothing() {
         &art,
         meta("Tracker"),
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         vec![],
         &[],
     )
@@ -484,7 +487,10 @@ async fn deleting_an_app_deletes_its_storage() {
         &art,
         meta("W"),
         vec![],
-        true,
+        DeclaredCapabilities {
+            storage: true,
+            llm: false,
+        },
         vec![],
         &[],
     )
@@ -525,8 +531,17 @@ async fn deleting_an_artifact_deletes_its_storage() {
 
 #[test]
 fn an_unknown_declared_capability_is_refused() {
-    assert!(apps::validate_capabilities(&["storage".to_string()]).unwrap());
-    assert!(!apps::validate_capabilities(&[]).unwrap());
+    assert!(
+        apps::validate_capabilities(&["storage".to_string()])
+            .unwrap()
+            .storage
+    );
+    assert!(!apps::validate_capabilities(&[]).unwrap().storage);
+    assert!(
+        apps::validate_capabilities(&["llm".to_string()])
+            .unwrap()
+            .llm
+    );
     let err = apps::validate_capabilities(&["flux-capacitor".to_string()]).unwrap_err();
     assert!(err.starts_with("invalid:"), "{err}");
 }
@@ -582,7 +597,7 @@ async fn save_with_inputs(
         &art,
         meta("Weather"),
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         inputs,
         &[],
     )
@@ -700,7 +715,7 @@ async fn updating_from_source_drops_removed_inputs_and_keeps_the_rest() {
         &art,
         meta("Weather"),
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         vec![city_input(), units_input()],
         &[],
     )
@@ -734,7 +749,7 @@ async fn updating_from_source_drops_removed_inputs_and_keeps_the_rest() {
         &enc,
         &app.id,
         vec![],
-        false,
+        DeclaredCapabilities::default(),
         vec![city_input()],
     )
     .await

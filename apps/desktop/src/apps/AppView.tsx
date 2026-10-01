@@ -14,6 +14,8 @@ import { declaredCapabilities, declaredHosts, scriptedHosts } from '../artifacts
 import { isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { useArtifactNetwork } from '../workspace/useArtifactNetwork';
 import { usePageBridge } from '../workspace/usePageBridge';
+import { usePageLlm } from '../workspace/usePageLlm';
+import { PageLlmBanner, PageLlmDialog } from '../workspace/PageLlmConsent';
 import type { PageBridgeHandler } from '../artifacts/pageBridge';
 import {
   ArtifactNetworkBanner,
@@ -23,7 +25,7 @@ import {
 } from '../workspace/ArtifactNetwork';
 import { OpenExternalLinkDialog } from '../workspace/OpenExternalLinkDialog';
 import { Menu } from '../workspace/Menu';
-import { ChevronLeft, MoreIcon, PencilIcon, RetryIcon, SlidersIcon, TrashIcon } from '../icons';
+import { ChevronLeft, ModelIcon, MoreIcon, PencilIcon, RetryIcon, SlidersIcon, TrashIcon } from '../icons';
 import {
   appPrincipal,
   getAppInputs,
@@ -147,7 +149,8 @@ export function AppView({
 
   const html = app?.html ?? '';
   const network = useArtifactNetwork(app ? appPrincipal(app.id) : null, html, networkPolicyKey);
-  const pageBridge = usePageBridge(app ? appPrincipal(app.id) : null);
+  const llm = usePageLlm(app ? appPrincipal(app.id) : null);
+  const pageBridge = usePageBridge(app ? appPrincipal(app.id) : null, llm.handler);
   // After the page writes, re-read how much it stores — debounced, since a
   // tracker may save on every keystroke.
   const [writeRevision, setWriteRevision] = useState(0);
@@ -159,13 +162,29 @@ export function AppView({
     if (!pageBridge) return undefined;
     return async (method, params) => {
       const outcome = await pageBridge(method, params);
-      if (outcome.ok && method !== 'storage.get' && method !== 'storage.keys') {
+      if (outcome.ok && method !== 'storage.get' && method !== 'storage.keys' && method !== 'llm.complete') {
         if (writeTimer.current) clearTimeout(writeTimer.current);
         writeTimer.current = setTimeout(() => setWriteRevision((r) => r + 1), 600);
       }
       return outcome;
     };
   }, [pageBridge]);
+  const [llmReviewOpen, setLlmReviewOpen] = useState(false);
+  const { decide: decideLlm } = llm;
+  const handleLlmDecision = useCallback(
+    (decision: 'deny' | 'session' | 'page') => {
+      setLlmReviewOpen(false);
+      void decideLlm(decision);
+    },
+    [decideLlm],
+  );
+  useEffect(() => {
+    if (!llm.pending) setLlmReviewOpen(false);
+  }, [llm.pending]);
+  const handleStopModelAccess = useCallback(() => {
+    setMenuOpen(false);
+    void llm.revoke();
+  }, [llm]);
   const declaresStorage = useMemo(() => declaredCapabilities(html).includes('storage'), [html]);
   const declared = useMemo(() => declaredHosts(html), [html]);
   const scripted = useMemo(() => {
@@ -354,6 +373,12 @@ export function AppView({
               {t('apps.menu.clearData')}
             </button>
           )}
+          {llm.state?.granted && (
+            <button type="button" className="menu-item" role="menuitem" onClick={handleStopModelAccess}>
+              <ModelIcon />
+              {t('apps.menu.stopModelAccess')}
+            </button>
+          )}
           <div className="menu-sep" role="separator" />
           <button
             type="button"
@@ -374,6 +399,11 @@ export function AppView({
         pending={network.pending}
         onReview={() => setReviewOpen(true)}
         onNotNow={() => handleDecision('deny')}
+      />
+      <PageLlmBanner
+        pending={llm.pending}
+        onReview={() => setLlmReviewOpen(true)}
+        onNotNow={() => handleLlmDecision('deny')}
       />
 
       <div className="app-view-frame">
@@ -425,6 +455,12 @@ export function AppView({
             {t('apps.view.stores', { size: fmt.size(storageUsage.bytes) })}
           </span>
         )}
+        {llm.state?.granted && (
+          <span className="app-view-fact">
+            <span className="app-view-dot" data-tone="net" aria-hidden="true" />
+            {t('apps.view.usesModel')}
+          </span>
+        )}
         <span className="app-view-when">
           {t('apps.view.saved', { when: fmt.timeAgo(summary.createdAt) })}
         </span>
@@ -438,6 +474,7 @@ export function AppView({
         declared={declared}
         onDecide={handleDecision}
       />
+      <PageLlmDialog open={llmReviewOpen} title={summary.name} state={llm.state} onDecide={handleLlmDecision} />
       <ConfirmDialog
         open={clearConfirmOpen}
         title={t('apps.clearData.title')}

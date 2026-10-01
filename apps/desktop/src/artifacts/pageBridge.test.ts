@@ -185,6 +185,69 @@ describe('input values embedded in the script', () => {
   });
 });
 
+describe('buildPageBridgeScript — model access (ADR-014)', () => {
+  it('has no llm namespace without the capability', () => {
+    const f = frame(['storage']);
+    const conduit = f.win.conduit as { llm?: unknown };
+    expect(conduit.llm).toBeUndefined();
+  });
+
+  it('defines a frozen window.conduit.llm with the capability', () => {
+    const f = frame(['llm']);
+    const conduit = f.win.conduit as { capabilities: string[]; llm: unknown };
+    expect(conduit.capabilities).toEqual(['llm']);
+    expect(conduit.llm).toBeDefined();
+    expect(Object.isFrozen(conduit)).toBe(true);
+    expect(Object.isFrozen(conduit.llm)).toBe(true);
+  });
+
+  it('complete() round-trips through a message and a matching reply', async () => {
+    const f = frame(['llm']);
+    const conduit = f.win.conduit as { llm: { complete: (req: unknown) => Promise<unknown> } };
+    const pending = conduit.llm.complete({ prompt: 'Summarize this.' });
+    expect(f.posted).toHaveLength(1);
+    const req = f.posted[0];
+    expect(req.method).toBe('llm.complete');
+    expect(req.params).toEqual({ prompt: 'Summarize this.' });
+
+    f.answer({ type: PAGE_BRIDGE_MESSAGE_TYPE, id: req.id, ok: true, result: { text: 'A summary.' } });
+    await expect(pending).resolves.toEqual({ text: 'A summary.' });
+  });
+
+  it('complete() forwards system, maxTokens and json only when given', () => {
+    const f = frame(['llm']);
+    const conduit = f.win.conduit as { llm: { complete: (req: unknown) => Promise<unknown> } };
+    void conduit.llm.complete({ prompt: 'Classify this.', system: 'Be terse.', maxTokens: 64, json: true });
+    expect(f.posted[0].params).toEqual({ prompt: 'Classify this.', system: 'Be terse.', maxTokens: 64, json: true });
+  });
+
+  it('complete() rejects an empty or missing prompt with "invalid" before posting anything', async () => {
+    const f = frame(['llm']);
+    const conduit = f.win.conduit as { llm: { complete: (req: unknown) => Promise<unknown> } };
+    await expect(conduit.llm.complete({ prompt: '' })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(conduit.llm.complete({})).rejects.toMatchObject({ code: 'invalid' });
+    await expect(conduit.llm.complete({ prompt: 42 })).rejects.toMatchObject({ code: 'invalid' });
+    expect(f.posted).toHaveLength(0);
+  });
+
+  it('an error reply rejects with the code attached, including llm-only codes', async () => {
+    const f = frame(['llm']);
+    const conduit = f.win.conduit as { llm: { complete: (req: unknown) => Promise<unknown> } };
+    const pending = conduit.llm.complete({ prompt: 'Hi' });
+    const req = f.posted[0];
+    f.answer({
+      type: PAGE_BRIDGE_MESSAGE_TYPE,
+      id: req.id,
+      ok: false,
+      error: { code: 'not_granted', message: "You didn't allow this page to use your model." },
+    });
+    await expect(pending).rejects.toMatchObject({
+      code: 'not_granted',
+      message: "You didn't allow this page to use your model.",
+    });
+  });
+});
+
 describe('parsePageBridgeRequest', () => {
   it('accepts a well-formed request for each method', () => {
     expect(
@@ -212,6 +275,26 @@ describe('parsePageBridgeRequest', () => {
         params: { prefix: 'todo:' },
       }),
     ).toEqual({ id: 'e', method: 'storage.keys', params: { prefix: 'todo:' } });
+    expect(
+      parsePageBridgeRequest({
+        type: PAGE_BRIDGE_MESSAGE_TYPE,
+        id: 'f',
+        method: 'llm.complete',
+        params: { prompt: 'Summarize this.' },
+      }),
+    ).toEqual({ id: 'f', method: 'llm.complete', params: { prompt: 'Summarize this.' } });
+    expect(
+      parsePageBridgeRequest({
+        type: PAGE_BRIDGE_MESSAGE_TYPE,
+        id: 'g',
+        method: 'llm.complete',
+        params: { prompt: 'Classify this.', system: 'Be terse.', maxTokens: 64, json: true },
+      }),
+    ).toEqual({
+      id: 'g',
+      method: 'llm.complete',
+      params: { prompt: 'Classify this.', system: 'Be terse.', maxTokens: 64, json: true },
+    });
   });
 
   it('rejects anything malformed', () => {
@@ -228,6 +311,12 @@ describe('parsePageBridgeRequest', () => {
       { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'storage.get', params: [] },
       { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'storage.set', params: { key: 'k' } },
       { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'storage.keys', params: { prefix: 7 } },
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: '' } },
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: {} },
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 5 } },
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 'hi', system: 5 } },
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 'hi', maxTokens: '64' } },
+      { type: PAGE_BRIDGE_MESSAGE_TYPE, id: 'a', method: 'llm.complete', params: { prompt: 'hi', json: 'true' } },
     ]) {
       expect(parsePageBridgeRequest(data)).toBeNull();
     }

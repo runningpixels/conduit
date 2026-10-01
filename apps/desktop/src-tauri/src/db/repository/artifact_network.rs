@@ -186,6 +186,21 @@ pub async fn clear(pool: &SqlitePool, principal: Option<&Principal>) -> Result<(
     Ok(())
 }
 
+/// Remove every grant of every capability for `principal`, regardless of
+/// which capability it's under. Deleting an app must forget everything it was
+/// ever allowed — `net` and `llm` (ADR-014) alike — the same way the 0024
+/// migration's trigger already deletes every `principal_grants` row when an
+/// artifact is deleted. `clear` above stays capability-scoped (`net` only):
+/// it backs the Settings "forget network access" action, which must not also
+/// revoke an app's model-access grant.
+pub async fn clear_all(pool: &SqlitePool, principal: &Principal) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM principal_grants WHERE principal = ?")
+        .bind(principal.key())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::Principal;

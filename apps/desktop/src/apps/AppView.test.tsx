@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AppView } from './AppView';
 
 const ipc = vi.hoisted(() => ({
@@ -13,6 +13,10 @@ const ipc = vi.hoisted(() => ({
   openExternalUrl: vi.fn(),
   pageStorageUsage: vi.fn(),
   pageStorageClear: vi.fn(),
+  pageLlmState: vi.fn(),
+  grantPageLlm: vi.fn(),
+  revokePageLlm: vi.fn(),
+  pageLlmComplete: vi.fn(),
   appPrincipal: (id: string) => `app:${id}`,
 }));
 
@@ -58,6 +62,13 @@ function renderAppView(overrides: Partial<Parameters<typeof AppView>[0]> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   ipc.getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: [], session: [] });
+  ipc.pageLlmState.mockResolvedValue({
+    providerId: 'anthropic',
+    providerName: 'Anthropic',
+    isLocal: false,
+    blockedReason: null,
+    granted: null,
+  });
 });
 
 describe('AppView launch inputs (ADR-013)', () => {
@@ -92,5 +103,51 @@ describe('AppView launch inputs (ADR-013)', () => {
     await screen.findByRole('heading', { name: 'Weather dashboard' });
     expect(screen.queryByRole('button', { name: 'Inputs' })).toBeNull();
     expect(screen.queryByRole('dialog', { name: 'App inputs' })).toBeNull();
+  });
+});
+
+describe('AppView model access (ADR-014)', () => {
+  it('has no strip fact and no revoke menu item before access is granted', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    renderAppView();
+
+    await screen.findByRole('heading', { name: 'Weather dashboard' });
+    expect(screen.queryByText('Uses your AI model')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    expect(screen.queryByRole('menuitem', { name: 'Stop model access' })).toBeNull();
+  });
+
+  it('shows a strip fact once the reader granted model access', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    ipc.pageLlmState.mockResolvedValue({
+      providerId: 'anthropic',
+      providerName: 'Anthropic',
+      isLocal: false,
+      blockedReason: null,
+      granted: 'always',
+    });
+    renderAppView();
+
+    expect(await screen.findByText('Uses your AI model')).toBeInTheDocument();
+  });
+
+  it('"Stop model access" in the ⋯ menu revokes the grant', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    ipc.pageLlmState.mockResolvedValue({
+      providerId: 'anthropic',
+      providerName: 'Anthropic',
+      isLocal: false,
+      blockedReason: null,
+      granted: 'always',
+    });
+    renderAppView();
+
+    await screen.findByText('Uses your AI model');
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Stop model access' }));
+    await waitFor(() => expect(ipc.revokePageLlm).toHaveBeenCalledWith('app:a1'));
   });
 });

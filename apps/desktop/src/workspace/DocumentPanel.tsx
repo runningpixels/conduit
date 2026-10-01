@@ -14,7 +14,9 @@ import { buildPreviewProps, resolveKind, selectRenderer } from '../artifacts/sel
 import { declaredHosts, declaredInputs, scriptedHosts } from '../artifacts/networkHosts';
 import { useArtifactNetwork } from './useArtifactNetwork';
 import { usePageBridge } from './usePageBridge';
+import { usePageLlm } from './usePageLlm';
 import { ArtifactNetworkBanner, ArtifactNetworkChip, ArtifactNetworkDialog } from './ArtifactNetwork';
+import { PageLlmBanner, PageLlmDialog } from './PageLlmConsent';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
@@ -415,9 +417,12 @@ export function DocumentPanel({
     sourceText,
     networkPolicyKey,
   );
-  // window.conduit.storage for a saved HTML page (ADR-012), same principal as
-  // the network bridge above.
-  const bridge = usePageBridge(networkArtifactId ? artifactPrincipal(networkArtifactId) : null);
+  // Model access for a saved HTML page (ADR-014), same principal as the
+  // network bridge above.
+  const llm = usePageLlm(networkArtifactId ? artifactPrincipal(networkArtifactId) : null);
+  // window.conduit.storage (ADR-012) + window.conduit.llm (ADR-014) for a
+  // saved HTML page, same principal as the network bridge above.
+  const bridge = usePageBridge(networkArtifactId ? artifactPrincipal(networkArtifactId) : null, llm.handler);
   // Launch inputs (ADR-013): a chat page gets its declared defaults and no
   // form — the form is an app-only feature (AppView/AppInputsDialog); a page
   // still in a chat is edited by asking for a change. `undefined` (not `{}`)
@@ -454,6 +459,18 @@ export function DocumentPanel({
   useEffect(() => {
     if (network.pending.length === 0) setNetworkReviewOpen(false);
   }, [network.pending.length]);
+  const [llmReviewOpen, setLlmReviewOpen] = useState(false);
+  const { decide: decideLlm } = llm;
+  const handleLlmDecision = useCallback(
+    (decision: 'deny' | 'session' | 'page') => {
+      setLlmReviewOpen(false);
+      void decideLlm(decision);
+    },
+    [decideLlm],
+  );
+  useEffect(() => {
+    if (!llm.pending) setLlmReviewOpen(false);
+  }, [llm.pending]);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedSource, setSavedSource] = useState(false);
@@ -1154,6 +1171,13 @@ export function DocumentPanel({
             onNotNow={() => handleNetworkDecision('deny')}
           />
         )}
+        {networkArtifactId && (
+          <PageLlmBanner
+            pending={llm.pending}
+            onReview={() => setLlmReviewOpen(true)}
+            onNotNow={() => handleLlmDecision('deny')}
+          />
+        )}
         {brandEligible && (
           <div className="doc-banner hold" role="status" aria-label={t('workspace.documentPanel.brandBanner.ariaLabel')}>
             {brandPreviewing
@@ -1285,6 +1309,13 @@ export function DocumentPanel({
         sites={network.pending}
         declared={networkDeclared}
         onDecide={handleNetworkDecision}
+      />
+
+      <PageLlmDialog
+        open={llmReviewOpen}
+        title={artifact.title ?? null}
+        state={llm.state}
+        onDecide={handleLlmDecision}
       />
 
       <ConfirmDialog

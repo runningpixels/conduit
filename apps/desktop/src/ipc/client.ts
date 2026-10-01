@@ -11,6 +11,9 @@ import type {
   AppPaths,
   AppSummary,
   StarterAppInfo,
+  PageLlmReply,
+  PageLlmRequest,
+  PageLlmState,
   AppSettings,
   Artifact,
   ArtifactContent,
@@ -668,16 +671,20 @@ const BRIDGE_ERROR_CODES: ReadonlySet<string> = new Set<BridgeErrorCode>([
   'quota',
   'rate_limited',
   'unavailable',
+  'not_granted',
+  'timeout',
 ]);
 
 /**
- * Maps a `page_storage_*` rejection to a bridge error. Unlike the rest of
- * this file's commands (D9's `{ code, params, fallback }` `AppError`
+ * Maps a `page_storage_*`/`page_llm_*` rejection to a bridge error. Unlike the
+ * rest of this file's commands (D9's `{ code, params, fallback }` `AppError`
  * envelope), these commands reject with a bare `Err(String)` whose text
  * starts with a code and a colon — `"quota: too big"` — per
- * `docs/private/bridge-storage-contract.md`. An unrecognised prefix (or a
- * command that hasn't been converted at all) maps to `unavailable` rather
- * than guessing.
+ * `docs/private/bridge-storage-contract.md` (storage) and
+ * `docs/private/page-llm-contract.md` (model access, which adds the
+ * `not_granted` and `timeout` codes). An unrecognised prefix (or a command
+ * that hasn't been converted at all) maps to `unavailable` rather than
+ * guessing.
  */
 export function bridgeErrorFromIpc(e: unknown): { code: BridgeErrorCode; message: string } {
   const text = e instanceof IpcError || e instanceof Error ? e.message : String(e);
@@ -689,6 +696,46 @@ export function bridgeErrorFromIpc(e: unknown): { code: BridgeErrorCode; message
     }
   }
   return { code: 'unavailable', message: text };
+}
+
+// =============================================================================
+// Page model access (ADR-014)
+//
+// The page-model types come from the Rust schema (ts-rs); the request and
+// reply keep the names callers already use.
+// =============================================================================
+
+export type { PageLlmState };
+export type PageLlmCompleteRequest = PageLlmRequest;
+export type PageLlmCompleteResult = PageLlmReply;
+
+/** `session`: until Conduit quits. `page`: remembered for this page, for the
+ *  provider active when granted — switching providers asks again. */
+export type PageLlmGrantScope = 'session' | 'page';
+
+/** A page's `window.conduit.llm.complete()` request (ADR-014). */
+export async function pageLlmState(principal: PagePrincipal): Promise<PageLlmState> {
+  return invokeCommand<PageLlmState>('page_llm_state', { principal });
+}
+
+/** Grants `principal` model access for the CURRENT active provider. */
+export async function grantPageLlm(principal: PagePrincipal, scope: PageLlmGrantScope): Promise<void> {
+  await invokeCommand('grant_page_llm', { principal, scope });
+}
+
+/** Clears both the session and the stored (page-scoped) grant. */
+export async function revokePageLlm(principal: PagePrincipal): Promise<void> {
+  await invokeCommand('revoke_page_llm', { principal });
+}
+
+/** Text in, text out: no tools, no history, no memory (ADR-014). Rejects with
+ *  the `code: message` convention `bridgeErrorFromIpc` parses — `not_granted`,
+ *  `unavailable`, `rate_limited`, `invalid`, or `timeout`. */
+export async function pageLlmComplete(
+  principal: PagePrincipal,
+  request: PageLlmCompleteRequest,
+): Promise<PageLlmCompleteResult> {
+  return invokeCommand<PageLlmCompleteResult>('page_llm_complete', { principal, request });
 }
 
 // =============================================================================

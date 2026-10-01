@@ -870,6 +870,37 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .artifact-network-any > span { display: grid; gap: 2px; }
 .artifact-network-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
+/* ── Page model access (ADR-014) ────────────────────────────────────────────── */
+.page-llm-banner-text { display: inline-flex; align-items: center; gap: 6px; }
+.page-llm-banner-text svg { flex: none; width: 14px; height: 14px; color: var(--hue); }
+
+.page-llm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .45);
+}
+.page-llm-dialog {
+  display: grid;
+  gap: 14px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow: auto;
+  padding: 24px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  box-shadow: var(--shadow-modal);
+}
+.page-llm-dialog h2 { margin: 0; font-size: var(--fs-8xl); font-weight: 600; }
+.page-llm-provider { display: flex; align-items: center; gap: 6px; font-size: var(--fs-3xl); }
+.page-llm-provider svg { width: 15px; height: 15px; color: var(--hue); }
+.page-llm-note { margin: 0; color: var(--ink-2); font-size: var(--fs-xl); line-height: 1.5; }
+.page-llm-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
 /* ── Inspector ───────────────────────────────────────────────────────────────
  * The right-hand inspector's tab strip (InspectorTabs), its Activity and
  * Sources views (src/inspector/), and the transcript's compact step line

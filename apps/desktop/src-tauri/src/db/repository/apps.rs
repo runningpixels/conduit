@@ -8,8 +8,8 @@ use std::path::Path;
 
 use provider_core::app_inputs;
 use provider_core::schema::{
-    AppCapabilities, AppCategory, AppCreatedWith, AppDetail, AppInput, AppManifest, AppNetwork,
-    AppOrigin, AppStorage, AppSummary,
+    AppCapabilities, AppCategory, AppCreatedWith, AppDetail, AppInput, AppLlm, AppManifest,
+    AppNetwork, AppOrigin, AppStorage, AppSummary,
 };
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
@@ -32,18 +32,29 @@ use crate::{
 /// The fixed quota a `storage` capability declaration gets, per ADR-012.
 pub const STORAGE_QUOTA_BYTES: u64 = 5 * 1024 * 1024;
 
-/// The one capability name a page may declare today.
-pub const KNOWN_CAPABILITIES: &[&str] = &["storage"];
+/// The capability names a page may declare today.
+pub const KNOWN_CAPABILITIES: &[&str] = &["storage", "llm"];
+
+/// Which optional capabilities a page's declaration turned on, resolved once
+/// by [`validate_capabilities`] so every caller reads the same two flags
+/// instead of re-scanning the raw string list.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DeclaredCapabilities {
+    pub storage: bool,
+    pub llm: bool,
+}
 
 /// Check every declared capability is known, rejecting the first that isn't.
-/// Returns whether `storage` was among them.
-pub fn validate_capabilities(capabilities: &[String]) -> Result<bool, String> {
+pub fn validate_capabilities(capabilities: &[String]) -> Result<DeclaredCapabilities, String> {
     for cap in capabilities {
         if !KNOWN_CAPABILITIES.contains(&cap.as_str()) {
             return Err(format!("invalid: unknown capability {cap:?}"));
         }
     }
-    Ok(capabilities.iter().any(|c| c == "storage"))
+    Ok(DeclaredCapabilities {
+        storage: capabilities.iter().any(|c| c == "storage"),
+        llm: capabilities.iter().any(|c| c == "llm"),
+    })
 }
 
 pub const MAX_NAME_CHARS: usize = 80;
@@ -156,10 +167,10 @@ fn manifest(
     meta: &AppMeta,
     version: &str,
     hosts: Vec<String>,
-    has_storage: bool,
+    capabilities: DeclaredCapabilities,
     inputs: Vec<AppInput>,
 ) -> AppManifest {
-    manifest_from(id, meta, version, hosts, has_storage, inputs, true)
+    manifest_from(id, meta, version, hosts, capabilities, inputs, true)
 }
 
 fn manifest_from(
@@ -167,7 +178,7 @@ fn manifest_from(
     meta: &AppMeta,
     version: &str,
     hosts: Vec<String>,
-    has_storage: bool,
+    capabilities: DeclaredCapabilities,
     inputs: Vec<AppInput>,
     from_artifact: bool,
 ) -> AppManifest {
@@ -181,9 +192,10 @@ fn manifest_from(
         version: version.to_string(),
         capabilities: AppCapabilities {
             network: (!hosts.is_empty()).then_some(AppNetwork { hosts }),
-            storage: has_storage.then_some(AppStorage {
+            storage: capabilities.storage.then_some(AppStorage {
                 quota_bytes: STORAGE_QUOTA_BYTES,
             }),
+            llm: capabilities.llm.then_some(AppLlm {}),
         },
         created_with: AppCreatedWith {
             conduit: env!("CARGO_PKG_VERSION").to_string(),
@@ -219,12 +231,15 @@ fn decode_manifest(enc: &Encryption, stored: &str) -> Result<AppManifest, DbErro
 /// from its `conduit-network` meta tags, already normalised by the caller).
 /// `keep_hosts` are the artifact's remembered grants the user chose to carry
 /// over; each must really be one of them, so a caller can't mint a grant here.
-/// `has_storage` is whether the page declared the `storage` capability
-/// (validated by the caller); when it did, the artifact's `page_storage` rows
-/// are copied to the new app so a tracker keeps its entries. `declared_inputs`
-/// is the page's launch-input declaration (ADR-013), already validated by the
-/// caller (`provider_core::app_inputs::validate_declaration`); a brand-new app
-/// has no stored input values yet, so there is nothing to carry over here.
+/// `capabilities` is which optional capabilities the page declared (validated
+/// by the caller, `validate_capabilities`); when `storage` is among them, the
+/// artifact's `page_storage` rows are copied to the new app so a tracker
+/// keeps its entries. `llm` (ADR-014) carries no data to copy — saving a page
+/// as an app never carries its model-access grant over; the app asks for
+/// itself the first time it calls. `declared_inputs` is the page's
+/// launch-input declaration (ADR-013), already validated by the caller
+/// (`provider_core::app_inputs::validate_declaration`); a brand-new app has no
+/// stored input values yet, so there is nothing to carry over here.
 // Each argument is one thing the Save as app form or the page declared;
 // bundling them would only hide which is which at the call site.
 #[allow(clippy::too_many_arguments)]
@@ -235,7 +250,7 @@ pub async fn save_from_artifact(
     artifact_id: &str,
     meta: AppMeta,
     declared_hosts: Vec<String>,
-    has_storage: bool,
+    capabilities: DeclaredCapabilities,
     declared_inputs: Vec<AppInput>,
     keep_hosts: &[String],
 ) -> Result<AppSummary, DbError> {
@@ -254,7 +269,7 @@ pub async fn save_from_artifact(
     let id = Uuid::new_v4().to_string();
     let version = "1.0.0";
     let hosts = sorted_hosts(declared_hosts.into_iter().chain(keep_hosts.iter().cloned()));
-    let manifest = manifest(&id, &meta, version, hosts, has_storage, declared_inputs);
+    let manifest = manifest(&id, &meta, version, hosts, capabilities, declared_inputs);
     let now = now_iso8601();
     sqlx::query(
         "INSERT INTO apps (id, name, description, icon, category, version, source_artifact_id, \
@@ -281,7 +296,7 @@ pub async fn save_from_artifact(
     for host in keep_hosts {
         grants::grant(pool, &app, host).await?;
     }
-    if has_storage {
+    if capabilities.storage {
         page_storage::copy(pool, &Principal::artifact(artifact_id), &app)
             .await
             .map_err(DbError::from)?;
@@ -365,6 +380,7 @@ fn summary_from_row(enc: &Encryption, row: AppRow) -> Result<AppSummary, DbError
             .map(|n| n.hosts)
             .unwrap_or_default(),
         storage: manifest.capabilities.storage.is_some(),
+        llm: manifest.capabilities.llm.is_some(),
         source_changed: source_hash.is_some_and(|h| h != content_hash),
         source_artifact_id,
         starter_id,
@@ -430,14 +446,17 @@ async fn refresh_starter(pool: &SqlitePool, enc: &Encryption, id: &str) -> Resul
     };
     let version = bump_minor(&old.version);
     let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
-    let has_storage = starter.capabilities.contains(&"storage");
+    let capabilities = DeclaredCapabilities {
+        storage: starter.capabilities.contains(&"storage"),
+        llm: starter.capabilities.contains(&"llm"),
+    };
     let inputs = starter_inputs(starter);
     let manifest = manifest_from(
         id,
         &meta,
         &version,
         hosts,
-        has_storage,
+        capabilities,
         inputs.clone(),
         false,
     );
@@ -512,8 +531,11 @@ pub async fn update_meta(
         .network
         .map(|n| n.hosts)
         .unwrap_or_default();
-    let has_storage = old.capabilities.storage.is_some();
-    let manifest = manifest(id, &meta, &old.version, hosts, has_storage, old.inputs);
+    let capabilities = DeclaredCapabilities {
+        storage: old.capabilities.storage.is_some(),
+        llm: old.capabilities.llm.is_some(),
+    };
+    let manifest = manifest(id, &meta, &old.version, hosts, capabilities, old.inputs);
     sqlx::query(
         "UPDATE apps SET name = ?, description = ?, icon = ?, category = ?, manifest_json = ?, \
                          updated_at = ? WHERE id = ?",
@@ -536,8 +558,10 @@ pub async fn update_meta(
 /// version. Declared hosts are re-read from the new page; the app's own grants
 /// stay (the user gave them to this app), and a newly declared host still asks
 /// on first use. The app's `page_storage` rows are untouched either way — only
-/// the manifest's `storage` capability is recomputed from `has_storage`, the
-/// new page's own declaration. `declared_inputs` (already validated by the
+/// the manifest's `storage` and `llm` capabilities are recomputed from
+/// `capabilities`, the new page's own declaration (an `llm` grant, like a
+/// `net` one, stays with the app rather than being recomputed here — only the
+/// declaration itself changes). `declared_inputs` (already validated by the
 /// caller) replaces the manifest's inputs; stored values for inputs no longer
 /// declared, or that no longer fit, are dropped (ADR-013), the rest kept.
 pub async fn update_from_artifact(
@@ -546,7 +570,7 @@ pub async fn update_from_artifact(
     enc: &Encryption,
     id: &str,
     declared_hosts: Vec<String>,
-    has_storage: bool,
+    capabilities: DeclaredCapabilities,
     declared_inputs: Vec<AppInput>,
 ) -> Result<AppSummary, DbError> {
     let summary = get_summary(pool, enc, id)
@@ -575,7 +599,7 @@ pub async fn update_from_artifact(
         &meta,
         &version,
         hosts,
-        has_storage,
+        capabilities,
         declared_inputs.clone(),
     );
     sqlx::query(
@@ -625,13 +649,16 @@ pub async fn install_starter(
     let id = Uuid::new_v4().to_string();
     let version = "1.0.0";
     let hosts = sorted_hosts(starter.hosts.iter().map(|h| h.to_string()));
-    let has_storage = starter.capabilities.contains(&"storage");
+    let capabilities = DeclaredCapabilities {
+        storage: starter.capabilities.contains(&"storage"),
+        llm: starter.capabilities.contains(&"llm"),
+    };
     let manifest = manifest_from(
         &id,
         &meta,
         version,
         hosts,
-        has_storage,
+        capabilities,
         starter_inputs(starter),
         false,
     );
@@ -662,10 +689,11 @@ pub async fn install_starter(
         .ok_or_else(|| invalid("The app wasn't added."))
 }
 
-/// Delete an app, its grants, its storage, and its input values.
+/// Delete an app, its grants (every capability — `net`, `llm`, ...), its
+/// storage, and its input values.
 pub async fn delete(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
     let app = Principal::app(id);
-    grants::clear(pool, Some(&app)).await?;
+    grants::clear_all(pool, &app).await?;
     page_storage::clear(pool, &app)
         .await
         .map_err(DbError::from)?;

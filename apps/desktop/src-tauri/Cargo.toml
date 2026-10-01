@@ -94,7 +94,7 @@ zip = { version = "4.6", default-features = false, features = ["deflate"] }
 # - pdf-extract: plain-text extraction from PDFs. Column/table order is
 #   frequently wrong -- a known, accepted limitation (see the t1-6 plan).
 csv = "1"
-quick-xml = "0.37"
+quick-xml = "0.39"
 pdf-extract = "0.12.1"
 
 # Workspace crates

@@ -256,6 +256,48 @@ export function applyBrandTheme(config: Pick<BrandConfig, 'palette'>, theme: 'da
   } else {
     root.removeProperty(HUE_WEAK_PROPERTY);
   }
+
+  // The design reads the accent family directly in places (tile tints,
+  // glows, hover states), not only through the `--hue` aliases above.
+  for (const [prop, value] of Object.entries(deriveBrandAccent(palette, theme))) {
+    if (value) root.setProperty(prop, value);
+    else root.removeProperty(prop);
+  }
+}
+
+/**
+ * ADR-011's accent family (`themes/accent.ts`), from a brand palette:
+ * `--accent` = hue, `--accent-text` = hueText, `--on-accent` = onHue, and the
+ * soft / line / glow washes mixed from hue at the same strengths the main
+ * colour override uses for that mode. Same derived-output exception as
+ * `deriveHueWeak`: only an already-validated hex ever reaches a `color-mix()`.
+ * A field that fails the hex grammar maps to null (left to the stylesheet).
+ */
+export const BRAND_ACCENT_PROPERTIES = [
+  '--accent',
+  '--accent-text',
+  '--on-accent',
+  '--accent-soft',
+  '--accent-line',
+  '--glow-color',
+] as const;
+
+export function deriveBrandAccent(
+  palette: BrandPalette,
+  theme: 'dark' | 'light',
+): Record<(typeof BRAND_ACCENT_PROPERTIES)[number], string | null> {
+  const hex = (v: unknown) => (isValidHexColor(v) ? v : null);
+  const hue = hex(palette.hue);
+  const wash = (share: number, over: string) => (hue ? `color-mix(in srgb, ${hue} ${share}%, ${over})` : null);
+  const dark = theme === 'dark';
+  return {
+    '--accent': hue,
+    '--accent-text': hex(palette.hueText),
+    '--on-accent': hex(palette.onHue),
+    '--accent-soft': dark ? wash(14, 'transparent') : wash(10, '#ffffff'),
+    '--accent-line': dark ? wash(40, 'transparent') : wash(28, '#ffffff'),
+    '--glow-color': wash(dark ? 16 : 10, 'transparent'),
+  };
 }
 
 /**
@@ -296,6 +338,7 @@ export function clearBrand(): void {
     root.removeProperty(PALETTE_PROPERTY_MAP[key]);
   }
   root.removeProperty(HUE_WEAK_PROPERTY);
+  for (const prop of BRAND_ACCENT_PROPERTIES) root.removeProperty(prop);
   document.documentElement.removeAttribute('data-palette');
   resetBrand();
   clearBrandCache();

@@ -16,7 +16,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AppSettings } from '../../ipc/contracts';
 import type { BrandConfig } from '@conduit/config-schema';
-import { BrandingSection } from './BrandingSection';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { useState } from 'react';
+import { BrandingSection, SEED_PALETTE_DARK, SEED_PALETTE_LIGHT } from './BrandingSection';
 
 // No `@tauri-apps/api/core` mock: BrandingSection no longer imports `invoke`
 // directly. ADR 008 (`docs/adr/adr-008-tauri-capability-surface.md`) is why —
@@ -35,6 +39,7 @@ vi.mock('../../ipc/client', () => ({
   applyBrandEdits: vi.fn(),
   exportBrandConfigDialog: vi.fn(),
   saveBrandLogo: vi.fn(),
+  updateSettings: vi.fn(),
 }));
 
 import {
@@ -45,6 +50,7 @@ import {
   importBrandFileDialog,
   exportBrandConfigDialog,
   applyBrandEdits,
+  updateSettings,
 } from '../../ipc/client';
 
 const baseSettings: AppSettings = {
@@ -129,6 +135,7 @@ beforeEach(() => {
   vi.mocked(importBrandFileDialog).mockReset();
   vi.mocked(exportBrandConfigDialog).mockReset();
   vi.mocked(applyBrandEdits).mockReset();
+  vi.mocked(updateSettings).mockImplementation(async (patch) => ({ ...baseSettings, ...patch }) as AppSettings);
   document.documentElement.removeAttribute('data-palette');
   document.documentElement.removeAttribute('style');
   // Several tests (Revert, Reset, toggling off) call the real
@@ -180,7 +187,35 @@ describe('the enable toggle', () => {
     const { onUpdate } = renderSection({ brandingEnabled: false });
     await waitFor(() => expect(getBrandConfig).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('switch', { name: 'Enable branding' }));
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ brandingEnabled: true }));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ brandingEnabled: true })));
+    expect(updateSettings).toHaveBeenCalledWith({ brandingEnabled: true });
+  });
+
+  it('turning on persists first, so an existing brand.md fills the form instead of the seeds', async () => {
+    // Rust only returns brand.md once branding_enabled is on disk.
+    let persisted = false;
+    vi.mocked(getBrandConfig).mockImplementation(async () => (persisted ? SAVED_CONFIG : null));
+    vi.mocked(updateSettings).mockImplementation(async (patch) => {
+      persisted = true;
+      return { ...baseSettings, ...patch } as AppSettings;
+    });
+    function Host() {
+      const [settings, setSettings] = useState<AppSettings>({ ...baseSettings, brandingEnabled: false });
+      return <BrandingSection settings={settings} onUpdate={setSettings} onStatus={() => {}} />;
+    }
+    render(<Host />);
+    await waitFor(() => expect(getBrandConfig).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable branding' }));
+    await waitFor(() => expect(screen.getByLabelText('App name')).toHaveValue('Acme'));
+  });
+
+  it('a failed save on turning on is reported and leaves branding off', async () => {
+    vi.mocked(updateSettings).mockRejectedValue(new Error('disk full'));
+    const { onUpdate, onStatus } = renderSection({ brandingEnabled: false });
+    await waitFor(() => expect(getBrandConfig).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable branding' }));
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith(expect.stringContaining('disk full')));
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 
   it('clearing the toggle restores the stock look: applied custom properties are removed', async () => {
@@ -190,7 +225,27 @@ describe('the enable toggle', () => {
       expect(document.documentElement.style.getPropertyValue('--hue')).toBe('#3366ff'),
     );
     fireEvent.click(screen.getByRole('switch', { name: 'Enable branding' }));
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ brandingEnabled: false }));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ brandingEnabled: false })));
+    expect(document.documentElement.style.getPropertyValue('--hue')).toBe('');
+  });
+
+  it('turning off persists first, so the refetch cannot hand the brand back to be re-applied', async () => {
+    let onDisk = true;
+    vi.mocked(getBrandConfig).mockImplementation(async () => (onDisk ? SAVED_CONFIG : null));
+    vi.mocked(updateSettings).mockImplementation(async (patch) => {
+      onDisk = patch.brandingEnabled ?? onDisk;
+      return { ...baseSettings, ...patch } as AppSettings;
+    });
+    const onBrandChange = vi.fn();
+    function Host() {
+      const [settings, setSettings] = useState<AppSettings>({ ...baseSettings, brandingEnabled: true });
+      return <BrandingSection settings={settings} onUpdate={setSettings} onStatus={() => {}} onBrandChange={onBrandChange} />;
+    }
+    render(<Host />);
+    await waitFor(() => expect(screen.getByLabelText('App name')).toHaveValue('Acme'));
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable branding' }));
+    await waitFor(() => expect(getBrandConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onBrandChange).toHaveBeenLastCalledWith(null, null));
     expect(document.documentElement.style.getPropertyValue('--hue')).toBe('');
   });
 });
@@ -414,5 +469,39 @@ describe('the pre-paint cache stays untouched by an unsaved draft', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(applyBrandEdits).toHaveBeenCalled());
     await waitFor(() => expect(localStorage.getItem(CACHE_KEY)).not.toBeNull());
+  });
+});
+
+describe('seed colours', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const css = readFileSync(join(here, '..', '..', '..', '..', '..', 'packages', 'ui', 'src', 'tokens.css'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  function block(selector: string): string {
+    const start = css.indexOf(`\n${selector} {\n`);
+    const open = css.indexOf('{', start);
+    return css.slice(open + 1, css.indexOf('\n}\n', open));
+  }
+  function token(mode: 'dark' | 'light', name: string): string {
+    const layers = mode === 'dark' ? [block(':root')] : [block('[data-theme="light"]'), block(':root')];
+    for (const decls of layers) {
+      const hit = decls.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6});`));
+      if (hit) return hit[1];
+    }
+    throw new Error(`--${name} not found for ${mode}`);
+  }
+  const SOURCE: Record<string, string> = {
+    bg: 'bg', bgSide: 'bg-side', card: 'card', cardHi: 'card-hi', line: 'line', lineSoft: 'line-soft',
+    lineHi: 'line-hi', ink: 'ink', ink2: 'ink-2', ink3: 'ink-3', hue: 'accent', hueText: 'accent-text',
+    hueSolid: 'accent', onHue: 'on-accent', ok: 'ok', warn: 'warn', err: 'err', link: 'link',
+  };
+
+  it.each([
+    ['dark', SEED_PALETTE_DARK],
+    ['light', SEED_PALETTE_LIGHT],
+  ] as const)('the %s seeds are the design tokens', (mode, seeds) => {
+    for (const [field, name] of Object.entries(SOURCE)) {
+      expect([field, seeds[field as keyof typeof seeds]]).toEqual([field, token(mode, name)]);
+    }
   });
 });

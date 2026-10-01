@@ -108,14 +108,21 @@ impl ProviderAdapter for EchoModel {
         let reply = self.reply_for(&request);
         self.requests.lock().unwrap().push(request.clone());
         let r = request.request_id;
-        let failing = self
-            .failures
-            .fetch_update(
-                std::sync::atomic::Ordering::SeqCst,
-                std::sync::atomic::Ordering::SeqCst,
-                |n| n.checked_sub(1),
-            )
-            .is_ok();
+        // A compare-exchange loop rather than `fetch_update`, which newer
+        // toolchains deprecate (renamed `try_update`) and older ones lack.
+        let failing = {
+            use std::sync::atomic::Ordering::SeqCst;
+            let mut n = self.failures.load(SeqCst);
+            loop {
+                if n == 0 {
+                    break false;
+                }
+                match self.failures.compare_exchange(n, n - 1, SeqCst, SeqCst) {
+                    Ok(_) => break true,
+                    Err(actual) => n = actual,
+                }
+            }
+        };
         if let Some((name, arguments)) = &self.tool_call {
             let answered = request
                 .messages

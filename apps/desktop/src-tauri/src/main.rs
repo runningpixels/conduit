@@ -328,10 +328,12 @@ fn main() {
                 .ok_or("tauri.conf.json has no \"main\" window")?;
             // Started at sign-in with the tray on: stay hidden in the tray.
             let visible = config.visible && !tray::start_hidden(std::env::args(), close_to_tray);
-            tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+            let _window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
                 .additional_browser_args(&webview_args::main_webview_browser_args(&allowlist))
                 .visible(visible)
                 .build()?;
+            #[cfg(target_os = "linux")]
+            webview_args::disable_webrtc(&_window)?;
             tray::ensure_tray(app.handle(), close_to_tray)?;
             // The tray menu shows the running count; the page hears it too.
             let handle = app.handle().clone();

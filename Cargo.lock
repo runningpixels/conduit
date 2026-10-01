@@ -712,6 +712,7 @@ dependencies = [
  "directories",
  "futures",
  "glob",
+ "gtk",
  "infer 0.22.0",
  "keyring",
  "libsqlite3-sys",
@@ -742,6 +743,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "webkit2gtk",
  "zeroize",
  "zip",
 ]

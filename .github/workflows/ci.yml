@@ -85,6 +85,12 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace
 
+      # webview_args::disable_webrtc relies on WebKitGTK's enable-webrtc
+      # setting removing RTCPeerConnection; this checks it against the
+      # WebKitGTK the build links, in a real view (needs a display).
+      - name: WebKitGTK WebRTC switch (Linux)
+        run: xvfb-run -a cargo test -p conduit-desktop --test webkit_webrtc_linux -- --ignored --nocapture
+
       - name: Disk space after Rust tests
         if: always()
         run: df -h /

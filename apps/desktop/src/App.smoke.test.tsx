@@ -153,6 +153,8 @@ const IPC_EXPORTS = [
   'exportBrandConfig',
   // Ideas (App.tsx reads the collection count for "Ask your documents").
   'listKnowledgeCollections',
+  // Slides: App.tsx asks whether the open chat is bound to a deck.
+  'getDeckForConversation', 'listDecks', 'openDeck', 'listDeckSnapshots',
 ] as const;
 
 afterEach(() => {

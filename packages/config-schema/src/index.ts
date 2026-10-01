@@ -71,6 +71,13 @@ export type { AppSummary } from './generated/app_summary';
 export type { AppDetail } from './generated/app_detail';
 export type { PageStorageUsage } from './generated/page_storage_usage';
 export type { StarterAppInfo } from './generated/starter_app_info';
+export type { DeckStage } from './generated/deck_stage';
+export type { DeckSnapshotCause } from './generated/deck_snapshot_cause';
+export type { StorylineItem } from './generated/storyline_item';
+export type { DeckSlide } from './generated/deck_slide';
+export type { DeckSummary } from './generated/deck_summary';
+export type { DeckDetail } from './generated/deck_detail';
+export type { DeckSnapshotSummary } from './generated/deck_snapshot_summary';
 
 // Page model access (ADR-014)
 export type { PageLlmGrant } from './generated/page_llm_grant';

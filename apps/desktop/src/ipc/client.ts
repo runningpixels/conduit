@@ -10,6 +10,12 @@ import type {
   AppInput,
   AppPaths,
   AppSummary,
+  DeckDetail,
+  DeckSnapshotCause,
+  DeckSnapshotSummary,
+  DeckStage,
+  DeckSummary,
+  StorylineItem,
   StarterAppInfo,
   PageLlmReply,
   PageLlmRequest,
@@ -1533,6 +1539,81 @@ export async function updateAppFromArtifact(
 
 export async function deleteApp(id: string): Promise<void> {
   await invokeCommand('delete_app', { id });
+}
+
+// =============================================================================
+// Slides
+// =============================================================================
+
+export async function listDecks(): Promise<DeckSummary[]> {
+  return invokeCommand<DeckSummary[]>('list_decks');
+}
+
+/** A new deck with its own chat and a first history entry. */
+export async function createDeck(
+  title: string,
+  themeName: string,
+  themeCss: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('create_deck', { title, themeName, themeCss });
+}
+
+export async function getDeck(id: string): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('get_deck', { id });
+}
+
+/** The deck a chat builds, or null for an ordinary chat. */
+export async function getDeckForConversation(conversationId: string): Promise<DeckDetail | null> {
+  return invokeCommand<DeckDetail | null>('get_deck_for_conversation', { conversationId });
+}
+
+/** Open a deck: stamps when it was opened and gives it a chat if it lost its own. */
+export async function openDeck(id: string): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('open_deck', { id });
+}
+
+/** Renames the deck and its chat. */
+export async function renameDeck(id: string, title: string): Promise<void> {
+  await invokeCommand('rename_deck', { id, title });
+}
+
+/** Deletes the deck and its chat. */
+export async function deleteDeck(id: string): Promise<void> {
+  await invokeCommand('delete_deck', { id });
+}
+
+export async function setDeckStoryline(id: string, storyline: StorylineItem[]): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_deck_storyline', { id, storyline });
+}
+
+export async function setDeckStage(id: string, stage: DeckStage): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_deck_stage', { id, stage });
+}
+
+export async function setDeckTheme(
+  id: string,
+  themeName: string,
+  themeCss: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_deck_theme', { id, themeName, themeCss });
+}
+
+/** The deck's history, newest first. */
+export async function listDeckSnapshots(deckId: string): Promise<DeckSnapshotSummary[]> {
+  return invokeCommand<DeckSnapshotSummary[]>('list_deck_snapshots', { deckId });
+}
+
+/** Record the deck's state in its history; null when nothing changed since the newest entry. */
+export async function snapshotDeck(
+  deckId: string,
+  cause: DeckSnapshotCause,
+  label: string,
+): Promise<DeckSnapshotSummary | null> {
+  return invokeCommand<DeckSnapshotSummary | null>('snapshot_deck', { deckId, cause, label });
+}
+
+export async function restoreDeckSnapshot(deckId: string, snapshotId: string): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('restore_deck_snapshot', { deckId, snapshotId });
 }
 
 /** The ready-made apps bundled with Conduit, and which the user has added. */

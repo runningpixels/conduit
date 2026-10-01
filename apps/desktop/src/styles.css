@@ -45,3 +45,6 @@
 
 /* Apps page: saved mini-apps, the open app, Save as app */
 @import './styles/pages-apps.css';
+
+/* Slides page and the deck workspace: pages/SlidesPage.tsx, slides/*.tsx */
+@import './styles/pages-slides.css';

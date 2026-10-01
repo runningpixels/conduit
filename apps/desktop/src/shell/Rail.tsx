@@ -22,6 +22,7 @@ import {
   MoonIcon,
   SettingsIcon,
   SkillIcon,
+  SlidesIcon,
   SunIcon,
   WorkflowIcon,
   AppsIcon,
@@ -30,6 +31,7 @@ import {
 export type Destination =
   | 'chats'
   | 'apps'
+  | 'slides'
   | 'ideas'
   | 'documents'
   | 'library'
@@ -43,6 +45,7 @@ export type Destination =
 export const DESTINATIONS: readonly Destination[] = [
   'chats',
   'apps',
+  'slides',
   'documents',
   'library',
   'workflows',
@@ -54,6 +57,7 @@ export const DESTINATIONS: readonly Destination[] = [
 const ICONS: Record<Destination, ReactNode> = {
   chats: <ChatIcon />,
   apps: <AppsIcon />,
+  slides: <SlidesIcon />,
   ideas: <IdeaIcon />,
   documents: <KnowledgeIcon />,
   library: <SkillIcon />,

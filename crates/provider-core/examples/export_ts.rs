@@ -19,16 +19,17 @@ use provider_core::schema::{
     BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
     ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
     ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
-    ConversationSummary, CredentialRequest, CredentialSummary, GenerationControls, GrantScope,
+    ConversationSummary, CredentialRequest, CredentialSummary, DeckDetail, DeckSlide,
+    DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary, GenerationControls, GrantScope,
     GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
     MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageLlmGrant,
     PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry,
     PageStorageUsage, PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError,
     ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef,
     ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
-    SettingsPatch, SkippedResource, StarterAppInfo, SupportState, TenantConfig, TenantIdentity,
-    Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport,
-    UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
+    SettingsPatch, SkippedResource, StarterAppInfo, StorylineItem, SupportState, TenantConfig,
+    TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind,
+    Transport, UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
     WebSearchRequest,
 };
 use ts_rs::TS;
@@ -93,6 +94,15 @@ fn main() {
     AppDetail::export().expect("export AppDetail");
     PageStorageUsage::export().expect("export PageStorageUsage");
     StarterAppInfo::export().expect("export StarterAppInfo");
+
+    // Slides
+    DeckStage::export().expect("export DeckStage");
+    DeckSnapshotCause::export().expect("export DeckSnapshotCause");
+    StorylineItem::export().expect("export StorylineItem");
+    DeckSlide::export().expect("export DeckSlide");
+    DeckSummary::export().expect("export DeckSummary");
+    DeckDetail::export().expect("export DeckDetail");
+    DeckSnapshotSummary::export().expect("export DeckSnapshotSummary");
 
     // Page model access (ADR-014).
     PageLlmGrant::export().expect("export PageLlmGrant");

@@ -20,6 +20,7 @@ pub mod page_storage;
 pub mod prompts;
 pub mod settings;
 pub mod skills;
+pub mod slides;
 pub mod tray;
 pub mod workflows;
 
@@ -39,5 +40,6 @@ pub use page_storage::*;
 pub use prompts::*;
 pub use settings::*;
 pub use skills::*;
+pub use slides::*;
 pub use tray::*;
 pub use workflows::*;

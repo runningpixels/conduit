@@ -123,6 +123,20 @@ import {
   previewConversationExport,
   setConversationTitle,
 } from './ipc/client';
+import { SlidesPage } from './pages/SlidesPage';
+import { DeckWorkspace } from './slides/DeckWorkspace';
+import type { DeckDetail, StorylineItem } from './ipc/contracts';
+import {
+  getDeckForConversation,
+  listDeckSnapshots,
+  openDeck,
+  renameDeck,
+  restoreDeckSnapshot,
+  setDeckStage,
+  setDeckStoryline,
+  setDeckTheme,
+  snapshotDeck,
+} from './ipc/client';
 
 /* Dev-only (`?route=gallery`, see `devRoute.ts`): the theming project's
  * component gallery. Lazy so its fixtures and every component it renders
@@ -381,11 +395,46 @@ export default function App() {
   const [emptyPanelRequested, setEmptyPanelRequested] = useState(false);
   const [panelHasContent, setPanelHasContent] = useState(false);
   const chatArtifacts = artifactsConversationId === activeConversationId ? artifacts : [];
+  // Slides: the deck bound to the open chat, if any. A deck chat shows the
+  // deck workspace where the document panel would be, and the chat is its
+  // "Ask" column.
+  const [activeDeck, setActiveDeck] = useState<DeckDetail | null>(null);
+  const [deckLoading, setDeckLoading] = useState(false);
+  const [deckBusyTool, setDeckBusyTool] = useState<string | null>(null);
+  const [deckHistoryRevision, setDeckHistoryRevision] = useState(0);
+  const deckChangedThisTurnRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    setDeckBusyTool(null);
+    deckChangedThisTurnRef.current = false;
+    if (!activeConversationId) {
+      setActiveDeck(null);
+      return;
+    }
+    setDeckLoading(true);
+    getDeckForConversation(activeConversationId)
+      .then((deck) => {
+        if (!cancelled) setActiveDeck(deck ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveDeck(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDeckLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId]);
   useEffect(() => {
     const listSettled = activeConversationId == null || artifactsConversationId === activeConversationId;
+    if (activeDeck) {
+      setPanelHasContent(true);
+      return;
+    }
     if (!listSettled && pendingArtifact == null && activeArtifact == null) return;
     setPanelHasContent(chatArtifacts.length > 0 || pendingArtifact != null || activeArtifact != null);
-  }, [activeConversationId, artifactsConversationId, chatArtifacts.length, pendingArtifact, activeArtifact]);
+  }, [activeConversationId, artifactsConversationId, chatArtifacts.length, pendingArtifact, activeArtifact, activeDeck]);
   useEffect(() => {
     setEmptyPanelRequested(false);
   }, [activeConversationId]);
@@ -886,6 +935,134 @@ export default function App() {
     },
     [clearWorkspaceArtifactSelection, settings.activeProvider],
   );
+
+  // ── Slides ────────────────────────────────────────────────────────────────
+  const transcriptRef = useRef(transcript);
+  transcriptRef.current = transcript;
+  const activeDeckRef = useRef(activeDeck);
+  activeDeckRef.current = activeDeck;
+
+  /** Open a deck from the Slides page: its chat, with the deck beside it. */
+  const handleOpenDeck = useCallback(
+    async (deckId: string) => {
+      try {
+        const deck = await openDeck(deckId);
+        setActiveDeck(deck);
+        if (deck.conversationId) handleSelectConversation(deck.conversationId);
+        void refreshConversations();
+        setDestination('chats');
+        showDocPanel();
+        // As wide as the window allows: the thread keeps its minimum width.
+        panelExpand.expand();
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [handleSelectConversation, refreshConversations, showDocPanel, panelExpand],
+  );
+
+  const reloadActiveDeck = useCallback(async () => {
+    const conversationId = activeDeckRef.current?.conversationId;
+    if (!conversationId) return;
+    try {
+      const deck = await getDeckForConversation(conversationId);
+      if (activeDeckRef.current?.conversationId === conversationId) setActiveDeck(deck ?? null);
+    } catch {
+      // The next tool call or turn end reloads it again.
+    }
+  }, []);
+
+  const handleDeckChanged = useCallback(() => {
+    deckChangedThisTurnRef.current = true;
+    setDeckBusyTool(null);
+    void reloadActiveDeck();
+  }, [reloadActiveDeck]);
+
+  /** One history entry per AI turn that changed the deck, named by the prompt. */
+  const finishDeckTurn = useCallback(async () => {
+    setDeckBusyTool(null);
+    const deck = activeDeckRef.current;
+    if (!deck || !deckChangedThisTurnRef.current) return;
+    deckChangedThisTurnRef.current = false;
+    const lastPrompt = [...transcriptRef.current.turns].reverse().find((turn) => turn.role === 'user');
+    const text = lastPrompt?.content.replace(/\s+/g, ' ').trim() ?? '';
+    const label = text.length > 80 ? `${text.slice(0, 79)}…` : text || t('slides.history.aiTurn');
+    try {
+      await snapshotDeck(deck.id, 'ai-turn', label);
+      setDeckHistoryRevision((n) => n + 1);
+    } catch {
+      // History is best effort; the deck itself is already saved.
+    }
+    await reloadActiveDeck();
+  }, [reloadActiveDeck, t]);
+
+  const handleRenameDeck = useCallback(
+    async (title: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        await renameDeck(deck.id, title);
+        setActiveDeck({ ...deck, title });
+        void refreshConversations();
+        if (activeConversationId) void refreshActiveConversationSummary(activeConversationId);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [refreshConversations, refreshActiveConversationSummary, activeConversationId],
+  );
+
+  const handleSetDeckTheme = useCallback(
+    async (name: string, css: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        setActiveDeck(await setDeckTheme(deck.id, name, css));
+        await snapshotDeck(deck.id, 'manual', t('slides.history.themeChanged', { name }));
+        setDeckHistoryRevision((n) => n + 1);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [t],
+  );
+
+  const handleSetDeckStoryline = useCallback(async (items: StorylineItem[]) => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      setActiveDeck(await setDeckStoryline(deck.id, items));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const handleBuildDeck = useCallback(async () => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      setActiveDeck(await setDeckStage(deck.id, 'slides'));
+      setPendingSendText(t('slides.prompt.build'));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [t]);
+
+  const handleRestoreDeck = useCallback(async (snapshotId: string) => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      setActiveDeck(await restoreDeckSnapshot(deck.id, snapshotId));
+      setDeckHistoryRevision((n) => n + 1);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const handleListDeckSnapshots = useCallback(async () => {
+    const deck = activeDeckRef.current;
+    return deck ? listDeckSnapshots(deck.id) : [];
+  }, []);
 
   const handleSelectSearchResult = useCallback(
     (result: SearchResult) => {
@@ -2072,7 +2249,13 @@ export default function App() {
             fileStateMap={fileStateMap}
             onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
             onOpenArtifact={(id) => void handleOpenArtifact(id)}
-            onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
+            onChatTurnComplete={(streamState) => {
+              void handleChatTurnComplete(streamState);
+              void finishDeckTurn();
+            }}
+            deck={activeDeck}
+            onDeckChanged={handleDeckChanged}
+            onDeckToolActivity={setDeckBusyTool}
             onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
@@ -2177,6 +2360,9 @@ export default function App() {
                 onStatus={setStatusMessage}
               />
             )}
+            {destination === 'slides' && (
+              <SlidesPage onOpenDeck={(deck) => void handleOpenDeck(deck.id)} onStatus={setStatusMessage} />
+            )}
             {destination === 'workflows' && (
               <WorkflowsPage
                 onStatus={setStatusMessage}
@@ -2202,6 +2388,23 @@ export default function App() {
           onDoubleClick={panelResize.onDoubleClick}
         />
 
+        {activeDeck ? (
+          <section className="doc-panel deck-panel" aria-label={t('slides.workspace.ariaLabel')}>
+            <DeckWorkspace
+              deck={activeDeck}
+              loading={deckLoading}
+              busyTool={deckBusyTool}
+              colorScheme={effectiveTheme}
+              onRename={(title) => void handleRenameDeck(title)}
+              onSetTheme={(name, css) => void handleSetDeckTheme(name, css)}
+              onSetStoryline={(items) => void handleSetDeckStoryline(items)}
+              onBuild={() => void handleBuildDeck()}
+              onListSnapshots={handleListDeckSnapshots}
+              onRestore={handleRestoreDeck}
+              historyRevision={deckHistoryRevision}
+            />
+          </section>
+        ) : (
         <DocumentPanel
           inspectorTabs={
             <InspectorTabs
@@ -2260,6 +2463,7 @@ export default function App() {
           networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
           onOpenIdeas={openIdeas}
         />
+        )}
       </div>
       </div>
 

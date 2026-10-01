@@ -40,6 +40,13 @@ import {
   searchMcpRegistry,
   addRemoteConnector,
   signinRemoteConnector,
+  listDecks,
+  createDeck,
+  getDeckForConversation,
+  setDeckStage,
+  snapshotDeck,
+  restoreDeckSnapshot,
+  deleteDeck,
 } from './client';
 
 beforeEach(() => {
@@ -285,5 +292,52 @@ describe('artifact + attachment IPC wrappers', () => {
     invoke.mockResolvedValue([9, 9]);
     await getAttachmentBytes('att1');
     expect(invoke).toHaveBeenLastCalledWith('get_attachment_bytes', { attachmentId: 'att1' });
+  });
+});
+
+describe('slides IPC wrappers', () => {
+  it('listDecks sends no args object', async () => {
+    invoke.mockResolvedValue([]);
+    await listDecks();
+    expect(invoke).toHaveBeenLastCalledWith('list_decks');
+  });
+
+  it('createDeck / getDeckForConversation / setDeckStage use camelCase args', async () => {
+    invoke.mockResolvedValue({ id: 'd1' });
+    await createDeck('Q3', 'ink', '.slide{}');
+    expect(invoke).toHaveBeenLastCalledWith('create_deck', {
+      title: 'Q3',
+      themeName: 'ink',
+      themeCss: '.slide{}',
+    });
+
+    invoke.mockResolvedValue(null);
+    expect(await getDeckForConversation('c1')).toBeNull();
+    expect(invoke).toHaveBeenLastCalledWith('get_deck_for_conversation', { conversationId: 'c1' });
+
+    invoke.mockResolvedValue({ id: 'd1' });
+    await setDeckStage('d1', 'slides');
+    expect(invoke).toHaveBeenLastCalledWith('set_deck_stage', { id: 'd1', stage: 'slides' });
+  });
+
+  it('snapshotDeck / restoreDeckSnapshot / deleteDeck', async () => {
+    invoke.mockResolvedValue(null);
+    expect(await snapshotDeck('d1', 'ai-turn', 'make it blue')).toBeNull();
+    expect(invoke).toHaveBeenLastCalledWith('snapshot_deck', {
+      deckId: 'd1',
+      cause: 'ai-turn',
+      label: 'make it blue',
+    });
+
+    invoke.mockResolvedValue({ id: 'd1' });
+    await restoreDeckSnapshot('d1', 's1');
+    expect(invoke).toHaveBeenLastCalledWith('restore_deck_snapshot', {
+      deckId: 'd1',
+      snapshotId: 's1',
+    });
+
+    invoke.mockResolvedValue(undefined);
+    await deleteDeck('d1');
+    expect(invoke).toHaveBeenLastCalledWith('delete_deck', { id: 'd1' });
   });
 });

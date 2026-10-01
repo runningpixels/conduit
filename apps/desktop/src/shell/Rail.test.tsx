@@ -21,7 +21,7 @@ describe('Rail', () => {
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Chats', 'Apps', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
+    expect(labels).toEqual(['Chats', 'Apps', 'Slides', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
   });
 

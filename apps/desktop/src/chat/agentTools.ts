@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@conduit/config-schema';
+import type { DeckStage, ToolDefinition } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import { classifyDocumentTurnIntent, type DocumentTurnIntent } from './documentTurnIntent';
@@ -14,6 +14,7 @@ import { CONTENT_FIELD_BY_TOOL } from './documentWriteScan';
 const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
 const IMAGE_TOOL_GROUP = 'Images';
+const DECK_TOOL_GROUP = 'Slides';
 
 function schema(fields: Array<{ name: string; type: string; required?: boolean }>): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
@@ -451,6 +452,148 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     permissionLevel: 'sideEffectful',
     displayGroup: BRAND_TOOL_GROUP,
   },
+  // ---------------------------------------------------------------------------
+  // Deck tools (Slides): offered only in a chat bound to a deck
+  // ---------------------------------------------------------------------------
+  {
+    toolId: 'read_deck',
+    name: 'read_deck',
+    description:
+      "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text). With a slide_id it returns that slide's full inner HTML and notes. Read a slide before you change it.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slide_id: {
+          type: 'string',
+          description: 'Return this one slide in full instead of the deck outline.',
+        },
+      },
+    },
+    permissionLevel: 'readOnly',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'set_storyline',
+    name: 'set_storyline',
+    description:
+      "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lines: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'One short line per planned slide, in order.',
+        },
+      },
+      required: ['lines'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'add_slide',
+    name: 'add_slide',
+    description:
+      'Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. layout is a layout name from the theme (lowercase, e.g. "title"). html is the slide\'s INNER html: the app wraps it in <section class="slide" data-layout="LAYOUT">, so do not include that section yourself. Put every piece of text in an element with data-text="slot-name", style with the theme\'s classes and color tokens (never hard-coded colors), draw charts as inline SVG, and never include scripts or external URLs. notes is optional speaker notes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        layout: {
+          type: 'string',
+          description: 'Layout name from the theme, lowercase letters, digits and hyphens.',
+        },
+        html: {
+          type: 'string',
+          description:
+            'The slide\'s inner HTML (no outer section). Text in data-text="slot" elements; no scripts.',
+        },
+        notes: { type: 'string', description: 'Optional speaker notes.' },
+        after_slide_id: {
+          type: 'string',
+          description: 'Insert after this slide; omit to append.',
+        },
+      },
+      required: ['layout', 'html'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'update_slide',
+    name: 'update_slide',
+    description:
+      "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slide_id: { type: 'string' },
+        html: { type: 'string', description: "The slide's full new inner HTML." },
+        layout: { type: 'string' },
+        notes: { type: 'string' },
+      },
+      required: ['slide_id'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'patch_slide',
+    name: 'patch_slide',
+    description:
+      "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slide_id: { type: 'string' },
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              old_text: { type: 'string' },
+              new_text: { type: 'string' },
+            },
+            required: ['old_text', 'new_text'],
+          },
+        },
+      },
+      required: ['slide_id', 'edits'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'move_slide',
+    name: 'move_slide',
+    description: 'Move a slide to a new 0-based position in the deck (clamped to the last slide).',
+    inputSchema: schema([
+      { name: 'slide_id', type: 'string', required: true },
+      { name: 'position', type: 'integer', required: true },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'delete_slide',
+    name: 'delete_slide',
+    description: 'Delete one slide from the deck.',
+    inputSchema: schema([{ name: 'slide_id', type: 'string', required: true }]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'set_theme',
+    name: 'set_theme',
+    description:
+      'Replace the deck\'s whole theme CSS (the classes and color tokens every slide uses). Rarely needed; name is the theme\'s label and defaults to "Custom".',
+    inputSchema: schema([
+      { name: 'css', type: 'string', required: true },
+      { name: 'name', type: 'string' },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
   ];
 }
 
@@ -684,6 +827,32 @@ export function selectBuiltinImageTools(
   return builtinToolDefinitions().filter((tool) => tool.displayGroup === IMAGE_TOOL_GROUP);
 }
 
+/** The Slides group: tools that build a deck, offered only in a chat bound to one. */
+export const DECK_TOOL_NAMES = new Set(
+  builtinToolDefinitions()
+    .filter((tool) => tool.displayGroup === DECK_TOOL_GROUP)
+    .map((tool) => tool.name),
+);
+
+export function isDeckTool(name: string): boolean {
+  return DECK_TOOL_NAMES.has(name);
+}
+
+const STORYLINE_STAGE_DECK_TOOL_NAMES = new Set(['read_deck', 'set_storyline']);
+
+/**
+ * The deck tools for a deck's stage: while the storyline is being agreed the
+ * model can only read the deck and write the storyline; once slides are being
+ * built it gets all of them.
+ */
+export function selectBuiltinDeckTools(stage: DeckStage): ToolDefinition[] {
+  return builtinToolDefinitions().filter(
+    (tool) =>
+      DECK_TOOL_NAMES.has(tool.name) &&
+      (stage === 'slides' || STORYLINE_STAGE_DECK_TOOL_NAMES.has(tool.name)),
+  );
+}
+
 /** Workspace tools that change files, as opposed to reading or searching them. */
 const WORKSPACE_WRITE_TOOL_NAMES = new Set(['workspace_write', 'workspace_edit']);
 
@@ -734,7 +903,23 @@ export function selectBuiltinTurnTools(
   /** The turn asks for an image whatever its wording — an idea picked from
    *  the Ideas page, in any language (the intent regexes are English). */
   imageOverride?: boolean,
+  /** Set when the chat is bound to a Slides deck: the deck tools replace the
+   *  document, brand and image tools, which would write outside the deck. */
+  deckStage?: DeckStage | null,
 ): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
+  if (deckStage) {
+    return {
+      intent: 'edit',
+      tools: [
+        ...builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name)),
+        ...selectBuiltinDeckTools(deckStage),
+        ...selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
+          (tool) => !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name),
+        ),
+        ...selectBuiltinMemoryTools(settings.memoryEnabled),
+      ],
+    };
+  }
   const intent = intentOverride ?? classifyDocumentTurnIntent(prompt);
   const documentTurn = intent === 'create' || intent === 'edit';
   const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationRoot).filter(

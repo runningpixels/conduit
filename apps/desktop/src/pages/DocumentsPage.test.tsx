@@ -93,15 +93,15 @@ describe('DocumentsPage', () => {
     const list = await screen.findByRole('navigation', { name: 'Collections' });
     const garden = await within(list).findByRole('button', { name: /Garden/ });
     expect(garden.getAttribute('aria-current')).toBe('true');
-    expect(within(list).getByText('2 documents · openrouter')).toBeTruthy();
+    expect(within(list).getByText('2 documents · OpenRouter')).toBeTruthy();
 
     expect(await screen.findByRole('heading', { name: 'Garden' })).toBeTruthy();
-    expect(screen.getByText('Embedded by openrouter · openai/text-embedding-3-small')).toBeTruthy();
+    expect(screen.getByText('Embedded by OpenRouter · openai/text-embedding-3-small')).toBeTruthy();
     expect(await screen.findByText('Roses')).toBeTruthy();
     expect(screen.getByText('Soil')).toBeTruthy();
     expect(screen.getAllByText('12 sections')).toHaveLength(2);
     expect(screen.getByText(/PDF · added/)).toBeTruthy();
-    expect(screen.getByText('Document text is sent to openrouter for indexing.')).toBeTruthy();
+    expect(screen.getByText('Document text is sent to OpenRouter for indexing.')).toBeTruthy();
   });
 
   it('shows the selected collection’s documents when another is picked', async () => {

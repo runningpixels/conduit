@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getUsageSummary } from '../../ipc/client';
 import type { UsageSummaryResponse, UsagePeriod } from '../../ipc/contracts';
 import { useT } from '../../i18n';
+import { providerDisplayName } from '../../lib/providerIdentity';
 import { useFormatters } from '../../i18n/formatters';
 
 export function UsageSection() {
@@ -141,7 +142,7 @@ export function UsageSection() {
                 key={`${row.providerId}-${row.modelId}`}
                 style={{ borderBottom: '1px solid var(--line)' }}
               >
-                <td style={{ padding: '6px 8px' }}>{row.providerId}</td>
+                <td style={{ padding: '6px 8px' }}>{providerDisplayName(row.providerId)}</td>
                 <td style={{ padding: '6px 8px' }}>{row.modelId}</td>
                 <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatTokens(row.inputTokens)}</td>
                 <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatTokens(row.outputTokens)}</td>

@@ -119,14 +119,14 @@ describe('Documents page import flow', () => {
       />,
     );
 
-    expect(await screen.findByText('Document text is sent to openrouter for indexing.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke openrouter' }));
+    expect(await screen.findByText('Document text is sent to OpenRouter for indexing.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke OpenRouter' }));
     await waitFor(() =>
       expect(updateSettings).toHaveBeenCalledWith({ embeddingConsentProviders: ['openai'] }),
     );
 
     expect(screen.getByText('Other providers allowed')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke openai' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke OpenAI' }));
     await waitFor(() =>
       // The first revoke already persisted, so both are now gone.
       expect(updateSettings).toHaveBeenLastCalledWith({ embeddingConsentProviders: [] }),

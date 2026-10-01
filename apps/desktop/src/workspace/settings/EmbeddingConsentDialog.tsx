@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useT } from '../../i18n';
+import { providerDisplayName } from '../../lib/providerIdentity';
 
 interface EmbeddingConsentDialogProps {
   /** True when the dialog should be visible. The parent controls this. */
@@ -42,7 +43,7 @@ export function EmbeddingConsentDialog({
       className="consent-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={t('settings.knowledge.consent.dialogAriaLabel', { provider: providerId ?? '' })}
+      aria-label={t('settings.knowledge.consent.dialogAriaLabel', { provider: providerId ? providerDisplayName(providerId) : '' })}
       style={{
         position: 'fixed',
         inset: 0,
@@ -70,13 +71,13 @@ export function EmbeddingConsentDialog({
         }}
       >
         <h2 style={{ margin: 0, fontSize: 'var(--fs-8xl)', fontWeight: 600 }}>
-          {t('settings.knowledge.consent.title', { provider: providerId ?? '' })}
+          {t('settings.knowledge.consent.title', { provider: providerId ? providerDisplayName(providerId) : '' })}
         </h2>
         <p style={{ margin: 0, fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', lineHeight: 1.6 }}>
-          {t('settings.knowledge.consent.intro', { provider: providerId ?? '' })}
+          {t('settings.knowledge.consent.intro', { provider: providerId ? providerDisplayName(providerId) : '' })}
         </p>
         <p style={{ margin: 0, fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', lineHeight: 1.6 }}>
-          {t('settings.knowledge.consent.everyDocument', { provider: providerId ?? '' })}
+          {t('settings.knowledge.consent.everyDocument', { provider: providerId ? providerDisplayName(providerId) : '' })}
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button

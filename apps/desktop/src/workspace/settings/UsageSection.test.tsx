@@ -32,7 +32,7 @@ describe('UsageSection', () => {
     const costLabel = await screen.findByText('Total cost (est.)', {}, { timeout: 3000 });
     expect(costLabel).not.toBeNull();
     // Check provider breakdown is rendered
-    const provider = await screen.findByText('anthropic', {}, { timeout: 3000 });
+    const provider = await screen.findByText('Anthropic', {}, { timeout: 3000 });
     expect(provider).not.toBeNull();
     // Check daily chart labels
     const day1 = await screen.findByText('08-01', {}, { timeout: 3000 });

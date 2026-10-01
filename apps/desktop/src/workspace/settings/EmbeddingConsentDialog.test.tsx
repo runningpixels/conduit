@@ -15,8 +15,8 @@ describe('EmbeddingConsentDialog', () => {
     );
 
     const dialog = screen.getByRole('dialog');
-    expect(dialog.getAttribute('aria-label')).toContain('openrouter');
-    expect(screen.getByRole('heading').textContent).toContain('openrouter');
+    expect(dialog.getAttribute('aria-label')).toContain('OpenRouter');
+    expect(screen.getByRole('heading').textContent).toContain('OpenRouter');
     expect(dialog.textContent).not.toContain('{provider}');
   });
 });

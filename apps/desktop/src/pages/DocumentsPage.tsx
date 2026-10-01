@@ -5,6 +5,7 @@
 /// `useKnowledgeBase`; this file only arranges them.
 import type { AppSettings, KnowledgeCollection, KnowledgeDocument } from '../ipc/contracts';
 import { useT } from '../i18n';
+import { providerDisplayName } from '../lib/providerIdentity';
 import { useFormatters } from '../i18n/formatters';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import {
@@ -81,7 +82,7 @@ export function DocumentsPage({
             status={importing?.collectionId === collection.id ? t('shell.documentsPage.importing') : undefined}
             meta={t('shell.documentsPage.collectionMeta', {
               documents: t('settings.knowledge.collection.docCount', { count: collection.documentCount }),
-              provider: collection.providerId,
+              provider: providerDisplayName(collection.providerId),
             })}
           />
         ))}
@@ -90,12 +91,12 @@ export function DocumentsPage({
             <div className="page-list-group">{t('shell.documentsPage.otherConsent')}</div>
             {orphanConsents.map((providerId) => (
               <div key={providerId} className="docs-consent-orphan">
-                <span>{providerId}</span>
+                <span>{providerDisplayName(providerId)}</span>
                 <button
                   className="btn ghost"
                   type="button"
                   disabled={busy}
-                  aria-label={t('shell.documentsPage.revokeProvider', { provider: providerId })}
+                  aria-label={t('shell.documentsPage.revokeProvider', { provider: providerDisplayName(providerId) })}
                   onClick={() => kb.revokeConsent(providerId)}
                 >
                   {t('settings.knowledge.consentList.revoke')}
@@ -256,7 +257,7 @@ function CollectionDetail({
       </div>
       <p className="docs-detail-meta">
         {t('settings.knowledge.collection.providerInfo', {
-          provider: collection.providerId,
+          provider: providerDisplayName(collection.providerId),
           model: collection.embeddingModel,
         })}
       </p>
@@ -308,14 +309,14 @@ function CollectionDetail({
 
       <p className="docs-consent">
         {consented
-          ? t('shell.documentsPage.consentGiven', { provider: collection.providerId })
-          : t('shell.documentsPage.consentPending', { provider: collection.providerId })}
+          ? t('shell.documentsPage.consentGiven', { provider: providerDisplayName(collection.providerId) })
+          : t('shell.documentsPage.consentPending', { provider: providerDisplayName(collection.providerId) })}
         {consented ? (
           <button
             className="btn ghost"
             type="button"
             disabled={busy}
-            aria-label={t('shell.documentsPage.revokeProvider', { provider: collection.providerId })}
+            aria-label={t('shell.documentsPage.revokeProvider', { provider: providerDisplayName(collection.providerId) })}
             onClick={onRevoke}
           >
             {t('settings.knowledge.consentList.revoke')}

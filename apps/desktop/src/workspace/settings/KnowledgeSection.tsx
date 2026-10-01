@@ -19,6 +19,7 @@ import {
 import { EmbeddingConsentDialog } from './EmbeddingConsentDialog';
 import { PdfImportNoticeDialog } from './PdfImportNoticeDialog';
 import { useT } from '../../i18n';
+import { providerDisplayName } from '../../lib/providerIdentity';
 
 /**
  * The knowledge base's behaviour (t1-6), without its layout.
@@ -359,13 +360,13 @@ export function useKnowledgeBase({
   /** Withdraw consent for one provider. The list is a full replace, so sending
    *  it without this provider is the whole operation. */
   function revokeConsent(providerId: string) {
-    if (!confirm(t('settings.knowledge.consentList.revokeConfirm', { provider: providerId }))) return;
+    if (!confirm(t('settings.knowledge.consentList.revokeConfirm', { provider: providerDisplayName(providerId) }))) return;
     void persist({
       embeddingConsentProviders: settingsRef.current.embeddingConsentProviders.filter(
         (p) => p !== providerId,
       ),
     }).then((next) => {
-      if (next) onStatus(t('settings.knowledge.consentList.revoked', { provider: providerId }));
+      if (next) onStatus(t('settings.knowledge.consentList.revoked', { provider: providerDisplayName(providerId) }));
     });
   }
 

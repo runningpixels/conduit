@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Provider names on Documents and in Settings.** The Documents page, the
+  indexing consent dialog and the usage table showed a provider's internal id
+  ("openrouter") instead of its name ("OpenRouter").
+
 ## [1.0.0-rc.2] - 2026-10-01
 
 ### Added

@@ -32,7 +32,7 @@ export function StorylineEditor({ items, busy = false, onChange, onBuild }: Stor
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const [focusKey, setFocusKey] = useState<string | null>(null);
-  const inputs = useRef(new Map<string, HTMLInputElement>());
+  const inputs = useRef(new Map<string, HTMLTextAreaElement>());
 
   // Follow the deck when it changes underneath (the model rewrote it, or the
   // server filled in ids). Keep the rows' keys when only ids changed, so the
@@ -100,13 +100,15 @@ export function StorylineEditor({ items, busy = false, onChange, onBuild }: Stor
               <span className="storyline-num" aria-hidden="true">
                 {i + 1}
               </span>
-              <input
+              {/* A textarea so a long line wraps instead of being cut off;
+                  Enter still starts the next line of the storyline. */}
+              <textarea
                 ref={(el) => {
                   if (el) inputs.current.set(d.key, el);
                   else inputs.current.delete(d.key);
                 }}
                 className="storyline-input"
-                type="text"
+                rows={1}
                 value={d.text}
                 maxLength={300}
                 aria-label={t('slides.storyline.lineAria', { n: i + 1 })}

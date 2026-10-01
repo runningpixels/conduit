@@ -54,8 +54,17 @@ export function parseDeckEvent(data: unknown): DeckFrameEvent | null {
 
 const FRAME_STYLE = `
 html, body { margin: 0; height: 100%; overflow: hidden; }
+/* The letterbox around the 16:9 slide. Without an explicit colour the frame's
+   canvas paints white, because its color-scheme differs from the app's. The
+   values are the app's --bg in each mode (the frame cannot read app tokens). */
+html { color-scheme: light; background: #f6f6f8; }
+html[data-theme="dark"] { color-scheme: dark; background: #0b0d12; }
+body { background: transparent; }
 .deck-viewport { position: fixed; inset: 0; overflow: hidden; }
 .deck { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden; }
+/* The slide's edge, for themes whose background is close to the letterbox.
+   Drawn at 1920px scale, so it lands near one device pixel. */
+body[data-mode="stage"] .deck { outline: 3px solid rgba(128, 128, 128, 0.28); }
 .deck > .slide:not(.is-current) { display: none !important; }
 .deck > .slide { position: absolute !important; left: 0; top: 0; }
 body[data-mode="thumb"] { user-select: none; }

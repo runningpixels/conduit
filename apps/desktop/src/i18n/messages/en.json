@@ -1625,6 +1625,7 @@
   "slides.delete.title": "Delete “{title}”?",
   "slides.frame.title": "Slide preview",
   "slides.history.aiTurn": "Changed in chat",
+  "slides.history.built": "Built slides from the storyline",
   "slides.history.cause.ai-turn": "Changed by chat",
   "slides.history.cause.created": "Deck created",
   "slides.history.cause.manual": "Saved version",

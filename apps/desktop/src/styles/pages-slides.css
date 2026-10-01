@@ -18,7 +18,7 @@ button.deck-frame-thumb {
 }
 button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 /* The stage fills its area; the frame letterboxes the 16:9 slide inside. */
-.deck-frame-stage { aspect-ratio: auto; height: 100%; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line); background: var(--card); }
+.deck-frame-stage { aspect-ratio: auto; height: 100%; overflow: hidden; }
 
 /* ── Page ─────────────────────────────────────────────────────────────── */
 .slides-error { margin: 0 0 var(--sp-3); color: var(--err); font-size: var(--fs-2xl); }
@@ -109,7 +109,9 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 .slides-theme-card[data-selected="true"] { border-color: var(--accent); outline: 1px solid var(--accent); }
 .slides-theme-card:focus-within { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
 .slides-theme-radio { position: absolute; opacity: 0; pointer-events: none; }
-.slides-theme-preview { display: block; }
+.slides-theme-preview { display: block; border-radius: var(--r-sm); overflow: hidden; }
+/* A preview is exactly one slide: 16:9, so the frame has nothing to letterbox. */
+.slides-theme-preview .deck-frame-stage { height: auto; aspect-ratio: 16 / 9; }
 .slides-theme-name { font-size: var(--fs-2xl); font-weight: 600; padding: 0 2px 2px; }
 .slides-new-actions { display: flex; gap: 8px; }
 
@@ -186,7 +188,7 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 .storyline-list { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
 .storyline-row { display: flex; align-items: center; gap: var(--sp-2); }
 .storyline-num { flex: none; width: 2ch; color: var(--ink-3); font: 500 var(--fs-xl)/1 var(--font-mono); text-align: right; }
-.storyline-input { flex: 1; }
+.storyline-input { flex: 1; resize: none; field-sizing: content; min-height: 0; line-height: 1.4; }
 .storyline-actions { display: inline-flex; gap: 2px; }
 .storyline-icon-btn {
   display: inline-grid;

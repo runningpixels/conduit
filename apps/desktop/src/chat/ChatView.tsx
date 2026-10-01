@@ -2523,7 +2523,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const compactThresholdPercent =
     settings.contextCompactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT;
 
+  // Not in a deck chat: the suggestions are about documents and artifacts.
   const showInlineSuggestions =
+    !deck &&
     turns.length > 0 &&
     !activeStream &&
     activeRequestId == null &&

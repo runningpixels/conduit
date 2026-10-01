@@ -125,6 +125,7 @@ import {
 } from './ipc/client';
 import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
+import { STARTER_THEMES } from './slides/themes';
 import type { DeckDetail, StorylineItem } from './ipc/contracts';
 import {
   getDeckForConversation,
@@ -403,6 +404,9 @@ export default function App() {
   const [deckBusyTool, setDeckBusyTool] = useState<string | null>(null);
   const [deckHistoryRevision, setDeckHistoryRevision] = useState(0);
   const deckChangedThisTurnRef = useRef(false);
+  // The history label for the next AI turn when the app sent its prompt (the
+  // "Build slides" button), rather than the user typing one.
+  const nextDeckTurnLabelRef = useRef<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setDeckBusyTool(null);
@@ -982,11 +986,14 @@ export default function App() {
   const finishDeckTurn = useCallback(async () => {
     setDeckBusyTool(null);
     const deck = activeDeckRef.current;
+    const appLabel = nextDeckTurnLabelRef.current;
+    nextDeckTurnLabelRef.current = null;
     if (!deck || !deckChangedThisTurnRef.current) return;
     deckChangedThisTurnRef.current = false;
     const lastPrompt = [...transcriptRef.current.turns].reverse().find((turn) => turn.role === 'user');
     const text = lastPrompt?.content.replace(/\s+/g, ' ').trim() ?? '';
-    const label = text.length > 80 ? `${text.slice(0, 79)}…` : text || t('slides.history.aiTurn');
+    const label =
+      appLabel ?? (text.length > 80 ? `${text.slice(0, 79)}…` : text || t('slides.history.aiTurn'));
     try {
       await snapshotDeck(deck.id, 'ai-turn', label);
       setDeckHistoryRevision((n) => n + 1);
@@ -1018,7 +1025,8 @@ export default function App() {
       if (!deck) return;
       try {
         setActiveDeck(await setDeckTheme(deck.id, name, css));
-        await snapshotDeck(deck.id, 'manual', t('slides.history.themeChanged', { name }));
+        const label = STARTER_THEMES.find((theme) => theme.name === name)?.label ?? name;
+        await snapshotDeck(deck.id, 'manual', t('slides.history.themeChanged', { name: label }));
         setDeckHistoryRevision((n) => n + 1);
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : String(error));
@@ -1042,6 +1050,7 @@ export default function App() {
     if (!deck) return;
     try {
       setActiveDeck(await setDeckStage(deck.id, 'slides'));
+      nextDeckTurnLabelRef.current = t('slides.history.built');
       setPendingSendText(t('slides.prompt.build'));
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : String(error));
@@ -2265,8 +2274,8 @@ export default function App() {
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
-            ideaGallery={ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
-            yourApps={savedApps}
+            ideaGallery={activeDeck || ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
+            yourApps={activeDeck ? [] : savedApps}
             onOpenApp={openSavedApp}
             onAllApps={() => openSavedApp(null)}
             readyMadeIdeas={readyMadeIdeas}

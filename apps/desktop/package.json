@@ -16,8 +16,8 @@
   "dependencies": {
     "@conduit/config-schema": "workspace:*",
     "@conduit/ui": "workspace:*",
-    "@tauri-apps/api": "^2.11.1",
-    "katex": "^0.18.4",
+    "@tauri-apps/api": "^2.12.0",
+    "katex": "^0.18.9",
     "mermaid": "^11.17.2",
     "prism-react-renderer": "^2.4.1",
     "prismjs": "^1.30.0",
@@ -26,9 +26,9 @@
     "react-intl": "^10.1.26"
   },
   "devDependencies": {
-    "@formatjs/icu-messageformat-parser": "^3.5.17",
+    "@formatjs/icu-messageformat-parser": "^3.5.20",
     "@playwright/test": "^1.63.0",
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli": "^2.12.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.6",

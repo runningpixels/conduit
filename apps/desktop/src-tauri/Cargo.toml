@@ -125,13 +125,13 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 # Desktop notifications for scheduled workflow runs (shown from Rust; the
 # renderer passes the translated text through `notify_workflow_run`).
-tauri-plugin-notification = "~2.4"
+tauri-plugin-notification = "~2.5"
 # Keep running with the window closed: one instance only (a second launch
 # focuses the first, so there is never a second scheduler), and an opt-in
 # start at sign-in. Pinned to the releases that still build on tauri 2.11
 # (the next minors need 2.12, which the npm packages aren't on yet).
-tauri-plugin-single-instance = "~2.4"
-tauri-plugin-autostart = "~2.5"
+tauri-plugin-single-instance = "~2.5"
+tauri-plugin-autostart = "~2.6"
 
 # Phase 6: the updater migration precheck copies the live DB to a temp dir.
 # Also used by in-crate tests, so it lives in `[dependencies]` (not dev-only).

@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Remote connectors on the 2025 protocol connect again.** A server that
+  refuses the newest MCP protocol version with an HTTP 400 (DeepWiki, for
+  one) now gets the older handshake it supports, instead of showing as
+  down.
+
 ## [1.0.0-rc.3] - 2026-10-02
 
 ### Added

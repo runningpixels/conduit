@@ -351,7 +351,14 @@ impl HttpSseTransport {
                 if resp.id != id {
                     warn!(target: "mcp_connector", id = ?resp.id, "HTTP response id mismatch");
                 }
-                resp_to_result(resp)
+                // A JSON-RPC error carried by an HTTP 4xx keeps the status, so
+                // a refused protocol version reads as the 400 it is.
+                resp_to_result(resp).map_err(|mut e| {
+                    if status >= 400 {
+                        e.message = format!("MCP HTTP {status}: {}", e.message);
+                    }
+                    e
+                })
             }
             other => Err(McpError::protocol(format!(
                 "unexpected MCP HTTP payload for {method}: {other:?}"
@@ -409,6 +416,7 @@ impl HttpSseTransport {
         let msg = err.message.to_ascii_lowercase();
         msg.contains("method not found")
             || msg.contains("unsupportedprotocolversion")
+            || msg.contains("unsupported protocol version")
             || msg.contains("http 400")
             || msg.contains("not json-rpc")
             || msg.contains("unknown method")

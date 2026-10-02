@@ -1497,7 +1497,25 @@ pub struct SlideTheme {
     pub updated_at: String,
 }
 
-/// One slide of a deck. `html` is the slide's inner HTML.
+/// One text slot of a slide: an element with `data-text`. `index` is its
+/// 0-based position among the slide's slots, `html` its inner HTML and `text`
+/// the visible text. A pinned slot carries `data-owner="user"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slide_slot.ts"
+)]
+pub struct SlideSlot {
+    pub index: u32,
+    pub name: String,
+    pub html: String,
+    pub text: String,
+    pub pinned: bool,
+}
+
+/// One slide of a deck. `html` is the slide's inner HTML; `slots` are computed
+/// from it on every read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -1510,6 +1528,48 @@ pub struct DeckSlide {
     pub layout: String,
     pub html: String,
     pub notes: String,
+    #[serde(default)]
+    pub slots: Vec<SlideSlot>,
+}
+
+/// A user edit of one slot, addressed by `(index, name)`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slot_edit.ts"
+)]
+pub struct SlotEdit {
+    pub index: u32,
+    pub name: String,
+    pub html: String,
+}
+
+/// Matches of a find-and-replace on one slide.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slide_replace_count.ts"
+)]
+pub struct SlideReplaceCount {
+    pub slide_id: String,
+    pub position: u32,
+    pub count: u32,
+    pub notes_count: u32,
+}
+
+/// The outcome (or dry-run preview) of a deck-wide find-and-replace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_replace_result.ts"
+)]
+pub struct DeckReplaceResult {
+    pub total: u32,
+    pub applied: bool,
+    pub slides: Vec<SlideReplaceCount>,
 }
 
 /// One deck in the Slides list.

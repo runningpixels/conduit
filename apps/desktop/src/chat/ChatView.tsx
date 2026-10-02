@@ -267,6 +267,8 @@ interface ChatViewProps {
   onDeckChanged?: () => void;
   /// The deck tool the model is calling now, or null when it has finished.
   onDeckToolActivity?: (toolName: string | null) => void;
+  /// Slides whose text runs off the canvas (slide id → px), told to the model.
+  deckOverflow?: Record<string, number>;
   /// Fired when the user requests to fork the conversation at a message.
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// t0-3 — mid-thread edit forked a new conversation; switch + pending send.
@@ -346,6 +348,8 @@ export interface ChatRequestOverrides {
   extraSystemSections?: string | null;
   /** The chat's Slides deck: deck prompts replace the document ones. */
   deck?: DeckDetail | null;
+  /** Per slide id, how far its text runs off the slide (px); 0 or absent fits. */
+  deckOverflow?: Record<string, number>;
 }
 
 /**
@@ -516,7 +520,7 @@ export function buildProviderRequest(
         readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
     },
   );
-  const deckDevPrompt = deck ? deckDeveloperPrompt(deck) : undefined;
+  const deckDevPrompt = deck ? deckDeveloperPrompt(deck, chatOverrides?.deckOverflow) : undefined;
   const developerPrompt =
     [
       compactionDevPrompt,
@@ -771,6 +775,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     deck = null,
     onDeckChanged,
     onDeckToolActivity,
+    deckOverflow,
     onForkConversation,
     onEditForked,
     pendingSendText = null,
@@ -1661,6 +1666,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         compactionSummary: activeCompaction?.summaryText ?? null,
         extraSystemSections,
         deck,
+        deckOverflow,
       },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.

@@ -9,7 +9,7 @@ import { useT } from '../i18n';
 import { assembleArtifactDoc, type ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { useArtifactFrameSource } from '../artifacts/artifactFrameSource';
 import type { DeckDetail } from '../ipc/contracts';
-import { DECK_FRAME_HTML, deckMessage, parseDeckEvent } from './deckDocument';
+import { DECK_FRAME_HTML, cleanInlineHtml, deckMessage, parseDeckEvent } from './deckDocument';
 
 export interface DeckFrameProps {
   deck: DeckDetail;
@@ -17,14 +17,32 @@ export interface DeckFrameProps {
   mode: 'stage' | 'thumb';
   colorScheme: ArtifactColorScheme;
   onSelect?: (slideId: string) => void;
+  /** Stage only: slots can be selected and edited in place. */
+  editable?: boolean;
+  onSlotSelect?: (slideId: string, index: number, name: string) => void;
+  /** `html` has already been through `cleanInlineHtml`. */
+  onSlotEdit?: (slideId: string, index: number, name: string, html: string) => void;
+  onKey?: (key: string) => void;
+  onOverflow?: (slides: Array<{ id: string; px: number }>) => void;
 }
 
-export function DeckFrame({ deck, index, mode, colorScheme, onSelect }: DeckFrameProps) {
+export function DeckFrame({
+  deck,
+  index,
+  mode,
+  colorScheme,
+  onSelect,
+  editable = false,
+  onSlotSelect,
+  onSlotEdit,
+  onKey,
+  onOverflow,
+}: DeckFrameProps) {
   const t = useT();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [readyCount, setReadyCount] = useState(0);
-  const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+  const handlers = useRef({ onSelect, onSlotSelect, onSlotEdit, onKey, onOverflow });
+  handlers.current = { onSelect, onSlotSelect, onSlotEdit, onKey, onOverflow };
 
   const doc = useMemo(() => assembleArtifactDoc(DECK_FRAME_HTML, [], false, colorScheme), [colorScheme]);
   const source = useArtifactFrameSource(doc);
@@ -42,12 +60,12 @@ export function DeckFrame({ deck, index, mode, colorScheme, onSelect }: DeckFram
     if (mode === 'thumb') {
       const one =
         thumbId != null
-          ? [{ id: thumbId, position: 0, layout: thumbLayout ?? '', html: thumbHtml ?? '', notes: '' }]
+          ? [{ id: thumbId, position: 0, layout: thumbLayout ?? '', html: thumbHtml ?? '', notes: '', slots: [] }]
           : [];
       return deckMessage({ themeCss, slides: one }, { mode, index: 0 });
     }
-    return deckMessage({ themeCss, slides: stageSlides ?? [] }, { mode, index });
-  }, [mode, themeCss, stageSlides, index, thumbId, thumbLayout, thumbHtml]);
+    return deckMessage({ themeCss, slides: stageSlides ?? [] }, { mode, index, editable });
+  }, [mode, themeCss, stageSlides, index, editable, thumbId, thumbLayout, thumbHtml]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -55,8 +73,27 @@ export function DeckFrame({ deck, index, mode, colorScheme, onSelect }: DeckFram
       if (!win || event.source !== win) return;
       const parsed = parseDeckEvent(event.data);
       if (!parsed) return;
-      if (parsed.event === 'ready') setReadyCount((n) => n + 1);
-      else onSelectRef.current?.(parsed.slideId);
+      const h = handlers.current;
+      switch (parsed.event) {
+        case 'ready':
+          setReadyCount((n) => n + 1);
+          break;
+        case 'select':
+          h.onSelect?.(parsed.slideId);
+          break;
+        case 'slot-select':
+          h.onSlotSelect?.(parsed.slideId, parsed.index, parsed.name);
+          break;
+        case 'slot-edit':
+          h.onSlotEdit?.(parsed.slideId, parsed.index, parsed.name, cleanInlineHtml(parsed.html));
+          break;
+        case 'key':
+          h.onKey?.(parsed.key);
+          break;
+        case 'overflow':
+          h.onOverflow?.(parsed.slides);
+          break;
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

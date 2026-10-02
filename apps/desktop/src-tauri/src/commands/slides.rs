@@ -3,8 +3,8 @@
 //! `agent_tools`).
 
 use provider_core::schema::{
-    DeckDetail, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary, SlideTheme,
-    StorylineItem,
+    DeckDetail, DeckReplaceResult, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
+    SlideTheme, SlotEdit, StorylineItem,
 };
 use tauri::State;
 
@@ -189,6 +189,78 @@ pub async fn set_deck_theme(
     slides::set_theme(&state.db, &state.encryption, &id, &theme_name, &theme_css)
         .await
         .map_err(message)
+}
+
+/// The user's edits of a slide's words: each edited slot is set and pinned;
+/// the speaker notes are replaced when given.
+#[tauri::command]
+pub async fn edit_slide_words(
+    state: State<'_, AppState>,
+    deck_id: String,
+    slide_id: String,
+    edits: Vec<SlotEdit>,
+    notes: Option<String>,
+) -> Result<DeckDetail, String> {
+    slides::edit_slide_words(
+        &state.db,
+        &state.encryption,
+        &deck_id,
+        &slide_id,
+        &edits,
+        notes.as_deref(),
+    )
+    .await
+    .map_err(message)
+}
+
+/// Pin ("Yours") or unpin ("Let AI edit") one slot.
+#[tauri::command]
+pub async fn set_slot_pinned(
+    state: State<'_, AppState>,
+    deck_id: String,
+    slide_id: String,
+    index: u32,
+    name: String,
+    pinned: bool,
+) -> Result<DeckDetail, String> {
+    slides::set_slot_pinned(
+        &state.db,
+        &state.encryption,
+        &deck_id,
+        &slide_id,
+        index as usize,
+        &name,
+        pinned,
+    )
+    .await
+    .map_err(message)
+}
+
+/// Find and replace across the deck's text and speaker notes. `apply = false`
+/// is a dry run that only counts.
+#[tauri::command]
+pub async fn replace_in_deck(
+    state: State<'_, AppState>,
+    deck_id: String,
+    find: String,
+    replace: String,
+    match_case: bool,
+    whole_word: bool,
+    apply: bool,
+) -> Result<DeckReplaceResult, String> {
+    slides::replace_in_deck(
+        &state.db,
+        &state.encryption,
+        &deck_id,
+        &find,
+        &replace,
+        match_case,
+        whole_word,
+        apply,
+    )
+    .await
+    .map(|report| report.result)
+    .map_err(message)
 }
 
 #[tauri::command]

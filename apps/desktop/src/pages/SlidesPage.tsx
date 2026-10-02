@@ -44,6 +44,7 @@ function previewDeck(theme: StarterTheme, title: string, kicker: string, sub: st
         layout: 'title',
         html: `<p class="kicker">${escapeHtml(kicker)}</p><h1 class="headline">${escapeHtml(title)}</h1><p class="sub">${escapeHtml(sub)}</p>`,
         notes: '',
+        slots: [],
       },
     ],
     createdAt: now,

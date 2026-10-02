@@ -11,6 +11,8 @@ import type {
   AppPaths,
   AppSummary,
   DeckDetail,
+  DeckReplaceResult,
+  SlotEdit,
   SlideTheme,
   DeckSnapshotCause,
   DeckSnapshotSummary,
@@ -1597,6 +1599,46 @@ export async function setDeckTheme(
   themeCss: string,
 ): Promise<DeckDetail> {
   return invokeCommand<DeckDetail>('set_deck_theme', { id, themeName, themeCss });
+}
+
+/** The user's word edits on one slide: each edited slot is set and pinned; notes replaced when given. */
+export async function editSlideWords(
+  deckId: string,
+  slideId: string,
+  edits: SlotEdit[],
+  notes?: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('edit_slide_words', { deckId, slideId, edits, notes });
+}
+
+/** Pin ("Yours") or unpin ("Let AI edit") one slot. */
+export async function setSlotPinned(
+  deckId: string,
+  slideId: string,
+  index: number,
+  name: string,
+  pinned: boolean,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_slot_pinned', { deckId, slideId, index, name, pinned });
+}
+
+/** Find and replace across the deck's text and speaker notes; `apply: false` is a dry run. */
+export async function replaceInDeck(
+  deckId: string,
+  find: string,
+  replace: string,
+  matchCase: boolean,
+  wholeWord: boolean,
+  apply: boolean,
+): Promise<DeckReplaceResult> {
+  return invokeCommand<DeckReplaceResult>('replace_in_deck', {
+    deckId,
+    find,
+    replace,
+    matchCase,
+    wholeWord,
+    apply,
+  });
 }
 
 /** The deck's history, newest first. */

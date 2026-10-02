@@ -6,8 +6,8 @@ mod common;
 use conduit_desktop::{
     agent_tools::{
         self, AgentToolContext, AgentToolExecution, ADD_SLIDE_TOOL, DELETE_SLIDE_TOOL,
-        MOVE_SLIDE_TOOL, PATCH_SLIDE_TOOL, READ_DECK_TOOL, SET_STORYLINE_TOOL, SET_THEME_TOOL,
-        UPDATE_SLIDE_TOOL,
+        MOVE_SLIDE_TOOL, PATCH_SLIDE_TOOL, READ_DECK_TOOL, REPLACE_IN_DECK_TOOL,
+        SET_STORYLINE_TOOL, SET_THEME_TOOL, UPDATE_SLIDE_TOOL, UPDATE_SLOTS_TOOL,
     },
     db::repository::{conversations, slides},
 };
@@ -105,6 +105,11 @@ async fn every_deck_tool_needs_a_bound_deck() {
         (MOVE_SLIDE_TOOL, json!({ "slide_id": "s", "position": 0 })),
         (DELETE_SLIDE_TOOL, json!({ "slide_id": "s" })),
         (SET_THEME_TOOL, json!({ "css": ".x{}" })),
+        (REPLACE_IN_DECK_TOOL, json!({ "find": "a", "replace": "b" })),
+        (
+            UPDATE_SLOTS_TOOL,
+            json!({ "edits": [{ "slide_id": "s", "slot": "t", "html": "x" }] }),
+        ),
     ];
     for (tool, args) in calls {
         assert_eq!(
@@ -347,4 +352,211 @@ async fn set_theme_saves_the_model_theme_without_shadowing_a_built_in() {
         .collect();
     saved.sort();
     assert_eq!(saved, vec!["Ember", "Ink (custom)"]);
+}
+
+const PINNED_SLIDE: &str =
+    r#"<h1 data-text="title">Revenue</h1><p data-text="note" data-owner="user">Written by me</p>"#;
+
+async fn html_of(h: &Harness, slide_id: &str) -> String {
+    slides::get_slide(&h.pool, &h.enc, &h.deck_id, slide_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .html
+}
+
+#[tokio::test]
+async fn read_deck_lists_slots_with_pinned_flags() {
+    let h = Harness::bound().await;
+    let id = h.add(PINNED_SLIDE).await;
+    let outline = h.ok(READ_DECK_TOOL, json!({})).await;
+    assert_eq!(
+        outline["slides"][0]["slots"],
+        json!([
+            { "name": "title", "text": "Revenue", "pinned": false },
+            { "name": "note", "text": "Written by me", "pinned": true },
+        ])
+    );
+    let long = h
+        .add(&format!(
+            r#"<p data-text="body">{}</p>"#,
+            "word ".repeat(100)
+        ))
+        .await;
+    let outline = h.ok(READ_DECK_TOOL, json!({})).await;
+    let clipped = outline["slides"][1]["slots"][0]["text"].as_str().unwrap();
+    assert_eq!(clipped.chars().count(), 120);
+    let full = h.ok(READ_DECK_TOOL, json!({ "slide_id": long })).await;
+    assert!(full["slots"][0]["text"].as_str().unwrap().chars().count() > 120);
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": id })).await;
+    assert_eq!(one["slots"][1]["pinned"], true);
+}
+
+#[tokio::test]
+async fn update_slide_protects_pinned_slots() {
+    let h = Harness::bound().await;
+    let id = h.add(PINNED_SLIDE).await;
+
+    let changed =
+        r#"<h1 data-text="title">Revenue</h1><p data-text="note" data-owner="user">Rewritten</p>"#;
+    let err = h
+        .err(
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": id, "html": changed }),
+        )
+        .await;
+    assert!(
+        err.contains(r#"Slot "note""#) && err.contains("release_pinned"),
+        "{err}"
+    );
+    assert_eq!(html_of(&h, &id).await, PINNED_SLIDE);
+
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": id, "html": changed, "release_pinned": ["note"] }),
+    )
+    .await;
+    assert_eq!(html_of(&h, &id).await, changed);
+}
+
+#[tokio::test]
+async fn update_slide_re_adds_a_dropped_marker_when_content_is_kept() {
+    let h = Harness::bound().await;
+    let id = h.add(PINNED_SLIDE).await;
+    let dropped = r#"<section><h1 data-text="title">Sales</h1><p data-text="note">Written by me</p></section>"#;
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": id, "html": dropped }),
+    )
+    .await;
+    assert_eq!(
+        html_of(&h, &id).await,
+        r#"<section><h1 data-text="title">Sales</h1><p data-text="note" data-owner="user">Written by me</p></section>"#
+    );
+}
+
+#[tokio::test]
+async fn patch_slide_protects_pinned_slots() {
+    let h = Harness::bound().await;
+    let id = h.add(PINNED_SLIDE).await;
+    let err = h
+        .err(
+            PATCH_SLIDE_TOOL,
+            json!({ "slide_id": id, "edits": [{ "old_text": "Written by me", "new_text": "Mine" }] }),
+        )
+        .await;
+    assert!(err.contains("release_pinned"), "{err}");
+    h.ok(
+        PATCH_SLIDE_TOOL,
+        json!({ "slide_id": id, "edits": [{ "old_text": "Revenue", "new_text": "Sales" }] }),
+    )
+    .await;
+    h.ok(
+        PATCH_SLIDE_TOOL,
+        json!({
+            "slide_id": id,
+            "edits": [{ "old_text": "Written by me", "new_text": "Mine" }],
+            "release_pinned": ["note"],
+        }),
+    )
+    .await;
+    assert!(html_of(&h, &id).await.contains(">Mine<"));
+}
+
+#[tokio::test]
+async fn update_slots_skips_pinned_and_checks_content() {
+    let h = Harness::bound().await;
+    let a = h.add(PINNED_SLIDE).await;
+    let b = h
+        .add(r#"<p data-text="line">one</p><p data-text="line">two</p>"#)
+        .await;
+
+    let out = h
+        .ok(
+            UPDATE_SLOTS_TOOL,
+            json!({ "edits": [
+                { "slide_id": a, "slot": "title", "html": "Sales <em>up</em>" },
+                { "slide_id": a, "slot": "note", "html": "Overwritten" },
+                { "slide_id": b, "slot": "line", "index": 1, "html": "TWO" },
+            ] }),
+        )
+        .await;
+    assert_eq!(out["updated"], 2);
+    assert_eq!(
+        out["skipped_pinned"],
+        json!([{ "slide_id": a, "slot": "note" }])
+    );
+    assert_eq!(
+        html_of(&h, &a).await,
+        r#"<h1 data-text="title">Sales <em>up</em></h1><p data-text="note" data-owner="user">Written by me</p>"#
+    );
+    assert_eq!(
+        html_of(&h, &b).await,
+        r#"<p data-text="line">one</p><p data-text="line">TWO</p>"#
+    );
+
+    let bad = h
+        .err(
+            UPDATE_SLOTS_TOOL,
+            json!({ "edits": [
+                { "slide_id": b, "slot": "line", "html": "changed" },
+                { "slide_id": b, "slot": "line", "index": 1, "html": "<div>x</div>" },
+            ] }),
+        )
+        .await;
+    assert!(bad.contains("can only use"), "{bad}");
+    assert_eq!(
+        html_of(&h, &b).await,
+        r#"<p data-text="line">one</p><p data-text="line">TWO</p>"#,
+        "all or nothing"
+    );
+    let missing = h
+        .err(
+            UPDATE_SLOTS_TOOL,
+            json!({ "edits": [{ "slide_id": b, "slot": "nope", "html": "x" }] }),
+        )
+        .await;
+    assert!(missing.contains("No slot"), "{missing}");
+    assert!(h
+        .err(UPDATE_SLOTS_TOOL, json!({ "edits": [] }))
+        .await
+        .contains("at least one"));
+}
+
+#[tokio::test]
+async fn replace_in_deck_reports_pinned_changes() {
+    let h = Harness::bound().await;
+    let a = h.add(PINNED_SLIDE).await;
+    let b = h.add(r#"<p data-text="x">Revenue and revenue</p>"#).await;
+
+    let out = h
+        .ok(
+            REPLACE_IN_DECK_TOOL,
+            json!({ "find": "written by", "replace": "authored by" }),
+        )
+        .await;
+    assert_eq!(out["total"], 1);
+    assert_eq!(out["slides"], json!([{ "slide_id": a, "count": 1 }]));
+    assert_eq!(
+        out["pinned_changed"],
+        json!([{ "slide_id": a, "slot": "note" }])
+    );
+    assert!(html_of(&h, &a).await.contains("authored by me"));
+
+    let out = h
+        .ok(
+            REPLACE_IN_DECK_TOOL,
+            json!({ "find": "revenue", "replace": "sales", "match_case": true, "whole_word": true }),
+        )
+        .await;
+    assert_eq!(out["total"], 1);
+    assert_eq!(out["pinned_changed"], json!([]));
+    assert_eq!(
+        html_of(&h, &b).await,
+        r#"<p data-text="x">Revenue and sales</p>"#
+    );
+    assert!(h
+        .err(REPLACE_IN_DECK_TOOL, json!({ "find": "", "replace": "x" }))
+        .await
+        .contains("find"));
 }

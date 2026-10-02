@@ -7,10 +7,18 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useT } from '../i18n';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
-import type { DeckDetail, DeckSnapshotSummary, SlideTheme, StorylineItem } from '../ipc/contracts';
+import type {
+  DeckDetail,
+  DeckReplaceResult,
+  DeckSnapshotSummary,
+  SlideTheme,
+  SlotEdit,
+  StorylineItem,
+} from '../ipc/contracts';
 import { DeckFrame } from './DeckFrame';
 import { DeckHistory } from './DeckHistory';
 import { StorylineEditor } from './StorylineEditor';
+import { WordsPanel, type WordsFocusRequest } from './WordsPanel';
 import { STARTER_THEMES } from './themes';
 
 export interface DeckWorkspaceProps {
@@ -29,6 +37,20 @@ export interface DeckWorkspaceProps {
   historyRevision: number;
   /** Custom themes kept in the theme library, offered after the built-ins. */
   savedThemes?: readonly SlideTheme[];
+  /** Fix words without an AI turn. Giving this makes the stage editable. */
+  onEditWords?: (slideId: string, edits: SlotEdit[], notes?: string) => Promise<void>;
+  onSetPinned?: (slideId: string, index: number, name: string, pinned: boolean) => Promise<void>;
+  onReplace?: (
+    find: string,
+    replace: string,
+    matchCase: boolean,
+    wholeWord: boolean,
+    apply: boolean,
+  ) => Promise<DeckReplaceResult>;
+  /** Sends a ready-made request to the chat ("Ask to fix"). */
+  onAskToFix?: (prompt: string) => void;
+  /** Slide id to pixels of overflow, only slides that overflow. */
+  onOverflowChange?: (overflow: Record<string, number>) => void;
 }
 
 const NO_THEMES: readonly SlideTheme[] = [];
@@ -46,10 +68,22 @@ export function DeckWorkspace({
   onRestore,
   historyRevision,
   savedThemes = NO_THEMES,
+  onEditWords,
+  onSetPinned,
+  onReplace,
+  onAskToFix,
+  onOverflowChange,
 }: DeckWorkspaceProps) {
   const t = useT();
   const [index, setIndex] = useState(0);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [drawer, setDrawer] = useState<'history' | 'words' | null>(null);
+  const [overflow, setOverflow] = useState<Record<string, number>>({});
+  const [focusRequest, setFocusRequest] = useState<WordsFocusRequest | null>(null);
+  const [findToken, setFindToken] = useState(0);
+  const nonce = useRef(0);
+  const overflowCb = useRef(onOverflowChange);
+  overflowCb.current = onOverflowChange;
+  const wordsAvailable = onEditWords != null && onSetPinned != null && onReplace != null;
   const [titleDraft, setTitleDraft] = useState(deck?.title ?? '');
   const prevIds = useRef<{ deckId: string | null; ids: string[] }>({ deckId: null, ids: [] });
   const stripRef = useRef<HTMLUListElement>(null);
@@ -60,6 +94,10 @@ export function DeckWorkspace({
   useEffect(() => {
     setTitleDraft(deck?.title ?? '');
   }, [deck?.title, deck?.id]);
+
+  useEffect(() => {
+    setOverflow({});
+  }, [deck?.id]);
 
   // Clamp when slides go away; jump to a slide that just appeared.
   useEffect(() => {
@@ -102,14 +140,45 @@ export function DeckWorkspace({
 
   const go = (delta: number) => setIndex(Math.max(0, Math.min(count - 1, current + delta)));
 
+  // Navigation keys, from the stage wrapper or relayed by the stage frame.
+  const navigate = (key: string): boolean => {
+    if (key === 'ArrowLeft' || key === 'PageUp') go(-1);
+    else if (key === 'ArrowRight' || key === 'PageDown') go(1);
+    else if (key === 'Home') setIndex(0);
+    else if (key === 'End') setIndex(Math.max(0, count - 1));
+    else return false;
+    return true;
+  };
+
+  const openWordsFind = () => {
+    if (!wordsAvailable) return;
+    setDrawer('words');
+    setFindToken((n) => n + 1);
+  };
+
   const onStageKey = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      go(-1);
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      go(1);
-    }
+    if (navigate(event.key)) event.preventDefault();
+  };
+
+  const onFrameKey = (key: string) => {
+    if (key === 'Ctrl+H') openWordsFind();
+    else navigate(key);
+  };
+
+  const onOverflow = (list: Array<{ id: string; px: number }>) => {
+    const next: Record<string, number> = {};
+    for (const { id, px } of list) if (px > 0) next[id] = px;
+    setOverflow(next);
+    overflowCb.current?.(next);
+  };
+
+  const onSlotSelect = (slideId: string, slotIndex: number) => {
+    nonce.current += 1;
+    setFocusRequest({ slideId, index: slotIndex, nonce: nonce.current });
+  };
+
+  const onSlotEdit = (slideId: string, slotIndex: number, name: string, html: string) => {
+    onEditWords?.(slideId, [{ index: slotIndex, name, html }])?.catch(() => undefined);
   };
 
   const commitTitle = () => {
@@ -132,7 +201,15 @@ export function DeckWorkspace({
   const busy = busyTool != null;
 
   return (
-    <div className="deck-workspace">
+    <div
+      className="deck-workspace"
+      onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'h' && wordsAvailable) {
+          e.preventDefault();
+          openWordsFind();
+        }
+      }}
+    >
       <header className="deck-head">
         <input
           className="deck-title-input"
@@ -172,11 +249,21 @@ export function DeckWorkspace({
             ))}
           </select>
         </label>
+        {wordsAvailable && (
+          <button
+            type="button"
+            className="btn"
+            aria-pressed={drawer === 'words'}
+            onClick={() => setDrawer((d) => (d === 'words' ? null : 'words'))}
+          >
+            {t('slides.words.toggle')}
+          </button>
+        )}
         <button
           type="button"
           className="btn"
-          aria-pressed={historyOpen}
-          onClick={() => setHistoryOpen((v) => !v)}
+          aria-pressed={drawer === 'history'}
+          onClick={() => setDrawer((d) => (d === 'history' ? null : 'history'))}
         >
           {t('slides.workspace.history')}
         </button>
@@ -201,6 +288,14 @@ export function DeckWorkspace({
                     <span className="deck-strip-num" aria-hidden="true">
                       {i + 1}
                     </span>
+                    {overflow[slide.id] > 0 && (
+                      <span
+                        className="deck-strip-warn"
+                        role="img"
+                        aria-label={t('slides.overflow.dotAria', { n: i + 1 })}
+                        title={t('slides.overflow.warning', { px: overflow[slide.id] })}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -212,8 +307,36 @@ export function DeckWorkspace({
                   aria-label={t('slides.stage.label', { n: current + 1, m: count })}
                   onKeyDown={onStageKey}
                 >
-                  <DeckFrame deck={deck} index={current} mode="stage" colorScheme={colorScheme} />
+                  <DeckFrame
+                    deck={deck}
+                    index={current}
+                    mode="stage"
+                    colorScheme={colorScheme}
+                    editable={onEditWords != null}
+                    onSlotSelect={onSlotSelect}
+                    onSlotEdit={onSlotEdit}
+                    onKey={onFrameKey}
+                    onOverflow={onOverflow}
+                  />
                 </div>
+                {slides[current] && overflow[slides[current].id] > 0 && (
+                  <p className="deck-stage-overflow" role="status">
+                    <span>{t('slides.overflow.warning', { px: overflow[slides[current].id] })}</span>
+                    {onAskToFix && (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() =>
+                          onAskToFix(
+                            t('slides.overflow.fixPrompt', { n: current + 1, px: overflow[slides[current].id] }),
+                          )
+                        }
+                      >
+                        {t('slides.overflow.ask')}
+                      </button>
+                    )}
+                  </p>
+                )}
                 <div className="deck-stage-nav">
                   <button
                     type="button"
@@ -241,12 +364,26 @@ export function DeckWorkspace({
             </div>
           )}
         </div>
-        {historyOpen && (
+        {drawer === 'history' && (
           <DeckHistory
             revision={historyRevision}
             onList={onListSnapshots}
             onRestore={onRestore}
-            onClose={() => setHistoryOpen(false)}
+            onClose={() => setDrawer(null)}
+          />
+        )}
+        {drawer === 'words' && wordsAvailable && (
+          <WordsPanel
+            deck={deck}
+            overflow={overflow}
+            focusRequest={focusRequest}
+            findFocusToken={findToken}
+            onEditWords={onEditWords}
+            onSetPinned={onSetPinned}
+            onReplace={onReplace}
+            onAskToFix={onAskToFix}
+            onFocusSlide={setIndex}
+            onClose={() => setDrawer(null)}
           />
         )}
       </div>

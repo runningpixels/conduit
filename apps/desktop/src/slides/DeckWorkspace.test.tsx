@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { DeckDetail, DeckSlide } from '../ipc/contracts';
 import { DeckWorkspace, type DeckWorkspaceProps } from './DeckWorkspace';
 import { STARTER_THEMES } from './themes';
@@ -10,6 +10,7 @@ const slide = (id: string, position: number): DeckSlide => ({
   layout: 'statement',
   html: `<h1 class="headline">${id}</h1>`,
   notes: '',
+  slots: [],
 });
 
 function makeDeck(over: Partial<DeckDetail> = {}): DeckDetail {
@@ -93,6 +94,68 @@ describe('DeckWorkspace', () => {
     expect([...select.options].map((o) => o.value)).toEqual(['ink', 'paper', 'Custom']);
     fireEvent.change(select, { target: { value: 'paper' } });
     expect(p.onSetTheme).toHaveBeenCalledWith('paper', STARTER_THEMES[1].css);
+  });
+
+  it('toggles Words, which excludes History, and only shows with the words callbacks', () => {
+    const plain = render(<DeckWorkspace {...props()} />);
+    expect(screen.queryByRole('button', { name: 'Words' })).toBeNull();
+    plain.unmount();
+
+    const p = props({
+      onEditWords: vi.fn().mockResolvedValue(undefined),
+      onSetPinned: vi.fn().mockResolvedValue(undefined),
+      onReplace: vi.fn().mockResolvedValue({ total: 0, applied: false, slides: [] }),
+    });
+    render(<DeckWorkspace {...p} />);
+    const words = screen.getByRole('button', { name: 'Words' });
+    fireEvent.click(words);
+    expect(screen.getByRole('complementary', { name: 'Words' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    expect(screen.queryByRole('complementary', { name: 'Words' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'History' })).toBeTruthy();
+    fireEvent.click(words);
+    expect(screen.queryByRole('complementary', { name: 'History' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Words' })).toBeTruthy();
+  });
+
+  it('opens Words with the find box focused on Ctrl+H', () => {
+    const p = props({
+      onEditWords: vi.fn().mockResolvedValue(undefined),
+      onSetPinned: vi.fn().mockResolvedValue(undefined),
+      onReplace: vi.fn().mockResolvedValue({ total: 0, applied: false, slides: [] }),
+    });
+    render(<DeckWorkspace {...p} />);
+    fireEvent.keyDown(screen.getByRole('group', { name: 'Slide 1 of 2' }), { key: 'h', ctrlKey: true });
+    expect(document.activeElement).toBe(screen.getByLabelText('Find'));
+  });
+
+  it('marks overflowing slides with a dot and a caption, and reports them', async () => {
+    const onOverflowChange = vi.fn();
+    const onAskToFix = vi.fn();
+    const { container } = render(<DeckWorkspace {...props({ onOverflowChange, onAskToFix })} />);
+    await waitFor(() => expect(container.querySelector('.deck-stage iframe')).toBeTruthy());
+    const frame = container.querySelector('.deck-stage iframe') as HTMLIFrameElement;
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          source: frame.contentWindow,
+          data: {
+            type: 'conduit-deck-event',
+            event: 'overflow',
+            slides: [
+              { id: 'a', px: 0 },
+              { id: 'b', px: 90 },
+            ],
+          },
+        }),
+      );
+    });
+    expect(onOverflowChange).toHaveBeenCalledWith({ b: 90 });
+    expect(screen.getAllByRole('img', { name: 'Text runs off slide 2' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Ask to fix' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next slide' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask to fix' }));
+    expect(onAskToFix).toHaveBeenCalledWith(expect.stringContaining('Slide 2 has text running off the bottom by 90px.'));
   });
 
   it('restores from history only after an inline confirm', async () => {

@@ -126,8 +126,11 @@ import {
 import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
 import { STARTER_THEMES } from './slides/themes';
-import type { DeckDetail, SlideTheme, StorylineItem } from './ipc/contracts';
+import type { DeckDetail, SlideTheme, SlotEdit, StorylineItem } from './ipc/contracts';
 import {
+  editSlideWords,
+  replaceInDeck,
+  setSlotPinned,
   getDeckForConversation,
   listDeckSnapshots,
   listSlideThemes,
@@ -1086,6 +1089,74 @@ export default function App() {
       setStatusMessage(error instanceof Error ? error.message : String(error));
     }
   }, []);
+
+  // Words: the user's own edits. One history entry per burst of typing on a
+  // slide, a few seconds after it stops.
+  const wordsSnapshotTimersRef = useRef<Record<string, number>>({});
+  const scheduleWordsSnapshot = useCallback(
+    (deckId: string, slideId: string, position: number) => {
+      const timers = wordsSnapshotTimersRef.current;
+      window.clearTimeout(timers[slideId]);
+      timers[slideId] = window.setTimeout(() => {
+        delete timers[slideId];
+        void snapshotDeck(deckId, 'manual', t('slides.history.editedWords', { n: position + 1 }))
+          .then(() => setDeckHistoryRevision((n) => n + 1))
+          .catch(() => {});
+      }, 4000);
+    },
+    [t],
+  );
+
+  const handleEditWords = useCallback(
+    async (slideId: string, edits: SlotEdit[], notes?: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        const next = await editSlideWords(deck.id, slideId, edits, notes);
+        setActiveDeck(next);
+        const position = next.slides.find((s) => s.id === slideId)?.position ?? 0;
+        scheduleWordsSnapshot(deck.id, slideId, position);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [scheduleWordsSnapshot],
+  );
+
+  const handleSetPinned = useCallback(
+    async (slideId: string, index: number, name: string, pinned: boolean) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        setActiveDeck(await setSlotPinned(deck.id, slideId, index, name, pinned));
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [],
+  );
+
+  const handleReplaceInDeck = useCallback(
+    async (find: string, replace: string, matchCase: boolean, wholeWord: boolean, apply: boolean) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return { total: 0, applied: false, slides: [] };
+      const result = await replaceInDeck(deck.id, find, replace, matchCase, wholeWord, apply);
+      if (apply && result.total > 0) {
+        await reloadActiveDeck();
+        try {
+          await snapshotDeck(deck.id, 'manual', t('slides.history.replaced', { find, replace }));
+          setDeckHistoryRevision((n) => n + 1);
+        } catch {
+          // History is best effort.
+        }
+      }
+      return result;
+    },
+    [reloadActiveDeck, t],
+  );
+
+  const [deckOverflow, setDeckOverflow] = useState<Record<string, number>>({});
+  useEffect(() => setDeckOverflow({}), [activeDeckId]);
 
   const handleListDeckSnapshots = useCallback(async () => {
     const deck = activeDeckRef.current;
@@ -2284,6 +2355,7 @@ export default function App() {
             deck={activeDeck}
             onDeckChanged={handleDeckChanged}
             onDeckToolActivity={setDeckBusyTool}
+            deckOverflow={deckOverflow}
             onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
@@ -2431,6 +2503,11 @@ export default function App() {
               onRestore={handleRestoreDeck}
               historyRevision={deckHistoryRevision}
               savedThemes={savedSlideThemes}
+              onEditWords={handleEditWords}
+              onSetPinned={handleSetPinned}
+              onReplace={handleReplaceInDeck}
+              onAskToFix={(prompt) => setPendingSendText(prompt)}
+              onOverflowChange={setDeckOverflow}
             />
           </section>
         ) : (

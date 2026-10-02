@@ -60,8 +60,8 @@ describe('selectBuiltinDocumentTools', () => {
 
   it('keeps the full catalog available for reference', () => {
     // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember
-    // + patch_document + read_document + generate_image + 8 deck tools.
-    expect(builtinToolDefinitions()).toHaveLength(34);
+    // + patch_document + read_document + generate_image + 10 deck tools.
+    expect(builtinToolDefinitions()).toHaveLength(36);
   });
 
   it('offers the deck tools by stage and never through the other selectors', () => {
@@ -76,6 +76,8 @@ describe('selectBuiltinDocumentTools', () => {
       'move_slide',
       'delete_slide',
       'set_theme',
+      'replace_in_deck',
+      'update_slots',
     ]);
     expect([...DECK_TOOL_NAMES].sort()).toEqual([...names('slides')].sort());
     for (const name of DECK_TOOL_NAMES) {

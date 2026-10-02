@@ -10,15 +10,15 @@
 use std::collections::HashSet;
 
 use provider_core::schema::{
-    DeckDetail, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
-    SlideTheme, StorylineItem,
+    DeckDetail, DeckReplaceResult, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage,
+    DeckSummary, SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit, StorylineItem,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
-use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
+use crate::{db::DbError, encryption::Encryption, slide_html, time::now_iso8601};
 
 pub const MAX_TITLE_CHARS: usize = 120;
 pub const MAX_THEME_NAME_CHARS: usize = 80;
@@ -237,13 +237,32 @@ const DECK_COLUMNS: &str = "id, title, conversation_id, theme_name, theme_css, s
 
 type SlideRow = (String, i64, String, String, String);
 
+/// The text slots of a slide's HTML, computed fresh on every read.
+pub fn compute_slots(html: &str) -> Vec<SlideSlot> {
+    slide_html::slots(html)
+        .into_iter()
+        .map(|slot| {
+            let inner = &html[slot.inner.clone()];
+            SlideSlot {
+                index: slot.index as u32,
+                name: slot.name,
+                html: inner.to_string(),
+                text: slide_visible_text(inner),
+                pinned: slot.pinned,
+            }
+        })
+        .collect()
+}
+
 fn slide_from_row(enc: &Encryption, row: SlideRow) -> Result<DeckSlide, DbError> {
     let (id, position, layout, html, notes) = row;
+    let html = enc.decrypt(&html)?;
     Ok(DeckSlide {
         id,
         position: u32::try_from(position).unwrap_or(0),
         layout,
-        html: enc.decrypt(&html)?,
+        slots: compute_slots(&html),
+        html,
         notes: enc.decrypt(&notes)?,
     })
 }
@@ -738,6 +757,7 @@ pub async fn add_slide(
         id,
         position: at as u32,
         layout: layout.to_string(),
+        slots: compute_slots(html),
         html: html.to_string(),
         notes: notes.to_string(),
     };
@@ -794,8 +814,268 @@ pub async fn update_slide(
         id: current.id,
         position: current.position,
         layout,
+        slots: compute_slots(&html),
         html,
         notes,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Words: slot edits, pinning, find and replace
+// ---------------------------------------------------------------------------
+
+/// Largest find or replace string.
+pub const MAX_FIND_CHARS: usize = 200;
+
+fn invalid_str(msg: String) -> DbError {
+    DbError::Query(msg)
+}
+
+async fn require_slide(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    deck_id: &str,
+    slide_id: &str,
+) -> Result<DeckSlide, DbError> {
+    get_slide(pool, enc, deck_id, slide_id)
+        .await?
+        .ok_or_else(|| invalid(format!("No slide '{slide_id}' in this deck.")))
+}
+
+/// The user's edits of a slide's words: each edited slot is set and pinned;
+/// notes are replaced when given.
+pub async fn edit_slide_words(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    deck_id: &str,
+    slide_id: &str,
+    edits: &[SlotEdit],
+    notes: Option<&str>,
+) -> Result<DeckDetail, DbError> {
+    let slide = require_slide(pool, enc, deck_id, slide_id).await?;
+    let mut html = slide.html.clone();
+    for edit in edits {
+        html = slide_html::set_slot(&html, edit.index as usize, &edit.name, &edit.html, true)
+            .map_err(invalid_str)?;
+    }
+    let changes = SlideChanges {
+        layout: None,
+        html: (html != slide.html).then_some(html),
+        notes: notes.map(str::to_string),
+    };
+    if changes.html.is_some() || changes.notes.is_some() {
+        update_slide(pool, enc, deck_id, slide_id, changes).await?;
+    }
+    require(pool, enc, deck_id).await
+}
+
+/// Pin or unpin one slot of a slide.
+pub async fn set_slot_pinned(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    deck_id: &str,
+    slide_id: &str,
+    index: usize,
+    name: &str,
+    pinned: bool,
+) -> Result<DeckDetail, DbError> {
+    let slide = require_slide(pool, enc, deck_id, slide_id).await?;
+    let html = slide_html::set_pinned(&slide.html, index, name, pinned).map_err(invalid_str)?;
+    if html != slide.html {
+        update_slide(
+            pool,
+            enc,
+            deck_id,
+            slide_id,
+            SlideChanges {
+                html: Some(html),
+                ..Default::default()
+            },
+        )
+        .await?;
+    }
+    require(pool, enc, deck_id).await
+}
+
+/// A model edit of one slot, by slot name and occurrence among same-named
+/// slots.
+#[derive(Debug, Clone)]
+pub struct SlotUpdate {
+    pub slide_id: String,
+    pub name: String,
+    pub occurrence: usize,
+    pub html: String,
+}
+
+/// What [`update_slots`] did.
+#[derive(Debug, Default)]
+pub struct SlotUpdateOutcome {
+    pub updated: usize,
+    /// `(slide_id, slot name)` of every pinned slot left alone.
+    pub skipped_pinned: Vec<(String, String)>,
+}
+
+/// Set slot content on one or more slides, skipping pinned slots. All or
+/// nothing: any bad slide, slot or content rejects the whole call.
+pub async fn update_slots(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    deck_id: &str,
+    updates: &[SlotUpdate],
+) -> Result<SlotUpdateOutcome, DbError> {
+    let mut working: Vec<(String, String, String)> = Vec::new(); // id, original, current
+    let mut outcome = SlotUpdateOutcome::default();
+    for update in updates {
+        let at = match working.iter().position(|(id, _, _)| id == &update.slide_id) {
+            Some(at) => at,
+            None => {
+                let slide = require_slide(pool, enc, deck_id, &update.slide_id).await?;
+                working.push((update.slide_id.clone(), slide.html.clone(), slide.html));
+                working.len() - 1
+            }
+        };
+        let found = slide_html::slots(&working[at].2);
+        let slot = found
+            .iter()
+            .filter(|s| s.name == update.name)
+            .nth(update.occurrence)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "No slot \"{}\" (occurrence {}) on slide '{}'. Call read_deck to see its slots.",
+                    update.name, update.occurrence, update.slide_id
+                ))
+            })?;
+        slide_html::validate_inline(&update.html).map_err(invalid_str)?;
+        if slot.pinned {
+            outcome
+                .skipped_pinned
+                .push((update.slide_id.clone(), update.name.clone()));
+            continue;
+        }
+        working[at].2 = slide_html::set_slot(
+            &working[at].2,
+            slot.index,
+            &update.name,
+            &update.html,
+            false,
+        )
+        .map_err(invalid_str)?;
+        outcome.updated += 1;
+    }
+    let changed: Vec<&(String, String, String)> =
+        working.iter().filter(|(_, old, new)| old != new).collect();
+    for (_, _, html) in &changed {
+        validate_slide_html(html)?;
+    }
+    if !changed.is_empty() {
+        let mut tx = pool.begin().await?;
+        touch(&mut tx, deck_id).await?;
+        let now = now_iso8601();
+        for (slide_id, _, html) in changed {
+            sqlx::query(
+                "UPDATE deck_slides SET html = ?, updated_at = ? WHERE deck_id = ? AND id = ?",
+            )
+            .bind(enc.encrypt(html)?)
+            .bind(&now)
+            .bind(deck_id)
+            .bind(slide_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+    }
+    Ok(outcome)
+}
+
+/// A deck-wide find and replace, with what it changed in pinned slots.
+#[derive(Debug)]
+pub struct ReplaceReport {
+    pub result: DeckReplaceResult,
+    /// `(slide_id, slot name)` of every pinned slot whose content changed.
+    pub pinned_changed: Vec<(String, String)>,
+}
+
+/// Find and replace in the text and speaker notes of a deck (never markup).
+/// `apply = false` only counts. Pinned slots are included: the user named the
+/// word.
+#[allow(clippy::too_many_arguments)]
+pub async fn replace_in_deck(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    deck_id: &str,
+    find: &str,
+    replace: &str,
+    match_case: bool,
+    whole_word: bool,
+    apply: bool,
+) -> Result<ReplaceReport, DbError> {
+    if find.is_empty() {
+        return Err(invalid("Enter the text to find."));
+    }
+    if find.chars().count() > MAX_FIND_CHARS || replace.chars().count() > MAX_FIND_CHARS {
+        return Err(invalid(format!(
+            "Keep the find and replace text under {MAX_FIND_CHARS} characters."
+        )));
+    }
+    let deck = require(pool, enc, deck_id).await?;
+    let mut counts = Vec::new();
+    let mut pinned_changed = Vec::new();
+    let mut writes: Vec<(String, String, String)> = Vec::new(); // id, html, notes
+    let mut total = 0u32;
+    for slide in &deck.slides {
+        let (html, count) =
+            slide_html::replace_text(&slide.html, find, replace, match_case, whole_word);
+        let (notes, notes_count) =
+            slide_html::replace_plain(&slide.notes, find, replace, match_case, whole_word);
+        if count == 0 && notes_count == 0 {
+            continue;
+        }
+        total += count + notes_count;
+        counts.push(SlideReplaceCount {
+            slide_id: slide.id.clone(),
+            position: slide.position,
+            count,
+            notes_count,
+        });
+        if count > 0 {
+            for (before, after) in slide.slots.iter().zip(compute_slots(&html)) {
+                if before.pinned && before.html != after.html {
+                    pinned_changed.push((slide.id.clone(), before.name.clone()));
+                }
+            }
+        }
+        writes.push((slide.id.clone(), html, notes));
+    }
+    if apply && !writes.is_empty() {
+        for (_, html, notes) in &writes {
+            validate_slide_html(html)?;
+            validate_notes(notes)?;
+        }
+        let mut tx = pool.begin().await?;
+        touch(&mut tx, deck_id).await?;
+        let now = now_iso8601();
+        for (slide_id, html, notes) in &writes {
+            sqlx::query(
+                "UPDATE deck_slides SET html = ?, notes = ?, updated_at = ? \
+                 WHERE deck_id = ? AND id = ?",
+            )
+            .bind(enc.encrypt(html)?)
+            .bind(enc.encrypt(notes)?)
+            .bind(&now)
+            .bind(deck_id)
+            .bind(slide_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+    }
+    Ok(ReplaceReport {
+        result: DeckReplaceResult {
+            total,
+            applied: apply,
+            slides: counts,
+        },
+        pinned_changed,
     })
 }
 
@@ -856,7 +1136,19 @@ struct DeckState {
     theme_css: String,
     stage: DeckStage,
     storyline: Vec<StorylineItem>,
-    slides: Vec<DeckSlide>,
+    slides: Vec<SnapshotSlide>,
+}
+
+/// A slide as stored in a snapshot payload (slots are not stored: they are
+/// computed from the HTML).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotSlide {
+    id: String,
+    position: u32,
+    layout: String,
+    html: String,
+    notes: String,
 }
 
 fn snapshot_summary(
@@ -905,7 +1197,17 @@ pub async fn snapshot(
         theme_css: deck.theme_css,
         stage: deck.stage,
         storyline: deck.storyline,
-        slides: deck.slides,
+        slides: deck
+            .slides
+            .into_iter()
+            .map(|s| SnapshotSlide {
+                id: s.id,
+                position: s.position,
+                layout: s.layout,
+                html: s.html,
+                notes: s.notes,
+            })
+            .collect(),
     };
     let payload =
         serde_json::to_string(&state).map_err(|e| invalid(format!("encode deck snapshot: {e}")))?;

@@ -509,3 +509,248 @@ async fn custom_themes_survive_switching_away_and_restore() {
     assert_eq!(saved.len(), 1);
     assert_eq!(saved[0].css, ".ember{v:2}");
 }
+
+fn slot_edit(index: u32, name: &str, html: &str) -> provider_core::schema::SlotEdit {
+    provider_core::schema::SlotEdit {
+        index,
+        name: name.to_string(),
+        html: html.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn slots_are_computed_on_every_read() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    let id = add(
+        &pool,
+        &deck.id,
+        r#"<h1 data-text="title">Q3 &amp; Q4</h1><p data-text="note" data-owner="user">Mine</p>"#,
+    )
+    .await;
+    let loaded = slides::get(&pool, &enc, &deck.id).await.unwrap().unwrap();
+    let slots = &loaded.slides[0].slots;
+    assert_eq!(slots.len(), 2);
+    assert_eq!(slots[0].name, "title");
+    assert_eq!(slots[0].html, "Q3 &amp; Q4");
+    assert_eq!(slots[0].text, "Q3 & Q4");
+    assert!(!slots[0].pinned && slots[1].pinned);
+    let one = slides::get_slide(&pool, &enc, &deck.id, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(one.slots.len(), 2);
+}
+
+#[tokio::test]
+async fn edit_slide_words_sets_and_pins_slots_and_notes() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    let id = add(
+        &pool,
+        &deck.id,
+        r#"<h1 data-text="title">Old</h1><p data-text="line">a</p><p data-text="line">b</p>"#,
+    )
+    .await;
+
+    let after = slides::edit_slide_words(
+        &pool,
+        &enc,
+        &deck.id,
+        &id,
+        &[
+            slot_edit(0, "title", "New <em>title</em>"),
+            slot_edit(2, "line", "B"),
+        ],
+        Some("Speak slowly"),
+    )
+    .await
+    .unwrap();
+    let slide = &after.slides[0];
+    assert_eq!(slide.notes, "Speak slowly");
+    assert_eq!(slide.slots[0].html, "New <em>title</em>");
+    assert!(slide.slots[0].pinned && !slide.slots[1].pinned && slide.slots[2].pinned);
+    assert_eq!(slide.slots[2].html, "B");
+    assert_eq!(slide.position, 0);
+
+    let bad = slides::edit_slide_words(
+        &pool,
+        &enc,
+        &deck.id,
+        &id,
+        &[slot_edit(0, "title", "<div>no</div>")],
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert!(bad.to_string().contains("can only use"), "{bad}");
+    let wrong = slides::edit_slide_words(
+        &pool,
+        &enc,
+        &deck.id,
+        &id,
+        &[slot_edit(1, "title", "x")],
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert!(wrong.to_string().contains("No slot"), "{wrong}");
+    let unchanged = slides::get(&pool, &enc, &deck.id).await.unwrap().unwrap();
+    assert_eq!(unchanged.slides[0].slots[0].html, "New <em>title</em>");
+}
+
+#[tokio::test]
+async fn set_slot_pinned_toggles_the_marker() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    let id = add(&pool, &deck.id, r#"<h1 data-text="title">T</h1>"#).await;
+
+    let pinned = slides::set_slot_pinned(&pool, &enc, &deck.id, &id, 0, "title", true)
+        .await
+        .unwrap();
+    assert!(pinned.slides[0].slots[0].pinned);
+    assert!(pinned.slides[0].html.contains(r#"data-owner="user""#));
+    let free = slides::set_slot_pinned(&pool, &enc, &deck.id, &id, 0, "title", false)
+        .await
+        .unwrap();
+    assert!(!free.slides[0].slots[0].pinned);
+    assert_eq!(free.slides[0].html, r#"<h1 data-text="title">T</h1>"#);
+    assert!(
+        slides::set_slot_pinned(&pool, &enc, &deck.id, &id, 3, "title", true)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn replace_in_deck_dry_run_then_apply_including_notes() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    let a = add(
+        &pool,
+        &deck.id,
+        r#"<h1 data-text="t" data-owner="user">Users love it</h1><p class="users">Users, users</p>"#,
+    )
+    .await;
+    add(&pool, &deck.id, "<p>Nothing here</p>").await;
+    slides::update_slide(
+        &pool,
+        &enc,
+        &deck.id,
+        &a,
+        slides::SlideChanges {
+            notes: Some("Mention users twice".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let dry = slides::replace_in_deck(
+        &pool,
+        &enc,
+        &deck.id,
+        "users",
+        "customers",
+        false,
+        true,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(!dry.result.applied);
+    assert_eq!(dry.result.total, 4);
+    assert_eq!(dry.result.slides.len(), 1);
+    assert_eq!(dry.result.slides[0].slide_id, a);
+    assert_eq!(dry.result.slides[0].count, 3);
+    assert_eq!(dry.result.slides[0].notes_count, 1);
+    assert_eq!(dry.pinned_changed, vec![(a.clone(), "t".to_string())]);
+    let still = slides::get(&pool, &enc, &deck.id).await.unwrap().unwrap();
+    assert!(
+        still.slides[0].html.contains("Users love it"),
+        "dry run writes nothing"
+    );
+    assert_eq!(still.slides[0].notes, "Mention users twice");
+
+    let before_updated = still.updated_at.clone();
+    let done = slides::replace_in_deck(
+        &pool,
+        &enc,
+        &deck.id,
+        "users",
+        "customers",
+        false,
+        true,
+        true,
+    )
+    .await
+    .unwrap();
+    assert!(done.result.applied);
+    assert_eq!(done.result.total, 4);
+    let after = slides::get(&pool, &enc, &deck.id).await.unwrap().unwrap();
+    assert_eq!(
+        after.slides[0].html,
+        r#"<h1 data-text="t" data-owner="user">customers love it</h1><p class="users">customers, customers</p>"#
+    );
+    assert_eq!(after.slides[0].notes, "Mention customers twice");
+    assert_eq!(after.slides[1].html, "<p>Nothing here</p>");
+    assert!(after.updated_at >= before_updated);
+    assert_eq!(
+        after.slides.iter().map(|s| s.position).collect::<Vec<_>>(),
+        [0, 1]
+    );
+
+    assert!(
+        slides::replace_in_deck(&pool, &enc, &deck.id, "", "x", false, false, false)
+            .await
+            .is_err()
+    );
+    assert!(slides::replace_in_deck(
+        &pool,
+        &enc,
+        &deck.id,
+        &"x".repeat(201),
+        "x",
+        false,
+        false,
+        false
+    )
+    .await
+    .is_err());
+}
+
+#[tokio::test]
+async fn pinned_markers_travel_through_snapshots() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    add(
+        &pool,
+        &deck.id,
+        r#"<h1 data-text="t" data-owner="user">Keep</h1>"#,
+    )
+    .await;
+    let snap = slides::snapshot(&pool, &enc, &deck.id, DeckSnapshotCause::Manual, "one")
+        .await
+        .unwrap()
+        .unwrap();
+    let slide_id = slides::get(&pool, &enc, &deck.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .slides[0]
+        .id
+        .clone();
+    slides::delete_slide(&pool, &deck.id, &slide_id)
+        .await
+        .unwrap();
+    let restored = slides::restore_snapshot(&pool, &enc, &deck.id, &snap.id)
+        .await
+        .unwrap();
+    assert_eq!(restored.slides.len(), 1);
+    assert!(restored.slides[0].slots[0].pinned);
+}

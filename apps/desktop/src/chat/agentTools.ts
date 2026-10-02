@@ -15,6 +15,12 @@ const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
 const IMAGE_TOOL_GROUP = 'Images';
 const DECK_TOOL_GROUP = 'Slides';
+const RELEASE_PINNED_SCHEMA = {
+  type: 'array',
+  items: { type: 'string' },
+  description:
+    'Names of pinned slots you may change. Only when the user asked you to change that text.',
+};
 
 function schema(fields: Array<{ name: string; type: string; required?: boolean }>): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
@@ -459,7 +465,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'read_deck',
     name: 'read_deck',
     description:
-      "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text). With a slide_id it returns that slide's full inner HTML and notes. Read a slide before you change it.",
+      "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's full inner HTML, notes and slots. A pinned slot holds text the user wrote. Read a slide before you change it.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -523,7 +529,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'update_slide',
     name: 'update_slide',
     description:
-      "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide.",
+      "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user asked you to change that text.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -531,6 +537,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
         html: { type: 'string', description: "The slide's full new inner HTML." },
         layout: { type: 'string' },
         notes: { type: 'string' },
+        release_pinned: RELEASE_PINNED_SCHEMA,
       },
       required: ['slide_id'],
     },
@@ -541,7 +548,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'patch_slide',
     name: 'patch_slide',
     description:
-      "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing.",
+      "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user asked you to change that text.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -557,6 +564,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
             required: ['old_text', 'new_text'],
           },
         },
+        release_pinned: RELEASE_PINNED_SCHEMA,
       },
       required: ['slide_id', 'edits'],
     },
@@ -591,6 +599,51 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       { name: 'css', type: 'string', required: true },
       { name: 'name', type: 'string' },
     ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'replace_in_deck',
+    name: 'replace_in_deck',
+    description:
+      "Swap an exact word or phrase everywhere in the deck's text and speaker notes in one step; markup is never touched. Use it only for an exact swap the user asked for across the deck. It also changes pinned slots, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        find: { type: 'string', description: 'The exact word or phrase to find (200 characters at most).' },
+        replace: { type: 'string', description: 'What to put in its place (200 characters at most).' },
+        match_case: { type: 'boolean', description: 'Match upper and lower case exactly. Default false.' },
+        whole_word: { type: 'boolean', description: 'Only match whole words. Default false.' },
+      },
+      required: ['find', 'replace'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'update_slots',
+    name: 'update_slots',
+    description:
+      'Set the text of slots (elements with data-text) on one or more slides in one call. Use it for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              slide_id: { type: 'string' },
+              slot: { type: 'string', description: "The slot's data-text name." },
+              index: { type: 'integer', description: 'Which slot with that name, 0-based. Default 0.' },
+              html: { type: 'string', description: "The slot's new inline HTML." },
+            },
+            required: ['slide_id', 'slot', 'html'],
+          },
+        },
+      },
+      required: ['edits'],
+    },
     permissionLevel: 'sideEffectful',
     displayGroup: DECK_TOOL_GROUP,
   },

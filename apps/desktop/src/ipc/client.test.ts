@@ -46,6 +46,9 @@ import {
   setDeckStage,
   snapshotDeck,
   restoreDeckSnapshot,
+  editSlideWords,
+  setSlotPinned,
+  replaceInDeck,
   deleteDeck,
 } from './client';
 
@@ -318,6 +321,35 @@ describe('slides IPC wrappers', () => {
     invoke.mockResolvedValue({ id: 'd1' });
     await setDeckStage('d1', 'slides');
     expect(invoke).toHaveBeenLastCalledWith('set_deck_stage', { id: 'd1', stage: 'slides' });
+  });
+
+  it('editSlideWords / setSlotPinned / replaceInDeck', async () => {
+    invoke.mockResolvedValue({ id: 'd1' });
+    await editSlideWords('d1', 's1', [{ index: 0, name: 'title', html: 'Hi' }], 'notes');
+    expect(invoke).toHaveBeenLastCalledWith('edit_slide_words', {
+      deckId: 'd1',
+      slideId: 's1',
+      edits: [{ index: 0, name: 'title', html: 'Hi' }],
+      notes: 'notes',
+    });
+    await setSlotPinned('d1', 's1', 2, 'stat', false);
+    expect(invoke).toHaveBeenLastCalledWith('set_slot_pinned', {
+      deckId: 'd1',
+      slideId: 's1',
+      index: 2,
+      name: 'stat',
+      pinned: false,
+    });
+    invoke.mockResolvedValue({ total: 0, applied: false, slides: [] });
+    await replaceInDeck('d1', 'a', 'b', true, false, false);
+    expect(invoke).toHaveBeenLastCalledWith('replace_in_deck', {
+      deckId: 'd1',
+      find: 'a',
+      replace: 'b',
+      matchCase: true,
+      wholeWord: false,
+      apply: false,
+    });
   });
 
   it('snapshotDeck / restoreDeckSnapshot / deleteDeck', async () => {

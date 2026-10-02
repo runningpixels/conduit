@@ -1265,10 +1265,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_THRESHOLD_PX;
   }
 
+  // Only the reader can unstick the thread from the bottom. A scroll event that
+  // follows the thread's own jump, measured after the content has grown again,
+  // reads as "scrolled up" and would stop it following; so a scroll counts as
+  // the reader's only after they wheel, touch, click or press a key in it.
+  const readerScrollingRef = useRef(false);
+  function scrollThreadToBottom(el: HTMLDivElement) {
+    readerScrollingRef.current = false;
+    el.scrollTop = el.scrollHeight;
+  }
+
   function jumpToBottom() {
     const el = threadRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    scrollThreadToBottom(el);
     stuckRef.current = true;
     setStuckToBottom(true);
     setShowJumpPill(false);
@@ -1278,16 +1288,39 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
+    function onReaderInput() {
+      readerScrollingRef.current = true;
+    }
     function onScroll() {
       if (!el) return;
       const stuck = measureStuck(el);
+      if (!stuck && !readerScrollingRef.current) return;
       stuckRef.current = stuck;
       setStuckToBottom(stuck);
       if (conversationId) stickPrefRef.current[conversationId] = stuck;
       if (stuck) setShowJumpPill(false);
     }
+    const readerEvents = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    for (const type of readerEvents) el.addEventListener(type, onReaderInput, { passive: true });
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      for (const type of readerEvents) el.removeEventListener(type, onReaderInput);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [conversationId]);
+
+  // A chat opened from another page (Home's "Continue") lays out after the
+  // jump to the bottom ran, so keep a stuck thread at the bottom whenever it
+  // or its content changes size.
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (stuckRef.current) scrollThreadToBottom(el);
+    });
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
   }, [conversationId]);
 
   // Auto-scroll only while the user is stuck to the bottom.
@@ -1295,7 +1328,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const el = threadRef.current;
     if (!el) return;
     if (stuckRef.current) {
-      el.scrollTop = el.scrollHeight;
+      scrollThreadToBottom(el);
       setShowJumpPill(false);
     } else if (activeStream || activeRequestId != null) {
       setShowJumpPill(true);
@@ -2101,6 +2134,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       setTimeout(() => {
         const el = document.querySelector(`[data-message-id="${messageId}"]`);
         if (el) {
+          // Asked for this message: stop following the bottom.
+          stuckRef.current = false;
+          readerScrollingRef.current = true;
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           el.classList.add('message-highlight');
           setTimeout(() => el.classList.remove('message-highlight'), 2000);

@@ -33,10 +33,10 @@
   line-height: var(--leading-tight);
   color: var(--ink);
 }
-.home-section > .home-section-title { margin-bottom: var(--sp-4); }
+.home-section > .home-section-title,
+.home-section > .home-section-heading { margin-bottom: var(--sp-4); }
 .home-section-sub { margin: var(--sp-1) 0 0; color: var(--ink-3); font-size: var(--fs-2xl); line-height: 1.5; }
 .home-section-tools { display: flex; align-items: center; gap: var(--sp-4); flex: none; }
-.home-progress { color: var(--ink-3); font-size: var(--fs-xl); }
 .home-link {
   padding: var(--sp-1) var(--sp-2);
   border: 0;
@@ -101,6 +101,7 @@
 .home-ask-send:focus-visible,
 .home-pickup-card:focus-visible,
 .home-tile-action:focus-visible,
+.home-tile-try:focus-visible,
 .home-idea-card:focus-visible {
   outline: var(--ring-width) solid var(--ring-color);
   outline-offset: var(--ring-offset);
@@ -267,48 +268,7 @@
 .home-pickup-action::after { content: " →"; }
 .home-pickup-card:hover .home-pickup-action { color: var(--accent-text); }
 
-/* ── Areas: the guide ─────────────────────────────────────────────────── */
-.home-jobs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
-  gap: var(--sp-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.home-job { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); }
-.home-job-head { display: flex; align-items: center; gap: var(--sp-3); }
-.home-job-title { margin: 0; font-size: var(--fs-8xl); font-weight: 650; letter-spacing: -.01em; }
-.home-job-body { margin: 0; color: var(--ink-2); font-size: var(--fs-4xl); line-height: 1.55; }
-.home-job-example {
-  margin: 0;
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
-  background: var(--field-bg);
-}
-.home-job-example-label {
-  flex: none;
-  color: var(--ink-3);
-  font: 500 var(--fs-md)/1.4 var(--font-mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-.home-job-example code {
-  min-width: 0;
-  padding: 0;
-  background: none;
-  color: var(--ink);
-  font: var(--fs-xl)/1.5 var(--font-mono);
-  overflow-wrap: anywhere;
-}
-.home-job-foot { margin-top: auto; padding-top: var(--sp-1); display: flex; gap: var(--sp-2); }
-.home-job-start { background: var(--accent-soft); }
-
-/* ── Areas: compact tiles ─────────────────────────────────────────────── */
+/* ── Areas: one tile per area ─────────────────────────────────────────── */
 .home-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -330,12 +290,33 @@
   text-align: left;
   cursor: pointer;
 }
-.home-tile-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--sp-2); }
-.home-new { display: inline-flex; align-items: center; padding: var(--sp-1); }
-.home-new-dot { width: 8px; height: 8px; border-radius: var(--r-round); background: var(--accent); }
+.home-tile-main > .home-icon-tile { margin-bottom: var(--sp-2); }
 .home-tile-name { font-size: var(--fs-8xl); font-weight: 650; letter-spacing: -.01em; }
-.home-tile-count { min-height: 1.3em; color: var(--accent-text); font-size: var(--fs-xl); font-weight: 600; }
+.home-tile-count { color: var(--accent-text); font-size: var(--fs-xl); font-weight: 600; }
 .home-tile-desc { margin-top: var(--sp-1); color: var(--ink-2); font-size: var(--fs-xl); line-height: 1.5; }
+/* An empty area's example. A button when the ask box can run it. */
+.home-tile-try {
+  margin: 0 var(--sp-4) var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--field-bg);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+button.home-tile-try { cursor: pointer; transition: border-color var(--tap), background var(--tap); }
+button.home-tile-try:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.home-tile-try-label {
+  color: var(--ink-3);
+  font: 500 var(--fs-md)/1.4 var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.home-tile-try-text { font: var(--fs-xl)/1.45 var(--font-mono); overflow-wrap: anywhere; }
 .home-tile-action {
   padding: var(--sp-3) var(--sp-4);
   border: 0;

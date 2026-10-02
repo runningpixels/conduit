@@ -5,7 +5,7 @@
 /// the callbacks that route; the page reads its own lists through the IPC
 /// client, like the other pages, and keeps "needs you" fresh while it is open.
 
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import {
   getConnectorRuntimeStates,
@@ -27,8 +27,7 @@ import { EMPTY_COUNTS, type AreaCounts, type HomeAction } from './areaInfo';
 import { NO_NEEDS, NeedsYou, hasNeeds, type NeedsYouState } from './NeedsYou';
 import { PickUp } from './PickUp';
 import { TryIdeas } from './TryIdeas';
-import { buildPickUp } from './pickUpItems';
-import { useHomeView, useVisitedAreas } from './visitedAreas';
+import { buildPickUp, isStartedChat } from './pickUpItems';
 
 export type { HomeAction } from './areaInfo';
 
@@ -58,6 +57,13 @@ const NEEDS_REFRESH_MS = 60_000;
 const PLACEHOLDERS = ['home.ask.placeholder.deck', 'home.ask.placeholder.summarise', 'home.ask.placeholder.app'] as const;
 // Each time Home opens it suggests the next example.
 let opens = 0;
+// What is typed in the ask box, kept while the app runs so leaving Home and
+// coming back does not lose a half-written request.
+let askDraft = '';
+
+export function __resetHomeDraftForTests(): void {
+  askDraft = '';
+}
 
 export function greetingId(hour: number): string {
   if (hour < 5 || hour >= 18) return 'home.greeting.evening';
@@ -93,8 +99,22 @@ export function HomePage({
 }: HomePageProps) {
   const t = useT();
   const headingId = useId();
-  const visited = useVisitedAreas();
-  const { view, setView } = useHomeView();
+  const [ask, setAskState] = useState(askDraft);
+  const askRef = useRef<HTMLTextAreaElement>(null);
+  const setAsk = useCallback((text: string) => {
+    askDraft = text;
+    setAskState(text);
+  }, []);
+  const tryExample = useCallback(
+    (text: string) => {
+      setAsk(text);
+      const input = askRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      input.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    },
+    [setAsk],
+  );
   const [placeholderId] = useState(() => PLACEHOLDERS[opens++ % PLACEHOLDERS.length]);
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [needs, setNeeds] = useState<NeedsYouState>(NO_NEEDS);
@@ -167,13 +187,14 @@ export function HomePage({
   const counts: AreaCounts = useMemo(
     () => ({
       ...EMPTY_COUNTS,
-      chats: conversations.length,
+      // A fresh install opens on an empty chat; it is not one of yours yet.
+      chats: conversations.filter(isStartedChat).length,
       decks: decks.length,
       apps: savedApps.length,
       collections: collectionCount,
       ...lists,
     }),
-    [conversations.length, decks.length, savedApps.length, collectionCount, lists],
+    [conversations, decks.length, savedApps.length, collectionCount, lists],
   );
 
   const greeting = t(greetingId(hour ?? new Date().getHours()));
@@ -187,18 +208,18 @@ export function HomePage({
             <h2 id={headingId} className="home-title">
               {t('chat.view.welcomeTitle')}
             </h2>
-            <AskBox placeholder={t(placeholderId)} onAsk={onAsk} onAction={onAction} />
+            <AskBox
+              placeholder={t(placeholderId)}
+              value={ask}
+              onChange={setAsk}
+              inputRef={askRef}
+              onAsk={onAsk}
+              onAction={onAction}
+            />
           </header>
           {hasNeeds(needs) && <NeedsYou needs={needs} onAction={onAction} />}
           <PickUp items={pickUp} onOpenChat={onOpenChat} onOpenDeck={onOpenDeck} onOpenApp={onOpenApp} />
-          <Areas
-            view={view}
-            onViewChange={setView}
-            visited={visited}
-            counts={counts}
-            onNavigate={onNavigate}
-            onAction={onAction}
-          />
+          <Areas counts={counts} onNavigate={onNavigate} onAction={onAction} onTryExample={tryExample} />
           <TryIdeas caps={ideaCaps} state={ideaState} onTryIdea={onTryIdea} onMoreIdeas={onMoreIdeas} />
         </div>
       </div>

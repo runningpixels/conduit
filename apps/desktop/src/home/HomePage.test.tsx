@@ -13,8 +13,7 @@ import {
   listWorkflowReviews,
   listWorkflows,
 } from '../ipc/client';
-import { HomePage, greetingId, type HomePageProps } from './HomePage';
-import { __resetVisitedAreasForTests, markVisited } from './visitedAreas';
+import { HomePage, __resetHomeDraftForTests, greetingId, type HomePageProps } from './HomePage';
 
 vi.mock('../ipc/client', () => ({
   getConnectorRuntimeStates: vi.fn(),
@@ -110,7 +109,7 @@ async function renderHome(over: Partial<HomePageProps> = {}) {
 }
 
 beforeEach(() => {
-  __resetVisitedAreasForTests();
+  __resetHomeDraftForTests();
   vi.mocked(listDecks).mockResolvedValue([]);
   vi.mocked(listWorkflowReviews).mockResolvedValue([]);
   vi.mocked(listWorkflowQuestions).mockResolvedValue([]);
@@ -256,71 +255,67 @@ describe('HomePage pick up', () => {
   });
 });
 
+
 describe('HomePage areas', () => {
-  it('shows the job cards while new, with the progress line', async () => {
-    markVisited('chats');
-    const { p } = await renderHome();
-    expect(screen.getByRole('heading', { name: 'Everything Conduit can do' })).toBeInTheDocument();
-    expect(screen.getByText("You've tried 1 of 8 areas")).toBeInTheDocument();
-    expect(document.querySelectorAll('.home-job')).toHaveLength(8);
-    expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
-    // A tried area says so.
-    expect(within(document.querySelector('[data-area="chats"].home-job') as HTMLElement).getByText('Tried')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Browse starter apps' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
-    expect(p.onAction).toHaveBeenCalledWith('browse-apps');
-    expect(p.onNavigate).toHaveBeenCalledWith('library');
-  });
+  const tile = (area: string) => within(document.querySelector(`.home-tile[data-area="${area}"]`) as HTMLElement);
 
-  it('switches to compact tiles once five areas have been opened', async () => {
-    (['chats', 'slides', 'apps', 'documents'] as const).forEach(markVisited);
-    const first = await renderHome();
-    expect(document.querySelectorAll('.home-job')).toHaveLength(8);
-    first.unmount();
-    markVisited('library');
-    await renderHome();
-    expect(document.querySelectorAll('.home-job')).toHaveLength(0);
-    expect(document.querySelectorAll('.home-tile')).toHaveLength(8);
-  });
-
-  it('lets the reader switch views and remembers the choice', async () => {
-    const first = await renderHome();
-    fireEvent.click(screen.getByRole('button', { name: 'Show all areas' }));
-    expect(document.querySelectorAll('.home-tile')).toHaveLength(8);
-    first.unmount();
-    await renderHome();
-    expect(document.querySelectorAll('.home-tile')).toHaveLength(8);
-    fireEvent.click(screen.getByRole('button', { name: 'Show guide' }));
-    expect(document.querySelectorAll('.home-job')).toHaveLength(8);
-  });
-
-  it('shows live counts and marks areas never opened', async () => {
+  it('shows every area as a tile with its live count', async () => {
     vi.mocked(listDecks).mockResolvedValue([deck('d1'), deck('d2'), deck('d3')]);
     vi.mocked(listWorkflows).mockResolvedValue([{ id: 'w' } as never]);
     vi.mocked(listPrompts).mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never);
-    markVisited('chats');
-    const { p } = await renderHome({
-      conversations: [chat('a'), chat('b')],
-      savedApps: [app('a1')],
-      collectionCount: 0,
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Show all areas' }));
-    const tile = (area: string) => within(document.querySelector(`.home-tile[data-area="${area}"]`) as HTMLElement);
+    await renderHome({ conversations: [chat('a'), chat('b')], savedApps: [app('a1')] });
+    expect(screen.getByRole('heading', { name: 'Everything Conduit can do' })).toBeInTheDocument();
+    expect(document.querySelectorAll('.home-tile')).toHaveLength(8);
     expect(tile('chats').getByText('2 chats')).toBeInTheDocument();
     expect(tile('apps').getByText('1 app')).toBeInTheDocument();
-    expect(tile('documents').getByText('Nothing yet')).toBeInTheDocument();
     await waitFor(() => expect(tile('slides').getByText('3 decks')).toBeInTheDocument());
     await waitFor(() => expect(tile('workflows').getByText('1 workflow')).toBeInTheDocument());
     await waitFor(() => expect(tile('library').getByText('2 prompts')).toBeInTheDocument());
-    // Chats was opened, Slides was not.
-    expect(tile('chats').queryByText('New to you')).toBeNull();
-    expect(tile('slides').getByText('New to you')).toBeInTheDocument();
-    fireEvent.click(tile('slides').getByRole('button', { name: /Slides/ }));
+    // An area with something in it shows its count, not an example.
+    expect(tile('chats').queryByText('Help me choose between two job offers')).toBeNull();
+  });
+
+  it('does not count the empty chat the app opens on', async () => {
+    await renderHome({ conversations: [chat('fresh', { displayTitle: undefined, messageCount: 0 })] });
+    expect(tile('chats').queryByText(/^\d+ chats?$/)).toBeNull();
+    expect(tile('chats').getByText('Help me choose between two job offers')).toBeInTheDocument();
+  });
+
+  it('opens an area and runs its action', async () => {
+    const { p } = await renderHome();
+    fireEvent.click(tile('slides').getByRole('button', { name: /^Slides/ }));
     fireEvent.click(tile('slides').getByRole('button', { name: 'Start a deck' }));
     fireEvent.click(tile('connectors').getByRole('button', { name: 'Add a connector' }));
+    fireEvent.click(tile('library').getByRole('button', { name: 'Browse prompts' }));
     expect(p.onNavigate).toHaveBeenCalledWith('slides');
     expect(p.onAction).toHaveBeenCalledWith('start-deck');
     expect(p.onAction).toHaveBeenCalledWith('add-connector');
+    expect(p.onNavigate).toHaveBeenCalledWith('library');
+  });
+
+  it('puts an empty area\'s example in the ask box when the box can run it', async () => {
+    const { p } = await renderHome();
+    fireEvent.click(tile('slides').getByRole('button', { name: 'Try: A 10-slide update on Q3 for the leadership team' }));
+    const box = screen.getByLabelText('Describe what you want to do');
+    expect(box).toHaveValue('A 10-slide update on Q3 for the leadership team');
+    expect(box).toHaveFocus();
+    expect(p.onAsk).not.toHaveBeenCalled();
+    // One that needs setting up first is only a hint.
+    expect(tile('connectors').getByText('Add GitHub, then ask about your open issues')).toBeInTheDocument();
+    expect(tile('connectors').queryByRole('button', { name: /^Try:/ })).toBeNull();
+  });
+});
+
+describe('HomePage ask draft', () => {
+  it('keeps what was typed when Home is left and opened again', async () => {
+    __resetHomeDraftForTests();
+    const first = await renderHome();
+    fireEvent.change(screen.getByLabelText('Describe what you want to do'), { target: { value: 'Half a thought' } });
+    first.unmount();
+    await renderHome();
+    expect(screen.getByLabelText('Describe what you want to do')).toHaveValue('Half a thought');
+    fireEvent.keyDown(screen.getByLabelText('Describe what you want to do'), { key: 'Enter' });
+    expect(screen.getByLabelText('Describe what you want to do')).toHaveValue('');
   });
 });
 

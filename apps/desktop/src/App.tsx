@@ -70,7 +70,6 @@ import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
 import { Rail, type Destination } from './shell/Rail';
 import { HomePage, type HomeAction } from './home/HomePage';
-import { markVisited } from './home/visitedAreas';
 import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
 import { ActivityView } from './inspector/ActivityView';
 import { SourcesView } from './inspector/SourcesView';
@@ -296,10 +295,6 @@ export default function App() {
   // The app opens on Home. Boot still selects a conversation underneath, so
   // "Continue" is instant.
   const [destination, setDestination] = useState<Destination>('home');
-  // Home adapts to which areas this device has opened.
-  useEffect(() => {
-    markVisited(destination);
-  }, [destination]);
   // Home's "New workflow" opens the Workflows page on its picker.
   const [workflowsStartNew, setWorkflowsStartNew] = useState(false);
   useEffect(() => {
@@ -2734,7 +2729,6 @@ export default function App() {
             onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
             onOpenArtifact={(id) => void handleOpenArtifact(id)}
             onChatTurnComplete={(streamState) => {
-              if (!activeDeckRef.current) markVisited('chats');
               void handleChatTurnComplete(streamState);
               void finishDeckTurn();
             }}

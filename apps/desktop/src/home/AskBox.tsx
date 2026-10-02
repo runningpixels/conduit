@@ -2,7 +2,7 @@
 /// goes (a deck request opens Slides, anything else becomes a new chat).
 /// Enter sends, Shift+Enter starts a new line.
 
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { useT } from '../i18n';
 import { SendIcon } from '../icons';
 import type { HomeAction } from './areaInfo';
@@ -19,20 +19,22 @@ const MAX_HEIGHT = 240;
 
 export interface AskBoxProps {
   placeholder: string;
+  /** The text in the box; Home keeps it so a draft survives leaving the page. */
+  value: string;
+  onChange: (text: string) => void;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
   onAsk: (text: string) => void;
   onAction: (action: HomeAction) => void;
 }
 
-export function AskBox({ placeholder, onAsk, onAction }: AskBoxProps) {
+export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onAction }: AskBoxProps) {
   const t = useT();
   const hintId = useId();
-  const [text, setText] = useState('');
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Home is the front door: the cursor is in the box when it opens.
   useEffect(() => {
     inputRef.current?.focus({ preventScroll: true });
-  }, []);
+  }, [inputRef]);
 
   // Grow with the text, up to a cap.
   useEffect(() => {
@@ -40,7 +42,7 @@ export function AskBox({ placeholder, onAsk, onAction }: AskBoxProps) {
     if (!el) return;
     el.style.height = 'auto';
     if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
-  }, [text]);
+  }, [text, inputRef]);
 
   const submit = () => {
     const value = text.trim();

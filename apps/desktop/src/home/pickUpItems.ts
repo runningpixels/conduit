@@ -11,6 +11,11 @@ export type PickUpItem =
   | { kind: 'deck'; id: string; title: string; when: string; slideCount: number; building: boolean }
   | { kind: 'app'; id: string; title: string; when: string; icon?: string; category: AppSummary['category'] };
 
+/// A chat someone wrote in (or named). The empty chat the app opens on is not one.
+export function isStartedChat(c: ConversationSummary): boolean {
+  return Boolean(c.displayTitle) || c.messageCount > 0;
+}
+
 function time(iso: string): number {
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : 0;
@@ -26,7 +31,7 @@ export function buildPickUp(
   for (const c of conversations) {
     if (c.archivedAt) continue;
     // A chat nobody wrote in is not something to pick up.
-    if (!c.displayTitle && c.messageCount === 0) continue;
+    if (!isStartedChat(c)) continue;
     items.push({ kind: 'chat', id: c.id, title: c.displayTitle ?? null, when: c.updatedAt, messageCount: c.messageCount });
   }
   for (const d of decks) {

@@ -1,6 +1,7 @@
 /// What Home says about each area of the app: its icon, name, one-line
-/// description, the live count it shows, and the one thing to do there. Copy
-/// lives in the catalog under `home.area.*`, `home.count.*` and `home.job.*`.
+/// description, the live count it shows, the one thing to do there, and an
+/// example to try while the area is still empty. Copy lives in the catalog
+/// under `home.area.*` and `home.count.*`.
 
 import type { ReactNode } from 'react';
 import {
@@ -14,7 +15,10 @@ import {
   WorkflowIcon,
 } from '../icons';
 import type { Destination } from '../shell/Rail';
-import type { Area } from './visitedAreas';
+
+/// The eight areas Home counts and explains, in the order Home lists them.
+export const AREAS = ['chats', 'slides', 'apps', 'documents', 'workflows', 'library', 'connectors', 'memory'] as const;
+export type Area = (typeof AREAS)[number];
 
 /// The things Home can ask the shell to do. The shell maps each to an
 /// existing flow.
@@ -49,39 +53,24 @@ export type CountKey = 'chats' | 'decks' | 'apps' | 'collections' | 'workflows' 
 export interface AreaInfo {
   area: Area;
   count: CountKey;
-  /// The compact tile's one primary action.
+  /// The tile's one primary action.
   tileAction: HomeTarget;
   tileActionLabelId: string;
+  /// Whether the area's example (`home.area.<area>.example`) works as a request
+  /// in the ask box. When it does, clicking it puts it there; when it needs
+  /// setting up first (a collection, a connector), it is only a hint.
+  askable: boolean;
 }
 
 export const AREA_INFO: readonly AreaInfo[] = [
-  { area: 'chats', count: 'chats', tileAction: { action: 'new-chat' }, tileActionLabelId: 'home.area.chats.action' },
-  { area: 'slides', count: 'decks', tileAction: { action: 'start-deck' }, tileActionLabelId: 'home.area.slides.action' },
-  { area: 'apps', count: 'apps', tileAction: { action: 'browse-apps' }, tileActionLabelId: 'home.area.apps.action' },
-  { area: 'documents', count: 'collections', tileAction: { action: 'add-documents' }, tileActionLabelId: 'home.area.documents.action' },
-  { area: 'workflows', count: 'workflows', tileAction: { action: 'new-workflow' }, tileActionLabelId: 'home.area.workflows.action' },
-  { area: 'library', count: 'prompts', tileAction: { navigate: 'library' }, tileActionLabelId: 'home.area.library.action' },
-  { area: 'connectors', count: 'connectors', tileAction: { action: 'add-connector' }, tileActionLabelId: 'home.area.connectors.action' },
-  { area: 'memory', count: 'memories', tileAction: { action: 'review-memory' }, tileActionLabelId: 'home.area.memory.action' },
-];
-
-/// One job card in the guide: what you can get done, in a sentence, with a
-/// real prompt to try and where to start.
-export interface JobCard {
-  id: string;
-  area: Area;
-  start: HomeTarget;
-}
-
-export const JOB_CARDS: readonly JobCard[] = [
-  { id: 'story', area: 'slides', start: { action: 'start-deck' } },
-  { id: 'tool', area: 'apps', start: { action: 'browse-apps' } },
-  { id: 'files', area: 'documents', start: { action: 'add-documents' } },
-  { id: 'automate', area: 'workflows', start: { action: 'new-workflow' } },
-  { id: 'prompts', area: 'library', start: { navigate: 'library' } },
-  { id: 'connect', area: 'connectors', start: { action: 'add-connector' } },
-  { id: 'remember', area: 'memory', start: { navigate: 'memory' } },
-  { id: 'think', area: 'chats', start: { action: 'new-chat' } },
+  { area: 'chats', count: 'chats', tileAction: { action: 'new-chat' }, tileActionLabelId: 'home.area.chats.action', askable: true },
+  { area: 'slides', count: 'decks', tileAction: { action: 'start-deck' }, tileActionLabelId: 'home.area.slides.action', askable: true },
+  { area: 'apps', count: 'apps', tileAction: { action: 'browse-apps' }, tileActionLabelId: 'home.area.apps.action', askable: true },
+  { area: 'documents', count: 'collections', tileAction: { action: 'add-documents' }, tileActionLabelId: 'home.area.documents.action', askable: false },
+  { area: 'workflows', count: 'workflows', tileAction: { action: 'new-workflow' }, tileActionLabelId: 'home.area.workflows.action', askable: false },
+  { area: 'library', count: 'prompts', tileAction: { navigate: 'library' }, tileActionLabelId: 'home.area.library.action', askable: false },
+  { area: 'connectors', count: 'connectors', tileAction: { action: 'add-connector' }, tileActionLabelId: 'home.area.connectors.action', askable: false },
+  { area: 'memory', count: 'memories', tileAction: { action: 'review-memory' }, tileActionLabelId: 'home.area.memory.action', askable: true },
 ];
 
 export type AreaCounts = Record<CountKey, number | null>;

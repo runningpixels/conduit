@@ -45,6 +45,7 @@ function outlineText(html: string): string {
  */
 export function deckDeveloperPrompt(deck: DeckDetail, overflow: Record<string, number> = {}): string {
   const lines: string[] = [`Deck "${deck.title}" · theme ${deck.themeName} · stage: ${deck.stage}.`];
+  if (deck.assumptions?.trim()) lines.push(`Assumptions you stated (the user can correct them): ${deck.assumptions.trim()}`);
   if (deck.storyline.length > 0) {
     lines.push('Storyline:');
     deck.storyline.forEach((item, i) => lines.push(`${i + 1}. ${item.text}`));
@@ -70,7 +71,7 @@ export function deckDeveloperPrompt(deck: DeckDetail, overflow: Record<string, n
   if (deck.stage === 'storyline') {
     lines.push(
       deck.storyline.length === 0
-        ? 'Next step: draft the storyline with set_storyline from what the user has told you, then ask them to review it in the panel.'
+        ? 'Next step: draft the storyline with set_storyline from what the user has told you. Give the deck a short title in the same call, and if the user did not say who it is for or what they should do afterwards, state your guess in assumptions. Then ask them to review the storyline in the panel.'
         : 'The user is reviewing the storyline. Revise it with set_storyline if they ask; slides are built after they press "Build slides".',
     );
   }

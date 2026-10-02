@@ -19,7 +19,9 @@ import { DeckFrame } from './DeckFrame';
 import { DeckHistory } from './DeckHistory';
 import { StorylineEditor } from './StorylineEditor';
 import { ScriptPanel, type ScriptFocusRequest } from './ScriptPanel';
-import { STARTER_THEMES } from './themes';
+import { StudioHeader } from './StudioHeader';
+import { StudioTips } from './StudioTips';
+import { buildThemeChoices } from './themeChoices';
 
 export interface DeckWorkspaceProps {
   deck: DeckDetail | null;
@@ -54,6 +56,25 @@ export interface DeckWorkspaceProps {
   onAskToFix?: (prompt: string) => void;
   /** Slide id to pixels of overflow, only slides that overflow. */
   onOverflowChange?: (overflow: Record<string, number>) => void;
+  /** 'panel' (default) is the drawer layout beside a chat; 'studio' is the
+   *  full-column layout whose Script and History live in the dock. */
+  layout?: 'panel' | 'studio';
+  /** Studio: back to the deck list. */
+  onBack?: () => void;
+  /** Studio: the deck started as a request in an ordinary chat. */
+  madeFromChat?: boolean;
+  /** Studio: undo that start (offered while the deck has no slides). */
+  onUndoStart?: () => void;
+  /** Studio: the user selected a text slot on the stage, so the dock can
+   *  show it in Script. */
+  onSlotSelected?: (slideId: string, index: number, name: string) => void;
+  /** Studio: Ctrl+H on the stage, so the dock can open Script with find. */
+  onOpenScriptFind?: () => void;
+  /** Studio: move the stage to this slide (Script focused a block there).
+   *  Bump `nonce` to move again to the same index. */
+  slideRequest?: { index: number; nonce: number } | null;
+  /** Studio: the slide on the stage changed. */
+  onSlideChange?: (index: number) => void;
 }
 
 const NO_THEMES: readonly SlideTheme[] = [];
@@ -78,6 +99,14 @@ export function DeckWorkspace({
   onRemoveBullet,
   onAskToFix,
   onOverflowChange,
+  layout = 'panel',
+  onBack,
+  madeFromChat = false,
+  onUndoStart,
+  onSlotSelected,
+  onOpenScriptFind,
+  slideRequest = null,
+  onSlideChange,
 }: DeckWorkspaceProps) {
   const t = useT();
   const [index, setIndex] = useState(0);
@@ -88,6 +117,7 @@ export function DeckWorkspace({
   const nonce = useRef(0);
   const overflowCb = useRef(onOverflowChange);
   overflowCb.current = onOverflowChange;
+  const studio = layout === 'studio';
   const scriptAvailable = onEditWords != null && onSetPinned != null && onReplace != null;
   const [titleDraft, setTitleDraft] = useState(deck?.title ?? '');
   const prevIds = useRef<{ deckId: string | null; ids: string[] }>({ deckId: null, ids: [] });
@@ -123,6 +153,16 @@ export function DeckWorkspace({
 
   const current = Math.max(0, Math.min(index, count - 1));
 
+  const slideChangeCb = useRef(onSlideChange);
+  slideChangeCb.current = onSlideChange;
+  useEffect(() => {
+    slideChangeCb.current?.(current);
+  }, [current]);
+
+  useEffect(() => {
+    if (slideRequest) setIndex(Math.max(0, slideRequest.index));
+  }, [slideRequest]);
+
   useEffect(() => {
     const el = stripRef.current?.children[current] as HTMLElement | undefined;
     el?.scrollIntoView?.({ block: 'nearest' });
@@ -130,18 +170,7 @@ export function DeckWorkspace({
 
   // Built-in themes, then saved ones (themes the model or the user made), then
   // the deck's own theme if it is in neither list.
-  const themeChoices = useMemo(() => {
-    const choices = STARTER_THEMES.map((th) => ({ value: th.name, label: th.label, css: th.css as string | null }));
-    for (const saved of savedThemes) {
-      if (!choices.some((c) => c.value.toLowerCase() === saved.name.toLowerCase())) {
-        choices.push({ value: saved.name, label: saved.name, css: saved.css });
-      }
-    }
-    if (deck && !choices.some((c) => c.value === deck.themeName)) {
-      choices.push({ value: deck.themeName, label: deck.themeName, css: null });
-    }
-    return choices;
-  }, [deck, savedThemes]);
+  const themeChoices = useMemo(() => buildThemeChoices(deck, savedThemes), [deck, savedThemes]);
 
   const go = (delta: number) => setIndex(Math.max(0, Math.min(count - 1, current + delta)));
 
@@ -156,6 +185,10 @@ export function DeckWorkspace({
   };
 
   const openScriptFind = () => {
+    if (studio) {
+      onOpenScriptFind?.();
+      return;
+    }
     if (!scriptAvailable) return;
     setDrawer('script');
     setFindToken((n) => n + 1);
@@ -177,7 +210,11 @@ export function DeckWorkspace({
     overflowCb.current?.(next);
   };
 
-  const onSlotSelect = (slideId: string, slotIndex: number) => {
+  const onSlotSelect = (slideId: string, slotIndex: number, name: string) => {
+    if (studio) {
+      onSlotSelected?.(slideId, slotIndex, name);
+      return;
+    }
     nonce.current += 1;
     setFocusRequest({ slideId, index: slotIndex, nonce: nonce.current });
   };
@@ -205,7 +242,7 @@ export function DeckWorkspace({
 
   const busy = busyTool != null;
   const scriptPanel =
-    drawer === 'script' && scriptAvailable ? (
+    !studio && drawer === 'script' && scriptAvailable ? (
       <ScriptPanel
         deck={deck}
         overflow={overflow}
@@ -226,13 +263,32 @@ export function DeckWorkspace({
   return (
     <div
       className="deck-workspace"
+      data-layout={layout}
       onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'h' && scriptAvailable) {
+        if (
+          (e.ctrlKey || e.metaKey) &&
+          !e.altKey &&
+          !e.shiftKey &&
+          e.key.toLowerCase() === 'h' &&
+          (studio ? onOpenScriptFind != null : scriptAvailable)
+        ) {
           e.preventDefault();
           openScriptFind();
         }
       }}
     >
+      {studio ? (
+        <StudioHeader
+          deck={deck}
+          busyTool={busyTool}
+          themes={themeChoices}
+          onBack={() => onBack?.()}
+          onRename={onRename}
+          onSetTheme={onSetTheme}
+          madeFromChat={madeFromChat}
+          onUndoStart={() => onUndoStart?.()}
+        />
+      ) : (
       <header className="deck-head">
         <input
           className="deck-title-input"
@@ -291,10 +347,19 @@ export function DeckWorkspace({
           {t('slides.workspace.history')}
         </button>
       </header>
+      )}
       <div className="deck-body">
         <div className="deck-main">
           {deck.stage === 'storyline' ? (
-            <StorylineEditor items={deck.storyline} busy={busy} onChange={onSetStoryline} onBuild={onBuild} />
+            <>
+              {studio && deck.assumptions.trim() !== '' && (
+                <p className="deck-assumptions">
+                  <span className="deck-assumptions-label">{t('slides.studio.assumed')}</span>
+                  {deck.assumptions}
+                </p>
+              )}
+              <StorylineEditor items={deck.storyline} busy={busy} onChange={onSetStoryline} onBuild={onBuild} />
+            </>
           ) : count === 0 ? (
             <p className="deck-empty">{t('slides.workspace.emptySlides')}</p>
           ) : (
@@ -360,6 +425,7 @@ export function DeckWorkspace({
                     )}
                   </p>
                 )}
+                {studio && <StudioTips visible={!busy} />}
                 <div className="deck-stage-nav">
                   <button
                     type="button"
@@ -389,7 +455,7 @@ export function DeckWorkspace({
           )}
         </div>
         {!scriptBeside && scriptPanel}
-        {drawer === 'history' && (
+        {!studio && drawer === 'history' && (
           <DeckHistory
             revision={historyRevision}
             onList={onListSnapshots}

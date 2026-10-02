@@ -3,8 +3,8 @@
 //! `agent_tools`).
 
 use provider_core::schema::{
-    DeckDetail, DeckReplaceResult, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
-    SlideTheme, SlotEdit, StorylineItem,
+    ConversationSummary, DeckDetail, DeckReplaceResult, DeckSnapshotCause, DeckSnapshotSummary,
+    DeckStage, DeckSummary, SlideTheme, SlotEdit, StorylineItem,
 };
 use tauri::State;
 
@@ -75,6 +75,24 @@ pub async fn create_deck(
     .await
     .map_err(message)?;
     Ok(deck)
+}
+
+/// Undo a deck started from a chat: deletes the deck, keeps the chat (an
+/// ordinary chat again) and returns it. Only while the deck has no slides.
+#[tauri::command]
+pub async fn undo_start_deck(
+    state: State<'_, AppState>,
+    deck_id: String,
+) -> Result<Option<ConversationSummary>, String> {
+    let conversation_id = slides::undo_start(&state.db, &deck_id)
+        .await
+        .map_err(message)?;
+    match conversation_id {
+        Some(id) => conversations::get_summary(&state.db, &id)
+            .await
+            .map_err(message),
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]

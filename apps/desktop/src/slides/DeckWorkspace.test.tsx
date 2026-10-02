@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { DeckDetail, DeckSlide } from '../ipc/contracts';
 import { DeckWorkspace, type DeckWorkspaceProps } from './DeckWorkspace';
@@ -22,6 +22,7 @@ function makeDeck(over: Partial<DeckDetail> = {}): DeckDetail {
     stage: 'slides',
     storyline: [],
     slides: [slide('a', 0), slide('b', 1)],
+    assumptions: '',
     createdAt: '2026-10-01T10:00:00Z',
     updatedAt: '2026-10-01T10:00:00Z',
     ...over,
@@ -190,5 +191,81 @@ describe('DeckWorkspace', () => {
     expect(p.onRestore).not.toHaveBeenCalled();
     fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]);
     await waitFor(() => expect(p.onRestore).toHaveBeenCalledWith('s1'));
+  });
+
+  describe('studio layout', () => {
+    beforeEach(() => window.localStorage.clear());
+
+    const studioProps = (over: Partial<DeckWorkspaceProps> = {}) =>
+      props({
+        layout: 'studio',
+        onBack: vi.fn(),
+        onEditWords: vi.fn().mockResolvedValue(undefined),
+        onSetPinned: vi.fn().mockResolvedValue(undefined),
+        onReplace: vi.fn().mockResolvedValue({ total: 0, applied: false, slides: [] }),
+        ...over,
+      });
+
+    it('renders the studio header and no Script or History drawers or buttons', () => {
+      const p = studioProps();
+      const { container } = render(<DeckWorkspace {...p} />);
+      expect(container.querySelector('.studio-head')).not.toBeNull();
+      expect(container.querySelector('.deck-head')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Script' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'History' })).toBeNull();
+      expect(screen.queryByRole('complementary', { name: 'Script' })).toBeNull();
+      expect(screen.queryByRole('complementary', { name: 'History' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /All decks/ }));
+      expect(p.onBack).toHaveBeenCalled();
+    });
+
+    it('reports a selected slot and opens Script find on Ctrl+H', async () => {
+      const onSlotSelected = vi.fn();
+      const onOpenScriptFind = vi.fn();
+      const { container } = render(<DeckWorkspace {...studioProps({ onSlotSelected, onOpenScriptFind })} />);
+      await waitFor(() => expect(container.querySelector('.deck-stage iframe')).toBeTruthy());
+      const frame = container.querySelector('.deck-stage iframe') as HTMLIFrameElement;
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            source: frame.contentWindow,
+            data: { type: 'conduit-deck-event', event: 'slot-select', slideId: 'a', index: 2, name: 'bullet-1' },
+          }),
+        );
+      });
+      expect(onSlotSelected).toHaveBeenCalledWith('a', 2, 'bullet-1');
+      fireEvent.keyDown(screen.getByRole('group', { name: 'Slide 1 of 2' }), { key: 'h', ctrlKey: true });
+      expect(onOpenScriptFind).toHaveBeenCalled();
+    });
+
+    it('moves the stage when asked to show a slide', () => {
+      const p = studioProps();
+      const { rerender } = render(<DeckWorkspace {...p} />);
+      rerender(<DeckWorkspace {...p} slideRequest={{ index: 1, nonce: 1 }} />);
+      expect(screen.getByText('Slide 2 of 2', { selector: '.deck-stage-count' })).toBeTruthy();
+    });
+
+    it('shows the assumptions above the storyline', () => {
+      const deck = makeDeck({
+        stage: 'storyline',
+        slides: [],
+        storyline: [{ id: 'l1', text: 'Why now' }],
+        assumptions: 'For the leadership team, about ten minutes.',
+      });
+      render(<DeckWorkspace {...studioProps({ deck })} />);
+      expect(screen.getByText('For the leadership team, about ten minutes.', { exact: false })).toBeTruthy();
+      expect(screen.getByDisplayValue('Why now')).toBeTruthy();
+    });
+
+    it('shows the first-time tips once slides exist and the model is idle', () => {
+      const { rerender } = render(<DeckWorkspace {...studioProps({ busyTool: 'add_slide' })} />);
+      expect(screen.queryByRole('complementary', { name: 'Tips' })).toBeNull();
+      rerender(<DeckWorkspace {...studioProps()} />);
+      expect(screen.getByRole('complementary', { name: 'Tips' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+      expect(screen.queryByRole('complementary', { name: 'Tips' })).toBeNull();
+    });
   });
 });

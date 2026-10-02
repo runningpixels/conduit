@@ -482,7 +482,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'set_storyline',
     name: 'set_storyline',
     description:
-      "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built.",
+      "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built. Always pass title on the first storyline (a short name for the deck, 120 characters at most). Pass assumptions when the user did not say who the deck is for or what they should do: one or two sentences stating what you assumed about audience, goal and length (400 characters at most; an empty string clears it).",
     inputSchema: {
       type: 'object',
       properties: {
@@ -490,6 +490,16 @@ export function builtinToolDefinitions(): ToolDefinition[] {
           type: 'array',
           items: { type: 'string' },
           description: 'One short line per planned slide, in order.',
+        },
+        title: {
+          type: 'string',
+          description:
+            'A short name for the deck (120 characters at most). Pass it on the first storyline; it renames the deck and its chat.',
+        },
+        assumptions: {
+          type: 'string',
+          description:
+            'One or two sentences stating what you assumed about audience, goal or length that the user did not say (400 characters at most). Empty string clears it.',
         },
       },
       required: ['lines'],
@@ -644,6 +654,15 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       },
       required: ['edits'],
     },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'start_deck',
+    name: 'start_deck',
+    description:
+      'Start a slide deck from this chat. Call it when the user asks for slides, a deck or a presentation, then stop and reply in one short sentence: the app opens the deck in Slides and asks you for the storyline there. title is a short name for the deck.',
+    inputSchema: schema([{ name: 'title', type: 'string', required: true }]),
     permissionLevel: 'sideEffectful',
     displayGroup: DECK_TOOL_GROUP,
   },
@@ -880,12 +899,27 @@ export function selectBuiltinImageTools(
   return builtinToolDefinitions().filter((tool) => tool.displayGroup === IMAGE_TOOL_GROUP);
 }
 
+/** `start_deck` is in the Slides group but is the one tool offered in a chat
+ *  that is NOT bound to a deck. */
+export const START_DECK_TOOL_NAME = 'start_deck';
+
 /** The Slides group: tools that build a deck, offered only in a chat bound to one. */
 export const DECK_TOOL_NAMES = new Set(
   builtinToolDefinitions()
-    .filter((tool) => tool.displayGroup === DECK_TOOL_GROUP)
+    .filter((tool) => tool.displayGroup === DECK_TOOL_GROUP && tool.name !== START_DECK_TOOL_NAME)
     .map((tool) => tool.name),
 );
+
+/** The turn asks for slides, a deck or a presentation (English). */
+export function looksLikeDeckRequest(prompt: string): boolean {
+  return /\b(slides?|slide\s+deck|deck|decks|presentations?|pitch\s+deck|keynote|powerpoint)\b/i.test(prompt);
+}
+
+/** Document write and edit tools: left out of a deck-request turn so the model
+ *  cannot take the document path instead of `start_deck`. */
+function isDocumentWriteOrEditTool(name: string): boolean {
+  return name.startsWith('write_') || name.startsWith('edit_');
+}
 
 export function isDeckTool(name: string): boolean {
   return DECK_TOOL_NAMES.has(name);
@@ -979,10 +1013,16 @@ export function selectBuiltinTurnTools(
     (tool) =>
       !documentTurn || !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name) || mentionsWorkspaceFileTarget(prompt),
   );
+  const deckRequest = looksLikeDeckRequest(prompt);
+  const startDeckTools = deckRequest
+    ? builtinToolDefinitions().filter((tool) => tool.name === START_DECK_TOOL_NAME)
+    : [];
+  const documentTools = selectBuiltinDocumentTools(intent);
   return {
     intent,
     tools: [
-      ...selectBuiltinDocumentTools(intent),
+      ...(deckRequest ? documentTools.filter((tool) => !isDocumentWriteOrEditTool(tool.name)) : documentTools),
+      ...startDeckTools,
       ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
       ...selectBuiltinImageTools(
         imageOverride === true || looksLikeImageGenerationRequest(prompt),

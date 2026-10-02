@@ -7,6 +7,7 @@ const deck: DeckDetail = {
   title: 'Q3 review',
   themeName: 'ink',
   themeCss: '',
+  assumptions: '',
   stage: 'slides',
   storyline: [{ id: 'l1', text: 'Builds got faster' }],
   slides: [

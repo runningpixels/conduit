@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
+use super::conversations;
 use crate::{db::DbError, encryption::Encryption, slide_html, time::now_iso8601};
 
 pub const MAX_TITLE_CHARS: usize = 120;
@@ -230,10 +231,11 @@ type DeckRow = (
     String,
     String,
     String,
+    String,
 );
 
 const DECK_COLUMNS: &str = "id, title, conversation_id, theme_name, theme_css, stage, \
-     storyline_json, created_at, updated_at";
+     storyline_json, created_at, updated_at, assumptions";
 
 type SlideRow = (String, i64, String, String, String);
 
@@ -299,6 +301,15 @@ async fn list_slides(
     rows.into_iter().map(|r| slide_from_row(enc, r)).collect()
 }
 
+/// Assumptions are stored encrypted when non-empty; `''` is stored as `''`.
+fn decrypt_assumptions(enc: &Encryption, stored: &str) -> Result<String, DbError> {
+    if stored.is_empty() {
+        Ok(String::new())
+    } else {
+        enc.decrypt(stored)
+    }
+}
+
 async fn detail_from_row(
     pool: &SqlitePool,
     enc: &Encryption,
@@ -314,9 +325,11 @@ async fn detail_from_row(
         storyline_json,
         created_at,
         updated_at,
+        assumptions,
     ) = row;
     Ok(DeckDetail {
         slides: list_slides(pool, enc, &id).await?,
+        assumptions: decrypt_assumptions(enc, &assumptions)?,
         storyline: decode_storyline(enc, &storyline_json)?,
         theme_css: enc.decrypt(&theme_css)?,
         stage: parse_stage(&stage),
@@ -470,6 +483,9 @@ pub async fn create(
     .bind(&now)
     .execute(pool)
     .await?;
+    if let Some(conversation_id) = conversation_id {
+        conversations::set_kind(pool, conversation_id, "deck").await?;
+    }
     require(pool, enc, &id).await
 }
 
@@ -509,7 +525,29 @@ pub async fn bind_conversation(
     if done.rows_affected() == 0 {
         return Err(no_deck());
     }
+    conversations::set_kind(pool, conversation_id, "deck").await?;
     Ok(())
+}
+
+/// Undo a deck that was just started from a chat: delete the deck, keep the
+/// chat and make it an ordinary chat again. Allowed only while the deck has no
+/// slides. Returns the chat's id (`None` when the deck had none).
+pub async fn undo_start(pool: &SqlitePool, id: &str) -> Result<Option<String>, DbError> {
+    let (slide_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM deck_slides WHERE deck_id = ?")
+            .bind(id)
+            .fetch_one(pool)
+            .await?;
+    if slide_count > 0 {
+        return Err(invalid(
+            "This deck already has slides, so it can't be undone.",
+        ));
+    }
+    let conversation_id = delete(pool, id).await?;
+    if let Some(conversation_id) = &conversation_id {
+        conversations::set_kind(pool, conversation_id, "chat").await?;
+    }
+    Ok(conversation_id)
 }
 
 /// Rename a deck; returns the trimmed title.
@@ -559,6 +597,40 @@ pub async fn set_storyline(
         return Err(no_deck());
     }
     require(pool, enc, id).await
+}
+
+/// Longest assumptions note, in characters.
+pub const MAX_ASSUMPTIONS_CHARS: usize = 400;
+
+/// Set what the model assumed about the deck (empty clears it). Stored
+/// encrypted when non-empty.
+pub async fn set_assumptions(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    id: &str,
+    assumptions: &str,
+) -> Result<(), DbError> {
+    let text = assumptions.trim();
+    if text.chars().count() > MAX_ASSUMPTIONS_CHARS {
+        return Err(invalid(format!(
+            "Keep the assumptions under {MAX_ASSUMPTIONS_CHARS} characters."
+        )));
+    }
+    let stored = if text.is_empty() {
+        String::new()
+    } else {
+        enc.encrypt(text)?
+    };
+    let done = sqlx::query("UPDATE decks SET assumptions = ?, updated_at = ? WHERE id = ?")
+        .bind(stored)
+        .bind(now_iso8601())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(no_deck());
+    }
+    Ok(())
 }
 
 pub async fn set_stage(

@@ -203,6 +203,7 @@ fn main() {
             delete_app,
             list_decks,
             create_deck,
+            undo_start_deck,
             get_deck,
             get_deck_for_conversation,
             open_deck,

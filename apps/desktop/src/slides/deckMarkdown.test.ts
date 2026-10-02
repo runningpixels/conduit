@@ -29,6 +29,7 @@ const deckOf = (slides: DeckSlide[]): DeckDetail =>
     title: 'Launch',
     themeName: 'ink',
     themeCss: '',
+    assumptions: '',
     stage: 'slides',
     storyline: [],
     slides,

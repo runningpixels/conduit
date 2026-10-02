@@ -154,7 +154,7 @@ const IPC_EXPORTS = [
   // Ideas (App.tsx reads the collection count for "Ask your documents").
   'listKnowledgeCollections',
   // Slides: App.tsx asks whether the open chat is bound to a deck.
-  'getDeckForConversation', 'listDecks', 'openDeck', 'listDeckSnapshots', 'listSlideThemes',
+  'getDeckForConversation', 'listDecks', 'openDeck', 'undoStartDeck', 'listDeckSnapshots', 'listSlideThemes',
   'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',
 ] as const;
 

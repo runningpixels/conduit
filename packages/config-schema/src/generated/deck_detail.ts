@@ -6,4 +6,8 @@ import type { StorylineItem } from "./storyline_item";
 /**
  * A deck with its theme, storyline and slides, for the workspace.
  */
-export type DeckDetail = { id: string, title: string, themeName: string, themeCss: string, stage: DeckStage, storyline: Array<StorylineItem>, slides: Array<DeckSlide>, conversationId?: string, createdAt: string, updatedAt: string, };
+export type DeckDetail = { id: string, title: string, themeName: string, themeCss: string, stage: DeckStage, storyline: Array<StorylineItem>, slides: Array<DeckSlide>, conversationId?: string, createdAt: string, updatedAt: string, 
+/**
+ * What the model assumed about audience, goal and length (empty when none).
+ */
+assumptions: string, };

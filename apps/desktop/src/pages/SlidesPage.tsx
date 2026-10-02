@@ -1,64 +1,45 @@
-/// Slides: your decks, and a form for a new one.
+/// Slides: start a deck from one prompt, and your decks.
 ///
-/// A deck is built in a chat: the model drafts a storyline, you approve it,
-/// and slides appear in a live panel. This page lists the decks and starts new
-/// ones; opening one hands it to the shell, which opens its chat.
+/// A deck is built in a studio: you describe the story, the model drafts a
+/// storyline, you approve it, and slides appear on a big stage. This page
+/// starts new decks and lists the existing ones; opening one hands it to the
+/// shell, which opens the studio.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog } from '@conduit/ui';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { PageEmpty, PageFrame } from '../shell/PageFrame';
-import { createDeck, deleteDeck, listDecks, listSlideThemes, renameDeck } from '../ipc/client';
+import { deleteDeck, listDecks, listSlideThemes, renameDeck } from '../ipc/client';
 import type { DeckDetail, DeckSummary } from '../ipc/contracts';
-import { DeckFrame } from '../slides/DeckFrame';
 import { STARTER_THEMES, type StarterTheme } from '../slides/themes';
 
 export interface SlidesPageProps {
   onOpenDeck: (deck: DeckSummary | DeckDetail) => void;
+  /** Start a deck from a prompt. The shell creates it and opens the studio. */
+  onStartDeck: (prompt: string, themeName: string, themeCss: string) => Promise<void>;
   onStatus?: (message: string) => void;
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+/** Starter chips: the label and the scaffold they put in the prompt box. */
+const STARTERS: ReadonlyArray<{ id: string; labelId: string; scaffoldId: string }> = [
+  { id: 'quarterly', labelId: 'slides.start.chip.quarterly', scaffoldId: 'slides.start.scaffold.quarterly' },
+  { id: 'kickoff', labelId: 'slides.start.chip.kickoff', scaffoldId: 'slides.start.scaffold.kickoff' },
+  { id: 'incident', labelId: 'slides.start.chip.incident', scaffoldId: 'slides.start.scaffold.incident' },
+  { id: 'proposal', labelId: 'slides.start.chip.proposal', scaffoldId: 'slides.start.scaffold.proposal' },
+];
 
 function themeLabel(name: string): string {
   return STARTER_THEMES.find((th) => th.name === name)?.label ?? name;
 }
 
-/** A one-slide deck that shows what a theme looks like. */
-function previewDeck(theme: StarterTheme, title: string, kicker: string, sub: string): DeckDetail {
-  const now = new Date(0).toISOString();
-  return {
-    id: `preview-${theme.name}`,
-    title,
-    themeName: theme.name,
-    themeCss: theme.css,
-    stage: 'slides',
-    storyline: [],
-    slides: [
-      {
-        id: 'preview',
-        position: 0,
-        layout: 'title',
-        html: `<p class="kicker">${escapeHtml(kicker)}</p><h1 class="headline">${escapeHtml(title)}</h1><p class="sub">${escapeHtml(sub)}</p>`,
-        notes: '',
-        slots: [],
-      },
-    ],
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-export function SlidesPage({ onOpenDeck, onStatus }: SlidesPageProps) {
+export function SlidesPage({ onOpenDeck, onStartDeck, onStatus }: SlidesPageProps) {
   const t = useT();
   const fmt = useFormatters();
   const [decks, setDecks] = useState<DeckSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   const [themeName, setThemeName] = useState(STARTER_THEMES[0].name);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
@@ -99,19 +80,26 @@ export function SlidesPage({ onOpenDeck, onStatus }: SlidesPageProps) {
   );
 
   const submit = async () => {
+    const text = prompt.trim();
+    if (text === '' || busy) return;
     const theme = allThemes.find((th) => th.name === themeName) ?? STARTER_THEMES[0];
     setBusy(true);
     try {
-      const detail = await createDeck(title.trim() || t('slides.new.defaultTitle'), theme.name, theme.css);
-      setCreating(false);
-      setTitle('');
-      onOpenDeck(detail);
+      await onStartDeck(text, theme.name, theme.css);
+      setPrompt('');
       void refresh();
     } catch (e) {
       fail(e);
     } finally {
       setBusy(false);
     }
+  };
+
+  const insertScaffold = (scaffold: string) => {
+    setPrompt((current) => (current.trim() === '' ? scaffold : `${current.trimEnd()}
+
+${scaffold}`));
+    promptRef.current?.focus();
   };
 
   const commitRename = async () => {
@@ -142,81 +130,74 @@ export function SlidesPage({ onOpenDeck, onStatus }: SlidesPageProps) {
     }
   };
 
-  const previewKicker = t('slides.new.previewKicker');
-  const previewSub = t('slides.new.previewSub');
-  const previewTitle = title.trim() || t('slides.new.previewTitle');
-  const previews = useMemo(
-    () => allThemes.map((th) => ({ theme: th, deck: previewDeck(th, previewTitle, previewKicker, previewSub) })),
-    [allThemes, previewTitle, previewKicker, previewSub],
-  );
-
-  const form = creating && (
+  const startBox = (
     <form
-      className="slides-new"
+      className="slides-start"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
       <label className="field">
-        <span className="field-label">{t('slides.new.titleLabel')}</span>
-        <input
-          className="slides-new-title"
-          type="text"
-          value={title}
-          maxLength={120}
-          autoFocus
-          placeholder={t('slides.new.titlePlaceholder')}
-          onChange={(e) => setTitle(e.target.value)}
+        <span className="slides-start-label">{t('slides.start.label')}</span>
+        <textarea
+          ref={promptRef}
+          className="slides-start-input"
+          value={prompt}
+          rows={4}
+          placeholder={t('slides.start.placeholder')}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
         />
       </label>
-      <fieldset className="slides-themes">
-        <legend className="field-label">{t('slides.new.themeLabel')}</legend>
-        <div className="slides-theme-grid">
-          {previews.map(({ theme, deck }) => (
-            <label key={theme.name} className="slides-theme-card" data-selected={theme.name === themeName ? 'true' : undefined}>
-              <input
-                className="slides-theme-radio"
-                type="radio"
-                name="slides-theme"
-                value={theme.name}
-                checked={theme.name === themeName}
-                onChange={() => setThemeName(theme.name)}
-              />
-              <span className="slides-theme-preview" aria-hidden="true">
-                <DeckFrame deck={deck} index={0} mode="stage" colorScheme={theme.dark ? 'dark' : 'light'} />
-              </span>
-              <span className="slides-theme-name">{theme.label}</span>
-            </label>
+      <div className="slides-start-foot">
+        <div className="slides-start-chips" role="group" aria-label={t('slides.start.chipsAria')}>
+          {STARTERS.map((starter) => (
+            <button
+              key={starter.id}
+              type="button"
+              className="slides-start-chip"
+              onClick={() => insertScaffold(t(starter.scaffoldId))}
+            >
+              {t(starter.labelId)}
+            </button>
           ))}
         </div>
-      </fieldset>
-      <div className="slides-new-actions">
-        <button type="submit" className="btn primary" disabled={busy}>
-          {t('slides.new.create')}
-        </button>
-        <button type="button" className="btn" onClick={() => setCreating(false)}>
-          {t('common.actions.cancel')}
+        <label className="deck-theme">
+          <span className="deck-theme-label">{t('slides.start.themeLabel')}</span>
+          <select
+            className="deck-theme-select"
+            value={themeName}
+            onChange={(e) => setThemeName(e.target.value)}
+          >
+            {allThemes.map((th) => (
+              <option key={th.name} value={th.name}>
+                {th.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="btn primary" disabled={busy || prompt.trim() === ''}>
+          {t('slides.start.submit')}
         </button>
       </div>
     </form>
   );
 
-  const newButton = (
-    <button type="button" className="btn primary" aria-expanded={creating} onClick={() => setCreating((v) => !v)}>
-      {t('slides.page.new')}
-    </button>
-  );
-
   return (
-    <PageFrame title={t('slides.page.title')} subtitle={t('slides.page.subtitle')} actions={newButton} className="slides-page">
+    <PageFrame title={t('slides.page.title')} subtitle={t('slides.page.subtitle')} className="slides-page">
       {loadError && (
         <p className="slides-error" role="alert">
           {loadError}
         </p>
       )}
-      {form}
-      {decks && decks.length === 0 && !loadError && !creating && (
+      {startBox}
+      {decks && decks.length === 0 && !loadError && (
         <PageEmpty title={t('slides.page.emptyTitle')} body={t('slides.page.emptyBody')} />
       )}
       {decks && decks.length > 0 && (

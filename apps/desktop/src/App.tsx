@@ -126,8 +126,13 @@ import {
 import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
 import { STARTER_THEMES } from './slides/themes';
+import { DeckDock, type DockTab } from './slides/DeckDock';
+import { ScriptPanel, type ScriptFocusRequest } from './slides/ScriptPanel';
+import { DeckHistory } from './slides/DeckHistory';
 import type { DeckDetail, SlideTheme, SlotEdit, StorylineItem } from './ipc/contracts';
 import {
+  createDeck,
+  undoStartDeck,
   editSlideWords,
   insertBullet,
   removeBullet,
@@ -970,23 +975,113 @@ export default function App() {
   activeDeckRef.current = activeDeck;
 
   /** Open a deck from the Slides page: its chat, with the deck beside it. */
+  // Studio: a deck open in the Slides destination. The one mounted ChatView
+  // becomes the dock on the right; the chat list is hidden. Deck chats never
+  // show in the Chats layout.
+  const [studioDeckId, setStudioDeckId] = useState<string | null>(null);
+  const [dockTab, setDockTab] = useState<DockTab>('ask');
+  const [scriptFocus, setScriptFocus] = useState<ScriptFocusRequest | null>(null);
+  const [scriptFindToken, setScriptFindToken] = useState(0);
+  const [stageSlideRequest, setStageSlideRequest] = useState<{ index: number; nonce: number } | null>(null);
+  const [madeFromChatDeckId, setMadeFromChatDeckId] = useState<string | null>(null);
+  const studio = destination === 'slides' && studioDeckId != null && activeDeck?.id === studioDeckId;
+  /** The last ordinary (non-deck) chat, to return to when leaving a deck. */
+  const lastChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeConversationId && !deckLoading && !activeDeck) lastChatIdRef.current = activeConversationId;
+  }, [activeConversationId, activeDeck, deckLoading]);
+  // A deck chat reached any other way (search, palette, a fresh start) opens
+  // in the studio, never in the Chats layout.
+  useEffect(() => {
+    if (activeDeck && destination === 'chats') {
+      setStudioDeckId(activeDeck.id);
+      setDestination('slides');
+    }
+  }, [activeDeck, destination]);
+  useEffect(() => {
+    setDockTab('ask');
+    setScriptFocus(null);
+  }, [studioDeckId]);
+
+  /** Leave a deck for an ordinary chat (the last one, or a new one). */
+  const leaveDeckChat = useCallback(() => {
+    setActiveDeck(null);
+    setStudioDeckId(null);
+    const back = lastChatIdRef.current;
+    if (back && conversations.some((c) => c.id === back)) handleSelectConversation(back);
+    else void handleNewChat();
+  }, [conversations, handleSelectConversation, handleNewChat]);
+
+  /** Open a deck from the Slides page: the studio, with its chat as the dock. */
   const handleOpenDeck = useCallback(
     async (deckId: string) => {
       try {
         const deck = await openDeck(deckId);
         setActiveDeck(deck);
+        setStudioDeckId(deck.id);
         if (deck.conversationId) handleSelectConversation(deck.conversationId);
-        void refreshConversations();
-        setDestination('chats');
-        showDocPanel();
-        // As wide as the window allows: the thread keeps its minimum width.
-        panelExpand.expand();
+        setDestination('slides');
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : String(error));
       }
     },
-    [handleSelectConversation, refreshConversations, showDocPanel, panelExpand],
+    [handleSelectConversation],
   );
+
+  /** The Slides page start box: a new deck whose first message is the prompt. */
+  const handleStartDeck = useCallback(
+    async (prompt: string, themeName: string, themeCss: string) => {
+      const deck = await createDeck(t('slides.new.defaultTitle'), themeName, themeCss);
+      await handleOpenDeck(deck.id);
+      void refreshConversations();
+      setPendingSendText(prompt);
+    },
+    [handleOpenDeck, refreshConversations, t],
+  );
+
+  // A deck started from an ordinary chat (the model called start_deck): when
+  // that turn ends, the chat opens as a studio and the model is asked for the
+  // storyline, now with the deck tools.
+  const startedDeckThisTurnRef = useRef(false);
+  const openDeckStartedInChat = useCallback(async () => {
+    const conversationId = activeConversationId;
+    if (!conversationId) return;
+    try {
+      const deck = await getDeckForConversation(conversationId);
+      if (!deck) return;
+      setActiveDeck(deck);
+      setMadeFromChatDeckId(deck.id);
+      setStudioDeckId(deck.id);
+      setDestination('slides');
+      void refreshConversations();
+      setPendingSendText(t('slides.prompt.storylineFromChat'));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeConversationId, refreshConversations, t]);
+
+  const handleUndoStartDeck = useCallback(async () => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      await undoStartDeck(deck.id);
+      setMadeFromChatDeckId(null);
+      setActiveDeck(null);
+      setStudioDeckId(null);
+      setDestination('chats');
+      void refreshConversations();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [refreshConversations]);
+
+  // A deck made by start_deck has no theme CSS yet (the starter themes live
+  // here, not in Rust): give it the default starter on first sight.
+  useEffect(() => {
+    if (!activeDeck || activeDeck.themeCss !== '') return;
+    const fallback = STARTER_THEMES.find((theme) => theme.name === activeDeck.themeName) ?? STARTER_THEMES[0];
+    void setDeckTheme(activeDeck.id, fallback.name, fallback.css).then(setActiveDeck, () => {});
+  }, [activeDeck]);
 
   const reloadActiveDeck = useCallback(async () => {
     const conversationId = activeDeckRef.current?.conversationId;
@@ -1008,6 +1103,12 @@ export default function App() {
   /** One history entry per AI turn that changed the deck, named by the prompt. */
   const finishDeckTurn = useCallback(async () => {
     setDeckBusyTool(null);
+    if (startedDeckThisTurnRef.current) {
+      startedDeckThisTurnRef.current = false;
+      deckChangedThisTurnRef.current = false;
+      await openDeckStartedInChat();
+      return;
+    }
     const deck = activeDeckRef.current;
     const appLabel = nextDeckTurnLabelRef.current;
     nextDeckTurnLabelRef.current = null;
@@ -1024,7 +1125,7 @@ export default function App() {
       // History is best effort; the deck itself is already saved.
     }
     await reloadActiveDeck();
-  }, [reloadActiveDeck, t]);
+  }, [reloadActiveDeck, openDeckStartedInChat, t]);
 
   const handleRenameDeck = useCallback(
     async (title: string) => {
@@ -2296,7 +2397,13 @@ export default function App() {
         destination={destination}
         onNavigate={(d) => {
           if (d === 'settings') openSettings();
-          else setDestination(d);
+          else if (d === 'slides' && studio) setStudioDeckId(null);
+          else {
+            // Chats never shows a deck chat: going there from a deck returns
+            // to the last ordinary chat.
+            if (d === 'chats' && activeDeck) leaveDeckChat();
+            setDestination(d);
+          }
         }}
         dots={{ workflows: workflowsNeedYou && destination !== 'workflows' }}
         effectiveTheme={effectiveTheme}
@@ -2304,7 +2411,11 @@ export default function App() {
         logoSrc={brandLogo ?? undefined}
       />
       {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}
-      <div className="body" data-page={destination !== 'chats' ? destination : undefined}>
+      <div
+        className="body"
+        data-page={destination !== 'chats' && !studio ? destination : undefined}
+        data-studio={studio ? '' : undefined}
+      >
         <Sidebar
           conversations={conversations}
           folders={conversationFolders}
@@ -2360,17 +2471,57 @@ export default function App() {
         {/* The full-height "Artifacts" rail that used to live here was a second
             affordance for the title strip's own panel toggle. It is gone; the
             toggle carries the artifact count so the panel stays discoverable. */}
-        <main className="center">
-          <MainHead
-            title={activeConversationSummary?.displayTitle}
-            panelOpen={panelVisible}
-            onTogglePanel={toggleDocPanelView}
-            hiddenArtifactCount={hiddenArtifactCount}
-            sidebarOverlayOpen={sidebarOverlay.open}
-            onToggleSidebar={toggleSidebarView}
-            onNewChat={() => void handleNewChat()}
-            onOpenPalette={openPalette}
-          />
+        {/* In the studio this column is the dock. Its first child switches
+            between the chat header and the dock's tabs; ChatView stays the
+            second child either way, so it is never remounted (it owns the
+            running stream). */}
+        <main className="center" data-dock-tab={studio ? dockTab : undefined}>
+          {studio && activeDeck ? (
+            <DeckDock
+              tab={dockTab}
+              onTab={setDockTab}
+              script={
+                <ScriptPanel
+                  deck={activeDeck}
+                  overflow={deckOverflow}
+                  focusRequest={scriptFocus}
+                  findFocusToken={scriptFindToken}
+                  onEditWords={handleEditWords}
+                  onSetPinned={handleSetPinned}
+                  onReplace={handleReplaceInDeck}
+                  onInsertBullet={handleInsertBullet}
+                  onRemoveBullet={handleRemoveBullet}
+                  onAskToFix={(prompt) => {
+                    setDockTab('ask');
+                    setPendingSendText(prompt);
+                  }}
+                  onFocusSlide={(index) => setStageSlideRequest({ index, nonce: Date.now() })}
+                  onClose={() => setDockTab('ask')}
+                />
+              }
+              history={
+                <DeckHistory
+                  revision={deckHistoryRevision}
+                  onList={handleListDeckSnapshots}
+                  onRestore={handleRestoreDeck}
+                  onClose={() => setDockTab('ask')}
+                />
+              }
+            >
+              {null}
+            </DeckDock>
+          ) : (
+            <MainHead
+              title={activeConversationSummary?.displayTitle}
+              panelOpen={panelVisible}
+              onTogglePanel={toggleDocPanelView}
+              hiddenArtifactCount={hiddenArtifactCount}
+              sidebarOverlayOpen={sidebarOverlay.open}
+              onToggleSidebar={toggleSidebarView}
+              onNewChat={() => void handleNewChat()}
+              onOpenPalette={openPalette}
+            />
+          )}
           <ChatView
             ref={chatViewRef}
             settings={settings}
@@ -2393,6 +2544,10 @@ export default function App() {
             deck={activeDeck}
             onDeckChanged={handleDeckChanged}
             onDeckToolActivity={setDeckBusyTool}
+            onDeckStarted={() => {
+              startedDeckThisTurnRef.current = true;
+            }}
+            compact={studio}
             deckOverflow={deckOverflow}
             onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
@@ -2420,7 +2575,7 @@ export default function App() {
         </main>
         {/* Rail destinations other than Chats: a page over the body. The chat
             stays mounted underneath, so a turn in progress keeps running. */}
-        {destination !== 'chats' && (
+        {destination !== 'chats' && !studio && (
           <div className="dest-page" data-destination={destination}>
             {destination === 'settings' && (
               <SettingsSheet
@@ -2499,7 +2654,11 @@ export default function App() {
               />
             )}
             {destination === 'slides' && (
-              <SlidesPage onOpenDeck={(deck) => void handleOpenDeck(deck.id)} onStatus={setStatusMessage} />
+              <SlidesPage
+                onOpenDeck={(deck) => void handleOpenDeck(deck.id)}
+                onStartDeck={handleStartDeck}
+                onStatus={setStatusMessage}
+              />
             )}
             {destination === 'workflows' && (
               <WorkflowsPage
@@ -2526,9 +2685,22 @@ export default function App() {
           onDoubleClick={panelResize.onDoubleClick}
         />
 
-        {activeDeck ? (
+        {studio && activeDeck ? (
           <section className="doc-panel deck-panel" aria-label={t('slides.workspace.ariaLabel')}>
             <DeckWorkspace
+              layout="studio"
+              onBack={() => setStudioDeckId(null)}
+              madeFromChat={madeFromChatDeckId === activeDeck.id}
+              onUndoStart={() => void handleUndoStartDeck()}
+              onSlotSelected={(slideId, index) => {
+                setDockTab('script');
+                setScriptFocus({ slideId, index, nonce: Date.now() });
+              }}
+              onOpenScriptFind={() => {
+                setDockTab('script');
+                setScriptFindToken((n) => n + 1);
+              }}
+              slideRequest={stageSlideRequest}
               deck={activeDeck}
               loading={deckLoading}
               busyTool={deckBusyTool}

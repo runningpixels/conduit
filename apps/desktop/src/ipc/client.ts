@@ -1575,6 +1575,12 @@ export async function openDeck(id: string): Promise<DeckDetail> {
   return invokeCommand<DeckDetail>('open_deck', { id });
 }
 
+/** Undoes a deck started from a chat: deletes the deck, keeps the chat (an
+ *  ordinary chat again) and returns it. Only while the deck has no slides. */
+export async function undoStartDeck(deckId: string): Promise<ConversationSummary | null> {
+  return invokeCommand<ConversationSummary | null>('undo_start_deck', { deckId });
+}
+
 /** Renames the deck and its chat. */
 export async function renameDeck(id: string, title: string): Promise<void> {
   await invokeCommand('rename_deck', { id, title });

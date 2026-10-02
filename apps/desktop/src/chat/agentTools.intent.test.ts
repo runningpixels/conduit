@@ -4,6 +4,7 @@ import {
   builtinToolDefinitions,
   isDeckTool,
   isDocumentContentTool,
+  looksLikeDeckRequest,
   selectBuiltinBrandTools,
   selectBuiltinDeckTools,
   selectBuiltinDocumentTools,
@@ -60,8 +61,8 @@ describe('selectBuiltinDocumentTools', () => {
 
   it('keeps the full catalog available for reference', () => {
     // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember
-    // + patch_document + read_document + generate_image + 10 deck tools.
-    expect(builtinToolDefinitions()).toHaveLength(36);
+    // + patch_document + read_document + generate_image + 10 deck tools + start_deck.
+    expect(builtinToolDefinitions()).toHaveLength(37);
   });
 
   it('offers the deck tools by stage and never through the other selectors', () => {
@@ -104,5 +105,40 @@ describe('selectBuiltinDocumentTools', () => {
     expect(selectBuiltinMemoryTools(false)).toEqual([]);
     expect(selectBuiltinMemoryTools(true).map((t) => t.name)).toEqual(['remember']);
     expect(selectBuiltinDocumentTools('general').map((t) => t.name)).not.toContain('remember');
+  });
+});
+
+describe('start_deck gating', () => {
+  const settings = { memoryEnabled: false };
+  const names = (prompt: string, deckStage?: 'storyline' | 'slides' | null) =>
+    selectBuiltinTurnTools(prompt, settings, null, undefined, undefined, deckStage).tools.map((t) => t.name);
+
+  it('recognises deck requests', () => {
+    for (const prompt of [
+      'make me a slide deck about Q3',
+      'Can you build slides for the kickoff?',
+      'I need a presentation for Monday',
+      'a pitch deck for investors',
+      'draft a keynote',
+      'PowerPoint on onboarding',
+    ]) {
+      expect(looksLikeDeckRequest(prompt), prompt).toBe(true);
+    }
+    for (const prompt of ['write a report on solar power', 'what is a deckhand', 'hello']) {
+      expect(looksLikeDeckRequest(prompt), prompt).toBe(false);
+    }
+  });
+
+  it('offers start_deck on a deck-request turn and drops the document write tools', () => {
+    const turn = names('make me a slide deck about our Q3 results');
+    expect(turn).toContain('start_deck');
+    expect(turn.filter((n) => n.startsWith('write_') || n.startsWith('edit_'))).toEqual([]);
+  });
+
+  it('does not offer start_deck on other turns or in a deck chat', () => {
+    expect(names('write a report on solar power')).not.toContain('start_deck');
+    expect(names('make me a slide deck', 'storyline')).not.toContain('start_deck');
+    expect(names('make me a slide deck', 'slides')).not.toContain('start_deck');
+    expect(DECK_TOOL_NAMES.has('start_deck')).toBe(false);
   });
 });

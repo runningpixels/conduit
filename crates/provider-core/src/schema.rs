@@ -1616,6 +1616,8 @@ pub struct DeckDetail {
     pub conversation_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// What the model assumed about audience, goal and length (empty when none).
+    pub assumptions: String,
 }
 
 /// One entry in a deck's history list.

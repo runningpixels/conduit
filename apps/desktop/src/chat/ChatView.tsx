@@ -145,6 +145,7 @@ import {
   hadSuccessfulDocumentToolCalls,
   documentWritesHistoryNote,
   isDeckTool,
+  START_DECK_TOOL_NAME,
   isDocumentContentTool,
   selectBuiltinTurnTools,
   selectBuiltinWebTools,
@@ -269,6 +270,8 @@ interface ChatViewProps {
   onDeckToolActivity?: (toolName: string | null) => void;
   /// Slides whose text runs off the canvas (slide id → px), told to the model.
   deckOverflow?: Record<string, number>;
+  /// The model turned this ordinary chat into a deck (start_deck succeeded).
+  onDeckStarted?: () => void;
   /// Fired when the user requests to fork the conversation at a message.
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// t0-3 — mid-thread edit forked a new conversation; switch + pending send.
@@ -312,6 +315,10 @@ interface ChatViewProps {
   /// Renderer-only conversation → last-used provider map (sidebar row dots).
   /// Falls back to `settings.activeProvider` for per-turn hue + model line.
   convoProviders?: Record<string, string>;
+  /// Slides studio dock: each assistant turn shows its reply, then one
+  /// collapsed summary line for the thinking and tool calls. Hides the idea
+  /// gallery, inline suggestions and the new-chat greeting.
+  compact?: boolean;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -776,6 +783,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onDeckChanged,
     onDeckToolActivity,
     deckOverflow,
+    onDeckStarted,
     onForkConversation,
     onEditForked,
     pendingSendText = null,
@@ -797,6 +805,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   settingsOpen = false,
   documentsOpen = false,
     convoProviders = {},
+    compact = false,
   },
   ref,
 ) {
@@ -1798,6 +1807,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             if (event.isError) onDeckToolActivity?.(null);
             else onDeckChanged?.();
           }
+          if (event.toolName === START_DECK_TOOL_NAME && !event.isError) onDeckStarted?.();
           // The document exists now. The model may keep talking for a while
           // before the turn ends; the panel should not keep a skeleton up over
           // a document that is already saved.
@@ -2532,6 +2542,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Not in a deck chat: the suggestions are about documents and artifacts.
   const showInlineSuggestions =
     !deck &&
+    !compact &&
     turns.length > 0 &&
     !activeStream &&
     activeRequestId == null &&
@@ -2540,6 +2551,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Drives both the greeting and the `data-empty` hook that centres the
   // greeting and composer as one group (§10). One condition, one source.
   const threadEmpty = !threadLoading && turns.length === 0 && !activeStream;
+  const deckSlideIds = useMemo(() => deck?.slides.map((slide) => slide.id), [deck?.slides]);
   const visibleTurns = excludeLiveAssistantTurns(
     turns,
     activeStream?.requestId ?? activeRequestId,
@@ -2810,7 +2822,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               </div>
             </div>
           )}
-          {threadEmpty && (
+          {threadEmpty && compact && (
+            <p className="deck-chat-empty">{t('chat.compact.empty')}</p>
+          )}
+          {threadEmpty && !compact && (
             <div className="welcome">
               <h1>
                 <BotGlyph className="brand-mark" aria-hidden="true" />
@@ -2972,6 +2987,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               return withDay(
                 <AssistantMessage
                   key={turn.id}
+                  compact={compact}
+                  deckSlideIds={deckSlideIds}
                   turnId={turn.id}
                   onOpenActivity={onOpenActivity}
                   state={turn.streamState}
@@ -3081,6 +3098,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           })}
           {activeStream && (
             <AssistantMessage
+              compact={compact}
+              deckSlideIds={deckSlideIds}
               turnId={activeStream.requestId}
               onOpenActivity={onOpenActivity}
               state={{
@@ -3312,10 +3331,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         contextTokens={contextTokens}
         compactThresholdPercent={compactThresholdPercent}
       />
-      {threadEmpty && onOpenApp && onAllApps && (
+      {threadEmpty && !compact && onOpenApp && onAllApps && (
         <YourAppsRow apps={yourApps} onOpen={onOpenApp} onAll={onAllApps} />
       )}
-      {threadEmpty && ideaGallery && onPickIdea && (
+      {threadEmpty && !compact && ideaGallery && onPickIdea && (
         <IdeaGallery
           caps={ideaGallery.caps}
           state={ideaGallery.state}

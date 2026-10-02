@@ -794,3 +794,76 @@ async fn pinned_markers_travel_through_snapshots() {
     assert_eq!(restored.slides.len(), 1);
     assert!(restored.slides[0].slots[0].pinned);
 }
+
+#[tokio::test]
+async fn deck_chats_leave_the_chat_list_and_undo_brings_them_back() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, Some("Pitch")).await.unwrap();
+    assert_eq!(conversations::list(&pool).await.unwrap().len(), 1);
+
+    let deck = new_deck(&pool, Some(&conv.id)).await;
+    assert!(conversations::list(&pool).await.unwrap().is_empty());
+    assert!(conversations::get_summary(&pool, &conv.id)
+        .await
+        .unwrap()
+        .is_some());
+
+    // Rebinding another chat also moves it out of the list.
+    let other = conversations::create(&pool, Some("Other")).await.unwrap();
+    slides::bind_conversation(&pool, &deck.id, &other.id)
+        .await
+        .unwrap();
+    assert!(conversations::list(&pool).await.unwrap().is_empty());
+    slides::bind_conversation(&pool, &deck.id, &conv.id)
+        .await
+        .unwrap();
+
+    let enc = common::setup_encryption();
+    add(&pool, &deck.id, "<h1 data-text=\"t\">Hi</h1>").await;
+    assert!(slides::undo_start(&pool, &deck.id).await.is_err());
+    let slide = slides::get(&pool, &enc, &deck.id).await.unwrap().unwrap();
+    slides::delete_slide(&pool, &deck.id, &slide.slides[0].id)
+        .await
+        .unwrap();
+
+    let restored = slides::undo_start(&pool, &deck.id).await.unwrap();
+    assert_eq!(restored.as_deref(), Some(conv.id.as_str()));
+    assert!(slides::get(&pool, &enc, &deck.id).await.unwrap().is_none());
+    let listed = conversations::list(&pool).await.unwrap();
+    assert!(listed.iter().any(|c| c.id == conv.id));
+}
+
+#[tokio::test]
+async fn assumptions_round_trip_and_empty_stays_empty() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    assert_eq!(deck.assumptions, "");
+
+    slides::set_assumptions(&pool, &enc, &deck.id, "  For the board; 10 minutes.  ")
+        .await
+        .unwrap();
+    let got = slides::get(&pool, &enc, &deck.id).await.unwrap().unwrap();
+    assert_eq!(got.assumptions, "For the board; 10 minutes.");
+    let (raw,): (String,) = sqlx::query_as("SELECT assumptions FROM decks WHERE id = ?")
+        .bind(&deck.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_ne!(raw, "", "non-empty assumptions are stored, not blank");
+
+    slides::set_assumptions(&pool, &enc, &deck.id, "")
+        .await
+        .unwrap();
+    let (raw,): (String,) = sqlx::query_as("SELECT assumptions FROM decks WHERE id = ?")
+        .bind(&deck.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(raw, "");
+
+    let long = "x".repeat(slides::MAX_ASSUMPTIONS_CHARS + 1);
+    assert!(slides::set_assumptions(&pool, &enc, &deck.id, &long)
+        .await
+        .is_err());
+}

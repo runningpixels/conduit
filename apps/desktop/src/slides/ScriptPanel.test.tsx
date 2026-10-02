@@ -29,6 +29,7 @@ function makeDeck(): DeckDetail {
     title: 'Launch',
     themeName: 'ink',
     themeCss: '',
+    assumptions: '',
     stage: 'slides',
     storyline: [],
     slides: [

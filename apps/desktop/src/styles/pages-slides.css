@@ -1,4 +1,4 @@
-/* Slides: the deck list and new-deck form (pages/SlidesPage.tsx) and the deck
+/* Slides: the deck list and start box (pages/SlidesPage.tsx) and the deck
  * workspace shown beside a deck's chat (slides/*.tsx).
  *
  * The slide itself is drawn inside a sandboxed frame from the deck's own theme
@@ -8,7 +8,7 @@
 .deck-frame { display: block; position: relative; width: 100%; aspect-ratio: 16 / 9; }
 .deck-frame-iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; pointer-events: none; }
 /* The workspace stage takes pointer events (select and edit words in place).
-   Theme previews on the new-deck form stay inert so the card gets the click. */
+   Thumbnails stay inert so the strip button gets the click. */
 .deck-stage .deck-frame-iframe { pointer-events: auto; }
 button.deck-frame-thumb {
   padding: 0;
@@ -66,18 +66,19 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 .deck-card-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--sp-3); }
 .deck-card-open { background: var(--accent-soft); }
 
-/* New deck */
-.slides-new {
+/* Start box: one prompt, starter chips, a theme, and Start deck. */
+.slides-start {
   display: grid;
   gap: var(--sp-4);
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 0 var(--sp-6);
-  padding: var(--sp-4);
+  padding: var(--sp-5);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--card);
 }
-.slides-new-title,
+.slides-start-label { font-size: var(--fs-5xl); font-weight: 600; }
+.slides-start-input,
 .deck-title-input,
 .deck-theme-select,
 .storyline-input {
@@ -90,33 +91,26 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
   padding: 8px 10px;
   min-width: 0;
 }
-.slides-new-title:focus,
+.slides-start-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 7em; line-height: 1.5; }
+.slides-start-input:focus,
 .deck-title-input:focus,
 .deck-theme-select:focus,
 .storyline-input:focus { border-color: var(--accent); outline: none; }
-.slides-themes { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; }
-.slides-themes legend { padding: 0; margin-bottom: 6px; }
-.slides-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.slides-theme-card {
-  position: relative;
-  display: grid;
-  gap: 8px;
-  padding: 8px;
+.slides-start-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.slides-start-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); flex: 1 1 320px; }
+.slides-start-chip {
+  padding: 4px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--bg);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-xl);
   cursor: pointer;
-  transition: border-color var(--tap);
+  transition: border-color var(--tap), color var(--tap), background var(--tap);
 }
-.slides-theme-card:hover { border-color: var(--line-hi); }
-.slides-theme-card[data-selected="true"] { border-color: var(--accent); outline: 1px solid var(--accent); }
-.slides-theme-card:focus-within { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
-.slides-theme-radio { position: absolute; opacity: 0; pointer-events: none; }
-.slides-theme-preview { display: block; border-radius: var(--r-sm); overflow: hidden; }
-/* A preview is exactly one slide: 16:9, so the frame has nothing to letterbox. */
-.slides-theme-preview .deck-frame-stage { height: auto; aspect-ratio: 16 / 9; }
-.slides-theme-name { font-size: var(--fs-2xl); font-weight: 600; padding: 0 2px 2px; }
-.slides-new-actions { display: flex; gap: 8px; }
+.slides-start-chip:hover { border-color: var(--line-hi); color: var(--ink); background: var(--card-hi); }
+.slides-start-chip:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
 
 /* ── Workspace ────────────────────────────────────────────────────────── */
 .deck-workspace {

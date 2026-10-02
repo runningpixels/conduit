@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use provider_core::{
     brand::{render_brand_md, validate as validate_brand, Severity as BrandSeverity},
     schema::{
-        BrandConfig, BrandIdentity, BrandPalette, BrandThemes, DeckDetail, DeckSlide, DeckStage,
-        PermissionLevel, StorylineItem, ToolCallRecord, ToolCallStatus, ToolDefinition,
-        BRAND_SCHEMA_VERSION,
+        BrandConfig, BrandIdentity, BrandPalette, BrandThemes, DeckDetail, DeckSlide,
+        DeckSnapshotCause, DeckStage, PermissionLevel, StorylineItem, ToolCallRecord,
+        ToolCallStatus, ToolDefinition, BRAND_SCHEMA_VERSION,
     },
 };
 use serde::Deserialize;
@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::{
     db::repository::{
         artifacts::{self, Artifact, ArtifactContent},
-        slides, tool_calls,
+        conversations, slides, tool_calls,
     },
     encryption::Encryption,
     slide_html,
@@ -84,6 +84,8 @@ pub const DELETE_SLIDE_TOOL: &str = "delete_slide";
 pub const SET_THEME_TOOL: &str = "set_theme";
 pub const REPLACE_IN_DECK_TOOL: &str = "replace_in_deck";
 pub const UPDATE_SLOTS_TOOL: &str = "update_slots";
+// Offered only in a chat that is NOT bound to a deck, on a deck-request turn.
+pub const START_DECK_TOOL: &str = "start_deck";
 
 pub struct AgentToolContext<'a> {
     pub db: &'a sqlx::SqlitePool,
@@ -704,6 +706,17 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        ToolDefinition {
+            tool_id: START_DECK_TOOL.to_string(),
+            name: START_DECK_TOOL.to_string(),
+            description: START_DECK_DESCRIPTION.to_string(),
+            input_schema: json_schema(&[("title", "string", true)]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
     ]
 }
 
@@ -746,6 +759,7 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | SET_THEME_TOOL
             | REPLACE_IN_DECK_TOOL
             | UPDATE_SLOTS_TOOL
+            | START_DECK_TOOL
     )
 }
 
@@ -1057,6 +1071,10 @@ pub async fn execute_builtin_tool(
         UPDATE_SLOTS_TOOL => {
             let input: UpdateSlotsInput = parse_args(tool_name, arguments)?;
             update_slots(ctx, input).await
+        }
+        START_DECK_TOOL => {
+            let input: StartDeckInput = parse_args(tool_name, arguments)?;
+            start_deck(ctx, input).await
         }
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
@@ -1860,7 +1878,8 @@ fn ensure_kind(artifact: &Artifact, expected: &str) -> Result<(), String> {
 // -----------------------------------------------------------------------------
 
 const READ_DECK_DESCRIPTION: &str = "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's full inner HTML, notes and slots. A pinned slot holds text the user wrote. Read a slide before you change it.";
-const SET_STORYLINE_DESCRIPTION: &str = "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built.";
+const SET_STORYLINE_DESCRIPTION: &str = "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built. Always pass title on the first storyline (a short name for the deck, 120 characters at most). Pass assumptions when the user did not say who the deck is for or what they should do: one or two sentences stating what you assumed about audience, goal and length (400 characters at most; an empty string clears it).";
+const START_DECK_DESCRIPTION: &str = "Start a slide deck from this chat. Call it when the user asks for slides, a deck or a presentation, then stop and reply in one short sentence: the app opens the deck in Slides and asks you for the storyline there. title is a short name for the deck.";
 const ADD_SLIDE_DESCRIPTION: &str = "Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. layout is a layout name from the theme (lowercase, e.g. \"title\"). html is the slide's INNER html: the app wraps it in <section class=\"slide\" data-layout=\"LAYOUT\">, so do not include that section yourself. Put every piece of text in an element with data-text=\"slot-name\", style with the theme's classes and color tokens (never hard-coded colors), draw charts as inline SVG, and never include scripts or external URLs. notes is optional speaker notes.";
 const UPDATE_SLIDE_DESCRIPTION: &str = "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
 const PATCH_SLIDE_DESCRIPTION: &str = "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
@@ -1891,6 +1910,14 @@ fn set_storyline_schema() -> Value {
                 "type": "array",
                 "items": { "type": "string" },
                 "description": "One short line per planned slide, in order."
+            },
+            "title": {
+                "type": "string",
+                "description": "A short name for the deck (120 characters at most). Pass it on the first storyline; it renames the deck and its chat."
+            },
+            "assumptions": {
+                "type": "string",
+                "description": "One or two sentences stating what you assumed about audience, goal or length that the user did not say (400 characters at most). Empty string clears it."
             },
         },
         "required": ["lines"],
@@ -2079,6 +2106,24 @@ async fn set_storyline(
     input: SetStorylineInput,
 ) -> Result<Value, String> {
     let deck = deck_for_chat(ctx).await?;
+    // Validate before writing anything so a bad title or note changes nothing.
+    let title = match input
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        Some(title) => Some(slides::validate_title(title).map_err(slides::user_message)?),
+        None => None,
+    };
+    if let Some(text) = &input.assumptions {
+        if text.trim().chars().count() > slides::MAX_ASSUMPTIONS_CHARS {
+            return Err(format!(
+                "Keep the assumptions under {} characters.",
+                slides::MAX_ASSUMPTIONS_CHARS
+            ));
+        }
+    }
     let items: Vec<StorylineItem> = input
         .lines
         .iter()
@@ -2092,7 +2137,58 @@ async fn set_storyline(
     let updated = slides::set_storyline(ctx.db, ctx.encryption, &deck.id, items)
         .await
         .map_err(slides::user_message)?;
+    if let Some(title) = title {
+        slides::rename(ctx.db, &deck.id, &title)
+            .await
+            .map_err(slides::user_message)?;
+        if let Some(conversation_id) = &deck.conversation_id {
+            conversations::set_title(ctx.db, conversation_id, &title)
+                .await
+                .map_err(slides::user_message)?;
+        }
+    }
+    if let Some(text) = &input.assumptions {
+        slides::set_assumptions(ctx.db, ctx.encryption, &deck.id, text)
+            .await
+            .map_err(slides::user_message)?;
+    }
     Ok(serde_json::json!({ "ok": true, "lines": updated.storyline.len() }))
+}
+
+/// Bind this (unbound) chat to a new deck. The app opens it in Slides.
+async fn start_deck(ctx: &AgentToolContext<'_>, input: StartDeckInput) -> Result<Value, String> {
+    let existing = slides::get_by_conversation(ctx.db, ctx.encryption, ctx.conversation_id)
+        .await
+        .map_err(slides::user_message)?;
+    if existing.is_some() {
+        return Err(
+            "This chat is already a deck. Use set_storyline and the other deck tools.".to_string(),
+        );
+    }
+    let title = slides::validate_title(&input.title).map_err(slides::user_message)?;
+    let deck = slides::create(
+        ctx.db,
+        ctx.encryption,
+        &title,
+        "ink",
+        "",
+        Some(ctx.conversation_id),
+    )
+    .await
+    .map_err(slides::user_message)?;
+    slides::snapshot(
+        ctx.db,
+        ctx.encryption,
+        &deck.id,
+        DeckSnapshotCause::Created,
+        &title,
+    )
+    .await
+    .map_err(slides::user_message)?;
+    conversations::set_title(ctx.db, ctx.conversation_id, &title)
+        .await
+        .map_err(slides::user_message)?;
+    Ok(serde_json::json!({ "ok": true, "deck_id": deck.id }))
 }
 
 async fn add_slide(ctx: &AgentToolContext<'_>, input: AddSlideInput) -> Result<Value, String> {
@@ -2353,6 +2449,13 @@ struct ReadDeckInput {
 #[derive(Debug, Deserialize)]
 struct SetStorylineInput {
     lines: Vec<String>,
+    title: Option<String>,
+    assumptions: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartDeckInput {
+    title: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3056,7 +3159,8 @@ mod tests {
         // + 1 generate_image (t0-8 M3) = 26
         // + 8 deck tools (Slides) = 34
         // + replace_in_deck + update_slots (Slides phase 2) = 36
-        assert_eq!(defs.len(), 36);
+        // + start_deck (Slides Studio) = 37
+        assert_eq!(defs.len(), 37);
     }
 
     #[test]
@@ -3072,6 +3176,7 @@ mod tests {
             SET_THEME_TOOL,
             REPLACE_IN_DECK_TOOL,
             UPDATE_SLOTS_TOOL,
+            START_DECK_TOOL,
         ];
         let defs = builtin_tool_definitions();
         for name in names {

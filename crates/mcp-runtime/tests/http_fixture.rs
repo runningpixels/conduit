@@ -156,6 +156,65 @@ fn sse_legacy_handler(_headers: &str, _method: &str, _body: &Value) -> (u16, &'s
     (405, "text/plain", "method not allowed".into())
 }
 
+/// A server on the 2025 protocol, answering a 2026-07-28 request the way
+/// mcp.deepwiki.com does: HTTP 400 with a JSON-RPC error naming the versions
+/// it supports (and an id that is not the request's).
+fn version_400_handler(headers: &str, method: &str, body: &Value) -> (u16, &'static str, String) {
+    if header_value(headers, "mcp-protocol-version").as_deref() == Some("2026-07-28") {
+        return (
+            400,
+            "application/json",
+            json!({
+                "jsonrpc": "2.0",
+                "id": "server-error",
+                "error": {
+                    "code": -32600,
+                    "message": "Bad Request: Unsupported protocol version: 2026-07-28. Supported versions: 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25"
+                }
+            })
+            .to_string(),
+        );
+    }
+    let id = body.get("id").cloned().unwrap_or(json!(1));
+    match method {
+        "initialize" => (
+            200,
+            "application/json",
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "serverInfo": { "name": "deepwiki-like", "version": "1.0.0" },
+                    "capabilities": { "tools": {} }
+                }
+            })
+            .to_string(),
+        ),
+        "notifications/initialized" => (202, "application/json", String::new()),
+        "tools/list" => (
+            200,
+            "application/json",
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "tools": [{ "name": "ask_question", "inputSchema": { "type": "object" } }] }
+            })
+            .to_string(),
+        ),
+        other => (
+            200,
+            "application/json",
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": { "code": -32601, "message": format!("method not found: {other}") }
+            })
+            .to_string(),
+        ),
+    }
+}
+
 fn transport_at(url: &str) -> HttpSseTransport {
     HttpSseTransport::new(
         HttpSseConfig::from_value(&json!({ "url": url })).expect("config"),
@@ -181,6 +240,18 @@ async fn streamable_http_discover_list_and_call() {
         .await
         .expect("call");
     assert_eq!(out.text_summary(), "hi");
+}
+
+#[tokio::test]
+async fn streamable_http_falls_back_when_the_version_is_refused() {
+    let url = spawn_server(version_400_handler).await;
+    let mut t = transport_at(&url);
+    let cancel = CancellationToken::new();
+    let info = t.initialize(&cancel).await.expect("fallback to initialize");
+    assert_eq!(info.name, "deepwiki-like");
+    let tools = t.list_tools(&cancel).await.expect("list on the legacy era");
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "ask_question");
 }
 
 #[tokio::test]

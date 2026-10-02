@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.4] - 2026-10-02
+
 ### Added
 
 - **Home.** The app now opens on a Home page, first on the rail.
@@ -660,7 +662,10 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.4...HEAD
+[1.0.0-rc.4]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.3...v1.0.0-rc.4
+[1.0.0-rc.3]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.2...v1.0.0-rc.3
+[1.0.0-rc.2]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.8...v1.0.0-rc.1
 [0.1.0-rc.8]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.7...v0.1.0-rc.8
 [0.1.0-rc.7]: https://github.com/runningpixels/conduit/compare/v0.1.0-rc.6...v0.1.0-rc.7

@@ -204,6 +204,7 @@ fn main() {
             list_decks,
             create_deck,
             undo_start_deck,
+            open_presenter_window,
             get_deck,
             get_deck_for_conversation,
             open_deck,
@@ -358,10 +359,15 @@ fn main() {
                 .ok_or("tauri.conf.json has no \"main\" window")?;
             // Started at sign-in with the tray on: stay hidden in the tray.
             let visible = config.visible && !tray::start_hidden(std::env::args(), close_to_tray);
+            let browser_args = webview_args::main_webview_browser_args(&allowlist);
             let _window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
-                .additional_browser_args(&webview_args::main_webview_browser_args(&allowlist))
+                .additional_browser_args(&browser_args)
                 .visible(visible)
                 .build()?;
+            // Every later webview (the Slides presenter view) must be built
+            // with these same arguments: WebView2 refuses a second webview
+            // whose environment differs from the first one's.
+            app.manage(webview_args::MainWebviewArgs(browser_args));
             #[cfg(target_os = "linux")]
             webview_args::disable_webrtc(&_window)?;
             tray::ensure_tray(app.handle(), close_to_tray)?;

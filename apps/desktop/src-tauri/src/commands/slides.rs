@@ -21,6 +21,55 @@ pub async fn list_decks(state: State<'_, AppState>) -> Result<Vec<DeckSummary>, 
     slides::list(&state.db).await.map_err(message)
 }
 
+/// The presenter view's window label (also listed in capabilities/default.json).
+pub const PRESENTER_WINDOW: &str = "presenter";
+
+/// Open the presenter view for a deck, or focus it when it is already open.
+/// Built here rather than from the page so it gets the main webview's browser
+/// arguments (see `webview_args::MainWebviewArgs`); a page-created window
+/// fails on Windows with a mismatched WebView2 environment. `x`/`y` place it
+/// (logical pixels), else it is centred.
+#[tauri::command]
+pub async fn open_presenter_window(
+    app: tauri::AppHandle,
+    args: State<'_, crate::webview_args::MainWebviewArgs>,
+    deck_id: String,
+    title: String,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(existing) = app.get_webview_window(PRESENTER_WINDOW) {
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    // The id goes into the window URL: accept only what a deck id can be.
+    if deck_id.is_empty()
+        || deck_id.len() > 64
+        || !deck_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err("That deck id isn't valid.".to_string());
+    }
+    let title: String = title.chars().take(200).collect();
+    let url = tauri::WebviewUrl::App(format!("index.html?presenter={deck_id}").into());
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, PRESENTER_WINDOW, url)
+        .title(title)
+        .inner_size(1100.0, 700.0)
+        .decorations(true)
+        .focused(true)
+        .additional_browser_args(&args.0);
+    builder = match (x, y) {
+        (Some(x), Some(y)) if x.is_finite() && y.is_finite() => builder.position(x, y),
+        _ => builder.center(),
+    };
+    let _window = builder.build().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    crate::webview_args::disable_webrtc(&_window).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Saved custom themes, most recently used first (built-in themes excluded).
 #[tauri::command]
 pub async fn list_slide_themes(state: State<'_, AppState>) -> Result<Vec<SlideTheme>, String> {

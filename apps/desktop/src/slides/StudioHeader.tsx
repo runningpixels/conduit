@@ -19,6 +19,8 @@ export interface StudioHeaderProps {
   /** The deck started as a request in an ordinary chat. */
   madeFromChat: boolean;
   onUndoStart: () => void;
+  /** Present the deck full screen, from the first slide or from the one on the stage. */
+  onPresent?: (fromCurrent: boolean) => void;
 }
 
 const STEPS: ReadonlyArray<{ step: StudioStep; labelId: string }> = [
@@ -43,6 +45,7 @@ export function StudioHeader({
   onSetTheme,
   madeFromChat,
   onUndoStart,
+  onPresent,
 }: StudioHeaderProps) {
   const t = useT();
   const [titleDraft, setTitleDraft] = useState(deck.title);
@@ -52,6 +55,7 @@ export function StudioHeader({
 
   const busy = busyTool != null;
   const current = currentStudioStep(deck, busy);
+  const canPresent = onPresent != null && deck.slides.length > 0;
 
   const commitTitle = () => {
     const next = titleDraft.trim();
@@ -114,6 +118,26 @@ export function StudioHeader({
             ))}
           </select>
         </label>
+        <span className="studio-present-group">
+          <button
+            type="button"
+            className="btn primary studio-present"
+            disabled={!canPresent}
+            title={t('slides.present.shortcut')}
+            onClick={() => onPresent?.(false)}
+          >
+            {t('slides.present.button')}
+          </button>
+          <button
+            type="button"
+            className="btn studio-present-from"
+            disabled={!canPresent}
+            title={t('slides.present.fromHereShortcut')}
+            onClick={() => onPresent?.(true)}
+          >
+            {t('slides.present.fromHere')}
+          </button>
+        </span>
       </div>
       <ol className="studio-steps" aria-label={t('slides.studio.stepsAria')}>
         {STEPS.map(({ step, labelId }) => (
@@ -122,11 +146,16 @@ export function StudioHeader({
             className="studio-step"
             data-step={step}
             data-current={step === current ? 'true' : undefined}
-            data-disabled={step === 'present' ? 'true' : undefined}
+            data-disabled={step === 'present' && !canPresent ? 'true' : undefined}
             aria-current={step === current ? 'step' : undefined}
-            title={step === 'present' ? t('slides.studio.comingNext') : undefined}
           >
-            {t(labelId)}
+            {step === 'present' && canPresent ? (
+              <button type="button" className="studio-step-link" onClick={() => onPresent?.(false)}>
+                {t(labelId)}
+              </button>
+            ) : (
+              t(labelId)
+            )}
           </li>
         ))}
       </ol>

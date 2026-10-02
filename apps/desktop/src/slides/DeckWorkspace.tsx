@@ -75,6 +75,8 @@ export interface DeckWorkspaceProps {
   slideRequest?: { index: number; nonce: number } | null;
   /** Studio: the slide on the stage changed. */
   onSlideChange?: (index: number) => void;
+  /** Studio: present full screen from this slide index. */
+  onPresent?: (startIndex: number) => void;
 }
 
 const NO_THEMES: readonly SlideTheme[] = [];
@@ -114,6 +116,7 @@ export function DeckWorkspace({
   onOpenScriptFind,
   slideRequest = null,
   onSlideChange,
+  onPresent,
 }: DeckWorkspaceProps) {
   const t = useT();
   const [index, setIndex] = useState(0);
@@ -294,6 +297,7 @@ export function DeckWorkspace({
           onSetTheme={onSetTheme}
           madeFromChat={madeFromChat}
           onUndoStart={() => onUndoStart?.()}
+          onPresent={onPresent ? (fromCurrent) => onPresent(fromCurrent ? current : 0) : undefined}
         />
       ) : (
       <header className="deck-head">

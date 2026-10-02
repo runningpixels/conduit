@@ -27,13 +27,15 @@ export interface DeckView {
   index: number;
   /** Stage only: slots can be selected and edited in place. */
   editable?: boolean;
+  /** Stage only: full-screen presenting. Black letterbox, no slide outline. */
+  present?: boolean;
 }
 
 export interface DeckMessage {
   type: typeof DECK_MESSAGE_TYPE;
   themeCss: string;
   slides: Array<{ id: string; layout: string; html: string }>;
-  view: Required<DeckView>;
+  view: Required<Omit<DeckView, 'present'>> & { present?: true };
 }
 
 export type DeckFrameEvent =
@@ -49,7 +51,9 @@ export function deckMessage(deck: Pick<DeckDetail, 'themeCss' | 'slides'>, view:
     type: DECK_MESSAGE_TYPE,
     themeCss: deck.themeCss,
     slides: deck.slides.map((s) => ({ id: s.id, layout: s.layout, html: withoutScripts(s.html) })),
-    view: { mode: view.mode, index: view.index, editable: view.mode === 'stage' && view.editable === true },
+    view: { mode: view.mode, index: view.index, editable: view.mode === 'stage' && view.editable === true,
+      ...(view.mode === 'stage' && view.present === true ? { present: true as const } : {}),
+    },
   };
 }
 
@@ -142,6 +146,9 @@ body { background: transparent; }
 /* The slide's edge, for themes whose background is close to the letterbox.
    Drawn at 1920px scale, so it lands near one device pixel. */
 body[data-mode="stage"] .deck { outline: 3px solid rgba(128, 128, 128, 0.28); }
+/* Presenting: a black letterbox and no slide edge. */
+html[data-present="true"], html[data-present="true"][data-theme="dark"] { background: #000; }
+body[data-present="true"] .deck { outline: none; }
 .deck > .slide:not(.is-current):not(.is-measuring) { display: none !important; }
 .deck > .slide { position: absolute !important; left: 0; top: 0; }
 body[data-mode="thumb"] { user-select: none; }
@@ -319,6 +326,9 @@ const FRAME_SCRIPT = `
     editable = mode === 'stage' && m.view.editable === true;
     document.body.setAttribute('data-mode', mode);
     document.body.setAttribute('data-editable', editable ? 'true' : 'false');
+    var present = mode === 'stage' && m.view.present === true;
+    document.body.setAttribute('data-present', present ? 'true' : 'false');
+    document.documentElement.setAttribute('data-present', present ? 'true' : 'false');
     if (!editable && editing) cancelEdit();
 
     var next = {};

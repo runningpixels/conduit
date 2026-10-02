@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import '@conduit/ui/tokens.css';
 import './styles.css';
 import App from './App';
+import { PresenterApp } from './slides/PresenterApp';
+import { parsePresenterRoute } from './slides/presentCore';
 import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
 import { applyCachedBrand } from './brand/applyBrand';
 import { applyCachedAccent } from './themes/accent';
@@ -20,10 +22,15 @@ applyUiReadability(readUiFontSize(), readUiDensity());
  * 'system' the same way theme.ts does, matching the dark-unless-prefers-light
  * default the bare :root block already assumes before any data-theme
  * attribute is set. */
-applyCachedBrand(resolveTheme('system'));
+/* The presenter window (`?presenter=<deckId>`) is always dark: it sits beside
+ * a projected slide and must not glare. */
+const presenterDeckId = parsePresenterRoute(window.location.search);
+const bootTheme = presenterDeckId ? 'dark' : resolveTheme('system');
+if (presenterDeckId) document.documentElement.setAttribute('data-theme', 'dark');
+applyCachedBrand(bootTheme);
 /* The main colour (ADR-011) lives in AppSettings too; replay its cache the
  * same way. After the brand, so an active brand makes it stand down. */
-applyCachedAccent(resolveTheme('system'));
+applyCachedAccent(bootTheme);
 
 installDevLocaleSwitch();
 
@@ -50,7 +57,7 @@ void bootstrapI18n(devLocale ?? undefined).then(({ preference, messages }) => {
         initialMessages={messages}
         overridden={devLocale !== null}
       >
-        <App />
+        {presenterDeckId ? <PresenterApp deckId={presenterDeckId} /> : <App />}
       </I18nProvider>
     </React.StrictMode>,
   );

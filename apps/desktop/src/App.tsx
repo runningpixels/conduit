@@ -125,6 +125,7 @@ import {
 } from './ipc/client';
 import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
+import { PresentationView } from './slides/PresentationView';
 import { STARTER_THEMES } from './slides/themes';
 import { DeckDock, type DockTab } from './slides/DeckDock';
 import { ScriptPanel, type ScriptFocusRequest } from './slides/ScriptPanel';
@@ -986,6 +987,29 @@ export default function App() {
   const [stageSlideRequest, setStageSlideRequest] = useState<{ index: number; nonce: number } | null>(null);
   const [madeFromChatDeckId, setMadeFromChatDeckId] = useState<string | null>(null);
   const studio = destination === 'slides' && studioDeckId != null && activeDeck?.id === studioDeckId;
+  // Present: a full-screen overlay (a portal) over the studio; the studio and
+  // the one mounted chat stay exactly where they are underneath.
+  const [presentStart, setPresentStart] = useState<number | null>(null);
+  const stageIndexRef = useRef(0);
+  const startPresenting = useCallback((startIndex: number) => {
+    if ((activeDeckRef.current?.slides.length ?? 0) === 0) return;
+    setPresentStart(startIndex);
+  }, []);
+  const presenting = studio && presentStart != null && (activeDeck?.slides.length ?? 0) > 0;
+  useEffect(() => {
+    if (presentStart != null && !studio) setPresentStart(null);
+  }, [presentStart, studio]);
+  // F5 presents from the first slide, Shift+F5 from the stage's slide.
+  useEffect(() => {
+    if (!studio || presentStart != null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F5' || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      startPresenting(e.shiftKey ? stageIndexRef.current : 0);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [studio, presentStart, startPresenting]);
   /** The last ordinary (non-deck) chat, to return to when leaving a deck. */
   const lastChatIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -2703,6 +2727,10 @@ export default function App() {
                 setScriptFindToken((n) => n + 1);
               }}
               slideRequest={stageSlideRequest}
+              onSlideChange={(i) => {
+                stageIndexRef.current = i;
+              }}
+              onPresent={startPresenting}
               deck={activeDeck}
               loading={deckLoading}
               busyTool={deckBusyTool}
@@ -2786,6 +2814,15 @@ export default function App() {
         )}
       </div>
       </div>
+
+      {presenting && activeDeck && presentStart != null && (
+        <PresentationView
+          deck={activeDeck}
+          startIndex={presentStart}
+          colorScheme={effectiveTheme}
+          onExit={() => setPresentStart(null)}
+        />
+      )}
 
       <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
       <AppDetailsDialog

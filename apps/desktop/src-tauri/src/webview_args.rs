@@ -37,6 +37,13 @@ pub const BASE_ARGS: &str =
 pub const WEBRTC_ARGS: &str =
     "--webrtc-ip-handling-policy=disable_non_proxied_udp --proxy-server=http://127.0.0.1:9";
 
+/// The argument string the main webview was built with (managed state).
+/// WebView2 shares one browser environment per user data folder and refuses
+/// a second webview whose arguments differ, so any later window (the Slides
+/// presenter view) is built with exactly these — which also gives it the
+/// same WebRTC lockdown, as it shows artifact frames too.
+pub struct MainWebviewArgs(pub String);
+
 /// Full argument string for the main webview.
 pub fn main_webview_browser_args(remote_allowlist: &[String]) -> String {
     let mut args = format!("{BASE_ARGS} {WEBRTC_ARGS}");

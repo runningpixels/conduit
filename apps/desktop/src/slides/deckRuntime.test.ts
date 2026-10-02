@@ -31,6 +31,18 @@ describe('deck frame runtime', () => {
     expect(sections[0].classList.contains('is-current')).toBe(true);
   });
 
+  it('marks the body for presenting and clears it again', () => {
+    const post = bootRuntime();
+    const slides = [slide('a', 0, 'A')];
+    post(deckMessage({ themeCss: '', slides }, { mode: 'stage', index: 0, present: true }));
+    expect(document.body.getAttribute('data-present')).toBe('true');
+    expect(document.documentElement.getAttribute('data-present')).toBe('true');
+    post(deckMessage({ themeCss: '', slides }, { mode: 'stage', index: 0 }));
+    expect(document.body.getAttribute('data-present')).toBe('false');
+    post(deckMessage({ themeCss: '', slides }, { mode: 'thumb', index: 0, present: true }));
+    expect(document.body.getAttribute('data-present')).toBe('false');
+  });
+
   it('removes deleted slides and follows a reorder', () => {
     const post = bootRuntime();
     const view = { mode: 'stage' as const, index: 0, editable: false };

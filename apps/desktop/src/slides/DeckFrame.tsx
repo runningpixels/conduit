@@ -19,6 +19,8 @@ export interface DeckFrameProps {
   onSelect?: (slideId: string) => void;
   /** Stage only: slots can be selected and edited in place. */
   editable?: boolean;
+  /** Stage only: full-screen presenting (black letterbox, no slide outline). */
+  present?: boolean;
   onSlotSelect?: (slideId: string, index: number, name: string) => void;
   /** `html` has already been through `cleanInlineHtml`. */
   onSlotEdit?: (slideId: string, index: number, name: string, html: string) => void;
@@ -33,6 +35,7 @@ export function DeckFrame({
   colorScheme,
   onSelect,
   editable = false,
+  present = false,
   onSlotSelect,
   onSlotEdit,
   onKey,
@@ -64,8 +67,8 @@ export function DeckFrame({
           : [];
       return deckMessage({ themeCss, slides: one }, { mode, index: 0 });
     }
-    return deckMessage({ themeCss, slides: stageSlides ?? [] }, { mode, index, editable });
-  }, [mode, themeCss, stageSlides, index, editable, thumbId, thumbLayout, thumbHtml]);
+    return deckMessage({ themeCss, slides: stageSlides ?? [] }, { mode, index, editable, present });
+  }, [mode, themeCss, stageSlides, index, editable, present, thumbId, thumbLayout, thumbHtml]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

@@ -51,11 +51,24 @@ describe('StudioHeader', () => {
     expect(current()).toBe('Polish');
   });
 
-  it('shows Present disabled with a Coming next hint', () => {
-    render(<StudioHeader {...props()} />);
-    const present = screen.getByText('Present');
-    expect(present.getAttribute('data-disabled')).toBe('true');
-    expect(present.getAttribute('title')).toBe('Coming next');
+  it('presents from the start, from this slide, and from the Present step', () => {
+    const onPresent = vi.fn();
+    render(<StudioHeader {...props({ onPresent })} />);
+    fireEvent.click(document.querySelector('.studio-present') as HTMLElement);
+    expect(onPresent).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole('button', { name: 'From this slide' }));
+    expect(onPresent).toHaveBeenLastCalledWith(true);
+    fireEvent.click(document.querySelector('.studio-step-link') as HTMLElement);
+    expect(onPresent).toHaveBeenCalledTimes(3);
+    expect(onPresent).toHaveBeenLastCalledWith(false);
+  });
+
+  it('disables Present while the deck has no slides', () => {
+    const onPresent = vi.fn();
+    render(<StudioHeader {...props({ deck: makeDeck({ stage: 'storyline', slides: [] }), onPresent })} />);
+    expect((document.querySelector('.studio-present') as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector('.studio-step-link')).toBeNull();
+    expect(screen.getByText('Present', { selector: '.studio-step' }).getAttribute('data-disabled')).toBe('true');
   });
 
   it('shows the Undo chip only for a deck made from chat that has no slides', () => {

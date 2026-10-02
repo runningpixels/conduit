@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.3] - 2026-10-02
+
 ### Added
 
 - **Slides.** A new **Slides** section for presentations you build by
@@ -26,6 +28,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     slide, speaker notes, timer) to keep private while you share the slides.
   - **Export** as a single HTML file that presents itself in any browser, or
     as a PDF (Windows).
+  - This version adds to your local database. If you later go back to
+    rc.2 or earlier, that version can't read it and starts with an empty one
+    (the old file is kept as a backup).
 
 ### Fixed
 

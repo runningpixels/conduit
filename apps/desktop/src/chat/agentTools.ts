@@ -529,7 +529,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'update_slide',
     name: 'update_slide',
     description:
-      "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user asked you to change that text.",
+      "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -548,7 +548,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'patch_slide',
     name: 'patch_slide',
     description:
-      "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user asked you to change that text.",
+      "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
     inputSchema: {
       type: 'object',
       properties: {

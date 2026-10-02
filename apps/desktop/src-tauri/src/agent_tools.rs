@@ -1862,8 +1862,8 @@ fn ensure_kind(artifact: &Artifact, expected: &str) -> Result<(), String> {
 const READ_DECK_DESCRIPTION: &str = "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's full inner HTML, notes and slots. A pinned slot holds text the user wrote. Read a slide before you change it.";
 const SET_STORYLINE_DESCRIPTION: &str = "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built.";
 const ADD_SLIDE_DESCRIPTION: &str = "Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. layout is a layout name from the theme (lowercase, e.g. \"title\"). html is the slide's INNER html: the app wraps it in <section class=\"slide\" data-layout=\"LAYOUT\">, so do not include that section yourself. Put every piece of text in an element with data-text=\"slot-name\", style with the theme's classes and color tokens (never hard-coded colors), draw charts as inline SVG, and never include scripts or external URLs. notes is optional speaker notes.";
-const UPDATE_SLIDE_DESCRIPTION: &str = "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user asked you to change that text.";
-const PATCH_SLIDE_DESCRIPTION: &str = "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user asked you to change that text.";
+const UPDATE_SLIDE_DESCRIPTION: &str = "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
+const PATCH_SLIDE_DESCRIPTION: &str = "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
 const REPLACE_IN_DECK_DESCRIPTION: &str = "Swap an exact word or phrase everywhere in the deck's text and speaker notes in one step; markup is never touched. Use it only for an exact swap the user asked for across the deck. It also changes pinned slots, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.";
 const UPDATE_SLOTS_DESCRIPTION: &str = "Set the text of slots (elements with data-text) on one or more slides in one call. Use it for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.";
 const MOVE_SLIDE_DESCRIPTION: &str =
@@ -2157,7 +2157,23 @@ async fn update_slide(
     )
     .await
     .map_err(slides::user_message)?;
-    Ok(serde_json::json!({ "ok": true, "slide_id": slide.id }))
+    Ok(serde_json::json!({
+        "ok": true,
+        "slide_id": slide.id,
+        "kept_pinned": pinned_slot_names(&slide.html),
+    }))
+}
+
+/// Names of the pinned (user-written) slots in a slide, so the model's reply
+/// can say what it left alone.
+fn pinned_slot_names(html: &str) -> Vec<String> {
+    let mut names: Vec<String> = slide_html::slots(html)
+        .into_iter()
+        .filter(|slot| slot.pinned)
+        .map(|slot| slot.name)
+        .collect();
+    names.dedup();
+    names
 }
 
 async fn patch_slide(ctx: &AgentToolContext<'_>, input: PatchSlideInput) -> Result<Value, String> {
@@ -2173,6 +2189,7 @@ async fn patch_slide(ctx: &AgentToolContext<'_>, input: PatchSlideInput) -> Resu
         &patched,
         input.release_pinned.as_deref().unwrap_or(&[]),
     )?;
+    let kept_pinned = pinned_slot_names(&patched);
     slides::update_slide(
         ctx.db,
         ctx.encryption,
@@ -2189,6 +2206,7 @@ async fn patch_slide(ctx: &AgentToolContext<'_>, input: PatchSlideInput) -> Resu
         "ok": true,
         "slide_id": slide.id,
         "edits_applied": input.edits.len(),
+        "kept_pinned": kept_pinned,
     }))
 }
 

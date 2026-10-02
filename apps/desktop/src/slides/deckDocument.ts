@@ -326,8 +326,11 @@ const FRAME_SCRIPT = `
       next[s.id] = node;
       ids.push(s.id);
     }
+    // Drop every node that is no longer shown: slides that were deleted, and
+    // the old node of a slide whose content changed (it was rebuilt above).
     for (var id in nodes) {
-      if (!next[id] && nodes[id].el.parentNode) nodes[id].el.parentNode.removeChild(nodes[id].el);
+      var old = nodes[id].el;
+      if ((!next[id] || next[id].el !== old) && old.parentNode) old.parentNode.removeChild(old);
     }
     if (editing && !next[editing.slideId]) editing = null;
     for (var p = 0; p < ids.length; p++) {

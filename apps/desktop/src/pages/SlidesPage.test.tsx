@@ -80,6 +80,19 @@ describe('SlidesPage', () => {
     await waitFor(() => expect((screen.getByLabelText(STORY) as HTMLTextAreaElement).value).toBe(''));
   });
 
+  it('fills the story box from a deck idea, again for each new one', async () => {
+    const { rerender } = render(
+      <SlidesPage onOpenDeck={() => {}} onStartDeck={vi.fn()} prefill={{ text: 'A pitch deck for Habitly', seq: 1 }} />,
+    );
+    const box = screen.getByLabelText(STORY) as HTMLTextAreaElement;
+    expect(box.value).toBe('A pitch deck for Habitly');
+    expect(box).toHaveFocus();
+    fireEvent.change(box, { target: { value: 'edited' } });
+    rerender(<SlidesPage onOpenDeck={() => {}} onStartDeck={vi.fn()} prefill={{ text: 'A pitch deck for Habitly', seq: 2 }} />);
+    expect(box.value).toBe('A pitch deck for Habitly');
+    await screen.findByText('Q3 review');
+  });
+
   it('reports a failed start and keeps the prompt', async () => {
     const onStatus = vi.fn();
     render(

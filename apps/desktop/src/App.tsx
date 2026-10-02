@@ -364,6 +364,12 @@ export default function App() {
   );
   const [collectionCount, setCollectionCount] = useState<number | null>(null);
   const [queuedIdea, setQueuedIdea] = useState<Idea | null>(null);
+  // A deck idea's story, for the Slides start box.
+  const [slidesPrefill, setSlidesPrefill] = useState<{ text: string; seq: number } | null>(null);
+  // Used once: coming back to Slides later starts with an empty box.
+  useEffect(() => {
+    if (destination !== 'slides') setSlidesPrefill(null);
+  }, [destination]);
   const ideaState = useIdeaState();
   const [droppedPaths, setDroppedPaths] = useState<string[]>([]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
@@ -2174,6 +2180,12 @@ export default function App() {
   /** Put an idea's prompt in the composer of an empty chat (new if needed). */
   const tryIdea = useCallback(
     async (idea: Idea) => {
+      // A deck idea starts in Slides with its story filled in, not in a chat.
+      if (idea.opens === 'slides') {
+        setSlidesPrefill((prev) => ({ text: t(`ideas.item.${idea.id}.prompt`), seq: (prev?.seq ?? 0) + 1 }));
+        setDestination('slides');
+        return;
+      }
       // From Home the open chat may be a deck's: leave it, or Chats would route to Slides.
       const hadDeck = activeDeckRef.current != null;
       if (hadDeck) {
@@ -2866,6 +2878,7 @@ export default function App() {
                 onOpenDeck={(deck) => void handleOpenDeck(deck.id)}
                 onStartDeck={handleStartDeck}
                 onStatus={setStatusMessage}
+                prefill={slidesPrefill}
               />
             )}
             {destination === 'workflows' && (

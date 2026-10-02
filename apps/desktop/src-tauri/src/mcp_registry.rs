@@ -9,6 +9,15 @@ use serde::{Deserialize, Serialize};
 
 pub const REGISTRY_BASE: &str = "https://registry.modelcontextprotocol.io";
 
+/// A search is tried this many times before the error reaches the reader.
+const REGISTRY_ATTEMPTS: u32 = 2;
+const REGISTRY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(600);
+
+/// Statuses worth one more try: the registry is busy or briefly down.
+fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistryServer {
@@ -54,12 +63,16 @@ struct RegistryRemote {
 }
 
 pub async fn search_official_registry(query: &str) -> Result<Vec<RegistryServer>, String> {
+    search_registry_at(REGISTRY_BASE, query).await
+}
+
+async fn search_registry_at(base: &str, query: &str) -> Result<Vec<RegistryServer>, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .user_agent("Conduit-MCP/0.1")
         .build()
         .map_err(|e| format!("http client error: {e}"))?;
-    let mut url = url::Url::parse(&format!("{REGISTRY_BASE}/v0.1/servers"))
+    let mut url = url::Url::parse(&format!("{base}/v0.1/servers"))
         .map_err(|e| format!("invalid registry URL: {e}"))?;
     {
         let mut q = url.query_pairs_mut();
@@ -70,11 +83,21 @@ pub async fn search_official_registry(query: &str) -> Result<Vec<RegistryServer>
             q.append_pair("search", trimmed);
         }
     }
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("registry request failed: {e}"))?;
+    // The first request of a session can fail on a cold connection (seen live:
+    // the search failed once and worked when repeated), so a network error,
+    // a timeout, 429 or a 5xx gets one more try before the reader sees it.
+    let mut attempt = 0;
+    let resp = loop {
+        attempt += 1;
+        let last = attempt >= REGISTRY_ATTEMPTS;
+        match client.get(url.clone()).send().await {
+            Ok(resp) if is_retryable_status(resp.status()) && !last => {}
+            Ok(resp) => break resp,
+            Err(e) if !last && (e.is_connect() || e.is_timeout() || e.is_request()) => {}
+            Err(e) => return Err(format!("registry request failed: {e}")),
+        }
+        tokio::time::sleep(REGISTRY_RETRY_DELAY).await;
+    };
     if !resp.status().is_success() {
         return Err(format!("registry returned HTTP {}", resp.status()));
     }
@@ -169,6 +192,68 @@ fn summarize(server: SummarizeInput) -> RegistryServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A local registry that answers each request with the next status in
+    /// `statuses` (a 200 carries one installable server).
+    async fn registry_with(
+        statuses: Vec<u16>,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = hits.clone();
+        tokio::spawn(async move {
+            for status in statuses {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut buf = [0u8; 4096];
+                let _ = sock.read(&mut buf).await;
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let body = if status == 200 {
+                    r#"{"servers":[{"server":{"name":"io.example/demo","description":"d","version":"1","remotes":[{"type":"streamable-http","url":"https://example.com/mcp"}]}}]}"#
+                } else {
+                    "busy"
+                };
+                let reply = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(reply.as_bytes()).await;
+            }
+        });
+        (base, hits)
+    }
+
+    #[tokio::test]
+    async fn search_retries_once_after_a_server_error() {
+        let (base, hits) = registry_with(vec![503, 200]).await;
+        let rows = search_registry_at(&base, "demo")
+            .await
+            .expect("second try succeeds");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "io.example/demo");
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn search_gives_up_after_the_second_failure() {
+        let (base, hits) = registry_with(vec![503, 503, 200]).await;
+        let err = search_registry_at(&base, "demo")
+            .await
+            .expect_err("both tries fail");
+        assert!(err.contains("503"), "got {err}");
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn search_does_not_retry_a_client_error() {
+        let (base, hits) = registry_with(vec![404, 200]).await;
+        let err = search_registry_at(&base, "demo")
+            .await
+            .expect_err("404 is final");
+        assert!(err.contains("404"), "got {err}");
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn prefers_streamable_http_remote() {

@@ -31,6 +31,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **A chat opened from another page starts at its latest message.** It could
   stop short when the conversation finished laying out after the jump to the
   bottom.
+- **The Pitch deck idea opens in Slides.** It used to build a single HTML
+  page in a chat; now it opens Slides with the story filled in, ready to
+  start as a real deck.
+- **Connector search tries again before it gives up.** A search of the
+  official MCP registry that hits a network error, a timeout or a busy
+  server is retried once, so a first search on a cold connection no longer
+  fails.
 
 ## [1.0.0-rc.3] - 2026-10-02
 

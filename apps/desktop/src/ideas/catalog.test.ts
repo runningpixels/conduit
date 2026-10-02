@@ -44,6 +44,14 @@ describe('ideas catalog', () => {
     }
   });
 
+  // A deck idea used to be a page idea, so the chat built one HTML file
+  // instead of a deck. Deck ideas open in Slides and are never page ideas.
+  it('sends deck ideas to Slides, not the document tools', () => {
+    const decks = IDEAS.filter((i) => i.opens === 'slides');
+    expect(decks.map((i) => i.id)).toContain('pitchDeck');
+    for (const idea of decks) expect(idea.page, idea.id).toBe(false);
+  });
+
   it('routes each need to the tool that serves it', () => {
     for (const idea of IDEAS) {
       const prompt = messages[`ideas.item.${idea.id}.prompt`];

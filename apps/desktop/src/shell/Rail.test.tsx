@@ -21,8 +21,15 @@ describe('Rail', () => {
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Chats', 'Apps', 'Slides', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
+    expect(labels).toEqual(['Home', 'Chats', 'Apps', 'Slides', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
+  });
+
+  it('puts Home first, ahead of Chats', () => {
+    const { container } = renderRail({ destination: 'home' });
+    const first = container.querySelector('.rail-btn');
+    expect(first?.getAttribute('data-destination')).toBe('home');
+    expect(first).toHaveAttribute('aria-current', 'page');
   });
 
   it('shows the product mark and name', () => {
@@ -43,7 +50,7 @@ describe('Rail', () => {
     fireEvent.keyDown(apps, { key: 'End' });
     expect(document.activeElement).toBe(settings);
     fireEvent.keyDown(settings, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(chats);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Home' }));
   });
 
   it('announces something new or running on a destination', () => {

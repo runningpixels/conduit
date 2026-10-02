@@ -100,6 +100,14 @@ const SHAPES: Record<string, unknown> = {
   checkArtifactFileState: {},
   // Ideas: collections decide whether "Ask your documents" is ready.
   listKnowledgeCollections: [],
+  // Home reads these when it opens; an empty answer is the empty state.
+  listDecks: [],
+  listWorkflows: [],
+  listWorkflowReviews: [],
+  listWorkflowQuestions: [],
+  listPrompts: [],
+  listApps: [],
+  listStarterApps: [],
 };
 
 /**
@@ -153,6 +161,8 @@ const IPC_EXPORTS = [
   'exportBrandConfig',
   // Ideas (App.tsx reads the collection count for "Ask your documents").
   'listKnowledgeCollections',
+  // Home: its lists and the apps App.tsx keeps for it.
+  'listWorkflows', 'listApps', 'listStarterApps',
   // Slides: App.tsx asks whether the open chat is bound to a deck.
   'getDeckForConversation', 'listDecks', 'openDeck', 'undoStartDeck', 'listDeckSnapshots', 'listSlideThemes',
   'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',
@@ -188,6 +198,19 @@ describe('App shell', { timeout: 20_000 }, () => {
     expect(document.querySelector('.titlebar'), 'the caption row').not.toBeNull();
     expect(document.querySelector('.sidebar'), 'the sidebar column').not.toBeNull();
     expect(document.querySelector('.main-head'), 'the title strip').not.toBeNull();
+  });
+
+  it('opens on Home, with the chat kept mounted underneath', async () => {
+    const { default: App } = await import('./App');
+    render(<App />);
+    await waitFor(() =>
+      expect(document.querySelector('.dest-page[data-destination="home"] .home-title')).not.toBeNull(),
+    );
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByLabelText('Describe what you want to do')).toBeInTheDocument();
+    // "Continue" is instant because boot still selected a conversation.
+    expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument();
+    expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull();
   });
 
   it('renders no React error boundary fallback on a clean boot', async () => {

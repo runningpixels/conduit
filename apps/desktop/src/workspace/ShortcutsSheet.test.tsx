@@ -22,6 +22,16 @@ describe('the hotkey registry', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it('maps Mod+1…9 to Home, Chats, Apps, Slides, Documents, Library, Workflows, Connectors, Memory', () => {
+    const order = ['goHome', 'goChats', 'goApps', 'goSlides', 'goDocuments', 'goLibrary', 'goWorkflows', 'goConnectors', 'goMemory'];
+    order.forEach((id, i) => {
+      expect(matchHotkey(new KeyboardEvent('keydown', { key: String(i + 1), ctrlKey: true }))?.id).toBe(id);
+    });
+    // Shift+digit is a different key on most layouts (and on none a destination).
+    expect(matchHotkey(new KeyboardEvent('keydown', { key: '1', ctrlKey: true, shiftKey: true }))).toBeUndefined();
+    expect(matchHotkey(new KeyboardEvent('keydown', { key: '1' }))).toBeUndefined();
+  });
+
   it('keeps the chords apart: Shift changes what a key does', () => {
     expect(matchHotkey(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }))?.id).toBe('newChat');
     expect(matchHotkey(new KeyboardEvent('keydown', { key: 'N', ctrlKey: true, shiftKey: true }))).toBeUndefined();

@@ -16,6 +16,7 @@ import {
   BrandMark,
   ChatIcon,
   ConnectorsIcon,
+  HomeIcon,
   IdeaIcon,
   KnowledgeIcon,
   MemoryIcon,
@@ -29,6 +30,7 @@ import {
 } from '../icons';
 
 export type Destination =
+  | 'home'
   | 'chats'
   | 'apps'
   | 'slides'
@@ -43,6 +45,7 @@ export type Destination =
 /** Destinations the rail shows, in order. Ideas is not one of them: it lives
  *  in the new-chat screen, and its page opens from there ("More ideas"). */
 export const DESTINATIONS: readonly Destination[] = [
+  'home',
   'chats',
   'apps',
   'slides',
@@ -55,6 +58,7 @@ export const DESTINATIONS: readonly Destination[] = [
 ];
 
 const ICONS: Record<Destination, ReactNode> = {
+  home: <HomeIcon />,
   chats: <ChatIcon />,
   apps: <AppsIcon />,
   slides: <SlidesIcon />,

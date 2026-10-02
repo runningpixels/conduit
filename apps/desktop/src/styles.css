@@ -46,6 +46,9 @@
 /* Apps page: saved mini-apps, the open app, Save as app */
 @import './styles/pages-apps.css';
 
+/* Home: the front door (home/*.tsx) */
+@import './styles/pages-home.css';
+
 /* Slides page and the deck workspace: pages/SlidesPage.tsx, slides/*.tsx */
 @import './styles/pages-slides.css';
 

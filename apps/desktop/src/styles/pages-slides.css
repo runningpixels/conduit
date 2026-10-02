@@ -129,7 +129,7 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 }
 .deck-workspace-empty { align-items: center; justify-content: center; }
 /* In the chat's right column, the workspace fills the panel card. */
-.deck-panel > .deck-workspace { flex: 1; height: auto; }
+.deck-panel > .deck-workspace { flex: 1; height: auto; min-width: 0; }
 .deck-empty { margin: 0; padding: var(--sp-5); color: var(--ink-3); font-size: var(--fs-2xl); text-align: center; }
 .deck-head {
   display: flex;
@@ -278,6 +278,15 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 }
 /* Without slides it is a plain right-hand column. */
 .deck-body > .deck-script { flex-basis: 360px; border-width: 0 0 0 1px; border-radius: 0; }
+/* Too narrow for the strip, the stage and the script side by side (a
+   normal-width panel): the script takes the slides' place until it is
+   closed. Stage editing and the script can't be used at once here anyway. */
+.deck-workspace { container: deck-workspace / inline-size; }
+@container deck-workspace (max-width: 860px) {
+  .deck-slides[data-script="open"] .deck-strip,
+  .deck-slides[data-script="open"] .deck-stage-col { display: none; }
+  .deck-slides[data-script="open"] .deck-script { flex: 1 1 auto; }
+}
 .deck-script-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); }
 .deck-script-title { margin: 0; font-size: var(--fs-5xl); font-weight: 600; }
 .deck-script-actions { display: inline-flex; align-items: center; gap: 2px; }

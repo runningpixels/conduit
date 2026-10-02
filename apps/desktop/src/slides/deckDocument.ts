@@ -142,7 +142,7 @@ body { background: transparent; }
 /* The slide's edge, for themes whose background is close to the letterbox.
    Drawn at 1920px scale, so it lands near one device pixel. */
 body[data-mode="stage"] .deck { outline: 3px solid rgba(128, 128, 128, 0.28); }
-.deck > .slide:not(.is-current) { display: none !important; }
+.deck > .slide:not(.is-current):not(.is-measuring) { display: none !important; }
 .deck > .slide { position: absolute !important; left: 0; top: 0; }
 body[data-mode="thumb"] { user-select: none; }
 /* Editing: text the user wrote is outlined; the slot being edited is ringed. */
@@ -274,14 +274,20 @@ const FRAME_SCRIPT = `
 
   // Overflow: how far a slide's content runs past 1920x1080. Hidden slides are
   // measured in place (hidden, but laid out) and restored, so nothing flashes.
+  // The measuring class lifts the hide rule, so the slide is laid out with
+  // the theme's own display (grid, flex...); forcing display:block instead
+  // stacks grid layouts and reports overflow that is not there. A few pixels
+  // over (descenders, outlines) is not worth a warning.
+  var OVERFLOW_TOLERANCE = 16;
   function measure(node) {
     var el = node.el;
     var saved = el.getAttribute('style');
-    el.style.setProperty('display', 'block', 'important');
+    el.classList.add('is-measuring');
     el.style.setProperty('visibility', 'hidden', 'important');
     var over = Math.max(el.scrollHeight - H, el.scrollWidth - W, 0);
+    el.classList.remove('is-measuring');
     if (saved === null) el.removeAttribute('style'); else el.setAttribute('style', saved);
-    return over;
+    return over > OVERFLOW_TOLERANCE ? over : 0;
   }
 
   function reportOverflow() {

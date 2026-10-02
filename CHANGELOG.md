@@ -7,12 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Home.** The app now opens on a Home page, first on the rail.
+  - One ask box to start anything: ask for a deck and Slides opens with a
+    storyline; anything else starts a chat. Quick starts sit underneath.
+  - **Needs you** lists workflow approvals, workflow questions and memory
+    suggestions waiting on you; it is hidden when nothing is.
+  - **Pick up where you left off** shows your latest chats, decks and apps.
+  - Every area of the app as a tile with a live count. An empty area shows an
+    example to try; where the ask box can run it, a click puts it there.
+  - A few ideas that work with your setup.
+- **Go anywhere from the keyboard.** `Ctrl+1` to `Ctrl+9` (`⌘` on macOS) open
+  Home, Chats, Apps, Slides, Documents, Library, Workflows, Connectors and
+  Memory, and the command palette (`Ctrl+K`) has a "Go to" entry for each.
+
 ### Fixed
 
 - **Remote connectors on the 2025 protocol connect again.** A server that
   refuses the newest MCP protocol version with an HTTP 400 (DeepWiki, for
   one) now gets the older handshake it supports, instead of showing as
   down.
+- **A chat opened from another page starts at its latest message.** It could
+  stop short when the conversation finished laying out after the jump to the
+  bottom.
 
 ## [1.0.0-rc.3] - 2026-10-02
 

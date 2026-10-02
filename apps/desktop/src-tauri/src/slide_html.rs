@@ -276,6 +276,12 @@ pub struct ParsedSlot {
     /// The slot's start tag.
     pub outer_open_tag: Range<usize>,
     pub pinned: bool,
+    /// The element's lowercase tag name.
+    pub tag: String,
+    /// The element's class list.
+    pub classes: Vec<String>,
+    /// The whole element: start tag through end tag.
+    pub outer: Range<usize>,
 }
 
 /// Every slot of `html` in document order. A slot is an element with a
@@ -302,14 +308,23 @@ pub fn slots(html: &str) -> Vec<ParsedSlot> {
         let pinned = attrs
             .iter()
             .any(|a| a.name == OWNER_ATTR && a.value.as_deref() == Some(OWNER_USER));
+        let classes: Vec<String> = attrs
+            .iter()
+            .find(|a| a.name == "class")
+            .and_then(|a| a.value.as_deref())
+            .map(|v| v.split_whitespace().map(str::to_string).collect())
+            .unwrap_or_default();
         let open_range = toks[i].range.clone();
         if is_void(name) || *self_closing {
             out.push(ParsedSlot {
                 index: out.len(),
                 name: slot_name,
                 inner: open_range.end..open_range.end,
+                outer: open_range.clone(),
                 outer_open_tag: open_range,
                 pinned,
+                tag: name.clone(),
+                classes,
             });
             i += 1;
             continue;
@@ -342,8 +357,11 @@ pub fn slots(html: &str) -> Vec<ParsedSlot> {
             index: out.len(),
             name: slot_name,
             inner: open_range.end..toks[close_idx].range.start,
+            outer: open_range.start..toks[close_idx].range.end,
             outer_open_tag: open_range,
             pinned,
+            tag: name.clone(),
+            classes,
         });
         // Skip everything inside: only the outermost slot counts.
         i = close_idx + 1;
@@ -433,6 +451,136 @@ pub fn set_pinned(html: &str, index: usize, name: &str, pinned: bool) -> Result<
     } else {
         unpin_tag(&mut out, slot.outer_open_tag);
     }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// Bullets
+// ---------------------------------------------------------------------------
+
+/// A fresh slot name for a sibling of `name`: `stat-2` becomes the next free
+/// `stat-<n>`; any other name gets `-2`, `-3`, ...
+fn fresh_slot_name(name: &str, taken: &[String]) -> String {
+    let (base, start) = match name.rsplit_once('-') {
+        Some((base, n)) if !base.is_empty() && n.parse::<u32>().is_ok() => {
+            (base.to_string(), n.parse::<u32>().unwrap_or(1) + 1)
+        }
+        _ => (name.to_string(), 2),
+    };
+    let mut k = start;
+    loop {
+        let candidate = format!("{base}-{k}");
+        if !taken.contains(&candidate) {
+            return candidate;
+        }
+        k += 1;
+    }
+}
+
+/// Insert an empty sibling `<li>` right after the `li` slot `(index, name)`.
+/// The new element copies the start tag (attributes included) with a fresh
+/// `data-text` name and no `data-owner`. Returns the new HTML and the new name.
+pub fn insert_list_item_after(
+    html: &str,
+    index: usize,
+    name: &str,
+) -> Result<(String, String), String> {
+    let slot = find_slot(html, index, name)?;
+    if slot.tag != "li" {
+        return Err("Only bullets can be added this way.".to_string());
+    }
+    let taken: Vec<String> = slots(html).into_iter().map(|s| s.name).collect();
+    let new_name = fresh_slot_name(name, &taken);
+    let mut tag = html[slot.outer_open_tag.clone()].to_string();
+    let tag_len = tag.len();
+    unpin_tag(&mut tag, 0..tag_len);
+    if let Some(attr) = parse_attrs(&tag).iter().find(|a| a.name == SLOT_ATTR) {
+        let value = format!("{SLOT_ATTR}=\"{}\"", escape_text(&new_name));
+        tag.replace_range(attr.range.clone(), &value);
+    }
+    let mut out = html.to_string();
+    out.insert_str(slot.outer.end, &format!("{tag}</li>"));
+    Ok((out, new_name))
+}
+
+/// Remove the whole element of the `li` slot `(index, name)`, provided its list
+/// keeps at least one other `li`.
+pub fn remove_slot_element(html: &str, index: usize, name: &str) -> Result<String, String> {
+    let slot = find_slot(html, index, name)?;
+    if slot.tag != "li" {
+        return Err("Only bullets can be removed this way.".to_string());
+    }
+    let toks = scan(html);
+    // The innermost ul/ol around the slot.
+    let mut stack: Vec<usize> = Vec::new();
+    for (i, tok) in toks.iter().enumerate() {
+        if tok.range.start >= slot.outer.start {
+            break;
+        }
+        match &tok.kind {
+            TokKind::Open { name, self_closing } if !self_closing && !is_void(name) => {
+                stack.push(i);
+            }
+            TokKind::Close { name } => {
+                if let Some(pos) = stack.iter().rposition(
+                    |&j| matches!(&toks[j].kind, TokKind::Open { name: n, .. } if n == name),
+                ) {
+                    stack.truncate(pos);
+                }
+            }
+            _ => {}
+        }
+    }
+    let list_open = stack
+        .iter()
+        .rev()
+        .find(|&&j| matches!(&toks[j].kind, TokKind::Open { name, .. } if name == "ul" || name == "ol"))
+        .copied();
+    let scope = match list_open {
+        Some(open) => {
+            let TokKind::Open {
+                name: list_name, ..
+            } = &toks[open].kind
+            else {
+                unreachable!()
+            };
+            let mut depth = 1usize;
+            let mut end = html.len();
+            for tok in toks.iter().skip(open + 1) {
+                match &tok.kind {
+                    TokKind::Open { name, self_closing } if name == list_name && !self_closing => {
+                        depth += 1;
+                    }
+                    TokKind::Close { name } if name == list_name => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = tok.range.start;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            toks[open].range.end..end
+        }
+        None => 0..html.len(),
+    };
+    let others = toks
+        .iter()
+        .filter(|t| {
+            t.range.start >= scope.start
+                && t.range.end <= scope.end
+                && t.range.start != slot.outer.start
+                && matches!(&t.kind, TokKind::Open { name, .. } if name == "li")
+        })
+        .count();
+    if others == 0 {
+        return Err(
+            "A list needs at least one bullet, so the last one can't be removed.".to_string(),
+        );
+    }
+    let mut out = html.to_string();
+    out.replace_range(slot.outer.clone(), "");
     Ok(out)
 }
 
@@ -839,6 +987,56 @@ mod tests {
 
         let removed = r#"<h1 data-text="t">Title</h1>"#;
         assert!(check_pinned_kept(old, removed, &[]).is_err());
+    }
+
+    #[test]
+    fn slots_report_tag_and_classes() {
+        let html = r#"<h1 class="headline  big" data-text="t">x</h1><li data-text="b">y</li>"#;
+        let found = slots(html);
+        assert_eq!(found[0].tag, "h1");
+        assert_eq!(found[0].classes, ["headline", "big"]);
+        assert_eq!(found[1].tag, "li");
+        assert!(found[1].classes.is_empty());
+        assert_eq!(&html[found[1].outer.clone()], r#"<li data-text="b">y</li>"#);
+    }
+
+    #[test]
+    fn insert_bullet_copies_the_tag_with_a_fresh_name() {
+        let html = r#"<ul><li class="b" data-text="point-1" data-owner="user">One</li><li data-text="point-2">Two</li></ul>"#;
+        let (out, name) = insert_list_item_after(html, 0, "point-1").unwrap();
+        assert_eq!(name, "point-3");
+        assert_eq!(
+            out,
+            r#"<ul><li class="b" data-text="point-1" data-owner="user">One</li><li class="b" data-text="point-3"></li><li data-text="point-2">Two</li></ul>"#
+        );
+        let found = slots(&out);
+        assert_eq!(found[1].name, "point-3");
+        assert!(!found[1].pinned);
+
+        let (out, name) =
+            insert_list_item_after(r#"<ul><li data-text="item">a</li></ul>"#, 0, "item").unwrap();
+        assert_eq!(name, "item-2");
+        let (_, name) = insert_list_item_after(&out, 0, "item").unwrap();
+        assert_eq!(name, "item-3");
+    }
+
+    #[test]
+    fn insert_bullet_rejects_non_list_items() {
+        let err = insert_list_item_after(r#"<p data-text="a">x</p>"#, 0, "a").unwrap_err();
+        assert_eq!(err, "Only bullets can be added this way.");
+        assert!(insert_list_item_after(r#"<li data-text="a">x</li>"#, 1, "a").is_err());
+    }
+
+    #[test]
+    fn remove_bullet_needs_another_item_in_the_list() {
+        let html = r#"<ul><li data-text="a">1</li><li data-text="b">2</li></ul>"#;
+        assert_eq!(
+            remove_slot_element(html, 1, "b").unwrap(),
+            r#"<ul><li data-text="a">1</li></ul>"#
+        );
+        let one = r#"<ul><li data-text="a">1</li></ul><ul><li data-text="z">9</li></ul>"#;
+        assert!(remove_slot_element(one, 0, "a").is_err());
+        assert!(remove_slot_element(r#"<p data-text="a">x</p>"#, 0, "a").is_err());
     }
 
     #[test]

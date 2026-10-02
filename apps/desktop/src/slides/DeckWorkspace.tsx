@@ -18,7 +18,7 @@ import type {
 import { DeckFrame } from './DeckFrame';
 import { DeckHistory } from './DeckHistory';
 import { StorylineEditor } from './StorylineEditor';
-import { WordsPanel, type WordsFocusRequest } from './WordsPanel';
+import { ScriptPanel, type ScriptFocusRequest } from './ScriptPanel';
 import { STARTER_THEMES } from './themes';
 
 export interface DeckWorkspaceProps {
@@ -48,6 +48,9 @@ export interface DeckWorkspaceProps {
     apply: boolean,
   ) => Promise<DeckReplaceResult>;
   /** Sends a ready-made request to the chat ("Ask to fix"). */
+  /** Adds a bullet after the given one; resolves the new slot's name so the Script can focus it. */
+  onInsertBullet?: (slideId: string, index: number, name: string) => Promise<string | null>;
+  onRemoveBullet?: (slideId: string, index: number, name: string) => Promise<void>;
   onAskToFix?: (prompt: string) => void;
   /** Slide id to pixels of overflow, only slides that overflow. */
   onOverflowChange?: (overflow: Record<string, number>) => void;
@@ -71,19 +74,21 @@ export function DeckWorkspace({
   onEditWords,
   onSetPinned,
   onReplace,
+  onInsertBullet,
+  onRemoveBullet,
   onAskToFix,
   onOverflowChange,
 }: DeckWorkspaceProps) {
   const t = useT();
   const [index, setIndex] = useState(0);
-  const [drawer, setDrawer] = useState<'history' | 'words' | null>(null);
+  const [drawer, setDrawer] = useState<'history' | 'script' | null>(null);
   const [overflow, setOverflow] = useState<Record<string, number>>({});
-  const [focusRequest, setFocusRequest] = useState<WordsFocusRequest | null>(null);
+  const [focusRequest, setFocusRequest] = useState<ScriptFocusRequest | null>(null);
   const [findToken, setFindToken] = useState(0);
   const nonce = useRef(0);
   const overflowCb = useRef(onOverflowChange);
   overflowCb.current = onOverflowChange;
-  const wordsAvailable = onEditWords != null && onSetPinned != null && onReplace != null;
+  const scriptAvailable = onEditWords != null && onSetPinned != null && onReplace != null;
   const [titleDraft, setTitleDraft] = useState(deck?.title ?? '');
   const prevIds = useRef<{ deckId: string | null; ids: string[] }>({ deckId: null, ids: [] });
   const stripRef = useRef<HTMLUListElement>(null);
@@ -150,9 +155,9 @@ export function DeckWorkspace({
     return true;
   };
 
-  const openWordsFind = () => {
-    if (!wordsAvailable) return;
-    setDrawer('words');
+  const openScriptFind = () => {
+    if (!scriptAvailable) return;
+    setDrawer('script');
     setFindToken((n) => n + 1);
   };
 
@@ -161,7 +166,7 @@ export function DeckWorkspace({
   };
 
   const onFrameKey = (key: string) => {
-    if (key === 'Ctrl+H') openWordsFind();
+    if (key === 'Ctrl+H') openScriptFind();
     else navigate(key);
   };
 
@@ -199,14 +204,32 @@ export function DeckWorkspace({
   }
 
   const busy = busyTool != null;
+  const scriptPanel =
+    drawer === 'script' && scriptAvailable ? (
+      <ScriptPanel
+        deck={deck}
+        overflow={overflow}
+        focusRequest={focusRequest}
+        findFocusToken={findToken}
+        onEditWords={onEditWords}
+        onSetPinned={onSetPinned}
+        onReplace={onReplace}
+        onInsertBullet={onInsertBullet}
+        onRemoveBullet={onRemoveBullet}
+        onAskToFix={onAskToFix}
+        onFocusSlide={setIndex}
+        onClose={() => setDrawer(null)}
+      />
+    ) : null;
+  const scriptBeside = scriptPanel != null && deck.stage !== 'storyline' && count > 0;
 
   return (
     <div
       className="deck-workspace"
       onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'h' && wordsAvailable) {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'h' && scriptAvailable) {
           e.preventDefault();
-          openWordsFind();
+          openScriptFind();
         }
       }}
     >
@@ -249,14 +272,14 @@ export function DeckWorkspace({
             ))}
           </select>
         </label>
-        {wordsAvailable && (
+        {scriptAvailable && (
           <button
             type="button"
             className="btn"
-            aria-pressed={drawer === 'words'}
-            onClick={() => setDrawer((d) => (d === 'words' ? null : 'words'))}
+            aria-pressed={drawer === 'script'}
+            onClick={() => setDrawer((d) => (d === 'script' ? null : 'script'))}
           >
-            {t('slides.words.toggle')}
+            {t('slides.script.toggle')}
           </button>
         )}
         <button
@@ -275,7 +298,7 @@ export function DeckWorkspace({
           ) : count === 0 ? (
             <p className="deck-empty">{t('slides.workspace.emptySlides')}</p>
           ) : (
-            <div className="deck-slides">
+            <div className="deck-slides" data-script={scriptBeside ? 'open' : undefined}>
               <ul
                 ref={stripRef}
                 className="deck-strip"
@@ -361,28 +384,16 @@ export function DeckWorkspace({
                   </button>
                 </div>
               </div>
+              {scriptBeside && scriptPanel}
             </div>
           )}
         </div>
+        {!scriptBeside && scriptPanel}
         {drawer === 'history' && (
           <DeckHistory
             revision={historyRevision}
             onList={onListSnapshots}
             onRestore={onRestore}
-            onClose={() => setDrawer(null)}
-          />
-        )}
-        {drawer === 'words' && wordsAvailable && (
-          <WordsPanel
-            deck={deck}
-            overflow={overflow}
-            focusRequest={focusRequest}
-            findFocusToken={findToken}
-            onEditWords={onEditWords}
-            onSetPinned={onSetPinned}
-            onReplace={onReplace}
-            onAskToFix={onAskToFix}
-            onFocusSlide={setIndex}
             onClose={() => setDrawer(null)}
           />
         )}

@@ -626,6 +626,46 @@ async fn set_slot_pinned_toggles_the_marker() {
 }
 
 #[tokio::test]
+async fn insert_and_remove_bullet_round_trip() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let deck = new_deck(&pool, None).await;
+    let id = add(
+        &pool,
+        &deck.id,
+        r#"<h1 data-text="title">T</h1><ul><li data-text="point-1" data-owner="user">One</li></ul>"#,
+    )
+    .await;
+
+    let added = slides::insert_bullet(&pool, &enc, &deck.id, &id, 1, "point-1")
+        .await
+        .unwrap();
+    let slots = &added.slides[0].slots;
+    assert_eq!(slots.len(), 3);
+    assert_eq!(slots[2].name, "point-2");
+    assert_eq!(slots[2].tag, "li");
+    assert!(!slots[2].pinned && slots[2].html.is_empty());
+
+    let removed = slides::remove_bullet(&pool, &enc, &deck.id, &id, 2, "point-2")
+        .await
+        .unwrap();
+    assert_eq!(removed.slides[0].slots.len(), 2);
+    let last = slides::remove_bullet(&pool, &enc, &deck.id, &id, 1, "point-1")
+        .await
+        .unwrap_err();
+    assert!(last.to_string().contains("at least one bullet"), "{last}");
+    let not_li = slides::insert_bullet(&pool, &enc, &deck.id, &id, 0, "title")
+        .await
+        .unwrap_err();
+    assert!(
+        not_li
+            .to_string()
+            .contains("Only bullets can be added this way."),
+        "{not_li}"
+    );
+}
+
+#[tokio::test]
 async fn replace_in_deck_dry_run_then_apply_including_notes() {
     let pool = common::setup_pool().await;
     let enc = common::setup_encryption();

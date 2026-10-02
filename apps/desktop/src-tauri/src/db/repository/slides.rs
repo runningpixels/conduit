@@ -249,6 +249,8 @@ pub fn compute_slots(html: &str) -> Vec<SlideSlot> {
                 html: inner.to_string(),
                 text: slide_visible_text(inner),
                 pinned: slot.pinned,
+                tag: slot.tag,
+                classes: slot.classes,
             }
         })
         .collect()
@@ -894,6 +896,58 @@ pub async fn set_slot_pinned(
         )
         .await?;
     }
+    require(pool, enc, deck_id).await
+}
+
+/// Add an empty bullet after the `li` slot `(index, name)`; the new slot is in
+/// the returned deck's slots.
+pub async fn insert_bullet(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    deck_id: &str,
+    slide_id: &str,
+    index: usize,
+    name: &str,
+) -> Result<DeckDetail, DbError> {
+    let slide = require_slide(pool, enc, deck_id, slide_id).await?;
+    let (html, _) =
+        slide_html::insert_list_item_after(&slide.html, index, name).map_err(invalid_str)?;
+    update_slide(
+        pool,
+        enc,
+        deck_id,
+        slide_id,
+        SlideChanges {
+            html: Some(html),
+            ..Default::default()
+        },
+    )
+    .await?;
+    require(pool, enc, deck_id).await
+}
+
+/// Remove the bullet `(index, name)` from its list.
+pub async fn remove_bullet(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    deck_id: &str,
+    slide_id: &str,
+    index: usize,
+    name: &str,
+) -> Result<DeckDetail, DbError> {
+    let slide = require_slide(pool, enc, deck_id, slide_id).await?;
+    let html = slide_html::remove_slot_element(&slide.html, index, name).map_err(invalid_str)?;
+    update_slide(
+        pool,
+        enc,
+        deck_id,
+        slide_id,
+        SlideChanges {
+            html: Some(html),
+            ..Default::default()
+        },
+    )
+    .await?;
     require(pool, enc, deck_id).await
 }
 

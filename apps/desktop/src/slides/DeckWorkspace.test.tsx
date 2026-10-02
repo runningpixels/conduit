@@ -96,9 +96,9 @@ describe('DeckWorkspace', () => {
     expect(p.onSetTheme).toHaveBeenCalledWith('paper', STARTER_THEMES[1].css);
   });
 
-  it('toggles Words, which excludes History, and only shows with the words callbacks', () => {
+  it('toggles Script, which excludes History, and only shows with the words callbacks', () => {
     const plain = render(<DeckWorkspace {...props()} />);
-    expect(screen.queryByRole('button', { name: 'Words' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Script' })).toBeNull();
     plain.unmount();
 
     const p = props({
@@ -107,18 +107,18 @@ describe('DeckWorkspace', () => {
       onReplace: vi.fn().mockResolvedValue({ total: 0, applied: false, slides: [] }),
     });
     render(<DeckWorkspace {...p} />);
-    const words = screen.getByRole('button', { name: 'Words' });
+    const words = screen.getByRole('button', { name: 'Script' });
     fireEvent.click(words);
-    expect(screen.getByRole('complementary', { name: 'Words' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Script' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'History' }));
-    expect(screen.queryByRole('complementary', { name: 'Words' })).toBeNull();
+    expect(screen.queryByRole('complementary', { name: 'Script' })).toBeNull();
     expect(screen.getByRole('complementary', { name: 'History' })).toBeTruthy();
     fireEvent.click(words);
     expect(screen.queryByRole('complementary', { name: 'History' })).toBeNull();
-    expect(screen.getByRole('complementary', { name: 'Words' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Script' })).toBeTruthy();
   });
 
-  it('opens Words with the find box focused on Ctrl+H', () => {
+  it('opens the Script find bar, focused, on Ctrl+H', () => {
     const p = props({
       onEditWords: vi.fn().mockResolvedValue(undefined),
       onSetPinned: vi.fn().mockResolvedValue(undefined),
@@ -127,6 +127,24 @@ describe('DeckWorkspace', () => {
     render(<DeckWorkspace {...p} />);
     fireEvent.keyDown(screen.getByRole('group', { name: 'Slide 1 of 2' }), { key: 'h', ctrlKey: true });
     expect(document.activeElement).toBe(screen.getByLabelText('Find'));
+  });
+
+  it('puts the Script drawer beside the stage column so nothing covers the stage controls', () => {
+    const p = props({
+      onEditWords: vi.fn().mockResolvedValue(undefined),
+      onSetPinned: vi.fn().mockResolvedValue(undefined),
+      onReplace: vi.fn().mockResolvedValue({ total: 0, applied: false, slides: [] }),
+    });
+    const { container } = render(<DeckWorkspace {...p} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Script' }));
+    const drawer = screen.getByRole('complementary', { name: 'Script' });
+    const stageCol = container.querySelector('.deck-stage-col') as HTMLElement;
+    const nav = container.querySelector('.deck-stage-nav') as HTMLElement;
+    expect(drawer.parentElement).toBe(stageCol.parentElement);
+    expect(drawer.contains(nav)).toBe(false);
+    expect(drawer.contains(stageCol)).toBe(false);
+    expect(stageCol.contains(drawer)).toBe(false);
+    expect(stageCol.contains(screen.getByRole('button', { name: 'Next slide' }))).toBe(true);
   });
 
   it('marks overflowing slides with a dot and a caption, and reports them', async () => {

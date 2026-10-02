@@ -236,6 +236,48 @@ pub async fn set_slot_pinned(
     .map_err(message)
 }
 
+/// Add an empty bullet after the given bullet slot.
+#[tauri::command]
+pub async fn insert_bullet(
+    state: State<'_, AppState>,
+    deck_id: String,
+    slide_id: String,
+    index: u32,
+    name: String,
+) -> Result<DeckDetail, String> {
+    slides::insert_bullet(
+        &state.db,
+        &state.encryption,
+        &deck_id,
+        &slide_id,
+        index as usize,
+        &name,
+    )
+    .await
+    .map_err(message)
+}
+
+/// Remove the given bullet slot from its list.
+#[tauri::command]
+pub async fn remove_bullet(
+    state: State<'_, AppState>,
+    deck_id: String,
+    slide_id: String,
+    index: u32,
+    name: String,
+) -> Result<DeckDetail, String> {
+    slides::remove_bullet(
+        &state.db,
+        &state.encryption,
+        &deck_id,
+        &slide_id,
+        index as usize,
+        &name,
+    )
+    .await
+    .map_err(message)
+}
+
 /// Find and replace across the deck's text and speaker notes. `apply = false`
 /// is a dry run that only counts.
 #[tauri::command]

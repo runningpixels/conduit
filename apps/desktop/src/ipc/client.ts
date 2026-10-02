@@ -1622,6 +1622,26 @@ export async function setSlotPinned(
   return invokeCommand<DeckDetail>('set_slot_pinned', { deckId, slideId, index, name, pinned });
 }
 
+/** Add an empty bullet after the given bullet slot; the new slot is in the returned deck. */
+export async function insertBullet(
+  deckId: string,
+  slideId: string,
+  index: number,
+  name: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('insert_bullet', { deckId, slideId, index, name });
+}
+
+/** Remove the given bullet slot from its list. */
+export async function removeBullet(
+  deckId: string,
+  slideId: string,
+  index: number,
+  name: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('remove_bullet', { deckId, slideId, index, name });
+}
+
 /** Find and replace across the deck's text and speaker notes; `apply: false` is a dry run. */
 export async function replaceInDeck(
   deckId: string,

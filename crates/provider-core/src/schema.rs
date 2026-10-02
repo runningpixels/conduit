@@ -1512,6 +1512,10 @@ pub struct SlideSlot {
     pub html: String,
     pub text: String,
     pub pinned: bool,
+    /// The slot element's lowercase tag name (`h1`, `li`, `b`, ...).
+    pub tag: String,
+    /// The slot element's class list.
+    pub classes: Vec<String>,
 }
 
 /// One slide of a deck. `html` is the slide's inner HTML; `slots` are computed

@@ -5,4 +5,12 @@
  * 0-based position among the slide's slots, `html` its inner HTML and `text`
  * the visible text. A pinned slot carries `data-owner="user"`.
  */
-export type SlideSlot = { index: number, name: string, html: string, text: string, pinned: boolean, };
+export type SlideSlot = { index: number, name: string, html: string, text: string, pinned: boolean, 
+/**
+ * The slot element's lowercase tag name (`h1`, `li`, `b`, ...).
+ */
+tag: string, 
+/**
+ * The slot element's class list.
+ */
+classes: Array<string>, };

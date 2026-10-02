@@ -129,6 +129,8 @@ import { STARTER_THEMES } from './slides/themes';
 import type { DeckDetail, SlideTheme, SlotEdit, StorylineItem } from './ipc/contracts';
 import {
   editSlideWords,
+  insertBullet,
+  removeBullet,
   replaceInDeck,
   setSlotPinned,
   getDeckForConversation,
@@ -1134,6 +1136,42 @@ export default function App() {
       }
     },
     [],
+  );
+
+  /** Script view: Enter at the end of a bullet adds the next bullet. */
+  const handleInsertBullet = useCallback(
+    async (slideId: string, index: number, name: string): Promise<string | null> => {
+      const deck = activeDeckRef.current;
+      if (!deck) return null;
+      try {
+        const next = await insertBullet(deck.id, slideId, index, name);
+        setActiveDeck(next);
+        const slide = next.slides.find((s) => s.id === slideId);
+        const added = slide?.slots[index + 1];
+        if (slide) scheduleWordsSnapshot(deck.id, slideId, slide.position);
+        return added?.name ?? null;
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+        return null;
+      }
+    },
+    [scheduleWordsSnapshot],
+  );
+
+  const handleRemoveBullet = useCallback(
+    async (slideId: string, index: number, name: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        const next = await removeBullet(deck.id, slideId, index, name);
+        setActiveDeck(next);
+        const position = next.slides.find((s) => s.id === slideId)?.position ?? 0;
+        scheduleWordsSnapshot(deck.id, slideId, position);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [scheduleWordsSnapshot],
   );
 
   const handleReplaceInDeck = useCallback(
@@ -2505,6 +2543,8 @@ export default function App() {
               savedThemes={savedSlideThemes}
               onEditWords={handleEditWords}
               onSetPinned={handleSetPinned}
+              onInsertBullet={handleInsertBullet}
+              onRemoveBullet={handleRemoveBullet}
               onReplace={handleReplaceInDeck}
               onAskToFix={(prompt) => setPendingSendText(prompt)}
               onOverflowChange={setDeckOverflow}

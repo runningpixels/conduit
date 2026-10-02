@@ -155,7 +155,7 @@ const IPC_EXPORTS = [
   'listKnowledgeCollections',
   // Slides: App.tsx asks whether the open chat is bound to a deck.
   'getDeckForConversation', 'listDecks', 'openDeck', 'listDeckSnapshots', 'listSlideThemes',
-  'editSlideWords', 'setSlotPinned', 'replaceInDeck',
+  'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',
 ] as const;
 
 afterEach(() => {

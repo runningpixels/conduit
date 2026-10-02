@@ -213,6 +213,8 @@ fn main() {
             set_deck_theme,
             edit_slide_words,
             set_slot_pinned,
+            insert_bullet,
+            remove_bullet,
             replace_in_deck,
             list_deck_snapshots,
             snapshot_deck,

@@ -17,8 +17,8 @@ const deck: DeckDetail = {
       html: '<h1 class="headline" data-text="headline">Builds got <span class="accent">3×</span> faster</h1><b data-text="stat-2" data-owner="user">−45%</b>',
       notes: '',
       slots: [
-        { index: 0, name: 'headline', html: 'Builds got <span class="accent">3×</span> faster', text: 'Builds got 3× faster', pinned: false },
-        { index: 1, name: 'stat-2', html: '−45%', text: '−45%', pinned: true },
+        { index: 0, name: 'headline', html: 'Builds got <span class="accent">3×</span> faster', text: 'Builds got 3× faster', pinned: false, tag: 'h1', classes: ['headline'] },
+        { index: 1, name: 'stat-2', html: '−45%', text: '−45%', pinned: true, tag: 'b', classes: [] },
       ],
     },
     { id: 's2', position: 1, layout: 'bullets', html: '<h1 data-text="headline">Next</h1>', notes: '', slots: [] },

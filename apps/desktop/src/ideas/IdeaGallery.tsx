@@ -20,7 +20,7 @@ export const GALLERY_SIZE = 6;
 
 /// A short typographic mark per idea for the card's tile. Symbols and numbers
 /// only, so nothing here needs translating.
-const GLYPHS: Record<string, string> = {
+export const GLYPHS: Record<string, string> = {
   pomodoroTimer: '25:00',
   budgetTracker: '+ −',
   unitConverter: '⇄',

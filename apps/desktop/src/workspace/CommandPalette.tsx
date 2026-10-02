@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type {
   Artifact,
   ModelInfo,
@@ -12,6 +12,7 @@ import { formatModelPriceLabel } from '../lib/costTable';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
+import { DESTINATIONS, type Destination } from '../shell/Rail';
 import { allowUserBranding } from '../brand/buildFlags';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
@@ -41,6 +42,10 @@ interface CommandPaletteProps {
   /** Open the Ideas page. */
   onOpenIdeas?: () => void;
   onOpenWorkflows?: () => void;
+  /** Go to a rail destination (Home, Chats, … Settings). */
+  onNavigate?: (destination: Destination) => void;
+  /** Start a new deck (opens Slides). */
+  onNewDeck?: () => void;
   onToggleDocPanel: () => void;
   /** Expand the artifact panel, or restore the layout. */
   onToggleArtifactExpand?: () => void;
@@ -135,6 +140,8 @@ export function CommandPalette({
   onOpenShortcuts,
   onOpenIdeas,
   onOpenWorkflows,
+  onNavigate,
+  onNewDeck,
   onToggleDocPanel,
   onToggleArtifactExpand,
   onToggleSidebar,
@@ -204,11 +211,35 @@ export function CommandPalette({
     };
   }, [open]);
 
+  // "Go to Home … Settings": one command per rail destination, with the
+  // Ctrl+1…9 chord where it has one.
+  const navItems = useCallback(
+    (group: string): PaletteItem[] =>
+      onNavigate
+        ? DESTINATIONS.map((destination, index) => ({
+            id: `go-${destination}`,
+            group,
+            kind: 'cmd' as const,
+            label: t(`workspace.commandPalette.go.${destination}`),
+            tail: index < 9 ? modShortcutHint(String(index + 1)) : undefined,
+            run: () => {
+              onNavigate(destination);
+              onClose();
+            },
+          }))
+        : [],
+    [onNavigate, onClose, t],
+  );
+
   const commands = useMemo((): PaletteItem[] => {
     const close = () => onClose();
     const group = t('workspace.commandPalette.group.commands');
     return [
       { id: 'cmd-new-chat', group, kind: 'cmd', label: t('workspace.commandPalette.command.newChat'), tail: modShortcutHint('N'), run: () => { onNewChat(); close(); } },
+      ...(onNewDeck
+        ? [{ id: 'cmd-new-deck', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.newDeck'), run: () => { onNewDeck(); close(); } }]
+        : []),
+      ...navItems(group),
       { id: 'cmd-fork', group, kind: 'cmd', label: t('workspace.commandPalette.command.forkHere'), tail: modShiftShortcutHint('F'), run: () => { onForkConversationHere(); close(); } },
       { id: 'cmd-edit-last-user', group, kind: 'cmd', label: t('workspace.commandPalette.command.editLastMessage'), run: () => { onEditLastUserMessage(); close(); } },
       { id: 'cmd-chat-settings', group, kind: 'cmd', label: t('workspace.commandPalette.command.chatSettings'), run: () => { onOpenChatSettings(); close(); } },
@@ -256,7 +287,7 @@ export function CommandPalette({
         : []),
     ];
   }, [
-    t, onClose, onNewChat, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
+    t, onClose, onNewChat, onNewDeck, navItems, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
@@ -340,16 +371,20 @@ export function CommandPalette({
         onClose();
       },
     }));
+    const goItems = navItems(t('workspace.commandPalette.group.navigate')).filter((item) =>
+      item.label.toLowerCase().includes(q),
+    );
     if (!q) {
       return [
         { id: 'cmd-new-chat', group: chatsGroup, kind: 'cmd', label: t('workspace.commandPalette.command.newChat'), tail: modShortcutHint('N'), run: () => { onNewChat(); onClose(); } },
         ...convItems,
+        ...goItems,
         ...searchItems,
       ];
     }
-    return [...convItems, ...searchItems];
+    return [...convItems, ...goItems, ...searchItems];
   }, [
-    prefix, q, commands, artifacts, modelItems, conversations, results,
+    prefix, q, commands, navItems, artifacts, modelItems, conversations, results,
     onClose, onNewChat, onOpenArtifact, onSelectConversation, onSelectSearchResult, t,
   ]);
 

@@ -79,7 +79,7 @@ const EN_PATH = join(SRC_ROOT, 'i18n/messages/en.json');
 /** Mirrors the feature-area list `catalogs.test.ts` enforces for every en.json key (D3). */
 export const FEATURE_AREAS = [
   'chat', 'common', 'consent', 'error', 'onboarding',
-  'recovery', 'settings', 'shell', 'workspace', 'artifacts', 'app',
+  'recovery', 'settings', 'shell', 'workspace', 'artifacts', 'app', 'home',
 ];
 
 /** A catalog key: `<known feature area>(.<alphanumeric segment>)+`. See module comment for why the first segment is restricted. */

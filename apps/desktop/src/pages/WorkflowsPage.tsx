@@ -81,12 +81,15 @@ export function WorkflowsPage({
   onStatus,
   onOpenDocument,
   refreshKey,
+  startNew = false,
 }: {
   onStatus: (message: string) => void;
   /** Open a document a run saved, in its conversation's document panel. */
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
   /** Changes when a scheduled run finishes elsewhere; the page re-reads. */
   refreshKey?: number;
+  /** Open on the "new workflow" picker (Home's "New workflow"). */
+  startNew?: boolean;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -97,7 +100,7 @@ export function WorkflowsPage({
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [openRun, setOpenRun] = useState<WorkflowRunDetail | null>(null);
   const [inputs, setInputs] = useState<Record<string, string>>({});
-  const [mode, setMode] = useState<Mode>({ kind: 'view' });
+  const [mode, setMode] = useState<Mode>(startNew ? { kind: 'new' } : { kind: 'view' });
   const [running, setRunning] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [busy, setBusy] = useState(false);

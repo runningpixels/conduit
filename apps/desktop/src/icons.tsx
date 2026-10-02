@@ -337,6 +337,14 @@ export const WorkflowIcon = (p: IconProps) => (
     <path d="M6 10v4a3 3 0 0 0 3 3h6" />
   </Svg>
 );
+/** A house: the Home destination. */
+export const HomeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 10.5 12 3l9 7.5" />
+    <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+    <path d="M10 21v-6h4v6" />
+  </Svg>
+);
 /** Four rounded tiles: the Apps destination. */
 export const AppsIcon = (p: IconProps) => (
   <Svg {...p}>

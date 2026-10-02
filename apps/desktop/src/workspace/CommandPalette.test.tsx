@@ -119,6 +119,49 @@ describe('CommandPalette default corpus', () => {
   });
 });
 
+describe('CommandPalette navigation', () => {
+  it('goes to every rail destination with one generic handler', () => {
+    const onNavigate = vi.fn();
+    renderPalette({ onNavigate });
+    type('>go to');
+    const labels = screen.getAllByRole('option').map((o) => o.textContent ?? '');
+    for (const name of ['Home', 'Chats', 'Apps', 'Slides', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']) {
+      expect(labels.some((l) => l.includes(`Go to ${name}`)), name).toBe(true);
+    }
+    fireEvent.click(screen.getByRole('option', { name: /Go to Memory/ }));
+    expect(onNavigate).toHaveBeenCalledWith('memory');
+  });
+
+  it('shows the Ctrl+digit chord on each destination that has one', () => {
+    renderPalette({ onNavigate: vi.fn() });
+    type('>go to home');
+    expect(screen.getByRole('option', { name: /Go to Home/ }).textContent).toMatch(/1/);
+  });
+
+  it('finds a destination from the plain search too', () => {
+    const onNavigate = vi.fn();
+    renderPalette({ onNavigate });
+    type('workflows');
+    fireEvent.click(screen.getByRole('option', { name: /Go to Workflows/ }));
+    expect(onNavigate).toHaveBeenCalledWith('workflows');
+  });
+
+  it('offers New deck among the commands', () => {
+    const onNewDeck = vi.fn();
+    const props = renderPalette({ onNewDeck });
+    type('>new deck');
+    fireEvent.click(screen.getByRole('option', { name: /New deck/ }));
+    expect(onNewDeck).toHaveBeenCalledTimes(1);
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('lists no Go to commands when the shell gives no navigator', () => {
+    renderPalette();
+    type('>go to');
+    expect(screen.queryByRole('option', { name: /Go to Home/ })).toBeNull();
+  });
+});
+
 describe('CommandPalette prefix modes', () => {
   it('shows the mode badge for >, @ and /', async () => {
     renderPalette();

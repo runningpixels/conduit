@@ -11,6 +11,7 @@ interface ShortcutsSheetProps {
 
 const GROUPS: { id: HotkeyBinding['group']; labelId: string }[] = [
   { id: 'general', labelId: 'workspace.shortcuts.group.general' },
+  { id: 'navigate', labelId: 'workspace.shortcuts.group.navigate' },
   { id: 'layout', labelId: 'workspace.shortcuts.group.layout' },
   { id: 'chat', labelId: 'workspace.shortcuts.group.chat' },
 ];
@@ -21,7 +22,7 @@ export function bindingHint(binding: HotkeyBinding): string {
 }
 
 /**
- * Keyboard shortcuts (Mod+/). The app binds ten Mod shortcuts, and until this
+ * Keyboard shortcuts (Mod+/). The app binds a set of Mod shortcuts, and until this
  * the only place most of them were written down was a tooltip on whichever
  * control happened to share the action — Fork, Copy last message and Switch
  * provider had none at all.

@@ -44,6 +44,7 @@ import {
   hadSuccessfulDocumentToolCalls,
   isDocumentCreateTool,
   isDocumentPatchTool,
+  looksLikeDeckRequest,
   resolveDocumentArtifactId,
   type DocumentToolActivity,
 } from './chat/agentTools';
@@ -68,6 +69,7 @@ import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
 import { Rail, type Destination } from './shell/Rail';
+import { HomePage, type HomeAction } from './home/HomePage';
 import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
 import { ActivityView } from './inspector/ActivityView';
 import { SourcesView } from './inspector/SourcesView';
@@ -290,7 +292,14 @@ export default function App() {
   // UI revamp (docs/plans/ui-revamp.md): where the rail points. Chats is the
   // chat sidebar and the chat; every other destination is a page over the
   // body, with the chat kept mounted underneath so a running turn goes on.
-  const [destination, setDestination] = useState<Destination>('chats');
+  // The app opens on Home. Boot still selects a conversation underneath, so
+  // "Continue" is instant.
+  const [destination, setDestination] = useState<Destination>('home');
+  // Home's "New workflow" opens the Workflows page on its picker.
+  const [workflowsStartNew, setWorkflowsStartNew] = useState(false);
+  useEffect(() => {
+    if (destination !== 'workflows') setWorkflowsStartNew(false);
+  }, [destination]);
   // Apps: the one open app (null = the list), the saved apps for the
   // new-chat row, and the Save as app / edit dialog.
   const [openAppId, setOpenAppId] = useState<string | null>(null);
@@ -2165,13 +2174,19 @@ export default function App() {
   /** Put an idea's prompt in the composer of an empty chat (new if needed). */
   const tryIdea = useCallback(
     async (idea: Idea) => {
+      // From Home the open chat may be a deck's: leave it, or Chats would route to Slides.
+      const hadDeck = activeDeckRef.current != null;
+      if (hadDeck) {
+        setActiveDeck(null);
+        setStudioDeckId(null);
+      }
       setDestination('chats');
       const view = chatViewRef.current;
       if (!view) {
         setQueuedIdea(idea);
         return;
       }
-      if (!activeConversationId || !view.isEmpty()) await handleNewChat();
+      if (hadDeck || !activeConversationId || !view.isEmpty()) await handleNewChat();
       notePicked(idea.id);
       // After the new chat renders.
       requestAnimationFrame(() => chatViewRef.current?.replacePrompt(t(`ideas.item.${idea.id}.prompt`)));
@@ -2217,6 +2232,108 @@ export default function App() {
       );
     });
   }, []);
+
+  // ── Navigation ───────────────────────────────────────────────────────────
+  // One path for the rail, Ctrl+1…9 and the palette's "Go to".
+  const navigateTo = useCallback(
+    (d: Destination) => {
+      if (d === 'settings') openSettings();
+      else if (d === 'slides' && studio) setStudioDeckId(null);
+      else {
+        // Chats never shows a deck chat: going there from a deck returns to
+        // the last ordinary chat.
+        if (d === 'chats' && activeDeck) leaveDeckChat();
+        setDestination(d);
+      }
+    },
+    [openSettings, studio, activeDeck, leaveDeckChat],
+  );
+
+  // ── Home ─────────────────────────────────────────────────────────────────
+  /** Chats, with an empty chat open (the current one if it is empty), and the
+   *  text sent into it if there is any. */
+  const openFreshChat = useCallback(
+    async (text?: string) => {
+      const hadDeck = activeDeckRef.current != null;
+      if (hadDeck) {
+        setActiveDeck(null);
+        setStudioDeckId(null);
+      }
+      setDestination('chats');
+      const reuse = !hadDeck && activeConversationId != null && (chatViewRef.current?.isEmpty() ?? false);
+      if (!reuse) await handleNewChat();
+      if (text) setPendingSendText(text);
+    },
+    [activeConversationId, handleNewChat],
+  );
+  /** The Slides list (not a deck left open in the studio). */
+  const openSlidesList = useCallback(() => {
+    setStudioDeckId(null);
+    setDestination('slides');
+  }, []);
+  const handleHomeAsk = useCallback(
+    (text: string) => {
+      if (looksLikeDeckRequest(text)) {
+        const theme = STARTER_THEMES[0];
+        void handleStartDeck(text, theme.name, theme.css).catch((error) =>
+          setStatusMessage(error instanceof Error ? error.message : String(error)),
+        );
+      } else {
+        void openFreshChat(text);
+      }
+    },
+    [handleStartDeck, openFreshChat, setStatusMessage],
+  );
+  const handleHomeOpenChat = useCallback(
+    (id: string) => {
+      if (activeDeckRef.current) {
+        setActiveDeck(null);
+        setStudioDeckId(null);
+      }
+      handleSelectConversation(id);
+      setDestination('chats');
+    },
+    [handleSelectConversation],
+  );
+  const handleHomeNavigate = useCallback(
+    (area: Destination) => {
+      if (area === 'slides') openSlidesList();
+      else navigateTo(area);
+    },
+    [navigateTo, openSlidesList],
+  );
+  const handleHomeAction = useCallback(
+    (action: HomeAction) => {
+      switch (action) {
+        case 'new-chat':
+          void openFreshChat();
+          break;
+        case 'start-deck':
+          openSlidesList();
+          break;
+        case 'add-documents':
+          setDestination('documents');
+          break;
+        case 'new-workflow':
+          setWorkflowsStartNew(true);
+          setDestination('workflows');
+          break;
+        case 'add-connector':
+          setDestination('connectors');
+          break;
+        case 'browse-apps':
+          openSavedApp(null);
+          break;
+        case 'review-memory':
+          setDestination('memory');
+          break;
+        case 'open-reviews':
+          setDestination('workflows');
+          break;
+      }
+    },
+    [openFreshChat, openSlidesList, openSavedApp],
+  );
 
   const openPalette = useCallback(() => {
     setPaletteOpen(true);
@@ -2277,7 +2394,9 @@ export default function App() {
   const hotkeyHandlers = useMemo(
     () => ({
       newChat: () => {
-        void handleNewChat();
+        // From Home, a new chat means the chat: take the reader there.
+        if (destination === 'home') void openFreshChat();
+        else void handleNewChat();
       },
       settings: () => openSettings(),
       shortcuts: () => setShortcutsOpen((open) => !open),
@@ -2285,6 +2404,16 @@ export default function App() {
       toggleDocPanel: () => toggleDocPanelView(),
       toggleArtifactExpand: () => toggleArtifactExpand(),
       historySearch: () => openPalette(),
+      // Ctrl+1…9: not while presenting (the deck owns the keyboard).
+      goHome: () => !presenting && navigateTo('home'),
+      goChats: () => !presenting && navigateTo('chats'),
+      goApps: () => !presenting && navigateTo('apps'),
+      goSlides: () => !presenting && navigateTo('slides'),
+      goDocuments: () => !presenting && navigateTo('documents'),
+      goLibrary: () => !presenting && navigateTo('library'),
+      goWorkflows: () => !presenting && navigateTo('workflows'),
+      goConnectors: () => !presenting && navigateTo('connectors'),
+      goMemory: () => !presenting && navigateTo('memory'),
       cycleProvider: () => {
         void handleCycleProvider();
       },
@@ -2311,6 +2440,8 @@ export default function App() {
           setPaletteOpen(false);
           return;
         }
+        // Home is the root: Escape has nowhere to go from it.
+        if (destination === 'home') return;
         // A destination page: Escape goes back to the chat, unless it is
         // editing text there (or a menu inside it took the key).
         if (destination !== 'chats') {
@@ -2347,8 +2478,11 @@ export default function App() {
       confirmDeleteId,
       handleCycleProvider,
       handleNewChat,
+      openFreshChat,
       openPalette,
       openSettings,
+      navigateTo,
+      presenting,
       paletteOpen,
       destination,
       shortcutsOpen,
@@ -2461,16 +2595,7 @@ export default function App() {
       <div className="shell">
       <Rail
         destination={destination}
-        onNavigate={(d) => {
-          if (d === 'settings') openSettings();
-          else if (d === 'slides' && studio) setStudioDeckId(null);
-          else {
-            // Chats never shows a deck chat: going there from a deck returns
-            // to the last ordinary chat.
-            if (d === 'chats' && activeDeck) leaveDeckChat();
-            setDestination(d);
-          }
-        }}
+        onNavigate={navigateTo}
         dots={{ workflows: workflowsNeedYou && destination !== 'workflows' }}
         effectiveTheme={effectiveTheme}
         onToggleTheme={handleToggleTheme}
@@ -2643,6 +2768,23 @@ export default function App() {
             stays mounted underneath, so a turn in progress keeps running. */}
         {destination !== 'chats' && !studio && (
           <div className="dest-page" data-destination={destination}>
+            {destination === 'home' && (
+              <HomePage
+                conversations={conversations}
+                savedApps={savedApps}
+                ideaCaps={ideaCaps}
+                ideaState={ideaState}
+                collectionCount={collectionCount}
+                onAsk={handleHomeAsk}
+                onOpenChat={handleHomeOpenChat}
+                onOpenDeck={(id) => void handleOpenDeck(id)}
+                onOpenApp={openSavedApp}
+                onNavigate={handleHomeNavigate}
+                onAction={handleHomeAction}
+                onTryIdea={(idea) => void tryIdea(idea)}
+                onMoreIdeas={openIdeas}
+              />
+            )}
             {destination === 'settings' && (
               <SettingsSheet
                 variant="page"
@@ -2731,6 +2873,7 @@ export default function App() {
                 onStatus={setStatusMessage}
                 onOpenDocument={openWorkflowDocument}
                 refreshKey={workflowRunsVersion}
+                startNew={workflowsStartNew}
               />
             )}
           </div>
@@ -2891,12 +3034,14 @@ export default function App() {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onNewChat={() => void handleNewChat()}
+        onNewChat={() => void (destination === 'home' ? openFreshChat() : handleNewChat())}
         onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
         onToggleTheme={handleToggleTheme}
         onOpenShortcuts={openShortcuts}
         onOpenIdeas={openIdeas}
         onOpenWorkflows={() => setDestination('workflows')}
+        onNavigate={navigateTo}
+        onNewDeck={openSlidesList}
         onToggleArtifactExpand={toggleArtifactExpand}
         onToggleDocPanel={toggleDocPanelView}
         onToggleSidebar={toggleSidebarView}

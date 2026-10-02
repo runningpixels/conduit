@@ -19,6 +19,8 @@ export interface SlidesPageProps {
   /** Start a deck from a prompt. The shell creates it and opens the studio. */
   onStartDeck: (prompt: string, themeName: string, themeCss: string) => Promise<void>;
   onStatus?: (message: string) => void;
+  /** A story to put in the prompt box (a deck idea); a new `seq` fills it again. */
+  prefill?: { text: string; seq: number } | null;
 }
 
 /** Starter chips: the label and the scaffold they put in the prompt box. */
@@ -33,7 +35,7 @@ function themeLabel(name: string): string {
   return STARTER_THEMES.find((th) => th.name === name)?.label ?? name;
 }
 
-export function SlidesPage({ onOpenDeck, onStartDeck, onStatus }: SlidesPageProps) {
+export function SlidesPage({ onOpenDeck, onStartDeck, onStatus, prefill }: SlidesPageProps) {
   const t = useT();
   const fmt = useFormatters();
   const [decks, setDecks] = useState<DeckSummary[] | null>(null);
@@ -59,6 +61,13 @@ export function SlidesPage({ onOpenDeck, onStartDeck, onStatus }: SlidesPageProp
       .catch(() => setSavedThemes([]));
   }, []);
   const allThemes = useMemo(() => [...STARTER_THEMES, ...savedThemes], [savedThemes]);
+
+  // A deck idea lands here with its story filled in, ready to edit or start.
+  useEffect(() => {
+    if (!prefill) return;
+    setPrompt(prefill.text);
+    promptRef.current?.focus();
+  }, [prefill]);
 
   const refresh = useCallback(async () => {
     try {

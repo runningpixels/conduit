@@ -31,6 +31,9 @@ export interface Idea {
   /// The answer is a page (HTML document) — the prompt must route to the
   /// document tools, or the model writes one sentence and stops.
   page: boolean;
+  /// Opens somewhere other than a chat: a deck idea starts in Slides, with
+  /// its prompt in the story box.
+  opens?: 'slides';
   /// Catalog revision that added it; newer than the last one seen → "New".
   addedIn: number;
   /// Last live battery pass.
@@ -63,7 +66,7 @@ export const IDEAS: readonly Idea[] = [
   { id: 'capitalsQuiz', category: 'play', needs: [], size: 'medium', page: true, addedIn: 1, verified: { model: GLM, on: '2026-09-26' } },
   { id: 'memoryGame', category: 'play', needs: [], size: 'medium', page: true, addedIn: 1, verified: { model: GLM, on: '2026-09-26' } },
   // Write & plan
-  { id: 'pitchDeck', category: 'write', needs: [], size: 'long', page: true, addedIn: 1, verified: { model: GLM, on: '2026-09-26' } },
+  { id: 'pitchDeck', category: 'write', needs: [], size: 'long', page: false, opens: 'slides', addedIn: 1, verified: { model: GLM, on: '2026-09-26' } },
   { id: 'landingPage', category: 'write', needs: [], size: 'medium', page: true, addedIn: 1, verified: { model: GLM, on: '2026-09-26' } },
   { id: 'weekInReview', category: 'write', needs: ['webSearch'], size: 'medium', page: false, addedIn: 1, verified: { model: GLM, on: '2026-09-26' } },
   // Your files

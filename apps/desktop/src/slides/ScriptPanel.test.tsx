@@ -99,6 +99,23 @@ describe('humanizeSlotName', () => {
   });
 });
 
+describe('ScriptPanel trust boundary', () => {
+  it('never puts model-written markup into the app DOM, only cleaned inline text', () => {
+    const deck = makeDeck();
+    deck.slides[0].slots[9] = slot(
+      9,
+      'body',
+      'p',
+      [],
+      'Hi <img src="x" onerror="alert(1)"><a href="https://evil.example">link</a><script>bad()</script><b style="color:red" onclick="x()">bold</b>',
+    );
+    render(<ScriptPanel {...props({ deck })} />);
+    const el = field('Body');
+    expect(el.querySelector('img, a, script, [onerror], [onclick], [style]')).toBeNull();
+    expect(el.innerHTML).toBe('Hi link<b>bold</b>');
+  });
+});
+
 describe('ScriptPanel as a document', () => {
   it('styles each block by what the slot is', () => {
     render(<ScriptPanel {...props()} />);

@@ -555,7 +555,11 @@ function Block({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || dirty.current || document.activeElement === el) return;
-    if (el.innerHTML !== slot.html) el.innerHTML = slot.html;
+    // Slot HTML can be model-written: it reaches the app's own DOM only
+    // through cleanInlineHtml (parsed in an inert document; inline tags and
+    // class attributes only, all text escaped), never as raw markup.
+    const safe = cleanInlineHtml(slot.html);
+    if (el.innerHTML !== safe) el.innerHTML = safe;
   }, [slot.html]);
 
   const commit = useCallback(async () => {
@@ -626,7 +630,7 @@ function Block({
           } else if (e.key === 'Escape') {
             e.preventDefault();
             dirty.current = false;
-            el.innerHTML = slot.html;
+            el.innerHTML = cleanInlineHtml(slot.html);
             el.blur();
           }
         }}

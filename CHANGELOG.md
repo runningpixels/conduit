@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Slides.** A new **Slides** section for presentations you build by
+  asking. Describe the story (or ask for a deck in any chat) and the
+  assistant drafts a storyline you approve, then builds the slides into one
+  live deck: no new copy of the file for every change. The deck opens in a
+  studio with the slide large in the middle and the chat beside it.
+  - Ask for targeted changes; the assistant edits one slide at a time, or
+    swaps a word across the whole deck.
+  - **Script** shows every word of the deck as one document; type there or
+    double-click text on a slide. Text you write is kept when the assistant
+    rewrites a slide, unless you ask it to change that text.
+  - **History** keeps a version for every change, labelled by your request,
+    to restore at any time.
+  - Two built-in themes, plus any theme the assistant designs for you.
+  - **Present** full screen, with a separate presenter view (current and next
+    slide, speaker notes, timer) to keep private while you share the slides.
+  - **Export** as a single HTML file that presents itself in any browser, or
+    as a PDF (Windows).
+
 ### Fixed
 
 - **Provider names on Documents and in Settings.** The Documents page, the

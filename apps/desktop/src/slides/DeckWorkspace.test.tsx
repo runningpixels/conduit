@@ -269,3 +269,13 @@ describe('DeckWorkspace', () => {
     });
   });
 });
+
+describe('withoutAssumedLead', () => {
+  it('drops a model lead-in that repeats the "Assumed" label', async () => {
+    const { withoutAssumedLead } = await import('./DeckWorkspace');
+    expect(withoutAssumedLead('Assumed the audience is the eng team.')).toBe('The audience is the eng team.');
+    expect(withoutAssumedLead('I assumed this is for leads.')).toBe('This is for leads.');
+    expect(withoutAssumedLead('Assumptions: board audience.')).toBe('Board audience.');
+    expect(withoutAssumedLead('For eng leads, aiming for approval.')).toBe('For eng leads, aiming for approval.');
+  });
+});

@@ -79,6 +79,13 @@ export interface DeckWorkspaceProps {
 
 const NO_THEMES: readonly SlideTheme[] = [];
 
+/** The line is already labelled "Assumed", so drop a model's own "Assumed …" /
+ *  "I assumed …" lead-in rather than show it twice. */
+export function withoutAssumedLead(text: string): string {
+  const rest = text.replace(/^\s*(?:i\s+)?assum(?:ed|ing|ption)s?\s*(?:that\s+)?[:,-]?\s*/i, '');
+  return rest === '' ? text : rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 export function DeckWorkspace({
   deck,
   loading,
@@ -355,7 +362,7 @@ export function DeckWorkspace({
               {studio && deck.assumptions.trim() !== '' && (
                 <p className="deck-assumptions">
                   <span className="deck-assumptions-label">{t('slides.studio.assumed')}</span>
-                  {deck.assumptions}
+                  {withoutAssumedLead(deck.assumptions)}
                 </p>
               )}
               <StorylineEditor items={deck.storyline} busy={busy} onChange={onSetStoryline} onBuild={onBuild} />

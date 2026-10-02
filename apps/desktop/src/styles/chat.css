@@ -54,6 +54,12 @@
    right-aligned the *pair* and every bubble stopped short of the column edge —
    reading as centred, and shrinking long bubbles below their max-width. */
 .turn.user { display: flex; flex-direction: column; align-items: flex-end; }
+/* A message the app sent for the user (appPrompt.ts): a quiet centred note
+   with a rule on each side, not a bubble of text they never typed. */
+.turn.app-note { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-5); }
+.turn.app-note::before,
+.turn.app-note::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.app-note-text { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); text-align: center; }
 .bubble {
   /* 72%, not 82%: at 82% a long message spans nearly the full column and the
      left/right rhythm that carries the speaker distinction disappears. */

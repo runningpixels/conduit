@@ -166,3 +166,12 @@
 @media (max-width: 900px) {
   .body[data-studio] { --studio-dock-w: 300px; }
 }
+
+/* The dock is a ~400px column, so the chat inside it reads a size smaller
+   than the full-width Chats thread (same role tokens, scoped here). */
+.body[data-studio] > .center {
+  --fs-bubble: 13.5px;
+  --fs-prose: 14px;
+  --fs-prose-serif: 15px;
+  --fs-prose-h2: 16.5px;
+}

@@ -152,6 +152,7 @@ import {
   type DocumentToolActivity,
 } from './agentTools';
 import type { DeckDetail } from '../ipc/contracts';
+import { appPromptLabel } from './appPrompt';
 import { deckDeveloperPrompt, deckSystemAppendix } from '../slides/deckPrompt';
 import {
   activeDocumentWrite,
@@ -834,6 +835,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     kind: 'tip' | 'fork';
   } | null>(null);
   const [autoSend, setAutoSend] = useState<{ text: string; history: ChatTurn[] } | null>(null);
+  /** Set when the load consumed `pendingSendText` for this conversation. */
+  const pendingConsumedForRef = useRef<string | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   useComposerAutosize(editTextareaRef, editDraft);
   // Phase 7 / M-WebSearch: conversation-scoped search toggle. Visible only when
@@ -1064,6 +1067,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Load the active conversation's messages whenever the selection changes. A
   // null id (brief, during boot) leaves the thread empty.
   useEffect(() => {
+    // The pending text was just consumed by the load below (the parent clears
+    // it): that is not a new selection, so don't reload. Reloading here raced
+    // the send it had just started: the fresh list came back before the new
+    // user message was saved and wiped it from the thread.
+    if (!pendingSendText && pendingConsumedForRef.current === conversationId) {
+      pendingConsumedForRef.current = null;
+      return;
+    }
+    pendingConsumedForRef.current = null;
     if (!conversationId) {
       setTurns([]);
       setConversationWorkspaceRoot(null);
@@ -1108,6 +1120,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           setConversationUserInstructions(conversation?.userInstructions ?? null);
           const pending = pendingSendText?.trim();
           if (pending) {
+            pendingConsumedForRef.current = conversationId;
             onPendingSendConsumedRef.current?.();
             setAutoSend({ text: pending, history: visible });
           }
@@ -2889,6 +2902,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             // rather than nested inside it — a separator that lived in the turn
             // would inherit its left rule and indent. Both halves carry keys.
             const withDay = (node: ReactNode) => (dayRule ? [dayRule, node] : node);
+
+            // A message the app sent for the user ("Build slides"): a short
+            // note in the thread, not a bubble of text they never typed.
+            const appLabel = turn.role === 'user' ? appPromptLabel(turn.content) : null;
+            if (appLabel) {
+              return withDay(
+                <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
+                  <p className="app-note-text">{appLabel}</p>
+                </article>,
+              );
+            }
 
             if (turn.role === 'user') {
               const isEditing = editingTurnId === turn.id;

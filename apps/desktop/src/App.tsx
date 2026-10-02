@@ -129,6 +129,7 @@ import { STARTER_THEMES } from './slides/themes';
 import { DeckDock, type DockTab } from './slides/DeckDock';
 import { ScriptPanel, type ScriptFocusRequest } from './slides/ScriptPanel';
 import { DeckHistory } from './slides/DeckHistory';
+import { appPrompt, appPromptLabel } from './chat/appPrompt';
 import type { DeckDetail, SlideTheme, SlotEdit, StorylineItem } from './ipc/contracts';
 import {
   createDeck,
@@ -1054,7 +1055,7 @@ export default function App() {
       setStudioDeckId(deck.id);
       setDestination('slides');
       void refreshConversations();
-      setPendingSendText(t('slides.prompt.storylineFromChat'));
+      setPendingSendText(appPrompt(t('slides.note.madeDeck'), t('slides.prompt.storylineFromChat')));
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : String(error));
     }
@@ -1115,7 +1116,8 @@ export default function App() {
     if (!deck || !deckChangedThisTurnRef.current) return;
     deckChangedThisTurnRef.current = false;
     const lastPrompt = [...transcriptRef.current.turns].reverse().find((turn) => turn.role === 'user');
-    const text = lastPrompt?.content.replace(/\s+/g, ' ').trim() ?? '';
+    const content = lastPrompt?.content ?? '';
+    const text = (appPromptLabel(content) ?? content).replace(/\s+/g, ' ').trim();
     const label =
       appLabel ?? (text.length > 80 ? `${text.slice(0, 79)}…` : text || t('slides.history.aiTurn'));
     try {
@@ -1176,7 +1178,7 @@ export default function App() {
     try {
       setActiveDeck(await setDeckStage(deck.id, 'slides'));
       nextDeckTurnLabelRef.current = t('slides.history.built');
-      setPendingSendText(t('slides.prompt.build'));
+      setPendingSendText(appPrompt(t('slides.note.build'), t('slides.prompt.build')));
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : String(error));
     }
@@ -2493,7 +2495,7 @@ export default function App() {
                   onRemoveBullet={handleRemoveBullet}
                   onAskToFix={(prompt) => {
                     setDockTab('ask');
-                    setPendingSendText(prompt);
+                    setPendingSendText(appPrompt(t('slides.note.fixOverflow'), prompt));
                   }}
                   onFocusSlide={(index) => setStageSlideRequest({ index, nonce: Date.now() })}
                   onClose={() => setDockTab('ask')}
@@ -2718,7 +2720,7 @@ export default function App() {
               onInsertBullet={handleInsertBullet}
               onRemoveBullet={handleRemoveBullet}
               onReplace={handleReplaceInDeck}
-              onAskToFix={(prompt) => setPendingSendText(prompt)}
+              onAskToFix={(prompt) => setPendingSendText(appPrompt(t('slides.note.fixOverflow'), prompt))}
               onOverflowChange={setDeckOverflow}
             />
           </section>

@@ -205,6 +205,8 @@ fn main() {
             create_deck,
             undo_start_deck,
             open_presenter_window,
+            export_deck_html,
+            export_deck_pdf,
             get_deck,
             get_deck_for_conversation,
             open_deck,

@@ -19,7 +19,7 @@ import { DeckFrame } from './DeckFrame';
 import { DeckHistory } from './DeckHistory';
 import { StorylineEditor } from './StorylineEditor';
 import { ScriptPanel, type ScriptFocusRequest } from './ScriptPanel';
-import { StudioHeader } from './StudioHeader';
+import { StudioHeader, type DeckExportKind } from './StudioHeader';
 import { StudioTips } from './StudioTips';
 import { buildThemeChoices } from './themeChoices';
 
@@ -77,6 +77,10 @@ export interface DeckWorkspaceProps {
   onSlideChange?: (index: number) => void;
   /** Studio: present full screen from this slide index. */
   onPresent?: (startIndex: number) => void;
+  /** Studio: save the deck as an HTML file or a PDF. */
+  onExport?: (kind: DeckExportKind) => void;
+  /** Studio: an export is running. */
+  exporting?: boolean;
 }
 
 const NO_THEMES: readonly SlideTheme[] = [];
@@ -117,6 +121,8 @@ export function DeckWorkspace({
   slideRequest = null,
   onSlideChange,
   onPresent,
+  onExport,
+  exporting = false,
 }: DeckWorkspaceProps) {
   const t = useT();
   const [index, setIndex] = useState(0);
@@ -298,6 +304,8 @@ export function DeckWorkspace({
           madeFromChat={madeFromChat}
           onUndoStart={() => onUndoStart?.()}
           onPresent={onPresent ? (fromCurrent) => onPresent(fromCurrent ? current : 0) : undefined}
+          onExport={onExport}
+          exporting={exporting}
         />
       ) : (
       <header className="deck-head">

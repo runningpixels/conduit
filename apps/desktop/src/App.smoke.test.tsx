@@ -141,7 +141,7 @@ const IPC_EXPORTS = [
   'deleteManagedSkill', 'revealSkillsDir',
   'listMemoryItems', 'createMemoryItem', 'updateMemoryItem', 'deleteMemoryItem',
   'acceptMemoryItem', 'getMemoryPromptBlock',
-  'previewConversationExport', 'exportConversationDialog',
+  'previewConversationExport', 'exportConversationDialog', 'exportDeckHtml', 'exportDeckPdf',
   // White-label Phase 3 (Settings → Branding): App.tsx's boot effect already
   // calls getBrandConfig/getBrandLogo unconditionally, same as every other
   // Promise.all entry there — missing from this enumeration, either of them

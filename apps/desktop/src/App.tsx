@@ -58,6 +58,7 @@ import { applyAccent } from './themes/accent';
 import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
+import { appName } from './brand';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -115,6 +116,8 @@ import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog
 import {
   artifactPrincipal,
   exportConversationDialog,
+  exportDeckHtml,
+  exportDeckPdf,
   installStarterApp,
   listApps,
   listStarterApps,
@@ -125,6 +128,7 @@ import {
 } from './ipc/client';
 import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
+import { buildDeckHtmlExport, buildDeckPrintHtml } from './slides/deckExport';
 import { PresentationView } from './slides/PresentationView';
 import { STARTER_THEMES } from './slides/themes';
 import { DeckDock, type DockTab } from './slides/DeckDock';
@@ -991,6 +995,7 @@ export default function App() {
   // the one mounted chat stay exactly where they are underneath.
   const [presentStart, setPresentStart] = useState<number | null>(null);
   const stageIndexRef = useRef(0);
+  const exportingDeckRef = useRef(false);
   const startPresenting = useCallback((startIndex: number) => {
     if ((activeDeckRef.current?.slides.length ?? 0) === 0) return;
     setPresentStart(startIndex);
@@ -1152,6 +1157,41 @@ export default function App() {
     }
     await reloadActiveDeck();
   }, [reloadActiveDeck, openDeckStartedInChat, t]);
+
+  // Export: the documents are built here, Rust asks for the path and writes
+  // the file. Nothing happens on cancel.
+  const { locale: exportLocale } = useLocale();
+  const [exportingDeck, setExportingDeck] = useState(false);
+  const handleExportDeck = useCallback(
+    async (kind: 'html' | 'pdf') => {
+      const deck = activeDeckRef.current;
+      if (!deck || deck.slides.length === 0 || exportingDeckRef.current) return;
+      exportingDeckRef.current = true;
+      setExportingDeck(true);
+      try {
+        const saved =
+          kind === 'html'
+            ? await exportDeckHtml(
+                deck.id,
+                buildDeckHtmlExport(deck, { lang: exportLocale, generator: appName() }),
+                t('slides.export.htmlDialogTitle'),
+                // Format names are not translated (D7).
+                'HTML',
+              )
+            : await exportDeckPdf(deck.id, buildDeckPrintHtml(deck), t('slides.export.pdfDialogTitle'), 'PDF');
+        if (saved === null) return;
+        const name = saved.split(/[\\/]/).pop() ?? saved;
+        setStatus(makeStatus(t('slides.export.saved', { name }), 'success'));
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        setStatus(makeStatus(t('slides.export.failed', { reason }), 'error'));
+      } finally {
+        exportingDeckRef.current = false;
+        setExportingDeck(false);
+      }
+    },
+    [exportLocale, t],
+  );
 
   const handleRenameDeck = useCallback(
     async (title: string) => {
@@ -2731,6 +2771,8 @@ export default function App() {
                 stageIndexRef.current = i;
               }}
               onPresent={startPresenting}
+              onExport={(kind) => void handleExportDeck(kind)}
+              exporting={exportingDeck}
               deck={activeDeck}
               loading={deckLoading}
               busyTool={deckBusyTool}

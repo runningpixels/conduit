@@ -13,6 +13,7 @@ use crate::{
         conversations,
         slides::{self, user_message as message},
     },
+    slides_export,
     state::AppState,
 };
 
@@ -68,6 +69,122 @@ pub async fn open_presenter_window(
     #[cfg(target_os = "linux")]
     crate::webview_args::disable_webrtc(&_window).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Save a deck as one self-contained HTML file through the native save dialog.
+/// `Ok(None)` means the user cancelled. The renderer builds the document and
+/// never supplies a path (ADR-008); dialog strings arrive translated (D15).
+#[tauri::command]
+pub async fn export_deck_html(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    deck_id: String,
+    html: String,
+    dialog_title: String,
+    filter_name: String,
+) -> Result<Option<String>, String> {
+    slides_export::check_size(&html)?;
+    let deck = get_deck_detail(&state, &deck_id).await?;
+    let picked = pick_deck_save_path(
+        &app,
+        "html",
+        &dialog_title,
+        &filter_name,
+        &slides_export::suggested_file_name(&deck.title, "html"),
+    )
+    .await?;
+    export_deck_html_impl(picked, &html)
+}
+
+/// Post-picker half of [`export_deck_html`], split out so cancel vs write can
+/// be tested without the OS dialog.
+#[doc(hidden)]
+pub fn export_deck_html_impl(
+    picked: Option<std::path::PathBuf>,
+    html: &str,
+) -> Result<Option<String>, String> {
+    let Some(path) = picked else {
+        return Ok(None);
+    };
+    slides_export::write_html(&path, html)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Save a deck as a PDF, one 1920x1080 page per slide, through the native save
+/// dialog. `html` is the print document. Windows prints it with a hidden
+/// webview on the artifact origin; other platforms say it is not available yet.
+#[tauri::command]
+pub async fn export_deck_pdf(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    args: State<'_, crate::webview_args::MainWebviewArgs>,
+    deck_id: String,
+    html: String,
+    dialog_title: String,
+    filter_name: String,
+) -> Result<Option<String>, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (
+            &app,
+            &state,
+            &args,
+            &deck_id,
+            &html,
+            &dialog_title,
+            &filter_name,
+        );
+        Err(slides_export::PDF_UNAVAILABLE.to_string())
+    }
+    #[cfg(windows)]
+    {
+        slides_export::check_size(&html)?;
+        let deck = get_deck_detail(&state, &deck_id).await?;
+        let picked = pick_deck_save_path(
+            &app,
+            "pdf",
+            &dialog_title,
+            &filter_name,
+            &slides_export::suggested_file_name(&deck.title, "pdf"),
+        )
+        .await?;
+        let Some(path) = picked else {
+            return Ok(None);
+        };
+        slides_export::print_pdf(&app, &args.0, html, &path).await?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    }
+}
+
+/// The native save dialog; `Ok(None)` when the user cancels.
+async fn pick_deck_save_path(
+    app: &tauri::AppHandle,
+    extension: &str,
+    dialog_title: &str,
+    filter_name: &str,
+    suggested_filename: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter(filter_name, &[extension])
+        .set_file_name(suggested_filename)
+        .set_title(dialog_title)
+        .save_file(move |file_path| {
+            let _ = tx.send(file_path);
+        });
+    let picked = rx
+        .await
+        .map_err(|_| "the file dialog closed without a response".to_string())?;
+    picked
+        .map(|file_path| {
+            file_path
+                .into_path()
+                .map_err(|err| format!("failed to resolve the picked file path: {err}"))
+        })
+        .transpose()
 }
 
 /// Saved custom themes, most recently used first (built-in themes excluded).

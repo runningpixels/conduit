@@ -512,6 +512,26 @@ export async function exportConversationDialog(
   });
 }
 
+/** Saves a deck as one standalone HTML file; resolves the saved path, or null on cancel. */
+export async function exportDeckHtml(
+  deckId: string,
+  html: string,
+  dialogTitle: string,
+  filterName: string,
+): Promise<string | null> {
+  return invokeCommand<string | null>('export_deck_html', { deckId, html, dialogTitle, filterName });
+}
+
+/** Prints a deck's print document to a PDF; resolves the saved path, or null on cancel. */
+export async function exportDeckPdf(
+  deckId: string,
+  html: string,
+  dialogTitle: string,
+  filterName: string,
+): Promise<string | null> {
+  return invokeCommand<string | null>('export_deck_pdf', { deckId, html, dialogTitle, filterName });
+}
+
 // =============================================================================
 // Phase 6 M6.5 — Diagnostics export hardening: disclosure gate + reveal.
 //

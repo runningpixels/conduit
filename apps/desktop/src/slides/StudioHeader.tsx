@@ -1,8 +1,9 @@
 /// The studio's top bar: back to the deck list, the deck's title, the four
 /// steps a deck goes through, and the theme. Props-driven.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
+import { Menu } from '../workspace/Menu';
 import type { DeckDetail } from '../ipc/contracts';
 import type { ThemeChoice } from './themeChoices';
 
@@ -21,7 +22,13 @@ export interface StudioHeaderProps {
   onUndoStart: () => void;
   /** Present the deck full screen, from the first slide or from the one on the stage. */
   onPresent?: (fromCurrent: boolean) => void;
+  /** Save the deck as a standalone HTML file or a PDF. */
+  onExport?: (kind: DeckExportKind) => void;
+  /** An export is running: the button shows it and ignores clicks. */
+  exporting?: boolean;
 }
+
+export type DeckExportKind = 'html' | 'pdf';
 
 const STEPS: ReadonlyArray<{ step: StudioStep; labelId: string }> = [
   { step: 'story', labelId: 'slides.studio.step.story' },
@@ -46,6 +53,8 @@ export function StudioHeader({
   madeFromChat,
   onUndoStart,
   onPresent,
+  onExport,
+  exporting = false,
 }: StudioHeaderProps) {
   const t = useT();
   const [titleDraft, setTitleDraft] = useState(deck.title);
@@ -56,6 +65,13 @@ export function StudioHeader({
   const busy = busyTool != null;
   const current = currentStudioStep(deck, busy);
   const canPresent = onPresent != null && deck.slides.length > 0;
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLButtonElement>(null);
+  const closeExport = useCallback(() => setExportOpen(false), []);
+  const pickExport = (kind: DeckExportKind) => {
+    setExportOpen(false);
+    onExport?.(kind);
+  };
 
   const commitTitle = () => {
     const next = titleDraft.trim();
@@ -118,6 +134,36 @@ export function StudioHeader({
             ))}
           </select>
         </label>
+        {onExport && (
+          <span className="studio-export">
+            <button
+              ref={exportRef}
+              type="button"
+              className="btn studio-export-button"
+              disabled={deck.slides.length === 0 || exporting}
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              onClick={() => setExportOpen((open) => !open)}
+            >
+              {exporting ? t('slides.export.working') : t('slides.export.button')}
+            </button>
+            <Menu
+              open={exportOpen}
+              onClose={closeExport}
+              triggerRef={exportRef}
+              className="menu studio-export-menu"
+              label={t('slides.export.menuAria')}
+              dismissOnOutsidePress
+            >
+              <button type="button" role="menuitem" className="menu-item" onClick={() => pickExport('html')}>
+                {t('slides.export.html')}
+              </button>
+              <button type="button" role="menuitem" className="menu-item" onClick={() => pickExport('pdf')}>
+                {t('slides.export.pdf')}
+              </button>
+            </Menu>
+          </span>
+        )}
         <span className="studio-present-group">
           <button
             type="button"

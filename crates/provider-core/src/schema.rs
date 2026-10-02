@@ -1402,6 +1402,239 @@ pub struct StarterAppInfo {
     pub installed_app_id: Option<String>,
 }
 
+// =============================================================================
+// Slides
+// =============================================================================
+
+/// Where a deck is in its life: the storyline is still being agreed, or the
+/// slides are being built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_stage.ts"
+)]
+pub enum DeckStage {
+    Storyline,
+    Slides,
+}
+
+impl DeckStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Storyline => "storyline",
+            Self::Slides => "slides",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "storyline" => Some(Self::Storyline),
+            "slides" => Some(Self::Slides),
+            _ => None,
+        }
+    }
+}
+
+/// Why a deck snapshot was taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_snapshot_cause.ts"
+)]
+pub enum DeckSnapshotCause {
+    Created,
+    AiTurn,
+    Manual,
+    Restore,
+}
+
+impl DeckSnapshotCause {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::AiTurn => "ai-turn",
+            Self::Manual => "manual",
+            Self::Restore => "restore",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "created" => Some(Self::Created),
+            "ai-turn" => Some(Self::AiTurn),
+            "manual" => Some(Self::Manual),
+            "restore" => Some(Self::Restore),
+            _ => None,
+        }
+    }
+}
+
+/// One line of a deck's storyline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/storyline_item.ts"
+)]
+pub struct StorylineItem {
+    pub id: String,
+    pub text: String,
+}
+
+/// A saved Slides theme: one the user or the model made, kept in the theme
+/// library so it can be picked again. The built-in themes are not listed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slide_theme.ts"
+)]
+pub struct SlideTheme {
+    pub name: String,
+    pub css: String,
+    pub updated_at: String,
+}
+
+/// One text slot of a slide: an element with `data-text`. `index` is its
+/// 0-based position among the slide's slots, `html` its inner HTML and `text`
+/// the visible text. A pinned slot carries `data-owner="user"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slide_slot.ts"
+)]
+pub struct SlideSlot {
+    pub index: u32,
+    pub name: String,
+    pub html: String,
+    pub text: String,
+    pub pinned: bool,
+    /// The slot element's lowercase tag name (`h1`, `li`, `b`, ...).
+    pub tag: String,
+    /// The slot element's class list.
+    pub classes: Vec<String>,
+}
+
+/// One slide of a deck. `html` is the slide's inner HTML; `slots` are computed
+/// from it on every read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_slide.ts"
+)]
+pub struct DeckSlide {
+    pub id: String,
+    pub position: u32,
+    pub layout: String,
+    pub html: String,
+    pub notes: String,
+    #[serde(default)]
+    pub slots: Vec<SlideSlot>,
+}
+
+/// A user edit of one slot, addressed by `(index, name)`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slot_edit.ts"
+)]
+pub struct SlotEdit {
+    pub index: u32,
+    pub name: String,
+    pub html: String,
+}
+
+/// Matches of a find-and-replace on one slide.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/slide_replace_count.ts"
+)]
+pub struct SlideReplaceCount {
+    pub slide_id: String,
+    pub position: u32,
+    pub count: u32,
+    pub notes_count: u32,
+}
+
+/// The outcome (or dry-run preview) of a deck-wide find-and-replace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_replace_result.ts"
+)]
+pub struct DeckReplaceResult {
+    pub total: u32,
+    pub applied: bool,
+    pub slides: Vec<SlideReplaceCount>,
+}
+
+/// One deck in the Slides list.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_summary.ts"
+)]
+pub struct DeckSummary {
+    pub id: String,
+    pub title: String,
+    pub theme_name: String,
+    pub slide_count: u32,
+    pub stage: DeckStage,
+    #[ts(optional)]
+    pub conversation_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    #[ts(optional)]
+    pub last_opened_at: Option<String>,
+}
+
+/// A deck with its theme, storyline and slides, for the workspace.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_detail.ts"
+)]
+pub struct DeckDetail {
+    pub id: String,
+    pub title: String,
+    pub theme_name: String,
+    pub theme_css: String,
+    pub stage: DeckStage,
+    pub storyline: Vec<StorylineItem>,
+    pub slides: Vec<DeckSlide>,
+    #[ts(optional)]
+    pub conversation_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    /// What the model assumed about audience, goal and length (empty when none).
+    pub assumptions: String,
+}
+
+/// One entry in a deck's history list.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/deck_snapshot_summary.ts"
+)]
+pub struct DeckSnapshotSummary {
+    pub id: String,
+    pub cause: DeckSnapshotCause,
+    pub label: String,
+    pub slide_count: u32,
+    pub created_at: String,
+}
+
 /// An app with its page, for opening it.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

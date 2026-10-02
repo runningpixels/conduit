@@ -45,3 +45,9 @@
 
 /* Apps page: saved mini-apps, the open app, Save as app */
 @import './styles/pages-apps.css';
+
+/* Slides page and the deck workspace: pages/SlidesPage.tsx, slides/*.tsx */
+@import './styles/pages-slides.css';
+
+/* Slides Studio: the studio header, dock, tips and stage layout (slides/Studio*.tsx, DeckDock.tsx) */
+@import './styles/slides-studio.css';

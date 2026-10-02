@@ -755,6 +755,8 @@ dependencies = [
  "url",
  "uuid",
  "webkit2gtk",
+ "webview2-com",
+ "windows",
  "zeroize",
  "zip 8.6.0",
 ]

@@ -1,0 +1,297 @@
+/* Slides Studio: a deck opens as a studio. The stage is the hero: a calm
+ * header, a slim strip, and one big slide. Script, History and the chat live
+ * in the dock on the right (DeckDock). The grid that places the workspace
+ * and the dock is the shell's; this file styles what is inside them. */
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+.studio-head {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-3);
+}
+.studio-head-row { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.studio-back { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.studio-title { flex: 1; font-size: var(--fs-9xl); }
+.studio-made {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  color: var(--ink-3);
+  font-size: var(--fs-xl);
+  white-space: nowrap;
+}
+.studio-made-undo {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.studio-made-undo:hover { text-decoration: underline; }
+
+/* Step bar: Story, Slides, Polish, Present. Quiet; only the current step has weight. */
+.studio-steps { display: flex; align-items: center; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.studio-step {
+  color: var(--ink-3);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+}
+.studio-step + .studio-step::before { content: "›"; margin-right: var(--sp-2); color: var(--line-hi); }
+.studio-step[data-current="true"] { color: var(--ink); font-weight: 650; }
+.studio-step[data-current="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: var(--r-round);
+  background: var(--accent);
+  vertical-align: middle;
+}
+.studio-step[data-disabled="true"] { opacity: 0.55; cursor: default; }
+
+/* ── Stage layout ─────────────────────────────────────────────────────── */
+.deck-workspace[data-layout="studio"] .deck-slides { padding: var(--sp-2) var(--sp-5) var(--sp-5); gap: var(--sp-5); }
+.deck-workspace[data-layout="studio"] .deck-strip { width: 120px; padding: 4px; }
+/* The stage takes everything the strip leaves, and the frame letterboxes the slide. */
+.deck-workspace[data-layout="studio"] .deck-stage-col { position: relative; gap: var(--sp-4); }
+.deck-workspace[data-layout="studio"] .deck-stage {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--card);
+}
+.deck-workspace[data-layout="studio"] .deck-stage-nav { padding-bottom: 2px; }
+
+.deck-assumptions {
+  max-width: 760px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: var(--sp-5) auto 0;
+  padding: 0 var(--sp-5);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  line-height: 1.5;
+}
+.deck-assumptions-label { margin-right: var(--sp-2); color: var(--ink-3); font-weight: 600; }
+.deck-workspace[data-layout="studio"] .storyline { padding-top: var(--sp-4); }
+
+/* ── First-time tips ──────────────────────────────────────────────────── */
+.studio-tips {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  align-self: center;
+  max-width: 100%;
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+}
+.studio-tips-count { flex: none; color: var(--ink-3); font: 500 var(--fs-md)/1 var(--font-mono); }
+.studio-tips-text { flex: 1; min-width: 0; margin: 0; }
+
+/* ── Dock ─────────────────────────────────────────────────────────────── */
+.deck-dock { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; }
+.deck-dock-tabs { display: flex; gap: var(--sp-1); padding: var(--sp-3) var(--sp-4) 0; border-bottom: 1px solid var(--line); }
+.deck-dock-tab {
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--tap), border-color var(--tap);
+}
+.deck-dock-tab:hover { color: var(--ink); }
+.deck-dock-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 650; }
+.deck-dock-tab:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+.deck-dock-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.deck-dock-panel[hidden] { display: none; }
+/* Script and History are drawers elsewhere; in the dock they fill the column. */
+.deck-dock-panel > .deck-script,
+.deck-dock-panel > .deck-history { flex: 1; width: auto; border: 0; border-radius: 0; background: transparent; }
+
+/* ── Compact chat turns (ChatView compact) ────────────────────────────── */
+.turn-compact-details { display: grid; gap: var(--sp-2); margin-top: var(--sp-2); }
+.deck-chat-empty { margin: var(--sp-6) 0 0; color: var(--ink-3); font-size: var(--fs-3xl); line-height: 1.5; }
+
+/* ── Shell: the studio grid ───────────────────────────────────────────── */
+/* A deck open in Slides: the deck takes the window and the chat column
+   becomes the dock on the right. The chat list, the sashes and the chat
+   header are not part of the studio. Rules override the Chats layout's
+   collapse and breakpoint rules for the panel, which do not apply here. */
+.body[data-studio] {
+  --studio-dock-w: 400px;
+  grid-template-columns: minmax(0, 1fr) var(--studio-dock-w);
+}
+.body[data-studio] > .sidebar,
+.body[data-studio] > .sidebar-resize,
+.body[data-studio] > .resize-handle { display: none; }
+/* !important: the Chats layout's saved "panel closed" state hides this
+   column with more specific selectors, and in the studio it is the page. */
+.body[data-studio] > .doc-panel {
+  grid-column: 1;
+  grid-row: 1;
+  visibility: visible !important;
+  margin: 10px 0 10px 10px !important;
+  border-width: 1px !important;
+}
+.body[data-studio] > .center {
+  grid-column: 2;
+  grid-row: 1;
+  border-left: 1px solid var(--line);
+  margin-left: 10px;
+}
+/* Ask: the tabs, then the chat. Script or History: the dock fills the
+   column and the chat stays mounted but out of sight. */
+.body[data-studio] > .center[data-dock-tab="ask"] .deck-dock { height: auto; }
+.body[data-studio] > .center[data-dock-tab="ask"] .deck-dock-panel { display: none; }
+.body[data-studio] > .center:not([data-dock-tab="ask"]) { grid-template-rows: minmax(0, 1fr) 0; }
+.body[data-studio] > .center:not([data-dock-tab="ask"]) > .tab-pane { display: none; }
+@media (max-width: 1200px) {
+  .body[data-studio] { --studio-dock-w: 340px; }
+}
+@media (max-width: 900px) {
+  .body[data-studio] { --studio-dock-w: 300px; }
+}
+
+/* The dock is a ~400px column, so the chat inside it reads a size smaller
+   than the full-width Chats thread (same role tokens, scoped here). */
+.body[data-studio] > .center {
+  --fs-bubble: 13.5px;
+  --fs-prose: 14px;
+  --fs-prose-serif: 15px;
+  --fs-prose-h2: 16.5px;
+}
+
+/* ── Present ──────────────────────────────────────────────────────────── */
+.studio-export { position: relative; display: inline-flex; flex: none; }
+.studio-export-menu { top: calc(100% + 4px); right: 0; min-width: 260px; }
+.studio-present-group { display: inline-flex; align-items: center; gap: var(--sp-2); flex: none; }
+.studio-step-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.studio-step-link:hover { color: var(--ink); text-decoration: underline; }
+
+.present-root {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: #000;
+  color: #fff;
+  overflow: hidden;
+}
+.present-root[data-idle="true"] { cursor: none; }
+.present-stage { position: absolute; inset: 0; }
+.present-stage .deck-frame { height: 100%; aspect-ratio: auto; }
+.present-hit { position: absolute; inset: 0; }
+.present-black { position: absolute; inset: 0; background: #000; pointer-events: none; }
+.present-end {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+  color: #9a9aa3;
+  font-size: var(--fs-7xl);
+  pointer-events: none;
+}
+.present-bar {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--r-lg);
+  background: rgba(24, 24, 28, 0.85);
+  color: #e8e8ec;
+  font-size: var(--fs-5xl);
+  opacity: 1;
+  transition: opacity var(--duration-fast);
+}
+.present-bar[data-visible="false"] { opacity: 0; pointer-events: none; }
+.present-bar button {
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--r-lg);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.present-bar button:hover { background: rgba(255, 255, 255, 0.12); }
+.present-bar-count { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Presenter window */
+.presenter-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  background: var(--bg);
+  color: var(--ink);
+}
+.presenter-empty { align-items: center; justify-content: center; color: var(--ink-3); }
+.presenter-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  min-height: 0;
+}
+.presenter-current { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; min-height: 0; }
+.presenter-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--r-lg); overflow: hidden; background: #000; }
+.presenter-frame .deck-frame, .presenter-next-frame .deck-frame { height: 100%; aspect-ratio: auto; }
+.presenter-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 10px;
+  border-radius: var(--r-lg);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: var(--fs-xl);
+}
+.presenter-controls { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.presenter-count { margin: 0 var(--sp-2); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.presenter-end { margin-left: auto; }
+.presenter-side { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; min-height: 0; }
+.presenter-timer { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.presenter-clock { font-size: var(--fs-hero); font-weight: 650; font-variant-numeric: tabular-nums; margin-right: var(--sp-2); }
+.presenter-wall { margin-left: auto; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.presenter-label { color: var(--ink-3); font-size: var(--fs-xl); text-transform: uppercase; letter-spacing: 0.04em; }
+.presenter-next { width: 55%; }
+.presenter-next-frame { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--r-lg); overflow: hidden; background: #000; margin-top: var(--sp-1); }
+.presenter-next-end { margin-top: var(--sp-1); color: var(--ink-3); }
+.presenter-notes-head { display: flex; align-items: center; justify-content: space-between; }
+.presenter-size { display: inline-flex; gap: var(--sp-1); }
+.presenter-notes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.4;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.presenter-notes-empty { color: var(--ink-3); font-size: var(--fs-xl); }

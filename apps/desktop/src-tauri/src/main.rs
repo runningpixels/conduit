@@ -201,6 +201,30 @@ fn main() {
             update_app,
             update_app_from_artifact,
             delete_app,
+            list_decks,
+            create_deck,
+            undo_start_deck,
+            open_presenter_window,
+            export_deck_html,
+            export_deck_pdf,
+            get_deck,
+            get_deck_for_conversation,
+            open_deck,
+            rename_deck,
+            delete_deck,
+            set_deck_storyline,
+            set_deck_stage,
+            set_deck_theme,
+            edit_slide_words,
+            set_slot_pinned,
+            insert_bullet,
+            remove_bullet,
+            replace_in_deck,
+            list_deck_snapshots,
+            snapshot_deck,
+            restore_deck_snapshot,
+            list_slide_themes,
+            delete_slide_theme,
             list_starter_apps,
             install_starter_app,
             get_app_inputs,
@@ -337,10 +361,15 @@ fn main() {
                 .ok_or("tauri.conf.json has no \"main\" window")?;
             // Started at sign-in with the tray on: stay hidden in the tray.
             let visible = config.visible && !tray::start_hidden(std::env::args(), close_to_tray);
+            let browser_args = webview_args::main_webview_browser_args(&allowlist);
             let _window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
-                .additional_browser_args(&webview_args::main_webview_browser_args(&allowlist))
+                .additional_browser_args(&browser_args)
                 .visible(visible)
                 .build()?;
+            // Every later webview (the Slides presenter view) must be built
+            // with these same arguments: WebView2 refuses a second webview
+            // whose environment differs from the first one's.
+            app.manage(webview_args::MainWebviewArgs(browser_args));
             #[cfg(target_os = "linux")]
             webview_args::disable_webrtc(&_window)?;
             tray::ensure_tray(app.handle(), close_to_tray)?;

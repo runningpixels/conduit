@@ -346,6 +346,12 @@ export const AppsIcon = (p: IconProps) => (
     <rect x="13" y="13" width="7" height="7" rx="3.5" />
   </Svg>
 );
+export const SlidesIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="2" />
+    <path d="M12 16v3M8 20h8" />
+  </Svg>
+);
 export const IdeaIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 18h6M10 21h4" />

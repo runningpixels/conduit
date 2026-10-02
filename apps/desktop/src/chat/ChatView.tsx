@@ -144,11 +144,16 @@ import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
   documentWritesHistoryNote,
+  isDeckTool,
+  START_DECK_TOOL_NAME,
   isDocumentContentTool,
   selectBuiltinTurnTools,
   selectBuiltinWebTools,
   type DocumentToolActivity,
 } from './agentTools';
+import type { DeckDetail } from '../ipc/contracts';
+import { appPromptLabel } from './appPrompt';
+import { deckDeveloperPrompt, deckSystemAppendix } from '../slides/deckPrompt';
 import {
   activeDocumentWrite,
   documentWriteDetail,
@@ -257,6 +262,17 @@ interface ChatViewProps {
   onChatTurnComplete?: (streamState: AssistantStreamState) => void;
   /// Fired when a document create/edit tool starts or finishes argument streaming.
   onDocumentToolActivity?: (activity: DocumentToolActivity) => void;
+  /// The Slides deck this chat is bound to. Its turns get the deck tools and
+  /// prompt instead of the document ones.
+  deck?: DeckDetail | null;
+  /// A deck tool saved a change: the deck view re-reads the deck.
+  onDeckChanged?: () => void;
+  /// The deck tool the model is calling now, or null when it has finished.
+  onDeckToolActivity?: (toolName: string | null) => void;
+  /// Slides whose text runs off the canvas (slide id → px), told to the model.
+  deckOverflow?: Record<string, number>;
+  /// The model turned this ordinary chat into a deck (start_deck succeeded).
+  onDeckStarted?: () => void;
   /// Fired when the user requests to fork the conversation at a message.
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// t0-3 — mid-thread edit forked a new conversation; switch + pending send.
@@ -300,6 +316,10 @@ interface ChatViewProps {
   /// Renderer-only conversation → last-used provider map (sidebar row dots).
   /// Falls back to `settings.activeProvider` for per-turn hue + model line.
   convoProviders?: Record<string, string>;
+  /// Slides studio dock: each assistant turn shows its reply, then one
+  /// collapsed summary line for the thinking and tool calls. Hides the idea
+  /// gallery, inline suggestions and the new-chat greeting.
+  compact?: boolean;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -334,6 +354,10 @@ export interface ChatRequestOverrides {
   compactionSummary?: string | null;
   /** Enabled skills + workspace AGENTS.md (t1-4). */
   extraSystemSections?: string | null;
+  /** The chat's Slides deck: deck prompts replace the document ones. */
+  deck?: DeckDetail | null;
+  /** Per slide id, how far its text runs off the slide (px); 0 or absent fits. */
+  deckOverflow?: Record<string, number>;
 }
 
 /**
@@ -443,7 +467,8 @@ export function buildProviderRequest(
   // match would otherwise pressure the model into creating an artifact on a
   // question turn (the original cause of the spurious "no artifact content"
   // warning).
-  const isCreationIntent = looksLikeArtifactCreationRequest(prompt);
+  const deck = chatOverrides?.deck ?? null;
+  const isCreationIntent = !deck && looksLikeArtifactCreationRequest(prompt);
   // Gated separately from the artifact appendix (see brandPrompt.ts's module
   // comment for why): this appendix is only worth its tokens on a turn that
   // plausibly wants `write_brand_theme`, not on every turn. Also gated on
@@ -452,7 +477,7 @@ export function buildProviderRequest(
   // apply a `write_brand_theme` result, so this appendix's tokens (and the
   // tool itself, selected below from this same flag) would be spent
   // teaching the model about a capability the app cannot let the user use.
-  const isBrandIntent = looksLikeBrandThemeRequest(prompt) && allowUserBranding;
+  const isBrandIntent = !deck && looksLikeBrandThemeRequest(prompt) && allowUserBranding;
   const searchActive = searchBackend === 'hosted' || searchBackend === 'local';
   // Hosted only: inject ProviderRequest.web_search. Local turns declare
   // web_search/web_fetch as function tools instead — never both.
@@ -481,9 +506,9 @@ export function buildProviderRequest(
         }
       : undefined;
   const infoDevPrompt =
-    !isCreationIntent && !searchActive ? informationalDeveloperPromptFor(prompt) : undefined;
+    !deck && !isCreationIntent && !searchActive ? informationalDeveloperPromptFor(prompt) : undefined;
   const editDevPrompt =
-    !isCreationIntent && !infoDevPrompt && followUpArtifact
+    !deck && !isCreationIntent && !infoDevPrompt && followUpArtifact
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
   const webSearchDevPrompt = !searchActive
@@ -503,14 +528,24 @@ export function buildProviderRequest(
         readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
     },
   );
+  const deckDevPrompt = deck ? deckDeveloperPrompt(deck, chatOverrides?.deckOverflow) : undefined;
   const developerPrompt =
-    [compactionDevPrompt, infoDevPrompt, editDevPrompt, documentWriteDevPrompt, webSearchDevPrompt]
+    [
+      compactionDevPrompt,
+      infoDevPrompt,
+      editDevPrompt,
+      deck ? undefined : documentWriteDevPrompt,
+      deckDevPrompt,
+      webSearchDevPrompt,
+    ]
       .filter(Boolean)
       .join('\n\n') || undefined;
   const systemPrompt = composeSystemPrompt(
     [
       baseSystemPrompt(),
-      ...(searchActive && !isCreationIntent
+      ...(deck
+        ? [deckSystemAppendix()]
+        : searchActive && !isCreationIntent
         ? []
         : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })]),
       ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
@@ -745,6 +780,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onOpenArtifact,
     onChatTurnComplete,
     onDocumentToolActivity,
+    deck = null,
+    onDeckChanged,
+    onDeckToolActivity,
+    deckOverflow,
+    onDeckStarted,
     onForkConversation,
     onEditForked,
     pendingSendText = null,
@@ -766,12 +806,18 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   settingsOpen = false,
   documentsOpen = false,
     convoProviders = {},
+    compact = false,
   },
   ref,
 ) {
   const t = useT();
   const tr = useRichT();
   const fmt = useFormatters();
+  /** The tool-teaching system appendix the token estimates count. */
+  const turnSystemAppendix = (tools: ToolDefinition[]) =>
+    deck
+      ? deckSystemAppendix()
+      : CONDUIT_ARTIFACT_SYSTEM_APPENDIX(tools.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) });
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -789,6 +835,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     kind: 'tip' | 'fork';
   } | null>(null);
   const [autoSend, setAutoSend] = useState<{ text: string; history: ChatTurn[] } | null>(null);
+  /** Set when the load consumed `pendingSendText` for this conversation. */
+  const pendingConsumedForRef = useRef<string | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   useComposerAutosize(editTextareaRef, editDraft);
   // Phase 7 / M-WebSearch: conversation-scoped search toggle. Visible only when
@@ -1019,6 +1067,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Load the active conversation's messages whenever the selection changes. A
   // null id (brief, during boot) leaves the thread empty.
   useEffect(() => {
+    // The pending text was just consumed by the load below (the parent clears
+    // it): that is not a new selection, so don't reload. Reloading here raced
+    // the send it had just started: the fresh list came back before the new
+    // user message was saved and wiped it from the thread.
+    if (!pendingSendText && pendingConsumedForRef.current === conversationId) {
+      pendingConsumedForRef.current = null;
+      return;
+    }
+    pendingConsumedForRef.current = null;
     if (!conversationId) {
       setTurns([]);
       setConversationWorkspaceRoot(null);
@@ -1063,6 +1120,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           setConversationUserInstructions(conversation?.userInstructions ?? null);
           const pending = pendingSendText?.trim();
           if (pending) {
+            pendingConsumedForRef.current = conversationId;
             onPendingSendConsumedRef.current?.();
             setAutoSend({ text: pending, history: visible });
           }
@@ -1296,6 +1354,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       conversationWorkspaceRoot,
       intent,
       imageOverride,
+      deck?.stage,
     );
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
@@ -1478,9 +1537,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           trimmed,
           { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
           conversationWorkspaceRoot,
+          undefined,
+          undefined,
+          deck?.stage,
         );
         const systemPrompt = composeSystemPrompt(
-          [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(estimateTools.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })],
+          [baseSystemPrompt(), turnSystemAppendix(estimateTools)],
           resolveUserInstructions(settings, conversationUserInstructions),
           joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
         );
@@ -1625,6 +1687,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         userInstructions: conversationUserInstructions,
         compactionSummary: activeCompaction?.summaryText ?? null,
         extraSystemSections,
+        deck,
+        deckOverflow,
       },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
@@ -1722,6 +1786,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           if (isDocumentContentTool(event.name)) {
             onDocumentToolActivity?.({ phase: 'start', toolName: event.name });
           }
+          if (isDeckTool(event.name)) onDeckToolActivity?.(event.name);
         } else if (event.kind === 'toolCallDelta') {
           // Every fragment re-renders the chat already; the panel lives in App
           // and does not need to. Forward a new title at once, counts at most
@@ -1751,6 +1816,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             }
           }
         } else if (event.kind === 'toolExecutionFinished') {
+          if (isDeckTool(event.toolName)) {
+            if (event.isError) onDeckToolActivity?.(null);
+            else onDeckChanged?.();
+          }
+          if (event.toolName === START_DECK_TOOL_NAME && !event.isError) onDeckStarted?.();
           // The document exists now. The model may keep talking for a while
           // before the turn ends; the panel should not keep a skeleton up over
           // a document that is already saved.
@@ -2446,9 +2516,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       prompt,
       { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
       conversationWorkspaceRoot,
+      undefined,
+      undefined,
+      deck?.stage,
     );
     const systemPrompt = composeSystemPrompt(
-      [baseSystemPrompt(), CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })],
+      [baseSystemPrompt(), turnSystemAppendix(toolDefinitions)],
       resolveUserInstructions(settings, conversationUserInstructions),
       joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
     );
@@ -2473,12 +2546,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     conversationWorkspaceRoot,
     skillPromptBlock,
     memoryPromptBlock,
+    deck,
   ]);
 
   const compactThresholdPercent =
     settings.contextCompactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT;
 
+  // Not in a deck chat: the suggestions are about documents and artifacts.
   const showInlineSuggestions =
+    !deck &&
+    !compact &&
     turns.length > 0 &&
     !activeStream &&
     activeRequestId == null &&
@@ -2487,6 +2564,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Drives both the greeting and the `data-empty` hook that centres the
   // greeting and composer as one group (§10). One condition, one source.
   const threadEmpty = !threadLoading && turns.length === 0 && !activeStream;
+  const deckSlideIds = useMemo(() => deck?.slides.map((slide) => slide.id), [deck?.slides]);
   const visibleTurns = excludeLiveAssistantTurns(
     turns,
     activeStream?.requestId ?? activeRequestId,
@@ -2757,7 +2835,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               </div>
             </div>
           )}
-          {threadEmpty && (
+          {threadEmpty && compact && (
+            <p className="deck-chat-empty">{t('chat.compact.empty')}</p>
+          )}
+          {threadEmpty && !compact && (
             <div className="welcome">
               <h1>
                 <BotGlyph className="brand-mark" aria-hidden="true" />
@@ -2821,6 +2902,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             // rather than nested inside it — a separator that lived in the turn
             // would inherit its left rule and indent. Both halves carry keys.
             const withDay = (node: ReactNode) => (dayRule ? [dayRule, node] : node);
+
+            // A message the app sent for the user ("Build slides"): a short
+            // note in the thread, not a bubble of text they never typed.
+            const appLabel = turn.role === 'user' ? appPromptLabel(turn.content) : null;
+            if (appLabel) {
+              return withDay(
+                <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
+                  <p className="app-note-text">{appLabel}</p>
+                </article>,
+              );
+            }
 
             if (turn.role === 'user') {
               const isEditing = editingTurnId === turn.id;
@@ -2919,6 +3011,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               return withDay(
                 <AssistantMessage
                   key={turn.id}
+                  compact={compact}
+                  deckSlideIds={deckSlideIds}
                   turnId={turn.id}
                   onOpenActivity={onOpenActivity}
                   state={turn.streamState}
@@ -3028,6 +3122,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           })}
           {activeStream && (
             <AssistantMessage
+              compact={compact}
+              deckSlideIds={deckSlideIds}
               turnId={activeStream.requestId}
               onOpenActivity={onOpenActivity}
               state={{
@@ -3259,10 +3355,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         contextTokens={contextTokens}
         compactThresholdPercent={compactThresholdPercent}
       />
-      {threadEmpty && onOpenApp && onAllApps && (
+      {threadEmpty && !compact && onOpenApp && onAllApps && (
         <YourAppsRow apps={yourApps} onOpen={onOpenApp} onAll={onAllApps} />
       )}
-      {threadEmpty && ideaGallery && onPickIdea && (
+      {threadEmpty && !compact && ideaGallery && onPickIdea && (
         <IdeaGallery
           caps={ideaGallery.caps}
           state={ideaGallery.state}

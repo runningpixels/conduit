@@ -1,0 +1,470 @@
+/* Slides: the deck list and start box (pages/SlidesPage.tsx) and the deck
+ * workspace shown beside a deck's chat (slides/*.tsx).
+ *
+ * The slide itself is drawn inside a sandboxed frame from the deck's own theme
+ * CSS; everything here is Conduit's chrome around it, so it uses app tokens. */
+
+/* ── Frame wrappers (slides/DeckFrame.tsx) ───────────────────────────── */
+.deck-frame { display: block; position: relative; width: 100%; aspect-ratio: 16 / 9; }
+.deck-frame-iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; pointer-events: none; }
+/* The workspace stage takes pointer events (select and edit words in place).
+   Thumbnails stay inert so the strip button gets the click. */
+.deck-stage .deck-frame-iframe { pointer-events: auto; }
+button.deck-frame-thumb {
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--tap);
+}
+button.deck-frame-thumb:hover { border-color: var(--line-hi); }
+/* The stage fills its area; the frame letterboxes the 16:9 slide inside. */
+.deck-frame-stage { aspect-ratio: auto; height: 100%; overflow: hidden; }
+
+/* ── Page ─────────────────────────────────────────────────────────────── */
+.slides-error { margin: 0 0 var(--sp-3); color: var(--err); font-size: var(--fs-2xl); }
+.slides-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.deck-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  transition: border-color var(--tap), background var(--tap);
+}
+.deck-card:hover { border-color: var(--line-hi); background: var(--card-hi); }
+.deck-card-title {
+  font-size: var(--fs-3xl);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deck-card-rename {
+  width: 100%;
+  font: inherit;
+  font-size: var(--fs-3xl);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
+}
+.deck-card-meta { color: var(--ink-3); font-size: var(--fs-xl); }
+.deck-card-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--sp-3); }
+.deck-card-open { background: var(--accent-soft); }
+
+/* Start box: one prompt, starter chips, a theme, and Start deck. */
+.slides-start {
+  display: grid;
+  gap: var(--sp-4);
+  max-width: 760px;
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.slides-start-label { font-size: var(--fs-5xl); font-weight: 600; }
+.slides-start-input,
+.deck-title-input,
+.deck-theme-select,
+.storyline-input {
+  font: inherit;
+  font-size: var(--fs-5xl);
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  min-width: 0;
+}
+.slides-start-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 7em; line-height: 1.5; }
+.slides-start-input:focus,
+.deck-title-input:focus,
+.deck-theme-select:focus,
+.storyline-input:focus { border-color: var(--accent); outline: none; }
+.slides-start-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.slides-start-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); flex: 1 1 320px; }
+.slides-start-chip {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-xl);
+  cursor: pointer;
+  transition: border-color var(--tap), color var(--tap), background var(--tap);
+}
+.slides-start-chip:hover { border-color: var(--line-hi); color: var(--ink); background: var(--card-hi); }
+.slides-start-chip:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+
+/* ── Workspace ────────────────────────────────────────────────────────── */
+.deck-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--ink);
+}
+.deck-workspace-empty { align-items: center; justify-content: center; }
+/* In the chat's right column, the workspace fills the panel card. */
+.deck-panel > .deck-workspace { flex: 1; height: auto; min-width: 0; }
+.deck-empty { margin: 0; padding: var(--sp-5); color: var(--ink-3); font-size: var(--fs-2xl); text-align: center; }
+.deck-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.deck-title-input { flex: 1; font-weight: 600; background: transparent; border-color: transparent; }
+.deck-title-input:hover { border-color: var(--line); }
+.deck-updating { color: var(--ink-3); font-size: var(--fs-xl); white-space: nowrap; animation: deck-pulse 1.4s ease-in-out infinite; }
+.deck-theme { display: inline-flex; align-items: center; gap: 6px; }
+.deck-theme-label { color: var(--ink-3); font-size: var(--fs-xl); }
+.deck-theme-select { padding: 6px 8px; }
+.deck-body { flex: 1; min-height: 0; display: flex; }
+.deck-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.deck-slides { flex: 1; min-height: 0; display: flex; gap: var(--sp-4); padding: var(--sp-4); }
+
+.deck-strip {
+  flex: none;
+  width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow-y: auto;
+  border-radius: var(--r-lg);
+  outline: 2px solid transparent;
+  outline-offset: 0;
+}
+.deck-strip[data-busy="true"] { outline-color: var(--accent); animation: deck-ring 1.4s ease-in-out infinite; }
+.deck-strip-item { position: relative; flex: none; border-radius: var(--r-sm); }
+.deck-strip-item[data-selected="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.deck-strip-num {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  color: var(--ink-2);
+  font: 600 var(--fs-md)/1.5 var(--font-mono);
+  pointer-events: none;
+}
+
+.deck-stage-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.deck-stage { flex: 1; min-height: 0; border-radius: var(--r-sm); }
+.deck-stage:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+.deck-stage-nav { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); }
+.deck-stage-count { color: var(--ink-3); font-size: var(--fs-xl); min-width: 8ch; text-align: center; }
+
+/* ── Storyline ────────────────────────────────────────────────────────── */
+.storyline { display: grid; align-content: start; gap: var(--sp-4); padding: var(--sp-5); overflow-y: auto; max-width: 760px; width: 100%; margin: 0 auto; }
+.storyline-head { display: grid; gap: 4px; }
+.storyline-title { margin: 0; font-size: var(--fs-9xl); font-weight: 600; }
+.storyline-hint, .storyline-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); line-height: 1.5; }
+.storyline-list { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.storyline-row { display: flex; align-items: center; gap: var(--sp-2); }
+.storyline-num { flex: none; width: 2ch; color: var(--ink-3); font: 500 var(--fs-xl)/1 var(--font-mono); text-align: right; }
+.storyline-input { flex: 1; resize: none; field-sizing: content; min-height: 0; line-height: 1.4; }
+.storyline-actions { display: inline-flex; gap: 2px; }
+.storyline-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--fs-8xl);
+  cursor: pointer;
+  transition: background var(--tap), color var(--tap);
+}
+.storyline-icon-btn:hover:not(:disabled) { background: var(--card-hi); color: var(--ink); }
+.storyline-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.storyline-foot { display: flex; gap: var(--sp-2); justify-content: space-between; }
+
+/* ── History drawer ───────────────────────────────────────────────────── */
+.deck-history {
+  flex: none;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--card);
+}
+.deck-history-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); }
+.deck-history-title { margin: 0; font-size: var(--fs-5xl); font-weight: 600; }
+.deck-history-error { margin: var(--sp-3) var(--sp-4) 0; color: var(--err); font-size: var(--fs-xl); }
+.deck-history-empty { margin: var(--sp-4); color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.5; }
+.deck-history-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: var(--sp-2); list-style: none; display: grid; align-content: start; gap: 2px; }
+.deck-history-item { display: grid; gap: 2px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); }
+.deck-history-item:hover { background: var(--card-hi); }
+.deck-history-label { font-size: var(--fs-2xl); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-history-meta { color: var(--ink-3); font-size: var(--fs-md); }
+.deck-history-current { color: var(--accent); font-size: var(--fs-md); font-weight: 600; }
+.deck-history-restore { justify-self: start; margin-top: 4px; }
+.deck-history-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.deck-history-confirm-text { flex: 1 0 100%; color: var(--ink-2); font-size: var(--fs-xl); }
+
+/* ── Overflow warnings ────────────────────────────────────────────────── */
+.deck-strip-warn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-round);
+  background: var(--warn);
+  border: 2px solid var(--bg);
+  box-sizing: content-box;
+  pointer-events: none;
+}
+.deck-stage-overflow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--fs-xl);
+}
+
+/* ── Script drawer ────────────────────────────────────────────────────── */
+/* A sibling column of the stage column inside .deck-slides: the stage column
+   (frame and nav) shrinks to make room, so nothing the drawer does can cover
+   the stage controls. */
+.deck-slides { overflow: hidden; }
+.deck-slides[data-script="open"] .deck-strip { width: 96px; }
+.deck-slides[data-script="open"] .deck-stage-col { min-width: 200px; }
+.deck-script {
+  flex: 0 0 clamp(320px, 40%, 560px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+/* Without slides it is a plain right-hand column. */
+.deck-body > .deck-script { flex-basis: 360px; border-width: 0 0 0 1px; border-radius: 0; }
+/* Too narrow for the strip, the stage and the script side by side (a
+   normal-width panel): the script takes the slides' place until it is
+   closed. Stage editing and the script can't be used at once here anyway. */
+.deck-workspace { container: deck-workspace / inline-size; }
+@container deck-workspace (max-width: 860px) {
+  .deck-slides[data-script="open"] .deck-strip,
+  .deck-slides[data-script="open"] .deck-stage-col { display: none; }
+  .deck-slides[data-script="open"] .deck-script { flex: 1 1 auto; }
+}
+.deck-script-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); }
+.deck-script-title { margin: 0; font-size: var(--fs-5xl); font-weight: 600; }
+.deck-script-actions { display: inline-flex; align-items: center; gap: 2px; }
+.deck-script-copy {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-xl);
+  cursor: pointer;
+  transition: background var(--tap), color var(--tap);
+}
+.deck-script-copy:hover { background: var(--card-hi); color: var(--ink); }
+.deck-script-find { display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); background: var(--bg); }
+.deck-script-input,
+.deck-script-notes-field {
+  font: inherit;
+  font-size: var(--fs-2xl);
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 8px;
+  min-width: 0;
+}
+.deck-script-input:focus,
+.deck-script-notes-field:focus { border-color: var(--accent); outline: none; }
+.deck-script-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.deck-script-options .btn { margin-left: auto; }
+.deck-script-check { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-2); font-size: var(--fs-xl); }
+.deck-script-result { margin: 0; min-height: 1.4em; color: var(--ink-3); font-size: var(--fs-xl); }
+.deck-script-result-error,
+.deck-script-error { color: var(--err); }
+.deck-script-error { margin: var(--sp-3) var(--sp-4) 0; font-size: var(--fs-xl); }
+
+/* The document. Generous measure and rhythm; the only chrome is a thin rule per slide. */
+.deck-script-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.deck-script-doc { padding: var(--sp-3) var(--sp-5) var(--sp-6) calc(var(--sp-5) + 6px); }
+.deck-script-empty,
+.deck-script-noslots { margin: var(--sp-2) 0; color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.5; }
+.deck-script-slide { display: flex; flex-direction: column; gap: 10px; padding-bottom: var(--sp-4); }
+.deck-script-slide + .deck-script-slide { padding-top: var(--sp-3); }
+.deck-script-slide-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--sp-3); margin-bottom: 2px; }
+.deck-script-slide-title { margin: 0; flex: 1 1 100%; }
+.deck-script-slide-jump {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: 600 var(--fs-md)/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.deck-script-slide-jump::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.deck-script-slide-jump:hover { color: var(--ink); }
+.deck-script-layout { font-weight: 500; text-transform: none; letter-spacing: 0; opacity: 0.8; }
+.deck-script-layout::before { content: "· "; }
+.deck-script-overflow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--warn);
+  font-size: var(--fs-xl);
+}
+
+.deck-script-block { position: relative; margin: 0; list-style: none; }
+.deck-script-editor {
+  min-height: 1.5em;
+  padding: 1px 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  outline: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-3xl);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+  caret-color: var(--accent);
+}
+.deck-script-editor:hover { background: color-mix(in srgb, var(--card-hi) 55%, transparent); }
+.deck-script-editor:focus { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.deck-script-block[data-kind="kicker"] .deck-script-editor {
+  color: var(--ink-3);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.deck-script-block[data-kind="heading"] .deck-script-editor {
+  font-size: var(--fs-9xl);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.deck-script-list { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.deck-script-block[data-kind="bullet"] { display: flex; align-items: baseline; gap: 10px; }
+.deck-script-block[data-kind="bullet"]::before { content: "•"; flex: none; color: var(--ink-3); }
+.deck-script-block[data-kind="bullet"] .deck-script-editor { flex: 1; min-width: 0; }
+.deck-script-figure { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px var(--sp-3); }
+.deck-script-block[data-kind="figure"] .deck-script-editor { font-size: var(--fs-9xl); font-weight: 700; font-variant-numeric: tabular-nums; }
+.deck-script-block[data-kind="caption"] .deck-script-editor { color: var(--ink-2); }
+.deck-script-block[data-kind="quote"] .deck-script-editor {
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line-hi);
+  color: var(--ink-2);
+  font-style: italic;
+}
+.deck-script-block[data-kind="cite"] .deck-script-editor { padding-left: var(--sp-3); color: var(--ink-3); font-size: var(--fs-2xl); }
+.deck-script-block[data-kind="cite"] .deck-script-editor::before { content: "— "; }
+.deck-script-block[data-kind="footnote"] .deck-script-editor { color: var(--ink-3); font-size: var(--fs-xl); }
+
+/* Pinned: a thin accent bar in the left gutter; the note appears on hover. */
+.deck-script-block[data-pinned="true"]::after {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  pointer-events: none;
+}
+.deck-script-pin {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  z-index: 1;
+  display: none;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink-3);
+  font-size: var(--fs-md);
+  white-space: nowrap;
+}
+.deck-script-block:hover > .deck-script-pin,
+.deck-script-block:focus-within > .deck-script-pin { display: inline-flex; }
+.deck-script-pin-note { color: var(--ink-3); }
+.deck-script-unpin {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.deck-script-unpin:hover { text-decoration: underline; }
+
+.deck-script-notes { display: grid; gap: 6px; margin-top: 2px; }
+.deck-script-notes-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--fs-xl);
+  text-align: left;
+  cursor: pointer;
+}
+.deck-script-notes-toggle::before { content: "▸"; font-size: 0.8em; }
+.deck-script-notes-toggle[aria-expanded="true"]::before { content: "▾"; }
+.deck-script-notes-toggle:hover { color: var(--ink); }
+.deck-script-notes-label { font-weight: 600; }
+.deck-script-notes-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-script-notes-field { width: 100%; box-sizing: border-box; resize: none; field-sizing: content; min-height: 3.2em; line-height: 1.5; }
+
+@keyframes deck-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes deck-ring { 0%, 100% { outline-color: transparent; } 50% { outline-color: var(--accent); } }

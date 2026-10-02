@@ -28,6 +28,7 @@ pub mod page_storage;
 pub mod prompts;
 pub mod search;
 pub mod skills;
+pub mod slides;
 pub mod tenant_cache;
 pub mod tool_approval_memory;
 pub mod tool_calls;

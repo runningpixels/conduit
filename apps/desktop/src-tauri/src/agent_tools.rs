@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use provider_core::{
     brand::{render_brand_md, validate as validate_brand, Severity as BrandSeverity},
     schema::{
-        BrandConfig, BrandIdentity, BrandPalette, BrandThemes, PermissionLevel, ToolCallRecord,
+        BrandConfig, BrandIdentity, BrandPalette, BrandThemes, DeckDetail, DeckSlide,
+        DeckSnapshotCause, DeckStage, PermissionLevel, StorylineItem, ToolCallRecord,
         ToolCallStatus, ToolDefinition, BRAND_SCHEMA_VERSION,
     },
 };
@@ -13,9 +14,10 @@ use serde_json::Value;
 use crate::{
     db::repository::{
         artifacts::{self, Artifact, ArtifactContent},
-        tool_calls,
+        conversations, slides, tool_calls,
     },
     encryption::Encryption,
+    slide_html,
     time::now_iso8601,
 };
 
@@ -70,6 +72,20 @@ pub const WORKSPACE_WRITE_TOOL: &str = "workspace_write";
 pub const WORKSPACE_EDIT_TOOL: &str = "workspace_edit";
 pub const WORKSPACE_GLOB_TOOL: &str = "workspace_glob";
 pub const WORKSPACE_GREP_TOOL: &str = "workspace_grep";
+
+// Deck tools (only offered in a chat bound to a deck)
+pub const READ_DECK_TOOL: &str = "read_deck";
+pub const SET_STORYLINE_TOOL: &str = "set_storyline";
+pub const ADD_SLIDE_TOOL: &str = "add_slide";
+pub const UPDATE_SLIDE_TOOL: &str = "update_slide";
+pub const PATCH_SLIDE_TOOL: &str = "patch_slide";
+pub const MOVE_SLIDE_TOOL: &str = "move_slide";
+pub const DELETE_SLIDE_TOOL: &str = "delete_slide";
+pub const SET_THEME_TOOL: &str = "set_theme";
+pub const REPLACE_IN_DECK_TOOL: &str = "replace_in_deck";
+pub const UPDATE_SLOTS_TOOL: &str = "update_slots";
+// Offered only in a chat that is NOT bound to a deck, on a deck-request turn.
+pub const START_DECK_TOOL: &str = "start_deck";
 
 pub struct AgentToolContext<'a> {
     pub db: &'a sqlx::SqlitePool,
@@ -580,6 +596,127 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        ToolDefinition {
+            tool_id: READ_DECK_TOOL.to_string(),
+            name: READ_DECK_TOOL.to_string(),
+            description: READ_DECK_DESCRIPTION.to_string(),
+            input_schema: read_deck_schema(),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: SET_STORYLINE_TOOL.to_string(),
+            name: SET_STORYLINE_TOOL.to_string(),
+            description: SET_STORYLINE_DESCRIPTION.to_string(),
+            input_schema: set_storyline_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: ADD_SLIDE_TOOL.to_string(),
+            name: ADD_SLIDE_TOOL.to_string(),
+            description: ADD_SLIDE_DESCRIPTION.to_string(),
+            input_schema: add_slide_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: UPDATE_SLIDE_TOOL.to_string(),
+            name: UPDATE_SLIDE_TOOL.to_string(),
+            description: UPDATE_SLIDE_DESCRIPTION.to_string(),
+            input_schema: update_slide_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: PATCH_SLIDE_TOOL.to_string(),
+            name: PATCH_SLIDE_TOOL.to_string(),
+            description: PATCH_SLIDE_DESCRIPTION.to_string(),
+            input_schema: patch_slide_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: MOVE_SLIDE_TOOL.to_string(),
+            name: MOVE_SLIDE_TOOL.to_string(),
+            description: MOVE_SLIDE_DESCRIPTION.to_string(),
+            input_schema: json_schema(&[("slide_id", "string", true), ("position", "integer", true)]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: DELETE_SLIDE_TOOL.to_string(),
+            name: DELETE_SLIDE_TOOL.to_string(),
+            description: DELETE_SLIDE_DESCRIPTION.to_string(),
+            input_schema: json_schema(&[("slide_id", "string", true)]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: SET_THEME_TOOL.to_string(),
+            name: SET_THEME_TOOL.to_string(),
+            description: SET_THEME_DESCRIPTION.to_string(),
+            input_schema: json_schema(&[("css", "string", true), ("name", "string", false)]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: REPLACE_IN_DECK_TOOL.to_string(),
+            name: REPLACE_IN_DECK_TOOL.to_string(),
+            description: REPLACE_IN_DECK_DESCRIPTION.to_string(),
+            input_schema: replace_in_deck_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: UPDATE_SLOTS_TOOL.to_string(),
+            name: UPDATE_SLOTS_TOOL.to_string(),
+            description: UPDATE_SLOTS_DESCRIPTION.to_string(),
+            input_schema: update_slots_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: START_DECK_TOOL.to_string(),
+            name: START_DECK_TOOL.to_string(),
+            description: START_DECK_DESCRIPTION.to_string(),
+            input_schema: json_schema(&[("title", "string", true)]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Slides".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
     ]
 }
 
@@ -612,6 +749,17 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | WORKSPACE_EDIT_TOOL
             | WORKSPACE_GLOB_TOOL
             | WORKSPACE_GREP_TOOL
+            | READ_DECK_TOOL
+            | SET_STORYLINE_TOOL
+            | ADD_SLIDE_TOOL
+            | UPDATE_SLIDE_TOOL
+            | PATCH_SLIDE_TOOL
+            | MOVE_SLIDE_TOOL
+            | DELETE_SLIDE_TOOL
+            | SET_THEME_TOOL
+            | REPLACE_IN_DECK_TOOL
+            | UPDATE_SLOTS_TOOL
+            | START_DECK_TOOL
     )
 }
 
@@ -880,6 +1028,53 @@ pub async fn execute_builtin_tool(
         REMEMBER_TOOL => {
             let input: RememberInput = parse_args(tool_name, arguments)?;
             remember_fact(ctx, input).await
+        }
+        // ---------------------------------------------------------------------
+        // Deck tools
+        // ---------------------------------------------------------------------
+        READ_DECK_TOOL => {
+            let input: ReadDeckInput = parse_args(tool_name, arguments)?;
+            read_deck(ctx, input).await
+        }
+        SET_STORYLINE_TOOL => {
+            let input: SetStorylineInput = parse_args(tool_name, arguments)?;
+            set_storyline(ctx, input).await
+        }
+        ADD_SLIDE_TOOL => {
+            let input: AddSlideInput = parse_args(tool_name, arguments)?;
+            add_slide(ctx, input).await
+        }
+        UPDATE_SLIDE_TOOL => {
+            let input: UpdateSlideInput = parse_args(tool_name, arguments)?;
+            update_slide(ctx, input).await
+        }
+        PATCH_SLIDE_TOOL => {
+            let input: PatchSlideInput = parse_args(tool_name, arguments)?;
+            patch_slide(ctx, input).await
+        }
+        MOVE_SLIDE_TOOL => {
+            let input: MoveSlideInput = parse_args(tool_name, arguments)?;
+            move_slide(ctx, input).await
+        }
+        DELETE_SLIDE_TOOL => {
+            let input: DeleteSlideInput = parse_args(tool_name, arguments)?;
+            delete_slide(ctx, input).await
+        }
+        SET_THEME_TOOL => {
+            let input: SetThemeInput = parse_args(tool_name, arguments)?;
+            set_theme(ctx, input).await
+        }
+        REPLACE_IN_DECK_TOOL => {
+            let input: ReplaceInDeckInput = parse_args(tool_name, arguments)?;
+            replace_in_deck(ctx, input).await
+        }
+        UPDATE_SLOTS_TOOL => {
+            let input: UpdateSlotsInput = parse_args(tool_name, arguments)?;
+            update_slots(ctx, input).await
+        }
+        START_DECK_TOOL => {
+            let input: StartDeckInput = parse_args(tool_name, arguments)?;
+            start_deck(ctx, input).await
         }
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
@@ -1678,6 +1873,632 @@ fn ensure_kind(artifact: &Artifact, expected: &str) -> Result<(), String> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Deck tools
+// -----------------------------------------------------------------------------
+
+const READ_DECK_DESCRIPTION: &str = "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's full inner HTML, notes and slots. A pinned slot holds text the user wrote. Read a slide before you change it.";
+const SET_STORYLINE_DESCRIPTION: &str = "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built. Always pass title on the first storyline (a short name for the deck, 120 characters at most). Pass assumptions when the user did not say who the deck is for or what they should do: one or two sentences stating what you assumed about audience, goal and length (400 characters at most; an empty string clears it).";
+const START_DECK_DESCRIPTION: &str = "Start a slide deck from this chat. Call it when the user asks for slides, a deck or a presentation, then stop and reply in one short sentence: the app opens the deck in Slides and asks you for the storyline there. title is a short name for the deck.";
+const ADD_SLIDE_DESCRIPTION: &str = "Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. layout is a layout name from the theme (lowercase, e.g. \"title\"). html is the slide's INNER html: the app wraps it in <section class=\"slide\" data-layout=\"LAYOUT\">, so do not include that section yourself. Put every piece of text in an element with data-text=\"slot-name\", style with the theme's classes and color tokens (never hard-coded colors), draw charts as inline SVG, and never include scripts or external URLs. notes is optional speaker notes.";
+const UPDATE_SLIDE_DESCRIPTION: &str = "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
+const PATCH_SLIDE_DESCRIPTION: &str = "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
+const REPLACE_IN_DECK_DESCRIPTION: &str = "Swap an exact word or phrase everywhere in the deck's text and speaker notes in one step; markup is never touched. Use it only for an exact swap the user asked for across the deck. It also changes pinned slots, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.";
+const UPDATE_SLOTS_DESCRIPTION: &str = "Set the text of slots (elements with data-text) on one or more slides in one call. Use it for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.";
+const MOVE_SLIDE_DESCRIPTION: &str =
+    "Move a slide to a new 0-based position in the deck (clamped to the last slide).";
+const DELETE_SLIDE_DESCRIPTION: &str = "Delete one slide from the deck.";
+const SET_THEME_DESCRIPTION: &str = "Replace the deck's whole theme CSS (the classes and color tokens every slide uses). Rarely needed; name is the theme's label and defaults to \"Custom\".";
+
+fn read_deck_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "slide_id": {
+                "type": "string",
+                "description": "Return this one slide in full instead of the deck outline."
+            },
+        },
+    })
+}
+
+fn set_storyline_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "lines": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "One short line per planned slide, in order."
+            },
+            "title": {
+                "type": "string",
+                "description": "A short name for the deck (120 characters at most). Pass it on the first storyline; it renames the deck and its chat."
+            },
+            "assumptions": {
+                "type": "string",
+                "description": "One or two sentences stating what you assumed about audience, goal or length that the user did not say (400 characters at most). Empty string clears it."
+            },
+        },
+        "required": ["lines"],
+    })
+}
+
+fn add_slide_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "layout": {
+                "type": "string",
+                "description": "Layout name from the theme, lowercase letters, digits and hyphens."
+            },
+            "html": {
+                "type": "string",
+                "description": "The slide's inner HTML (no outer section). Text in data-text=\"slot\" elements; no scripts."
+            },
+            "notes": { "type": "string", "description": "Optional speaker notes." },
+            "after_slide_id": {
+                "type": "string",
+                "description": "Insert after this slide; omit to append."
+            },
+        },
+        "required": ["layout", "html"],
+    })
+}
+
+fn update_slide_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "slide_id": { "type": "string" },
+            "html": { "type": "string", "description": "The slide's full new inner HTML." },
+            "layout": { "type": "string" },
+            "notes": { "type": "string" },
+            "release_pinned": release_pinned_schema(),
+        },
+        "required": ["slide_id"],
+    })
+}
+
+fn release_pinned_schema() -> Value {
+    serde_json::json!({
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Names of pinned slots you may change. Only when the user asked you to change that text."
+    })
+}
+
+fn replace_in_deck_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "find": { "type": "string", "description": "The exact word or phrase to find (200 characters at most)." },
+            "replace": { "type": "string", "description": "What to put in its place (200 characters at most)." },
+            "match_case": { "type": "boolean", "description": "Match upper and lower case exactly. Default false." },
+            "whole_word": { "type": "boolean", "description": "Only match whole words. Default false." },
+        },
+        "required": ["find", "replace"],
+    })
+}
+
+fn update_slots_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "edits": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "slide_id": { "type": "string" },
+                        "slot": { "type": "string", "description": "The slot's data-text name." },
+                        "index": { "type": "integer", "description": "Which slot with that name, 0-based. Default 0." },
+                        "html": { "type": "string", "description": "The slot's new inline HTML." },
+                    },
+                    "required": ["slide_id", "slot", "html"],
+                },
+            },
+        },
+        "required": ["edits"],
+    })
+}
+
+fn patch_slide_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "slide_id": { "type": "string" },
+            "edits": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "old_text": { "type": "string" },
+                        "new_text": { "type": "string" },
+                    },
+                    "required": ["old_text", "new_text"],
+                },
+            },
+            "release_pinned": release_pinned_schema(),
+        },
+        "required": ["slide_id", "edits"],
+    })
+}
+
+/// The deck bound to this chat, or the message to give the model when none is.
+async fn deck_for_chat(ctx: &AgentToolContext<'_>) -> Result<DeckDetail, String> {
+    slides::get_by_conversation(ctx.db, ctx.encryption, ctx.conversation_id)
+        .await
+        .map_err(slides::user_message)?
+        .ok_or_else(|| "This chat isn't attached to a deck.".to_string())
+}
+
+fn slide_not_found(slide_id: &str) -> String {
+    format!("No slide '{slide_id}' in this deck. Call read_deck to see the slide ids.")
+}
+
+/// The first `max` characters of `text`, with an ellipsis when cut.
+fn clip_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut clipped: String = text.chars().take(max.saturating_sub(1)).collect();
+    clipped.push('…');
+    clipped
+}
+
+/// A slide's slots as `{name, text, pinned}`, text clipped to `max` characters.
+fn slot_summaries(slide: &DeckSlide, max: usize) -> Vec<Value> {
+    slide
+        .slots
+        .iter()
+        .map(|slot| {
+            serde_json::json!({
+                "name": slot.name,
+                "text": clip_chars(&slot.text, max),
+                "pinned": slot.pinned,
+            })
+        })
+        .collect()
+}
+
+async fn read_deck(ctx: &AgentToolContext<'_>, input: ReadDeckInput) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    if let Some(slide_id) = input.slide_id {
+        let slide = deck
+            .slides
+            .iter()
+            .find(|s| s.id == slide_id)
+            .ok_or_else(|| slide_not_found(&slide_id))?;
+        return Ok(serde_json::json!({
+            "slide_id": slide.id,
+            "position": slide.position,
+            "layout": slide.layout,
+            "html": slide.html,
+            "notes": slide.notes,
+            "slots": slot_summaries(slide, usize::MAX),
+        }));
+    }
+    let outline: Vec<Value> = deck
+        .slides
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "slide_id": s.id,
+                "position": s.position,
+                "layout": s.layout,
+                "text": clip_chars(&slides::slide_visible_text(&s.html), 300),
+                "slots": slot_summaries(s, 120),
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({
+        "title": deck.title,
+        "theme_name": deck.theme_name,
+        "stage": deck.stage.as_str(),
+        "storyline": deck.storyline.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
+        "slides": outline,
+    }))
+}
+
+async fn set_storyline(
+    ctx: &AgentToolContext<'_>,
+    input: SetStorylineInput,
+) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    // Validate before writing anything so a bad title or note changes nothing.
+    let title = match input
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        Some(title) => Some(slides::validate_title(title).map_err(slides::user_message)?),
+        None => None,
+    };
+    if let Some(text) = &input.assumptions {
+        if text.trim().chars().count() > slides::MAX_ASSUMPTIONS_CHARS {
+            return Err(format!(
+                "Keep the assumptions under {} characters.",
+                slides::MAX_ASSUMPTIONS_CHARS
+            ));
+        }
+    }
+    let items: Vec<StorylineItem> = input
+        .lines
+        .iter()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .map(|text| StorylineItem {
+            id: String::new(),
+            text: text.to_string(),
+        })
+        .collect();
+    let updated = slides::set_storyline(ctx.db, ctx.encryption, &deck.id, items)
+        .await
+        .map_err(slides::user_message)?;
+    if let Some(title) = title {
+        slides::rename(ctx.db, &deck.id, &title)
+            .await
+            .map_err(slides::user_message)?;
+        if let Some(conversation_id) = &deck.conversation_id {
+            conversations::set_title(ctx.db, conversation_id, &title)
+                .await
+                .map_err(slides::user_message)?;
+        }
+    }
+    if let Some(text) = &input.assumptions {
+        slides::set_assumptions(ctx.db, ctx.encryption, &deck.id, text)
+            .await
+            .map_err(slides::user_message)?;
+    }
+    Ok(serde_json::json!({ "ok": true, "lines": updated.storyline.len() }))
+}
+
+/// Bind this (unbound) chat to a new deck. The app opens it in Slides.
+async fn start_deck(ctx: &AgentToolContext<'_>, input: StartDeckInput) -> Result<Value, String> {
+    let existing = slides::get_by_conversation(ctx.db, ctx.encryption, ctx.conversation_id)
+        .await
+        .map_err(slides::user_message)?;
+    if existing.is_some() {
+        return Err(
+            "This chat is already a deck. Use set_storyline and the other deck tools.".to_string(),
+        );
+    }
+    let title = slides::validate_title(&input.title).map_err(slides::user_message)?;
+    let deck = slides::create(
+        ctx.db,
+        ctx.encryption,
+        &title,
+        "ink",
+        "",
+        Some(ctx.conversation_id),
+    )
+    .await
+    .map_err(slides::user_message)?;
+    slides::snapshot(
+        ctx.db,
+        ctx.encryption,
+        &deck.id,
+        DeckSnapshotCause::Created,
+        &title,
+    )
+    .await
+    .map_err(slides::user_message)?;
+    conversations::set_title(ctx.db, ctx.conversation_id, &title)
+        .await
+        .map_err(slides::user_message)?;
+    Ok(serde_json::json!({ "ok": true, "deck_id": deck.id }))
+}
+
+async fn add_slide(ctx: &AgentToolContext<'_>, input: AddSlideInput) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    let (slide, slide_count) = slides::add_slide(
+        ctx.db,
+        ctx.encryption,
+        &deck.id,
+        &input.layout,
+        &input.html,
+        input.notes.as_deref().unwrap_or(""),
+        input.after_slide_id.as_deref(),
+    )
+    .await
+    .map_err(slides::user_message)?;
+    if deck.stage != DeckStage::Slides {
+        slides::set_stage(ctx.db, ctx.encryption, &deck.id, DeckStage::Slides)
+            .await
+            .map_err(slides::user_message)?;
+    }
+    Ok(serde_json::json!({
+        "ok": true,
+        "slide_id": slide.id,
+        "position": slide.position,
+        "slide_count": slide_count,
+    }))
+}
+
+async fn update_slide(
+    ctx: &AgentToolContext<'_>,
+    input: UpdateSlideInput,
+) -> Result<Value, String> {
+    if input.html.is_none() && input.layout.is_none() && input.notes.is_none() {
+        return Err("update_slide needs at least one of html, layout or notes.".to_string());
+    }
+    let deck = deck_for_chat(ctx).await?;
+    let html = match input.html {
+        Some(html) => {
+            let current = deck
+                .slides
+                .iter()
+                .find(|s| s.id == input.slide_id)
+                .ok_or_else(|| slide_not_found(&input.slide_id))?;
+            Some(slide_html::check_pinned_kept(
+                &current.html,
+                &html,
+                input.release_pinned.as_deref().unwrap_or(&[]),
+            )?)
+        }
+        None => None,
+    };
+    let slide = slides::update_slide(
+        ctx.db,
+        ctx.encryption,
+        &deck.id,
+        &input.slide_id,
+        slides::SlideChanges {
+            layout: input.layout,
+            html,
+            notes: input.notes,
+        },
+    )
+    .await
+    .map_err(slides::user_message)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "slide_id": slide.id,
+        "kept_pinned": pinned_slot_names(&slide.html),
+    }))
+}
+
+/// Names of the pinned (user-written) slots in a slide, so the model's reply
+/// can say what it left alone.
+fn pinned_slot_names(html: &str) -> Vec<String> {
+    let mut names: Vec<String> = slide_html::slots(html)
+        .into_iter()
+        .filter(|slot| slot.pinned)
+        .map(|slot| slot.name)
+        .collect();
+    names.dedup();
+    names
+}
+
+async fn patch_slide(ctx: &AgentToolContext<'_>, input: PatchSlideInput) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    let slide = deck
+        .slides
+        .iter()
+        .find(|s| s.id == input.slide_id)
+        .ok_or_else(|| slide_not_found(&input.slide_id))?;
+    let patched = apply_document_edits(&slide.html, &input.edits)?;
+    let patched = slide_html::check_pinned_kept(
+        &slide.html,
+        &patched,
+        input.release_pinned.as_deref().unwrap_or(&[]),
+    )?;
+    let kept_pinned = pinned_slot_names(&patched);
+    slides::update_slide(
+        ctx.db,
+        ctx.encryption,
+        &deck.id,
+        &slide.id,
+        slides::SlideChanges {
+            html: Some(patched),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(slides::user_message)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "slide_id": slide.id,
+        "edits_applied": input.edits.len(),
+        "kept_pinned": kept_pinned,
+    }))
+}
+
+async fn move_slide(ctx: &AgentToolContext<'_>, input: MoveSlideInput) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    let position = slides::move_slide(
+        ctx.db,
+        &deck.id,
+        &input.slide_id,
+        usize::try_from(input.position).unwrap_or(0),
+    )
+    .await
+    .map_err(slides::user_message)?;
+    Ok(serde_json::json!({ "ok": true, "slide_id": input.slide_id, "position": position }))
+}
+
+async fn delete_slide(
+    ctx: &AgentToolContext<'_>,
+    input: DeleteSlideInput,
+) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    let slide_count = slides::delete_slide(ctx.db, &deck.id, &input.slide_id)
+        .await
+        .map_err(slides::user_message)?;
+    Ok(serde_json::json!({ "ok": true, "slide_count": slide_count }))
+}
+
+async fn set_theme(ctx: &AgentToolContext<'_>, input: SetThemeInput) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    let name = input
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .unwrap_or("Custom");
+    // A model-written theme is saved under its name; it must not take a
+    // built-in theme's name, or it would hide behind it in the picker.
+    let name = if slides::is_starter_theme(name) {
+        format!("{name} (custom)")
+    } else {
+        name.to_string()
+    };
+    slides::set_theme(ctx.db, ctx.encryption, &deck.id, &name, &input.css)
+        .await
+        .map_err(slides::user_message)?;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+async fn replace_in_deck(
+    ctx: &AgentToolContext<'_>,
+    input: ReplaceInDeckInput,
+) -> Result<Value, String> {
+    let deck = deck_for_chat(ctx).await?;
+    let report = slides::replace_in_deck(
+        ctx.db,
+        ctx.encryption,
+        &deck.id,
+        &input.find,
+        &input.replace,
+        input.match_case.unwrap_or(false),
+        input.whole_word.unwrap_or(false),
+        true,
+    )
+    .await
+    .map_err(slides::user_message)?;
+    let per_slide: Vec<Value> = report
+        .result
+        .slides
+        .iter()
+        .map(|s| serde_json::json!({ "slide_id": s.slide_id, "count": s.count + s.notes_count }))
+        .collect();
+    let pinned: Vec<Value> = report
+        .pinned_changed
+        .iter()
+        .map(|(slide_id, slot)| serde_json::json!({ "slide_id": slide_id, "slot": slot }))
+        .collect();
+    Ok(serde_json::json!({
+        "ok": true,
+        "total": report.result.total,
+        "slides": per_slide,
+        "pinned_changed": pinned,
+    }))
+}
+
+async fn update_slots(
+    ctx: &AgentToolContext<'_>,
+    input: UpdateSlotsInput,
+) -> Result<Value, String> {
+    if input.edits.is_empty() {
+        return Err("update_slots needs at least one edit.".to_string());
+    }
+    let deck = deck_for_chat(ctx).await?;
+    let updates: Vec<slides::SlotUpdate> = input
+        .edits
+        .into_iter()
+        .map(|e| slides::SlotUpdate {
+            slide_id: e.slide_id,
+            name: e.slot,
+            occurrence: e.index.unwrap_or(0),
+            html: e.html,
+        })
+        .collect();
+    let outcome = slides::update_slots(ctx.db, ctx.encryption, &deck.id, &updates)
+        .await
+        .map_err(slides::user_message)?;
+    let skipped: Vec<Value> = outcome
+        .skipped_pinned
+        .iter()
+        .map(|(slide_id, slot)| serde_json::json!({ "slide_id": slide_id, "slot": slot }))
+        .collect();
+    Ok(serde_json::json!({
+        "ok": true,
+        "updated": outcome.updated,
+        "skipped_pinned": skipped,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ReplaceInDeckInput {
+    find: String,
+    replace: String,
+    match_case: Option<bool>,
+    whole_word: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateSlotsInput {
+    edits: Vec<SlotUpdateInput>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SlotUpdateInput {
+    slide_id: String,
+    slot: String,
+    index: Option<usize>,
+    html: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadDeckInput {
+    slide_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetStorylineInput {
+    lines: Vec<String>,
+    title: Option<String>,
+    assumptions: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartDeckInput {
+    title: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddSlideInput {
+    layout: String,
+    html: String,
+    notes: Option<String>,
+    after_slide_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateSlideInput {
+    slide_id: String,
+    html: Option<String>,
+    layout: Option<String>,
+    notes: Option<String>,
+    release_pinned: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PatchSlideInput {
+    slide_id: String,
+    edits: Vec<DocumentEdit>,
+    release_pinned: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MoveSlideInput {
+    slide_id: String,
+    position: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteSlideInput {
+    slide_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetThemeInput {
+    css: String,
+    name: Option<String>,
+}
+
 fn parse_args<T: for<'de> Deserialize<'de>>(tool_name: &str, args: &Value) -> Result<T, String> {
     serde_json::from_value(args.clone())
         .map_err(|e| format!("invalid arguments for {tool_name}: {e}"))
@@ -2336,6 +3157,50 @@ mod tests {
         // + 1 remember (t1-5)
         // + patch_document + read_document
         // + 1 generate_image (t0-8 M3) = 26
-        assert_eq!(defs.len(), 26);
+        // + 8 deck tools (Slides) = 34
+        // + replace_in_deck + update_slots (Slides phase 2) = 36
+        // + start_deck (Slides Studio) = 37
+        assert_eq!(defs.len(), 37);
+    }
+
+    #[test]
+    fn deck_tools_are_a_registered_slides_group() {
+        let names = [
+            READ_DECK_TOOL,
+            SET_STORYLINE_TOOL,
+            ADD_SLIDE_TOOL,
+            UPDATE_SLIDE_TOOL,
+            PATCH_SLIDE_TOOL,
+            MOVE_SLIDE_TOOL,
+            DELETE_SLIDE_TOOL,
+            SET_THEME_TOOL,
+            REPLACE_IN_DECK_TOOL,
+            UPDATE_SLOTS_TOOL,
+            START_DECK_TOOL,
+        ];
+        let defs = builtin_tool_definitions();
+        for name in names {
+            assert!(is_builtin_tool_name(name), "{name} is not builtin");
+            let def = defs.iter().find(|d| d.name == name).expect(name);
+            assert_eq!(def.display_group.as_deref(), Some("Slides"), "{name}");
+            let expected = if name == READ_DECK_TOOL {
+                PermissionLevel::ReadOnly
+            } else {
+                PermissionLevel::SideEffectful
+            };
+            assert_eq!(def.permission_level, Some(expected), "{name}");
+        }
+        assert_eq!(
+            defs.iter()
+                .filter(|d| d.display_group.as_deref() == Some("Slides"))
+                .count(),
+            names.len()
+        );
+    }
+
+    #[test]
+    fn clip_chars_cuts_on_characters() {
+        assert_eq!(clip_chars("short", 10), "short");
+        assert_eq!(clip_chars("héllo wörld", 6), "héllo…");
     }
 }

@@ -10,6 +10,15 @@ import type {
   AppInput,
   AppPaths,
   AppSummary,
+  DeckDetail,
+  DeckReplaceResult,
+  SlotEdit,
+  SlideTheme,
+  DeckSnapshotCause,
+  DeckSnapshotSummary,
+  DeckStage,
+  DeckSummary,
+  StorylineItem,
   StarterAppInfo,
   PageLlmReply,
   PageLlmRequest,
@@ -501,6 +510,26 @@ export async function exportConversationDialog(
     dialogTitle,
     filterName,
   });
+}
+
+/** Saves a deck as one standalone HTML file; resolves the saved path, or null on cancel. */
+export async function exportDeckHtml(
+  deckId: string,
+  html: string,
+  dialogTitle: string,
+  filterName: string,
+): Promise<string | null> {
+  return invokeCommand<string | null>('export_deck_html', { deckId, html, dialogTitle, filterName });
+}
+
+/** Prints a deck's print document to a PDF; resolves the saved path, or null on cancel. */
+export async function exportDeckPdf(
+  deckId: string,
+  html: string,
+  dialogTitle: string,
+  filterName: string,
+): Promise<string | null> {
+  return invokeCommand<string | null>('export_deck_pdf', { deckId, html, dialogTitle, filterName });
 }
 
 // =============================================================================
@@ -1533,6 +1562,156 @@ export async function updateAppFromArtifact(
 
 export async function deleteApp(id: string): Promise<void> {
   await invokeCommand('delete_app', { id });
+}
+
+// =============================================================================
+// Slides
+// =============================================================================
+
+export async function listDecks(): Promise<DeckSummary[]> {
+  return invokeCommand<DeckSummary[]>('list_decks');
+}
+
+/** A new deck with its own chat and a first history entry. */
+export async function createDeck(
+  title: string,
+  themeName: string,
+  themeCss: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('create_deck', { title, themeName, themeCss });
+}
+
+export async function getDeck(id: string): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('get_deck', { id });
+}
+
+/** The deck a chat builds, or null for an ordinary chat. */
+export async function getDeckForConversation(conversationId: string): Promise<DeckDetail | null> {
+  return invokeCommand<DeckDetail | null>('get_deck_for_conversation', { conversationId });
+}
+
+/** Open a deck: stamps when it was opened and gives it a chat if it lost its own. */
+export async function openDeck(id: string): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('open_deck', { id });
+}
+
+/** Undoes a deck started from a chat: deletes the deck, keeps the chat (an
+ *  ordinary chat again) and returns it. Only while the deck has no slides. */
+export async function undoStartDeck(deckId: string): Promise<ConversationSummary | null> {
+  return invokeCommand<ConversationSummary | null>('undo_start_deck', { deckId });
+}
+
+/** Renames the deck and its chat. */
+export async function renameDeck(id: string, title: string): Promise<void> {
+  await invokeCommand('rename_deck', { id, title });
+}
+
+/** Deletes the deck and its chat. */
+export async function deleteDeck(id: string): Promise<void> {
+  await invokeCommand('delete_deck', { id });
+}
+
+export async function setDeckStoryline(id: string, storyline: StorylineItem[]): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_deck_storyline', { id, storyline });
+}
+
+export async function setDeckStage(id: string, stage: DeckStage): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_deck_stage', { id, stage });
+}
+
+export async function setDeckTheme(
+  id: string,
+  themeName: string,
+  themeCss: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_deck_theme', { id, themeName, themeCss });
+}
+
+/** The user's word edits on one slide: each edited slot is set and pinned; notes replaced when given. */
+export async function editSlideWords(
+  deckId: string,
+  slideId: string,
+  edits: SlotEdit[],
+  notes?: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('edit_slide_words', { deckId, slideId, edits, notes });
+}
+
+/** Pin ("Yours") or unpin ("Let AI edit") one slot. */
+export async function setSlotPinned(
+  deckId: string,
+  slideId: string,
+  index: number,
+  name: string,
+  pinned: boolean,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('set_slot_pinned', { deckId, slideId, index, name, pinned });
+}
+
+/** Add an empty bullet after the given bullet slot; the new slot is in the returned deck. */
+export async function insertBullet(
+  deckId: string,
+  slideId: string,
+  index: number,
+  name: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('insert_bullet', { deckId, slideId, index, name });
+}
+
+/** Remove the given bullet slot from its list. */
+export async function removeBullet(
+  deckId: string,
+  slideId: string,
+  index: number,
+  name: string,
+): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('remove_bullet', { deckId, slideId, index, name });
+}
+
+/** Find and replace across the deck's text and speaker notes; `apply: false` is a dry run. */
+export async function replaceInDeck(
+  deckId: string,
+  find: string,
+  replace: string,
+  matchCase: boolean,
+  wholeWord: boolean,
+  apply: boolean,
+): Promise<DeckReplaceResult> {
+  return invokeCommand<DeckReplaceResult>('replace_in_deck', {
+    deckId,
+    find,
+    replace,
+    matchCase,
+    wholeWord,
+    apply,
+  });
+}
+
+/** The deck's history, newest first. */
+export async function listDeckSnapshots(deckId: string): Promise<DeckSnapshotSummary[]> {
+  return invokeCommand<DeckSnapshotSummary[]>('list_deck_snapshots', { deckId });
+}
+
+/** Record the deck's state in its history; null when nothing changed since the newest entry. */
+export async function snapshotDeck(
+  deckId: string,
+  cause: DeckSnapshotCause,
+  label: string,
+): Promise<DeckSnapshotSummary | null> {
+  return invokeCommand<DeckSnapshotSummary | null>('snapshot_deck', { deckId, cause, label });
+}
+
+export async function restoreDeckSnapshot(deckId: string, snapshotId: string): Promise<DeckDetail> {
+  return invokeCommand<DeckDetail>('restore_deck_snapshot', { deckId, snapshotId });
+}
+
+/** Saved custom Slides themes, most recently used first (built-ins excluded). */
+export async function listSlideThemes(): Promise<SlideTheme[]> {
+  return invokeCommand<SlideTheme[]>('list_slide_themes');
+}
+
+export async function deleteSlideTheme(name: string): Promise<void> {
+  await invokeCommand('delete_slide_theme', { name });
 }
 
 /** The ready-made apps bundled with Conduit, and which the user has added. */

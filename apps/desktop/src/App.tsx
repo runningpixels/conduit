@@ -58,6 +58,7 @@ import { applyAccent } from './themes/accent';
 import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
+import { appName } from './brand';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -115,6 +116,8 @@ import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog
 import {
   artifactPrincipal,
   exportConversationDialog,
+  exportDeckHtml,
+  exportDeckPdf,
   installStarterApp,
   listApps,
   listStarterApps,
@@ -122,6 +125,35 @@ import {
   forkConversation,
   previewConversationExport,
   setConversationTitle,
+} from './ipc/client';
+import { SlidesPage } from './pages/SlidesPage';
+import { DeckWorkspace } from './slides/DeckWorkspace';
+import { buildDeckHtmlExport, buildDeckPrintHtml } from './slides/deckExport';
+import { PresentationView } from './slides/PresentationView';
+import { STARTER_THEMES } from './slides/themes';
+import { DeckDock, type DockTab } from './slides/DeckDock';
+import { ScriptPanel, type ScriptFocusRequest } from './slides/ScriptPanel';
+import { DeckHistory } from './slides/DeckHistory';
+import { appPrompt, appPromptLabel } from './chat/appPrompt';
+import type { DeckDetail, SlideTheme, SlotEdit, StorylineItem } from './ipc/contracts';
+import {
+  createDeck,
+  undoStartDeck,
+  editSlideWords,
+  insertBullet,
+  removeBullet,
+  replaceInDeck,
+  setSlotPinned,
+  getDeckForConversation,
+  listDeckSnapshots,
+  listSlideThemes,
+  openDeck,
+  renameDeck,
+  restoreDeckSnapshot,
+  setDeckStage,
+  setDeckStoryline,
+  setDeckTheme,
+  snapshotDeck,
 } from './ipc/client';
 
 /* Dev-only (`?route=gallery`, see `devRoute.ts`): the theming project's
@@ -381,11 +413,66 @@ export default function App() {
   const [emptyPanelRequested, setEmptyPanelRequested] = useState(false);
   const [panelHasContent, setPanelHasContent] = useState(false);
   const chatArtifacts = artifactsConversationId === activeConversationId ? artifacts : [];
+  // Slides: the deck bound to the open chat, if any. A deck chat shows the
+  // deck workspace where the document panel would be, and the chat is its
+  // "Ask" column.
+  const [activeDeck, setActiveDeck] = useState<DeckDetail | null>(null);
+  const [deckLoading, setDeckLoading] = useState(false);
+  const [deckBusyTool, setDeckBusyTool] = useState<string | null>(null);
+  const [deckHistoryRevision, setDeckHistoryRevision] = useState(0);
+  const deckChangedThisTurnRef = useRef(false);
+  // The history label for the next AI turn when the app sent its prompt (the
+  // "Build slides" button), rather than the user typing one.
+  const nextDeckTurnLabelRef = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setDeckBusyTool(null);
+    deckChangedThisTurnRef.current = false;
+    if (!activeConversationId) {
+      setActiveDeck(null);
+      return;
+    }
+    setDeckLoading(true);
+    getDeckForConversation(activeConversationId)
+      .then((deck) => {
+        if (!cancelled) setActiveDeck(deck ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveDeck(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDeckLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId]);
+  // The theme library (custom themes). Re-read whenever the deck's theme
+  // changes: moving off a custom theme, or the model writing one, saves it.
+  const [savedSlideThemes, setSavedSlideThemes] = useState<SlideTheme[]>([]);
+  const activeDeckId = activeDeck?.id;
+  const activeDeckThemeName = activeDeck?.themeName;
+  useEffect(() => {
+    if (!activeDeckId) return;
+    let cancelled = false;
+    listSlideThemes()
+      .then((themes) => {
+        if (!cancelled) setSavedSlideThemes(themes);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDeckId, activeDeckThemeName]);
   useEffect(() => {
     const listSettled = activeConversationId == null || artifactsConversationId === activeConversationId;
+    if (activeDeck) {
+      setPanelHasContent(true);
+      return;
+    }
     if (!listSettled && pendingArtifact == null && activeArtifact == null) return;
     setPanelHasContent(chatArtifacts.length > 0 || pendingArtifact != null || activeArtifact != null);
-  }, [activeConversationId, artifactsConversationId, chatArtifacts.length, pendingArtifact, activeArtifact]);
+  }, [activeConversationId, artifactsConversationId, chatArtifacts.length, pendingArtifact, activeArtifact, activeDeck]);
   useEffect(() => {
     setEmptyPanelRequested(false);
   }, [activeConversationId]);
@@ -886,6 +973,400 @@ export default function App() {
     },
     [clearWorkspaceArtifactSelection, settings.activeProvider],
   );
+
+  // ── Slides ────────────────────────────────────────────────────────────────
+  const transcriptRef = useRef(transcript);
+  transcriptRef.current = transcript;
+  const activeDeckRef = useRef(activeDeck);
+  activeDeckRef.current = activeDeck;
+
+  /** Open a deck from the Slides page: its chat, with the deck beside it. */
+  // Studio: a deck open in the Slides destination. The one mounted ChatView
+  // becomes the dock on the right; the chat list is hidden. Deck chats never
+  // show in the Chats layout.
+  const [studioDeckId, setStudioDeckId] = useState<string | null>(null);
+  const [dockTab, setDockTab] = useState<DockTab>('ask');
+  const [scriptFocus, setScriptFocus] = useState<ScriptFocusRequest | null>(null);
+  const [scriptFindToken, setScriptFindToken] = useState(0);
+  const [stageSlideRequest, setStageSlideRequest] = useState<{ index: number; nonce: number } | null>(null);
+  const [madeFromChatDeckId, setMadeFromChatDeckId] = useState<string | null>(null);
+  const studio = destination === 'slides' && studioDeckId != null && activeDeck?.id === studioDeckId;
+  // Present: a full-screen overlay (a portal) over the studio; the studio and
+  // the one mounted chat stay exactly where they are underneath.
+  const [presentStart, setPresentStart] = useState<number | null>(null);
+  const stageIndexRef = useRef(0);
+  const exportingDeckRef = useRef(false);
+  const startPresenting = useCallback((startIndex: number) => {
+    if ((activeDeckRef.current?.slides.length ?? 0) === 0) return;
+    setPresentStart(startIndex);
+  }, []);
+  const presenting = studio && presentStart != null && (activeDeck?.slides.length ?? 0) > 0;
+  useEffect(() => {
+    if (presentStart != null && !studio) setPresentStart(null);
+  }, [presentStart, studio]);
+  // F5 presents from the first slide, Shift+F5 from the stage's slide.
+  useEffect(() => {
+    if (!studio || presentStart != null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F5' || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      startPresenting(e.shiftKey ? stageIndexRef.current : 0);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [studio, presentStart, startPresenting]);
+  /** The last ordinary (non-deck) chat, to return to when leaving a deck. */
+  const lastChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeConversationId && !deckLoading && !activeDeck) lastChatIdRef.current = activeConversationId;
+  }, [activeConversationId, activeDeck, deckLoading]);
+  // A deck chat reached any other way (search, palette, a fresh start) opens
+  // in the studio, never in the Chats layout.
+  useEffect(() => {
+    if (activeDeck && destination === 'chats') {
+      setStudioDeckId(activeDeck.id);
+      setDestination('slides');
+    }
+  }, [activeDeck, destination]);
+  useEffect(() => {
+    setDockTab('ask');
+    setScriptFocus(null);
+  }, [studioDeckId]);
+
+  /** Leave a deck for an ordinary chat (the last one, or a new one). */
+  const leaveDeckChat = useCallback(() => {
+    setActiveDeck(null);
+    setStudioDeckId(null);
+    const back = lastChatIdRef.current;
+    if (back && conversations.some((c) => c.id === back)) handleSelectConversation(back);
+    else void handleNewChat();
+  }, [conversations, handleSelectConversation, handleNewChat]);
+
+  /** Open a deck from the Slides page: the studio, with its chat as the dock. */
+  const handleOpenDeck = useCallback(
+    async (deckId: string) => {
+      try {
+        const deck = await openDeck(deckId);
+        setActiveDeck(deck);
+        setStudioDeckId(deck.id);
+        if (deck.conversationId) handleSelectConversation(deck.conversationId);
+        setDestination('slides');
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [handleSelectConversation],
+  );
+
+  /** The Slides page start box: a new deck whose first message is the prompt. */
+  const handleStartDeck = useCallback(
+    async (prompt: string, themeName: string, themeCss: string) => {
+      const deck = await createDeck(t('slides.new.defaultTitle'), themeName, themeCss);
+      await handleOpenDeck(deck.id);
+      void refreshConversations();
+      setPendingSendText(prompt);
+    },
+    [handleOpenDeck, refreshConversations, t],
+  );
+
+  // A deck started from an ordinary chat (the model called start_deck): when
+  // that turn ends, the chat opens as a studio and the model is asked for the
+  // storyline, now with the deck tools.
+  const startedDeckThisTurnRef = useRef(false);
+  const openDeckStartedInChat = useCallback(async () => {
+    const conversationId = activeConversationId;
+    if (!conversationId) return;
+    try {
+      const deck = await getDeckForConversation(conversationId);
+      if (!deck) return;
+      setActiveDeck(deck);
+      setMadeFromChatDeckId(deck.id);
+      setStudioDeckId(deck.id);
+      setDestination('slides');
+      void refreshConversations();
+      setPendingSendText(appPrompt(t('slides.note.madeDeck'), t('slides.prompt.storylineFromChat')));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeConversationId, refreshConversations, t]);
+
+  const handleUndoStartDeck = useCallback(async () => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      await undoStartDeck(deck.id);
+      setMadeFromChatDeckId(null);
+      setActiveDeck(null);
+      setStudioDeckId(null);
+      setDestination('chats');
+      void refreshConversations();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [refreshConversations]);
+
+  // A deck made by start_deck has no theme CSS yet (the starter themes live
+  // here, not in Rust): give it the default starter on first sight.
+  useEffect(() => {
+    if (!activeDeck || activeDeck.themeCss !== '') return;
+    const fallback = STARTER_THEMES.find((theme) => theme.name === activeDeck.themeName) ?? STARTER_THEMES[0];
+    void setDeckTheme(activeDeck.id, fallback.name, fallback.css).then(setActiveDeck, () => {});
+  }, [activeDeck]);
+
+  const reloadActiveDeck = useCallback(async () => {
+    const conversationId = activeDeckRef.current?.conversationId;
+    if (!conversationId) return;
+    try {
+      const deck = await getDeckForConversation(conversationId);
+      if (activeDeckRef.current?.conversationId === conversationId) setActiveDeck(deck ?? null);
+    } catch {
+      // The next tool call or turn end reloads it again.
+    }
+  }, []);
+
+  const handleDeckChanged = useCallback(() => {
+    deckChangedThisTurnRef.current = true;
+    setDeckBusyTool(null);
+    void reloadActiveDeck();
+  }, [reloadActiveDeck]);
+
+  /** One history entry per AI turn that changed the deck, named by the prompt. */
+  const finishDeckTurn = useCallback(async () => {
+    setDeckBusyTool(null);
+    if (startedDeckThisTurnRef.current) {
+      startedDeckThisTurnRef.current = false;
+      deckChangedThisTurnRef.current = false;
+      await openDeckStartedInChat();
+      return;
+    }
+    const deck = activeDeckRef.current;
+    const appLabel = nextDeckTurnLabelRef.current;
+    nextDeckTurnLabelRef.current = null;
+    if (!deck || !deckChangedThisTurnRef.current) return;
+    deckChangedThisTurnRef.current = false;
+    const lastPrompt = [...transcriptRef.current.turns].reverse().find((turn) => turn.role === 'user');
+    const content = lastPrompt?.content ?? '';
+    const text = (appPromptLabel(content) ?? content).replace(/\s+/g, ' ').trim();
+    const label =
+      appLabel ?? (text.length > 80 ? `${text.slice(0, 79)}…` : text || t('slides.history.aiTurn'));
+    try {
+      await snapshotDeck(deck.id, 'ai-turn', label);
+      setDeckHistoryRevision((n) => n + 1);
+    } catch {
+      // History is best effort; the deck itself is already saved.
+    }
+    await reloadActiveDeck();
+  }, [reloadActiveDeck, openDeckStartedInChat, t]);
+
+  // Export: the documents are built here, Rust asks for the path and writes
+  // the file. Nothing happens on cancel.
+  const { locale: exportLocale } = useLocale();
+  const [exportingDeck, setExportingDeck] = useState(false);
+  const handleExportDeck = useCallback(
+    async (kind: 'html' | 'pdf') => {
+      const deck = activeDeckRef.current;
+      if (!deck || deck.slides.length === 0 || exportingDeckRef.current) return;
+      exportingDeckRef.current = true;
+      setExportingDeck(true);
+      try {
+        const saved =
+          kind === 'html'
+            ? await exportDeckHtml(
+                deck.id,
+                buildDeckHtmlExport(deck, { lang: exportLocale, generator: appName() }),
+                t('slides.export.htmlDialogTitle'),
+                // Format names are not translated (D7).
+                'HTML',
+              )
+            : await exportDeckPdf(deck.id, buildDeckPrintHtml(deck), t('slides.export.pdfDialogTitle'), 'PDF');
+        if (saved === null) return;
+        const name = saved.split(/[\\/]/).pop() ?? saved;
+        setStatus(makeStatus(t('slides.export.saved', { name }), 'success'));
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        setStatus(makeStatus(t('slides.export.failed', { reason }), 'error'));
+      } finally {
+        exportingDeckRef.current = false;
+        setExportingDeck(false);
+      }
+    },
+    [exportLocale, t],
+  );
+
+  const handleRenameDeck = useCallback(
+    async (title: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        await renameDeck(deck.id, title);
+        setActiveDeck({ ...deck, title });
+        void refreshConversations();
+        if (activeConversationId) void refreshActiveConversationSummary(activeConversationId);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [refreshConversations, refreshActiveConversationSummary, activeConversationId],
+  );
+
+  const handleSetDeckTheme = useCallback(
+    async (name: string, css: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        setActiveDeck(await setDeckTheme(deck.id, name, css));
+        const label = STARTER_THEMES.find((theme) => theme.name === name)?.label ?? name;
+        void listSlideThemes().then(setSavedSlideThemes, () => {});
+        await snapshotDeck(deck.id, 'manual', t('slides.history.themeChanged', { name: label }));
+        setDeckHistoryRevision((n) => n + 1);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [t],
+  );
+
+  const handleSetDeckStoryline = useCallback(async (items: StorylineItem[]) => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      setActiveDeck(await setDeckStoryline(deck.id, items));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const handleBuildDeck = useCallback(async () => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      setActiveDeck(await setDeckStage(deck.id, 'slides'));
+      nextDeckTurnLabelRef.current = t('slides.history.built');
+      setPendingSendText(appPrompt(t('slides.note.build'), t('slides.prompt.build')));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [t]);
+
+  const handleRestoreDeck = useCallback(async (snapshotId: string) => {
+    const deck = activeDeckRef.current;
+    if (!deck) return;
+    try {
+      setActiveDeck(await restoreDeckSnapshot(deck.id, snapshotId));
+      setDeckHistoryRevision((n) => n + 1);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  // Words: the user's own edits. One history entry per burst of typing on a
+  // slide, a few seconds after it stops.
+  const wordsSnapshotTimersRef = useRef<Record<string, number>>({});
+  const scheduleWordsSnapshot = useCallback(
+    (deckId: string, slideId: string, position: number) => {
+      const timers = wordsSnapshotTimersRef.current;
+      window.clearTimeout(timers[slideId]);
+      timers[slideId] = window.setTimeout(() => {
+        delete timers[slideId];
+        void snapshotDeck(deckId, 'manual', t('slides.history.editedWords', { n: position + 1 }))
+          .then(() => setDeckHistoryRevision((n) => n + 1))
+          .catch(() => {});
+      }, 4000);
+    },
+    [t],
+  );
+
+  const handleEditWords = useCallback(
+    async (slideId: string, edits: SlotEdit[], notes?: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        const next = await editSlideWords(deck.id, slideId, edits, notes);
+        setActiveDeck(next);
+        const position = next.slides.find((s) => s.id === slideId)?.position ?? 0;
+        scheduleWordsSnapshot(deck.id, slideId, position);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [scheduleWordsSnapshot],
+  );
+
+  const handleSetPinned = useCallback(
+    async (slideId: string, index: number, name: string, pinned: boolean) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        setActiveDeck(await setSlotPinned(deck.id, slideId, index, name, pinned));
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [],
+  );
+
+  /** Script view: Enter at the end of a bullet adds the next bullet. */
+  const handleInsertBullet = useCallback(
+    async (slideId: string, index: number, name: string): Promise<string | null> => {
+      const deck = activeDeckRef.current;
+      if (!deck) return null;
+      try {
+        const next = await insertBullet(deck.id, slideId, index, name);
+        setActiveDeck(next);
+        const slide = next.slides.find((s) => s.id === slideId);
+        const added = slide?.slots[index + 1];
+        if (slide) scheduleWordsSnapshot(deck.id, slideId, slide.position);
+        return added?.name ?? null;
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+        return null;
+      }
+    },
+    [scheduleWordsSnapshot],
+  );
+
+  const handleRemoveBullet = useCallback(
+    async (slideId: string, index: number, name: string) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return;
+      try {
+        const next = await removeBullet(deck.id, slideId, index, name);
+        setActiveDeck(next);
+        const position = next.slides.find((s) => s.id === slideId)?.position ?? 0;
+        scheduleWordsSnapshot(deck.id, slideId, position);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [scheduleWordsSnapshot],
+  );
+
+  const handleReplaceInDeck = useCallback(
+    async (find: string, replace: string, matchCase: boolean, wholeWord: boolean, apply: boolean) => {
+      const deck = activeDeckRef.current;
+      if (!deck) return { total: 0, applied: false, slides: [] };
+      const result = await replaceInDeck(deck.id, find, replace, matchCase, wholeWord, apply);
+      if (apply && result.total > 0) {
+        await reloadActiveDeck();
+        try {
+          await snapshotDeck(deck.id, 'manual', t('slides.history.replaced', { find, replace }));
+          setDeckHistoryRevision((n) => n + 1);
+        } catch {
+          // History is best effort.
+        }
+      }
+      return result;
+    },
+    [reloadActiveDeck, t],
+  );
+
+  const [deckOverflow, setDeckOverflow] = useState<Record<string, number>>({});
+  useEffect(() => setDeckOverflow({}), [activeDeckId]);
+
+  const handleListDeckSnapshots = useCallback(async () => {
+    const deck = activeDeckRef.current;
+    return deck ? listDeckSnapshots(deck.id) : [];
+  }, []);
 
   const handleSelectSearchResult = useCallback(
     (result: SearchResult) => {
@@ -1982,7 +2463,13 @@ export default function App() {
         destination={destination}
         onNavigate={(d) => {
           if (d === 'settings') openSettings();
-          else setDestination(d);
+          else if (d === 'slides' && studio) setStudioDeckId(null);
+          else {
+            // Chats never shows a deck chat: going there from a deck returns
+            // to the last ordinary chat.
+            if (d === 'chats' && activeDeck) leaveDeckChat();
+            setDestination(d);
+          }
         }}
         dots={{ workflows: workflowsNeedYou && destination !== 'workflows' }}
         effectiveTheme={effectiveTheme}
@@ -1990,7 +2477,11 @@ export default function App() {
         logoSrc={brandLogo ?? undefined}
       />
       {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}
-      <div className="body" data-page={destination !== 'chats' ? destination : undefined}>
+      <div
+        className="body"
+        data-page={destination !== 'chats' && !studio ? destination : undefined}
+        data-studio={studio ? '' : undefined}
+      >
         <Sidebar
           conversations={conversations}
           folders={conversationFolders}
@@ -2046,17 +2537,57 @@ export default function App() {
         {/* The full-height "Artifacts" rail that used to live here was a second
             affordance for the title strip's own panel toggle. It is gone; the
             toggle carries the artifact count so the panel stays discoverable. */}
-        <main className="center">
-          <MainHead
-            title={activeConversationSummary?.displayTitle}
-            panelOpen={panelVisible}
-            onTogglePanel={toggleDocPanelView}
-            hiddenArtifactCount={hiddenArtifactCount}
-            sidebarOverlayOpen={sidebarOverlay.open}
-            onToggleSidebar={toggleSidebarView}
-            onNewChat={() => void handleNewChat()}
-            onOpenPalette={openPalette}
-          />
+        {/* In the studio this column is the dock. Its first child switches
+            between the chat header and the dock's tabs; ChatView stays the
+            second child either way, so it is never remounted (it owns the
+            running stream). */}
+        <main className="center" data-dock-tab={studio ? dockTab : undefined}>
+          {studio && activeDeck ? (
+            <DeckDock
+              tab={dockTab}
+              onTab={setDockTab}
+              script={
+                <ScriptPanel
+                  deck={activeDeck}
+                  overflow={deckOverflow}
+                  focusRequest={scriptFocus}
+                  findFocusToken={scriptFindToken}
+                  onEditWords={handleEditWords}
+                  onSetPinned={handleSetPinned}
+                  onReplace={handleReplaceInDeck}
+                  onInsertBullet={handleInsertBullet}
+                  onRemoveBullet={handleRemoveBullet}
+                  onAskToFix={(prompt) => {
+                    setDockTab('ask');
+                    setPendingSendText(appPrompt(t('slides.note.fixOverflow'), prompt));
+                  }}
+                  onFocusSlide={(index) => setStageSlideRequest({ index, nonce: Date.now() })}
+                  onClose={() => setDockTab('ask')}
+                />
+              }
+              history={
+                <DeckHistory
+                  revision={deckHistoryRevision}
+                  onList={handleListDeckSnapshots}
+                  onRestore={handleRestoreDeck}
+                  onClose={() => setDockTab('ask')}
+                />
+              }
+            >
+              {null}
+            </DeckDock>
+          ) : (
+            <MainHead
+              title={activeConversationSummary?.displayTitle}
+              panelOpen={panelVisible}
+              onTogglePanel={toggleDocPanelView}
+              hiddenArtifactCount={hiddenArtifactCount}
+              sidebarOverlayOpen={sidebarOverlay.open}
+              onToggleSidebar={toggleSidebarView}
+              onNewChat={() => void handleNewChat()}
+              onOpenPalette={openPalette}
+            />
+          )}
           <ChatView
             ref={chatViewRef}
             settings={settings}
@@ -2072,7 +2603,18 @@ export default function App() {
             fileStateMap={fileStateMap}
             onPromoteArtifact={(messageId, candidate) => void handlePromoteArtifact(messageId, candidate)}
             onOpenArtifact={(id) => void handleOpenArtifact(id)}
-            onChatTurnComplete={(streamState) => void handleChatTurnComplete(streamState)}
+            onChatTurnComplete={(streamState) => {
+              void handleChatTurnComplete(streamState);
+              void finishDeckTurn();
+            }}
+            deck={activeDeck}
+            onDeckChanged={handleDeckChanged}
+            onDeckToolActivity={setDeckBusyTool}
+            onDeckStarted={() => {
+              startedDeckThisTurnRef.current = true;
+            }}
+            compact={studio}
+            deckOverflow={deckOverflow}
             onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
@@ -2082,8 +2624,8 @@ export default function App() {
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
-            ideaGallery={ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
-            yourApps={savedApps}
+            ideaGallery={activeDeck || ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
+            yourApps={activeDeck ? [] : savedApps}
             onOpenApp={openSavedApp}
             onAllApps={() => openSavedApp(null)}
             readyMadeIdeas={readyMadeIdeas}
@@ -2099,7 +2641,7 @@ export default function App() {
         </main>
         {/* Rail destinations other than Chats: a page over the body. The chat
             stays mounted underneath, so a turn in progress keeps running. */}
-        {destination !== 'chats' && (
+        {destination !== 'chats' && !studio && (
           <div className="dest-page" data-destination={destination}>
             {destination === 'settings' && (
               <SettingsSheet
@@ -2177,6 +2719,13 @@ export default function App() {
                 onStatus={setStatusMessage}
               />
             )}
+            {destination === 'slides' && (
+              <SlidesPage
+                onOpenDeck={(deck) => void handleOpenDeck(deck.id)}
+                onStartDeck={handleStartDeck}
+                onStatus={setStatusMessage}
+              />
+            )}
             {destination === 'workflows' && (
               <WorkflowsPage
                 onStatus={setStatusMessage}
@@ -2202,6 +2751,50 @@ export default function App() {
           onDoubleClick={panelResize.onDoubleClick}
         />
 
+        {studio && activeDeck ? (
+          <section className="doc-panel deck-panel" aria-label={t('slides.workspace.ariaLabel')}>
+            <DeckWorkspace
+              layout="studio"
+              onBack={() => setStudioDeckId(null)}
+              madeFromChat={madeFromChatDeckId === activeDeck.id}
+              onUndoStart={() => void handleUndoStartDeck()}
+              onSlotSelected={(slideId, index) => {
+                setDockTab('script');
+                setScriptFocus({ slideId, index, nonce: Date.now() });
+              }}
+              onOpenScriptFind={() => {
+                setDockTab('script');
+                setScriptFindToken((n) => n + 1);
+              }}
+              slideRequest={stageSlideRequest}
+              onSlideChange={(i) => {
+                stageIndexRef.current = i;
+              }}
+              onPresent={startPresenting}
+              onExport={(kind) => void handleExportDeck(kind)}
+              exporting={exportingDeck}
+              deck={activeDeck}
+              loading={deckLoading}
+              busyTool={deckBusyTool}
+              colorScheme={effectiveTheme}
+              onRename={(title) => void handleRenameDeck(title)}
+              onSetTheme={(name, css) => void handleSetDeckTheme(name, css)}
+              onSetStoryline={(items) => void handleSetDeckStoryline(items)}
+              onBuild={() => void handleBuildDeck()}
+              onListSnapshots={handleListDeckSnapshots}
+              onRestore={handleRestoreDeck}
+              historyRevision={deckHistoryRevision}
+              savedThemes={savedSlideThemes}
+              onEditWords={handleEditWords}
+              onSetPinned={handleSetPinned}
+              onInsertBullet={handleInsertBullet}
+              onRemoveBullet={handleRemoveBullet}
+              onReplace={handleReplaceInDeck}
+              onAskToFix={(prompt) => setPendingSendText(appPrompt(t('slides.note.fixOverflow'), prompt))}
+              onOverflowChange={setDeckOverflow}
+            />
+          </section>
+        ) : (
         <DocumentPanel
           inspectorTabs={
             <InspectorTabs
@@ -2260,8 +2853,18 @@ export default function App() {
           networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
           onOpenIdeas={openIdeas}
         />
+        )}
       </div>
       </div>
+
+      {presenting && activeDeck && presentStart != null && (
+        <PresentationView
+          deck={activeDeck}
+          startIndex={presentStart}
+          colorScheme={effectiveTheme}
+          onExit={() => setPresentStart(null)}
+        />
+      )}
 
       <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
       <AppDetailsDialog

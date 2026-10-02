@@ -34,6 +34,8 @@ pub mod page_llm;
 pub mod paths;
 pub mod search;
 pub mod skills;
+pub mod slide_html;
+pub mod slides_export;
 pub mod starter_apps;
 pub mod state;
 pub mod stream_manager;

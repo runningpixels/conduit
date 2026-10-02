@@ -31,6 +31,7 @@ import {
 } from '../inspector/turnActivity';
 import { StepStatusIcon, formatStepDuration, stepDetail, stepStatusLabel } from '../inspector/stepPresentation';
 import { useFormatters } from '../i18n/formatters';
+import { deckChangeSummary, liveSummary, thoughtSummary } from './compactTurnSummary';
 
 /** Steps shown as rows in the reply before the rest fold into the summary line. */
 const INLINE_STEP_ROWS = 3;
@@ -91,7 +92,15 @@ interface AssistantMessageProps {
   /** Open the inspector's Activity tab for this turn. Without it the compact
    *  step line expands the tool cards in place instead. */
   onOpenActivity?: (turnId: string) => void;
+  /** Slides studio dock: show the text reply, then one summary line for the
+   *  thinking and tool calls, collapsed until clicked. */
+  compact?: boolean;
+  /** Compact only: the open deck's slide ids in order, so the summary can say
+   *  "slides 2, 4" rather than ids. */
+  deckSlideIds?: readonly string[];
 }
+
+const NO_SLIDE_IDS: readonly string[] = [];
 
 /** Tool calls that need the reader (an approval gate) or show live progress
  *  the reader watches (a document still being written) stay inline; every
@@ -324,10 +333,13 @@ export function AssistantMessage({
   documentWriteHeld = false,
   turnId,
   onOpenActivity,
+  compact = false,
+  deckSlideIds = NO_SLIDE_IDS,
 }: AssistantMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
+  const [compactOpen, setCompactOpen] = useState(false);
   const activity = useMemo(() => summarizeStreamState(state), [state]);
   // The first few steps show as rows in the reply (ADR-011); the rest are
   // behind the summary line, which opens the full activity. Errors are
@@ -492,6 +504,8 @@ export function AssistantMessage({
   let stepLineShown = false;
 
   const body: ReactNode[] = [];
+  // Compact turns: everything but the reply text waits behind one line.
+  const details: ReactNode[] = [];
   if (timeline.length === 0 && !producingText) {
     body.push(
       <ChatProse
@@ -513,7 +527,7 @@ export function AssistantMessage({
       // Live only while it is the newest thing in the turn: once text or a
       // tool call follows, the model has stopped thinking in this block.
       const live = state.streaming && ti === timeline.length - 1;
-      body.push(<ReasoningBlock key={item.key} block={item.block} live={live} />);
+      (compact ? details : body).push(<ReasoningBlock key={item.key} block={item.block} live={live} />);
       continue;
     }
     if (item.kind === 'text') {
@@ -546,6 +560,14 @@ export function AssistantMessage({
       }
       continue;
     }
+    if (compact) {
+      for (const call of item.calls.filter((c) => toolCallStaysInline(c, state.streaming))) {
+        body.push(<ToolCallBlock key={`${item.key}-${call.toolCallId}`} toolCall={call} conversationId={conversationId} />);
+      }
+      const folded = item.calls.filter((c) => !toolCallStaysInline(c, state.streaming));
+      if (folded.length > 0) details.push(renderToolItem(folded, item.key));
+      continue;
+    }
     // tools — one compact step line per turn, at the first tool position.
     if (!stepLineShown && activity.steps > 0) {
       body.push(stepLine);
@@ -560,8 +582,39 @@ export function AssistantMessage({
       body.push(renderToolItem(folded, item.key));
     }
   }
-  if (!stepLineShown && activity.steps > 0) {
+  if (!compact && !stepLineShown && activity.steps > 0) {
     body.push(stepLine);
+  }
+  if (compact && (activity.steps > 0 || state.reasoning.length > 0)) {
+    let label: string;
+    if (state.streaming) {
+      label = liveSummary(state, deckSlideIds, t);
+    } else if (activity.steps > 0) {
+      const deckPart = deckChangeSummary(state, deckSlideIds, t);
+      const detailed = activity.steps > 1 || activity.failed > 0 || activity.needsYou;
+      label = deckPart === '' ? stepLineText : detailed ? `${deckPart} · ${stepLineText}` : deckPart;
+    } else {
+      label = thoughtSummary(state, t, fmt.duration);
+    }
+    body.push(
+      <div key="turn-compact" className="turn-step-block turn-compact">
+        <button
+          type="button"
+          className="turn-steps turn-steps-compact"
+          data-status={lineStatus}
+          data-open={compactOpen ? 'true' : 'false'}
+          aria-expanded={compactOpen}
+          onClick={() => setCompactOpen((v) => !v)}
+        >
+          <StepStatusIcon status={lineStatus} />
+          <span className="turn-steps-label" title={label}>
+            {label}
+          </span>
+          <ChevronRight className="turn-steps-chev" />
+        </button>
+        {compactOpen && <div className="turn-compact-details">{details}</div>}
+      </div>,
+    );
   }
 
   // If ask_user is pending but missing from the timeline (stale edge case), show it last.

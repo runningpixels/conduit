@@ -143,6 +143,13 @@ tempfile = "3"
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "2.0", features = ["v2_38"] }
 
+# Windows only: print the Slides PDF export with WebView2's `PrintToPdf`.
+# Same versions wry already uses (see Cargo.lock), so the COM types handed out
+# by `with_webview` are the ones these crates name.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows = "0.62"
+
 [dev-dependencies]
 # The scripted provider adapter in tests/agent_turn.rs implements
 # `provider_core::ProviderAdapter`, an `#[async_trait]` trait. Already in the

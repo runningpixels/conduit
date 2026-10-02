@@ -98,9 +98,29 @@ pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversati
 
 /// List all chats newest-first, with message count and a preview of the last
 /// text part for the history rail. A workflow's own conversation
-/// (`kind = 'automation'`) is not a chat and is left out.
+/// (`kind = 'automation'`) and a deck's chat (`kind = 'deck'`) are not chats
+/// and are left out.
 pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError> {
-    let rows: Vec<ConversationSummaryRow> = sqlx::query_as(
+    summaries(pool, "c.kind = 'chat'", None).await
+}
+
+/// One conversation's summary row, whatever its kind (`None` when it is gone).
+pub async fn get_summary(
+    pool: &SqlitePool,
+    id: &str,
+) -> Result<Option<ConversationSummary>, DbError> {
+    Ok(summaries(pool, "c.id = ?", Some(id))
+        .await?
+        .into_iter()
+        .next())
+}
+
+async fn summaries(
+    pool: &SqlitePool,
+    filter: &str,
+    bind: Option<&str>,
+) -> Result<Vec<ConversationSummary>, DbError> {
+    let sql = format!(
         "SELECT c.id, c.title, c.updated_at, \
                 (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count, \
                 (SELECT mp.content FROM messages m2 \
@@ -119,11 +139,14 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError
                 f.name AS folder_name \
          FROM conversations c \
          LEFT JOIN conversation_folders f ON f.id = c.folder_id \
-         WHERE c.kind = 'chat' \
-         ORDER BY c.updated_at DESC",
-    )
-    .fetch_all(pool)
-    .await?;
+         WHERE {filter} \
+         ORDER BY c.updated_at DESC"
+    );
+    let mut query = sqlx::query_as::<_, ConversationSummaryRow>(&sql);
+    if let Some(value) = bind {
+        query = query.bind(value);
+    }
+    let rows = query.fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -572,7 +595,8 @@ pub async fn ensure_exists(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
 }
 
 /// Mark what a conversation is: `'chat'` (the default, listed in the history
-/// rail) or `'automation'` (a workflow's own conversation, not listed).
+/// rail), `'automation'` (a workflow's own conversation, not listed) or
+/// `'deck'` (the chat bound to a Slides deck, shown only in Slides).
 pub async fn set_kind(pool: &SqlitePool, id: &str, kind: &str) -> Result<(), DbError> {
     sqlx::query("UPDATE conversations SET kind = ? WHERE id = ?")
         .bind(kind)

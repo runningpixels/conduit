@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@conduit/config-schema';
+import type { DeckStage, ToolDefinition } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import { classifyDocumentTurnIntent, type DocumentTurnIntent } from './documentTurnIntent';
@@ -14,6 +14,13 @@ import { CONTENT_FIELD_BY_TOOL } from './documentWriteScan';
 const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
 const IMAGE_TOOL_GROUP = 'Images';
+const DECK_TOOL_GROUP = 'Slides';
+const RELEASE_PINNED_SCHEMA = {
+  type: 'array',
+  items: { type: 'string' },
+  description:
+    'Names of pinned slots you may change. Only when the user asked you to change that text.',
+};
 
 function schema(fields: Array<{ name: string; type: string; required?: boolean }>): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
@@ -451,6 +458,214 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     permissionLevel: 'sideEffectful',
     displayGroup: BRAND_TOOL_GROUP,
   },
+  // ---------------------------------------------------------------------------
+  // Deck tools (Slides): offered only in a chat bound to a deck
+  // ---------------------------------------------------------------------------
+  {
+    toolId: 'read_deck',
+    name: 'read_deck',
+    description:
+      "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's full inner HTML, notes and slots. A pinned slot holds text the user wrote. Read a slide before you change it.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slide_id: {
+          type: 'string',
+          description: 'Return this one slide in full instead of the deck outline.',
+        },
+      },
+    },
+    permissionLevel: 'readOnly',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'set_storyline',
+    name: 'set_storyline',
+    description:
+      "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built. Always pass title on the first storyline (a short name for the deck, 120 characters at most). Pass assumptions when the user did not say who the deck is for or what they should do: one or two sentences stating what you assumed about audience, goal and length (400 characters at most; an empty string clears it).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lines: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'One short line per planned slide, in order.',
+        },
+        title: {
+          type: 'string',
+          description:
+            'A short name for the deck (120 characters at most). Pass it on the first storyline; it renames the deck and its chat.',
+        },
+        assumptions: {
+          type: 'string',
+          description:
+            'One or two sentences stating what you assumed about audience, goal or length that the user did not say (400 characters at most). Empty string clears it.',
+        },
+      },
+      required: ['lines'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'add_slide',
+    name: 'add_slide',
+    description:
+      'Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. layout is a layout name from the theme (lowercase, e.g. "title"). html is the slide\'s INNER html: the app wraps it in <section class="slide" data-layout="LAYOUT">, so do not include that section yourself. Put every piece of text in an element with data-text="slot-name", style with the theme\'s classes and color tokens (never hard-coded colors), draw charts as inline SVG, and never include scripts or external URLs. notes is optional speaker notes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        layout: {
+          type: 'string',
+          description: 'Layout name from the theme, lowercase letters, digits and hyphens.',
+        },
+        html: {
+          type: 'string',
+          description:
+            'The slide\'s inner HTML (no outer section). Text in data-text="slot" elements; no scripts.',
+        },
+        notes: { type: 'string', description: 'Optional speaker notes.' },
+        after_slide_id: {
+          type: 'string',
+          description: 'Insert after this slide; omit to append.',
+        },
+      },
+      required: ['layout', 'html'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'update_slide',
+    name: 'update_slide',
+    description:
+      "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slide_id: { type: 'string' },
+        html: { type: 'string', description: "The slide's full new inner HTML." },
+        layout: { type: 'string' },
+        notes: { type: 'string' },
+        release_pinned: RELEASE_PINNED_SCHEMA,
+      },
+      required: ['slide_id'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'patch_slide',
+    name: 'patch_slide',
+    description:
+      "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slide_id: { type: 'string' },
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              old_text: { type: 'string' },
+              new_text: { type: 'string' },
+            },
+            required: ['old_text', 'new_text'],
+          },
+        },
+        release_pinned: RELEASE_PINNED_SCHEMA,
+      },
+      required: ['slide_id', 'edits'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'move_slide',
+    name: 'move_slide',
+    description: 'Move a slide to a new 0-based position in the deck (clamped to the last slide).',
+    inputSchema: schema([
+      { name: 'slide_id', type: 'string', required: true },
+      { name: 'position', type: 'integer', required: true },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'delete_slide',
+    name: 'delete_slide',
+    description: 'Delete one slide from the deck.',
+    inputSchema: schema([{ name: 'slide_id', type: 'string', required: true }]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'set_theme',
+    name: 'set_theme',
+    description:
+      'Replace the deck\'s whole theme CSS (the classes and color tokens every slide uses). Rarely needed; name is the theme\'s label and defaults to "Custom".',
+    inputSchema: schema([
+      { name: 'css', type: 'string', required: true },
+      { name: 'name', type: 'string' },
+    ]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'replace_in_deck',
+    name: 'replace_in_deck',
+    description:
+      "Swap an exact word or phrase everywhere in the deck's text and speaker notes in one step; markup is never touched. Use it only for an exact swap the user asked for across the deck. It also changes pinned slots, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        find: { type: 'string', description: 'The exact word or phrase to find (200 characters at most).' },
+        replace: { type: 'string', description: 'What to put in its place (200 characters at most).' },
+        match_case: { type: 'boolean', description: 'Match upper and lower case exactly. Default false.' },
+        whole_word: { type: 'boolean', description: 'Only match whole words. Default false.' },
+      },
+      required: ['find', 'replace'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'update_slots',
+    name: 'update_slots',
+    description:
+      'Set the text of slots (elements with data-text) on one or more slides in one call. Use it for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              slide_id: { type: 'string' },
+              slot: { type: 'string', description: "The slot's data-text name." },
+              index: { type: 'integer', description: 'Which slot with that name, 0-based. Default 0.' },
+              html: { type: 'string', description: "The slot's new inline HTML." },
+            },
+            required: ['slide_id', 'slot', 'html'],
+          },
+        },
+      },
+      required: ['edits'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
+  {
+    toolId: 'start_deck',
+    name: 'start_deck',
+    description:
+      'Start a slide deck from this chat. Call it when the user asks for slides, a deck or a presentation, then stop and reply in one short sentence: the app opens the deck in Slides and asks you for the storyline there. title is a short name for the deck.',
+    inputSchema: schema([{ name: 'title', type: 'string', required: true }]),
+    permissionLevel: 'sideEffectful',
+    displayGroup: DECK_TOOL_GROUP,
+  },
   ];
 }
 
@@ -684,6 +899,47 @@ export function selectBuiltinImageTools(
   return builtinToolDefinitions().filter((tool) => tool.displayGroup === IMAGE_TOOL_GROUP);
 }
 
+/** `start_deck` is in the Slides group but is the one tool offered in a chat
+ *  that is NOT bound to a deck. */
+export const START_DECK_TOOL_NAME = 'start_deck';
+
+/** The Slides group: tools that build a deck, offered only in a chat bound to one. */
+export const DECK_TOOL_NAMES = new Set(
+  builtinToolDefinitions()
+    .filter((tool) => tool.displayGroup === DECK_TOOL_GROUP && tool.name !== START_DECK_TOOL_NAME)
+    .map((tool) => tool.name),
+);
+
+/** The turn asks for slides, a deck or a presentation (English). */
+export function looksLikeDeckRequest(prompt: string): boolean {
+  return /\b(slides?|slide\s+deck|deck|decks|presentations?|pitch\s+deck|keynote|powerpoint)\b/i.test(prompt);
+}
+
+/** Document write and edit tools: left out of a deck-request turn so the model
+ *  cannot take the document path instead of `start_deck`. */
+function isDocumentWriteOrEditTool(name: string): boolean {
+  return name.startsWith('write_') || name.startsWith('edit_');
+}
+
+export function isDeckTool(name: string): boolean {
+  return DECK_TOOL_NAMES.has(name);
+}
+
+const STORYLINE_STAGE_DECK_TOOL_NAMES = new Set(['read_deck', 'set_storyline']);
+
+/**
+ * The deck tools for a deck's stage: while the storyline is being agreed the
+ * model can only read the deck and write the storyline; once slides are being
+ * built it gets all of them.
+ */
+export function selectBuiltinDeckTools(stage: DeckStage): ToolDefinition[] {
+  return builtinToolDefinitions().filter(
+    (tool) =>
+      DECK_TOOL_NAMES.has(tool.name) &&
+      (stage === 'slides' || STORYLINE_STAGE_DECK_TOOL_NAMES.has(tool.name)),
+  );
+}
+
 /** Workspace tools that change files, as opposed to reading or searching them. */
 const WORKSPACE_WRITE_TOOL_NAMES = new Set(['workspace_write', 'workspace_edit']);
 
@@ -734,17 +990,39 @@ export function selectBuiltinTurnTools(
   /** The turn asks for an image whatever its wording — an idea picked from
    *  the Ideas page, in any language (the intent regexes are English). */
   imageOverride?: boolean,
+  /** Set when the chat is bound to a Slides deck: the deck tools replace the
+   *  document, brand and image tools, which would write outside the deck. */
+  deckStage?: DeckStage | null,
 ): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
+  if (deckStage) {
+    return {
+      intent: 'edit',
+      tools: [
+        ...builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name)),
+        ...selectBuiltinDeckTools(deckStage),
+        ...selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
+          (tool) => !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name),
+        ),
+        ...selectBuiltinMemoryTools(settings.memoryEnabled),
+      ],
+    };
+  }
   const intent = intentOverride ?? classifyDocumentTurnIntent(prompt);
   const documentTurn = intent === 'create' || intent === 'edit';
   const workspaceTools = selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
     (tool) =>
       !documentTurn || !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name) || mentionsWorkspaceFileTarget(prompt),
   );
+  const deckRequest = looksLikeDeckRequest(prompt);
+  const startDeckTools = deckRequest
+    ? builtinToolDefinitions().filter((tool) => tool.name === START_DECK_TOOL_NAME)
+    : [];
+  const documentTools = selectBuiltinDocumentTools(intent);
   return {
     intent,
     tools: [
-      ...selectBuiltinDocumentTools(intent),
+      ...(deckRequest ? documentTools.filter((tool) => !isDocumentWriteOrEditTool(tool.name)) : documentTools),
+      ...startDeckTools,
       ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
       ...selectBuiltinImageTools(
         imageOverride === true || looksLikeImageGenerationRequest(prompt),

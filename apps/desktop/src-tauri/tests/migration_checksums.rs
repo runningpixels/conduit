@@ -168,6 +168,21 @@ const PINNED: &[(i64, &str, &str)] = &[
         "f3b8bfa1756eb0c429a57087c092368dae217aa462e49900be13a756bf7d9eff78b8e0dd8c96700a5d1afe810e9cd2a7",
         "app settings",
     ),
+    (
+        30,
+        "bec17c82ddf840261ccb54c1aba18ffad9754dce732c163a22936c2fe2dc9d5e01ab3c373e75b355feeed26cac578888",
+        "slides",
+    ),
+    (
+        31,
+        "ed27c9c2467dba467745421044bccc27d763a868d81be4aa120fa509db791debad6ed0e0982db872d0757db0546fc4dc",
+        "slide themes",
+    ),
+    (
+        32,
+        "b3a6636a52ae5646af7f95dd1eb69348f3c1fb15b0f10c1fa1829414b4624f7d9c64714772da2a3a4b17edb8f26d55cc",
+        "deck chats",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

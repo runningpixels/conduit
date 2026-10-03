@@ -527,7 +527,7 @@
   "chat.research.source.failed": "[Ḟàîļéḍ ———]",
   "chat.research.source.read": "[Ŕéàḍ ——]",
   "chat.research.source.skipped": "[Šķîṕṕéḍ ———]",
-  "chat.research.sources.summary": "[{count, plural, one {# šöüŕçé} other {# šöüŕçéš}} ——————]",
+  "chat.research.sources.summary": "[{cited, number} çîťéḍ · {read, number} ŕéàḍ ——————]",
   "chat.research.stop": "[Šťöṕ ——]",
   "chat.research.stoppedNote": "[Ŕéšéàŕçĥ šťöṕṕéḍ. —————— —]",
   "chat.research.stopping": "[Šťöṕṕîñĝ… ————]",

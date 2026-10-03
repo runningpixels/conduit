@@ -527,7 +527,7 @@
   "chat.research.source.failed": "Échec",
   "chat.research.source.read": "Lue",
   "chat.research.source.skipped": "Ignorée",
-  "chat.research.sources.summary": "{count, plural, one {# source} other {# sources}}",
+  "chat.research.sources.summary": "{cited, number} citées · {read, number} lues",
   "chat.research.stop": "Arrêter",
   "chat.research.stoppedNote": "Recherche arrêtée.",
   "chat.research.stopping": "Arrêt en cours…",

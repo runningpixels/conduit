@@ -527,7 +527,7 @@
   "chat.research.source.failed": "失败",
   "chat.research.source.read": "已读",
   "chat.research.source.skipped": "已跳过",
-  "chat.research.sources.summary": "{count, plural, other {# 个来源}}",
+  "chat.research.sources.summary": "已引用 {cited, number} 个 · 已阅读 {read, number} 个",
   "chat.research.stop": "停止",
   "chat.research.stoppedNote": "研究已停止。",
   "chat.research.stopping": "正在停止…",

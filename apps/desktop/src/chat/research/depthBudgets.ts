@@ -6,9 +6,9 @@ import type { ResearchDepth } from '../../ipc/contracts';
 export const DEPTH_ORDER: readonly ResearchDepth[] = ['quick', 'standard', 'deep'];
 
 export const DEPTH_ESTIMATE: Record<ResearchDepth, { searches: number; pages: number; minutes: number }> = {
-  quick: { searches: 8, pages: 15, minutes: 5 },
-  standard: { searches: 20, pages: 40, minutes: 15 },
-  deep: { searches: 50, pages: 100, minutes: 30 },
+  quick: { searches: 8, pages: 15, minutes: 10 },
+  standard: { searches: 20, pages: 40, minutes: 20 },
+  deep: { searches: 50, pages: 100, minutes: 40 },
 };
 
 export const MAX_SUB_QUESTIONS = 6;

@@ -527,7 +527,7 @@
   "chat.research.source.failed": "失敗",
   "chat.research.source.read": "読み込み済み",
   "chat.research.source.skipped": "スキップ",
-  "chat.research.sources.summary": "{count, plural, other {出典 # 件}}",
+  "chat.research.sources.summary": "引用 {cited, number} 件 · 閲覧 {read, number} 件",
   "chat.research.stop": "停止",
   "chat.research.stoppedNote": "リサーチを停止しました。",
   "chat.research.stopping": "停止しています…",

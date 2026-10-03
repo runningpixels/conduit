@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::run::{Engine, StopReason};
-use super::{brief, clip, one_line, repo, report, ResearchIo, ResearchRuns};
+use super::{brief, clip, one_line, repo, ResearchIo, ResearchRuns};
 use crate::db::repository::artifacts::{self, ArtifactContent};
 use crate::db::repository::{conversations, messages};
 use crate::state::{AppSettings, AppState};
@@ -429,11 +429,11 @@ async fn save(
         )
         .await
         .map_err(db)?;
-        // Plain text for the chat history; the card and the report carry the
-        // footnotes and sources.
+        // The summary, with the same [n] citations as the card and the
+        // report, whose numbered Sources list they point into.
         let text = format!(
             "{}\n\nThe full report, with its sources, is in the document \u{201C}{title}\u{201D}.",
-            report::strip_footnotes(&rendered.summary)
+            rendered.summary
         );
         sqlx::query("UPDATE message_parts SET content = ? WHERE message_id = ? AND kind = 'text'")
             .bind(&text)

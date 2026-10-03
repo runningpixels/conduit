@@ -3,9 +3,14 @@
 //!
 //! The writer sees the brief and the verified claims, each labelled `C<n>`
 //! with its host — never page text — and cites by label. Code then turns
-//! labels into `[^k]` footnotes numbered by source in first-cited order,
-//! drops labels that name no verified claim (and any footnote the writer
-//! typed itself), and renders the Sources section from the stored sources.
+//! labels into plain `[k]` citations numbered by source in first-cited order,
+//! drops labels that name no verified claim (and any citation or footnote the
+//! writer typed itself), and renders the numbered Sources list from the
+//! stored sources.
+//!
+//! The Markdown keeps to what the app's own renderer draws (headings, lists,
+//! `*italic*`, `**bold**`, links, blockquotes): no footnote syntax, no
+//! `_underscore_` italics, no tables.
 //! A sentence can therefore only point at a page the run read and whose
 //! quote it found.
 
@@ -22,7 +27,6 @@ use super::{ask_json, clip, one_line, ResearchIo};
 pub const MAX_WRITER_CLAIMS: usize = 60;
 /// Most uncited pages listed under Sources.
 const MAX_OTHER_PAGES: usize = 50;
-const NO_ANSWER: &str = "_No verified source answered this._";
 
 const WRITER_SYSTEM: &str = "You write research reports from verified facts only. You do not \
 browse or use tools. Reply with JSON only.";
@@ -149,8 +153,10 @@ Write the report from these facts only.\n\
 summary: 5 to 8 sentences that answer the question. End every sentence with the ids of the \
 facts it rests on, like [C2] or [C1, C4].\n\
 findings: for each sub-question that has facts, a short paragraph or a few \"- \" bullets, \
-with ids after every sentence.\n\
+with ids after every sentence. Leave out sub-questions that have no facts; they are listed \
+separately, so never write that something was not found.\n\
 disagreements: if facts conflict, a short paragraph naming both sides with their ids; else null.\n\
+State the facts themselves; never refer to \"the page\", \"the source\" or \"the article\". \
 Never invent facts, numbers or ids. No title, headings, links or source list.",
         question = brief.question
     )
@@ -271,11 +277,11 @@ fn end_sentence(text: &str) -> String {
     }
 }
 
-/// Labels → footnotes, shared across the report so numbering follows the
-/// order sources are first cited.
+/// Labels → `[k]` citations, shared across the report so numbering follows
+/// the order sources are first cited.
 pub struct Citations<'a> {
     by_label: HashMap<usize, &'a Labelled<'a>>,
-    /// Source ids in footnote order: `order[k-1]` is `[^k]`.
+    /// Source ids in citation order: `order[k-1]` is `[k]`.
     order: Vec<String>,
     used_claims: HashSet<String>,
 }
@@ -289,7 +295,7 @@ impl<'a> Citations<'a> {
         }
     }
 
-    fn footnote_for(&mut self, label: usize) -> Option<usize> {
+    fn number_for(&mut self, label: usize) -> Option<usize> {
         let labelled = self.by_label.get(&label)?;
         self.used_claims.insert(labelled.claim.id.clone());
         let source = &labelled.source.id;
@@ -303,7 +309,7 @@ impl<'a> Citations<'a> {
         Some(k)
     }
 
-    /// Source ids in footnote order.
+    /// Source ids in citation order.
     pub fn sources_in_order(&self) -> &[String] {
         &self.order
     }
@@ -313,50 +319,61 @@ impl<'a> Citations<'a> {
         &self.used_claims
     }
 
-    /// `text` with `[C<n>]` labels (also `[C1, C3]`) turned into `[^k]`
-    /// footnotes; unknown labels and footnotes the writer typed are removed.
+    /// `text` with `[C<n>]` labels (also `[C1, C3]`) turned into `[k]`
+    /// citations; unknown labels, and citations or footnotes the writer typed
+    /// itself, are removed.
     pub fn map(&mut self, text: &str) -> String {
-        let typed_footnote = typed_footnote_re();
         let cleaned: String = text
             .lines()
             // A footnote definition the writer added has nothing behind it.
             .filter(|l| !footnote_definition_re().is_match(l))
             .collect::<Vec<_>>()
             .join("\n");
-        let cleaned = typed_footnote.replace_all(&cleaned, "");
+        let cleaned = typed_footnote_re().replace_all(&cleaned, "");
+        let cleaned = typed_number_re().replace_all(&cleaned, "");
         let mut out = String::with_capacity(cleaned.len());
         let mut last = 0;
-        // The footnote just written and where it ended, to drop a repeat.
+        // The citation just written and where it ended, to drop a repeat.
         let mut previous: Option<(usize, usize)> = None;
         for found in label_re().find_iter(&cleaned) {
             let between = &cleaned[last..found.start()];
             let only_space = between.trim().is_empty();
             out.push_str(between);
             last = found.end();
-            let mut notes: Vec<usize> = Vec::new();
+            let mut numbers: Vec<usize> = Vec::new();
             for label in found
                 .as_str()
                 .split(|c: char| !c.is_ascii_digit())
                 .filter_map(|d| d.parse::<usize>().ok())
             {
-                if let Some(k) = self.footnote_for(label) {
-                    if !notes.contains(&k) {
-                        notes.push(k);
+                if let Some(k) = self.number_for(label) {
+                    if !numbers.contains(&k) {
+                        numbers.push(k);
                     }
                 }
             }
-            // Footnotes sit right after the word or punctuation they follow.
             let trimmed_len = out.trim_end_matches([' ', '\t']).len();
             out.truncate(trimmed_len);
-            for k in notes {
-                let repeat = matches!(previous, Some((p, end)) if p == k && only_space && end == trimmed_len);
-                if !repeat {
-                    out.push_str(&format!("[^{k}]"));
+            let mut first = true;
+            for k in numbers {
+                let repeat =
+                    matches!(previous, Some((p, end)) if p == k && only_space && end == out.len());
+                if repeat {
+                    continue;
                 }
+                // One space before a group of citations: "rose 31 percent [3][1]."
+                let glued = matches!(previous, Some((_, end)) if end == out.len());
+                if first && !glued && !out.is_empty() && !out.ends_with('\n') {
+                    out.push(' ');
+                }
+                first = false;
+                out.push_str(&format!("[{k}]"));
                 previous = Some((k, out.len()));
             }
         }
         out.push_str(&cleaned[last..]);
+        // "[2](" would read as a link.
+        let out = cite_then_paren_re().replace_all(&out, "$1 (");
         out.trim().to_string()
     }
 }
@@ -373,15 +390,20 @@ fn typed_footnote_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"[ \t]*\[\^[^\]]*\]").expect("footnote regex"))
 }
 
+/// `[3]` or `[1, 2]` the writer typed itself; only code numbers citations.
+fn typed_number_re() -> &'static Regex {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"[ \t]*\[\s*\d+(?:\s*,\s*\d+)*\s*\]").expect("number regex"))
+}
+
+fn cite_then_paren_re() -> &'static Regex {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(\[\d+\])\(").expect("paren regex"))
+}
+
 fn footnote_definition_re() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| Regex::new(r"^\s*\[\^[^\]]*\]:").expect("definition regex"))
-}
-
-/// `[^k]` markers removed, for plain text without the Sources section.
-pub fn strip_footnotes(text: &str) -> String {
-    let stripped = typed_footnote_re().replace_all(text, "");
-    stripped.trim().to_string()
 }
 
 /// Everything the report shows.
@@ -402,9 +424,9 @@ pub struct ReportInput<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rendered {
     pub markdown: String,
-    /// The Summary section's text, footnotes in.
+    /// The Summary section's text, `[k]` citations in.
     pub summary: String,
-    /// Footnote number per cited source id.
+    /// Citation number per cited source id (its place in Sources).
     pub footnotes: HashMap<String, u32>,
     /// Claim ids the report cites.
     pub used_claims: HashSet<String>,
@@ -424,25 +446,22 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
     let mut citations = Citations::new(input.claims);
     let summary = citations.map(&input.draft.summary);
     let fallback = fallback_draft(brief.sub_questions.len(), input.claims);
+    // Sub-questions nothing answered are listed under Open questions only.
     let mut findings = Vec::new();
     for (index, question) in brief.sub_questions.iter().enumerate() {
-        let body = if input.unanswered.contains(&index) {
-            NO_ANSWER.to_string()
-        } else {
-            let text = input
-                .draft
-                .findings
-                .get(&index)
-                .or_else(|| fallback.findings.get(&index))
-                .map(|t| citations.map(t))
-                .unwrap_or_default();
-            if text.is_empty() {
-                NO_ANSWER.to_string()
-            } else {
-                text
-            }
-        };
-        findings.push(format!("### {}\n\n{body}", one_line(question)));
+        if input.unanswered.contains(&index) {
+            continue;
+        }
+        let text = input
+            .draft
+            .findings
+            .get(&index)
+            .or_else(|| fallback.findings.get(&index))
+            .map(|t| citations.map(t))
+            .unwrap_or_default();
+        if !text.is_empty() {
+            findings.push(format!("### {}\n\n{text}", one_line(question)));
+        }
     }
     let disagreements = input
         .draft
@@ -455,17 +474,16 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         input.sources.iter().map(|s| (s.id.as_str(), s)).collect();
     let cited = citations.sources_in_order().to_vec();
     let mut footnotes = HashMap::new();
-    let mut definitions = Vec::new();
+    let mut entries = Vec::new();
     for (i, id) in cited.iter().enumerate() {
         let k = i + 1;
         footnotes.insert(id.clone(), k as u32);
         if let Some(source) = by_id.get(id.as_str()) {
-            definitions.push(format!(
-                "[^{k}]: {} — {} — {} — {}",
-                source_title(source),
+            entries.push(format!(
+                "{k}. {} — {} — fetched {}",
+                source_link(source),
                 source.host,
                 date_of(&source.fetched_at),
-                source.shown_url()
             ));
         }
     }
@@ -481,12 +499,7 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
                 ResearchSourceStatus::Failed => " (could not be read)",
                 ResearchSourceStatus::Skipped => " (skipped)",
             };
-            format!(
-                "- {} — {} — {}{state}",
-                source_title(s),
-                s.host,
-                s.shown_url()
-            )
+            format!("- {} — {}{state}", source_link(s), s.host)
         })
         .collect();
 
@@ -494,7 +507,7 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
     let mut md = String::new();
     md.push_str(&format!("# {}\n\n", one_line(&brief.question)));
     md.push_str(&format!(
-        "_Researched {} · {count} source{} · {}_\n\n",
+        "*Researched {} · {count} source{} · {}*\n\n",
         input.date,
         if count == 1 { "" } else { "s" },
         depth_label(brief.depth)
@@ -503,9 +516,11 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         md.push_str(&format!("> {note}\n\n"));
     }
     md.push_str(&format!("## Summary\n\n{summary}\n\n"));
-    md.push_str("## Findings\n\n");
-    md.push_str(&findings.join("\n\n"));
-    md.push_str("\n\n");
+    if !findings.is_empty() {
+        md.push_str("## Findings\n\n");
+        md.push_str(&findings.join("\n\n"));
+        md.push_str("\n\n");
+    }
     if let Some(d) = &disagreements {
         md.push_str(&format!("## Where sources disagree\n\n{d}\n\n"));
     }
@@ -519,10 +534,10 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         md.push('\n');
     }
     md.push_str("## Sources\n\n");
-    if definitions.is_empty() {
-        md.push_str("_No source is cited._\n");
+    if entries.is_empty() {
+        md.push_str("*No source is cited.*\n");
     } else {
-        md.push_str(&definitions.join("\n"));
+        md.push_str(&entries.join("\n"));
         md.push('\n');
     }
     if !others.is_empty() {
@@ -546,8 +561,21 @@ fn source_title(source: &SourceRecord) -> String {
         .map(one_line)
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| source.host.clone());
-    // Brackets would read as link syntax in a footnote line.
-    clip(&title.replace(['[', ']'], ""), 160)
+    // Brackets would end the link text early; `*` and backticks would start
+    // emphasis or code.
+    clip(&title.replace(['[', ']', '*', '`'], ""), 160)
+}
+
+/// `[Title](url)`, with the characters that would end the link escaped.
+fn source_link(source: &SourceRecord) -> String {
+    let url = source
+        .shown_url()
+        .replace(' ', "%20")
+        .replace('(', "%28")
+        .replace(')', "%29")
+        .replace('<', "%3C")
+        .replace('>', "%3E");
+    format!("[{}]({url})", source_title(source))
 }
 
 fn date_of(at: &str) -> &str {
@@ -584,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn labels_map_to_footnotes_by_source_in_first_cited_order() {
+    fn labels_map_to_numbers_by_source_in_first_cited_order() {
         let sources = vec![source("s1", "a.com"), source("s2", "b.org")];
         let claims = vec![
             claim("c1", "s1", 0),
@@ -594,9 +622,10 @@ mod tests {
         let labelled = label_claims(&claims, &sources, 1);
         assert_eq!(labelled.len(), 3);
         let mut cites = Citations::new(&labelled);
-        // C2 (b.org) is cited first, so b.org is [^1]; C1 and C3 share a.com.
-        let text = cites.map("First [C2]. Second [C1]. Third [C3]. Fake [C99]. Typed [^7].");
-        assert_eq!(text, "First[^1]. Second[^2]. Third[^2]. Fake. Typed.");
+        // C2 (b.org) is cited first, so b.org is [1]; C1 and C3 share a.com.
+        let text =
+            cites.map("First [C2]. Second [C1]. Third [C3]. Fake [C99]. Typed [^7] and [4, 5].");
+        assert_eq!(text, "First [1]. Second [2]. Third [2]. Fake. Typed and.");
         assert_eq!(cites.sources_in_order(), ["s2", "s1"]);
         assert_eq!(cites.used_claims().len(), 3);
     }
@@ -611,20 +640,25 @@ mod tests {
         ];
         let labelled = label_claims(&claims, &sources, 1);
         let mut cites = Citations::new(&labelled);
-        assert_eq!(cites.map("Both [C1, C2]."), "Both[^1].");
+        assert_eq!(cites.map("Both [C1, C2]."), "Both [1].");
         assert_eq!(
             cites.map("Again [C1][C2] and [c3; C1]."),
-            "Again[^1] and[^2][^1]."
+            "Again [1] and [2][1]."
         );
+        assert_eq!(cites.map("[C1] starts it."), "[1] starts it.");
+        // A citation followed by "(" must not read as a link.
+        assert_eq!(cites.map("Rate [C3](2025)."), "Rate [2] (2025).");
     }
 
     #[test]
-    fn render_lists_cited_sources_open_questions_and_others() {
+    fn render_uses_only_markdown_the_app_draws() {
         let mut sources = vec![source("s1", "a.com"), source("s2", "b.org")];
         sources.push(SourceRecord {
             status: ResearchSourceStatus::Failed,
             ..source("s3", "c.net")
         });
+        sources[1].title = Some("A [bracketed] *title*".into());
+        sources[1].final_url = Some("https://b.org/a page (1)".into());
         let claims = vec![claim("c1", "s1", 0), claim("c2", "s2", 0)];
         let labelled = label_claims(&claims, &sources, 2);
         let brief = ResearchBrief {
@@ -637,7 +671,10 @@ mod tests {
         };
         let draft = Draft {
             summary: "It is so [C2]. Also [C1]. Made up [C5].".into(),
-            findings: HashMap::from([(0, "Detail [C1].".into()), (1, "Invented [C2].".into())]),
+            findings: HashMap::from([
+                (0, "Detail [C1].".into()),
+                (1, "No data was found [C2].".into()),
+            ]),
             disagreements: None,
         };
         let r = render(&ReportInput {
@@ -649,26 +686,32 @@ mod tests {
             unanswered: &[1],
             note: None,
         });
-        assert_eq!(r.summary, "It is so[^1]. Also[^2]. Made up.");
-        assert!(r
-            .markdown
-            .starts_with("# Why?\n\n_Researched 2026-10-03 · 2 sources · Quick_"));
-        assert!(r
-            .markdown
-            .contains("[^1]: Title s2 — b.org — 2026-10-01 — https://b.org/page"));
-        assert!(r
-            .markdown
-            .contains("[^2]: Title s1 — a.com — 2026-10-01 — https://a.com/page"));
-        // An unanswered sub-question says so, whatever the writer wrote.
-        assert!(r
-            .markdown
-            .contains("### Two?\n\n_No verified source answered this._"));
-        assert!(!r.markdown.contains("Invented"));
-        assert!(r.markdown.contains("## Open questions\n\n- Two?"));
-        assert!(r
-            .markdown
-            .contains("- Title s3 — c.net — https://c.net/page (could not be read)"));
+        let md = &r.markdown;
+        assert_eq!(r.summary, "It is so [1]. Also [2]. Made up.");
+        assert!(
+            md.starts_with("# Why?\n\n*Researched 2026-10-03 · 2 sources · Quick*\n\n"),
+            "{md}"
+        );
+        assert!(md.contains("### One?\n\nDetail [2]."), "{md}");
+        // An unanswered sub-question is only an open question, whatever the writer wrote.
+        assert!(!md.contains("### Two?"), "{md}");
+        assert!(!md.contains("No data was found"), "{md}");
+        assert!(md.contains("## Open questions\n\n- Two?"), "{md}");
+        assert!(
+            md.contains(
+                "## Sources\n\n1. [A bracketed title](https://b.org/a%20page%20%281%29) — b.org — fetched 2026-10-01\n\
+2. [Title s1](https://a.com/page) — a.com — fetched 2026-10-01\n"
+            ),
+            "{md}"
+        );
+        assert!(
+            md.contains("Also read, not cited:\n\n- [Title s3](https://c.net/page) — c.net (could not be read)"),
+            "{md}"
+        );
+        // Nothing the app's Markdown can't draw.
+        assert!(!md.contains("[^"), "{md}");
+        assert!(!md.contains("_Researched"), "{md}");
+        assert!(!md.contains('|'), "{md}");
         assert_eq!(r.footnotes.get("s2"), Some(&1));
-        assert_eq!(strip_footnotes(&r.summary), "It is so. Also. Made up.");
     }
 }

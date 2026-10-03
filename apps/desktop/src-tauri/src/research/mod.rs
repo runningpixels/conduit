@@ -3,7 +3,7 @@
 //! The user asks a question in a chat; a planner call turns it into a brief
 //! (sub-questions, scope, domains, depth) the user edits and approves; the run
 //! then searches, reads whole pages, extracts claims with exact quotes, checks
-//! for gaps, and writes a Markdown report whose every footnote points at a page
+//! for gaps, and writes a Markdown report whose every `[n]` citation points at a page
 //! that really contains the quoted words.
 //!
 //! - `brief`: the planner call and checking a brief the user sends back

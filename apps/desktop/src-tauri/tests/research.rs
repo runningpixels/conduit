@@ -5,6 +5,7 @@
 mod common;
 
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -63,6 +64,10 @@ struct FakeIo {
     /// Searches that answer "429" before working.
     rate_limited: Mutex<u32>,
     gap_checks: Mutex<u32>,
+    /// Hold each extractor call this long, counting how many overlap.
+    extract_delay: Option<Duration>,
+    in_flight: AtomicUsize,
+    max_in_flight: AtomicUsize,
 }
 
 impl FakeIo {
@@ -139,6 +144,12 @@ impl ResearchIo for FakeIo {
             .lock()
             .unwrap()
             .push((system.to_string(), user.to_string()));
+        if let (Some(delay), true) = (self.extract_delay, system.contains("You extract facts")) {
+            let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_in_flight.fetch_max(now, Ordering::SeqCst);
+            tokio::time::sleep(delay).await;
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+        }
         let reply = if system.contains("You plan web research") {
             json!({
                 "subQuestions": [SQ_KM, SQ_COST, SQ_TRIPS, SQ_KM],
@@ -297,25 +308,40 @@ async fn brief_loop_quote_check_injection_and_citations() {
     let md = &report.markdown;
     assert!(
         md.starts_with(&format!(
-            "# {QUESTION}\n\n_Researched 2026-10-03 · 3 sources · Quick_\n\n## Summary\n\n"
+            "# {QUESTION}\n\n*Researched 2026-10-03 · 3 sources · Quick*\n\n## Summary\n\n"
         )),
         "{md}"
     );
     assert_eq!(
         report.summary,
-        "The city built 42 km of protected lanes[^1]. They cost 18 million euros[^2]. Trips rose by 31 percent[^3]. Lanes cost nothing."
+        "The city built 42 km of protected lanes [1]. They cost 18 million euros [2]. Trips rose by 31 percent [3]. Lanes cost nothing."
     );
-    assert!(!md.contains("[C"), "{md}");
-    assert!(!md.contains("[^9]"), "{md}");
+    let labels_left = md
+        .split("[C")
+        .skip(1)
+        .any(|rest| rest.starts_with(|c: char| c.is_ascii_digit()));
+    assert!(!labels_left, "{md}");
+    assert!(!md.contains("[^"), "{md}");
     assert!(!md.contains("## Built"), "{md}");
-    assert!(md.contains("- Trips rose 31 percent[^3][^1]."), "{md}");
-    assert!(md.contains("[^1]: Lanes report — a-city.gov — "), "{md}");
-    assert!(md.contains("[^2]: Budget — budget.example.org — "), "{md}");
-    assert!(md.contains("[^3]: Counts — counts.example.net — "), "{md}");
+    assert!(md.contains("- Trips rose 31 percent [3][1]."), "{md}");
+    assert!(
+        md.contains("1. [Lanes report](https://www.a-city.gov/lanes?utm_source=feed) — a-city.gov — fetched "),
+        "{md}"
+    );
+    assert!(
+        md.contains(
+            "2. [Budget](https://budget.example.org/lanes) — budget.example.org — fetched "
+        ),
+        "{md}"
+    );
+    assert!(
+        md.contains("3. [Counts](https://counts.example.net/2025) — counts.example.net — fetched "),
+        "{md}"
+    );
     // The injection page was read but nothing from it is cited.
     assert!(
         md.contains(
-            "Also read, not cited:\n\n- Bike news — evil.example — https://evil.example/news"
+            "Also read, not cited:\n\n- [Bike news](https://evil.example/news) — evil.example"
         ),
         "{md}"
     );
@@ -355,11 +381,8 @@ async fn budget_stop_keeps_partial_results_and_still_writes_the_report() {
         md.contains("## Open questions\n\n- What did the new lanes cost?\n- Did cycling grow?"),
         "{md}"
     );
-    assert!(
-        md.contains("### What did the new lanes cost?\n\n_No verified source answered this._"),
-        "{md}"
-    );
-    assert!(md.contains("[^1]: Lanes report"), "{md}");
+    assert!(!md.contains("### What did the new lanes cost?"), "{md}");
+    assert!(md.contains("1. [Lanes report]"), "{md}");
 }
 
 #[tokio::test]
@@ -376,7 +399,7 @@ async fn token_budget_and_user_stop_write_the_report_without_the_model() {
     let md = out.report.expect("a report").markdown;
     assert!(md.contains("model tokens"), "{md}");
     assert!(
-        md.contains("The city built 42 km of protected lanes in 2025.[^1]"),
+        md.contains("The city built 42 km of protected lanes in 2025. [1]"),
         "{md}"
     );
 
@@ -390,7 +413,37 @@ async fn token_budget_and_user_stop_write_the_report_without_the_model() {
     assert!(io.calls.lock().unwrap().is_empty());
     let md = out.report.expect("a report").markdown;
     assert!(md.contains("stopped before it finished"), "{md}");
-    assert!(md.contains("_No source is cited._"), "{md}");
+    assert!(md.contains("*No source is cited.*"), "{md}");
+}
+
+#[tokio::test]
+async fn pages_are_read_three_at_a_time_and_claims_keep_page_order() {
+    let io = FakeIo {
+        extract_delay: Some(Duration::from_millis(40)),
+        ..FakeIo::default()
+    };
+    let out = run_with(&io, ResearchDepth::Quick.budget(), CancellationToken::new()).await;
+    assert_eq!(out.error, None);
+    // The first round's three pages were extracted at the same time.
+    assert_eq!(io.max_in_flight.load(Ordering::SeqCst), 3);
+    // Claims and sources are in page order regardless of which finished first.
+    let hosts: Vec<_> = out.sources.iter().map(|s| s.host.as_str()).collect();
+    assert_eq!(
+        hosts,
+        [
+            "a-city.gov",
+            "evil.example",
+            "budget.example.org",
+            "counts.example.net"
+        ]
+    );
+    let verified: Vec<_> = out
+        .claims
+        .iter()
+        .filter(|c| c.verified)
+        .map(|c| c.sub_question)
+        .collect();
+    assert_eq!(verified, [0, 1, 2]);
 }
 
 #[tokio::test]
@@ -593,7 +646,7 @@ async fn plan_approve_run_and_save_the_report_in_the_chat() {
     assert_eq!(done.unverified_dropped, 1);
     assert!(done.unanswered.is_empty());
     let summary = done.summary.clone().unwrap();
-    assert!(summary.contains("[^1]"), "{summary}");
+    assert!(summary.contains("[1]"), "{summary}");
     // Sources: cited first, in footnote order, with their verified claim counts.
     let cited: Vec<_> = done.sources.iter().filter_map(|s| s.footnote).collect();
     assert_eq!(cited, vec![1, 2, 3]);
@@ -637,7 +690,7 @@ async fn plan_approve_run_and_save_the_report_in_the_chat() {
         .unwrap();
     let reply = history[1].parts[0].content.clone().unwrap();
     assert!(
-        reply.starts_with("The city built 42 km of protected lanes. They cost"),
+        reply.starts_with("The city built 42 km of protected lanes [1]. They cost"),
         "{reply}"
     );
     assert!(!reply.contains("[^"), "{reply}");

@@ -17,6 +17,7 @@
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -37,6 +38,8 @@ use crate::workflows::extract;
 pub const MAX_PAGES_PER_HOST: u32 = 3;
 /// Pages read per search, at most.
 pub const PAGES_PER_SEARCH: usize = 3;
+/// Pages fetched and extracted at once (polite to sites, and to the model).
+pub const CONCURRENT_PAGES: usize = 3;
 /// Search rounds, the first included.
 pub const MAX_ROUNDS: usize = 3;
 /// Follow-up searches per sub-question per round.
@@ -308,6 +311,10 @@ impl Engine<'_> {
 
     /// The search/read/extract rounds. Returns why they ended early, if they
     /// did, and a failure that ended them.
+    ///
+    /// Each round searches every open sub-question first, then reads the
+    /// pages it chose [`CONCURRENT_PAGES`] at a time (fetch, then extract),
+    /// handling the results in page order so claims keep a stable order.
     async fn gather(
         &self,
         io: &Metered<'_>,
@@ -323,12 +330,16 @@ impl Engine<'_> {
             .collect();
 
         for round in 0..MAX_ROUNDS {
+            let mut pending: Vec<String> = Vec::new();
+            let mut halt: Option<StopReason> = None;
             for (_, query) in std::mem::take(&mut queue) {
                 if let Some(reason) = self.halted(work, io) {
                     return (Some(reason), None);
                 }
                 if work.progress.searches_used >= self.budget.searches {
-                    return (Some(StopReason::Searches), None);
+                    // Read what was already chosen, then stop.
+                    halt = Some(StopReason::Searches);
+                    break;
                 }
                 if !work.searched.insert(query.to_lowercase()) {
                     continue;
@@ -345,18 +356,23 @@ impl Engine<'_> {
                     Err(reason) => return (Some(reason), None),
                 };
                 for url in choose(&hits, brief, &work.seen, &work.per_host) {
-                    if let Some(reason) = self.halted(work, io) {
-                        return (Some(reason), None);
+                    if let Some(canonical) = urls::canonical(&url) {
+                        work.seen.insert(canonical);
                     }
-                    if work.progress.pages_read >= self.budget.pages {
-                        return (Some(StopReason::Pages), None);
-                    }
-                    match self.read(io, work, &url).await {
-                        Ok(()) => {}
-                        Err(Fail::Halt(reason)) => return (Some(reason), None),
-                        Err(Fail::Error(e)) => return (None, Some(e)),
-                    }
+                    *work
+                        .per_host
+                        .entry(urls::host(&url).unwrap_or_default())
+                        .or_default() += 1;
+                    pending.push(url);
                 }
+            }
+            match self.read_all(io, work, pending).await {
+                Ok(()) => {}
+                Err(Fail::Halt(reason)) => return (Some(reason), None),
+                Err(Fail::Error(e)) => return (None, Some(e)),
+            }
+            if let Some(reason) = halt {
+                return (Some(reason), None);
             }
             if round + 1 == MAX_ROUNDS {
                 break;
@@ -387,36 +403,99 @@ impl Engine<'_> {
         (None, None)
     }
 
-    /// Fetch one page, store it, and extract and check its claims.
-    async fn read(&self, io: &Metered<'_>, work: &mut Work<'_>, url: &str) -> Result<(), Fail> {
-        let canonical = urls::canonical(url).unwrap_or_else(|| url.to_string());
-        let host = urls::host(url).unwrap_or_default();
-        work.seen.insert(canonical.clone());
-        *work.per_host.entry(host.clone()).or_default() += 1;
-        work.progress.pages_read += 1;
-        self.set_phase(&mut work.progress, io, "reading", Some(url));
+    /// Read `urls`, [`CONCURRENT_PAGES`] at a time, within the page budget;
+    /// keep each page and its checked claims, in page order. Pages finished
+    /// before a stop or failure are kept.
+    async fn read_all(
+        &self,
+        io: &Metered<'_>,
+        work: &mut Work<'_>,
+        urls: Vec<String>,
+    ) -> Result<(), Fail> {
+        let mut rest = urls.as_slice();
+        while !rest.is_empty() {
+            if let Some(reason) = self.halted(work, io) {
+                return Err(Fail::Halt(reason));
+            }
+            let left = self.budget.pages.saturating_sub(work.progress.pages_read) as usize;
+            if left == 0 {
+                return Err(Fail::Halt(StopReason::Pages));
+            }
+            let take = rest.len().min(CONCURRENT_PAGES).min(left);
+            let (batch, after) = rest.split_at(take);
+            rest = after;
+            work.progress.pages_read += take as u32;
 
-        let fetched = self
-            .guarded(work.started, io.fetch(url))
-            .await
-            .map_err(Fail::Halt)?;
+            let shared = Mutex::new(work.progress.clone());
+            let started = work.started;
+            let subs = &work.brief.sub_questions;
+            let pages = futures::future::join_all(
+                batch
+                    .iter()
+                    .map(|url| self.read_page(io, started, subs, url, &shared)),
+            )
+            .await;
+            work.progress = shared.into_inner().unwrap_or_else(|e| e.into_inner());
+
+            let mut ended: Option<Fail> = None;
+            for page in pages {
+                if let Err(fail) = self.keep_page(work, page) {
+                    ended.get_or_insert(fail);
+                }
+            }
+            work.progress.claims = work.claims.iter().filter(|c| c.verified).count() as u32;
+            self.set_phase(&mut work.progress, io, "extracting", None);
+            if let Some(fail) = ended {
+                return Err(fail);
+            }
+        }
+        Ok(())
+    }
+
+    /// Fetch one page and, if it has text, extract its claims. Touches only
+    /// the shared progress, so several run at once.
+    async fn read_page(
+        &self,
+        io: &Metered<'_>,
+        started: Instant,
+        sub_questions: &[String],
+        url: &str,
+        progress: &Mutex<ResearchProgress>,
+    ) -> PageRead {
+        let note = |phase: &str| {
+            if let Ok(mut p) = progress.lock() {
+                self.set_phase(&mut p, io, phase, Some(url));
+            }
+        };
+        note("reading");
         let mut source = SourceRecord {
             id: Uuid::new_v4().to_string(),
             url: url.to_string(),
             final_url: None,
             title: None,
-            host: host.clone(),
+            host: urls::host(url).unwrap_or_default(),
             fetched_at: now_iso8601(),
             status: ResearchSourceStatus::Failed,
             text: String::new(),
             content_hash: None,
         };
+        let fetched = match self.guarded(started, io.fetch(url)).await {
+            Ok(fetched) => fetched,
+            Err(reason) => {
+                return PageRead {
+                    source: None,
+                    claims: Err(Fail::Halt(reason)),
+                }
+            }
+        };
         let page = match fetched {
             Ok(page) => page,
             Err(e) => {
                 tracing::info!(%url, error = %e, "research: a page could not be read");
-                work.sources.push(source);
-                return Ok(());
+                return PageRead {
+                    source: Some(source),
+                    claims: Ok(Vec::new()),
+                };
             }
         };
         if page.url != url {
@@ -424,39 +503,63 @@ impl Engine<'_> {
             if let Some(host) = urls::host(&page.url) {
                 source.host = host;
             }
-            // A redirect to a page already read adds nothing.
-            if let Some(final_canonical) = urls::canonical(&page.url) {
-                if final_canonical != canonical && !work.seen.insert(final_canonical) {
-                    source.status = ResearchSourceStatus::Skipped;
-                    work.sources.push(source);
-                    return Ok(());
-                }
-            }
         }
         source.title = page.title.clone().filter(|t| !t.trim().is_empty());
         if extract::looked_empty(&page.text) {
             source.status = ResearchSourceStatus::Empty;
-            work.sources.push(source);
-            return Ok(());
+            return PageRead {
+                source: Some(source),
+                claims: Ok(Vec::new()),
+            };
         }
         source.status = ResearchSourceStatus::Read;
         source.content_hash = Some(sha256_hex(&page.text));
         source.text = page.text;
-        let source_id = source.id.clone();
         let title = source.title.clone().unwrap_or_else(|| source.host.clone());
-        let normalized = verify::normalize(&source.text);
-        let text = source.text.clone();
-        work.sources.push(source);
 
-        self.set_phase(&mut work.progress, io, "extracting", Some(url));
-        let raw = self
+        note("extracting");
+        let claims = match self
             .guarded(
-                work.started,
-                claims::extract(io, &work.brief.sub_questions, &title, &text),
+                started,
+                claims::extract(io, sub_questions, &title, &source.text),
             )
             .await
-            .map_err(Fail::Halt)?
-            .map_err(Fail::Error)?;
+        {
+            Ok(Ok(claims)) => Ok(claims),
+            Ok(Err(e)) => Err(Fail::Error(e)),
+            Err(reason) => Err(Fail::Halt(reason)),
+        };
+        PageRead {
+            source: Some(source),
+            claims,
+        }
+    }
+
+    /// Store a page [`read_page`](Self::read_page) returned and check its
+    /// claims' quotes; the page's failure, if it ended the run.
+    fn keep_page(&self, work: &mut Work<'_>, page: PageRead) -> Result<(), Fail> {
+        let Some(mut source) = page.source else {
+            return page.claims.map(|_| ());
+        };
+        // A redirect to a page already read adds nothing.
+        if let Some(final_url) = &source.final_url {
+            let canonical = urls::canonical(&source.url);
+            if let Some(final_canonical) = urls::canonical(final_url) {
+                if Some(&final_canonical) != canonical.as_ref()
+                    && !work.seen.insert(final_canonical)
+                {
+                    source.status = ResearchSourceStatus::Skipped;
+                    source.text.clear();
+                    source.content_hash = None;
+                    work.sources.push(source);
+                    return page.claims.map(|_| ());
+                }
+            }
+        }
+        let source_id = source.id.clone();
+        let normalized = verify::normalize(&source.text);
+        work.sources.push(source);
+        let raw = page.claims?;
         for claim in raw {
             let verified = verify::quote_in_normalized(&claim.quote, &normalized);
             let key = format!("{source_id}\u{1}{}", verify::normalize(&claim.quote));
@@ -475,8 +578,6 @@ impl Engine<'_> {
                 verified,
             });
         }
-        work.progress.claims = work.claims.iter().filter(|c| c.verified).count() as u32;
-        self.set_phase(&mut work.progress, io, "extracting", Some(url));
         Ok(())
     }
 
@@ -563,6 +664,13 @@ impl Engine<'_> {
 enum Fail {
     Halt(StopReason),
     Error(String),
+}
+
+/// What reading one page gave: the page (`None` when stopped before the
+/// fetch finished) and its unchecked claims, or why the run must end.
+struct PageRead {
+    source: Option<SourceRecord>,
+    claims: Result<Vec<claims::RawClaim>, Fail>,
 }
 
 fn clamp_u32(n: u64) -> u32 {

@@ -60,9 +60,14 @@ fn extractor_prompt(sub_questions: &[String], title: &str, text: &str) -> String
     format!(
         "Sub-questions:\n{list}\n\nPage title: {title}\n<page>\n{text}\n</page>\n\n\
 List up to {MAX_CLAIMS_PER_PAGE} facts from the page that help answer a sub-question. For each \
-give: subQuestion (its number), claim (one plain sentence), and quote (words copied exactly from \
-the page, 20 to 300 characters, that show the claim is true). Do not change the quote's wording. \
-If the page has nothing relevant, reply {{\"claims\": []}}."
+give: subQuestion (its number), claim, and quote.\n\
+- claim: one standalone fact in plain words that names who or what, the number and the date \
+where the page gives them, e.g. \"Hoboken's 2025 general tax rate is 1.6 percent.\" Never write \
+\"the page\", \"the article\" or \"the source says\".\n\
+- quote: words copied exactly from the page, 20 to 300 characters, that show the claim is true. \
+Do not change the quote's wording.\n\
+Only list facts the page states. Skip anything that only says information is missing or not \
+given. If the page has nothing relevant, reply {{\"claims\": []}}."
     )
 }
 
@@ -83,6 +88,50 @@ const INSTRUCTION_MARKERS: &[&str] = &[
     "you are now",
     "new instructions:",
 ];
+
+/// How a claim must not begin: it is about the page, not a fact.
+const META_OPENINGS: &[&str] = &[
+    "the page",
+    "this page",
+    "the article",
+    "this article",
+    "the source",
+    "this source",
+    "the website",
+    "the site",
+    "the document",
+];
+
+/// Phrases that only say something is missing.
+const ABSENCE_MARKERS: &[&str] = &[
+    "does not provide",
+    "do not provide",
+    "doesn't provide",
+    "provides no",
+    "not specified",
+    "does not specify",
+    "doesn't specify",
+    "does not mention",
+    "doesn't mention",
+    "does not state",
+    "doesn't state",
+    "does not include",
+    "no information",
+    "not provided",
+    "not mentioned",
+    "not given",
+];
+
+/// `true` for a claim that describes the page ("The page notes that…")
+/// or only says a fact is missing: neither belongs in a report.
+pub fn is_not_a_fact(claim: &str) -> bool {
+    let lower = claim.trim().to_lowercase();
+    META_OPENINGS.iter().any(|m| {
+        lower
+            .strip_prefix(m)
+            .is_some_and(|rest| rest.is_empty() || !rest.starts_with(char::is_alphanumeric))
+    }) || ABSENCE_MARKERS.iter().any(|m| lower.contains(m))
+}
 
 /// `true` for a claim that reads as an instruction or carries an address:
 /// a fact for a report has no business telling anyone to go somewhere.
@@ -118,6 +167,10 @@ pub fn parse_claims(data: &Value, sub_questions: usize) -> Vec<RawClaim> {
         }
         if looks_like_instruction(&claim) || looks_like_instruction(&quote) {
             tracing::info!("research: dropped a claim that reads as an instruction");
+            continue;
+        }
+        if is_not_a_fact(&claim) {
+            tracing::info!("research: dropped a claim about the page rather than a fact");
             continue;
         }
         out.push(RawClaim {
@@ -166,6 +219,35 @@ mod tests {
         assert_eq!(claims.len(), 2, "{claims:?}");
         assert_eq!(claims[0].sub_question, 0);
         assert_eq!(claims[1].sub_question, 1);
+    }
+
+    #[test]
+    fn claims_about_the_page_or_about_missing_data_are_not_facts() {
+        for claim in [
+            "The page gives only a Hudson County-wide median effective tax rate.",
+            "THE ARTICLE notes that fees vary.",
+            "This page: rates are listed below.",
+            "The source says the rate rose.",
+            "The listing does not provide HOA fees for 2026.",
+            "The report provides no figures for Jersey City.",
+            "The 2026 rate is not specified.",
+        ] {
+            assert!(is_not_a_fact(claim), "{claim}");
+        }
+        for claim in [
+            "Hoboken's 2025 general tax rate is 1.6 percent.",
+            "The pages of the 2025 budget list 18 million euros for lanes.",
+            "Sources of revenue include parking fees.",
+        ] {
+            assert!(!is_not_a_fact(claim), "{claim}");
+        }
+        let data = json!({ "claims": [
+            { "subQuestion": 1, "claim": "The page notes that rates rose.", "quote": "rates rose sharply in the year 2025" },
+            { "subQuestion": 1, "claim": "Rates rose in 2025.", "quote": "rates rose sharply in the year 2025" }
+        ]});
+        let kept = parse_claims(&data, 1);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].claim, "Rates rose in 2025.");
     }
 
     #[test]

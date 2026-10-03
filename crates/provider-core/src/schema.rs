@@ -3198,9 +3198,9 @@ impl ResearchDepth {
     /// The limits a run at this depth works within.
     pub fn budget(self) -> ResearchBudget {
         let (searches, pages, tokens, minutes) = match self {
-            Self::Quick => (8, 15, 150_000, 5),
-            Self::Standard => (20, 40, 400_000, 15),
-            Self::Deep => (50, 100, 1_000_000, 30),
+            Self::Quick => (8, 15, 150_000, 10),
+            Self::Standard => (20, 40, 400_000, 20),
+            Self::Deep => (50, 100, 1_000_000, 40),
         };
         ResearchBudget {
             searches,

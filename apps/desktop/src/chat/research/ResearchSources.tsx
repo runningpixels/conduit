@@ -14,7 +14,7 @@ interface ResearchSourcesProps {
   onError?: (message: string) => void;
 }
 
-/** Every page the run looked at, collapsed: title, host, whether it was read, and its footnote in the report. */
+/** Every page the run looked at, collapsed under "N cited · M read": title, host, whether it was read, and its number in the report's Sources. */
 export function ResearchSources({ sources, onError }: ResearchSourcesProps) {
   const t = useT();
   if (sources.length === 0) return null;
@@ -29,7 +29,12 @@ export function ResearchSources({ sources, onError }: ResearchSourcesProps) {
 
   return (
     <details className="research-sources">
-      <summary>{t('chat.research.sources.summary', { count: sources.length })}</summary>
+      <summary>
+        {t('chat.research.sources.summary', {
+          cited: sources.filter((source) => source.footnote != null).length,
+          read: sources.filter((source) => source.status === 'read').length,
+        })}
+      </summary>
       <ul className="research-source-list">
         {sources.map((source) => (
           <li key={source.id} className="research-source" data-status={source.status}>

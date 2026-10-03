@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use provider_core::schema::{
-    Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
-    ResearchBrief, ResearchRunUpdated, ResearchStatus,
+    GenerationControls, Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent,
+    ProviderRequest, ReasoningEffort, ResearchBrief, ResearchRunUpdated, ResearchStatus,
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
@@ -217,9 +217,26 @@ fn request(
         developer_prompt: None,
         attachments: None,
         tool_definitions: Vec::new(),
-        generation_controls: None,
+        generation_controls: low_effort(&settings.active_provider),
         response_format: None,
         web_search: None,
+    })
+}
+
+/// Ask for little reasoning: each call is a narrow, well-specified task, and
+/// a thinking model otherwise spends a minute per page. Only for providers
+/// where it is safe: OpenRouter passes it on to models that support it and
+/// drops it for the rest, and the Anthropic adapter sends it only to models
+/// that accept it. Plain OpenAI-style endpoints reject the field on models
+/// without reasoning, so they get nothing.
+fn low_effort(provider: &str) -> Option<GenerationControls> {
+    matches!(provider, "openrouter" | "anthropic").then(|| GenerationControls {
+        temperature: None,
+        top_p: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tool_choice: None,
+        reasoning_effort: Some(ReasoningEffort::Low),
     })
 }
 
@@ -272,4 +289,21 @@ pub fn spawn_run(app: AppHandle, run_id: String, brief: ResearchBrief) {
         service::execute(&state, &io, &run_id, &brief, &stop, &notify).await;
         app.state::<ResearchRuns>().end(&run_id);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn low_reasoning_is_asked_only_where_it_is_safe() {
+        for provider in ["openrouter", "anthropic"] {
+            let controls = low_effort(provider).expect(provider);
+            assert_eq!(controls.reasoning_effort, Some(ReasoningEffort::Low));
+            assert_eq!(controls.max_tokens, None);
+        }
+        for provider in ["openai", "openai_compat", "ollama", "gemini"] {
+            assert!(low_effort(provider).is_none(), "{provider}");
+        }
+    }
 }

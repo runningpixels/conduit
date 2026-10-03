@@ -203,7 +203,7 @@ pub async fn finish(
     Ok(())
 }
 
-/// Store a run's sources and claims, with each source's footnote and which
+/// Store a run's sources and claims, with each source's citation number and which
 /// claims the report cites. One transaction.
 pub async fn save_results(
     pool: &SqlitePool,
@@ -326,7 +326,7 @@ type SourceRow = (
     i64,
 );
 
-/// A run's sources, cited ones first in footnote order, then in the order
+/// A run's sources, cited ones first in citation order, then in the order
 /// they were read.
 pub async fn list_sources(pool: &SqlitePool, run_id: &str) -> Result<Vec<ResearchSource>, DbError> {
     let rows: Vec<SourceRow> = sqlx::query_as(

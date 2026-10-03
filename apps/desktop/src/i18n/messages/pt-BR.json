@@ -527,7 +527,7 @@
   "chat.research.source.failed": "Falhou",
   "chat.research.source.read": "Lida",
   "chat.research.source.skipped": "Ignorada",
-  "chat.research.sources.summary": "{count, plural, one {# fonte} other {# fontes}}",
+  "chat.research.sources.summary": "{cited, number} citadas · {read, number} lidas",
   "chat.research.stop": "Parar",
   "chat.research.stoppedNote": "Pesquisa interrompida.",
   "chat.research.stopping": "Parando…",

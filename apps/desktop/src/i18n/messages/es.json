@@ -527,7 +527,7 @@
   "chat.research.source.failed": "Falló",
   "chat.research.source.read": "Leída",
   "chat.research.source.skipped": "Omitida",
-  "chat.research.sources.summary": "{count, plural, one {# fuente} other {# fuentes}}",
+  "chat.research.sources.summary": "{cited, number} citadas · {read, number} leídas",
   "chat.research.stop": "Detener",
   "chat.research.stoppedNote": "Investigación detenida.",
   "chat.research.stopping": "Deteniendo…",

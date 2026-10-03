@@ -527,7 +527,7 @@
   "chat.research.source.failed": "실패",
   "chat.research.source.read": "읽음",
   "chat.research.source.skipped": "건너뜀",
-  "chat.research.sources.summary": "{count, plural, other {출처 #개}}",
+  "chat.research.sources.summary": "인용 {cited, number}개 · 읽음 {read, number}개",
   "chat.research.stop": "중지",
   "chat.research.stoppedNote": "리서치를 중지했습니다.",
   "chat.research.stopping": "중지하는 중…",

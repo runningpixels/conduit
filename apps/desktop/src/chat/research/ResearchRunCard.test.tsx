@@ -49,7 +49,7 @@ function run(over: Partial<ResearchRun> = {}): ResearchRun {
     messageId: 'msg-2',
     status: 'planning',
     brief: null,
-    budget: { searches: 20, pages: 40, tokens: 400_000, minutes: 15 },
+    budget: { searches: 20, pages: 40, tokens: 400_000, minutes: 20 },
     progress: {
       phase: 'searching',
       searchesUsed: 0,
@@ -107,9 +107,9 @@ describe('ResearchRunCard', () => {
     expect(within(form).getByLabelText('Sub-question 1')).toHaveValue(brief.subQuestions[0]);
     expect(within(form).getByLabelText('Sub-question 2')).toHaveValue(brief.subQuestions[1]);
     expect(within(form).getByRole('radio', { name: /Standard/ })).toBeChecked();
-    expect(within(form).getByText('Up to 8 searches, 15 pages, about 5 min')).toBeInTheDocument();
-    expect(within(form).getByText('Up to 20 searches, 40 pages, about 15 min')).toBeInTheDocument();
-    expect(within(form).getByText('Up to 50 searches, 100 pages, about 30 min')).toBeInTheDocument();
+    expect(within(form).getByText('Up to 8 searches, 15 pages, about 10 min')).toBeInTheDocument();
+    expect(within(form).getByText('Up to 20 searches, 40 pages, about 20 min')).toBeInTheDocument();
+    expect(within(form).getByText('Up to 50 searches, 100 pages, about 40 min')).toBeInTheDocument();
   });
 
   it('starts with the edited brief', async () => {
@@ -231,7 +231,7 @@ describe('ResearchRunCard', () => {
     status: 'done',
     brief,
     artifactId: 'art-9',
-    summary: 'Heat pumps work down to **-25 C** with modern compressors.',
+    summary: 'Heat pumps work down to **-25 C** with modern compressors [1].',
     sources: [
       {
         id: 's1',
@@ -264,11 +264,15 @@ describe('ResearchRunCard', () => {
     renderCard();
     const strong = await screen.findByText('-25 C');
     expect(strong.tagName).toBe('STRONG');
+    // Citations are the report's plain [n] numbers, never footnote syntax.
+    const summary = strong.closest('.research-summary')!;
+    expect(summary.textContent).toContain('compressors [1].');
+    expect(summary.textContent).not.toContain('[^');
     expect(screen.getByText('2 claims were left out because their quotes could not be found in their sources.')).toBeInTheDocument();
     expect(screen.getByText('Not answered')).toBeInTheDocument();
     expect(screen.getByText('What do they cost to run?')).toBeInTheDocument();
 
-    const details = screen.getByText('2 sources').closest('details')!;
+    const details = screen.getByText('1 cited · 1 read').closest('details')!;
     expect(details).not.toHaveAttribute('open');
     expect(within(details).getByText('Heat pumps')).toBeInTheDocument();
     expect(within(details).getByText('[1]')).toBeInTheDocument();
@@ -298,7 +302,7 @@ describe('ResearchRunCard', () => {
     vi.mocked(openExternalUrl).mockResolvedValue(undefined);
     renderCard();
     await screen.findByText('-25 C');
-    fireEvent.click(screen.getByText('2 sources'));
+    fireEvent.click(screen.getByText('1 cited · 1 read'));
     fireEvent.click(screen.getByRole('link', { name: /Heat pumps/ }));
     expect(openExternalUrl).toHaveBeenCalledWith('https://www.energy.gov/heat-pumps');
   });

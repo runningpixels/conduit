@@ -7,7 +7,7 @@
 
 # Conduit
 
-**A local-first desktop AI assistant. Your conversations stay on your machine.**
+**The AI workspace that builds things you keep, with your keys, on your machine.**
 
 [conduitllm.com](https://conduitllm.com)
 
@@ -15,276 +15,254 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-![Conduit with a chat about a bakery and the live morning dashboard it built, open in the side panel](./docs/assets/screenshot-hero.png)
+![A chat that built an "Upstream watch" dashboard for the tauri-apps/tauri repo: live stars, open issues, pull requests and releases from the GitHub API, open beside the chat](./docs/assets/screenshot-hero.png)
 
-Conduit is a desktop chat client for large language models, built on Tauri 2
-with a Rust core and a React renderer. You bring your own API key, talk to any
-of seventeen providers, and everything — conversations, attachments, artifacts,
-decks — is stored locally in a SQLite database on your own disk, with optional
-encryption at rest. There is no Conduit account, no backend, and no telemetry.
+Conduit is an open-source desktop app for working with large language models.
+Bring your own key for any of seventeen providers, or run a local model with
+Ollama or LM Studio, and ask for things you can keep: a **personal app** that
+pulls live data, a **slide deck** you edit by asking, an **answer cited from
+your own documents**, a **workflow** that runs on a schedule and stops to ask.
+Connect your tools over MCP: tools that change things, and every site a page
+wants to reach, ask you first.
 
-It is more than a chat window. Pages the assistant builds can be kept as
-**apps**; **Slides** turns a story into a live deck you present from the app;
-**Documents** lets it search your own files; **workflows** run routines for you
-on a schedule; and **connectors** plug in tools over MCP — each one asking
-before it does anything you haven't allowed.
+Everything lives on your disk: chats, documents, apps and decks, in a local
+SQLite database with optional encryption at rest. There is no Conduit account,
+no backend and no telemetry. Built on Tauri 2 with a Rust core and a React
+interface.
 
-## Why Conduit
+The screenshots follow one example: the team behind *Ferry*, a made-up
+open-source sync app built with Rust and Tauri.
 
-- **The renderer never sees your API key.** Credentials live in the OS keychain;
-  settings hold only a `keychain://conduit/<provider>` reference. All network
-  calls happen in Rust. This is enforced by the architecture, not by policy —
-  see [`docs/architecture/foundation-contracts.md`](./docs/architecture/foundation-contracts.md).
+## What you can build
+
+### Personal apps
+
+Ask for a tool and you get a working page: a dashboard, a converter, a tracker,
+a game. **Save as app** (in the page's ⋯ menu) keeps it as a personal app you
+open from **Apps** on the rail, and it keeps working after you delete the chat.
+The dashboard above is one: it calls the GitHub API live, after asking once for
+that site.
+
+![The Apps page: three personal apps (Upstream watch, a Pomodoro timer and a unit converter), and the starter apps you can add](./docs/assets/screenshot-apps.png)
+
+Personal apps can do three things a plain page in a sandbox can't, each
+declared by the page and checked by Conduit:
+
+- **Keep data between launches**: a small store per app (up to 5 MB), kept
+  with the rest of your data and encrypted when encryption at rest is on.
+- **Take settings**: a page declares a few inputs, like a repo or a city, and
+  Conduit draws the form. Changing them updates the running app.
+- **Ask your AI model**, after you allow it for that page. The prompt names the
+  provider and says plainly when text would leave your device; the page gets
+  text back and nothing else: no tools, chat history, memory or documents.
+
+Every personal app has its own **Settings** page: which model answers it, tokens
+per day with a daily limit for cloud models (100,000 by default; models on your
+computer are never limited), its saved data key by key with Export and Clear,
+the sites and providers it may use, and a week of one-line activity records,
+never prompts, replies or saved values. Eight **starter apps** come built in,
+from a Pomodoro timer to a live weather dashboard.
+
+![A page asking to use the AI model: the prompt names LM Studio and says it runs on this device](./docs/assets/screenshot-llm-consent.png)
+
+### Slides
+
+Describe the story, or ask for a deck in any chat. The assistant drafts a
+storyline for you to approve, then builds **one live deck**: every change edits
+that deck instead of producing yet another copy of the file. The deck opens in a
+studio with the slide large in the middle and the chat beside it.
+
+![The Slides studio: a Ferry incident postmortem in the light Paper theme, with a bar chart of stalled commits, slide thumbnails, and the chat that edited slide 3](./docs/assets/screenshot-slides-studio.png)
+
+- **Targeted changes.** Ask for a change and the assistant edits one slide, or
+  swaps a word across the deck. **History** keeps a version for every change,
+  labelled by your request.
+- **Script** shows every word of the deck as one document. Type there, or
+  double-click text on a slide; text you write is kept when the assistant
+  rewrites a slide, unless you ask it to change that text.
+- **Themes:** two built in, plus any theme the assistant designs for you.
+- **Present** full screen, with a separate presenter window (current and next
+  slide, speaker notes, a timer) to keep private while you share the slides.
+- **Export** as a single HTML file that presents itself in any browser, or as
+  a PDF (Windows).
+
+| Script: every word of the deck as one document | The presenter window: next slide, notes, timer |
+| --- | --- |
+| ![The Script tab beside the deck, listing each slide's title, bullets and notes](./docs/assets/screenshot-slides-script.png) | ![The presenter window with the current slide, the next slide, a timer and large speaker notes](./docs/assets/screenshot-presenter.png) |
+
+### Answers from your own documents
+
+**Documents** holds collections of your files (plain text, Markdown, CSV, Word
+and PDF), or drop files anywhere on the window. Attach a collection to a chat
+and the assistant searches it while it answers; the documents it drew on are
+named with the reply, and clicking one shows the exact passage. Retrieval is
+hybrid: semantic search for passages that mean the same thing, keyword search
+for exact terms like error codes and names.
+
+![A chat with the Ferry docs attached, explaining from the auth design notes why the client retries twice: a normal token expiry, then a refresh race](./docs/assets/screenshot-documents.png)
+
+PDFs are read on your machine. Indexing sends a document's text to the provider
+that embeds the collection, so you are asked before the first document goes to
+each provider, and you can withdraw that consent at any time. With local-only
+mode on, a collection needs a local provider such as Ollama.
+
+## Things that run for you
+
+### Workflows
+
+**Workflows** run routines for you: fetch pages, search the web, have the model
+summarise, and save the result as a document. Start from a ready-made one (a
+morning briefing, a page summary, a topic watch) or build your own step by step,
+then run it now or on a schedule. Turning a schedule on first lists everything
+the workflow will be allowed to do on its own, for you to approve, and a run
+that needs more pauses and asks.
+
+![A Topic watch workflow for Tauri and Rust releases: its three steps, a finished run, and the approval it asks for before running on a schedule (search the web with Exa, send text to OpenRouter, save documents)](./docs/assets/screenshot-workflows.png)
+
+### MCP connectors
+
+Add a connector by searching the official MCP registry, pasting a remote
+server's URL, or running a local command. Local stdio and remote
+streamable-HTTP servers run under a supervisor with restart backoff, a
+concurrency cap and per-call timeouts. Tool calls show inline, results are
+redacted and size-capped, and side-effecting tools ask before they run; you can
+remember an approval for one chat or always, and review those approvals on the
+Connectors page.
+
+![A chat that used the DeepWiki connector to explain how tauri-apps/tauri passes IPC messages between the webview and Rust](./docs/assets/screenshot-connectors.png)
+
+A server's prompts and resources are reachable from the composer too, not only
+its tools: the prompt picker fills in a prompt's arguments, and the resource
+picker attaches a document to the next message.
+
+## Everything else you'd expect
+
+### Home
+
+The app opens on **Home**. One box starts anything: ask for a deck and Slides
+opens with a storyline; anything else starts a chat. Below it, **Needs you**
+lists workflow approvals, workflow questions and memory suggestions waiting on
+you, **Pick up where
+you left off** shows your latest chats, decks and apps, and every area of the
+app sits in a tile with a live count, or an example to try while it is empty.
+`Ctrl+1` to `Ctrl+9` (`⌘` on macOS) jump to each area, and the command palette
+(`Ctrl+K`) has a "Go to" entry for each.
+
+![Home: the ask box with quick starts, two memory suggestions waiting for review, and recent chats and the postmortem deck to pick up](./docs/assets/screenshot-home.png)
+
+### Every model, and the web
+
+Pick any model you have set up from the composer: Anthropic, OpenAI, Gemini,
+OpenRouter, OpenCode Zen, Groq, DeepSeek, Mistral, xAI, Z.ai, Moonshot AI, Qwen,
+Together AI, Fireworks AI, LM Studio, Ollama, or any OpenAI-compatible endpoint.
+When a chat nears the model's context window, older turns are summarised
+automatically so it keeps going.
+
+**Web search** uses your provider's own search on OpenAI, Gemini and Anthropic,
+or a search service you choose (Tavily, Brave or your own SearXNG) for any
+other model, with allowed and blocked domain lists. Sources show with the
+answer and in the inspector. *Coming in the next release:* Exa as the default,
+which works on any model with no key, and OpenRouter's built-in search.
+
+![A web search answer about Rust 1.90 with a search row (6 sources) and inline citations, tied back to Ferry through memory](./docs/assets/screenshot-search.png)
+
+The **+** in the composer adds images, web search, a workspace folder the
+assistant can read and edit, document collections, skills and connector
+prompts. While a turn runs you can queue a follow-up or interrupt and steer it.
+Tool calls, searches and sites appear in the inspector's **Activity** tab with
+timings, and what an answer drew on in **Sources**.
+
+### Library: prompts and skills
+
+**Library** keeps the prompts you reuse, in folders and with tags. A prompt can
+have `{{variables}}` you fill in when you insert it into the composer. Its
+**Skills** tab holds `SKILL.md` skill packages: instructions and files the
+assistant loads for a chat when you add the skill.
+
+![The Library: a "Review this diff" prompt with a diff variable, next to "Explain this error" and "Draft release notes"](./docs/assets/screenshot-library.png)
+
+### Memory
+
+**Memory** holds facts the assistant keeps in mind across every chat. It can
+propose something to remember during a chat, but a proposal waits for you and is
+never used until you save it. The list is yours to read, edit, pin as core or
+delete, and one switch stops saved memory being added to chats at once. Memory
+is encrypted on disk.
+
+![The Memory page: two suggestions waiting for review, a pinned core fact about Ferry's stack, a preference, and two notes](./docs/assets/screenshot-memory.png)
+
+### Image generation
+
+On OpenAI, Gemini and OpenRouter, ask for a picture and you get one, saved with
+the chat and shown in the side panel. Images are stored locally, not linked from
+the provider, so they don't vanish when a remote URL expires. Each image is
+billed, so Conduit asks once before the first one.
+
+![A flat logo for Ferry, a boat riding two sync arrows, generated in a chat and open in the side panel](./docs/assets/screenshot-image.png)
+
+### Pages and artifacts
+
+Model-generated code, HTML, JSON and Markdown open in a side panel with preview
+and source views. HTML renders in a null-origin sandboxed iframe with
+`connect-src 'none'`; it cannot reach the network or the app on its own. A page
+that calls `fetch()` shows a banner naming the site, and you allow it this once,
+always for that page, or not at all. The globe in the panel header lists every
+site and request. Long documents are built section by section, a turn that runs
+out of time offers **Continue building**, and revisions change only the part
+that differs.
+
+### Appearance and languages
+
+One design in two modes (dark, light, or following your system), with a main
+colour you can pick per mode. The interface is available in English, German,
+Spanish, French, Japanese, Korean, Brazilian Portuguese and Simplified Chinese;
+dates, numbers and file sizes follow the language you pick.
+
+![The Apps page in light mode](./docs/assets/screenshot-apps-light.png)
+
+### And more
+
+- **A base URL for each provider** where it makes sense (xAI, Z.ai, Moonshot
+  AI, Qwen, Together AI, Fireworks AI, Anthropic and OpenAI) for regional or
+  self-hosted endpoints, a compatible API or a LiteLLM proxy.
+- **First-run setup** covers language, theme, text size, local-only mode, key
+  storage, update checks and diagnostics.
+- **Ideas**: a page of things to try, each starting a chat with the prompt
+  filled in, chosen on your device from what you've tried.
+- **Conversations** can be pinned, archived, filed in folders and exported; the
+  chat list shows which chat is running or needs you.
+- **Vision attachments, Mermaid diagrams and KaTeX maths** in replies.
+- **Settings search** and a keyboard shortcuts sheet (`Ctrl+/`, `⌘/` on macOS).
+- **White-label branding**: a name, mark and colours from a `brand.md`.
+
+See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
+
+## Trust you can check
+
+- **The interface never sees your API key.** Keys live in the OS keychain;
+  settings hold only a `keychain://conduit/<provider>` reference, and every
+  network call happens in Rust. This is enforced by the architecture; see
+  [`docs/architecture/foundation-contracts.md`](./docs/architecture/foundation-contracts.md).
+- **Everything asks first.** Each site a page wants to reach, each
+  side-effecting tool call, each scheduled workflow's permissions, each
+  provider that indexes your documents and the first billed image.
 - **Optional encryption at rest.** AES-256-GCM over attachment and artifact
   blobs and several database columns, with a master key wrapped in the OS
-  keychain. It is **off by default** (`AppSettings.encryption_at_rest`) and does
-  not cover message content yet. Encryption never silently downgrades:
-  if the key is unavailable and encrypted data exists, the app refuses to start
-  rather than fall back to plaintext.
-- **Bring your own provider.** Anthropic, OpenAI, Gemini, OpenRouter, OpenCode
-  Zen, Groq, DeepSeek, Mistral, xAI, Z.ai, Moonshot AI, Qwen, Together AI,
-  Fireworks AI, LM Studio, Ollama, and any OpenAI-compatible endpoint.
-- **MCP connectors with a real consent gate.** Local stdio and remote
-  streamable-HTTP Model Context Protocol servers run under a supervisor with
-  restart backoff, a concurrency cap, and per-call timeouts. Side-effecting tools prompt before they run, tool
-  output is redacted and size-capped, and it is never re-injected into the
-  prompt.
-- **Artifacts that can't phone home without your say-so.** Model-generated
-  HTML renders in a null-origin sandboxed iframe under a strict CSP with
-  `connect-src 'none'`, with no way to call the app's own commands. A page that
-  needs live data asks, per site, before Conduit fetches it on the page's
-  behalf — https only, no cookies or credentials, never your local network,
-  and never in local-only mode. A page that wants your AI model asks too, and
-  gets text in and text out: no tools, chat history, memory or documents. Text, code, JSON and Markdown render through React-escaped
-  renderers with no `dangerouslySetInnerHTML` anywhere in the safe path.
+  keychain. It is **off by default** (`AppSettings.encryption_at_rest`) and
+  does not cover message content yet. It never silently downgrades: if the key
+  is unavailable and encrypted data exists, the app refuses to start rather than
+  fall back to plaintext.
+- **Local-only mode** refuses cloud providers entirely, so only a local model
+  such as Ollama or LM Studio can answer.
 - **No telemetry.** Update checks are opt-in and send only
   `Conduit-Updater/<version>`. Checking is manual by default; background
   checking and install-on-quit are opt-in, and Conduit never restarts itself.
 
 ![Settings → Privacy & data: the trust boundary status, local-only mode, where keys are stored, and the sites pages may always contact](./docs/assets/screenshot-privacy.png)
 
-## Features
-
-[Chats](#chats) · [Slides](#slides) · [Artifacts](#artifacts) · [Apps](#apps) ·
-[Documents](#your-documents-searchable-from-a-chat) · [Image generation](#image-generation) ·
-[Workflows](#workflows) · [Library](#library-prompts-and-skills) · [Memory](#memory) ·
-[Connectors](#mcp-connectors) · [Appearance](#appearance) · [Languages](#eight-languages) ·
-[And more](#and-more)
-
-### Chats
-
-A side rail takes you to every part of the app; **Chats** is home. A new chat
-opens on one composer with your recent apps and a few ideas to try underneath,
-each filling in a prompt you can change before sending. Pick any model you have
-set up from the composer, and watch the gauge below it: when a chat nears the
-model's context window, older turns are summarised automatically so it keeps
-going.
-
-![A new chat: the composer, your apps, and ideas to try by category](./docs/assets/screenshot-new-chat.png)
-
-The single **+** in the composer adds attachments, web search, a workspace
-folder the assistant can read and edit, document collections, skills and
-connector prompts, with what is active shown as chips. While a turn runs you
-can queue a follow-up or interrupt and steer it. Tool calls, searches and
-sites appear in the inspector's **Activity** tab with timings, and what the
-answer drew on in **Sources**; the chat itself shows one line per turn.
-
-### Slides
-
-**Slides** builds presentations by asking. Describe the story — or ask for a
-deck in any chat — and the assistant drafts a storyline for you to approve,
-then builds the slides into **one live deck**: every change edits that deck
-rather than producing yet another copy of the file. The deck opens in a studio
-with the slide large in the middle and the chat beside it.
-
-![The Slides studio: a staff-briefing deck with a weekday sales chart on the stage, thumbnails on the left and the chat on the right](./docs/assets/screenshot-slides-studio.png)
-
-- **Targeted changes.** The assistant edits one slide at a time, or swaps a
-  word across the whole deck, and History keeps a version for every change —
-  labelled by your request — to restore at any time.
-- **Script** shows every word of the deck as one document. Type there, or
-  double-click text on a slide. Text you write is kept when the assistant
-  rewrites a slide, unless you ask it to change that text.
-- **Themes.** Two built in, plus any theme the assistant designs for you.
-- **Present** full screen, with a separate presenter window — current and
-  next slide, speaker notes and a timer — to keep private while you share the
-  slides.
-- **Export** as a single HTML file that presents itself in any browser, or as
-  a PDF (Windows).
-
-| Script: every word of the deck as one document | The presenter window: next slide, notes, timer |
-| --- | --- |
-| ![The Script tab beside the deck, listing each slide's title, text and notes](./docs/assets/screenshot-slides-script.png) | ![The presenter window with the current slide, the next slide, a timer and large speaker notes](./docs/assets/screenshot-presenter.png) |
-
-### Artifacts
-
-Model-generated code, HTML, JSON and Markdown open in a side panel with preview
-and source views — the morning dashboard in the screenshot at the top is one.
-HTML renders in a null-origin sandboxed iframe with `connect-src 'none'`: it
-cannot reach the network or the Tauri bridge on its own. A page that calls
-`fetch()`, such as a weather dashboard, shows a banner naming the site; the
-dialog says why the page wants it and what it sends, and you allow it this
-once, always for that page, or not at all. The globe in the panel header lists
-every site and request. Settings → Artifact security turns this off and lists
-remembered permissions.
-
-You can watch a document being written, with an optional live preview. Documents
-too long for one reply are built section by section, and a turn that runs out of
-time keeps what it wrote and offers **Continue building**. Revisions change only
-the part that differs. The panel can be expanded (`Ctrl+Shift+E`) to take
-everything but a narrow chat column.
-
-### Apps
-
-A good page shouldn't disappear when its chat scrolls away. **Save as app**
-(in the page's ⋯ menu) keeps a copy you open from **Apps** on the rail, or from
-**Your apps** on the new-chat screen — and it keeps working after you delete
-the chat. Saving asks which of the page's site permissions to keep, one by one;
-none carry over unless you tick them.
-
-![The Apps page: three of your apps, and the starter apps you can add](./docs/assets/screenshot-apps.png)
-
-Eight **starter apps** come built in — a Pomodoro timer, a unit converter,
-Snake, a memory game, a world-capitals quiz, a budget tracker, and a weather
-dashboard and a currency converter that use live data. They show their text in
-your interface language, with numbers, dates and currencies to match.
-
-Apps (and pages in a chat) can do three things a plain web page in a sandbox
-can't, each declared by the page and checked by Conduit:
-
-- **Keep data between launches** — a small store per app (up to 5 MB), kept
-  with the rest of your data and encrypted when encryption at rest is on.
-- **Take settings** — a page declares a few inputs, like a city and units, and
-  Conduit draws the form. Changing them updates the running app without
-  reloading it.
-- **Ask your AI model** — after you allow it for that page. The prompt names
-  the provider and says plainly when text would leave your device; the page
-  gets an answer and nothing else.
-
-![The budget tracker app, with this month's spending by category and the entries](./docs/assets/screenshot-app-budget.png)
-
-Every saved app has its own **Settings** page: which model answers its
-requests, tokens per day with a daily limit for cloud models (100,000 by
-default; models on your computer are never limited), its saved data key by
-key with Export and Clear, the sites and providers it may use, and a week of
-one-line activity records — never prompts, replies or saved values.
-
-![A page asking to use the AI model: the prompt names LM Studio and says it runs on this device](./docs/assets/screenshot-llm-consent.png)
-
-### Your documents, searchable from a chat
-
-**Documents** on the side rail holds collections of your own files — plain text,
-Markdown, CSV, Word and PDF — or drag files anywhere onto the window. Attach a
-collection from the composer and the assistant searches it while it answers;
-each document it drew on is named under the reply, and clicking one shows the
-exact passage. Retrieval is hybrid: semantic search for passages that mean the
-same thing, keyword search for exact terms like error codes and names.
-
-![The Documents page: a collection of four bakery files, embedded by OpenRouter, with consent shown and revocable](./docs/assets/screenshot-documents.png)
-
-PDFs are read on your machine. Indexing sends a document's text to the
-provider that embeds the collection, so you are asked before the first
-document goes to each provider, and you can withdraw that consent at any time.
-With local-only mode on, a collection needs a local provider such as Ollama.
-Until you create a collection, nothing in the chat changes.
-
-### Image generation
-
-On OpenAI, Gemini and OpenRouter, ask for a picture — "draw me a simple logo
-for a bakery" — and you get one, saved with the chat and shown in the artifact
-panel. Images are stored locally, not linked from
-the provider, so they do not vanish when a remote URL expires. Each image is
-billed, so Conduit asks once before the first one.
-
-### Workflows
-
-**Workflows** run routines for you: fetch pages, search the web, have the model
-summarize, and save the result as a document. Start from a ready-made one — a
-morning briefing, a page summary, a topic watch — or build your own step by
-step, then run it now or on a schedule. Turning a schedule on first shows
-everything the workflow will be allowed to do on its own, for you to approve,
-and a run that needs more pauses and asks.
-
-![A morning-briefing workflow: its steps, the two sites it reads, Run now and the schedule](./docs/assets/screenshot-workflows.png)
-
-### Library: prompts and skills
-
-**Library** keeps the prompts you reuse, in folders and with tags. A prompt
-can have `{{variables}}`, which you fill in when you insert it into the
-composer. Its **Skills** tab holds `SKILL.md` skill packages — instructions
-and files the assistant loads for a chat when you add the skill from the
-composer.
-
-![The Library: a saved "Weekly specials post" prompt with a specials variable, ready to insert into a chat](./docs/assets/screenshot-library.png)
-
-### Memory
-
-**Memory** holds facts the assistant keeps in mind across every chat. It can
-propose something to remember during a chat, but a proposal waits for you and
-is never used until you save it. The list is yours to read, edit, pin as core
-or delete, and one switch stops saved memory being added to chats at once.
-Memory is encrypted on disk.
-
-![The Memory page: a pinned core fact about the bakery, a preference, and two notes](./docs/assets/screenshot-memory.png)
-
-### MCP connectors
-
-Add a connector by searching the official MCP registry, pasting a remote
-server's URL, or running a local command. Local stdio and remote
-streamable-HTTP servers run under a supervisor. Tool calls are disclosed
-inline, results are redacted and size-capped, and side-effecting tools prompt
-for consent before they run; you can remember an approval for one chat or
-always, and review those approvals on the Connectors page.
-
-![Adding a connector: searching the official MCP registry for "github", with an Install button per result](./docs/assets/screenshot-connectors.png)
-
-A server's prompts and resources are reachable from the composer too, not only
-its tools. The prompt picker fills in the arguments a prompt declares and drops
-the result into the composer for you to edit; the resource picker attaches a
-document to the next message, checked before it reaches the model.
-
-### Appearance
-
-One design in two modes: dark, light, or following your system. You can pick
-the main colour — the accent on buttons, selection and the active item —
-separately for each mode in Settings → Appearance; a colour that would be
-hard to read is refused.
-
-![The Apps page in light mode](./docs/assets/screenshot-apps-light.png)
-
-### Eight languages
-
-The interface is available in English, German, Spanish, French, Japanese,
-Korean, Brazilian Portuguese and Simplified Chinese. The language you pick also
-sets the language the assistant replies in, and dates, numbers and file sizes
-follow it rather than the machine's region.
-
-### And more
-
-- **A base URL for each provider** where it makes sense — xAI, Z.ai, Moonshot
-  AI, Qwen, Together AI, Fireworks AI, Anthropic and OpenAI — for regional or
-  self-hosted endpoints, a compatible API or a LiteLLM proxy.
-- **First-run setup** starts with language, theme and text size, covers
-  local-only mode, key storage, update checks and diagnostics, and ends on a
-  review of what was configured.
-- **Ideas** — a page of things to try, by category, each starting a chat with
-  the prompt filled in. Ideas are chosen on your device from what you've tried;
-  nothing is sent.
-- **Conversations** can be pinned, archived and filed in folders, renamed from
-  a ⋯ menu, and exported; the chat list shows which chat is running or needs
-  you.
-- **Vision attachments, Mermaid diagrams and KaTeX maths** in replies.
-- **Settings search** and a keyboard shortcuts sheet (`Ctrl+/`, `⌘/` on
-  macOS).
-- **White-label branding** — a name, mark and colours from a `brand.md`.
-- **A resizable sidebar**, and overlays for the sidebar and inspector on
-  narrow windows.
-
-See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
-
 ## Status
 
-**v1.0.0-rc.3 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.4 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -304,17 +282,18 @@ left is checking it on real installs before calling it final.
 | Skills (`SKILL.md`) and user-approved encrypted memory | Working |
 | Conversation pin, archive and folders | Working |
 | Vision attachments, Mermaid/KaTeX, conversation export | Working |
-| Web search (hosted OpenAI/Gemini/Anthropic + local backends) | Working |
+| Web search (hosted OpenAI/Gemini/Anthropic + Tavily, Brave, SearXNG) | Working; Exa and OpenRouter search in the next release |
 | Knowledge base — document collections with hybrid retrieval and citations | Working |
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
 | One design in dark and light, with a main-colour setting | Working |
 | Workflows — ready-made and custom, run now or on a schedule, with approval | Working |
-| Apps — save a page, eight starter apps, per-app storage, settings, model access and usage limits | Working |
+| Personal apps — save a page, eight starter apps, per-app storage, settings, model access and usage limits | Working |
 | Slides — storyline, one live deck, Script, history, themes, present with a presenter window | Working |
 | Slides export — HTML on every platform, PDF on Windows | Working |
+| Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.3 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.4 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 
@@ -326,8 +305,8 @@ left is checking it on real installs before calling it final.
   block it in the webview itself; macOS has no webview setting for it, so there
   only the page's own script removes it, which isn't a boundary. Open HTML
   pages and apps you got from someone else with care on macOS.
-- **Going back to rc.2 or earlier starts with an empty database.** rc.3 adds to
-  the local database for Slides; an older version can't read it and starts
+- **Going back to rc.2 or earlier starts with an empty database.** rc.3 added
+  to the local database for Slides; an older version can't read it and starts
   fresh (the old file is kept as a backup).
 
 ## Building from source

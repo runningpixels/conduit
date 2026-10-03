@@ -89,6 +89,8 @@ beforeEach(() => {
   ipc.getSettings.mockResolvedValue({ activeProvider: 'ollama', activeModel: 'llama3' });
 });
 
+
+const SLOW = { timeout: 5000 };
 describe('AppSettingsView', () => {
   it('renders each section from the mocked data', async () => {
     renderView();
@@ -158,12 +160,13 @@ describe('AppSettingsView', () => {
     );
   });
 
+  // Five quick renders in a row: the 1 s default wait flaked on a loaded CI runner.
   it('validates the daily limit before calling Rust', async () => {
     renderView();
-    const input = await screen.findByLabelText('Daily limit for cloud models (tokens)');
+    const input = await screen.findByLabelText('Daily limit for cloud models (tokens)', undefined, SLOW);
     fireEvent.change(input, { target: { value: '999' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save limit' }));
-    expect(await screen.findByText('Enter a whole number between 1,000 and 10,000,000.')).toBeTruthy();
+    expect(await screen.findByText('Enter a whole number between 1,000 and 10,000,000.', undefined, SLOW)).toBeTruthy();
     expect(ipc.setAppDailyTokenCap).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: '10000001' } });
@@ -172,10 +175,10 @@ describe('AppSettingsView', () => {
 
     fireEvent.change(input, { target: { value: '50000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save limit' }));
-    await waitFor(() => expect(ipc.setAppDailyTokenCap).toHaveBeenCalledWith('a1', 50000));
+    await waitFor(() => expect(ipc.setAppDailyTokenCap).toHaveBeenCalledWith('a1', 50000), SLOW);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset to default' }));
-    await waitFor(() => expect(ipc.setAppDailyTokenCap).toHaveBeenLastCalledWith('a1', null));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset to default' }, SLOW));
+    await waitFor(() => expect(ipc.setAppDailyTokenCap).toHaveBeenLastCalledWith('a1', null), SLOW);
   });
 
   it('exports, clears and revokes through the right commands', async () => {

@@ -97,7 +97,7 @@ describe('AppsPage', () => {
   it('explains how to save one when there are none', async () => {
     ipc.listApps.mockResolvedValue([]);
     render(<AppsPage openAppId={null} onOpenAppIdChange={vi.fn()} allowlist={[]} styledPreview={false} colorScheme="dark" />);
-    expect(await screen.findByText('No apps yet')).toBeTruthy();
+    expect(await screen.findByText('No personal apps yet')).toBeTruthy();
   });
 
   it('updates from the source page with the hosts that page declares', async () => {
@@ -167,7 +167,7 @@ describe('AppsPage starter apps', () => {
       />,
     );
     expect(await screen.findByText('Starter apps')).toBeTruthy();
-    expect(screen.queryByText('No apps yet')).toBeNull();
+    expect(screen.queryByText('No personal apps yet')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add Snake to your apps' }));
     expect(onAdd).toHaveBeenCalledWith(starters[0]);
     expect(screen.getByText('Uses the internet, asks first')).toBeTruthy();
@@ -175,7 +175,7 @@ describe('AppsPage starter apps', () => {
     expect(onOpen).toHaveBeenCalledWith('a9');
   });
 
-  it('lists a starter under My apps as soon as it is added', async () => {
+  it('lists a starter under Personal apps as soon as it is added', async () => {
     ipc.listApps.mockResolvedValue([]);
     const props = {
       openAppId: null,
@@ -186,10 +186,10 @@ describe('AppsPage starter apps', () => {
     };
     const { rerender } = render(<AppsPage {...props} starters={starters} />);
     await screen.findByText('Starter apps');
-    expect(screen.queryByRole('heading', { name: /My apps/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /Personal apps/ })).toBeNull();
     ipc.listApps.mockResolvedValue([timer]);
     rerender(<AppsPage {...props} starters={starters.map((s) => ({ ...s, installedAppId: 'a2' }))} />);
-    expect(await screen.findByRole('heading', { name: 'My apps · 1' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Personal apps · 1' })).toBeTruthy();
   });
 });
 

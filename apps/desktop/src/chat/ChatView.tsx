@@ -54,6 +54,7 @@ import {
   listConnectorPrompts,
   listConnectorResources,
   readConnectorResources,
+  startResearch,
   type ConversationCompaction,
 } from '../ipc/client';
 import type {
@@ -122,6 +123,8 @@ import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { Composer, type ComposerHandle } from './Composer';
+import { ResearchRunCard } from './research/ResearchRunCard';
+import { researchUnavailableReasonId } from './researchAvailability';
 import { useComposerAutosize } from './useComposerAutosize';
 import { readSendWith } from '../shell/uiPrefs';
 import { WebSearchConsentDialog } from '../workspace/settings/WebSearchConsentDialog';
@@ -281,6 +284,11 @@ interface ChatViewProps {
   pendingSendText?: string | null;
   /// Clear `pendingSendText` after it has been consumed (or abandoned).
   onPendingSendConsumed?: () => void;
+  /// The pending text starts a Research run (Home's Research chip).
+  pendingSendResearch?: boolean;
+  /// A turn changed the conversation's stored summary (a Research run sets the
+  /// title from its question); the shell re-reads the chat list.
+  onConversationChanged?: () => void;
   /// Whether this pane is the active workspace tab (`data-active` for CSS). Defaults true for tests.
   paneActive?: boolean;
   /// Open a settings section ('providers' | 'privacy' …) from the status line.
@@ -758,6 +766,9 @@ interface HandleSendOverride {
   /** One-off generation controls for this send, over the conversation's own
    *  (a key set to `undefined` clears that control). */
   generationControls?: GenerationControls;
+  /** Start a Research run with this text instead of a normal reply. Only an
+   *  explicit choice (the composer's Research item, Home's chip) sets this. */
+  research?: boolean;
 }
 
 /** The exact arguments a deferred `handleSend(...)` call needs to resume
@@ -789,6 +800,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onEditForked,
     pendingSendText = null,
     onPendingSendConsumed,
+    pendingSendResearch = false,
+    onConversationChanged,
     paneActive = true,
     onOpenSettings,
     ideaGallery,
@@ -834,7 +847,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     text: string;
     kind: 'tip' | 'fork';
   } | null>(null);
-  const [autoSend, setAutoSend] = useState<{ text: string; history: ChatTurn[] } | null>(null);
+  const [autoSend, setAutoSend] = useState<{ text: string; history: ChatTurn[]; research?: boolean } | null>(null);
   /** Set when the load consumed `pendingSendText` for this conversation. */
   const pendingConsumedForRef = useRef<string | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -843,6 +856,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // `settings.webSearchEnabled` is on; defaults to off on mount. Stays on until
   // the user clicks it off (no longer reset after each send).
   const [webSearchOn, setWebSearchOn] = useState(false);
+  // Research mode: the next send starts a Research run. Explicit only (never
+  // inferred from the prompt), and it turns itself off once a run has started.
+  const [researchOn, setResearchOn] = useState(false);
+  const pendingSendResearchRef = useRef(pendingSendResearch);
+  pendingSendResearchRef.current = pendingSendResearch;
   // Phase 7 / M-WebSearch: consent dialog for first-time chat-bar toggle.
   // If the user has already acknowledged via Settings, this never shows.
   // Session-only dismissal (same UX as diagnostics disclosure M6.5).
@@ -1122,7 +1140,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           if (pending) {
             pendingConsumedForRef.current = conversationId;
             onPendingSendConsumedRef.current?.();
-            setAutoSend({ text: pending, history: visible });
+            setAutoSend({
+              text: pending,
+              history: visible,
+              ...(pendingSendResearchRef.current ? { research: true } : {}),
+            });
           }
         }
       } catch (error) {
@@ -1511,6 +1533,38 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
 
+  /** Start a Research run for `text` in this conversation and show the new
+   *  turns by reloading the thread through the normal hydration path. */
+  async function startResearchTurn(text: string, fromComposer: boolean) {
+    if (!conversationId) return;
+    try {
+      await startResearch(conversationId, text);
+    } catch (error) {
+      // Nothing was started: hand the text back so it is not lost.
+      if (fromComposer || !prompt.trim()) setPrompt(text);
+      onStatus(
+        makeStatus(
+          error instanceof Error ? error.message : String(error),
+          'error',
+          'chat',
+        ),
+      );
+      return;
+    }
+    setPrompt('');
+    setResearchOn(false);
+    try {
+      const messages = await getConversationMessages(conversationId);
+      const nextTurns = (await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))).filter(
+        (t): t is ChatTurn => t !== null,
+      );
+      setTurns(nextTurns);
+    } catch {
+      /* the run exists; the next load shows it */
+    }
+    onConversationChanged?.();
+  }
+
   async function handleSend(
     override?: HandleSendOverride,
     composerAttachments?: TurnAttachment[],
@@ -1536,6 +1590,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         return;
       }
       enqueueFollowUp(trimmed, attachments.length > 0 ? attachments : undefined);
+      return;
+    }
+
+    // Research is its own flow: Rust saves the question and an assistant turn
+    // that carries the run, and the thread reloads to show them. No stream.
+    if (override ? override.research === true : researchOn && researchUnavailableReasonId(settings) === null) {
+      await startResearchTurn(trimmed, !override);
       return;
     }
 
@@ -2192,6 +2253,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       return;
     }
     setWebSearchOn((on) => !on);
+  }
+
+  function handleResearchToggle() {
+    setResearchOn((on) => !on);
   }
 
   async function bindWorkspaceFolder(path: string) {
@@ -3043,6 +3108,23 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             const info = turnModelInfo[turn.id];
             const provider = info?.provider ?? settings.activeProvider;
             const model = info?.model ?? settings.activeModel;
+            if (turn.researchRunId) {
+              return withDay(
+                <article
+                  key={turn.id}
+                  className="turn assistant"
+                  data-provider={providerHueId(provider)}
+                  data-message-id={turn.id}
+                  data-role-label={t('chat.turn.roleLabel.assistant')}
+                >
+                  <ResearchRunCard
+                    runId={turn.researchRunId}
+                    onOpenArtifact={onOpenArtifact}
+                    onStatus={(message) => onStatus(makeStatus(message, 'error', 'chat'))}
+                  />
+                </article>,
+              );
+            }
             if (turn.streamState) {
               return withDay(
                 <AssistantMessage
@@ -3360,6 +3442,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }}
         webSearchOn={webSearchOn}
         onWebSearchToggle={handleWebSearchToggle}
+        researchOn={researchOn}
+        onResearchToggle={handleResearchToggle}
         workspaceRoot={conversationWorkspaceRoot}
         onWorkspacePick={() => void handleWorkspacePick()}
         onWorkspaceClear={() => void handleWorkspaceClear()}

@@ -165,6 +165,7 @@ export type { SettingsPatch } from './generated/settings_patch';
 export type { ModelInfo } from './generated/model_info';
 export type { CredentialRequest } from './generated/credential_request';
 export type { CredentialSummary } from './generated/credential_summary';
+// Research (brief -> loop -> checked report).
 export type { ResearchDepth } from './generated/research_depth';
 export type { ResearchStatus } from './generated/research_status';
 export type { ResearchBudget } from './generated/research_budget';

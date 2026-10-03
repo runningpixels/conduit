@@ -778,3 +778,15 @@ export interface WorkflowQuestion {
   requestedAt: string;
   expiresAt: string;
 }
+
+// Research: the brief, the live run and its sources (ts-rs-generated).
+export type {
+  ResearchBrief,
+  ResearchBudget,
+  ResearchDepth,
+  ResearchProgress,
+  ResearchRun,
+  ResearchSource,
+  ResearchSourceStatus,
+  ResearchStatus,
+} from '@conduit/config-schema';

@@ -123,6 +123,7 @@ const IPC_EXPORTS = [
   'loadProviderCredentialReference', 'validateProviderCredentials',
   'listProviderDescriptors', 'listProviderModels', 'startChatStream',
   'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getConversationCompaction', 'compactConversation', 'getRequestProviderEvents',
+  'startResearch', 'approveResearchBrief', 'stopResearch', 'cancelResearch', 'getResearchRun',
   'createConversation', 'listConversations', 'getConversation',
   'deleteConversation', 'setConversationTitle', 'setConversationPinned',
   'setConversationArchived', 'setConversationFolder', 'listConversationFolders',

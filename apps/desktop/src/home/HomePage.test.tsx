@@ -87,6 +87,7 @@ function props(over: Partial<HomePageProps> = {}): HomePageProps {
     ideaState: emptyIdeaState,
     collectionCount: 0,
     onAsk: vi.fn(),
+    onResearch: vi.fn(),
     onOpenChat: vi.fn(),
     onOpenDeck: vi.fn(),
     onOpenApp: vi.fn(),
@@ -341,5 +342,26 @@ describe('HomePage ideas', () => {
   it('is hidden when the reader turned the ideas off', async () => {
     await renderHome({ ideaState: { ...emptyIdeaState, rowHidden: true } });
     expect(screen.queryByRole('heading', { name: 'Try something new' })).toBeNull();
+  });
+});
+
+describe('HomePage Research chip', () => {
+  it('sends the ask box text as a Research run, and clears the box', async () => {
+    const { p } = await renderHome();
+    const box = screen.getByLabelText('Describe what you want to do');
+    fireEvent.change(box, { target: { value: 'How do heat pumps cope with cold winters?' } });
+    fireEvent.click(within(screen.getByRole('group', { name: 'Quick starts' })).getByRole('button', { name: 'Research' }));
+    expect(p.onResearch).toHaveBeenCalledWith('How do heat pumps cope with cold winters?');
+    expect(p.onAsk).not.toHaveBeenCalled();
+    expect(box).toHaveValue('');
+  });
+
+  it('waits for a question: disabled while the box is empty', async () => {
+    const { p } = await renderHome();
+    const chip = within(screen.getByRole('group', { name: 'Quick starts' })).getByRole('button', { name: 'Research' });
+    expect(chip).toBeDisabled();
+    expect(chip).toHaveAttribute('title', 'Type a question first');
+    fireEvent.click(chip);
+    expect(p.onResearch).not.toHaveBeenCalled();
   });
 });

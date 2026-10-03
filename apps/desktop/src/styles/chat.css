@@ -2299,3 +2299,91 @@
   white-space: nowrap;
 }
 .artifact-runtime-error-fix { flex: none; }
+
+/* ── Research run card (chat/research/ResearchRunCard.tsx) ──────────────────
+ * One card in the assistant turn, styled like the ask_user form: a card
+ * surface with a hue-tinted border. Every face (planning, brief, progress,
+ * result) lives inside it. */
+.research-card {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--hue) 35%, var(--line));
+  background: var(--card);
+  box-shadow: var(--lift);
+  display: grid;
+  gap: var(--sp-3);
+}
+.research-head { display: flex; align-items: baseline; gap: var(--sp-3); min-width: 0; }
+.research-badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--hue-a12);
+  color: var(--ink-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.research-title { min-width: 0; font-size: var(--fs-2xl); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.research-body, .research-brief { display: grid; gap: var(--sp-3); }
+.research-card .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.research-wait, .research-phase {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+}
+.research-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--line);
+  border-top-color: var(--hue);
+  animation: research-spin var(--dur-spin, 1s) linear infinite;
+}
+@keyframes research-spin { to { transform: rotate(360deg); } }
+html[data-reduce-motion="on"] .research-spinner { animation: none; }
+
+.research-field { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.research-label { margin: 0; padding: 0; font-size: var(--fs-xl); color: var(--ink-3); }
+.research-question { margin: 0; font-size: var(--fs-3xl); color: var(--ink); }
+.research-field input[type="text"] {
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  padding: 7px 9px;
+  font: inherit;
+  font-size: var(--fs-2xl);
+  min-width: 0;
+}
+.research-sub-list { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 6px; }
+.research-sub-row { display: flex; gap: 6px; }
+.research-sub-row input { flex: 1 1 auto; }
+.research-subs > .btn { align-self: flex-start; }
+.research-depths { gap: 6px; }
+.research-depth { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: var(--fs-2xl); color: var(--ink-2); cursor: pointer; }
+.research-depth input { accent-color: var(--hue); }
+.research-depth-name { color: var(--ink); font-weight: 500; }
+.research-depth-estimate { font-size: var(--fs-xl); color: var(--ink-3); }
+
+.research-stats { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-6); margin: 0; }
+.research-stats div { display: grid; gap: 2px; }
+.research-stats dt { font-size: var(--fs-md); color: var(--ink-3); }
+.research-stats dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-2xl); color: var(--ink); }
+.research-current { margin: 0; font-family: var(--font-mono); font-size: var(--fs-lg); color: var(--ink-3); }
+.research-summary { min-width: 0; }
+.research-outcome { margin: 0; font-size: var(--fs-2xl); color: var(--ink-2); }
+.research-note { margin: 0; font-size: var(--fs-xl); color: var(--ink-3); }
+.research-unanswered { margin: 4px 0 0; padding-left: 18px; }
+
+.research-sources > summary { cursor: pointer; font-size: var(--fs-xl); color: var(--ink-2); }
+.research-source-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.research-source { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.research-source .source-link { flex: 1 1 auto; min-width: 0; }
+.research-source-note { flex: none; font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-3); }
+.research-source-status { flex: none; font-size: var(--fs-md); color: var(--ink-3); }
+.research-source[data-status="failed"] .research-source-status { color: var(--err); }

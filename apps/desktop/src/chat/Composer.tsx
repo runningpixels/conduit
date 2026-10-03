@@ -8,7 +8,8 @@ import {
   saveAttachment,
   saveDroppedAttachment,
 } from '../ipc/client';
-import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, KnowledgeIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, KnowledgeIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { researchUnavailableReasonId } from './researchAvailability';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
 import type { ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
@@ -78,6 +79,10 @@ export interface ComposerProps {
   onSendQueuedNow?: (id: string) => void;
   webSearchOn: boolean;
   onWebSearchToggle: () => void;
+  /** Research mode: the next send starts a Research run instead of a reply.
+   *  Absent hides the "+" item. */
+  researchOn?: boolean;
+  onResearchToggle?: () => void;
   /** Absolute workspace folder for this conversation, if bound. */
   workspaceRoot?: string | null;
   /** Pick / change folder (parent handles consent). */
@@ -150,6 +155,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onSendQueuedNow,
   webSearchOn,
   onWebSearchToggle,
+  researchOn = false,
+  onResearchToggle,
   workspaceRoot = null,
   onWorkspacePick,
   onWorkspaceClear,
@@ -664,6 +671,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       onSelect: onWebSearchToggle,
     });
   }
+  const researchReasonId = researchUnavailableReasonId(settings);
+  const researchAvailable = researchReasonId === null;
+  if (onResearchToggle) {
+    plusItems.push({
+      id: 'research',
+      label: t('chat.composer.plus.research'),
+      icon: <ResearchIcon />,
+      title: researchAvailable
+        ? t(researchOn ? 'chat.composer.research.onTitle' : 'chat.composer.research.offTitle')
+        : t(researchReasonId),
+      checked: researchOn,
+      // Turning it off stays possible whatever changed since it was turned on.
+      disabled: !researchAvailable && !researchOn,
+      onSelect: onResearchToggle,
+    });
+  }
   if (onWorkspacePick) {
     plusItems.push({
       id: 'workspace',
@@ -786,6 +809,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       title: searchOnTitle,
       onRemove: onWebSearchToggle,
       removeLabel: t('chat.composer.chips.removeWebSearch'),
+    });
+  }
+  if (onResearchToggle && researchOn && researchAvailable) {
+    chips.push({
+      id: 'research',
+      label: t('chat.composer.chips.research'),
+      icon: <ResearchIcon />,
+      title: t('chat.composer.research.onTitle'),
+      onRemove: onResearchToggle,
+      removeLabel: t('chat.composer.chips.removeResearch'),
     });
   }
   if (mcpResourcesAvailable) {

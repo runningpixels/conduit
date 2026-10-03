@@ -160,6 +160,11 @@ struct OpenAiParser {
     /// OpenRouter web search: URLs already reported as `SearchSources`, so a
     /// citation repeated across chunks is listed once.
     cited_urls: std::collections::HashSet<String>,
+    /// OpenRouter web search: the search call opened when the request went
+    /// out, as (tool_call_id, query), until its citations (or the end of the
+    /// response) complete it. Without a call the turn has no search row and
+    /// no Sources entry: the plugin reports only citations.
+    openrouter_search: Option<(String, String)>,
 }
 
 impl OpenAiParser {
@@ -172,7 +177,40 @@ impl OpenAiParser {
             function_calls: HashMap::new(),
             finish_reason: None,
             cited_urls: std::collections::HashSet::new(),
+            openrouter_search: None,
         }
+    }
+
+    /// A parser for an OpenRouter search turn: `tool_call_id` names the search
+    /// call already announced with `ToolCallStart`.
+    fn with_openrouter_search(tool_call_id: String, query: String) -> Self {
+        Self {
+            openrouter_search: Some((tool_call_id, query)),
+            ..Self::new()
+        }
+    }
+
+    /// Completes the announced OpenRouter search call, once.
+    fn complete_openrouter_search(
+        &mut self,
+        request_id: &str,
+        sources: &[Value],
+        index: &mut usize,
+    ) -> Option<ProviderEvent> {
+        let (tool_call_id, query) = self.openrouter_search.take()?;
+        self.completed_search_calls = self.completed_search_calls.saturating_add(1);
+        let mut arguments = json!({ "query": query, "status": "completed" });
+        if !sources.is_empty() {
+            arguments["sources"] = Value::Array(sources.to_vec());
+        }
+        let event = ProviderEvent::ToolCallComplete {
+            request_id: request_id.to_string(),
+            tool_call_id,
+            index: *index,
+            arguments,
+        };
+        *index += 1;
+        Some(event)
     }
 
     /// OpenRouter's web plugin returns citations on chat-completions as
@@ -232,6 +270,9 @@ impl OpenAiParser {
             if self.cited_urls.insert(url.to_string()) {
                 new_sources.push(json!({ "url": url, "title": title }));
             }
+        }
+        if let Some(done) = self.complete_openrouter_search(request_id, &new_sources, index) {
+            events.push(done);
         }
         if !new_sources.is_empty() {
             events.push(ProviderEvent::SearchSources {
@@ -446,6 +487,9 @@ impl StreamParser for OpenAiParser {
                     self.finish_reason = Some(FINISH_REASON_LENGTH);
                 }
                 if finish.is_some() {
+                    if let Some(done) = self.complete_openrouter_search(request_id, &[], index) {
+                        events.push(done);
+                    }
                     let completed: Vec<_> = self.tool_calls.drain().collect();
                     for (_, (tool_call_id, _, _, args)) in completed {
                         let arguments =
@@ -1306,10 +1350,18 @@ fn build_payload(
         body["messages"] = json!(messages);
     }
 
-    if !request.tool_definitions.is_empty() {
-        let tools: Vec<Value> = request
-            .tool_definitions
-            .iter()
+    // OpenRouter's `web` plugin replaces hosted tools, and its strict
+    // chat-completions schema rejects a `{"type": "web_search"}` tool entry.
+    let sent_tools: Vec<&crate::schema::ToolDefinition> = request
+        .tool_definitions
+        .iter()
+        .filter(|tool| {
+            !(openrouter_search && matches!(tool.kind, Some(crate::schema::ToolKind::Hosted)))
+        })
+        .collect();
+    if !sent_tools.is_empty() {
+        let tools: Vec<Value> = sent_tools
+            .into_iter()
             .map(|tool| {
                 // Phase 7 / M-WebSearch: hosted tools ride alongside function
                 // tools on the same `tools` array, but with a different shape.
@@ -1663,13 +1715,23 @@ impl ProviderAdapter for OpenAiAdapter {
         // Switch to `/responses` when the turn opted in. The chat-completions
         // path is preserved for turns that did not opt in (and for non-search
         // function tools, which still work on both endpoints).
-        let endpoint = if self.force_chat_completions {
-            "chat/completions"
-        } else if self.force_responses || (web_search_intent && search_unavailable.is_none()) {
-            "responses"
-        } else {
-            "chat/completions"
-        };
+        let searching = web_search_intent && search_unavailable.is_none();
+        let openrouter_search =
+            searching && openrouter_hosts_search(self.provider_id, Some(&resolved_base));
+        let endpoint = chat_endpoint(
+            self.force_chat_completions,
+            self.force_responses,
+            searching,
+            openrouter_search,
+        );
+        // OpenRouter does not report its search query; the row shows what the
+        // user asked instead.
+        let openrouter_search_call = openrouter_search.then(|| {
+            (
+                format!("openrouter-web-{request_id}"),
+                last_user_text(&normalized.request, 120),
+            )
+        });
 
         let sse = post_sse(
             &ctx.http,
@@ -1682,6 +1744,21 @@ impl ProviderAdapter for OpenAiAdapter {
         )
         .await?;
 
+        if let Some((tool_call_id, query)) = openrouter_search_call {
+            let start = ProviderEvent::ToolCallStart {
+                request_id: request_id.clone(),
+                tool_call_id: tool_call_id.clone(),
+                index: 0,
+                tool_id: "web_search".to_string(),
+                name: "web_search".to_string(),
+            };
+            let parser = OpenAiParser::with_openrouter_search(tool_call_id, query);
+            let inner = wrap_sse_stream(request_id, parser, sse);
+            let prefix = async_stream::stream! {
+                yield start;
+            };
+            return Ok(Box::pin(prefix.chain(inner)));
+        }
         let inner = wrap_sse_stream(request_id, OpenAiParser::new(), sse);
         if let Some(unavailable) = search_unavailable {
             let prefix = async_stream::stream! {
@@ -1691,6 +1768,44 @@ impl ProviderAdapter for OpenAiAdapter {
         } else {
             Ok(inner)
         }
+    }
+}
+
+/// The latest user message's text, cut to `max` characters, for a search row.
+fn last_user_text(request: &ProviderRequest, max: usize) -> String {
+    request
+        .messages
+        .iter()
+        .rev()
+        .find(|m| matches!(m.role, crate::schema::MessageRole::User))
+        .map(|m| {
+            m.parts
+                .iter()
+                .filter_map(|p| p.content.as_deref())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
+        .map(|text| text.chars().take(max).collect())
+        .unwrap_or_default()
+}
+
+/// Which endpoint a request goes to. Hosted search lives on the Responses API,
+/// except OpenRouter's `web` plugin, which rides on chat-completions (live,
+/// 2026-10-02: the chat-completions body sent to `/responses` failed
+/// OpenRouter's tool validation).
+fn chat_endpoint(
+    force_chat_completions: bool,
+    force_responses: bool,
+    searching: bool,
+    openrouter_search: bool,
+) -> &'static str {
+    if force_chat_completions || openrouter_search {
+        "chat/completions"
+    } else if force_responses || searching {
+        "responses"
+    } else {
+        "chat/completions"
     }
 }
 
@@ -2080,6 +2195,142 @@ mod tests {
             });
         assert!(!has_hosted_tool, "no Responses-API web_search tool");
         assert!(body.get("include").is_none());
+    }
+
+    // Live, 2026-10-02: OpenRouter rejected `tools[5]` ("Tool type is
+    // explicitly modeled and must match its strict schema") because the
+    // renderer's hosted `web_search` definition rode along. The plugin
+    // replaces it; function tools still go out.
+    #[test]
+    fn openrouter_search_drops_hosted_tool_definitions() {
+        let tool = |name: &str, kind: ToolKind| ToolDefinition {
+            tool_id: name.into(),
+            name: name.into(),
+            description: "d".into(),
+            input_schema: json!({ "type": "object" }),
+            kind: Some(kind),
+            host_config: None,
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: None,
+            tenant_scope: None,
+        };
+        let request = ProviderRequest {
+            request_id: "req-or-tools".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "z-ai/glm-5.3".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![
+                tool("read_file", ToolKind::Function),
+                tool("web_search", ToolKind::Hosted),
+            ],
+            generation_controls: None,
+            response_format: None,
+            web_search: Some(WebSearchRequest {
+                enabled: true,
+                search_context_size: None,
+                filters: None,
+                external_web_access: None,
+                return_token_budget: None,
+                user_location: None,
+                include_sources: None,
+            }),
+        };
+        let body = build_payload(&NormalizedRequest { request }, false, "openrouter");
+        let tools = body["tools"].as_array().expect("function tools still sent");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(
+            tools[0].pointer("/function/name"),
+            Some(&json!("read_file"))
+        );
+        assert_eq!(body.pointer("/plugins/0/id"), Some(&json!("web")));
+    }
+
+    fn run_openrouter_parser(lines: &[&str]) -> Vec<ProviderEvent> {
+        let mut parser = OpenAiParser::with_openrouter_search("or-1".into(), "latest tauri".into());
+        let mut index = 1;
+        let mut events = Vec::new();
+        for line in lines {
+            events.extend(parser.parse_chunk("req", line, &mut index));
+        }
+        events
+    }
+
+    #[test]
+    fn openrouter_search_call_completes_with_its_sources() {
+        let events = run_openrouter_parser(&[
+            r#"{"choices":[{"index":0,"delta":{"content":"2.12 shipped."}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://v2.tauri.app/release/","title":"Releases"}}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+        ]);
+        let completes: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallComplete {
+                    tool_call_id,
+                    arguments,
+                    ..
+                } => Some((tool_call_id.clone(), arguments.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(completes.len(), 1, "completed once, not again at finish");
+        assert_eq!(completes[0].0, "or-1");
+        assert_eq!(completes[0].1["query"], "latest tauri");
+        assert_eq!(
+            completes[0].1["sources"][0]["url"],
+            "https://v2.tauri.app/release/"
+        );
+        let complete_at = events
+            .iter()
+            .position(|e| matches!(e, ProviderEvent::ToolCallComplete { .. }))
+            .unwrap();
+        let sources_at = events
+            .iter()
+            .position(|e| matches!(e, ProviderEvent::SearchSources { .. }))
+            .unwrap();
+        assert!(
+            complete_at < sources_at,
+            "sources attach to the completed call"
+        );
+    }
+
+    #[test]
+    fn openrouter_search_call_completes_even_without_citations() {
+        let events = run_openrouter_parser(&[
+            r#"{"choices":[{"index":0,"delta":{"content":"Nothing found."}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+        ]);
+        let done = events
+            .iter()
+            .find_map(|e| match e {
+                ProviderEvent::ToolCallComplete {
+                    tool_call_id,
+                    arguments,
+                    ..
+                } => Some((tool_call_id.clone(), arguments.clone())),
+                _ => None,
+            })
+            .expect("the search call never stays open");
+        assert_eq!(done.0, "or-1");
+        assert!(done.1.get("sources").is_none());
+    }
+
+    #[test]
+    fn search_turns_pick_the_endpoint_their_search_lives_on() {
+        // OpenAI's hosted tool: Responses API.
+        assert_eq!(chat_endpoint(false, false, true, false), "responses");
+        // OpenRouter's web plugin: chat-completions.
+        assert_eq!(chat_endpoint(false, false, true, true), "chat/completions");
+        // No search: chat-completions unless the preset forces Responses.
+        assert_eq!(
+            chat_endpoint(false, false, false, false),
+            "chat/completions"
+        );
+        assert_eq!(chat_endpoint(false, true, false, false), "responses");
+        assert_eq!(chat_endpoint(true, false, true, false), "chat/completions");
     }
 
     #[test]

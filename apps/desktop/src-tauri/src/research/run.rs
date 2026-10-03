@@ -504,7 +504,13 @@ impl Engine<'_> {
                 source.host = host;
             }
         }
-        source.title = page.title.clone().filter(|t| !t.trim().is_empty());
+        // Titles are decoded once by the extractor; some sites double-encode
+        // theirs (`&amp;mdash;`), which would still show as `&mdash;`.
+        source.title = page
+            .title
+            .as_deref()
+            .map(extract::decode_entities)
+            .filter(|t| !t.trim().is_empty());
         if extract::looked_empty(&page.text) {
             source.status = ResearchSourceStatus::Empty;
             return PageRead {

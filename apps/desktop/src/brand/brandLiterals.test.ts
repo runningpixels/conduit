@@ -167,13 +167,6 @@ const WIRE_IDENTITY_ALLOWLIST: { file: string; pattern: RegExp; reason: string }
       'User-Agent on official MCP registry HTTP requests. The registry (and operators reading access logs) identify this client by this string.',
   },
   {
-    file: 'src-tauri/src/agent_tools.rs',
-    pattern: /"User-Agent",\s*"Conduit\/1\.0"/,
-    reason:
-      'Outbound User-Agent on tool-initiated HTTP requests (e.g. artifact link fetches). Third-party ' +
-      'servers and their rate limiters key off this string.',
-  },
-  {
     file: 'src-tauri/src/paths.rs',
     pattern: /ProjectDirs::from\("com",\s*"Conduit",/,
     reason:

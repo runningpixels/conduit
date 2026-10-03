@@ -794,6 +794,7 @@ mod tests {
                 }
             }),
             permission_level: None,
+            annotations: None,
         };
         let good = McpTool {
             name: "good".into(),
@@ -805,6 +806,7 @@ mod tests {
                 }
             }),
             permission_level: None,
+            annotations: None,
         };
         let kept = filter_tools_for_http(vec![bad, good]);
         assert_eq!(kept.len(), 1);

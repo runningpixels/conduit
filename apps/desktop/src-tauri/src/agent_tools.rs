@@ -61,6 +61,8 @@ pub const REMEMBER_TOOL: &str = "remember";
 // Web tools (ReadOnly/SideEffectful, search-gated)
 pub const WEB_SEARCH_TOOL: &str = "web_search";
 pub const WEB_FETCH_TOOL: &str = "web_fetch";
+/// Most readable text one `web_fetch` returns to the model.
+const WEB_FETCH_MAX_CHARS: usize = 50_000;
 
 // Clipboard tools (SideEffectful, read requires consent)
 pub const CLIPBOARD_READ_TOOL: &str = "clipboard_read";
@@ -480,7 +482,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WEB_FETCH_TOOL.to_string(),
             name: WEB_FETCH_TOOL.to_string(),
-            description: "Fetch the contents of a web page. Provide a `url` string. Returns the page content as text (may be truncated at 50KB).".to_string(),
+            description: "Fetch a public web page. Provide a `url` string. Returns its title and readable text (truncated at 50,000 characters). Only public https sites can be fetched; local and private-network addresses are refused.".to_string(),
             input_schema: json_schema(&[
                 ("url", "string", true),
             ]),
@@ -952,10 +954,11 @@ pub async fn execute_builtin_tool(
         WEB_FETCH_TOOL => {
             let input: WebFetchInput = parse_args(tool_name, arguments)?;
             match web_fetch(&input.url).await {
-                Ok(content) => Ok(serde_json::json!({
+                Ok(page) => Ok(serde_json::json!({
                     "ok": true,
-                    "url": input.url,
-                    "content": content,
+                    "url": page.url,
+                    "title": page.title,
+                    "content": page.text,
                 })),
                 Err(e) => Err(format!("web fetch error: {e}")),
             }
@@ -2897,45 +2900,23 @@ pub fn web_search_tool_output_with_note(
 // Helper: web fetch (HTTP GET)
 // -------------------------------------------------------------------------
 
-async fn web_fetch(url: &str) -> Result<String, String> {
-    // Validate URL scheme
+/// Readable text of one page, through the same checked network path as the
+/// workflow "Fetch page" step ([`crate::web_page`]): public https only, so a
+/// page that tells the model to fetch a local or private address gets nothing.
+async fn web_fetch(url: &str) -> Result<crate::web_page::Page, String> {
     let parsed = url::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
     match parsed.scheme() {
         "http" | "https" => {}
         scheme => return Err(format!("unsupported URL scheme: {scheme}")),
     }
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("http client error: {e}"))?;
-
-    let resp = client
-        .get(url)
-        .header("User-Agent", "Conduit/1.0")
-        .send()
-        .await
-        .map_err(|e| format!("fetch failed: {e}"))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(format!("HTTP {status}"));
-    }
-
-    // Read up to 50KB
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("read failed: {e}"))?;
-    let max_bytes = 50 * 1024;
-    let truncated = if bytes.len() > max_bytes {
-        &bytes[..max_bytes]
-    } else {
-        &bytes
-    };
-
-    let text = String::from_utf8_lossy(truncated).to_string();
-    Ok(text)
+    crate::web_page::fetch(
+        &crate::web_page::upgrade_to_https(url),
+        "chat",
+        crate::artifact_network::AddressPolicy::APP,
+        WEB_FETCH_MAX_CHARS,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // -------------------------------------------------------------------------

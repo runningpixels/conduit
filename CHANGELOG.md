@@ -7,7 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.5] - 2026-10-03
+
 ### Changed
+
+- **Saved apps are called personal apps.** The Apps page and the Home tile
+  now say *personal apps*; the rail still says Apps.
 
 - **Web search works on every model out of the box.** The local search
   backend now defaults to **Exa**, which returns real web results with no
@@ -681,7 +686,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.4...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.5...HEAD
+[1.0.0-rc.5]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.4...v1.0.0-rc.5
 [1.0.0-rc.4]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.3...v1.0.0-rc.4
 [1.0.0-rc.3]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.2...v1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.1...v1.0.0-rc.2

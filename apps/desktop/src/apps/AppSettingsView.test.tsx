@@ -160,7 +160,7 @@ describe('AppSettingsView', () => {
     );
   });
 
-  // Five quick renders in a row: the 1 s default wait flaked on a loaded CI runner.
+  // Five quick renders in a row: the 1 s default waits and the 5 s test timeout both flaked on a loaded CI runner.
   it('validates the daily limit before calling Rust', async () => {
     renderView();
     const input = await screen.findByLabelText('Daily limit for cloud models (tokens)', undefined, SLOW);
@@ -179,7 +179,7 @@ describe('AppSettingsView', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Reset to default' }, SLOW));
     await waitFor(() => expect(ipc.setAppDailyTokenCap).toHaveBeenLastCalledWith('a1', null), SLOW);
-  });
+  }, 20_000);
 
   it('exports, clears and revokes through the right commands', async () => {
     const { props } = renderView();

@@ -24,10 +24,12 @@ export interface AskBoxProps {
   onChange: (text: string) => void;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   onAsk: (text: string) => void;
+  /** The Research chip: send this text as a Research run in a fresh chat. */
+  onResearch: (text: string) => void;
   onAction: (action: HomeAction) => void;
 }
 
-export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onAction }: AskBoxProps) {
+export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onAction }: AskBoxProps) {
   const t = useT();
   const hintId = useId();
 
@@ -49,6 +51,13 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
     if (value === '') return;
     setText('');
     onAsk(value);
+  };
+
+  const research = () => {
+    const value = text.trim();
+    if (value === '') return;
+    setText('');
+    onResearch(value);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -93,6 +102,16 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
             {t(chip.labelId)}
           </button>
         ))}
+        {/* Research needs a question to research, so it waits for text. */}
+        <button
+          type="button"
+          className="home-chip"
+          disabled={text.trim() === ''}
+          title={text.trim() === '' ? t('home.ask.chip.researchHint') : undefined}
+          onClick={research}
+        >
+          {t('home.ask.chip.research')}
+        </button>
       </div>
     </div>
   );

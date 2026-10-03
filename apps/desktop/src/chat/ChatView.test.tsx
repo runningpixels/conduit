@@ -1,4 +1,4 @@
-import { createRef, type RefObject } from 'react';
+import { createRef, type ComponentProps, type RefObject } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings, Message, MessagePart } from '@conduit/config-schema';
@@ -116,13 +116,21 @@ vi.mock('../ipc/client', () => ({
   saveDroppedAttachment: vi.fn(),
   prepareMessageEdit: vi.fn(),
   removeLastTurn: vi.fn().mockResolvedValue(1),
+  startResearch: vi.fn(),
+  getResearchRun: vi.fn(),
+  approveResearchBrief: vi.fn(),
+  stopResearch: vi.fn(),
+  cancelResearch: vi.fn(),
+  openExternalUrl: vi.fn(),
 }));
 
 import {
   getConversationCompaction,
   getConversationMessages,
   getMessageIdByRequest,
+  getResearchRun,
   startChatStream,
+  startResearch,
 } from '../ipc/client';
 
 function renderChatView(overrides: {
@@ -934,5 +942,170 @@ describe('ChatView: Retry re-sends the last question', () => {
     expect(resent.parts.find((p) => p.kind === 'knowledgeReference')).toMatchObject({
       metadata: { documentId: 'doc-1' },
     });
+  });
+});
+
+/**
+ * Research is an explicit mode: the "+" menu turns it on, and the next Send
+ * starts a run (`start_research`) instead of a streamed reply. The thread then
+ * reloads through the ordinary hydration path, which finds the run on the
+ * assistant message's metadata.
+ */
+describe('ChatView Research', () => {
+  const webOn: AppSettings = { ...baseSettings, localOnly: false, webSearchEnabled: true, webSearchConsentAcknowledged: true };
+  const question = 'How do heat pumps cope with cold winters?';
+
+  function msg(id: string, role: 'user' | 'assistant', text: string, metadata?: Record<string, unknown>): Message {
+    return {
+      id,
+      conversationId: 'conv-1',
+      role,
+      ...(metadata ? { metadata } : {}),
+      parts: text
+        ? [{ id: `${id}-p0`, messageId: id, index: 0, kind: 'text', content: text, createdAt: '2026-01-01T00:00:00Z' }]
+        : [],
+      createdAt: '2026-01-01T00:00:00Z',
+    };
+  }
+
+  const planning = {
+    id: 'run-1',
+    conversationId: 'conv-1',
+    messageId: 'a1',
+    status: 'planning',
+    brief: null,
+    budget: { searches: 20, pages: 40, tokens: 400000, minutes: 15 },
+    progress: {
+      phase: 'searching',
+      searchesUsed: 0,
+      searchesLimit: 20,
+      pagesRead: 0,
+      pagesLimit: 40,
+      claims: 0,
+      currentUrl: null,
+      tokensUsed: 0,
+    },
+    artifactId: null,
+    summary: null,
+    sources: [],
+    unanswered: [],
+    unverifiedDropped: 0,
+    error: null,
+    createdAt: '2026-10-03T10:00:00Z',
+    finishedAt: null,
+  } as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getResearchRun).mockResolvedValue(planning);
+  });
+
+  function renderWith(settings: AppSettings, extra: Partial<ComponentProps<typeof ChatView>> = {}) {
+    const onStatus = vi.fn();
+    const onConversationChanged = vi.fn();
+    render(
+      <ChatView
+        settings={settings}
+        onSelectModel={vi.fn()}
+        onStatus={onStatus}
+        conversationId="conv-1"
+        artifacts={[]}
+        fileStateMap={{}}
+        onPromoteArtifact={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onConversationChanged={onConversationChanged}
+        {...extra}
+      />,
+    );
+    return { onStatus, onConversationChanged };
+  }
+
+  const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'Add to this message' }));
+
+  it('sends through startResearch, not the stream, then shows the run card and turns Research off', async () => {
+    const { onConversationChanged } = renderWith(webOn);
+    vi.mocked(startResearch).mockImplementation(async () => {
+      // Rust has saved both messages by the time the command returns.
+      vi.mocked(getConversationMessages).mockResolvedValue([
+        msg('u1', 'user', question),
+        msg('a1', 'assistant', '', { researchRunId: 'run-1' }),
+      ]);
+      return planning;
+    });
+
+    openMenu();
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Research/ }));
+    // The active chip.
+    expect(screen.getByRole('button', { name: 'Turn off Research' })).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByLabelText('Message the active provider'), { target: { value: question } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => expect(startResearch).toHaveBeenCalledWith('conv-1', question));
+    expect(startChatStream).not.toHaveBeenCalled();
+    // The new user turn and the assistant turn's card.
+    expect(await screen.findByText(question)).toBeInTheDocument();
+    expect(await screen.findByText('Planning the research…')).toBeInTheDocument();
+    expect(getResearchRun).toHaveBeenCalledWith('run-1');
+    expect(onConversationChanged).toHaveBeenCalled();
+    // Input cleared, Research turned itself off.
+    expect(screen.getByLabelText('Message the active provider')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Turn off Research' })).toBeNull();
+  });
+
+  it('sends a normal turn when Research is off', async () => {
+    vi.mocked(startChatStream).mockResolvedValue({ requestId: 'r1' } as never);
+    renderWith(webOn);
+    fireEvent.change(await screen.findByLabelText('Message the active provider'), { target: { value: 'Hello' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(startChatStream).toHaveBeenCalled());
+    expect(startResearch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the text and says why when starting fails', async () => {
+    vi.mocked(startResearch).mockRejectedValue(new Error('Web search is off'));
+    const { onStatus } = renderWith(webOn);
+    openMenu();
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Research/ }));
+    fireEvent.change(await screen.findByLabelText('Message the active provider'), { target: { value: question } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() =>
+      expect(onStatus.mock.calls.some((call) => JSON.stringify(call[0]).includes('Web search is off'))).toBe(true),
+    );
+    expect(screen.getByLabelText('Message the active provider')).toHaveValue(question);
+    expect(screen.getByRole('button', { name: 'Turn off Research' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['local-only is on', { ...webOn, localOnly: true }, 'Research is not available in local-only mode'],
+    ['web search is off', { ...webOn, webSearchEnabled: false }, 'Turn on web search in Settings to use Research'],
+    [
+      'the web search notice is not accepted',
+      { ...webOn, webSearchConsentAcknowledged: false },
+      'Turn on web search from this menu once to accept its notice, then use Research',
+    ],
+  ])('disables the Research item, with the reason, when %s', async (_name, settings, reason) => {
+    renderWith(settings);
+    openMenu();
+    const item = await screen.findByRole('menuitemcheckbox', { name: /Research/ });
+    expect(item).toBeDisabled();
+    expect(item).toHaveAttribute('title', reason);
+  });
+
+  it('starts a run from text handed over by Home (the Research chip)', async () => {
+    vi.mocked(startResearch).mockResolvedValue(planning);
+    const onPendingSendConsumed = vi.fn();
+    renderWith(webOn, { pendingSendText: question, pendingSendResearch: true, onPendingSendConsumed });
+    await waitFor(() => expect(startResearch).toHaveBeenCalledWith('conv-1', question));
+    expect(startChatStream).not.toHaveBeenCalled();
+    expect(onPendingSendConsumed).toHaveBeenCalled();
+  });
+
+  it('sends handed-over text as a normal turn when the chip was not Research', async () => {
+    vi.mocked(startChatStream).mockResolvedValue({ requestId: 'r1' } as never);
+    renderWith(webOn, { pendingSendText: 'Hello there', onPendingSendConsumed: vi.fn() });
+    await waitFor(() => expect(startChatStream).toHaveBeenCalled());
+    expect(startResearch).not.toHaveBeenCalled();
   });
 });

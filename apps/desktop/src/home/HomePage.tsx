@@ -40,6 +40,8 @@ export interface HomePageProps {
   collectionCount: number | null;
   /** Routing happens in the shell: a deck request starts a deck, anything else a chat. */
   onAsk: (text: string) => void;
+  /** The ask box's Research chip, with the box's text. */
+  onResearch: (text: string) => void;
   onOpenChat: (conversationId: string) => void;
   onOpenDeck: (deckId: string) => void;
   onOpenApp: (appId: string) => void;
@@ -88,6 +90,7 @@ export function HomePage({
   ideaState,
   collectionCount,
   onAsk,
+  onResearch,
   onOpenChat,
   onOpenDeck,
   onOpenApp,
@@ -214,6 +217,7 @@ export function HomePage({
               onChange={setAsk}
               inputRef={askRef}
               onAsk={onAsk}
+              onResearch={onResearch}
               onAction={onAction}
             />
           </header>

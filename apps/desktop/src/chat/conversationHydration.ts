@@ -16,6 +16,9 @@ export interface ChatTurn {
   attachments?: TurnAttachment[];
   /** `#`-picked document references for this user turn (t1-8 M3, D8/D9). */
   knowledgeRefs?: KnowledgeRef[];
+  /** Set on the assistant turn of a Research run (the message's
+   *  `metadata.researchRunId`): the turn renders as a ResearchRunCard. */
+  researchRunId?: string;
 }
 
 const DISPLAY_PART_KINDS = new Set(['text', 'reasoning']);
@@ -85,6 +88,9 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
     return null;
   }
 
+  const runId = message.role === 'assistant' ? message.metadata?.researchRunId : undefined;
+  const researchRunId = typeof runId === 'string' && runId.trim() !== '' ? runId : undefined;
+
   return {
     id: message.id,
     role: message.role === 'assistant' ? 'assistant' : 'user',
@@ -93,6 +99,7 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
     createdAt: message.createdAt,
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(knowledgeRefs && knowledgeRefs.length > 0 ? { knowledgeRefs } : {}),
+    ...(researchRunId ? { researchRunId } : {}),
   };
 }
 

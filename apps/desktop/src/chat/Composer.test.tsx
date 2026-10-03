@@ -931,3 +931,69 @@ describe('Composer native window drop (M1, D13)', () => {
     expect(() => ref.current?.addDroppedPaths(['C:\\notes\\dropped.txt'])).not.toThrow();
   });
 });
+
+describe('Composer Research item', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const ready: AppSettings = {
+    ...baseSettings,
+    localOnly: false,
+    webSearchEnabled: true,
+    webSearchConsentAcknowledged: true,
+  };
+
+  it('is absent when the host does not wire it', () => {
+    renderComposer({ settings: ready });
+    openPlusMenu();
+    expect(screen.queryByRole('menuitemcheckbox', { name: /research/i })).toBeNull();
+  });
+
+  it('toggles from a checkbox item beside Web search', () => {
+    const onResearchToggle = vi.fn();
+    renderComposer({ settings: ready, onResearchToggle });
+    const menu = openPlusMenu();
+    const labels = Array.from(menu.querySelectorAll('[role^="menuitem"]')).map(
+      (item) => item.querySelector('span')?.textContent,
+    );
+    expect(labels).toEqual(['Attach images…', 'Web search', 'Research']);
+    const item = screen.getByRole('menuitemcheckbox', { name: /Research/ });
+    expect(item).toHaveAttribute('aria-checked', 'false');
+    expect(item).toBeEnabled();
+    fireEvent.click(item);
+    expect(onResearchToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows as checked and as a removable chip when on', () => {
+    const onResearchToggle = vi.fn();
+    renderComposer({ settings: ready, onResearchToggle, researchOn: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off Research' }));
+    expect(onResearchToggle).toHaveBeenCalledTimes(1);
+    openPlusMenu();
+    expect(screen.getByRole('menuitemcheckbox', { name: /Research/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('is disabled with the reason under local-only', () => {
+    renderComposer({
+      settings: { ...ready, localOnly: true },
+      onResearchToggle: vi.fn(),
+      researchOn: false,
+    });
+    openPlusMenu();
+    const item = screen.getByRole('menuitemcheckbox', { name: /Research/ });
+    expect(item).toBeDisabled();
+    expect(item).toHaveAttribute('title', 'Research is not available in local-only mode');
+  });
+
+  it('can still be turned off after settings made it unavailable', () => {
+    renderComposer({
+      settings: { ...ready, webSearchEnabled: false },
+      onResearchToggle: vi.fn(),
+      researchOn: true,
+    });
+    openPlusMenu();
+    expect(screen.getByRole('menuitemcheckbox', { name: /Research/ })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Turn off Research' })).toBeNull();
+  });
+});

@@ -17,8 +17,16 @@ describe('webSearchDeveloperPromptFor', () => {
 });
 
 describe('localWebSearchDeveloperPromptFor', () => {
-  it('points at the DuckDuckGo builtin and JSON results', () => {
+  it('defaults to Exa, with live results and descriptive queries', () => {
     const prompt = localWebSearchDeveloperPromptFor();
+    expect(prompt).toContain('Exa');
+    expect(prompt).toContain('live web results');
+    expect(prompt).toMatch(/description of the page/i);
+    expect(prompt).not.toContain('Instant Answer');
+  });
+
+  it('points at the DuckDuckGo builtin and JSON results', () => {
+    const prompt = localWebSearchDeveloperPromptFor('duckduckgo');
     expect(prompt).toContain('DuckDuckGo');
     expect(prompt).toContain('web_search');
     expect(prompt).toContain('web_fetch');
@@ -26,7 +34,7 @@ describe('localWebSearchDeveloperPromptFor', () => {
   });
 
   it('limits Instant Answer use and forbids binge retries', () => {
-    const prompt = localWebSearchDeveloperPromptFor();
+    const prompt = localWebSearchDeveloperPromptFor('duckduckgo');
     expect(prompt).toMatch(/at most once or twice/i);
     expect(prompt).toMatch(/Instant Answer/i);
     expect(prompt).toMatch(/not a live news/i);

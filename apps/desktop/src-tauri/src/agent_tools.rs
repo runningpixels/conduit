@@ -96,7 +96,7 @@ pub struct AgentToolContext<'a> {
     pub source_message_id: Option<String>,
     /// Present when workspace tools are enabled with a valid root.
     pub workspace: Option<&'a crate::workspace_tools::WorkspaceToolConfig>,
-    /// Local web_search backend + optional API key. Default is DuckDuckGo.
+    /// Local web_search backend + optional API key. Default is Exa (keyless).
     pub search: crate::search::LocalSearchConfig,
     /// Present when the active provider has a configured default image model
     /// (t0-8 M3). `None` makes `generate_image` fail with a clear error

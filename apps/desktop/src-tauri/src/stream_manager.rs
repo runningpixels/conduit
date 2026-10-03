@@ -718,7 +718,7 @@ pub const MAX_WEB_SEARCH_PER_TURN: u32 = 3;
 pub const MAX_WEB_FETCH_PER_TURN: u32 = 3;
 
 const WEB_SEARCH_CAP_REJECT: &str =
-    "This turn already used the maximum number of web_search calls. Answer with the results you have (or say Instant Answer cannot cover this query). Do not call web_search again.";
+    "This turn already used the maximum number of web_search calls. Answer with the results you have (or say search could not cover this query). Do not call web_search again.";
 const WEB_FETCH_CAP_REJECT: &str =
     "This turn already used the maximum number of web_fetch calls. Answer with the content you have. Do not call web_fetch again.";
 

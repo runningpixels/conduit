@@ -17,7 +17,7 @@ export type WebSearchDefaults = {
 mode: WebSearchMode, 
 /**
  * Which local HTTP backend to use when the turn resolves to local search.
- * Defaults to DuckDuckGo Instant Answer (no API key).
+ * Defaults to Exa (no API key needed). A saved choice is kept.
  */
 localBackend: LocalSearchBackend, 
 /**

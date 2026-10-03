@@ -158,11 +158,11 @@ Together AI, Fireworks AI, LM Studio, Ollama, or any OpenAI-compatible endpoint.
 When a chat nears the model's context window, older turns are summarised
 automatically so it keeps going.
 
-**Web search** uses your provider's own search on OpenAI, Gemini and Anthropic,
-or a search service you choose (Tavily, Brave or your own SearXNG) for any
-other model, with allowed and blocked domain lists. Sources show with the
-answer and in the inspector. *Coming in the next release:* Exa as the default,
-which works on any model with no key, and OpenRouter's built-in search.
+**Web search** works on any model with no setup. OpenAI, Gemini, Anthropic and
+OpenRouter use their own built-in search; every other model searches through
+Exa, which needs no key, or a service you choose (Tavily, Brave or your own
+SearXNG), with a link in Settings to get a key. Allowed and blocked domain lists
+narrow it, and sources show with the answer and in the inspector.
 
 ![A web search answer about Rust 1.90 with a search row (6 sources) and inline citations, tied back to Ferry through memory](./docs/assets/screenshot-search.png)
 
@@ -262,7 +262,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.4 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.5 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -282,7 +282,7 @@ left is checking it on real installs before calling it final.
 | Skills (`SKILL.md`) and user-approved encrypted memory | Working |
 | Conversation pin, archive and folders | Working |
 | Vision attachments, Mermaid/KaTeX, conversation export | Working |
-| Web search (hosted OpenAI/Gemini/Anthropic + Tavily, Brave, SearXNG) | Working; Exa and OpenRouter search in the next release |
+| Web search (hosted OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Working |
 | Knowledge base — document collections with hybrid retrieval and citations | Working |
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
@@ -293,7 +293,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.4 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.5 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

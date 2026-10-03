@@ -788,7 +788,8 @@ pub fn classify_web_tool_clamps(
 /// per-turn cap ([`MAX_WEB_CAP_ONLY_ROUNDS`] rounds of nothing but refusals).
 pub fn web_cap_stalled_message(search_cap: u32) -> String {
     format!(
-        "The model kept asking to search after this turn's limit of {search_cap} searches, so Conduit stopped it before it answered. Retry, or ask it to answer from what it has found."
+        "The model kept asking to search after this turn's limit of {search_cap} searches, so {} stopped it before it answered. Retry, or ask it to answer from what it has found.",
+        crate::brand::app_name()
     )
 }
 

@@ -7,11 +7,19 @@
 use provider_core::schema::LocalSearchBackend;
 use serde_json::{json, Value};
 
+pub const SEARCH_EXA_CREDENTIAL_ID: &str = "search/exa";
 pub const SEARCH_TAVILY_CREDENTIAL_ID: &str = "search/tavily";
 pub const SEARCH_BRAVE_CREDENTIAL_ID: &str = "search/brave";
 pub const SEARCH_SEARXNG_CREDENTIAL_ID: &str = "search/searxng";
 
 const MAX_RESULTS: usize = 10;
+
+/// Exa's hosted MCP server. Keyless use is free and rate-limited; an Exa key
+/// (sent as `x-api-key`) raises the limits.
+pub const EXA_MCP_URL: &str = "https://mcp.exa.ai/mcp";
+const EXA_PROTOCOL_VERSION: &str = "2025-03-26";
+/// Longest snippet kept per Exa result; its highlights can run to pages.
+const EXA_SNIPPET_CHARS: usize = 600;
 const REQUEST_TIMEOUT_SECS: u64 = 15;
 
 fn user_agent() -> String {
@@ -36,6 +44,7 @@ pub struct LocalSearchConfig {
 pub fn credential_id(backend: LocalSearchBackend) -> Option<&'static str> {
     match backend {
         LocalSearchBackend::Duckduckgo => None,
+        LocalSearchBackend::Exa => Some(SEARCH_EXA_CREDENTIAL_ID),
         LocalSearchBackend::Tavily => Some(SEARCH_TAVILY_CREDENTIAL_ID),
         LocalSearchBackend::Brave => Some(SEARCH_BRAVE_CREDENTIAL_ID),
         LocalSearchBackend::Searxng => Some(SEARCH_SEARXNG_CREDENTIAL_ID),
@@ -45,15 +54,25 @@ pub fn credential_id(backend: LocalSearchBackend) -> Option<&'static str> {
 pub fn empty_note(backend: LocalSearchBackend) -> &'static str {
     match backend {
         LocalSearchBackend::Duckduckgo => EMPTY_INSTANT_ANSWER_NOTE,
-        LocalSearchBackend::Tavily | LocalSearchBackend::Brave | LocalSearchBackend::Searxng => {
-            EMPTY_LIVE_SEARCH_NOTE
-        }
+        LocalSearchBackend::Exa
+        | LocalSearchBackend::Tavily
+        | LocalSearchBackend::Brave
+        | LocalSearchBackend::Searxng => EMPTY_LIVE_SEARCH_NOTE,
     }
 }
 
 pub async fn search(config: &LocalSearchConfig, query: &str) -> Result<Vec<Value>, String> {
     match config.backend {
         LocalSearchBackend::Duckduckgo => duckduckgo_search(query).await,
+        // The key is optional: without one, Exa's free, rate-limited tier answers.
+        LocalSearchBackend::Exa => {
+            let key = config
+                .api_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            exa_search(EXA_MCP_URL, query, key).await
+        }
         LocalSearchBackend::Tavily => {
             let key = require_key("Tavily", config.api_key.as_deref())?;
             tavily_search(query, key).await
@@ -80,7 +99,7 @@ fn require_key<'a>(label: &str, key: Option<&'a str>) -> Result<&'a str, String>
     match key.map(str::trim).filter(|s| !s.is_empty()) {
         Some(key) => Ok(key),
         None => Err(format!(
-            "{label} API key is not set. Add it in Settings → Web search, or switch the local backend to DuckDuckGo."
+            "{label} API key is not set. Add it in Settings → Web search, or switch the local backend to Exa, which needs no key."
         )),
     }
 }
@@ -208,6 +227,217 @@ pub fn parse_tavily_search(body: &Value) -> Result<Vec<Value>, String> {
     Ok(clamp_results(out))
 }
 
+/// One JSON-RPC exchange with an MCP server over Streamable HTTP. Returns the
+/// session id the server assigned (if any) and the response message (`None`
+/// for a notification). The reply may be plain JSON or an SSE stream.
+async fn mcp_post(
+    client: &reqwest::Client,
+    endpoint: &str,
+    api_key: Option<&str>,
+    session: Option<&str>,
+    message: &Value,
+) -> Result<(Option<String>, Option<Value>), String> {
+    let mut req = client
+        .post(endpoint)
+        .header("User-Agent", user_agent())
+        .header("Accept", "application/json, text/event-stream")
+        .header("Content-Type", "application/json")
+        .header("MCP-Protocol-Version", EXA_PROTOCOL_VERSION);
+    if let Some(key) = api_key {
+        req = req.header("x-api-key", key);
+    }
+    if let Some(session) = session {
+        req = req.header("Mcp-Session-Id", session);
+    }
+    let resp = req
+        .body(message.to_string())
+        .send()
+        .await
+        .map_err(|e| format!("search request failed: {e}"))?;
+    let status = resp.status();
+    let session = resp
+        .headers()
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("search response read failed: {e}"))?;
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(if api_key.is_some() {
+            "Exa search hit its rate limit. Try again in a minute.".to_string()
+        } else {
+            "Exa's free search is busy (rate limit). Try again in a minute, or add a free Exa key in Settings → Web search for higher limits.".to_string()
+        });
+    }
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(
+            "Exa rejected the API key. Check it in Settings → Web search, or remove it to use Exa's free tier."
+                .to_string(),
+        );
+    }
+    if !status.is_success() {
+        return Err(format!("Exa HTTP {status}"));
+    }
+    if message.get("id").is_none() {
+        return Ok((session, None));
+    }
+    Ok((session, Some(parse_mcp_reply(&text)?)))
+}
+
+/// The JSON-RPC response in a reply body: plain JSON, or the `data:` lines of
+/// an SSE stream (the first message carrying a result or an error).
+pub fn parse_mcp_reply(body: &str) -> Result<Value, String> {
+    let trimmed = body.trim();
+    if trimmed.starts_with('{') {
+        return serde_json::from_str(trimmed)
+            .map_err(|e| format!("search response parse failed: {e}"));
+    }
+    for line in trimmed.lines() {
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        if let Ok(msg) = serde_json::from_str::<Value>(data.trim()) {
+            if msg.get("result").is_some() || msg.get("error").is_some() {
+                return Ok(msg);
+            }
+        }
+    }
+    Err("search response parse failed: no JSON-RPC message in the reply".to_string())
+}
+
+async fn exa_search(
+    endpoint: &str,
+    query: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<Value>, String> {
+    let client = http_client()?;
+    let (session, init) = mcp_post(
+        &client,
+        endpoint,
+        api_key,
+        None,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": EXA_PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": { "name": crate::brand::app_name(), "version": env!("CARGO_PKG_VERSION") },
+            },
+        }),
+    )
+    .await?;
+    if let Some(err) = init.as_ref().and_then(|m| m.get("error")) {
+        return Err(format!(
+            "Exa search could not start: {}",
+            rpc_error_message(err)
+        ));
+    }
+    let session = session.as_deref();
+    mcp_post(
+        &client,
+        endpoint,
+        api_key,
+        session,
+        &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+    )
+    .await?;
+    let (_, reply) = mcp_post(
+        &client,
+        endpoint,
+        api_key,
+        session,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "web_search_exa",
+                "arguments": { "query": query, "numResults": MAX_RESULTS },
+            },
+        }),
+    )
+    .await?;
+    let reply = reply.unwrap_or(Value::Null);
+    if let Some(err) = reply.get("error") {
+        return Err(format!("Exa search failed: {}", rpc_error_message(err)));
+    }
+    let result = reply.get("result").cloned().unwrap_or(Value::Null);
+    let text = result
+        .get("content")
+        .and_then(|c| c.as_array())
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join("\n\n---\n\n")
+        })
+        .unwrap_or_default();
+    if result.get("isError").and_then(|v| v.as_bool()) == Some(true) {
+        let detail: String = text.chars().take(300).collect();
+        return Err(format!("Exa search failed: {detail}"));
+    }
+    Ok(parse_exa_results(&text))
+}
+
+fn rpc_error_message(err: &Value) -> String {
+    err.get("message")
+        .and_then(|m| m.as_str())
+        .unwrap_or("unknown error")
+        .to_string()
+}
+
+/// Exa's search tool answers in text: one block per result, separated by a
+/// `---` line, each with `Title:`, `URL:`, `Published:` and `Author:` lines,
+/// then `Highlights:` (or `Text:` / `Summary:`) followed by the excerpt.
+pub fn parse_exa_results(text: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    for block in text.split("\n---\n") {
+        let mut title = "";
+        let mut url = "";
+        let mut body: Vec<&str> = Vec::new();
+        let mut in_body = false;
+        for line in block.lines() {
+            let trimmed = line.trim();
+            if in_body {
+                // Exa marks elided spans with a bare "..." line.
+                if trimmed != "..." && !trimmed.is_empty() {
+                    body.push(trimmed);
+                }
+                continue;
+            }
+            if let Some(v) = trimmed.strip_prefix("Title:") {
+                title = v.trim();
+            } else if let Some(v) = trimmed.strip_prefix("URL:") {
+                url = v.trim();
+            } else if let Some(v) = ["Highlights:", "Text:", "Summary:"]
+                .iter()
+                .find_map(|k| trimmed.strip_prefix(k))
+            {
+                in_body = true;
+                if !v.trim().is_empty() {
+                    body.push(v.trim());
+                }
+            }
+        }
+        if url.is_empty() {
+            continue;
+        }
+        let joined = body.join(" ");
+        let snippet: String = joined.chars().take(EXA_SNIPPET_CHARS).collect();
+        out.push(hit(
+            if title.is_empty() { url } else { title },
+            snippet,
+            url,
+        ));
+    }
+    clamp_results(out)
+}
+
 async fn tavily_search(query: &str, api_key: &str) -> Result<Vec<Value>, String> {
     let resp = http_client()?
         .post("https://api.tavily.com/search")
@@ -331,7 +561,7 @@ mod tests {
     fn tavily_without_key_errors() {
         let err = require_key("Tavily", None).unwrap_err();
         assert!(err.contains("Tavily"));
-        assert!(err.contains("DuckDuckGo"));
+        assert!(err.contains("Exa"));
     }
 
     #[test]
@@ -398,5 +628,65 @@ mod tests {
             Some("search/tavily")
         );
         assert_eq!(credential_id(LocalSearchBackend::Duckduckgo), None);
+        assert_eq!(credential_id(LocalSearchBackend::Exa), Some("search/exa"));
+    }
+
+    // The shape of a live `web_search_exa` reply (2026-10-02), trimmed.
+    const EXA_SAMPLE: &str = "Title: tauri | Tauri\nURL: https://v2.tauri.app/release/tauri/\nPublished: N/A\nAuthor: N/A\nHighlights:\n### 2.12.0\n\nSep 26, 2026\n\n##### New Features\n...\n- Upgraded to `tauri-utils@2.10.0`\n\n---\n\nTitle: Tauri Ecosystem Releases\nURL: https://v2.tauri.app/release/\nPublished: N/A\nAuthor: N/A\nHighlights:\nRelease notes for every package in the Tauri core ecosystem.\n\n---\n\nTitle: no url here\nHighlights:\nignored";
+
+    #[test]
+    fn parses_exa_text_results() {
+        let rows = parse_exa_results(EXA_SAMPLE);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["title"], "tauri | Tauri");
+        assert_eq!(rows[0]["url"], "https://v2.tauri.app/release/tauri/");
+        let snippet = rows[0]["snippet"].as_str().unwrap();
+        assert!(snippet.starts_with("### 2.12.0 Sep 26, 2026"), "{snippet}");
+        assert!(!snippet.contains("..."), "{snippet}");
+        assert_eq!(
+            rows[1]["snippet"],
+            "Release notes for every package in the Tauri core ecosystem."
+        );
+    }
+
+    #[test]
+    fn exa_snippets_are_capped() {
+        let long = format!(
+            "Title: T\nURL: https://e.com\nHighlights:\n{}",
+            "word ".repeat(400)
+        );
+        let rows = parse_exa_results(&long);
+        assert_eq!(
+            rows[0]["snippet"].as_str().unwrap().chars().count(),
+            EXA_SNIPPET_CHARS
+        );
+    }
+
+    #[test]
+    fn reads_an_mcp_reply_from_sse_or_json() {
+        let sse =
+            "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[]}}\n\n";
+        assert!(parse_mcp_reply(sse).unwrap().get("result").is_some());
+        let json = "{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-1,\"message\":\"nope\"}}";
+        assert_eq!(parse_mcp_reply(json).unwrap()["error"]["message"], "nope");
+        assert!(parse_mcp_reply("event: ping\n\n").is_err());
+    }
+
+    /// Live check against Exa's keyless endpoint. Needs the network:
+    /// `cargo test --lib live_exa_search -- --ignored`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_exa_search() {
+        let rows = exa_search(EXA_MCP_URL, "Tauri 2 release notes", None)
+            .await
+            .expect("keyless Exa search");
+        assert!(!rows.is_empty());
+        assert!(rows[0]["url"].as_str().unwrap().starts_with("http"));
+        eprintln!("{}", serde_json::to_string_pretty(&rows[0]).unwrap());
+    }
+
+    #[test]
+    fn exa_is_the_default_backend() {
+        assert_eq!(LocalSearchBackend::default(), LocalSearchBackend::Exa);
     }
 }

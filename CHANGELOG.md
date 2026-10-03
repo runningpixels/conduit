@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **Web search works on every model out of the box.** The local search
+  backend now defaults to **Exa**, which returns real web results with no
+  setup: it is free and rate-limited without a key, and an Exa key raises
+  the limits. Queries go to Exa under its terms. Previously the default was
+  DuckDuckGo's Instant Answer, which returns encyclopedia snippets and, for
+  most searches, nothing. If you chose DuckDuckGo, it stays selected, and
+  Settings → Web search offers a one-click switch to Exa.
+- **OpenRouter has built-in web search.** With OpenRouter as the provider,
+  search runs through OpenRouter's own web search, billed to the same key,
+  and its sources and citations show up like any other provider's.
+
+### Added
+
+- **Get a search key in one click.** Settings → Web search has a link to
+  get a key from Exa, Tavily or Brave, and to SearXNG's setup guide, each
+  opening in your browser.
+
 ## [1.0.0-rc.4] - 2026-10-02
 
 ### Added

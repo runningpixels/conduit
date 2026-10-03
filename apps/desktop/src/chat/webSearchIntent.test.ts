@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   endpointSupportsHostedSearch,
+  localSearchBackendLabel,
+  localSearchBackendOf,
   providerHostsSearch,
   resolveSearchBackend,
   resolveWebSearchForTurn,
@@ -121,6 +123,23 @@ describe('resolveSearchBackend', () => {
 
   it('Local + Anthropic → local', () => {
     expect(resolveSearchBackend('local', 'anthropic', {})).toBe('local');
+  });
+
+  it('Auto + OpenRouter → hosted through its web plugin, on its own host only', () => {
+    expect(resolveSearchBackend('auto', 'openrouter', {})).toBe('hosted');
+    expect(
+      resolveSearchBackend('auto', 'openrouter', { openrouter: { baseUrl: 'https://my-proxy.example.com/v1' } }),
+    ).toBe('local');
+    // An OpenAI-compatible endpoint pointed at OpenRouter is not the plugin path.
+    expect(
+      resolveSearchBackend('auto', 'openai_compat', { openai_compat: { baseUrl: 'https://openrouter.ai/api/v1' } }),
+    ).toBe('local');
+  });
+
+  it('defaults the local backend to Exa', () => {
+    expect(localSearchBackendOf(undefined)).toBe('exa');
+    expect(localSearchBackendLabel(undefined)).toBe('Exa');
+    expect(localSearchBackendLabel('duckduckgo')).toBe('DuckDuckGo');
   });
 
   it('undefined mode defaults to Auto', () => {

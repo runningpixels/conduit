@@ -382,8 +382,8 @@ pub enum WebSearchMode {
     /// Gemini `google_search`, Anthropic `web_search_20250305`). Unsupported
     /// endpoints emit `SearchUnavailable`.
     Hosted,
-    /// Always use Conduit's local search builtin (DuckDuckGo / Tavily / Brave /
-    /// SearXNG) + `web_fetch`. Never injects hosted search, even on
+    /// Always use Conduit's local search builtin (Exa / Tavily / Brave /
+    /// SearXNG / DuckDuckGo) + `web_fetch`. Never injects hosted search, even on
     /// OpenAI/Gemini/Anthropic.
     Local,
 }
@@ -391,8 +391,8 @@ pub enum WebSearchMode {
 /// Which HTTP API the local `web_search` builtin calls.
 ///
 /// Distinct from [`WebSearchMode`]: mode chooses hosted vs local; this chooses
-/// the local provider. Keys for Tavily/Brave/SearXNG live in the credential
-/// store, not in this struct.
+/// the local provider. Exa works without a key (rate-limited); keys for
+/// Exa/Tavily/Brave/SearXNG live in the credential store, not in this struct.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(
@@ -400,7 +400,10 @@ pub enum WebSearchMode {
     export_to = "../packages/config-schema/src/generated/local_search_backend.ts"
 )]
 pub enum LocalSearchBackend {
+    /// Exa's hosted search, keyless by default. The default since 1.0.0-rc.5:
+    /// DuckDuckGo Instant Answer rarely returns real results.
     #[default]
+    Exa,
     Duckduckgo,
     Tavily,
     Brave,
@@ -570,7 +573,7 @@ pub struct WebSearchDefaults {
     #[serde(default)]
     pub mode: WebSearchMode,
     /// Which local HTTP backend to use when the turn resolves to local search.
-    /// Defaults to DuckDuckGo Instant Answer (no API key).
+    /// Defaults to Exa (no API key needed). A saved choice is kept.
     #[serde(default)]
     pub local_backend: LocalSearchBackend,
     /// SearXNG instance base URL (`http://` or `https://`). Not a secret.
@@ -603,7 +606,7 @@ impl Default for WebSearchDefaults {
     fn default() -> Self {
         Self {
             mode: WebSearchMode::Auto,
-            local_backend: LocalSearchBackend::Duckduckgo,
+            local_backend: LocalSearchBackend::Exa,
             searxng_base_url: None,
             search_context_size: SearchContextSize::Medium,
             allowed_domains: Vec::new(),

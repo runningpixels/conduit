@@ -29,6 +29,7 @@ export function resolveWebSearchForTurn(
 export type SearchBackend = 'hosted' | 'local';
 
 export const SEARCH_CREDENTIAL_IDS = {
+  exa: 'search/exa',
   tavily: 'search/tavily',
   brave: 'search/brave',
   searxng: 'search/searxng',
@@ -37,28 +38,30 @@ export const SEARCH_CREDENTIAL_IDS = {
 export function localSearchBackendOf(
   backend: LocalSearchBackend | undefined | null,
 ): LocalSearchBackend {
-  return backend ?? 'duckduckgo';
+  return backend ?? 'exa';
 }
 
 export function localSearchBackendLabel(
   backend: LocalSearchBackend | undefined | null,
 ): string {
   switch (localSearchBackendOf(backend)) {
+    case 'exa':
+      return 'Exa';
     case 'tavily':
       return 'Tavily';
     case 'brave':
       return 'Brave';
     case 'searxng':
       return 'SearXNG';
-    default:
+    case 'duckduckgo':
       return 'DuckDuckGo';
   }
 }
 
 /**
  * Whether the active provider/endpoint can run a provider-hosted search tool.
- * Mirrors OpenAI `endpoint_supports_hosted_search`, Gemini, and Anthropic
- * `api.anthropic.com`.
+ * Mirrors OpenAI `endpoint_supports_hosted_search`, Gemini, Anthropic
+ * `api.anthropic.com`, and OpenRouter's `web` plugin.
  */
 export function providerHostsSearch(
   activeProvider: string,
@@ -66,6 +69,12 @@ export function providerHostsSearch(
 ): boolean {
   const provider = activeProvider.trim().toLowerCase();
   if (provider === 'gemini') return true;
+  if (provider === 'openrouter') {
+    const baseUrl = providerEndpoints[activeProvider]?.baseUrl
+      ?? providerEndpoints[provider]?.baseUrl
+      ?? 'https://openrouter.ai/api/v1';
+    return openRouterHostsSearch(baseUrl);
+  }
   if (provider === 'anthropic') {
     const baseUrl = providerEndpoints[activeProvider]?.baseUrl
       ?? providerEndpoints[provider]?.baseUrl
@@ -79,6 +88,16 @@ export function providerHostsSearch(
     return endpointSupportsHostedSearch(baseUrl);
   }
   return false;
+}
+
+/** OpenRouter's `web` plugin, on OpenRouter's own host (Rust `openrouter_hosts_search`). */
+export function openRouterHostsSearch(baseUrl: string | null | undefined): boolean {
+  if (!baseUrl?.trim()) return false;
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'openrouter.ai';
+  } catch {
+    return false;
+  }
 }
 
 /** Hosts trusted to implement OpenAI's hosted `web_search` (same allowlist as Rust). */

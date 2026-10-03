@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type {
   AppSettings,
   CredentialSummary,
@@ -15,6 +15,7 @@ import {
 } from '../../chat/webSearchIntent';
 import {
   loadProviderCredentialReference,
+  openExternalUrl,
   saveProviderCredential,
 } from '../../ipc/client';
 import { useRichT, useT } from '../../i18n';
@@ -45,6 +46,11 @@ const MODE_OPTIONS: { value: WebSearchMode; labelId: string; helpId: string }[] 
 
 const LOCAL_BACKEND_OPTIONS: { value: LocalSearchBackend; labelId: string; helpId: string }[] = [
   {
+    value: 'exa',
+    labelId: 'settings.webSearch.localBackend.exa.label',
+    helpId: 'settings.webSearch.localBackend.exa.help',
+  },
+  {
     value: 'duckduckgo',
     labelId: 'settings.webSearch.localBackend.duckduckgo.label',
     helpId: 'settings.webSearch.localBackend.duckduckgo.help',
@@ -65,6 +71,14 @@ const LOCAL_BACKEND_OPTIONS: { value: LocalSearchBackend; labelId: string; helpI
     helpId: 'settings.webSearch.localBackend.searxng.help',
   },
 ];
+
+/** Where to get a key for each search service, opened in the system browser. */
+export const SEARCH_KEY_PAGES = {
+  exa: 'https://dashboard.exa.ai/api-keys',
+  tavily: 'https://app.tavily.com/home',
+  brave: 'https://api-dashboard.search.brave.com/app/keys',
+  searxng: 'https://docs.searxng.org/admin/installation.html',
+} as const;
 
 const CONTEXT_SIZE_LABEL_IDS: Record<'low' | 'medium' | 'high', string> = {
   low: 'settings.webSearch.contextSize.low',
@@ -236,10 +250,30 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                 </label>
               ))}
             </div>
+            {localBackend === 'duckduckgo' && (
+              <div className="search-ddg-notice" role="note" style={{ marginTop: 10, display: 'grid', gap: 6, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
+                <span>{t('settings.webSearch.ddgNotice')}</span>
+                <span>
+                  <button className="btn" type="button" onClick={() => patchDefaults({ localBackend: 'exa' })}>
+                    {t('settings.webSearch.ddgSwitch')}
+                  </button>
+                </span>
+              </div>
+            )}
+            {localBackend === 'exa' && (
+              <SearchBackendKeyField
+                providerId={SEARCH_CREDENTIAL_IDS.exa}
+                label="Exa"
+                optional
+                keyPage={SEARCH_KEY_PAGES.exa}
+                onStatus={onStatus}
+              />
+            )}
             {localBackend === 'tavily' && (
               <SearchBackendKeyField
                 providerId={SEARCH_CREDENTIAL_IDS.tavily}
                 label="Tavily"
+                keyPage={SEARCH_KEY_PAGES.tavily}
                 onStatus={onStatus}
               />
             )}
@@ -247,6 +281,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
               <SearchBackendKeyField
                 providerId={SEARCH_CREDENTIAL_IDS.brave}
                 label="Brave Search"
+                keyPage={SEARCH_KEY_PAGES.brave}
                 onStatus={onStatus}
               />
             )}
@@ -266,6 +301,9 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
                     style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)' }}
                   />
                 </label>
+                <ExternalLinkButton url={SEARCH_KEY_PAGES.searxng} onStatus={onStatus}>
+                  {t('settings.webSearch.searxngGuide')}
+                </ExternalLinkButton>
                 <SearchBackendKeyField
                   providerId={SEARCH_CREDENTIAL_IDS.searxng}
                   label={t('settings.webSearch.searxngCredentialLabel')}
@@ -456,13 +494,45 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
   );
 }
 
+/** A button that opens a page in the system browser (validated in Rust). */
+function ExternalLinkButton({
+  url,
+  onStatus,
+  children,
+}: {
+  url: string;
+  onStatus: (message: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      className="btn"
+      type="button"
+      style={{ justifySelf: 'start', marginTop: 8 }}
+      onClick={() => {
+        void openExternalUrl(url).catch((err: unknown) =>
+          onStatus(err instanceof Error ? err.message : String(err)),
+        );
+      }}
+    >
+      {children} ↗
+    </button>
+  );
+}
+
 function SearchBackendKeyField({
   providerId,
   label,
+  optional = false,
+  keyPage,
   onStatus,
 }: {
   providerId: string;
   label: string;
+  /** The service works without a key; a key only raises its limits. */
+  optional?: boolean;
+  /** Where to sign up for a key, opened in the system browser. */
+  keyPage?: string;
   onStatus: (message: string) => void;
 }) {
   const t = useT();
@@ -492,8 +562,20 @@ function SearchBackendKeyField({
 
   return (
     <div className="form-grid" style={{ marginTop: 10 }}>
+      {optional && (
+        <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>
+          {t('settings.webSearch.credentialField.optionalNote', { label })}
+        </p>
+      )}
+      {keyPage && (
+        <ExternalLinkButton url={keyPage} onStatus={onStatus}>
+          {t('settings.webSearch.getKey', { label })}
+        </ExternalLinkButton>
+      )}
       <label className="field" style={{ display: 'grid', gap: 4 }}>
-        <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>{t('settings.webSearch.credentialField.label', { label })}</span>
+        <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-3)' }}>
+          {t(optional ? 'settings.webSearch.credentialField.labelOptional' : 'settings.webSearch.credentialField.label', { label })}
+        </span>
         <input
           type="password"
           value={secret}

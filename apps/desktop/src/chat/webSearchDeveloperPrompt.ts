@@ -1,5 +1,5 @@
 import { appName } from '../brand';
-import { localSearchBackendLabel } from './webSearchIntent';
+import { localSearchBackendLabel, localSearchBackendOf } from './webSearchIntent';
 import type { LocalSearchBackend } from '@conduit/config-schema';
 
 /** Developer prompt for hosted (provider) web-search turns. */
@@ -31,10 +31,12 @@ export function localWebSearchDeveloperPromptFor(
   backend?: LocalSearchBackend,
 ): string {
   const label = localSearchBackendLabel(backend);
-  const ddg = (backend ?? 'duckduckgo') === 'duckduckgo';
+  const ddg = localSearchBackendOf(backend) === 'duckduckgo';
   const backendHint = ddg
     ? `${label} Instant Answer — encyclopedic snippets, not a live news crawl`
-    : `${label} — live web results`;
+    : localSearchBackendOf(backend) === 'exa'
+      ? `${label} — live web results; write the query as a short description of the page you want, not bare keywords`
+      : `${label} — live web results`;
   const emptyHint = ddg
     ? 'If results are empty or the payload includes a note about Instant Answer, stop searching: answer from what you know or tell the user local search cannot find live headlines.'
     : 'If results are empty or the payload includes a note, stop searching: answer from what you know or tell the user search found nothing.';

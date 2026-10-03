@@ -4,7 +4,7 @@
  * Which HTTP API the local `web_search` builtin calls.
  *
  * Distinct from [`WebSearchMode`]: mode chooses hosted vs local; this chooses
- * the local provider. Keys for Tavily/Brave/SearXNG live in the credential
- * store, not in this struct.
+ * the local provider. Exa works without a key (rate-limited); keys for
+ * Exa/Tavily/Brave/SearXNG live in the credential store, not in this struct.
  */
-export type LocalSearchBackend = "duckduckgo" | "tavily" | "brave" | "searxng";
+export type LocalSearchBackend = "exa" | "duckduckgo" | "tavily" | "brave" | "searxng";

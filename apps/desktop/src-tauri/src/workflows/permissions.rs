@@ -81,6 +81,7 @@ pub fn view(permission: Permission) -> PermissionView {
         Permission::WebSearch { backend } => (
             Some(
                 match backend.as_str() {
+                    "exa" => "Exa",
                     "duckduckgo" => "DuckDuckGo",
                     "brave" => "Brave",
                     "tavily" => "Tavily",

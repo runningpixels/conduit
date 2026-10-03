@@ -91,6 +91,8 @@ mod tests {
         assert!(!endpoint_supports_hosted_search(Some(
             "https://my-openai-proxy.example.com/v1"
         )));
+        // Not the Responses-API tool: OpenRouter searches through its `web`
+        // plugin, gated separately by `openrouter_hosts_search`.
         assert!(!endpoint_supports_hosted_search(Some(
             "https://openrouter.ai/api/v1"
         )));

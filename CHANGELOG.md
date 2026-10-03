@@ -27,6 +27,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   of raw HTML, which costs far fewer tokens; plain `http://` links are
   fetched over https.
 
+### Fixed
+
+- **A chat that searched a lot no longer stops without an answer.** After a
+  turn's search limit, the search tool was taken away from the model; when
+  it asked to search again anyway, those requests were dropped and the turn
+  ended on whatever it had said so far ("Let me grab rental rates…"), with
+  no answer and no error. Searches past the limit are now answered with
+  "answer with what you have", and a model that ignores that twice ends with
+  an error you can retry.
+- **More searches per answer with a real search service.** With Exa,
+  Tavily, Brave or SearXNG a turn can search 8 times (DuckDuckGo stays at
+  3, since its empty results invite endless retries), and read 5 pages.
+- **Search results show as sources.** Results from Exa, Tavily, Brave or
+  SearXNG appear under each search in Activity and in Sources, and stay
+  there when you reopen the chat. Before, every search said "0 sources".
+
 ## [1.0.0-rc.5] - 2026-10-03
 
 ### Changed

@@ -279,6 +279,7 @@ impl OpenAiParser {
                 request_id: request_id.to_string(),
                 index: *index,
                 sources: Value::Array(new_sources),
+                tool_call_id: None,
             });
             *index += 1;
         }
@@ -737,6 +738,7 @@ impl OpenAiParser {
                         request_id: request_id.to_string(),
                         index: *index,
                         sources: Value::Array(arr),
+                        tool_call_id: None,
                     });
                     *index += 1;
                 }

@@ -830,6 +830,12 @@ pub enum ProviderEvent {
         /// The renderer shapes for display; the adapter does not parse.
         #[ts(type = "Array<Record<string, unknown>>")]
         sources: serde_json::Value,
+        /// The search call these came from, when known (local `web_search`).
+        /// Without it the renderer attaches sources to the latest finished
+        /// search, which is wrong when a round runs several in parallel.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        tool_call_id: Option<String>,
     },
     Citation {
         request_id: String,

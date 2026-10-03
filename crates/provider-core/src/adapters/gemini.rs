@@ -247,6 +247,7 @@ impl GeminiParser {
                     request_id: request_id.to_string(),
                     index: *index,
                     sources: Value::Array(sources),
+                    tool_call_id: None,
                 });
                 *index += 1;
             }

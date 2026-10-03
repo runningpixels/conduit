@@ -9,7 +9,13 @@ export type ProviderEvent = { "kind": "messageStart", requestId: string, index: 
  * Pass-through raw sources from `web_search_call.action.sources`.
  * The renderer shapes for display; the adapter does not parse.
  */
-sources: Array<Record<string, unknown>>, } | { "kind": "citation", requestId: string, 
+sources: Array<Record<string, unknown>>, 
+/**
+ * The search call these came from, when known (local `web_search`).
+ * Without it the renderer attaches sources to the latest finished
+ * search, which is wrong when a round runs several in parallel.
+ */
+toolCallId?: string, } | { "kind": "citation", requestId: string, 
 /**
  * Block the citation is attached to. The renderer walks these in
  * `start_index`/`end_index` order and inserts inline `[n]` markers.

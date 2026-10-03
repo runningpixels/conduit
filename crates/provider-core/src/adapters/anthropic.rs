@@ -101,6 +101,7 @@ impl StreamParser for AnthropicParser {
                         request_id: request_id.to_string(),
                         index: *index,
                         sources,
+                        tool_call_id: None,
                     });
                 } else {
                     events.push(ProviderEvent::ContentBlockStart {

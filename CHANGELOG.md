@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Research.** Turn on Research in the composer's `+` menu (or pick it on
+  Home) and ask a question that needs more than a quick search.
+  - It first proposes a brief: the sub-questions it will answer, a scope,
+    and a depth (Quick, Standard or Deep, each with its search, page and
+    time limits). You edit and approve it before anything runs.
+  - It then searches, reads the pages in full, and pulls out facts, each
+    with the exact words from the page that support it. A fact counts only
+    if those words are really on the page; the check is done by the app,
+    not the model. It searches again for whatever is still unanswered.
+  - The result is a report in your chat's documents: a summary, findings
+    per sub-question, open questions, and a numbered list of sources, with
+    every finding cited. The chat card shows the summary and how many
+    sources were cited and read; Stop keeps what was found so far.
+  - Page text only ever reaches a model call that has no tools, so a page
+    that tries to give instructions can't make it search, fetch or save
+    anything. Research needs web search turned on and isn't available in
+    local-only mode.
+
 ### Security
 
 - **Connector tools ask before they run unless they say they only read.**

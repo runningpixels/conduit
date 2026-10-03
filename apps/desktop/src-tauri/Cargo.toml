@@ -99,6 +99,10 @@ pdf-extract = "0.12.1"
 
 # Workspace crates
 futures = "0.3"
+# Research's `ResearchIo` seam is an object-safe async trait (tests script
+# it); also used by the scripted provider adapters in tests/. Already in the
+# graph through provider-core.
+async-trait = "0.1"
 provider-core = { path = "../../../crates/provider-core" }
 tokio-util = { version = "0.7", features = ["rt"] }
 mcp-runtime = { path = "../../../crates/mcp-runtime" }
@@ -151,10 +155,6 @@ webview2-com = "0.39"
 windows = "0.62"
 
 [dev-dependencies]
-# The scripted provider adapter in tests/agent_turn.rs implements
-# `provider_core::ProviderAdapter`, an `#[async_trait]` trait. Already in the
-# graph through provider-core.
-async-trait = "0.1"
 
 # tests/webkit_webrtc_linux.rs initialises GTK for a bare WebKitGTK view.
 # Already in the graph through tauri on Linux.

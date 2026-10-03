@@ -10,6 +10,7 @@ use conduit_desktop::{
     brand,
     commands::*,
     connector_runtime::ConnectorRuntimeManager,
+    research::ResearchRuns,
     state::AppState,
     stream_manager::StreamManager,
     tray::{self, TrayState},
@@ -44,6 +45,16 @@ fn main() {
     // rather than panicking — the renderer surfaces it.
     let state = tauri::async_runtime::block_on(AppState::load(app_name))
         .expect("failed to initialize desktop state");
+
+    // A research run still planning or running at launch was cut off when the
+    // app closed; mark it failed before anything can start a new one.
+    match tauri::async_runtime::block_on(conduit_desktop::research::repo::fail_interrupted(
+        &state.db,
+    )) {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(runs = n, "marked research runs cut off by a quit as failed"),
+        Err(e) => tracing::warn!(error = %e, "could not tidy research runs left running"),
+    }
 
     let app = tauri::Builder::default()
         // First, so a second launch hands off before anything else starts: it
@@ -82,6 +93,8 @@ fn main() {
         .manage(Reviews::default())
         // Runs waiting at an "Ask me" step.
         .manage(Questions::default())
+        // Research runs planning or running, each with its stop token.
+        .manage(ResearchRuns::default())
         .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
             ctx.app_handle().state::<ArtifactFrames>().respond(&request)
         })
@@ -340,6 +353,12 @@ fn main() {
             answer_workflow_question,
             get_start_at_login,
             set_start_at_login,
+            // Research: a planned, budgeted web research run with a cited report.
+            start_research,
+            approve_research_brief,
+            stop_research,
+            cancel_research,
+            get_research_run,
         ])
         .setup(|app| {
             // The main window is built here, not from tauri.conf.json, so its

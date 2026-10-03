@@ -269,6 +269,15 @@ export const SearchIcon = (p: IconProps) => (
     <path d="m20 20-3.5-3.5" />
   </Svg>
 );
+/** Research: a page with a magnifier on it. */
+export const ResearchIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
+    <path d="M8 8h4M8 12h2" />
+    <circle cx="16" cy="15" r="3.5" />
+    <path d="m21 20-2.6-2.6" />
+  </Svg>
+);
 export const MoreIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="5" r="1.2" fill="currentColor" stroke="none" />

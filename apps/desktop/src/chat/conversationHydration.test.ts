@@ -347,3 +347,29 @@ describe('live vs persisted assistant overlap', () => {
     expect(next[1]).toEqual(finished);
   });
 });
+
+describe('messageToDisplayTurn researchRunId', () => {
+  it('carries the Research run from an assistant message metadata', () => {
+    const turn = messageToDisplayTurn(
+      makeMessage({ role: 'assistant', metadata: { researchRunId: 'run-7' }, parts: [] }),
+    );
+    expect(turn?.researchRunId).toBe('run-7');
+  });
+
+  it('ignores a missing, blank or non-string researchRunId, and user messages', () => {
+    expect(messageToDisplayTurn(makeMessage({ role: 'assistant', parts: [textPart('hi')] }))).not.toHaveProperty(
+      'researchRunId',
+    );
+    expect(
+      messageToDisplayTurn(makeMessage({ role: 'assistant', metadata: { researchRunId: ' ' }, parts: [] })),
+    ).not.toHaveProperty('researchRunId');
+    expect(
+      messageToDisplayTurn(makeMessage({ role: 'assistant', metadata: { researchRunId: 5 }, parts: [] })),
+    ).not.toHaveProperty('researchRunId');
+    expect(
+      messageToDisplayTurn(
+        makeMessage({ role: 'user', metadata: { researchRunId: 'run-7' }, parts: [textPart('q')] }),
+      ),
+    ).not.toHaveProperty('researchRunId');
+  });
+});

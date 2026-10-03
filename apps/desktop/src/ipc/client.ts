@@ -101,6 +101,8 @@ import type {
   SearchResult,
   UsagePeriod,
   UsageSummaryResponse,
+  ResearchBrief,
+  ResearchRun,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -1877,4 +1879,28 @@ export async function getStartAtLogin(): Promise<boolean> {
 /** Start at sign-in, into the tray; resolves to whether it is now on. */
 export async function setStartAtLogin(enabled: boolean): Promise<boolean> {
   return invokeCommand<boolean>('set_start_at_login', { enabled });
+}
+
+/** Start a Research run in `conversationId`: saves the question and an assistant turn, then plans. */
+export async function startResearch(conversationId: string, question: string): Promise<ResearchRun> {
+  return invokeCommand<ResearchRun>('start_research', { conversationId, question });
+}
+
+/** Approve (and start) a run from its edited brief. */
+export async function approveResearchBrief(runId: string, brief: ResearchBrief): Promise<ResearchRun> {
+  return invokeCommand<ResearchRun>('approve_research_brief', { runId, brief });
+}
+
+/** Stop a running run after its current step; a partial report is written. */
+export async function stopResearch(runId: string): Promise<void> {
+  await invokeCommand('stop_research', { runId });
+}
+
+/** Cancel a run that is still waiting for its brief to be approved. */
+export async function cancelResearch(runId: string): Promise<void> {
+  await invokeCommand('cancel_research', { runId });
+}
+
+export async function getResearchRun(runId: string): Promise<ResearchRun> {
+  return invokeCommand<ResearchRun>('get_research_run', { runId });
 }

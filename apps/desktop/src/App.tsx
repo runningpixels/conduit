@@ -70,6 +70,7 @@ import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
 import { Rail, type Destination } from './shell/Rail';
 import { HomePage, type HomeAction } from './home/HomePage';
+import { researchUnavailableReasonId } from './chat/researchAvailability';
 import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
 import { ActivityView } from './inspector/ActivityView';
 import { SourcesView } from './inspector/SourcesView';
@@ -397,7 +398,12 @@ export default function App() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [pendingSendText, setPendingSendText] = useState<string | null>(null);
-  const consumePendingSend = useCallback(() => setPendingSendText(null), []);
+  // The pending text starts a Research run (Home's Research chip), not a reply.
+  const [pendingSendResearch, setPendingSendResearch] = useState(false);
+  const consumePendingSend = useCallback(() => {
+    setPendingSendText(null);
+    setPendingSendResearch(false);
+  }, []);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [toasts, setToasts] = useState<StatusState[]>([]);
@@ -2296,6 +2302,19 @@ export default function App() {
     },
     [handleStartDeck, openFreshChat, setStatusMessage],
   );
+  /** Home's Research chip: a fresh chat, with the text sent as a Research run. */
+  const handleHomeResearch = useCallback(
+    (text: string) => {
+      const reasonId = researchUnavailableReasonId(settings);
+      if (reasonId) {
+        setStatusMessage(t(reasonId));
+        return;
+      }
+      setPendingSendResearch(true);
+      void openFreshChat(text);
+    },
+    [settings, openFreshChat, setStatusMessage, t],
+  );
   const handleHomeOpenChat = useCallback(
     (id: string) => {
       if (activeDeckRef.current) {
@@ -2756,7 +2775,12 @@ export default function App() {
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
             pendingSendText={pendingSendText}
+            pendingSendResearch={pendingSendResearch}
             onPendingSendConsumed={consumePendingSend}
+            onConversationChanged={() => {
+              void refreshConversations();
+              if (activeConversationId) void refreshActiveConversationSummary(activeConversationId);
+            }}
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
@@ -2788,6 +2812,7 @@ export default function App() {
                 ideaState={ideaState}
                 collectionCount={collectionCount}
                 onAsk={handleHomeAsk}
+                onResearch={handleHomeResearch}
                 onOpenChat={handleHomeOpenChat}
                 onOpenDeck={(id) => void handleOpenDeck(id)}
                 onOpenApp={openSavedApp}

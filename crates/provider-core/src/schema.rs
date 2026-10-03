@@ -3158,6 +3158,261 @@ pub struct CredentialSummary {
     pub stored_in_keychain: bool,
 }
 
+// =============================================================================
+// Research: a planned, budgeted web research run that ends in a cited report
+// =============================================================================
+
+/// How much a research run may spend; picks its [`ResearchBudget`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_depth.ts"
+)]
+pub enum ResearchDepth {
+    Quick,
+    #[default]
+    Standard,
+    Deep,
+}
+
+impl ResearchDepth {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Quick => "quick",
+            Self::Standard => "standard",
+            Self::Deep => "deep",
+        }
+    }
+
+    /// `quick` / `standard` / `deep`, any case; `None` for anything else.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "quick" => Some(Self::Quick),
+            "standard" => Some(Self::Standard),
+            "deep" => Some(Self::Deep),
+            _ => None,
+        }
+    }
+
+    /// The limits a run at this depth works within.
+    pub fn budget(self) -> ResearchBudget {
+        let (searches, pages, tokens, minutes) = match self {
+            Self::Quick => (8, 15, 150_000, 10),
+            Self::Standard => (20, 40, 400_000, 20),
+            Self::Deep => (50, 100, 1_000_000, 40),
+        };
+        ResearchBudget {
+            searches,
+            pages,
+            tokens,
+            minutes,
+        }
+    }
+}
+
+/// Where a research run is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_status.ts"
+)]
+pub enum ResearchStatus {
+    Planning,
+    AwaitingApproval,
+    Running,
+    Done,
+    Failed,
+    Stopped,
+}
+
+impl ResearchStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Planning => "planning",
+            Self::AwaitingApproval => "awaitingApproval",
+            Self::Running => "running",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "planning" => Self::Planning,
+            "awaitingApproval" => Self::AwaitingApproval,
+            "running" => Self::Running,
+            "done" => Self::Done,
+            "failed" => Self::Failed,
+            "stopped" => Self::Stopped,
+            _ => return None,
+        })
+    }
+
+    /// The run has ended and will not change again.
+    pub fn is_finished(self) -> bool {
+        matches!(self, Self::Done | Self::Failed | Self::Stopped)
+    }
+}
+
+/// Limits on one research run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_budget.ts"
+)]
+pub struct ResearchBudget {
+    pub searches: u32,
+    pub pages: u32,
+    pub tokens: u32,
+    pub minutes: u32,
+}
+
+/// What a run sets out to answer; planned by the model, edited and approved
+/// by the user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_brief.ts"
+)]
+pub struct ResearchBrief {
+    pub question: String,
+    /// 1 to 6.
+    pub sub_questions: Vec<String>,
+    /// Limits to keep to, e.g. "US, 2025–2026".
+    #[serde(default)]
+    pub scope: Option<String>,
+    #[serde(default)]
+    pub prefer_domains: Vec<String>,
+    #[serde(default)]
+    pub avoid_domains: Vec<String>,
+    #[serde(default)]
+    pub depth: ResearchDepth,
+}
+
+/// A running research run's counters, for the live card.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_progress.ts"
+)]
+pub struct ResearchProgress {
+    /// `searching`, `reading`, `extracting`, `checking gaps`, `writing` or
+    /// `verifying`; empty before the run starts.
+    pub phase: String,
+    pub searches_used: u32,
+    pub searches_limit: u32,
+    pub pages_read: u32,
+    pub pages_limit: u32,
+    pub claims: u32,
+    pub current_url: Option<String>,
+    pub tokens_used: u32,
+}
+
+/// What became of a page a run tried to read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_source_status.ts"
+)]
+pub enum ResearchSourceStatus {
+    Read,
+    Empty,
+    Failed,
+    Skipped,
+}
+
+impl ResearchSourceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Empty => "empty",
+            Self::Failed => "failed",
+            Self::Skipped => "skipped",
+        }
+    }
+
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "read" => Self::Read,
+            "empty" => Self::Empty,
+            "skipped" => Self::Skipped,
+            _ => Self::Failed,
+        }
+    }
+}
+
+/// One page a run read (or tried to).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_source.ts"
+)]
+pub struct ResearchSource {
+    pub id: String,
+    pub url: String,
+    pub title: Option<String>,
+    pub host: String,
+    pub fetched_at: String,
+    pub status: ResearchSourceStatus,
+    /// Verified claims citing it.
+    pub claims: u32,
+    /// Its `[^n]` in the report, if the report cites it.
+    pub footnote: Option<u32>,
+}
+
+/// A research run, as the card shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_run.ts"
+)]
+pub struct ResearchRun {
+    pub id: String,
+    pub conversation_id: String,
+    /// The assistant message the run's card belongs to.
+    pub message_id: String,
+    pub status: ResearchStatus,
+    /// `None` while planning.
+    pub brief: Option<ResearchBrief>,
+    /// For the brief's depth (Standard until planned).
+    pub budget: ResearchBudget,
+    pub progress: ResearchProgress,
+    /// The Markdown report artifact.
+    pub artifact_id: Option<String>,
+    /// Markdown, the same as the report's Summary section.
+    pub summary: Option<String>,
+    pub sources: Vec<ResearchSource>,
+    /// Sub-questions no verified claim answers.
+    pub unanswered: Vec<String>,
+    /// Claims dropped because their quote wasn't found in the source.
+    pub unverified_dropped: u32,
+    pub error: Option<String>,
+    pub created_at: String,
+    pub finished_at: Option<String>,
+}
+
+/// Payload of the app-wide `research-run-updated` event, sent after every
+/// status or progress change; the renderer refetches the run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_run_updated.ts"
+)]
+pub struct ResearchRunUpdated {
+    pub run_id: String,
+    pub status: ResearchStatus,
+}
+
 #[cfg(test)]
 mod language_setting_tests {
     use super::*;

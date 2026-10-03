@@ -405,7 +405,7 @@ fn get_attr(tag_html: &str, attr: &str) -> Option<String> {
 /// 8 chars between `&` and `;`); anything longer is treated as a lone `&`.
 const MAX_ENTITY_LEN: usize = 10;
 
-fn decode_entities(s: &str) -> String {
+pub(crate) fn decode_entities(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
     while i < s.len() {

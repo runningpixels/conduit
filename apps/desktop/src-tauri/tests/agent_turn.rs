@@ -437,6 +437,30 @@ async fn run_turn_via(
     local_only: bool,
     sink_kind: Sink,
 ) -> (Result<(), String>, Turn) {
+    run_turn_with_settings(
+        rounds,
+        agent,
+        max_tokens,
+        extra_tools,
+        provider,
+        local_only,
+        sink_kind,
+        |_| {},
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_turn_with_settings(
+    rounds: Vec<Round>,
+    agent: AgentGuardrails,
+    max_tokens: Option<u32>,
+    extra_tools: &[&str],
+    provider: Provider,
+    local_only: bool,
+    sink_kind: Sink,
+    tweak: fn(&mut AppSettings),
+) -> (Result<(), String>, Turn) {
     let pool = common::setup_pool().await;
     let conversation = conversations::create(&pool, None).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -447,7 +471,7 @@ async fn run_turn_via(
             KeychainMode::File
         }
     };
-    let settings = AppSettings {
+    let mut settings = AppSettings {
         active_provider: match provider {
             Provider::Local => "ollama".into(),
             Provider::Cloud => "openrouter".into(),
@@ -458,6 +482,7 @@ async fn run_turn_via(
         keychain_mode,
         ..AppSettings::default()
     };
+    tweak(&mut settings);
     let state = AppState::test_instance_with_settings(pool, test_paths(dir.path()), settings);
     let runtime =
         ConnectorRuntimeManager::new_with(Duration::from_millis(80), Duration::from_millis(800));
@@ -1544,4 +1569,133 @@ async fn a_closed_headless_sink_behaves_like_a_closed_window() {
     // Once nobody is listening, no further round (and no further provider
     // request) starts. It used to run until `max_steps`: 25 requests here.
     assert_eq!(webview.rounds_started, 1);
+}
+
+// ── Web search caps ──────────────────────────────────────────────────────────
+
+/// A round that says `text` and then calls each `(name, arguments)` tool — the
+/// shape of "Let me grab rental rates…" followed by two more searches.
+fn text_then_tools_round(text: &'static str, calls: Vec<(&'static str, Value)>) -> Round {
+    let tools = tool_round(calls, Duration::ZERO);
+    Arc::new(move |rid: &str| {
+        let r = rid.to_string();
+        let mut steps = vec![
+            Step::Event(ProviderEvent::MessageStart {
+                request_id: r.clone(),
+                index: 0,
+            }),
+            Step::Event(ProviderEvent::ContentBlockStart {
+                request_id: r.clone(),
+                block_id: "block-0".into(),
+                index: 1,
+                block_kind: "text".into(),
+            }),
+            Step::Event(ProviderEvent::ContentDelta {
+                request_id: r.clone(),
+                block_id: "block-0".into(),
+                index: 2,
+                content: text.into(),
+            }),
+            Step::Event(ProviderEvent::ContentBlockStop {
+                request_id: r.clone(),
+                block_id: "block-0".into(),
+                index: 3,
+            }),
+        ];
+        // The tool round minus its own MessageStart.
+        steps.extend(tools(rid).into_iter().skip(1));
+        steps
+    })
+}
+
+fn searches(n: usize) -> Vec<(&'static str, Value)> {
+    (0..n)
+        .map(|i| ("web_search", json!({ "query": format!("query {i}") })))
+        .collect()
+}
+
+/// SearXNG on a closed loopback port: every search fails at once, with no
+/// network, and still counts toward the per-turn cap like a real one.
+fn unreachable_searxng(settings: &mut AppSettings) {
+    settings.web_search_enabled = true;
+    settings.web_search.local_backend = provider_core::schema::LocalSearchBackend::Searxng;
+    settings.web_search.searxng_base_url = Some("http://127.0.0.1:9".into());
+}
+
+async fn run_search_turn(rounds: Vec<Round>) -> Turn {
+    let (result, turn) = run_turn_with_settings(
+        rounds,
+        guardrails(25, 300),
+        None,
+        &["web_search"],
+        Provider::Cloud,
+        false,
+        Sink::Webview,
+        unreachable_searxng,
+    )
+    .await;
+    result.expect("turn runs");
+    turn
+}
+
+fn declares_web_search(request: &ProviderRequest) -> bool {
+    request
+        .tool_definitions
+        .iter()
+        .any(|t| t.name == "web_search")
+}
+
+#[tokio::test]
+async fn a_search_past_the_cap_is_refused_and_the_model_still_answers() {
+    use conduit_desktop::stream_manager::MAX_WEB_SEARCH_PER_TURN_FULL;
+    let cap = MAX_WEB_SEARCH_PER_TURN_FULL as usize;
+    let turn = run_search_turn(vec![
+        tool_round(searches(cap + 1), Duration::ZERO),
+        text_then_tools_round("Let me grab rental rates.", searches(2)),
+        text_round("Here is the comparison."),
+    ])
+    .await;
+
+    // It used to end after the second round: web_search was removed from the
+    // tools, its two calls were dropped as undeclared, and the round's one
+    // sentence was taken as the answer.
+    assert_eq!(turn.rounds_started, 3);
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { .. }),
+        "{:?}",
+        turn.terminal()
+    );
+    assert!(turn.requests.iter().all(declares_web_search));
+    let searches_finished = turn
+        .tool_executions()
+        .into_iter()
+        .filter(|(name, _)| name == "web_search")
+        .count();
+    assert_eq!(searches_finished, cap + 1 + 2, "every call gets an answer");
+}
+
+#[tokio::test]
+async fn a_model_that_keeps_searching_past_the_cap_gets_a_visible_error() {
+    use conduit_desktop::stream_manager::MAX_WEB_SEARCH_PER_TURN_FULL;
+    let cap = MAX_WEB_SEARCH_PER_TURN_FULL as usize;
+    let turn = run_search_turn(vec![
+        tool_round(searches(cap), Duration::ZERO),
+        text_then_tools_round("One more.", searches(1)),
+        text_then_tools_round("And another.", searches(1)),
+        text_round("never reached"),
+    ])
+    .await;
+
+    assert_eq!(turn.rounds_started, 3);
+    match turn.terminal() {
+        ProviderEvent::Error { error, .. } => {
+            assert!(
+                error.message.contains("kept asking to search"),
+                "{}",
+                error.message
+            );
+            assert!(error.retryable);
+        }
+        other => panic!("expected an error, got {other:?}"),
+    }
 }

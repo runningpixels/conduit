@@ -1184,7 +1184,7 @@ fn web_search_turn_cap_rejects_fourth_call() {
         call("web_search", "ws4"),
         call("calculator", "c1"),
     ];
-    let rejects = classify_web_tool_clamps(&calls, 0, 0);
+    let rejects = classify_web_tool_clamps(&calls, 0, 0, MAX_WEB_SEARCH_PER_TURN);
     assert!(rejects[0].is_none());
     assert!(rejects[1].is_none());
     assert!(rejects[2].is_none());
@@ -1199,28 +1199,58 @@ fn web_search_turn_cap_rejects_fourth_call() {
 #[test]
 fn web_search_cap_counts_prior_rounds() {
     use conduit_desktop::stream_manager::classify_web_tool_clamps;
-    let rejects = classify_web_tool_clamps(&[call("web_search", "ws1")], 3, 0);
+    let rejects = classify_web_tool_clamps(&[call("web_search", "ws1")], 3, 0, 3);
     assert!(rejects[0].is_some());
 }
 
 #[test]
-fn after_web_cap_tools_are_stripped_from_continuations() {
-    use conduit_desktop::stream_manager::narrow_tools_after_web_cap;
-    let narrowed = narrow_tools_after_web_cap(
-        &[
-            tool_def("web_search"),
-            tool_def("web_fetch"),
-            tool_def("current_time"),
-            tool_def("calculator"),
-        ],
-        true,
-        true,
+fn real_search_backends_get_a_larger_search_cap() {
+    use conduit_desktop::stream_manager::{
+        classify_web_tool_clamps, max_web_searches_per_turn, MAX_WEB_SEARCH_PER_TURN,
+        MAX_WEB_SEARCH_PER_TURN_FULL,
+    };
+    use provider_core::schema::LocalSearchBackend;
+    assert_eq!(
+        max_web_searches_per_turn(LocalSearchBackend::Duckduckgo),
+        MAX_WEB_SEARCH_PER_TURN
     );
-    let names: Vec<&str> = narrowed.iter().map(|t| t.name.as_str()).collect();
-    assert!(!names.contains(&"web_search"));
-    assert!(!names.contains(&"web_fetch"));
-    assert!(names.contains(&"current_time"));
-    assert!(names.contains(&"calculator"));
+    for backend in [
+        LocalSearchBackend::Exa,
+        LocalSearchBackend::Tavily,
+        LocalSearchBackend::Brave,
+        LocalSearchBackend::Searxng,
+    ] {
+        assert_eq!(
+            max_web_searches_per_turn(backend),
+            MAX_WEB_SEARCH_PER_TURN_FULL
+        );
+    }
+    let cap = max_web_searches_per_turn(LocalSearchBackend::Exa);
+    assert!(classify_web_tool_clamps(&[call("web_search", "ws")], 3, 0, cap)[0].is_none());
+    assert!(classify_web_tool_clamps(&[call("web_search", "ws")], cap, 0, cap)[0].is_some());
+}
+
+#[test]
+fn local_search_results_become_sources() {
+    use conduit_desktop::stream_manager::local_search_sources;
+    let output = serde_json::json!({
+        "ok": true,
+        "query": "q",
+        "results": [
+            { "title": "Rents", "snippet": "…", "url": "https://example.com/rents" },
+            { "title": "No link", "snippet": "…", "url": "" },
+            { "title": "Odd", "url": "javascript:alert(1)" },
+            { "snippet": "untitled", "url": "https://example.org/" }
+        ]
+    });
+    assert_eq!(
+        local_search_sources(&output),
+        vec![
+            serde_json::json!({ "title": "Rents", "url": "https://example.com/rents" }),
+            serde_json::json!({ "title": "", "url": "https://example.org/" }),
+        ]
+    );
+    assert!(local_search_sources(&serde_json::json!({ "ok": false })).is_empty());
 }
 
 #[test]

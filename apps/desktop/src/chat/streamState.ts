@@ -535,7 +535,12 @@ function reduceProviderEvent(
       };
     case 'searchSources': {
       const incoming = event.sources.map((raw) => ({ raw }));
-      const attachIdx = lastCompletedWebSearchIndex(state.toolCalls);
+      // Local web_search names its call; a provider's hosted search does not,
+      // and attaches to the latest finished search.
+      const byId = event.toolCallId
+        ? state.toolCalls.findIndex((tc) => tc.toolCallId === event.toolCallId)
+        : -1;
+      const attachIdx = byId >= 0 ? byId : lastCompletedWebSearchIndex(state.toolCalls);
       const toolCalls =
         attachIdx >= 0
           ? state.toolCalls.map((tc, i) =>

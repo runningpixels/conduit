@@ -631,6 +631,8 @@ pub struct ToolRoundTally {
     pub documents_created: u32,
     /// `write_*_document` / `edit_*_document` calls that succeeded this round.
     pub document_writes_succeeded: u32,
+    /// Calls answered with a per-turn web cap refusal instead of running.
+    pub web_cap_refusals: u32,
 }
 
 /// True when a `write_*` call is asking to create a new document (no usable
@@ -711,19 +713,36 @@ pub fn narrow_tools_after_document_create(
         .collect()
 }
 
-/// Hard cap on local `web_search` / `web_fetch` calls per agent turn.
-/// Empty Instant Answer results otherwise train the model to binge-retry until
-/// `max_steps` kills the turn with no answer.
+/// Local `web_search` calls per agent turn with DuckDuckGo. Its Instant Answer
+/// is empty for most queries, and empty results train a model to binge-retry
+/// until `max_steps` kills the turn with no answer.
 pub const MAX_WEB_SEARCH_PER_TURN: u32 = 3;
-pub const MAX_WEB_FETCH_PER_TURN: u32 = 3;
+/// Local `web_search` calls per agent turn with a backend that returns real
+/// results (Exa, Tavily, Brave, SearXNG). Live, a question comparing renting a
+/// house against buying a condo in two cities needed more than three.
+pub const MAX_WEB_SEARCH_PER_TURN_FULL: u32 = 8;
+pub const MAX_WEB_FETCH_PER_TURN: u32 = 5;
+/// Rounds in a row whose every call was refused by a web cap before the turn
+/// ends with an error. The refusal tells the model to answer; one that keeps
+/// asking anyway would otherwise run to `max_steps`.
+pub const MAX_WEB_CAP_ONLY_ROUNDS: u32 = 2;
+
+/// The per-turn `web_search` cap for the configured local backend.
+pub fn max_web_searches_per_turn(backend: provider_core::schema::LocalSearchBackend) -> u32 {
+    match backend {
+        provider_core::schema::LocalSearchBackend::Duckduckgo => MAX_WEB_SEARCH_PER_TURN,
+        _ => MAX_WEB_SEARCH_PER_TURN_FULL,
+    }
+}
 
 const WEB_SEARCH_CAP_REJECT: &str =
     "This turn already used the maximum number of web_search calls. Answer with the results you have (or say search could not cover this query). Do not call web_search again.";
 const WEB_FETCH_CAP_REJECT: &str =
     "This turn already used the maximum number of web_fetch calls. Answer with the content you have. Do not call web_fetch again.";
 
-/// Plan web-tool clamps for a round: at most [`MAX_WEB_SEARCH_PER_TURN`] /
-/// [`MAX_WEB_FETCH_PER_TURN`] executions this turn (including prior rounds).
+/// Plan web-tool clamps for a round: at most `search_cap` `web_search` (see
+/// [`max_web_searches_per_turn`]) and [`MAX_WEB_FETCH_PER_TURN`] `web_fetch`
+/// executions this turn (including prior rounds).
 ///
 /// Returns one optional reject message per call (`None` = run). Non-web tools
 /// always run (from this classifier's perspective).
@@ -731,6 +750,7 @@ pub fn classify_web_tool_clamps(
     calls: &[CompletedToolCall],
     web_search_so_far: u32,
     web_fetch_so_far: u32,
+    search_cap: u32,
 ) -> Vec<Option<&'static str>> {
     let mut out = Vec::with_capacity(calls.len());
     let mut search_reserved = 0u32;
@@ -743,7 +763,7 @@ pub fn classify_web_tool_clamps(
         };
         match name {
             agent_tools::WEB_SEARCH_TOOL => {
-                if web_search_so_far + search_reserved >= MAX_WEB_SEARCH_PER_TURN {
+                if web_search_so_far + search_reserved >= search_cap {
                     out.push(Some(WEB_SEARCH_CAP_REJECT));
                 } else {
                     out.push(None);
@@ -764,25 +784,36 @@ pub fn classify_web_tool_clamps(
     out
 }
 
-/// Drop local `web_search` / `web_fetch` from later rounds once a per-turn cap
-/// was hit so the model cannot keep requesting them.
-pub fn narrow_tools_after_web_cap(
-    defs: &[provider_core::schema::ToolDefinition],
-    strip_search: bool,
-    strip_fetch: bool,
-) -> Vec<provider_core::schema::ToolDefinition> {
-    defs.iter()
-        .filter(|t| {
-            if strip_search && t.name == agent_tools::WEB_SEARCH_TOOL {
-                return false;
-            }
-            if strip_fetch && t.name == agent_tools::WEB_FETCH_TOOL {
-                return false;
-            }
-            true
+/// The error a turn ends on when the model keeps calling a web tool after its
+/// per-turn cap ([`MAX_WEB_CAP_ONLY_ROUNDS`] rounds of nothing but refusals).
+pub fn web_cap_stalled_message(search_cap: u32) -> String {
+    format!(
+        "The model kept asking to search after this turn's limit of {search_cap} searches, so {} stopped it before it answered. Retry, or ask it to answer from what it has found.",
+        crate::brand::app_name()
+    )
+}
+
+/// Web results as `SearchSources` items (`title`, `url`) for the Sources view.
+/// Reads the `results` array of a local `web_search` tool output; anything
+/// without an http(s) URL is skipped.
+pub fn local_search_sources(output: &serde_json::Value) -> Vec<serde_json::Value> {
+    output
+        .get("results")
+        .and_then(|r| r.as_array())
+        .map(|results| {
+            results
+                .iter()
+                .filter_map(|r| {
+                    let url = r.get("url")?.as_str()?.trim();
+                    if !(url.starts_with("https://") || url.starts_with("http://")) {
+                        return None;
+                    }
+                    let title = r.get("title").and_then(|t| t.as_str()).unwrap_or("").trim();
+                    Some(serde_json::json!({ "title": title, "url": url }))
+                })
+                .collect()
         })
-        .cloned()
-        .collect()
+        .unwrap_or_default()
 }
 
 /// A tool call that was requested by the provider and is ready for execution.
@@ -1595,9 +1626,15 @@ impl StreamManager {
         });
 
         let clamp_actions = classify_document_create_clamps(calls, *successful_creates_so_far);
-        let web_rejects = classify_web_tool_clamps(calls, *web_search_so_far, *web_fetch_so_far);
+        let web_rejects = classify_web_tool_clamps(
+            calls,
+            *web_search_so_far,
+            *web_fetch_so_far,
+            max_web_searches_per_turn(search_backend),
+        );
         let mut created_this_round = 0u32;
         let mut document_writes_succeeded = 0u32;
+        let mut web_cap_refusals = 0u32;
 
         for (idx, (call, action)) in calls.iter().zip(clamp_actions.iter()).enumerate() {
             if cancel.is_cancelled() {
@@ -1619,12 +1656,15 @@ impl StreamManager {
                 });
             }
 
-            let reject_msg = rejected
+            let other_reject = rejected
                 .get(&call.tool_call_id)
                 .map(String::as_str)
-                .or_else(|| action.reject_message())
-                .or_else(|| web_rejects.get(idx).copied().flatten());
-            if let Some(reject_msg) = reject_msg {
+                .or_else(|| action.reject_message());
+            let web_reject = web_rejects.get(idx).copied().flatten();
+            if other_reject.is_none() && web_reject.is_some() {
+                web_cap_refusals += 1;
+            }
+            if let Some(reject_msg) = other_reject.or(web_reject) {
                 match agent_tools::record_clamped_builtin_tool(
                     &ctx,
                     &call.tool_call_id,
@@ -1755,6 +1795,35 @@ impl StreamManager {
                     &call.arguments,
                 )
                 .await;
+                // Local search results are sources like a provider's hosted
+                // search: show them in Activity and Sources, and save them so
+                // a reloaded chat still has them.
+                if tool_name == agent_tools::WEB_SEARCH_TOOL {
+                    if let Ok(exec) = &outcome {
+                        let sources = local_search_sources(&exec.output);
+                        if !exec.is_error && !sources.is_empty() {
+                            let event = ProviderEvent::SearchSources {
+                                request_id: request_id.to_string(),
+                                index: 0,
+                                sources: serde_json::Value::Array(sources),
+                                tool_call_id: Some(call.tool_call_id.clone()),
+                            };
+                            if let Err(e) = event_log::append_and_apply(
+                                &state.db,
+                                conversation_id,
+                                request_id,
+                                &event,
+                            )
+                            .await
+                            {
+                                warn!(request_id = %request_id, error = %e, "failed to save local search sources");
+                            }
+                            if let Some(ch) = provider_channel {
+                                let _ = ch.send(event);
+                            }
+                        }
+                    }
+                }
                 if let Some(channel) = runtime_channel {
                     match outcome {
                         Ok(exec) => {
@@ -1860,6 +1929,7 @@ impl StreamManager {
         ToolRoundTally {
             documents_created: created_this_round,
             document_writes_succeeded,
+            web_cap_refusals,
         }
     }
 
@@ -2535,6 +2605,14 @@ impl StreamManager {
         let mut next_round_label: Option<&'static str> = None;
         let mut web_search_calls: u32 = 0;
         let mut web_fetch_calls: u32 = 0;
+        // Rounds in a row whose every call was refused by a web cap.
+        let mut web_cap_only_rounds: u32 = 0;
+        let search_cap = max_web_searches_per_turn(
+            state
+                .settings()
+                .map(|s| s.web_search.local_backend)
+                .unwrap_or_default(),
+        );
 
         // Exactly one terminal event reaches the UI per turn, emitted after the
         // loop so the cumulative usage lands first. `terminal` holds the event
@@ -3116,16 +3194,38 @@ impl StreamManager {
                     narrow_tools_after_document_create(&current_request.tool_definitions);
             }
 
-            // Once a local web-tool cap is hit, strip both web tools so the
-            // model answers instead of binge-retrying empty Instant Answer hits.
-            let strip_search = web_search_calls >= MAX_WEB_SEARCH_PER_TURN;
-            let strip_fetch = web_fetch_calls >= MAX_WEB_FETCH_PER_TURN;
-            if strip_search || strip_fetch {
-                current_request.tool_definitions = narrow_tools_after_web_cap(
-                    &current_request.tool_definitions,
-                    strip_search || strip_fetch,
-                    strip_search || strip_fetch,
+            // Past a web cap, calls are answered with a refusal that tells the
+            // model to answer. The tools stay declared: removing them made the
+            // next round's search calls "undeclared", which the loop drops — and
+            // a round with some text and only dropped calls reads as a final
+            // answer. Live, that ended a turn on "Let me grab rental rates…"
+            // with no answer and no error. A model that ignores the refusal
+            // round after round is stopped here, with an error the user sees.
+            let all_refused = tally.web_cap_refusals > 0
+                && tally.web_cap_refusals as usize == outcome.completed_tool_calls.len();
+            web_cap_only_rounds = if all_refused {
+                web_cap_only_rounds + 1
+            } else {
+                0
+            };
+            if web_cap_only_rounds >= MAX_WEB_CAP_ONLY_ROUNDS {
+                warn!(
+                    request_id = %request_id,
+                    step,
+                    "model kept calling web tools past the per-turn cap; ending the turn"
                 );
+                let event = ProviderEvent::Error {
+                    request_id: request_id.clone(),
+                    error: provider_core::schema::ProviderError {
+                        provider_code: None,
+                        message: web_cap_stalled_message(search_cap),
+                        retryable: true,
+                    },
+                };
+                let _ =
+                    event_log::append_and_apply(&pool, &conversation_id, &request_id, &event).await;
+                terminal = Some(event);
+                break;
             }
 
             // Emit reviewing phase after tool execution, before continuation.

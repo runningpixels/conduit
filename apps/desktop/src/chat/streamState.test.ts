@@ -387,6 +387,37 @@ describe('streamState web search', () => {
     expect(state.toolCalls[0].sources?.[0].raw.url).toBe('https://a.com');
   });
 
+  it('attaches local search sources to the call they name, not the latest one', () => {
+    let state = createAssistantStreamState('req-ws');
+    for (const [id, query] of [['ws-1', 'rents'], ['ws-2', 'condos']] as const) {
+      state = applyProviderEvent(state, {
+        kind: 'toolCallStart',
+        requestId: 'req-ws',
+        toolCallId: id,
+        index: 0,
+        toolId: 'web_search',
+        name: 'web_search',
+      });
+      state = applyProviderEvent(state, {
+        kind: 'toolCallComplete',
+        requestId: 'req-ws',
+        toolCallId: id,
+        index: 1,
+        arguments: { query },
+      });
+    }
+    // Parallel searches: the first one's results arrive after both calls.
+    state = applyProviderEvent(state, {
+      kind: 'searchSources',
+      requestId: 'req-ws',
+      index: 0,
+      sources: [{ url: 'https://rents.example', title: 'Rents' }],
+      toolCallId: 'ws-1',
+    });
+    expect(state.toolCalls[0].sources?.map((s) => s.raw.url)).toEqual(['https://rents.example']);
+    expect(state.toolCalls[1].sources ?? []).toHaveLength(0);
+  });
+
   it('accumulates searchCost from searchCost events', () => {
     let state = createAssistantStreamState('req-ws');
     state = applyProviderEvent(state, {

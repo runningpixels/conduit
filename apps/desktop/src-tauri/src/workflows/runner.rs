@@ -39,7 +39,6 @@ use std::pin::Pin;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use provider_core::schema::{
     Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
 };
@@ -51,7 +50,7 @@ use super::ask::{PendingQuestion, Questions};
 use super::definition::{self, ArtifactFormat, OnError, SaveMode, Step, StepAction};
 use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
 use super::{extract, template};
-use crate::artifact_network::{self, AddressPolicy, ArtifactFetchRequest};
+use crate::artifact_network::AddressPolicy;
 use crate::db::repository::artifacts::{self, ArtifactContent};
 use crate::db::repository::conversations;
 use crate::db::repository::workflows::{
@@ -61,6 +60,7 @@ use crate::event_sink;
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
 use crate::time::now_iso8601;
+use crate::web_page;
 
 /// Most elements a `for_each` repeats over.
 pub const MAX_ITEMS: usize = 50;
@@ -785,62 +785,24 @@ impl Exec<'_> {
     }
 
     async fn fetch_page(&self, url: &str) -> Result<Value, Failed> {
-        let request = ArtifactFetchRequest {
-            principal: format!("workflow-run:{}", self.run_id),
-            url: url.to_string(),
-            method: "GET".to_string(),
-            headers: vec![(
-                "Accept".to_string(),
-                "text/html,text/plain;q=0.9,*/*;q=0.5".to_string(),
-            )],
-            body: None,
-        };
-        let response = artifact_network::perform(&request, self.runner.fetch_policy, &|_| true)
+        let principal = format!("workflow-run:{}", self.run_id);
+        let page = web_page::fetch(url, &principal, self.runner.fetch_policy, MAX_PAGE_CHARS)
             .await
-            .map_err(Failed::transient)?;
-        if response.status >= 400 {
-            let message = format!(
-                "the site answered {} {}",
-                response.status, response.status_text
-            );
-            // A server error or "slow down" may pass; "not found" won't.
-            return Err(if response.status >= 500 || response.status == 429 {
-                Failed::transient(message)
-            } else {
-                Failed::lasting(message)
-            });
-        }
-        let bytes = B64
-            .decode(&response.body)
-            .map_err(|_| Failed::lasting("the page could not be read"))?;
-        let body = String::from_utf8_lossy(&bytes);
-        let content_type = response
-            .headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-            .map(|(_, v)| v.to_ascii_lowercase())
-            .unwrap_or_default();
-        let is_html = content_type.contains("html") || body.trim_start().starts_with('<');
-        let (title, text, links) = if is_html {
-            let page = extract::extract_readable(&body, &response.url);
-            (page.title, page.text, page.links)
-        } else if content_type.is_empty()
-            || content_type.starts_with("text/")
-            || content_type.contains("json")
-        {
-            (None, body.trim().to_string(), Vec::new())
-        } else {
-            return Err(Failed::lasting(format!(
-                "it is not a web page ({content_type})"
-            )));
-        };
-        let text: String = text.chars().take(MAX_PAGE_CHARS).collect();
+            .map_err(|e| {
+                // A network failure, server error or "slow down" may pass;
+                // "not found" won't.
+                if e.is_transient() {
+                    Failed::transient(e.to_string())
+                } else {
+                    Failed::lasting(e.to_string())
+                }
+            })?;
         Ok(json!({
-            "url": response.url,
-            "title": title,
-            "lookedEmpty": extract::looked_empty(&text),
-            "text": text,
-            "links": links,
+            "url": page.url,
+            "title": page.title,
+            "lookedEmpty": extract::looked_empty(&page.text),
+            "text": page.text,
+            "links": page.links,
             "error": null,
         }))
     }

@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+
+- **Connector tools ask before they run unless they say they only read.**
+  A tool from an MCP connector used to run without asking unless the
+  connector declared it side-effecting with a field only Conduit reads, so
+  tools on most third-party servers (writing files, sending messages,
+  opening pull requests) ran unasked. Now a tool runs without asking only
+  when it is marked read-only, by the standard MCP `readOnlyHint` or
+  Conduit's own field; every other tool asks first. Connectors you already
+  use may ask for tools that ran silently before; "Always" on the prompt
+  remembers your answer, as before.
+- **The model's page fetch no longer reaches your own network.** The
+  `web_fetch` tool could be pointed at `localhost` or a private address, so
+  a page could tell the model to read your router or another machine on
+  your network. It now goes through the same checks as a workflow's Fetch
+  page step: public https sites only, every redirect checked, with size and
+  time limits. It also returns the page's title and readable text instead
+  of raw HTML, which costs far fewer tokens; plain `http://` links are
+  fetched over https.
+
 ## [1.0.0-rc.5] - 2026-10-03
 
 ### Changed

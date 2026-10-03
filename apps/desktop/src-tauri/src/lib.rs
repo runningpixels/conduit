@@ -45,6 +45,7 @@ pub mod tray;
 pub mod updater;
 pub mod validation;
 pub mod vision;
+pub mod web_page;
 pub mod webview_args;
 pub mod workflows;
 pub mod workspace_tools;

@@ -3,9 +3,9 @@
 //!
 //! Classification uses the connector's *live* tool declaration (a fresh
 //! `tools/list`) so the consent tier always reflects what the connector
-//! currently advertises, not a stale cache. An absent `permissionLevel` means
-//! "unspecified" → read-only → auto (the runtime never silently treats a tool
-//! as side-effectful, and never silently runs a declared side-effectful tool).
+//! currently advertises, not a stale cache. Only a tool declared read-only (a
+//! Conduit `permissionLevel` or the standard `readOnlyHint: true`) runs
+//! without asking; an undeclared tool asks first.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -78,7 +78,7 @@ pub fn build_prompt_with_def(
     tool: &McpTool,
     arguments: &serde_json::Value,
 ) -> ConsentPrompt {
-    let level = tool.permission_level.unwrap_or(PermissionLevel::ReadOnly);
+    let level = tool.effective_permission_level();
     let decision = classify(tool);
     // Redact the arguments before they cross to the renderer. Truncate so a
     // huge payload can't flood the prompt.
@@ -222,6 +222,7 @@ mod tests {
             description: "desc".into(),
             input_schema: json!({}),
             permission_level: level,
+            annotations: None,
         }
     }
 
@@ -232,10 +233,12 @@ mod tests {
     }
 
     #[test]
-    fn absent_level_defaults_to_read_only_auto() {
+    fn an_undeclared_tool_asks_first() {
         let t = tool("mystery", None);
-        assert_eq!(classify(&t).required, ConsentKind::Auto);
-        assert_eq!(classify(&t).level, PermissionLevel::ReadOnly);
+        assert_eq!(classify(&t).required, ConsentKind::Prompt);
+        assert_eq!(classify(&t).level, PermissionLevel::SideEffectful);
+        let prompt = build_prompt_with_def("Files", None, "v1", "tc1", &t, &json!({}));
+        assert_eq!(prompt.permission_level, PermissionLevel::SideEffectful);
     }
 
     #[test]

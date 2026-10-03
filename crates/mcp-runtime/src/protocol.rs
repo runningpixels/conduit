@@ -8,8 +8,8 @@
 //!
 //! A connector-declared `permissionLevel` is an *optional* extra field on a
 //! tool listing. Standard MCP does not define it; when a tenant connector
-//! declares it the runtime honors it, otherwise the consent engine defaults
-//! the tool to read-only (never silently side-effectful).
+//! declares it the runtime honors it. Otherwise the standard `readOnlyHint`
+//! annotation decides, and a tool that declares neither asks first.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -113,9 +113,8 @@ pub struct InitializeResult {
 
 // --- discovery ---------------------------------------------------------------
 
-/// A tool discovered from a connector. `permission_level` is the optional
-/// tenant-declared consent tier; absent means "unspecified" (the consent
-/// engine treats that as read-only).
+/// A tool discovered from a connector. Its consent tier comes from
+/// [`McpTool::effective_permission_level`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpTool {
@@ -131,6 +130,40 @@ pub struct McpTool {
         skip_serializing_if = "Option::is_none"
     )]
     pub permission_level: Option<PermissionLevel>,
+    /// The standard MCP tool annotations (hints), when the server sends them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<ToolAnnotations>,
+}
+
+/// The MCP tool annotations Conduit reads. Other hints (`title`,
+/// `idempotentHint`, `openWorldHint`) are ignored.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnnotations {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only_hint: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive_hint: Option<bool>,
+}
+
+impl McpTool {
+    /// The consent tier this tool gets.
+    ///
+    /// A Conduit `permissionLevel` wins. Otherwise a tool is read-only only
+    /// when it says so with the standard `readOnlyHint: true`; a tool that
+    /// declares neither may change things, so it asks first — the MCP spec's
+    /// own default for an unannotated tool. (A server could claim read-only
+    /// falsely; the hint only decides whether Conduit asks, and the server is
+    /// code the user chose to run.)
+    pub fn effective_permission_level(&self) -> PermissionLevel {
+        if let Some(level) = self.permission_level {
+            return level;
+        }
+        match &self.annotations {
+            Some(a) if a.read_only_hint == Some(true) => PermissionLevel::ReadOnly,
+            _ => PermissionLevel::SideEffectful,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

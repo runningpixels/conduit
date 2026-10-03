@@ -346,7 +346,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   {
     toolId: 'web_fetch',
     name: 'web_fetch',
-    description: 'Fetch the contents of a web page. Provide a `url` string. Returns the page content as text (may be truncated at 50KB).',
+    description: 'Fetch a public web page. Provide a `url` string. Returns its title and readable text (truncated at 50,000 characters). Only public https sites can be fetched; local and private-network addresses are refused.',
     inputSchema: schema([
       { name: 'url', type: 'string', required: true },
     ]),

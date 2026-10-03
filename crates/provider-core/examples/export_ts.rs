@@ -25,12 +25,14 @@ use provider_core::schema::{
     Message, MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageLlmGrant,
     PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry,
     PageStorageUsage, PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError,
-    ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResourceBlock, ResourceRef,
-    ResponseFormatHint, RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize,
-    SettingsPatch, SkippedResource, SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit,
-    StarterAppInfo, StorylineItem, SupportState, TenantConfig, TenantIdentity, Theme,
-    ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy,
-    UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
+    ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget,
+    ResearchDepth, ResearchProgress, ResearchRun, ResearchRunUpdated, ResearchSource,
+    ResearchSourceStatus, ResearchStatus, ResourceBlock, ResourceRef, ResponseFormatHint,
+    RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch,
+    SkippedResource, SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit, StarterAppInfo,
+    StorylineItem, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
+    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation,
+    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -108,6 +110,17 @@ fn main() {
     DeckSummary::export().expect("export DeckSummary");
     DeckDetail::export().expect("export DeckDetail");
     DeckSnapshotSummary::export().expect("export DeckSnapshotSummary");
+
+    // Research
+    ResearchDepth::export().expect("export ResearchDepth");
+    ResearchStatus::export().expect("export ResearchStatus");
+    ResearchBudget::export().expect("export ResearchBudget");
+    ResearchBrief::export().expect("export ResearchBrief");
+    ResearchProgress::export().expect("export ResearchProgress");
+    ResearchSourceStatus::export().expect("export ResearchSourceStatus");
+    ResearchSource::export().expect("export ResearchSource");
+    ResearchRun::export().expect("export ResearchRun");
+    ResearchRunUpdated::export().expect("export ResearchRunUpdated");
 
     // Page model access (ADR-014).
     PageLlmGrant::export().expect("export PageLlmGrant");

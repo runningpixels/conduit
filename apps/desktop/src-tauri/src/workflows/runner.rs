@@ -73,7 +73,8 @@ pub const STOPPED: &str = "Stopped before it finished.";
 /// The wait before the first retry; each one after doubles it.
 const RETRY_BASE: Duration = Duration::from_millis(500);
 /// The follow-up when a reply should have been JSON and wasn't.
-const JSON_REPAIR: &str = "That reply wasn't valid JSON. Reply again with only the JSON value, \
+pub(crate) const JSON_REPAIR: &str =
+    "That reply wasn't valid JSON. Reply again with only the JSON value, \
 and no other text.";
 /// Longest notification title and body a `notify` step shows.
 const MAX_NOTIFY_TITLE: usize = 120;
@@ -1202,7 +1203,7 @@ fn lookup<'v>(ctx: &'v Value, path: &str) -> Option<&'v Value> {
 
 /// A JSON value from a model reply that may wrap it in a code fence or a
 /// sentence of preamble.
-fn parse_json_reply(reply: &str) -> Option<Value> {
+pub(crate) fn parse_json_reply(reply: &str) -> Option<Value> {
     let trimmed = reply.trim();
     let unfenced = trimmed
         .strip_prefix("```json")

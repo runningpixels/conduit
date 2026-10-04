@@ -11,9 +11,19 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { AppSettings } from '@conduit/config-schema';
 import { StatusLine } from './StatusLine';
+
+// The backend's price resolution, reduced to the one model these tests price:
+// Claude Sonnet 4 at $3 / $15 per million tokens.
+vi.mock('../ipc/client', () => ({
+  resolveModelPrices: vi.fn(async (_provider: string, modelIds: string[]) =>
+    modelIds.map((id) =>
+      id === 'claude-sonnet-4' ? { price: { inputPerMtok: 3, outputPerMtok: 15 }, source: 'snapshot' } : null,
+    ),
+  ),
+}));
 
 const settings: AppSettings = {
   activeProvider: 'anthropic',
@@ -23,6 +33,7 @@ const settings: AppSettings = {
   theme: 'system',
   language: 'system',
   providerEndpoints: {},
+  modelPriceOverrides: [],
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,
@@ -80,7 +91,7 @@ function openDetails() {
 }
 
 describe('StatusLine — the sentence', () => {
-  it('carries model, context ratio, spend and network posture', () => {
+  it('carries model, context ratio, spend and network posture', async () => {
     render(
       <StatusLine
         {...baseProps}
@@ -92,7 +103,8 @@ describe('StatusLine — the sentence', () => {
     expect(line).toHaveTextContent('claude-sonnet-4');
     // The ratio, not the raw count — the count is the popover's job.
     expect(line).toHaveTextContent('2% of 200K');
-    expect(line).toHaveTextContent('$0.0144');
+    // 2,800 in at $3 + 400 out at $15 per million = $0.0144; the price arrives async.
+    await waitFor(() => expect(line).toHaveTextContent('$0.0144'));
     expect(line).toHaveTextContent('local only');
     expect(line.querySelector('.ctx-meter')).toBeTruthy();
   });
@@ -184,7 +196,7 @@ describe('StatusLine — the sentence', () => {
 });
 
 describe('StatusLine — the detail popover', () => {
-  it('holds the key location, the raw context counts and the exact spend', () => {
+  it('holds the key location, the raw context counts and the exact spend', async () => {
     render(
       <StatusLine
         {...baseProps}
@@ -199,8 +211,8 @@ describe('StatusLine — the detail popover', () => {
     const details = within(screen.getByRole('menu'));
     expect(details.getByText('keychain://conduit/anthropic')).toBeInTheDocument();
     expect(details.getByText(/Context 3,200 of 200K/)).toBeInTheDocument();
-    expect(details.getByText('Spend this chat')).toBeInTheDocument();
-    expect(details.getByText('$0.0144')).toBeInTheDocument();
+    expect(await details.findByText('Spend this chat')).toBeInTheDocument();
+    expect(await details.findByText('$0.0144')).toBeInTheDocument();
   });
 
   it('shows "no key required" for no-key providers', () => {
@@ -283,7 +295,7 @@ describe('StatusLine — the detail popover', () => {
     ['context use', /Context 3,200 of 200K/],
     ['spend', /Spend this chat/],
     ['network posture', /Local only/],
-  ])('still reports %s within one click', (_fact, pattern) => {
+  ])('still reports %s within one click', async (_fact, pattern) => {
     render(
       <StatusLine
         {...baseProps}
@@ -292,7 +304,7 @@ describe('StatusLine — the detail popover', () => {
       />,
     );
     openDetails();
-    expect(screen.getAllByText(pattern).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText(pattern).length).toBeGreaterThan(0));
   });
 
   /**

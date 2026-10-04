@@ -470,6 +470,7 @@ impl ProviderAdapter for OllamaAdapter {
                         Some(ModelInfo {
                             id: id.clone(),
                             display_name: Some(id),
+                            price: None,
                         })
                     })
                     .collect()

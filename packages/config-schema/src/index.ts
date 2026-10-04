@@ -175,6 +175,11 @@ export type { AccentOverride } from './generated/accent_override';
 export type { AppError } from './generated/app_error';
 export type { SettingsPatch } from './generated/settings_patch';
 export type { ModelInfo } from './generated/model_info';
+// Model prices: snapshot + provider listing + user overrides (pricing.rs).
+export type { ModelPrice } from './generated/model_price';
+export type { PriceSource } from './generated/price_source';
+export type { ResolvedModelPrice } from './generated/resolved_model_price';
+export type { ModelPriceOverride } from './generated/model_price_override';
 export type { CredentialRequest } from './generated/credential_request';
 export type { CredentialSummary } from './generated/credential_summary';
 // Research (brief -> loop -> checked report).

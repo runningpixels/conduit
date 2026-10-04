@@ -52,6 +52,7 @@ const settings = {
   theme: 'system',
   language: 'system',
   providerEndpoints: {},
+  modelPriceOverrides: [],
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,

@@ -34,6 +34,10 @@ quality gate; expanded there with automated survival/migration checks.
 - [ ] `pnpm -C packages/config-schema build` + `check` — schema bindings fresh
       (no committed drift).
 - [ ] `cargo fmt --all --check` + `cargo clippy --workspace --all-targets -- -D warnings`.
+- [ ] Model prices refreshed: `node scripts/update-model-prices.mjs`, review the
+      diff of `crates/provider-core/data/model-prices.json` (new models, changed
+      prices), commit it. `--check` reports the snapshot's age; usage costs and
+      the model picker's price tails are only as current as this file.
 - [ ] Release-tag fixture present in `apps/desktop/src-tauri/tests/fixtures/db/`
       (generated via `tests/fixtures/regenerate.sh`); `previous_tag_db_migrates_forward`
       green against it.

@@ -25,12 +25,14 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react';
-import type { AppSettings, ModelInfo, ProviderDescriptor } from '../ipc/contracts';
+import type { AppSettings, ModelInfo, ModelPrice, ProviderDescriptor } from '../ipc/contracts';
 import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 import { formatModelPriceLabel } from '../lib/costTable';
+import { useModelPrices } from '../lib/useModelPrices';
 import { providerHueId } from '../lib/providerIdentity';
 import { ChevronDown } from '../icons';
 import { useT, type Translate } from '../i18n';
@@ -66,12 +68,13 @@ function keyPosture(descriptor: ProviderDescriptor, t: Translate): string {
 }
 
 /**
- * The row's right-hand tail. A bundled price when we know one; otherwise a
- * posture word from the descriptor, never a guessed number.
+ * The row's right-hand tail. The model's price when one is known (override,
+ * provider listing or bundled snapshot); otherwise a posture word from the
+ * descriptor, never a guessed number.
  */
-function modelTail(descriptor: ProviderDescriptor, modelId: string, t: Translate): string | undefined {
-  const price = formatModelPriceLabel(modelId);
-  if (price) return price;
+function modelTail(descriptor: ProviderDescriptor, price: ModelPrice | undefined, t: Translate): string | undefined {
+  const label = formatModelPriceLabel(price);
+  if (label) return label;
   if (descriptor.credentialMode === 'none' || descriptor.isLocal) return t('chat.modelPicker.keyPosture.local');
   // No "self-hosted" tail keyed off `defaultBaseUrl`: every cloud preset
   // (OpenRouter, Groq, xAI, …) carries one, and the genuinely self-hosted
@@ -150,6 +153,16 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
     const [open, setOpen] = useState(false);
     const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
     const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
+    const lookupPrice = useModelPrices(
+      useMemo(
+        () =>
+          Object.entries(modelsByProvider).map(([providerId, models]) => ({
+            providerId,
+            modelIds: models.map((m) => m.id),
+          })),
+        [modelsByProvider],
+      ),
+    );
     const [loading, setLoading] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
     /** Session cache: the menu is opened repeatedly, the catalogue is stable. */
@@ -247,7 +260,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
                       const active =
                         provider.id === settings.activeProvider &&
                         model.id === settings.activeModel;
-                      const tail = modelTail(provider, model.id, t);
+                      const tail = modelTail(provider, lookupPrice(provider.id, model.id)?.price, t);
                       return (
                         <button
                           key={model.id}

@@ -19,6 +19,7 @@ function settings(webSearch: Partial<AppSettings['webSearch']> = {}): AppSetting
     theme: 'system',
     language: 'system',
     providerEndpoints: {},
+    modelPriceOverrides: [],
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,
     artifactNetworkEnabled: true,

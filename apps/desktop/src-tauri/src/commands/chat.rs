@@ -622,9 +622,27 @@ pub async fn get_usage_summary(
         UsagePeriod::ThisMonth => "thisMonth",
         UsagePeriod::AllTime => "all",
     };
-    crate::db::repository::usage_summary::get_usage_summary(&state.db, period_str)
-        .await
-        .map_err(|e| e.to_string())
+    let app = state.inner();
+    crate::db::repository::usage_summary::get_usage_summary(&app.db, period_str, |p, m| {
+        app.resolve_model_price(p, m)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Prices for several models of one provider, in the order asked, `None` for
+/// an unpriced model. One call per picker or status line instead of one per
+/// model; resolution is in-memory, so this never touches the network.
+#[tauri::command]
+pub async fn resolve_model_prices(
+    state: State<'_, AppState>,
+    provider_id: String,
+    model_ids: Vec<String>,
+) -> Result<Vec<Option<provider_core::schema::ResolvedModelPrice>>, String> {
+    Ok(model_ids
+        .iter()
+        .map(|model_id| state.resolve_model_price(&provider_id, model_id))
+        .collect())
 }
 
 // ---------------------------------------------------------------------------

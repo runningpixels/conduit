@@ -42,6 +42,14 @@ const DESCRIPTORS = [
 vi.mock('../ipc/client', () => ({
   listProviderDescriptors: vi.fn(),
   listProviderModels: vi.fn(),
+  // The backend's price resolution, reduced to the one model these tests price.
+  resolveModelPrices: vi.fn(async (_provider: string, modelIds: string[]) =>
+    modelIds.map((id) =>
+      id === 'claude-sonnet-4'
+        ? { price: { inputPerMtok: 3, outputPerMtok: 15 }, source: 'snapshot' }
+        : null,
+    ),
+  ),
 }));
 
 async function mocks() {

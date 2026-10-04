@@ -7,6 +7,14 @@ import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 vi.mock('../ipc/client', () => ({
   listProviderDescriptors: vi.fn(),
   listProviderModels: vi.fn(),
+  // The backend's price resolution, reduced to the one model these tests price.
+  resolveModelPrices: vi.fn(async (_provider: string, modelIds: string[]) =>
+    modelIds.map((id) =>
+      id === 'claude-sonnet-4'
+        ? { price: { inputPerMtok: 3, outputPerMtok: 15 }, source: 'snapshot' }
+        : null,
+    ),
+  ),
 }));
 
 const anthropic: ProviderDescriptor = {
@@ -258,7 +266,8 @@ describe('CommandPalette prefix modes', () => {
       expect(screen.getByRole('option', { name: /Anthropic \/ Claude Sonnet 4/ })).toBeInTheDocument();
       expect(screen.getByRole('option', { name: /Ollama \/ qwen3:14b/ })).toBeInTheDocument();
     });
-    expect(screen.getByText('$3 / $15')).toBeInTheDocument();
+    // Prices are resolved by the backend after the models arrive.
+    expect(await screen.findByText('$3 / $15')).toBeInTheDocument();
     expect(screen.getByText('local')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: /Anthropic \/ Claude Sonnet 4/ }));
     // The descriptor's default base url rides along so App can seed an

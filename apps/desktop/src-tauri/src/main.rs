@@ -283,6 +283,7 @@ fn main() {
             search_messages,
             // Competitive Feature: usage analytics
             get_usage_summary,
+            resolve_model_prices,
             // Competitive Feature: built-in agent tools
             // (tool definitions built into agent_tools.rs, no new commands needed)
             // Competitive Feature: retry & fork

@@ -242,6 +242,7 @@ impl ProviderAdapter for OpenCodeZenAdapter {
             .map(|model| ModelInfo {
                 id: model.id,
                 display_name: model.display_name,
+                price: None,
             })
             .collect())
     }

@@ -13,6 +13,7 @@ pub mod fixtures;
 pub mod image_generation;
 pub mod normalize;
 pub mod output_limits;
+pub mod pricing;
 pub mod retry;
 pub mod schema;
 pub mod transport;

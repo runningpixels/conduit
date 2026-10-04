@@ -18,6 +18,7 @@ const settings: AppSettings = {
   theme: 'dark',
   language: 'system',
   providerEndpoints: {},
+  modelPriceOverrides: [],
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,
@@ -246,6 +247,33 @@ describe('Writing in the shell', { timeout: 30_000 }, () => {
     // Back goes to the list, the chat stays the draft's.
     fireEvent.click(screen.getByRole('button', { name: /All drafts/ }));
     expect(await screen.findByRole('button', { name: 'Open One repo' })).toBeInTheDocument();
+  });
+
+  it('a draft fetch that lands after Approve outline does not put the draft back to the outline stage', async () => {
+    const ipc = await import('./ipc/client');
+    // The fetch that opening the draft's chat starts is held until after the
+    // approval, as on a slow machine.
+    let releaseFetch: (() => void) | undefined;
+    vi.mocked(ipc.draftForConversation).mockImplementation(
+      (id: string) =>
+        new Promise((resolve) => {
+          releaseFetch = () => resolve(id === 'c-draft' ? outlineDraft : null);
+        }),
+    );
+    let request: ProviderRequest | undefined;
+    vi.mocked(ipc.startChatStream).mockImplementation(async (req) => {
+      request = req;
+      return { requestId: req.requestId };
+    });
+    await boot();
+    fireEvent.click(screen.getByRole('button', { name: 'Writing' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve outline' }));
+    await waitFor(() => expect(ipc.setDraftStage).toHaveBeenCalledWith('d1', 'draft'));
+
+    releaseFetch?.();
+    await waitFor(() => expect(request).toBeDefined());
+    expect(request!.developerPrompt).toContain('stage: draft');
   });
 
   it('Approve outline moves to the draft stage and asks the assistant to write it; the editor fills in and a version is saved', async () => {

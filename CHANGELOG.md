@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.6] - 2026-10-03
+
 ### Added
 
 - **PDFs on the web are read.** Research, a workflow's Fetch page step and
@@ -748,7 +750,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.5...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.6...HEAD
+[1.0.0-rc.6]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.5...v1.0.0-rc.6
 [1.0.0-rc.5]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.4...v1.0.0-rc.5
 [1.0.0-rc.4]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.3...v1.0.0-rc.4
 [1.0.0-rc.3]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.2...v1.0.0-rc.3

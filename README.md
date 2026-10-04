@@ -21,9 +21,10 @@ Conduit is an open-source desktop app for working with large language models.
 Bring your own key for any of seventeen providers, or run a local model with
 Ollama or LM Studio, and ask for things you can keep: a **personal app** that
 pulls live data, a **slide deck** you edit by asking, an **answer cited from
-your own documents**, a **workflow** that runs on a schedule and stops to ask.
-Connect your tools over MCP: tools that change things, and every site a page
-wants to reach, ask you first.
+your own documents**, a **research report** whose every finding is checked
+against the page it came from, a **workflow** that runs on a schedule and stops
+to ask. Connect your tools over MCP: tools that change things, and every site a
+page wants to reach, ask you first.
 
 Everything lives on your disk: chats, documents, apps and decks, in a local
 SQLite database with optional encryption at rest. There is no Conduit account,
@@ -106,6 +107,21 @@ that embeds the collection, so you are asked before the first document goes to
 each provider, and you can withdraw that consent at any time. With local-only
 mode on, a collection needs a local provider such as Ollama.
 
+### Research
+
+For a question that needs more than a quick search, turn on **Research** in the
+composer's **+** menu (or pick it on Home). It first proposes a brief: the
+sub-questions it will answer, a scope and a depth (Quick, Standard or Deep, each
+with its search, page and time limits), which you edit and approve. Then it
+searches, reads the pages in full, web pages and PDFs alike, and pulls out
+facts, each with the exact words that support it. A fact counts only if those
+words are really on the page; the app checks that, not the model. It searches
+again for what is still unanswered, then writes a report into the chat's
+documents: a summary, findings per sub-question, open questions, and numbered
+sources, with every finding cited. Page text only ever reaches a model call that
+has no tools, so a page that tries to give instructions can't make it search,
+fetch or save anything.
+
 ## Things that run for you
 
 ### Workflows
@@ -125,9 +141,9 @@ Add a connector by searching the official MCP registry, pasting a remote
 server's URL, or running a local command. Local stdio and remote
 streamable-HTTP servers run under a supervisor with restart backoff, a
 concurrency cap and per-call timeouts. Tool calls show inline, results are
-redacted and size-capped, and side-effecting tools ask before they run; you can
-remember an approval for one chat or always, and review those approvals on the
-Connectors page.
+redacted and size-capped, and a tool asks before it runs unless its server marks
+it read-only; you can remember an approval for one chat or always, and review
+those approvals on the Connectors page.
 
 ![A chat that used the DeepWiki connector to explain how tauri-apps/tauri passes IPC messages between the webview and Rust](./docs/assets/screenshot-connectors.png)
 
@@ -262,7 +278,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.5 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.6 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -284,6 +300,7 @@ left is checking it on real installs before calling it final.
 | Vision attachments, Mermaid/KaTeX, conversation export | Working |
 | Web search (hosted OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Working |
 | Knowledge base — document collections with hybrid retrieval and citations | Working |
+| Research — approved brief, reads web pages and PDFs, quote-checked claims, cited report | Working |
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
 | One design in dark and light, with a main-colour setting | Working |
@@ -293,7 +310,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.5 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.6 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

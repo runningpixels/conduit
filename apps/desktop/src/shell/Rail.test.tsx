@@ -21,8 +21,17 @@ describe('Rail', () => {
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Home', 'Chats', 'Apps', 'Slides', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
+    expect(labels).toEqual(['Home', 'Chats', 'Apps', 'Slides', 'Writing', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
+  });
+
+  it('puts Writing right after Slides and goes there on click', () => {
+    const onNavigate = vi.fn();
+    const { container } = renderRail({ onNavigate });
+    const order = [...container.querySelectorAll('.rail-btn')].map((el) => el.getAttribute('data-destination'));
+    expect(order.indexOf('writing')).toBe(order.indexOf('slides') + 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Writing' }));
+    expect(onNavigate).toHaveBeenCalledWith('writing');
   });
 
   it('puts Home first, ahead of Chats', () => {

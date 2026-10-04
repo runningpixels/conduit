@@ -84,6 +84,17 @@ export type { DeckSummary } from './generated/deck_summary';
 export type { DeckDetail } from './generated/deck_detail';
 export type { DeckSnapshotSummary } from './generated/deck_snapshot_summary';
 
+// Writing
+export type { DraftStage } from './generated/draft_stage';
+export type { BlockOwner } from './generated/block_owner';
+export type { OutlineSection } from './generated/outline_section';
+export type { DraftBlock } from './generated/draft_block';
+export type { DraftSummary } from './generated/draft_summary';
+export type { DraftDetail } from './generated/draft_detail';
+export type { DraftSnapshotCause } from './generated/draft_snapshot_cause';
+export type { DraftSnapshotSummary } from './generated/draft_snapshot_summary';
+export type { DraftExportFormat } from './generated/draft_export_format';
+
 // Page model access (ADR-014)
 export type { PageLlmGrant } from './generated/page_llm_grant';
 export type { PageLlmState } from './generated/page_llm_state';

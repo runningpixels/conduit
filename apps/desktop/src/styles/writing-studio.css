@@ -1,0 +1,228 @@
+/* Writing studio: a draft opens as a studio, laid out like the Slides studio
+ * (slides-studio.css owns the shell grid, the header and the dock). The page
+ * is the hero: the outline while it is being agreed, then the editor, a
+ * comfortable column of prose. writing/*.tsx */
+
+.draft-panel > .writing-studio { flex: 1; min-width: 0; min-height: 0; }
+.writing-studio {
+  /* The AI-written wash: the accent, barely there, in both modes. */
+  --ai-tint: color-mix(in srgb, var(--accent) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--ink);
+}
+.writing-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* ── Header extras ────────────────────────────────────────────────────── */
+.writing-ai-toggle { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.writing-ai-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-2);
+  background: var(--ai-tint);
+  outline: 1px solid var(--accent-line);
+}
+.writing-ai-toggle[aria-pressed="false"] .writing-ai-swatch { background: transparent; }
+/* On reads as on: the tint itself is too faint to tell a filled swatch from
+   an empty one, so the pressed state uses the accent. */
+.writing-ai-toggle[aria-pressed="true"] { border-color: var(--accent-line); }
+.writing-ai-toggle[aria-pressed="true"] .writing-ai-swatch {
+  background: var(--accent);
+  outline-color: var(--accent);
+}
+
+/* ── Outline stage ────────────────────────────────────────────────────── */
+.writing-outline-stage { flex: 1; min-height: 0; overflow-y: auto; }
+.writing-brief {
+  max-width: 760px;
+  box-sizing: border-box;
+  margin: var(--sp-5) auto 0;
+  padding: 0 var(--sp-5);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.writing-brief-label { margin-right: var(--sp-2); color: var(--ink-3); font-weight: 600; }
+
+.outline-editor {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 760px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: var(--sp-5);
+}
+.outline-editor[data-variant="dock"] { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4); max-width: none; }
+.outline-head { display: grid; gap: 4px; }
+.outline-title { margin: 0; font-size: var(--fs-9xl); font-weight: 600; }
+.outline-editor[data-variant="dock"] .outline-title { font-size: var(--fs-5xl); }
+.outline-hint,
+.outline-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); line-height: 1.5; }
+.outline-list { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
+.outline-row { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.outline-num {
+  flex: none;
+  width: 2ch;
+  padding-top: 10px;
+  color: var(--ink-3);
+  font: 500 var(--fs-xl)/1 var(--font-mono);
+  text-align: right;
+}
+.outline-fields { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.outline-heading,
+.outline-intent,
+.outline-words-input {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+.outline-heading { font-size: var(--fs-5xl); font-weight: 600; }
+.outline-intent { resize: none; field-sizing: content; min-height: 0; color: var(--ink-2); font-size: var(--fs-3xl); line-height: 1.45; }
+.outline-heading:focus,
+.outline-intent:focus,
+.outline-words-input:focus { border-color: var(--accent); outline: none; }
+.outline-words { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: var(--fs-xl); }
+.outline-words-input { width: 7ch; padding: 4px 8px; font-size: var(--fs-xl); text-align: right; font-variant-numeric: tabular-nums; }
+.outline-words-unit { white-space: nowrap; }
+.outline-actions { display: inline-flex; gap: 2px; padding-top: 4px; }
+.outline-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.outline-total { flex: 1; color: var(--ink-3); font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
+.outline-approve { margin-left: auto; }
+
+/* ── Editor ───────────────────────────────────────────────────────────── */
+.draft-editor { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.draft-editor-busy {
+  align-self: center;
+  margin: var(--sp-2) 0 0;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-xl);
+  animation: deck-pulse 1.4s ease-in-out infinite;
+}
+.draft-editor-frame { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* About 72 characters of prose per line, plus the pin gutter. */
+.draft-editor-surface {
+  height: 100%;
+  box-sizing: border-box;
+  max-width: calc(72ch + 48px);
+  margin: 0 auto;
+  font-family: var(--font-prose);
+  font-size: var(--fs-8xl);
+}
+.draft-editor[data-readonly="true"] .draft-editor-surface { opacity: 0.85; }
+
+/* Code blocks read in the monospace face (blocks of kind "code"). */
+.draft-line-code { font-family: var(--font-mono); font-size: var(--fs-4xl); }
+/* "Show AI-written text": a faint wash behind lines the AI wrote. */
+.draft-line-ai { background: var(--ai-tint); }
+
+.draft-pin-gutter { width: 14px; cursor: pointer; }
+.draft-pin {
+  display: block;
+  width: 3px;
+  height: 100%;
+  min-height: 1em;
+  margin-left: 6px;
+  background: var(--accent);
+  opacity: 0.55;
+}
+.draft-pin-first { opacity: 1; border-radius: var(--r-2) var(--r-2) 0 0; }
+.draft-pin:hover { opacity: 1; }
+
+.draft-pin-popover {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  gap: var(--sp-2);
+  max-width: 280px;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+.draft-pin-popover-text { margin: 0; color: var(--ink-2); font-size: var(--fs-2xl); line-height: 1.4; }
+
+.draft-editor-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 6px var(--sp-5);
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-size: var(--fs-xl);
+}
+.draft-editor-hint,
+.draft-editor-pinned { flex: 1; min-width: 0; }
+.draft-editor-pinned { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--ink-2); }
+.draft-editor-pinned-text { min-width: 0; }
+.draft-editor-release {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.draft-editor-release:hover { text-decoration: underline; }
+.draft-editor-save { flex: none; font-variant-numeric: tabular-nums; }
+.draft-editor-save[data-state="error"] { color: var(--err); }
+
+/* ── Selection toolbar ────────────────────────────────────────────────── */
+.draft-selection-bar {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  max-width: min(560px, calc(100% - 16px));
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+.draft-selection-btn {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-2xl);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.draft-selection-btn:hover { background: var(--card-hi); color: var(--ink); }
+.draft-selection-btn:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+.draft-selection-ask { display: flex; align-items: center; gap: 4px; }
+.draft-selection-input {
+  width: 280px;
+  max-width: 60vw;
+  padding: 5px 8px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--r-xs);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-2xl);
+}
+.draft-selection-input:focus { border-color: var(--accent); outline: none; }
+.draft-selection-note { flex: 1 0 100%; padding: 2px 8px 2px; color: var(--ink-3); font-size: var(--fs-md); }

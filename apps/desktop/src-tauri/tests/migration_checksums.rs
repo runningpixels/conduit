@@ -188,6 +188,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "1b10eb03167ed5fd076eb480b622aea9dc8dbf47c55530c3c6e2959eb89475bd996978cfe05898acae1c9764fce46b88",
         "research",
     ),
+    (
+        34,
+        "49811481736c8a546e69919e2ef7f14e83accd8b772885dce5703a0025e1fa2719bed81412649fb442afac3a3dd71fbf",
+        "drafts",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

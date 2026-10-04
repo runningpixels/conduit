@@ -198,6 +198,8 @@ describe('English catalog', () => {
       'apps',
       // Mirrors src/slides/: decks (pages/SlidesPage.tsx).
       'slides',
+      // Mirrors src/writing/: drafts (pages/WritingPage.tsx).
+      'writing',
       // Mirrors src/home/: the Home page.
       'home',
       // The app shell itself: dialogs and toasts owned by App.tsx rather

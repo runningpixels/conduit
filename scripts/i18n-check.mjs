@@ -80,6 +80,7 @@ const EN_PATH = join(SRC_ROOT, 'i18n/messages/en.json');
 export const FEATURE_AREAS = [
   'chat', 'common', 'consent', 'error', 'onboarding',
   'recovery', 'settings', 'shell', 'workspace', 'artifacts', 'app', 'home',
+  'writing',
 ];
 
 /** A catalog key: `<known feature area>(.<alphanumeric segment>)+`. See module comment for why the first segment is restricted. */

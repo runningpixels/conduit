@@ -1644,6 +1644,191 @@ pub struct DeckSnapshotSummary {
     pub created_at: String,
 }
 
+// =============================================================================
+// Writing
+// =============================================================================
+
+/// Where a draft is in its life: the outline is still being agreed, or the
+/// draft is being written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_stage.ts"
+)]
+pub enum DraftStage {
+    Outline,
+    Draft,
+}
+
+impl DraftStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Outline => "outline",
+            Self::Draft => "draft",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "outline" => Some(Self::Outline),
+            "draft" => Some(Self::Draft),
+            _ => None,
+        }
+    }
+}
+
+/// Who wrote a block of a draft: the model, the user, or the model and then
+/// the user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/block_owner.ts"
+)]
+pub enum BlockOwner {
+    Ai,
+    User,
+    Mixed,
+}
+
+/// One planned section of a draft.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/outline_section.ts"
+)]
+pub struct OutlineSection {
+    pub heading: String,
+    pub intent: String,
+    #[serde(default)]
+    #[ts(optional)]
+    pub target_words: Option<u32>,
+}
+
+/// One top-level block of a draft's Markdown (a heading, paragraph, list,
+/// quote, code block, table or other), with its stable id and who owns it.
+/// `start`/`end` are UTF-16 code-unit offsets into the draft's `markdown`;
+/// the text between blocks (blank lines) belongs to no block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_block.ts"
+)]
+pub struct DraftBlock {
+    pub id: String,
+    /// `heading` | `paragraph` | `list` | `quote` | `code` | `table` | `other`.
+    pub kind: String,
+    pub owner: BlockOwner,
+    /// The user wrote or changed it; the model keeps it word for word.
+    pub pinned: bool,
+    pub start: u32,
+    pub end: u32,
+}
+
+/// One draft in the Writing list.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_summary.ts"
+)]
+pub struct DraftSummary {
+    pub id: String,
+    pub title: String,
+    pub stage: DraftStage,
+    pub words: u32,
+    pub updated_at: String,
+}
+
+/// A draft with its outline, Markdown and blocks, for the studio.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_detail.ts"
+)]
+pub struct DraftDetail {
+    pub id: String,
+    pub title: String,
+    pub conversation_id: String,
+    pub stage: DraftStage,
+    pub brief: String,
+    pub outline: Vec<OutlineSection>,
+    pub markdown: String,
+    pub blocks: Vec<DraftBlock>,
+    pub words: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Why a draft snapshot was taken. Kebab-case on the wire, like
+/// `DeckSnapshotCause` and the stored value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_snapshot_cause.ts"
+)]
+pub enum DraftSnapshotCause {
+    Created,
+    AiTurn,
+    Manual,
+    Restore,
+}
+
+impl DraftSnapshotCause {
+    /// The stored value (`'ai-turn'` like deck snapshots).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::AiTurn => "ai-turn",
+            Self::Manual => "manual",
+            Self::Restore => "restore",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "created" => Some(Self::Created),
+            "ai-turn" => Some(Self::AiTurn),
+            "manual" => Some(Self::Manual),
+            "restore" => Some(Self::Restore),
+            _ => None,
+        }
+    }
+}
+
+/// One entry in a draft's history list.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_snapshot_summary.ts"
+)]
+pub struct DraftSnapshotSummary {
+    pub id: String,
+    pub cause: DraftSnapshotCause,
+    #[ts(optional)]
+    pub label: Option<String>,
+    pub words: u32,
+    pub created_at: String,
+}
+
+/// The file format a draft is exported as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_export_format.ts"
+)]
+pub enum DraftExportFormat {
+    Markdown,
+    Html,
+}
+
 /// An app with its page, for opening it.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

@@ -369,6 +369,14 @@ export const SlidesIcon = (p: IconProps) => (
     <path d="M12 16v3M8 20h8" />
   </Svg>
 );
+/** Writing: a page with a pen across its corner. */
+export const WritingIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6" />
+    <path d="M8 16h4M8 12h3" />
+    <path d="m18.4 3.6 2 2L13 13l-2.8.8.8-2.8 7.4-7.4Z" />
+  </Svg>
+);
 export const IdeaIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 18h6M10 21h4" />

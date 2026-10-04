@@ -25,16 +25,18 @@ export interface HotkeyHandlers {
   forkConversationHere?: HotkeyHandler;
   /** Mod+Shift+C — copy last assistant message */
   copyLastAssistant?: HotkeyHandler;
-  /** Mod+1…9 — go to Home, Chats, Apps, Slides, Documents, Library, Workflows, Connectors, Memory */
+  /** Mod+1…9 — go to Home, Chats, Apps, Slides, Writing, Documents, Library,
+   *  Workflows, Connectors. Memory has no number: the rail and the palette
+   *  still reach it. */
   goHome?: HotkeyHandler;
   goChats?: HotkeyHandler;
   goApps?: HotkeyHandler;
   goSlides?: HotkeyHandler;
+  goWriting?: HotkeyHandler;
   goDocuments?: HotkeyHandler;
   goLibrary?: HotkeyHandler;
   goWorkflows?: HotkeyHandler;
   goConnectors?: HotkeyHandler;
-  goMemory?: HotkeyHandler;
   /** Escape — close menus/dialogs; stop stream when composer focused */
   escape?: HotkeyHandler;
 }
@@ -72,11 +74,11 @@ export const HOTKEYS: readonly HotkeyBinding[] = [
   { id: 'goChats', key: '2', shift: false, display: '2', group: 'navigate', labelId: 'workspace.shortcuts.action.goChats' },
   { id: 'goApps', key: '3', shift: false, display: '3', group: 'navigate', labelId: 'workspace.shortcuts.action.goApps' },
   { id: 'goSlides', key: '4', shift: false, display: '4', group: 'navigate', labelId: 'workspace.shortcuts.action.goSlides' },
-  { id: 'goDocuments', key: '5', shift: false, display: '5', group: 'navigate', labelId: 'workspace.shortcuts.action.goDocuments' },
-  { id: 'goLibrary', key: '6', shift: false, display: '6', group: 'navigate', labelId: 'workspace.shortcuts.action.goLibrary' },
-  { id: 'goWorkflows', key: '7', shift: false, display: '7', group: 'navigate', labelId: 'workspace.shortcuts.action.goWorkflows' },
-  { id: 'goConnectors', key: '8', shift: false, display: '8', group: 'navigate', labelId: 'workspace.shortcuts.action.goConnectors' },
-  { id: 'goMemory', key: '9', shift: false, display: '9', group: 'navigate', labelId: 'workspace.shortcuts.action.goMemory' },
+  { id: 'goWriting', key: '5', shift: false, display: '5', group: 'navigate', labelId: 'workspace.shortcuts.action.goWriting' },
+  { id: 'goDocuments', key: '6', shift: false, display: '6', group: 'navigate', labelId: 'workspace.shortcuts.action.goDocuments' },
+  { id: 'goLibrary', key: '7', shift: false, display: '7', group: 'navigate', labelId: 'workspace.shortcuts.action.goLibrary' },
+  { id: 'goWorkflows', key: '8', shift: false, display: '8', group: 'navigate', labelId: 'workspace.shortcuts.action.goWorkflows' },
+  { id: 'goConnectors', key: '9', shift: false, display: '9', group: 'navigate', labelId: 'workspace.shortcuts.action.goConnectors' },
   { id: 'toggleSidebar', key: '\\', shift: false, display: '\\', group: 'layout', labelId: 'workspace.shortcuts.action.toggleSidebar' },
   { id: 'toggleDocPanel', key: 'j', shift: false, display: 'J', group: 'layout', labelId: 'workspace.shortcuts.action.toggleDocPanel' },
   { id: 'toggleArtifactExpand', key: 'e', shift: true, display: 'E', group: 'layout', labelId: 'workspace.shortcuts.action.toggleArtifactExpand' },

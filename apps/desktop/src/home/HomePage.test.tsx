@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { AppSummary, ConversationSummary, DeckSummary } from '../ipc/contracts';
+import type { AppSummary, ConversationSummary, DeckSummary, DraftSummary } from '../ipc/contracts';
 import type { Capabilities } from '../ideas/capabilities';
 import type { IdeaState } from '../ideas/ideaState';
 import { IDEAS } from '../ideas/catalog';
 import {
   getConnectorRuntimeStates,
   listDecks,
+  listDrafts,
   listMemoryItems,
   listPrompts,
   listWorkflowQuestions,
@@ -18,6 +19,7 @@ import { HomePage, __resetHomeDraftForTests, greetingId, type HomePageProps } fr
 vi.mock('../ipc/client', () => ({
   getConnectorRuntimeStates: vi.fn(),
   listDecks: vi.fn(),
+  listDrafts: vi.fn(),
   listMemoryItems: vi.fn(),
   listPrompts: vi.fn(),
   listWorkflowQuestions: vi.fn(),
@@ -57,6 +59,10 @@ function deck(id: string, over: Partial<DeckSummary> = {}): DeckSummary {
     updatedAt: '2026-10-01T09:00:00Z',
     ...over,
   };
+}
+
+function draft(id: string, over: Partial<DraftSummary> = {}): DraftSummary {
+  return { id, title: `Draft ${id}`, stage: 'draft', words: 1200, updatedAt: '2026-10-01T09:30:00Z', ...over };
 }
 
 function app(id: string, over: Partial<AppSummary> = {}): AppSummary {
@@ -112,6 +118,7 @@ async function renderHome(over: Partial<HomePageProps> = {}) {
 beforeEach(() => {
   __resetHomeDraftForTests();
   vi.mocked(listDecks).mockResolvedValue([]);
+  vi.mocked(listDrafts).mockResolvedValue([]);
   vi.mocked(listWorkflowReviews).mockResolvedValue([]);
   vi.mocked(listWorkflowQuestions).mockResolvedValue([]);
   vi.mocked(listMemoryItems).mockResolvedValue([]);
@@ -266,7 +273,7 @@ describe('HomePage areas', () => {
     vi.mocked(listPrompts).mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never);
     await renderHome({ conversations: [chat('a'), chat('b')], savedApps: [app('a1')] });
     expect(screen.getByRole('heading', { name: 'Everything Conduit can do' })).toBeInTheDocument();
-    expect(document.querySelectorAll('.home-tile')).toHaveLength(8);
+    expect(document.querySelectorAll('.home-tile')).toHaveLength(9);
     expect(tile('chats').getByText('2 chats')).toBeInTheDocument();
     expect(tile('apps').getByText('1 app')).toBeInTheDocument();
     await waitFor(() => expect(tile('slides').getByText('3 decks')).toBeInTheDocument());
@@ -304,6 +311,48 @@ describe('HomePage areas', () => {
     // One that needs setting up first is only a hint.
     expect(tile('connectors').getByText('Add GitHub, then ask about your open issues')).toBeInTheDocument();
     expect(tile('connectors').queryByRole('button', { name: /^Try:/ })).toBeNull();
+  });
+});
+
+describe('HomePage Writing', () => {
+  const tile = (area: string) => within(document.querySelector(`.home-tile[data-area="${area}"]`) as HTMLElement);
+
+  it('shows a Writing tile after Slides with its draft count, and starts a draft', async () => {
+    vi.mocked(listDrafts).mockResolvedValue([draft('w1'), draft('w2')]);
+    const { p } = await renderHome();
+    const areas = [...document.querySelectorAll('.home-tile')].map((el) => el.getAttribute('data-area'));
+    expect(areas.indexOf('writing')).toBe(areas.indexOf('slides') + 1);
+    await waitFor(() => expect(tile('writing').getByText('2 drafts')).toBeInTheDocument());
+    fireEvent.click(tile('writing').getByRole('button', { name: /^Writing/ }));
+    fireEvent.click(tile('writing').getByRole('button', { name: 'Start a draft' }));
+    expect(p.onNavigate).toHaveBeenCalledWith('writing');
+    expect(p.onAction).toHaveBeenCalledWith('start-draft');
+  });
+
+  it('picks up a recent draft, or its outline', async () => {
+    vi.mocked(listDrafts).mockResolvedValue([draft('w1'), draft('w2', { stage: 'outline', title: 'Essay', words: 0 })]);
+    const onOpenDraft = vi.fn();
+    await renderHome({ onOpenDraft });
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue draft: Draft w1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review outline: Essay' }));
+    expect(onOpenDraft).toHaveBeenCalledWith('w1');
+    expect(onOpenDraft).toHaveBeenCalledWith('w2');
+    expect(screen.getByText('Draft · 1,200 words')).toBeInTheDocument();
+  });
+
+  it('the Write chip starts a draft from the box text, or opens Writing when it is empty', async () => {
+    const onWrite = vi.fn();
+    const { p } = await renderHome({ onWrite });
+    const chip = within(screen.getByRole('group', { name: 'Quick starts' })).getByRole('button', { name: 'Write' });
+    fireEvent.click(chip);
+    expect(p.onAction).toHaveBeenCalledWith('start-draft');
+    expect(onWrite).not.toHaveBeenCalled();
+    const box = screen.getByLabelText('Describe what you want to do');
+    fireEvent.change(box, { target: { value: ' A post about our on-call rota ' } });
+    fireEvent.click(chip);
+    expect(onWrite).toHaveBeenCalledWith('A post about our on-call rota');
+    expect(p.onAsk).not.toHaveBeenCalled();
+    expect(box).toHaveValue('');
   });
 });
 

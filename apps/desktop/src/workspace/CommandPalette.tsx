@@ -46,6 +46,8 @@ interface CommandPaletteProps {
   onNavigate?: (destination: Destination) => void;
   /** Start a new deck (opens Slides). */
   onNewDeck?: () => void;
+  /** Start a new draft (opens Writing). */
+  onNewDraft?: () => void;
   onToggleDocPanel: () => void;
   /** Expand the artifact panel, or restore the layout. */
   onToggleArtifactExpand?: () => void;
@@ -142,6 +144,7 @@ export function CommandPalette({
   onOpenWorkflows,
   onNavigate,
   onNewDeck,
+  onNewDraft,
   onToggleDocPanel,
   onToggleArtifactExpand,
   onToggleSidebar,
@@ -239,6 +242,9 @@ export function CommandPalette({
       ...(onNewDeck
         ? [{ id: 'cmd-new-deck', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.newDeck'), run: () => { onNewDeck(); close(); } }]
         : []),
+      ...(onNewDraft
+        ? [{ id: 'cmd-new-draft', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.newDraft'), run: () => { onNewDraft(); close(); } }]
+        : []),
       ...navItems(group),
       { id: 'cmd-fork', group, kind: 'cmd', label: t('workspace.commandPalette.command.forkHere'), tail: modShiftShortcutHint('F'), run: () => { onForkConversationHere(); close(); } },
       { id: 'cmd-edit-last-user', group, kind: 'cmd', label: t('workspace.commandPalette.command.editLastMessage'), run: () => { onEditLastUserMessage(); close(); } },
@@ -287,7 +293,7 @@ export function CommandPalette({
         : []),
     ];
   }, [
-    t, onClose, onNewChat, onNewDeck, navItems, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
+    t, onClose, onNewChat, onNewDeck, onNewDraft, navItems, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,

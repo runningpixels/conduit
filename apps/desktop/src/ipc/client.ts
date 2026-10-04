@@ -19,6 +19,13 @@ import type {
   DeckStage,
   DeckSummary,
   StorylineItem,
+  DraftDetail,
+  DraftExportFormat,
+  DraftSnapshotCause,
+  DraftSnapshotSummary,
+  DraftStage,
+  DraftSummary,
+  OutlineSection,
   StarterAppInfo,
   PageLlmReply,
   PageLlmRequest,
@@ -1705,6 +1712,78 @@ export async function snapshotDeck(
 
 export async function restoreDeckSnapshot(deckId: string, snapshotId: string): Promise<DeckDetail> {
   return invokeCommand<DeckDetail>('restore_deck_snapshot', { deckId, snapshotId });
+}
+
+// ── Writing: long-form drafts ────────────────────────────────────────────────
+
+/** Every draft, newest first. */
+export async function listDrafts(): Promise<DraftSummary[]> {
+  return invokeCommand<DraftSummary[]>('list_drafts');
+}
+
+/** A new draft (stage `outline`, no text yet) with its own chat, titled from the brief. */
+export async function createDraft(brief: string): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('create_draft', { brief });
+}
+
+export async function getDraft(draftId: string): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('get_draft', { draftId });
+}
+
+export async function renameDraft(draftId: string, title: string): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('rename_draft', { draftId, title });
+}
+
+/** Deletes the draft and its chat. */
+export async function deleteDraft(draftId: string): Promise<void> {
+  await invokeCommand('delete_draft', { draftId });
+}
+
+/** The user's own edit: the backend re-splits the blocks and pins the ones that changed. */
+export async function saveDraftMarkdown(draftId: string, markdown: string): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('save_draft_markdown', { draftId, markdown });
+}
+
+export async function setDraftOutline(draftId: string, outline: OutlineSection[]): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('set_draft_outline', { draftId, outline });
+}
+
+export async function setDraftStage(draftId: string, stage: DraftStage): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('set_draft_stage', { draftId, stage });
+}
+
+/** Pin a block (the AI keeps it) or release it ("Let AI edit"). */
+export async function setBlockPinned(draftId: string, blockId: string, pinned: boolean): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('set_block_pinned', { draftId, blockId, pinned });
+}
+
+/** The draft's history, newest first. */
+export async function listDraftSnapshots(draftId: string): Promise<DraftSnapshotSummary[]> {
+  return invokeCommand<DraftSnapshotSummary[]>('list_draft_snapshots', { draftId });
+}
+
+/** Record the draft's state in its history; null when nothing changed since the newest entry. */
+export async function snapshotDraft(
+  draftId: string,
+  cause: DraftSnapshotCause,
+  label: string | null,
+): Promise<DraftSnapshotSummary | null> {
+  return invokeCommand<DraftSnapshotSummary | null>('snapshot_draft', { draftId, cause, label });
+}
+
+/** Restore a saved version; the backend records the restore as a new history entry. */
+export async function restoreDraftSnapshot(draftId: string, snapshotId: string): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('restore_draft_snapshot', { draftId, snapshotId });
+}
+
+/** Save the draft as Markdown or HTML through a native dialog; the saved path, or null on cancel. */
+export async function exportDraft(draftId: string, format: DraftExportFormat): Promise<string | null> {
+  return invokeCommand<string | null>('export_draft', { draftId, format });
+}
+
+/** The draft a chat writes, or null for any other chat. */
+export async function draftForConversation(conversationId: string): Promise<DraftDetail | null> {
+  return invokeCommand<DraftDetail | null>('draft_for_conversation', { conversationId });
 }
 
 /** Saved custom Slides themes, most recently used first (built-ins excluded). */

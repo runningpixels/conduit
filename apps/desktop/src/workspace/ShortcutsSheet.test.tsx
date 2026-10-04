@@ -22,11 +22,13 @@ describe('the hotkey registry', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('maps Mod+1…9 to Home, Chats, Apps, Slides, Documents, Library, Workflows, Connectors, Memory', () => {
-    const order = ['goHome', 'goChats', 'goApps', 'goSlides', 'goDocuments', 'goLibrary', 'goWorkflows', 'goConnectors', 'goMemory'];
+  it('maps Mod+1…9 to Home, Chats, Apps, Slides, Writing, Documents, Library, Workflows, Connectors', () => {
+    const order = ['goHome', 'goChats', 'goApps', 'goSlides', 'goWriting', 'goDocuments', 'goLibrary', 'goWorkflows', 'goConnectors'];
     order.forEach((id, i) => {
       expect(matchHotkey(new KeyboardEvent('keydown', { key: String(i + 1), ctrlKey: true }))?.id).toBe(id);
     });
+    // Memory has no number: the rail and the palette still reach it.
+    expect(HOTKEYS.some((binding) => (binding.id as string) === 'goMemory')).toBe(false);
     // Shift+digit is a different key on most layouts (and on none a destination).
     expect(matchHotkey(new KeyboardEvent('keydown', { key: '1', ctrlKey: true, shiftKey: true }))).toBeUndefined();
     expect(matchHotkey(new KeyboardEvent('keydown', { key: '1' }))).toBeUndefined();

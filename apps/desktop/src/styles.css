@@ -54,3 +54,6 @@
 
 /* Slides Studio: the studio header, dock, tips and stage layout (slides/Studio*.tsx, DeckDock.tsx) */
 @import './styles/slides-studio.css';
+
+/* Writing: the draft studio (outline, editor, selection toolbar) and its page: writing/*.tsx, pages/WritingPage.tsx */
+@import './styles/writing-studio.css';

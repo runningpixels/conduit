@@ -1,4 +1,4 @@
-import type { DeckStage, ToolDefinition } from '@conduit/config-schema';
+import type { DeckStage, DraftStage, ToolDefinition } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import { classifyDocumentTurnIntent, type DocumentTurnIntent } from './documentTurnIntent';
@@ -15,6 +15,7 @@ const DOCUMENT_TOOL_GROUP = 'Documents';
 const BRAND_TOOL_GROUP = 'Branding';
 const IMAGE_TOOL_GROUP = 'Images';
 const DECK_TOOL_GROUP = 'Slides';
+const DRAFT_TOOL_GROUP = 'Writing';
 const RELEASE_PINNED_SCHEMA = {
   type: 'array',
   items: { type: 'string' },
@@ -666,6 +667,119 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     permissionLevel: 'sideEffectful',
     displayGroup: DECK_TOOL_GROUP,
   },
+  // Draft tools (Writing): offered only in a draft's chat
+  {
+    toolId: 'read_draft',
+    name: 'read_draft',
+    description:
+      "Read the draft you are writing. Returns the title, stage, brief, outline (heading, intent, target_words) and the draft's blocks in order, each with its id, kind, owner (ai, user or mixed), pinned flag and Markdown text. from_block and to_block (block ids, both included) read a range; without them the whole draft comes back, cut at about 60,000 characters with a note saying where to continue. A pinned block holds text the user wrote: keep it word for word.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from_block: { type: 'string', description: 'First block id to return (default the first block).' },
+        to_block: { type: 'string', description: 'Last block id to return, included (default the last block).' },
+      },
+    },
+    permissionLevel: 'readOnly',
+    displayGroup: DRAFT_TOOL_GROUP,
+  },
+  {
+    toolId: 'set_outline',
+    name: 'set_outline',
+    description:
+      "Propose the draft's outline: 2 to 12 sections in order, each with a heading, its intent (one sentence on what the section does for the reader) and an optional target_words. Replaces the whole outline. The user reviews and edits it, and approves it before anything is written, so stop after proposing it. Pass title with the first outline: a short name for the draft (120 characters at most).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sections: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              heading: { type: 'string', description: "The section's heading (120 characters at most)." },
+              intent: { type: 'string', description: 'What the section does for the reader, in one sentence.' },
+              target_words: { type: 'integer', description: 'Planned length in words.' },
+            },
+            required: ['heading', 'intent'],
+          },
+          description: '2 to 12 sections, in order.',
+        },
+        title: {
+          type: 'string',
+          description:
+            'A short name for the draft (120 characters at most). Pass it with the first outline; it renames the draft and its chat.',
+        },
+      },
+      required: ['sections'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DRAFT_TOOL_GROUP,
+  },
+  {
+    toolId: 'write_section',
+    name: 'write_section',
+    description:
+      'Write one section of the draft in Markdown. heading is the section\'s heading from the outline; markdown is the section (it may start with its "## heading" line, which is added when missing). Replaces everything under that ## heading up to the next ## heading, or adds the section where the outline puts it. Write the draft one section per call, with more_to_write: true on every call except the last. Pinned blocks (text the user wrote) inside the section must stay word for word: the call is rejected otherwise.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        heading: { type: 'string', description: "The section's heading, as in the outline." },
+        markdown: { type: 'string', description: 'The section in Markdown.' },
+        more_to_write: { type: 'boolean', description: 'true while more sections follow in this turn.' },
+      },
+      required: ['heading', 'markdown'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DRAFT_TOOL_GROUP,
+  },
+  {
+    toolId: 'edit_blocks',
+    name: 'edit_blocks',
+    description:
+      "Replace the Markdown of blocks by id: for the user's selection actions (rewrite, shorten, expand, clarify, fix grammar) and other targeted edits. Each edit gives block_id and the block's new markdown; an empty markdown deletes the block, and markdown holding several blocks splits it. Edits to pinned blocks (text the user wrote) are rejected unless their id is in release_pinned. Pass release_pinned only for blocks the user's message asks you to change, such as a selection they chose an action on; a request to rewrite or polish the whole draft does not release them.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              block_id: { type: 'string' },
+              markdown: { type: 'string', description: "The block's new Markdown; empty deletes the block." },
+            },
+            required: ['block_id', 'markdown'],
+          },
+        },
+        release_pinned: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Ids of pinned blocks you may change. Only blocks the user asked you to change.',
+        },
+      },
+      required: ['edits'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DRAFT_TOOL_GROUP,
+  },
+  {
+    toolId: 'replace_in_draft',
+    name: 'replace_in_draft',
+    description:
+      'Swap an exact word or phrase everywhere in the draft in one step. Use it only for a swap the user asked for across the draft. It also changes pinned blocks, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        find: { type: 'string', description: 'The exact word or phrase to find (200 characters at most).' },
+        replace: { type: 'string', description: 'What to put in its place (200 characters at most).' },
+        match_case: { type: 'boolean', description: 'Match upper and lower case exactly. Default false.' },
+        whole_word: { type: 'boolean', description: 'Only match whole words. Default false.' },
+      },
+      required: ['find', 'replace'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: DRAFT_TOOL_GROUP,
+  },
   ];
 }
 
@@ -805,6 +919,9 @@ const DOCUMENT_REVISION_TOOL_NAMES = new Set(['patch_document', 'read_document']
 /** Built-in document tools exposed to the model for a given turn intent. */
 export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefinition[] {
   const utilityTools = builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name));
+  // Only the Documents group: the Writing tools `write_section` and
+  // `edit_blocks` share the `write_`/`edit_` prefixes.
+  const documentTools = builtinToolDefinitions().filter((tool) => tool.displayGroup === DOCUMENT_TOOL_GROUP);
   switch (intent) {
     case 'create':
       // Include edit_* and patch_document so mid-turn revisions use the
@@ -812,7 +929,7 @@ export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefi
       // another write_*, and so a long document can be built in parts.
       return [
         ...utilityTools,
-        ...builtinToolDefinitions().filter(
+        ...documentTools.filter(
           (tool) =>
             tool.name.startsWith('write_') ||
             tool.name.startsWith('edit_') ||
@@ -823,7 +940,7 @@ export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefi
     case 'edit':
       return [
         ...utilityTools,
-        ...builtinToolDefinitions().filter(
+        ...documentTools.filter(
           (tool) =>
             tool.name.startsWith('edit_') ||
             DOCUMENT_REVISION_TOOL_NAMES.has(tool.name) ||
@@ -940,6 +1057,35 @@ export function selectBuiltinDeckTools(stage: DeckStage): ToolDefinition[] {
   );
 }
 
+/** The Writing group: tools that write a draft, offered only in a draft's chat. */
+export const DRAFT_TOOL_NAMES = new Set(
+  builtinToolDefinitions()
+    .filter((tool) => tool.displayGroup === DRAFT_TOOL_GROUP)
+    .map((tool) => tool.name),
+);
+
+export function isDraftTool(name: string): boolean {
+  return DRAFT_TOOL_NAMES.has(name);
+}
+
+/** Draft tools that change the draft (refetch the draft after one finishes). */
+export function isDraftWriteTool(name: string): boolean {
+  return DRAFT_TOOL_NAMES.has(name) && name !== 'read_draft';
+}
+
+const OUTLINE_STAGE_DRAFT_TOOL_NAMES = new Set(['read_draft', 'set_outline']);
+const DRAFT_STAGE_DRAFT_TOOL_NAMES = new Set(['read_draft', 'write_section', 'edit_blocks', 'replace_in_draft']);
+
+/**
+ * The draft tools for a draft's stage: while the outline is being agreed the
+ * model can read the draft and propose the outline; once the outline is
+ * approved it writes and edits the draft (and no longer rewrites the outline).
+ */
+export function selectBuiltinDraftTools(stage: DraftStage): ToolDefinition[] {
+  const names = stage === 'outline' ? OUTLINE_STAGE_DRAFT_TOOL_NAMES : DRAFT_STAGE_DRAFT_TOOL_NAMES;
+  return builtinToolDefinitions().filter((tool) => DRAFT_TOOL_NAMES.has(tool.name) && names.has(tool.name));
+}
+
 /** Workspace tools that change files, as opposed to reading or searching them. */
 const WORKSPACE_WRITE_TOOL_NAMES = new Set(['workspace_write', 'workspace_edit']);
 
@@ -993,7 +1139,24 @@ export function selectBuiltinTurnTools(
   /** Set when the chat is bound to a Slides deck: the deck tools replace the
    *  document, brand and image tools, which would write outside the deck. */
   deckStage?: DeckStage | null,
+  /** Set when the chat is a Writing draft's chat: the draft tools for the
+   *  stage replace the document, deck, brand and image tools. Never inferred
+   *  from the prompt. */
+  draftStage?: DraftStage | null,
 ): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
+  if (draftStage) {
+    return {
+      intent: 'edit',
+      tools: [
+        ...builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name)),
+        ...selectBuiltinDraftTools(draftStage),
+        ...selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
+          (tool) => !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name),
+        ),
+        ...selectBuiltinMemoryTools(settings.memoryEnabled),
+      ],
+    };
+  }
   if (deckStage) {
     return {
       intent: 'edit',

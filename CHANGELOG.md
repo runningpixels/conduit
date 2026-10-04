@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Writing.** A new area on the rail (`Ctrl+5`) for long pieces: blog
+  posts, technical docs, reports, newsletters, essays.
+  - Describe what you're writing; the assistant proposes an **outline**
+    (sections, what each must say, a target length) that you edit and
+    approve, then writes the draft section by section into a Markdown
+    editor next to the chat.
+  - **What you write stays yours.** Any paragraph you type or change is
+    marked as yours, and the assistant keeps it word for word unless you
+    ask it to change that text; "Let AI edit" hands it back.
+  - Select text for **Rewrite, Shorter, Longer, Clearer, Fix grammar** or
+    your own instruction. AI-written text can be shown tinted.
+  - **History** keeps a version after every change the assistant makes
+    and after your own editing, and restores any of them.
+  - Export as Markdown or HTML.
+  - Home gets a Writing tile, recent drafts under Pick up, and a **Write**
+    chip in the ask box.
+
+### Changed
+
+- **Keyboard:** `Ctrl+5` now opens Writing; Documents, Library, Workflows
+  and Connectors move to `Ctrl+6`–`Ctrl+9`. Memory is still on the rail,
+  on Home and in the command palette.
+
 ## [1.0.0-rc.6] - 2026-10-03
 
 ### Added

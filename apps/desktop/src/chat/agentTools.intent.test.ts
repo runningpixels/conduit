@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   DECK_TOOL_NAMES,
+  DRAFT_TOOL_NAMES,
   builtinToolDefinitions,
   isDeckTool,
+  isDraftTool,
+  isDraftWriteTool,
+  selectBuiltinDraftTools,
   isDocumentContentTool,
   looksLikeDeckRequest,
   selectBuiltinBrandTools,
@@ -61,8 +65,9 @@ describe('selectBuiltinDocumentTools', () => {
 
   it('keeps the full catalog available for reference', () => {
     // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember
-    // + patch_document + read_document + generate_image + 10 deck tools + start_deck.
-    expect(builtinToolDefinitions()).toHaveLength(37);
+    // + patch_document + read_document + generate_image + 10 deck tools + start_deck
+    // + 5 draft tools.
+    expect(builtinToolDefinitions()).toHaveLength(42);
   });
 
   it('offers the deck tools by stage and never through the other selectors', () => {
@@ -140,5 +145,66 @@ describe('start_deck gating', () => {
     expect(names('make me a slide deck', 'storyline')).not.toContain('start_deck');
     expect(names('make me a slide deck', 'slides')).not.toContain('start_deck');
     expect(DECK_TOOL_NAMES.has('start_deck')).toBe(false);
+  });
+});
+
+describe('draft tools (Writing)', () => {
+  const settings = {
+    workspaceToolsEnabled: true,
+    workspaceRoot: '/w',
+    workspaceToolsConsentAcknowledged: true,
+    memoryEnabled: true,
+  };
+  const turn = (prompt: string, draftStage: 'outline' | 'draft' | null, deckStage: 'slides' | null = null) =>
+    selectBuiltinTurnTools(prompt, settings, '/w', undefined, undefined, deckStage, draftStage).tools.map((t) => t.name);
+
+  it('offers the draft tools by stage', () => {
+    const names = (stage: 'outline' | 'draft') => selectBuiltinDraftTools(stage).map((t) => t.name);
+    expect(names('outline')).toEqual(['read_draft', 'set_outline']);
+    expect(names('draft')).toEqual(['read_draft', 'write_section', 'edit_blocks', 'replace_in_draft']);
+    expect([...DRAFT_TOOL_NAMES].sort()).toEqual(
+      ['edit_blocks', 'read_draft', 'replace_in_draft', 'set_outline', 'write_section'],
+    );
+    for (const name of DRAFT_TOOL_NAMES) {
+      expect(isDraftTool(name)).toBe(true);
+      expect(isDeckTool(name)).toBe(false);
+      expect(isDocumentContentTool(name)).toBe(false);
+    }
+    expect(isDraftWriteTool('write_section')).toBe(true);
+    expect(isDraftWriteTool('read_draft')).toBe(false);
+    expect(isDraftWriteTool('write_html_document')).toBe(false);
+  });
+
+  it('a draft chat gets only draft, utility, read-only workspace and memory tools', () => {
+    const tools = turn('write a report with slides and draw an image of a logo', 'draft');
+    expect(tools).toEqual(expect.arrayContaining(['write_section', 'edit_blocks', 'calculator', 'workspace_read', 'remember']));
+    for (const name of tools) {
+      expect(
+        isDraftTool(name) ||
+          ['current_time', 'uuid', 'random', 'calculator', 'ask_user', 'remember'].includes(name) ||
+          ['workspace_read', 'workspace_glob', 'workspace_grep'].includes(name),
+        name,
+      ).toBe(true);
+    }
+    expect(tools).not.toContain('workspace_write');
+    expect(tools).not.toContain('start_deck');
+    expect(tools).not.toContain('set_outline');
+    expect(turn('anything', 'outline')).toContain('set_outline');
+    expect(turn('anything', 'outline')).not.toContain('write_section');
+    // The draft branch wins over a deck stage.
+    expect(turn('anything', 'draft', 'slides').filter(isDeckTool)).toEqual([]);
+  });
+
+  it('is never chosen by intent: other turns never see a draft tool', () => {
+    const everyOther = [
+      ...selectBuiltinDocumentTools('create'),
+      ...selectBuiltinDocumentTools('edit'),
+      ...selectBuiltinBrandTools(true),
+      ...selectBuiltinDeckTools('slides'),
+      ...turn('write a blog post draft and edit the section about outlines', null),
+      ...turn('make me a slide deck', null),
+      ...turn('rewrite this section', null, 'slides'),
+    ].map((t) => (typeof t === 'string' ? t : t.name));
+    expect(everyOther.filter(isDraftTool)).toEqual([]);
   });
 });

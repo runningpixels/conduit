@@ -158,6 +158,30 @@ import {
   setDeckTheme,
   snapshotDeck,
 } from './ipc/client';
+import { WritingPage } from './pages/WritingPage';
+import { WritingStudio } from './writing/WritingStudio';
+import { DraftDock, type DraftDockTab } from './writing/DraftDock';
+import { DraftHistory } from './writing/DraftHistory';
+import { OutlineEditor } from './writing/OutlineEditor';
+import { selectionMessage, type SelectionRequest } from './writing/selectionMessage';
+import type { DraftDetail, DraftExportFormat, OutlineSection } from './ipc/contracts';
+import {
+  createDraft,
+  draftForConversation,
+  exportDraft,
+  getDraft,
+  listDraftSnapshots,
+  renameDraft,
+  restoreDraftSnapshot,
+  saveDraftMarkdown,
+  setBlockPinned,
+  setDraftOutline,
+  setDraftStage,
+  snapshotDraft,
+} from './ipc/client';
+
+/** How long the user's typing must pause before it is saved as an "Edited by you" version. */
+const DRAFT_EDIT_SESSION_IDLE_MS = 120_000;
 
 /* Dev-only (`?route=gallery`, see `devRoute.ts`): the theming project's
  * component gallery. Lazy so its fixtures and every component it renders
@@ -468,6 +492,41 @@ export default function App() {
       cancelled = true;
     };
   }, [activeConversationId]);
+  // Writing: the draft bound to the open chat, if any. Like a deck, a draft
+  // chat opens in its studio, with the chat as the dock's Ask tab.
+  const [activeDraft, setActiveDraft] = useState<DraftDetail | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftBusyTool, setDraftBusyTool] = useState<string | null>(null);
+  const [draftHistoryRevision, setDraftHistoryRevision] = useState(0);
+  // Bumps when the draft was replaced from outside the editor (a restore).
+  const [draftResetToken, setDraftResetToken] = useState(0);
+  const draftChangedThisTurnRef = useRef(false);
+  // The history label for the next AI turn when the app sent its prompt
+  // ("Approve outline"), rather than the user typing one.
+  const nextDraftTurnLabelRef = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setDraftBusyTool(null);
+    draftChangedThisTurnRef.current = false;
+    if (!activeConversationId) {
+      setActiveDraft(null);
+      return;
+    }
+    setDraftLoading(true);
+    draftForConversation(activeConversationId)
+      .then((draft) => {
+        if (!cancelled) setActiveDraft(draft ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveDraft(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId]);
   // The theme library (custom themes). Re-read whenever the deck's theme
   // changes: moving off a custom theme, or the model writing one, saves it.
   const [savedSlideThemes, setSavedSlideThemes] = useState<SlideTheme[]>([]);
@@ -487,13 +546,13 @@ export default function App() {
   }, [activeDeckId, activeDeckThemeName]);
   useEffect(() => {
     const listSettled = activeConversationId == null || artifactsConversationId === activeConversationId;
-    if (activeDeck) {
+    if (activeDeck || activeDraft) {
       setPanelHasContent(true);
       return;
     }
     if (!listSettled && pendingArtifact == null && activeArtifact == null) return;
     setPanelHasContent(chatArtifacts.length > 0 || pendingArtifact != null || activeArtifact != null);
-  }, [activeConversationId, artifactsConversationId, chatArtifacts.length, pendingArtifact, activeArtifact, activeDeck]);
+  }, [activeConversationId, artifactsConversationId, chatArtifacts.length, pendingArtifact, activeArtifact, activeDeck, activeDraft]);
   useEffect(() => {
     setEmptyPanelRequested(false);
   }, [activeConversationId]);
@@ -1012,6 +1071,15 @@ export default function App() {
   const [stageSlideRequest, setStageSlideRequest] = useState<{ index: number; nonce: number } | null>(null);
   const [madeFromChatDeckId, setMadeFromChatDeckId] = useState<string | null>(null);
   const studio = destination === 'slides' && studioDeckId != null && activeDeck?.id === studioDeckId;
+  // Writing studio: a draft open in the Writing destination, laid out like the
+  // Slides studio (the draft takes the window, the chat column is the dock).
+  const [studioDraftId, setStudioDraftId] = useState<string | null>(null);
+  const [draftDockTab, setDraftDockTab] = useState<DraftDockTab>('ask');
+  const writingStudio = destination === 'writing' && studioDraftId != null && activeDraft?.id === studioDraftId;
+  const anyStudio = studio || writingStudio;
+  // In the outline stage the outline is the studio's main view, not a dock tab.
+  const draftDockTabShown: DraftDockTab =
+    activeDraft?.stage === 'outline' && draftDockTab === 'outline' ? 'ask' : draftDockTab;
   // Present: a full-screen overlay (a portal) over the studio; the studio and
   // the one mounted chat stay exactly where they are underneath.
   const [presentStart, setPresentStart] = useState<number | null>(null);
@@ -1039,8 +1107,10 @@ export default function App() {
   /** The last ordinary (non-deck) chat, to return to when leaving a deck. */
   const lastChatIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeConversationId && !deckLoading && !activeDeck) lastChatIdRef.current = activeConversationId;
-  }, [activeConversationId, activeDeck, deckLoading]);
+    if (activeConversationId && !deckLoading && !activeDeck && !draftLoading && !activeDraft) {
+      lastChatIdRef.current = activeConversationId;
+    }
+  }, [activeConversationId, activeDeck, deckLoading, activeDraft, draftLoading]);
   // A deck chat reached any other way (search, palette, a fresh start) opens
   // in the studio, never in the Chats layout.
   useEffect(() => {
@@ -1049,6 +1119,16 @@ export default function App() {
       setDestination('slides');
     }
   }, [activeDeck, destination]);
+  // The same for a draft chat: it opens in the Writing studio.
+  useEffect(() => {
+    if (activeDraft && destination === 'chats') {
+      setStudioDraftId(activeDraft.id);
+      setDestination('writing');
+    }
+  }, [activeDraft, destination]);
+  useEffect(() => {
+    setDraftDockTab('ask');
+  }, [studioDraftId]);
   useEffect(() => {
     setDockTab('ask');
     setScriptFocus(null);
@@ -1058,6 +1138,8 @@ export default function App() {
   const leaveDeckChat = useCallback(() => {
     setActiveDeck(null);
     setStudioDeckId(null);
+    setActiveDraft(null);
+    setStudioDraftId(null);
     const back = lastChatIdRef.current;
     if (back && conversations.some((c) => c.id === back)) handleSelectConversation(back);
     else void handleNewChat();
@@ -1068,6 +1150,8 @@ export default function App() {
     async (deckId: string) => {
       try {
         const deck = await openDeck(deckId);
+        setActiveDraft(null);
+        setStudioDraftId(null);
         setActiveDeck(deck);
         setStudioDeckId(deck.id);
         if (deck.conversationId) handleSelectConversation(deck.conversationId);
@@ -1388,6 +1472,241 @@ export default function App() {
     const deck = activeDeckRef.current;
     return deck ? listDeckSnapshots(deck.id) : [];
   }, []);
+
+  // ── Writing ───────────────────────────────────────────────────────────────
+  const activeDraftRef = useRef(activeDraft);
+  activeDraftRef.current = activeDraft;
+  // A turn is running in the draft's chat: the editor is read-only.
+  const draftStreaming = activeDraft != null && runStatus?.conversationId === activeDraft.conversationId;
+
+  /** Open a draft: the Writing studio, with its chat as the dock. */
+  const handleOpenDraft = useCallback(
+    async (draftId: string) => {
+      try {
+        const draft = await getDraft(draftId);
+        setActiveDeck(null);
+        setStudioDeckId(null);
+        setActiveDraft(draft);
+        setStudioDraftId(draft.id);
+        handleSelectConversation(draft.conversationId);
+        setDestination('writing');
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [handleSelectConversation, setStatusMessage],
+  );
+
+  /** The Writing start box (and Home's Write chip): a new draft whose first message is the brief. */
+  const handleStartDraft = useCallback(
+    async (brief: string) => {
+      const draft = await createDraft(brief);
+      await handleOpenDraft(draft.id);
+      void refreshConversations();
+      setPendingSendText(brief);
+    },
+    [handleOpenDraft, refreshConversations],
+  );
+
+  /** The Writing list (not a draft left open in the studio). */
+  const openWritingList = useCallback(() => {
+    setStudioDraftId(null);
+    setDestination('writing');
+  }, []);
+
+  const reloadActiveDraft = useCallback(async () => {
+    const id = activeDraftRef.current?.id;
+    if (!id) return;
+    try {
+      const draft = await getDraft(id);
+      if (activeDraftRef.current?.id === id) setActiveDraft(draft);
+    } catch {
+      // The next tool call or turn end reloads it again.
+    }
+  }, []);
+
+  /** A draft tool changed the draft mid-turn: the editor fills in live. */
+  const handleDraftChanged = useCallback(() => {
+    draftChangedThisTurnRef.current = true;
+    setDraftBusyTool(null);
+    void reloadActiveDraft();
+  }, [reloadActiveDraft]);
+
+  // "Edited by you": one history entry per editing session, after the typing
+  // pauses for a while, when the assistant is about to take a turn, or when
+  // the studio is left.
+  const editedDraftIdRef = useRef<string | null>(null);
+  const editedTimerRef = useRef<number | null>(null);
+  const lastDraftSaveRef = useRef<Promise<unknown>>(Promise.resolve());
+  const flushEditedSnapshot = useCallback(async () => {
+    if (editedTimerRef.current != null) {
+      window.clearTimeout(editedTimerRef.current);
+      editedTimerRef.current = null;
+    }
+    // Let a save that is still out land first, so the version includes it.
+    await lastDraftSaveRef.current.catch(() => undefined);
+    const draftId = editedDraftIdRef.current;
+    if (!draftId) return;
+    editedDraftIdRef.current = null;
+    try {
+      await snapshotDraft(draftId, 'manual', t('writing.history.editedByYou'));
+      setDraftHistoryRevision((n) => n + 1);
+    } catch {
+      // History is best effort; the draft itself is already saved.
+    }
+  }, [t]);
+  useEffect(() => {
+    if (draftStreaming) void flushEditedSnapshot();
+  }, [draftStreaming, flushEditedSnapshot]);
+  useEffect(() => {
+    if (!writingStudio) void flushEditedSnapshot();
+  }, [writingStudio, studioDraftId, flushEditedSnapshot]);
+
+  const handleSaveDraft = useCallback(
+    async (markdown: string): Promise<DraftDetail | null> => {
+      const draft = activeDraftRef.current;
+      if (!draft) return null;
+      const saving = saveDraftMarkdown(draft.id, markdown);
+      lastDraftSaveRef.current = saving;
+      const next = await saving;
+      setActiveDraft((current) => (current?.id === next.id ? next : current));
+      editedDraftIdRef.current = next.id;
+      if (editedTimerRef.current != null) window.clearTimeout(editedTimerRef.current);
+      editedTimerRef.current = window.setTimeout(() => void flushEditedSnapshot(), DRAFT_EDIT_SESSION_IDLE_MS);
+      return next;
+    },
+    [flushEditedSnapshot],
+  );
+
+  /** One history entry per AI turn that changed the draft, named by the prompt. */
+  const finishDraftTurn = useCallback(async () => {
+    setDraftBusyTool(null);
+    const draft = activeDraftRef.current;
+    const appLabel = nextDraftTurnLabelRef.current;
+    nextDraftTurnLabelRef.current = null;
+    if (!draft || !draftChangedThisTurnRef.current) return;
+    draftChangedThisTurnRef.current = false;
+    await reloadActiveDraft();
+    const lastPrompt = [...transcriptRef.current.turns].reverse().find((turn) => turn.role === 'user');
+    const content = lastPrompt?.content ?? '';
+    const text = (appPromptLabel(content) ?? content).replace(/\s+/g, ' ').trim();
+    const label =
+      appLabel ?? (text.length > 80 ? `${text.slice(0, 79)}…` : text || t('writing.history.aiTurn'));
+    try {
+      await snapshotDraft(draft.id, 'ai-turn', label);
+      setDraftHistoryRevision((n) => n + 1);
+    } catch {
+      // History is best effort.
+    }
+  }, [reloadActiveDraft, t]);
+
+  const handleRenameDraft = useCallback(
+    async (title: string) => {
+      const draft = activeDraftRef.current;
+      if (!draft) return;
+      try {
+        setActiveDraft(await renameDraft(draft.id, title));
+        void refreshConversations();
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [refreshConversations, setStatusMessage],
+  );
+
+  const handleSetDraftOutline = useCallback(
+    async (outline: OutlineSection[]) => {
+      const draft = activeDraftRef.current;
+      if (!draft) return;
+      try {
+        setActiveDraft(await setDraftOutline(draft.id, outline));
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [setStatusMessage],
+  );
+
+  /** Approve outline: the draft stage starts and the assistant is asked to write it. */
+  const handleApproveOutline = useCallback(async () => {
+    const draft = activeDraftRef.current;
+    if (!draft) return;
+    try {
+      setActiveDraft(await setDraftStage(draft.id, 'draft'));
+      nextDraftTurnLabelRef.current = t('writing.history.written');
+      setDraftDockTab('ask');
+      setPendingSendText(appPrompt(t('writing.note.approve'), t('writing.prompt.writeDraft')));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [setStatusMessage, t]);
+
+  /** "Let AI edit" on a pinned block. */
+  const handleUnpinBlock = useCallback(
+    async (blockId: string) => {
+      const draft = activeDraftRef.current;
+      if (!draft) return;
+      try {
+        setActiveDraft(await setBlockPinned(draft.id, blockId, false));
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [setStatusMessage],
+  );
+
+  /** A selection-toolbar action: one chat message naming the blocks. */
+  const handleDraftSelection = useCallback(
+    (request: SelectionRequest) => {
+      setDraftDockTab('ask');
+      setPendingSendText(selectionMessage(t, request));
+    },
+    [t],
+  );
+
+  const handleListDraftSnapshots = useCallback(async () => {
+    const draft = activeDraftRef.current;
+    return draft ? listDraftSnapshots(draft.id) : [];
+  }, []);
+
+  const handleRestoreDraft = useCallback(
+    async (snapshotId: string) => {
+      const draft = activeDraftRef.current;
+      if (!draft) return;
+      try {
+        // Keep what was typed since the last version before replacing it.
+        await flushEditedSnapshot();
+        setActiveDraft(await restoreDraftSnapshot(draft.id, snapshotId));
+        setDraftResetToken((n) => n + 1);
+        setDraftHistoryRevision((n) => n + 1);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [flushEditedSnapshot, setStatusMessage],
+  );
+
+  const [exportingDraft, setExportingDraft] = useState(false);
+  const handleExportDraft = useCallback(
+    async (format: DraftExportFormat) => {
+      const draft = activeDraftRef.current;
+      if (!draft) return;
+      setExportingDraft(true);
+      try {
+        const path = await exportDraft(draft.id, format);
+        if (path) {
+          const name = path.split(/[\\/]/).pop() ?? path;
+          setStatus(makeStatus(t('writing.export.saved', { name }), 'success'));
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        setStatus(makeStatus(t('writing.export.failed', { reason }), 'error'));
+      } finally {
+        setExportingDraft(false);
+      }
+    },
+    [t],
+  );
 
   const handleSelectSearchResult = useCallback(
     (result: SearchResult) => {
@@ -2192,11 +2511,14 @@ export default function App() {
         setDestination('slides');
         return;
       }
-      // From Home the open chat may be a deck's: leave it, or Chats would route to Slides.
-      const hadDeck = activeDeckRef.current != null;
+      // From Home the open chat may be a deck's or a draft's: leave it, or
+      // Chats would route to Slides or Writing.
+      const hadDeck = activeDeckRef.current != null || activeDraftRef.current != null;
       if (hadDeck) {
         setActiveDeck(null);
         setStudioDeckId(null);
+        setActiveDraft(null);
+        setStudioDraftId(null);
       }
       setDestination('chats');
       const view = chatViewRef.current;
@@ -2257,14 +2579,15 @@ export default function App() {
     (d: Destination) => {
       if (d === 'settings') openSettings();
       else if (d === 'slides' && studio) setStudioDeckId(null);
+      else if (d === 'writing' && writingStudio) setStudioDraftId(null);
       else {
-        // Chats never shows a deck chat: going there from a deck returns to
-        // the last ordinary chat.
-        if (d === 'chats' && activeDeck) leaveDeckChat();
+        // Chats never shows a deck or draft chat: going there from one
+        // returns to the last ordinary chat.
+        if (d === 'chats' && (activeDeck || activeDraft)) leaveDeckChat();
         setDestination(d);
       }
     },
-    [openSettings, studio, activeDeck, leaveDeckChat],
+    [openSettings, studio, writingStudio, activeDeck, activeDraft, leaveDeckChat],
   );
 
   // ── Home ─────────────────────────────────────────────────────────────────
@@ -2272,10 +2595,12 @@ export default function App() {
    *  text sent into it if there is any. */
   const openFreshChat = useCallback(
     async (text?: string) => {
-      const hadDeck = activeDeckRef.current != null;
+      const hadDeck = activeDeckRef.current != null || activeDraftRef.current != null;
       if (hadDeck) {
         setActiveDeck(null);
         setStudioDeckId(null);
+        setActiveDraft(null);
+        setStudioDraftId(null);
       }
       setDestination('chats');
       const reuse = !hadDeck && activeConversationId != null && (chatViewRef.current?.isEmpty() ?? false);
@@ -2302,6 +2627,15 @@ export default function App() {
     },
     [handleStartDeck, openFreshChat, setStatusMessage],
   );
+  /** Home's Write chip: a new draft from the box text. */
+  const handleHomeWrite = useCallback(
+    (brief: string) => {
+      void handleStartDraft(brief).catch((error) =>
+        setStatusMessage(error instanceof Error ? error.message : String(error)),
+      );
+    },
+    [handleStartDraft, setStatusMessage],
+  );
   /** Home's Research chip: a fresh chat, with the text sent as a Research run. */
   const handleHomeResearch = useCallback(
     (text: string) => {
@@ -2317,9 +2651,11 @@ export default function App() {
   );
   const handleHomeOpenChat = useCallback(
     (id: string) => {
-      if (activeDeckRef.current) {
+      if (activeDeckRef.current || activeDraftRef.current) {
         setActiveDeck(null);
         setStudioDeckId(null);
+        setActiveDraft(null);
+        setStudioDraftId(null);
       }
       handleSelectConversation(id);
       setDestination('chats');
@@ -2329,9 +2665,10 @@ export default function App() {
   const handleHomeNavigate = useCallback(
     (area: Destination) => {
       if (area === 'slides') openSlidesList();
+      else if (area === 'writing') openWritingList();
       else navigateTo(area);
     },
-    [navigateTo, openSlidesList],
+    [navigateTo, openSlidesList, openWritingList],
   );
   const handleHomeAction = useCallback(
     (action: HomeAction) => {
@@ -2341,6 +2678,9 @@ export default function App() {
           break;
         case 'start-deck':
           openSlidesList();
+          break;
+        case 'start-draft':
+          openWritingList();
           break;
         case 'add-documents':
           setDestination('documents');
@@ -2363,7 +2703,7 @@ export default function App() {
           break;
       }
     },
-    [openFreshChat, openSlidesList, openSavedApp],
+    [openFreshChat, openSlidesList, openWritingList, openSavedApp],
   );
 
   const openPalette = useCallback(() => {
@@ -2440,11 +2780,11 @@ export default function App() {
       goChats: () => !presenting && navigateTo('chats'),
       goApps: () => !presenting && navigateTo('apps'),
       goSlides: () => !presenting && navigateTo('slides'),
+      goWriting: () => !presenting && navigateTo('writing'),
       goDocuments: () => !presenting && navigateTo('documents'),
       goLibrary: () => !presenting && navigateTo('library'),
       goWorkflows: () => !presenting && navigateTo('workflows'),
       goConnectors: () => !presenting && navigateTo('connectors'),
-      goMemory: () => !presenting && navigateTo('memory'),
       cycleProvider: () => {
         void handleCycleProvider();
       },
@@ -2635,8 +2975,8 @@ export default function App() {
       {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}
       <div
         className="body"
-        data-page={destination !== 'chats' && !studio ? destination : undefined}
-        data-studio={studio ? '' : undefined}
+        data-page={destination !== 'chats' && !anyStudio ? destination : undefined}
+        data-studio={anyStudio ? '' : undefined}
       >
         <Sidebar
           conversations={conversations}
@@ -2697,8 +3037,35 @@ export default function App() {
             between the chat header and the dock's tabs; ChatView stays the
             second child either way, so it is never remounted (it owns the
             running stream). */}
-        <main className="center" data-dock-tab={studio ? dockTab : undefined}>
-          {studio && activeDeck ? (
+        <main
+          className="center"
+          data-dock-tab={studio ? dockTab : writingStudio ? draftDockTabShown : undefined}
+        >
+          {writingStudio && activeDraft ? (
+            <DraftDock
+              tab={draftDockTabShown}
+              onTab={setDraftDockTab}
+              showOutline={activeDraft.stage === 'draft'}
+              outline={
+                <OutlineEditor
+                  variant="dock"
+                  sections={activeDraft.outline}
+                  stage={activeDraft.stage}
+                  busy={draftStreaming}
+                  onChange={(sections) => void handleSetDraftOutline(sections)}
+                />
+              }
+              history={
+                <DraftHistory
+                  revision={draftHistoryRevision}
+                  onList={handleListDraftSnapshots}
+                  onRestore={handleRestoreDraft}
+                />
+              }
+            >
+              {null}
+            </DraftDock>
+          ) : studio && activeDeck ? (
             <DeckDock
               tab={dockTab}
               onTab={setDockTab}
@@ -2762,6 +3129,7 @@ export default function App() {
             onChatTurnComplete={(streamState) => {
               void handleChatTurnComplete(streamState);
               void finishDeckTurn();
+              void finishDraftTurn();
             }}
             deck={activeDeck}
             onDeckChanged={handleDeckChanged}
@@ -2769,7 +3137,10 @@ export default function App() {
             onDeckStarted={() => {
               startedDeckThisTurnRef.current = true;
             }}
-            compact={studio}
+            draft={activeDraft}
+            onDraftChanged={handleDraftChanged}
+            onDraftToolActivity={setDraftBusyTool}
+            compact={anyStudio}
             deckOverflow={deckOverflow}
             onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
@@ -2785,8 +3156,8 @@ export default function App() {
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
-            ideaGallery={activeDeck || ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
-            yourApps={activeDeck ? [] : savedApps}
+            ideaGallery={activeDeck || activeDraft || ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
+            yourApps={activeDeck || activeDraft ? [] : savedApps}
             onOpenApp={openSavedApp}
             onAllApps={() => openSavedApp(null)}
             readyMadeIdeas={readyMadeIdeas}
@@ -2802,7 +3173,7 @@ export default function App() {
         </main>
         {/* Rail destinations other than Chats: a page over the body. The chat
             stays mounted underneath, so a turn in progress keeps running. */}
-        {destination !== 'chats' && !studio && (
+        {destination !== 'chats' && !anyStudio && (
           <div className="dest-page" data-destination={destination}>
             {destination === 'home' && (
               <HomePage
@@ -2813,8 +3184,10 @@ export default function App() {
                 collectionCount={collectionCount}
                 onAsk={handleHomeAsk}
                 onResearch={handleHomeResearch}
+                onWrite={handleHomeWrite}
                 onOpenChat={handleHomeOpenChat}
                 onOpenDeck={(id) => void handleOpenDeck(id)}
+                onOpenDraft={(id) => void handleOpenDraft(id)}
                 onOpenApp={openSavedApp}
                 onNavigate={handleHomeNavigate}
                 onAction={handleHomeAction}
@@ -2906,6 +3279,13 @@ export default function App() {
                 prefill={slidesPrefill}
               />
             )}
+            {destination === 'writing' && (
+              <WritingPage
+                onOpenDraft={(id) => void handleOpenDraft(id)}
+                onStartDraft={handleStartDraft}
+                onStatus={setStatusMessage}
+              />
+            )}
             {destination === 'workflows' && (
               <WorkflowsPage
                 onStatus={setStatusMessage}
@@ -2932,7 +3312,25 @@ export default function App() {
           onDoubleClick={panelResize.onDoubleClick}
         />
 
-        {studio && activeDeck ? (
+        {writingStudio && activeDraft ? (
+          <section className="doc-panel draft-panel" aria-label={t('writing.studio.ariaLabel')}>
+            <WritingStudio
+              draft={activeDraft}
+              busyTool={draftBusyTool}
+              streaming={draftStreaming}
+              resetToken={draftResetToken}
+              onBack={() => setStudioDraftId(null)}
+              onRename={(title) => void handleRenameDraft(title)}
+              onSetOutline={(sections) => void handleSetDraftOutline(sections)}
+              onApproveOutline={() => void handleApproveOutline()}
+              onSave={handleSaveDraft}
+              onUnpin={(blockId) => void handleUnpinBlock(blockId)}
+              onSelectionRequest={handleDraftSelection}
+              onExport={(format) => void handleExportDraft(format)}
+              exporting={exportingDraft}
+            />
+          </section>
+        ) : studio && activeDeck ? (
           <section className="doc-panel deck-panel" aria-label={t('slides.workspace.ariaLabel')}>
             <DeckWorkspace
               layout="studio"
@@ -3080,6 +3478,7 @@ export default function App() {
         onOpenWorkflows={() => setDestination('workflows')}
         onNavigate={navigateTo}
         onNewDeck={openSlidesList}
+        onNewDraft={openWritingList}
         onToggleArtifactExpand={toggleArtifactExpand}
         onToggleDocPanel={toggleDocPanelView}
         onToggleSidebar={toggleSidebarView}

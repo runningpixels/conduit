@@ -915,10 +915,22 @@ async fn a_stop_before_the_run_starts_runs_no_step() {
     let h = Harness::new(EchoModel::default()).await;
     let id = h.save(saving_workflow()).await;
     let detail = h.run_and_stop(&id, std::time::Duration::ZERO).await;
-    // The stop can land before or during the first step; either way nothing
-    // after it runs and nothing is saved.
+    // The stop can land before, during or just after the first step (an
+    // instant template, which CI has finished before the stop arrived); either
+    // way the run is stopped and the save step never runs.
     assert_eq!(detail.run.status, "stopped");
-    assert!(detail.steps.iter().all(|s| s.status == "stopped"));
+    assert!(
+        detail
+            .steps
+            .iter()
+            .all(|s| s.status == "stopped" || (s.step_id == "doc" && s.status == "completed")),
+        "{:?}",
+        detail
+            .steps
+            .iter()
+            .map(|s| (&s.step_id, &s.status))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[tokio::test]

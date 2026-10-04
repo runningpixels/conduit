@@ -95,6 +95,11 @@ pub struct RoundOutcome {
     /// use this instead of the full folded snapshot, which would re-inject
     /// earlier rounds after they share one persist identity.
     pub round_text: String,
+    /// Concatenated reasoning emitted this round. The continuation carries it
+    /// as a reasoning part, never as text: providers that take reasoning back
+    /// (DeepSeek, which rejects a tool round without it) get it in their own
+    /// field, and every other adapter leaves it out.
+    pub round_reasoning: String,
     /// True when the round stopped because its cancel token fired (hard cancel
     /// or steer soft-interrupt). Not a provider error — the agent loop decides
     /// whether to end the turn or inject a steering message.
@@ -1389,6 +1394,7 @@ impl StreamManager {
         // nothing still answered nothing.
         let mut produced_text = false;
         let mut round_text = String::new();
+        let mut round_reasoning = String::new();
         let mut withheld_error: Option<provider_core::schema::ProviderError> = None;
         let mut hit_output_limit = false;
         let output_limit = provider_core::output_limits::effective_max_output_tokens(
@@ -1445,6 +1451,9 @@ impl StreamManager {
                     produced_text = true;
                     round_text.push_str(content);
                 }
+            }
+            if let ProviderEvent::ReasoningDelta { content, .. } = &event {
+                round_reasoning.push_str(content);
             }
 
             // Correlate tool start/complete for round outcome
@@ -1590,6 +1599,7 @@ impl StreamManager {
             usage: round_usage,
             completion_event,
             round_text,
+            round_reasoning,
             aborted: cancel.is_cancelled(),
             listener_closed,
             hit_output_limit,
@@ -2203,6 +2213,7 @@ impl StreamManager {
             completed_calls,
             &previous_request.request_id,
             None,
+            None,
         )
         .await
     }
@@ -2214,6 +2225,7 @@ impl StreamManager {
         completed_calls: &[CompletedToolCall],
         persist_request_id: &str,
         round_text: Option<&str>,
+        round_reasoning: Option<&str>,
     ) -> Result<ProviderRequest, String> {
         let pool = &state.db;
 
@@ -2389,13 +2401,33 @@ impl StreamManager {
         let turn_now = crate::time::now_iso8601();
         let mut assistant_parts: Vec<MessagePart> = Vec::new();
 
+        // This round's reasoning goes first, as a reasoning part: adapters that
+        // replay reasoning (DeepSeek) send it in their own field, and the rest
+        // leave it out, as they always have.
+        if let Some(reasoning) = round_reasoning.filter(|s| !s.is_empty()) {
+            assistant_parts.push(MessagePart {
+                id: format!("{persist_request_id}/round-reasoning-{}", Uuid::new_v4()),
+                message_id: String::new(),
+                index: 0,
+                kind: MessagePartKind::Reasoning,
+                content: Some(reasoning.to_string()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: turn_now.clone(),
+            });
+        }
+
         // Prefer this round's streamed text so a shared persist identity does
         // not re-inject earlier rounds into the next provider prompt.
         if let Some(text) = round_text.filter(|s| !s.is_empty()) {
             assistant_parts.push(MessagePart {
                 id: format!("{persist_request_id}/round-text-{}", Uuid::new_v4()),
                 message_id: String::new(),
-                index: 0,
+                index: assistant_parts.len() as u32,
                 kind: MessagePartKind::Text,
                 content: Some(text.to_string()),
                 mime_type: None,
@@ -2420,7 +2452,7 @@ impl StreamManager {
                                 id: part.id.clone(),
                                 message_id: String::new(),
                                 index: assistant_parts.len() as u32,
-                                kind: MessagePartKind::Text,
+                                kind: part.kind.clone(),
                                 content: Some(content.clone()),
                                 mime_type: None,
                                 tool_call_id: None,
@@ -3421,6 +3453,7 @@ impl StreamManager {
                     &outcome.completed_tool_calls,
                     &request_id,
                     Some(outcome.round_text.as_str()).filter(|s| !s.is_empty()),
+                    Some(outcome.round_reasoning.as_str()).filter(|s| !s.is_empty()),
                 )
                 .await
             {

@@ -14,11 +14,24 @@ pub mod openai_compat;
 pub mod openai_preset;
 pub mod opencode_zen;
 
+/// The message's visible text. Reasoning parts are not part of it: a model's
+/// earlier reasoning is never replayed to a provider as if it had said it.
+/// Providers that take reasoning back do so in their own field (see
+/// [`message_reasoning`] and DeepSeek's `reasoning_content` in `openai.rs`).
 pub fn message_text(message: &Message) -> String {
+    joined_parts(message, MessagePartKind::Text)
+}
+
+/// The message's reasoning, joined; empty when it has none.
+pub fn message_reasoning(message: &Message) -> String {
+    joined_parts(message, MessagePartKind::Reasoning)
+}
+
+fn joined_parts(message: &Message, kind: MessagePartKind) -> String {
     message
         .parts
         .iter()
-        .filter(|p| matches!(p.kind, MessagePartKind::Text | MessagePartKind::Reasoning))
+        .filter(|p| p.kind == kind)
         .filter_map(|p| p.content.as_ref())
         .cloned()
         .collect::<Vec<_>>()

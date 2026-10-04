@@ -24,8 +24,10 @@ use crate::stream_manager::StreamManager;
 use crate::time::now_iso8601;
 use crate::web_page;
 
-/// Readable text kept per page.
-const MAX_PAGE_CHARS: usize = 50_000;
+/// Readable text kept per page. Long enough for a report PDF; the extractor
+/// sees only the most relevant part (`claims::excerpt`), and the quote check
+/// uses all of it.
+const MAX_PAGE_CHARS: usize = 200_000;
 
 pub struct AppIo {
     app: AppHandle,

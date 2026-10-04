@@ -193,7 +193,7 @@ pub async fn extract(
     title: &str,
     text: &str,
 ) -> Result<Vec<RawClaim>, String> {
-    let page = clip(text, MAX_EXTRACT_CHARS);
+    let page = excerpt(text, sub_questions, MAX_EXTRACT_CHARS);
     let prompt = extractor_prompt(sub_questions, &one_line(title), &page);
     let data = ask_json(io, EXTRACTOR_SYSTEM, &prompt, &extractor_schema()).await?;
     Ok(data
@@ -201,9 +201,175 @@ pub async fn extract(
         .unwrap_or_default())
 }
 
+/// The opening of a long page that the extractor always sees, for context.
+const EXCERPT_OPENING_CHARS: usize = 2_000;
+/// Longest block the excerpt picks or drops as one unit.
+const EXCERPT_BLOCK_CHARS: usize = 1_500;
+/// Words in a sub-question that say nothing about what to look for.
+const STOPWORDS: &[&str] = &[
+    "what", "which", "when", "where", "whom", "whose", "does", "doing", "done", "with", "from",
+    "that", "this", "these", "those", "have", "has", "been", "being", "there", "their", "them",
+    "they", "about", "into", "over", "under", "than", "then", "much", "many", "more", "most",
+    "some", "such", "each", "other", "would", "could", "should", "will", "your", "also", "how",
+    "why", "are", "the", "and", "for",
+];
+
+/// What the extractor reads of `text`: all of it when it fits in `max`
+/// characters; otherwise the opening plus the blocks that mention the most
+/// sub-question keywords, in page order, with `…` where text was left out.
+/// A 100-page budget PDF has its tax table on page 40; the first 12,000
+/// characters would only ever show the cover and the contents.
+pub fn excerpt(text: &str, sub_questions: &[String], max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let keywords = keywords(sub_questions);
+    let blocks = blocks(text, EXCERPT_BLOCK_CHARS);
+    let lens: Vec<usize> = blocks.iter().map(|b| b.chars().count()).collect();
+    let mut keep = vec![false; blocks.len()];
+    let mut used = 0;
+    for (i, len) in lens.iter().enumerate() {
+        if used + len > EXCERPT_OPENING_CHARS.min(max) {
+            break;
+        }
+        keep[i] = true;
+        used += len;
+    }
+    let mut ranked: Vec<(usize, usize)> = blocks
+        .iter()
+        .enumerate()
+        .map(|(i, block)| (score(block, &keywords), i))
+        .filter(|(score, i)| *score > 0 && !keep[*i])
+        .collect();
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    for (_, i) in ranked {
+        if used + lens[i] <= max {
+            keep[i] = true;
+            used += lens[i];
+        }
+    }
+    let mut out = String::new();
+    let mut skipped = false;
+    for (i, block) in blocks.iter().enumerate() {
+        if keep[i] {
+            if skipped && !out.is_empty() {
+                out.push_str("\n…\n");
+            }
+            if !out.is_empty() && !skipped {
+                out.push('\n');
+            }
+            out.push_str(block);
+            skipped = false;
+        } else {
+            skipped = true;
+        }
+    }
+    if skipped {
+        out.push_str("\n…");
+    }
+    out
+}
+
+/// Lowercased words of the sub-questions worth looking for: four letters or
+/// more, or any number (years, rates), not stopwords.
+fn keywords(sub_questions: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for question in sub_questions {
+        for word in question.split(|c: char| !c.is_alphanumeric()) {
+            let word = word.to_lowercase();
+            let numeric = word.chars().any(|c| c.is_ascii_digit());
+            if (word.chars().count() >= 4 || numeric)
+                && !STOPWORDS.contains(&word.as_str())
+                && !out.contains(&word)
+            {
+                out.push(word);
+            }
+        }
+    }
+    out
+}
+
+/// Distinct keywords that occur in `block`.
+fn score(block: &str, keywords: &[String]) -> usize {
+    let lower = block.to_lowercase();
+    keywords
+        .iter()
+        .filter(|k| lower.contains(k.as_str()))
+        .count()
+}
+
+/// `text` as blocks: paragraphs (split on blank lines), with any paragraph
+/// longer than `max` split again at line ends, then at `max` characters.
+fn blocks(text: &str, max: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for paragraph in text.split("\n\n").map(str::trim).filter(|p| !p.is_empty()) {
+        if paragraph.chars().count() <= max {
+            out.push(paragraph.to_string());
+            continue;
+        }
+        let mut current = String::new();
+        for line in paragraph.lines() {
+            if !current.is_empty() && current.chars().count() + line.chars().count() + 1 > max {
+                out.push(std::mem::take(&mut current));
+            }
+            if line.chars().count() > max {
+                let chars: Vec<char> = line.chars().collect();
+                for piece in chars.chunks(max) {
+                    out.push(piece.iter().collect());
+                }
+                continue;
+            }
+            if !current.is_empty() {
+                current.push('\n');
+            }
+            current.push_str(line);
+        }
+        if !current.is_empty() {
+            out.push(current);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_that_fits_is_shown_whole() {
+        let text = "Short page.\n\nSecond paragraph.";
+        assert_eq!(excerpt(text, &["Anything?".into()], 1_000), text);
+    }
+
+    #[test]
+    fn a_long_page_shows_the_opening_and_the_relevant_part_in_order() {
+        let filler = "Unrelated budget narrative about parks and libraries. ".repeat(30);
+        let mut text = String::from("2026 Introduced Budget of Hudson County\n\n");
+        for _ in 0..40 {
+            text.push_str(&filler);
+            text.push_str("\n\n");
+        }
+        text.push_str("Hoboken general tax rate for 2026 is 1.80 per $100 of assessed value.\n\n");
+        for _ in 0..40 {
+            text.push_str(&filler);
+            text.push_str("\n\n");
+        }
+        let questions = vec!["What is the 2026 general tax rate in Hoboken?".to_string()];
+        let out = excerpt(&text, &questions, 4_000);
+        assert!(out.chars().count() <= 4_000 + 10, "{}", out.chars().count());
+        assert!(out.starts_with("2026 Introduced Budget of Hudson County"));
+        assert!(out.contains("Hoboken general tax rate for 2026 is 1.80"));
+        assert!(out.contains('…'));
+        let opening = out.find("Introduced Budget").unwrap();
+        let rate = out.find("Hoboken general tax rate").unwrap();
+        assert!(opening < rate, "page order is kept");
+    }
+
+    #[test]
+    fn keywords_skip_question_words_and_keep_numbers() {
+        let k = keywords(&["What is the 2026 tax rate in Hoboken?".into()]);
+        assert_eq!(k, vec!["2026", "rate", "hoboken"]);
+    }
 
     #[test]
     fn parse_keeps_good_claims_and_drops_the_rest() {

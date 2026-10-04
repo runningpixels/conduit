@@ -29,6 +29,9 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 /// Largest response body handed back to the page.
 pub const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
+/// Largest response a whole-document reader ([`crate::web_page`]) takes:
+/// reports and budgets are often PDFs well past a web page's size.
+pub const MAX_DOCUMENT_RESPONSE_BYTES: usize = 20 * 1024 * 1024;
 /// Largest request body a page may send.
 pub const MAX_REQUEST_BYTES: usize = 1024 * 1024;
 /// Requests per artifact per rolling minute.
@@ -367,6 +370,17 @@ pub async fn perform(
     policy: AddressPolicy,
     allowed: &(dyn Fn(&str) -> bool + Send + Sync),
 ) -> Result<ArtifactFetchResponse, String> {
+    perform_capped(req, policy, allowed, MAX_RESPONSE_BYTES).await
+}
+
+/// [`perform`] with a different response size limit, for readers that take
+/// whole documents ([`MAX_DOCUMENT_RESPONSE_BYTES`]).
+pub async fn perform_capped(
+    req: &ArtifactFetchRequest,
+    policy: AddressPolicy,
+    allowed: &(dyn Fn(&str) -> bool + Send + Sync),
+    max_response_bytes: usize,
+) -> Result<ArtifactFetchResponse, String> {
     let method = req.method.to_ascii_uppercase();
     if !ALLOWED_METHODS.contains(&method.as_str()) {
         return Err(format!("The {method} method is not allowed."));
@@ -475,10 +489,10 @@ pub async fn perform(
                 .map_err(|_| "The response took longer than 20 seconds.".to_string())?
                 .map_err(|e| format!("The response failed: {}", without_url(&e)))?;
             let Some(chunk) = chunk else { break };
-            if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
+            if bytes.len() + chunk.len() > max_response_bytes {
                 return Err(format!(
                     "The response is larger than {} MB, the limit for a page.",
-                    MAX_RESPONSE_BYTES / (1024 * 1024)
+                    max_response_bytes / (1024 * 1024)
                 ));
             }
             bytes.extend_from_slice(&chunk);

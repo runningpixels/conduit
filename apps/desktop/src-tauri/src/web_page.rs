@@ -6,6 +6,14 @@
 //! address is refused, and each redirect hop is checked again), pinned DNS,
 //! and the response size and time caps. A page the model reads may tell it to
 //! fetch `http://192.168.1.1/...`; this is what stops that request.
+//!
+//! PDFs are read too (reports, budgets and papers often are PDFs), with the
+//! same care as importing one into Documents: parsed off the async runtime,
+//! under a timeout, with panics from the parser caught. A scanned PDF with no
+//! text layer comes back as a page with no text, which callers already treat
+//! as "nothing readable".
+
+use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 
@@ -32,9 +40,16 @@ pub enum FetchError {
     Status { status: u16, text: String },
     /// The body was not valid base64 from the network layer.
     Unreadable,
-    /// The response is not text (an image, a PDF, a download).
+    /// The response is not text (an image, a download).
     NotAPage(String),
+    /// The response is a PDF the parser could not read.
+    BadPdf(String),
 }
+
+/// Longest a PDF may take to parse. The parse can't be interrupted, so a
+/// pathological file keeps one blocking thread busy past this; the caller
+/// moves on.
+const PDF_PARSE_TIMEOUT: Duration = Duration::from_secs(20);
 
 impl FetchError {
     /// Worth retrying: a network failure, a server error, or "slow down".
@@ -42,7 +57,7 @@ impl FetchError {
         match self {
             FetchError::Network(_) => true,
             FetchError::Status { status, .. } => *status >= 500 || *status == 429,
-            FetchError::Unreadable | FetchError::NotAPage(_) => false,
+            FetchError::Unreadable | FetchError::NotAPage(_) | FetchError::BadPdf(_) => false,
         }
     }
 }
@@ -56,6 +71,7 @@ impl std::fmt::Display for FetchError {
             FetchError::NotAPage(content_type) => {
                 write!(f, "it is not a web page ({content_type})")
             }
+            FetchError::BadPdf(reason) => write!(f, "the PDF could not be read ({reason})"),
         }
     }
 }
@@ -83,13 +99,18 @@ pub async fn fetch(
         method: "GET".to_string(),
         headers: vec![(
             "Accept".to_string(),
-            "text/html,text/plain;q=0.9,*/*;q=0.5".to_string(),
+            "text/html,text/plain;q=0.9,application/pdf;q=0.8,*/*;q=0.5".to_string(),
         )],
         body: None,
     };
-    let response = artifact_network::perform(&request, policy, &|_| true)
-        .await
-        .map_err(FetchError::Network)?;
+    let response = artifact_network::perform_capped(
+        &request,
+        policy,
+        &|_| true,
+        artifact_network::MAX_DOCUMENT_RESPONSE_BYTES,
+    )
+    .await
+    .map_err(FetchError::Network)?;
     if response.status >= 400 {
         return Err(FetchError::Status {
             status: response.status,
@@ -99,13 +120,22 @@ pub async fn fetch(
     let bytes = B64
         .decode(&response.body)
         .map_err(|_| FetchError::Unreadable)?;
-    let body = String::from_utf8_lossy(&bytes);
     let content_type = response
         .headers
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
         .map(|(_, v)| v.to_ascii_lowercase())
         .unwrap_or_default();
+    if content_type.contains("application/pdf") || bytes.starts_with(b"%PDF-") {
+        let text = pdf_text(bytes).await?;
+        return Ok(Page {
+            title: pdf_title(&response.url),
+            url: response.url,
+            text: text.chars().take(max_chars).collect(),
+            links: Vec::new(),
+        });
+    }
+    let body = String::from_utf8_lossy(&bytes);
     let is_html = content_type.contains("html") || body.trim_start().starts_with('<');
     let (title, text, links) = if is_html {
         let page = extract::extract_readable(&body, &response.url);
@@ -124,6 +154,54 @@ pub async fn fetch(
         text: text.chars().take(max_chars).collect(),
         links,
     })
+}
+
+/// The text of a PDF, tidied: trailing spaces and runs of blank lines go.
+async fn pdf_text(bytes: Vec<u8>) -> Result<String, FetchError> {
+    let parse = tokio::task::spawn_blocking(move || {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            pdf_extract::extract_text_from_mem(&bytes)
+        }))
+    });
+    let text = match tokio::time::timeout(PDF_PARSE_TIMEOUT, parse).await {
+        Err(_) => return Err(FetchError::BadPdf("it took too long".into())),
+        Ok(Err(_)) | Ok(Ok(Err(_))) => {
+            return Err(FetchError::BadPdf("the file is damaged".into()))
+        }
+        Ok(Ok(Ok(Err(e)))) => return Err(FetchError::BadPdf(e.to_string())),
+        Ok(Ok(Ok(Ok(text)))) => text,
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut blank_lines = 0;
+    for line in text.lines() {
+        let line = line.trim_end();
+        if line.trim().is_empty() {
+            blank_lines += 1;
+            if blank_lines > 1 {
+                continue;
+            }
+        } else {
+            blank_lines = 0;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    Ok(out.trim().to_string())
+}
+
+/// A PDF has no `<title>` we read; its file name is the next best thing:
+/// `2026-Introduced-Budget.pdf` → "2026 Introduced Budget".
+fn pdf_title(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    let name = parsed.path_segments()?.rev().find(|s| !s.is_empty())?;
+    let name = name.replace("%20", " ");
+    let stem = name
+        .strip_suffix(".pdf")
+        .or_else(|| name.strip_suffix(".PDF"))
+        .unwrap_or(&name);
+    let title = stem.replace(['-', '_'], " ");
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!title.is_empty()).then_some(title)
 }
 
 #[cfg(test)]
@@ -177,6 +255,129 @@ mod tests {
                 "{url} should be refused, got {result:?}"
             );
         }
+    }
+
+    /// A one-page PDF saying `line`, with a correct cross-reference table.
+    fn tiny_pdf(line: &str) -> Vec<u8> {
+        let content = format!("BT /F1 18 Tf 72 700 Td ({line}) Tj ET");
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R \
+             /Resources << /Font << /F1 5 0 R >> >> >>"
+                .to_string(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            ),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+                .to_string(),
+        ];
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, body) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{body}\nendobj\n", i + 1).as_bytes());
+        }
+        let xref = pdf.len();
+        pdf.extend_from_slice(
+            format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+        );
+        for offset in offsets {
+            pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .as_bytes(),
+        );
+        pdf
+    }
+
+    /// Serves `body` with `content_type` to every request on loopback.
+    async fn serve(content_type: &'static str, body: Vec<u8>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let _ = socket.read(&mut buf).await;
+                    let head = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = socket.write_all(head.as_bytes()).await;
+                    let _ = socket.write_all(&body).await;
+                });
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    const LOOPBACK: AddressPolicy = AddressPolicy { public_only: false };
+
+    #[tokio::test]
+    async fn reads_the_text_of_a_pdf() {
+        let base = serve(
+            "application/pdf",
+            tiny_pdf("Hoboken general tax rate is 1.80 percent"),
+        )
+        .await;
+        let page = fetch(
+            &format!("{base}/files/2026-Tax-Rates.pdf"),
+            "test",
+            LOOPBACK,
+            10_000,
+        )
+        .await
+        .expect("the PDF is read");
+        assert!(
+            page.text
+                .contains("Hoboken general tax rate is 1.80 percent"),
+            "{:?}",
+            page.text
+        );
+        assert_eq!(page.title.as_deref(), Some("2026 Tax Rates"));
+    }
+
+    #[tokio::test]
+    async fn a_pdf_is_recognised_by_its_header_whatever_the_content_type() {
+        let base = serve("application/octet-stream", tiny_pdf("Read anyway")).await;
+        let page = fetch(&format!("{base}/download"), "test", LOOPBACK, 10_000)
+            .await
+            .expect("sniffed as a PDF");
+        assert!(page.text.contains("Read anyway"), "{:?}", page.text);
+    }
+
+    #[tokio::test]
+    async fn a_damaged_pdf_is_an_error_not_a_crash() {
+        let base = serve(
+            "application/pdf",
+            b"%PDF-1.4\nthis is not really a pdf".to_vec(),
+        )
+        .await;
+        let result = fetch(&format!("{base}/broken.pdf"), "test", LOOPBACK, 10_000).await;
+        assert!(matches!(result, Err(FetchError::BadPdf(_))), "{result:?}");
+        assert!(!result.unwrap_err().is_transient());
+    }
+
+    #[test]
+    fn pdf_titles_come_from_the_file_name() {
+        assert_eq!(
+            pdf_title("https://example.gov/wp-content/uploads/2026/05/2026-Introduced-Budget.pdf")
+                .as_deref(),
+            Some("2026 Introduced Budget")
+        );
+        assert_eq!(
+            pdf_title("https://example.com/Annual%20Report_2025.PDF").as_deref(),
+            Some("Annual Report 2025")
+        );
+        assert_eq!(pdf_title("https://example.com/"), None);
     }
 
     #[tokio::test]

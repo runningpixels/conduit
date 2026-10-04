@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **PDFs on the web are read.** Research, a workflow's Fetch page step and
+  the model's page fetch now read PDFs (reports, budgets, papers) up to
+  20 MB, the same way Documents imports one; a scanned PDF with no text
+  counts as a page with nothing to read. On a long page or PDF, Research
+  shows the model the opening plus the parts that match the questions,
+  instead of only the first few pages.
 - **Research.** Turn on Research in the composer's `+` menu (or pick it on
   Home) and ask a question that needs more than a quick search.
   - It first proposes a brief: the sub-questions it will answer, a scope,

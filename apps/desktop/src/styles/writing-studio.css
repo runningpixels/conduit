@@ -26,6 +26,13 @@
   outline: 1px solid var(--accent-line);
 }
 .writing-ai-toggle[aria-pressed="false"] .writing-ai-swatch { background: transparent; }
+/* On reads as on: the tint itself is too faint to tell a filled swatch from
+   an empty one, so the pressed state uses the accent. */
+.writing-ai-toggle[aria-pressed="true"] { border-color: var(--accent-line); }
+.writing-ai-toggle[aria-pressed="true"] .writing-ai-swatch {
+  background: var(--accent);
+  outline-color: var(--accent);
+}
 
 /* ── Outline stage ────────────────────────────────────────────────────── */
 .writing-outline-stage { flex: 1; min-height: 0; overflow-y: auto; }

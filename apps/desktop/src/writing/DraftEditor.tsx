@@ -357,6 +357,9 @@ export function DraftEditor({
       pinnedIds: pinnedIn(blocks),
       text: view.state.sliceDoc(sel.from, sel.to),
     });
+    // The request is sent: drop the selection, or the bar comes back over the
+    // rewritten text when the editor turns editable again after the turn.
+    view.dispatch({ selection: { anchor: sel.to } });
   };
 
   const unpin = (blockId: string) => {

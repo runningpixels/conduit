@@ -226,6 +226,10 @@ describe('DraftEditor', () => {
       pinnedIds: ['b3'],
       text: MARKDOWN.slice(from, to),
     });
+    // The selection is dropped, so the bar can't come back over the
+    // rewritten text once the turn ends and the editor is editable again.
+    expect(view().state.selection.main.empty).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Shorter' })).toBeNull();
   });
 
   it('hides the selection toolbar while read-only', () => {

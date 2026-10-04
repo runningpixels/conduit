@@ -908,3 +908,68 @@ async fn sources_attach_finished_reports_and_their_verified_claims() {
     assert_eq!(material.len(), 1);
     assert_eq!(material[0].claims[0].id, "R1.1");
 }
+
+#[tokio::test]
+async fn write_section_refuses_an_empty_body_or_a_heading_not_in_the_outline() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let draft = new_draft(&pool, &enc).await;
+    drafts::set_outline(
+        &pool,
+        &enc,
+        &draft.id,
+        vec![section("Where tea comes from"), section("Brewing it well")],
+        false,
+    )
+    .await
+    .unwrap();
+    drafts::set_stage(&pool, &enc, &draft.id, DraftStage::Draft)
+        .await
+        .unwrap();
+    let loaded = drafts::require(&pool, &enc, &draft.id).await.unwrap();
+
+    // Live: an empty call left a stray "## … placeholder" section behind.
+    for empty in ["", "   ", "## Brewing it well", "## Brewing it well\n\n  "] {
+        let err = drafts::model_write_section(&pool, &enc, &loaded, "Brewing it well", empty)
+            .await
+            .expect_err("an empty section is refused");
+        assert!(drafts::user_message(err).contains("needs the section's text"));
+    }
+    let err = drafts::model_write_section(
+        &pool,
+        &enc,
+        &loaded,
+        "Brewing it placeholder",
+        "Use water just off the boil.",
+    )
+    .await
+    .expect_err("a heading outside the outline is refused");
+    let message = drafts::user_message(err);
+    assert!(
+        message.contains("no section \"Brewing it placeholder\""),
+        "{message}"
+    );
+    assert!(
+        message.contains("\"Where tea comes from\", \"Brewing it well\""),
+        "{message}"
+    );
+    let unchanged = drafts::get(&pool, &enc, &draft.id).await.unwrap().unwrap();
+    assert_eq!(unchanged.markdown, "");
+
+    // The outline's heading, in any case, is accepted.
+    drafts::model_write_section(
+        &pool,
+        &enc,
+        &loaded,
+        "brewing IT well",
+        "Use water just off the boil.",
+    )
+    .await
+    .unwrap();
+    let written = drafts::get(&pool, &enc, &draft.id).await.unwrap().unwrap();
+    assert!(
+        written.markdown.contains("## Brewing it well"),
+        "{}",
+        written.markdown
+    );
+}

@@ -14,7 +14,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Describe what you're writing; the assistant proposes an **outline**
     (sections, what each must say, a target length) that you edit and
     approve, then writes the draft section by section into a Markdown
-    editor next to the chat.
+    editor next to the chat. Each section appears in the editor as it is
+    being written, and the draft keeps going until every section of the
+    outline has text.
+  - **Sources.** A draft can look things up on the web (off by default),
+    draw on your document collections, or work from a finished
+    **Research** report, whose quote-checked facts it prefers. Facts from
+    a source are linked in the draft; anything without one is marked
+    `[TODO]` instead of being made up. A finished Research card has
+    **Write from this report**, and exports end with a Sources list.
   - **What you write stays yours.** Any paragraph you type or change is
     marked as yours, and the assistant keeps it word for word unless you
     ask it to change that text; "Let AI edit" hands it back.

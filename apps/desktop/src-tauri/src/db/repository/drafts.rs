@@ -50,6 +50,16 @@ fn invalid(msg: impl Into<String>) -> DbError {
     DbError::Query(msg.into())
 }
 
+/// A `write_section` body without the heading line it may start with,
+/// trimmed: empty means the call wrote nothing but a heading.
+fn section_body(markdown: &str) -> &str {
+    let text = markdown.trim();
+    match text.strip_prefix('#') {
+        Some(_) => text.split_once('\n').map_or("", |(_, rest)| rest.trim()),
+        None => text,
+    }
+}
+
 /// A repository error as the plain sentence to show the user or the model.
 pub fn user_message(error: DbError) -> String {
     match error {
@@ -743,6 +753,29 @@ pub async fn model_write_section(
         return Err(invalid("write_section needs the section's heading."));
     }
     let headings: Vec<String> = draft.outline.iter().map(|s| s.heading.clone()).collect();
+    // A call with no text or an unknown heading would leave an empty, stray
+    // section (live: "## New econometrics for time-to-variance placeholder",
+    // next to the real "time-varying risk" one). Refuse both, naming the
+    // outline, so the model retries with the right heading.
+    if section_body(markdown).is_empty() {
+        return Err(invalid(
+            "write_section needs the section's text, not only its heading.",
+        ));
+    }
+    let key = draft_blocks::heading_key(heading);
+    let in_outline = headings.iter().any(|h| draft_blocks::heading_key(h) == key);
+    let in_draft = draft_blocks::section_range(&draft.markdown, &draft.blocks, heading).is_some();
+    if !headings.is_empty() && !in_outline && !in_draft {
+        let list = headings
+            .iter()
+            .map(|h| format!("\"{}\"", h.trim()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(invalid(format!(
+            "There is no section \"{}\" in the outline. Use one of the outline's headings exactly: {list}. To add a new section, ask the user to add it to the outline.",
+            heading.trim()
+        )));
+    }
     let new_md =
         draft_blocks::write_section(&draft.markdown, &draft.blocks, &headings, heading, markdown);
     let blocks = store_change(pool, enc, draft, &new_md, EditMode::Ai, &[]).await?;

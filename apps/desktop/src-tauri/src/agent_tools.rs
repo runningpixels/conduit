@@ -2531,7 +2531,7 @@ async fn update_slots(
 
 const READ_DRAFT_DESCRIPTION: &str = "Read the draft you are writing. Returns the title, stage, brief, outline (heading, intent, target_words) and the draft's blocks in order, each with its id, kind, owner (ai, user or mixed), pinned flag and Markdown text. from_block and to_block (block ids, both included) read a range; without them the whole draft comes back, cut at about 60,000 characters with a note saying where to continue. A pinned block holds text the user wrote: keep it word for word.";
 const SET_OUTLINE_DESCRIPTION: &str = "Propose the draft's outline: 2 to 12 sections in order, each with a heading, its intent (one sentence on what the section does for the reader) and an optional target_words. Replaces the whole outline. The user reviews and edits it, and approves it before anything is written, so stop after proposing it. Pass title with the first outline: a short name for the draft (120 characters at most).";
-const WRITE_SECTION_DESCRIPTION: &str = "Write one section of the draft in Markdown. heading is the section's heading from the outline; markdown is the section (it may start with its \"## heading\" line, which is added when missing). Replaces everything under that ## heading up to the next ## heading, or adds the section where the outline puts it. Write the draft one section per call, with more_to_write: true on every call except the last. Pinned blocks (text the user wrote) inside the section must stay word for word: the call is rejected otherwise.";
+const WRITE_SECTION_DESCRIPTION: &str = "Write one section of the draft in Markdown. heading is the section's heading from the outline; markdown is the section (it may start with its \"## heading\" line, which is added when missing). Replaces everything under that ## heading up to the next ## heading, or adds the section where the outline puts it. Write one section per call, then stop: the result lists the sections still to write in remaining, and you will be asked for the next one. Pinned blocks (text the user wrote) inside the section must stay word for word: the call is rejected otherwise.";
 const EDIT_BLOCKS_DESCRIPTION: &str = "Replace the Markdown of blocks by id: for the user's selection actions (rewrite, shorten, expand, clarify, fix grammar) and other targeted edits. Each edit gives block_id and the block's new markdown; an empty markdown deletes the block, and markdown holding several blocks splits it. Edits to pinned blocks (text the user wrote) are rejected unless their id is in release_pinned. Pass release_pinned only for blocks the user's message asks you to change, such as a selection they chose an action on; a request to rewrite or polish the whole draft does not release them.";
 const REPLACE_IN_DRAFT_DESCRIPTION: &str = "Swap an exact word or phrase everywhere in the draft in one step. Use it only for a swap the user asked for across the draft. It also changes pinned blocks, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.";
 
@@ -2577,7 +2577,6 @@ fn write_section_schema() -> Value {
         "properties": {
             "heading": { "type": "string", "description": "The section's heading, as in the outline." },
             "markdown": { "type": "string", "description": "The section in Markdown." },
-            "more_to_write": { "type": "boolean", "description": "true while more sections follow in this turn." },
         },
         "required": ["heading", "markdown"],
     })
@@ -2749,7 +2748,7 @@ async fn write_section(
     input: WriteSectionInput,
 ) -> Result<Value, String> {
     let draft = draft_for_chat(ctx).await?;
-    let (edit, section) = drafts::model_write_section(
+    let written = drafts::model_write_section(
         ctx.db,
         ctx.encryption,
         &draft,
@@ -2758,10 +2757,10 @@ async fn write_section(
     )
     .await
     .map_err(drafts::user_message)?;
-    let mut out = model_edit_json(&edit);
+    let mut out = model_edit_json(&written.edit);
     out["heading"] = Value::String(input.heading.trim().to_string());
-    out["section_blocks"] = serde_json::json!(section);
-    out["more_to_write"] = Value::Bool(input.more_to_write.unwrap_or(false));
+    out["section_blocks"] = serde_json::json!(written.section);
+    out["remaining"] = serde_json::json!(written.remaining);
     Ok(out)
 }
 
@@ -2838,7 +2837,8 @@ struct OutlineSectionInput {
 struct WriteSectionInput {
     heading: String,
     markdown: String,
-    more_to_write: Option<bool>,
+    // `more_to_write` is no longer in the schema; a model that still sends it
+    // is not refused (unknown fields are ignored).
 }
 
 #[derive(Debug, Deserialize)]

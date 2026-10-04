@@ -22,13 +22,14 @@ use provider_core::schema::{
     Conversation, ConversationSummary, CredentialRequest, CredentialSummary, DeckDetail,
     DeckReplaceResult, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
     DraftBlock, DraftDetail, DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary,
-    DraftStage, DraftSummary, GenerationControls, GrantScope, GrantStatus, KeychainMode,
-    LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart, MessagePartKind,
-    MessageRole, ModelInfo, ModelPolicy, OutlineSection, PageLlmGrant, PageLlmProviderGrant,
-    PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry, PageStorageUsage,
-    PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent,
-    ProviderRequest, ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget, ResearchDepth,
-    ResearchProgress, ResearchRun, ResearchRunUpdated, ResearchSource, ResearchSourceStatus,
+    DraftSources, DraftStage, DraftSummary, GenerationControls, GrantScope, GrantStatus,
+    KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
+    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, OutlineSection, PageLlmGrant,
+    PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry,
+    PageStorageUsage, PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError,
+    ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget,
+    ResearchDepth, ResearchMaterial, ResearchMaterialClaim, ResearchProgress,
+    ResearchReportSummary, ResearchRun, ResearchRunUpdated, ResearchSource, ResearchSourceStatus,
     ResearchStatus, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
     ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
     SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit, StarterAppInfo, StorylineItem,
@@ -120,6 +121,10 @@ fn main() {
     DraftBlock::export().expect("export DraftBlock");
     DraftSummary::export().expect("export DraftSummary");
     DraftDetail::export().expect("export DraftDetail");
+    DraftSources::export().expect("export DraftSources");
+    ResearchReportSummary::export().expect("export ResearchReportSummary");
+    ResearchMaterial::export().expect("export ResearchMaterial");
+    ResearchMaterialClaim::export().expect("export ResearchMaterialClaim");
     DraftSnapshotCause::export().expect("export DraftSnapshotCause");
     DraftSnapshotSummary::export().expect("export DraftSnapshotSummary");
     DraftExportFormat::export().expect("export DraftExportFormat");

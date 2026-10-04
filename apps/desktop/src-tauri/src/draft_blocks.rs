@@ -796,6 +796,34 @@ pub fn write_section(
     }
 }
 
+/// The outline headings with no written section yet, in outline order. A
+/// section is written when the draft has a `##` heading (or `#`) matching it
+/// (case-insensitive, whitespace collapsed) followed by at least one
+/// non-heading block before the next heading of level 1 or 2.
+pub fn unwritten_sections(md: &str, outline_headings: &[String]) -> Vec<String> {
+    let spans = split(md);
+    let written = |heading: &str| {
+        let key = heading_key(heading);
+        spans
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| {
+                s.kind == KIND_HEADING && s.level <= 2 && heading_key(&md[s.range()]) == key
+            })
+            .any(|(i, _)| {
+                spans[i + 1..]
+                    .iter()
+                    .take_while(|s| !(s.kind == KIND_HEADING && s.level <= 2))
+                    .any(|s| s.kind != KIND_HEADING)
+            })
+    };
+    outline_headings
+        .iter()
+        .filter(|h| !heading_key(h).is_empty() && !written(h))
+        .map(|h| h.trim().to_string())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1215,6 +1243,29 @@ mod tests {
             write_section("", &[], &outline, "Intro", "Hi."),
             "## Intro\n\nHi.\n"
         );
+    }
+
+    #[test]
+    fn unwritten_sections_lists_outline_headings_without_content_in_order() {
+        let outline: Vec<String> = ["Intro", " Setup ", "Usage", "Limits", "FAQ"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            unwritten_sections("", &outline),
+            ["Intro", "Setup", "Usage", "Limits", "FAQ"]
+        );
+        // Intro: written. SETUP: heading only, then the next ## — unwritten.
+        // Usage: only a sub-heading's content — written. Limits: a sub-heading
+        // with nothing under it — unwritten. FAQ: missing.
+        let md = "# Guide\n\n## intro\n\nHello.\n\n## SETUP\n\n## Usage\n\n### Detail\n\nMore.\n\n## Limits\n\n### Soon\n";
+        assert_eq!(unwritten_sections(md, &outline), ["Setup", "Limits", "FAQ"]);
+        // A heading repeated: any written copy counts.
+        let md = "## FAQ\n\n## FAQ\n\nAnswers.";
+        assert!(!unwritten_sections(md, &outline).contains(&"FAQ".to_string()));
+        // `###` headings with the outline's name are not sections.
+        let md = "## Other\n\n### Intro\n\nText.";
+        assert!(unwritten_sections(md, &outline).contains(&"Intro".to_string()));
     }
 
     #[test]

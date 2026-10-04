@@ -1517,6 +1517,11 @@ fn apply_controls(
             }
         };
     }
+    // Chat completions (OpenRouter included) and `/responses` both take a
+    // top-level `parallel_tool_calls`; some endpoints reject it without tools.
+    if controls.parallel_tool_calls == Some(false) && body.get("tools").is_some() {
+        body["parallel_tool_calls"] = json!(false);
+    }
 }
 
 /// `pub(crate)` for the same reason as `request_headers` above — reused by
@@ -2875,6 +2880,7 @@ mod tests {
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: Some(crate::schema::ReasoningEffort::Low),
+            parallel_tool_calls: None,
         };
         let mut chat = json!({});
         apply_controls(&mut chat, &controls, false, "openai");
@@ -2892,6 +2898,50 @@ mod tests {
     }
 
     #[test]
+    fn parallel_tool_calls_false_is_sent_only_with_tools() {
+        let controls = |parallel: Option<bool>| GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            tool_choice: None,
+            reasoning_effort: None,
+            parallel_tool_calls: parallel,
+        };
+        for (responses_api, provider) in
+            [(false, "openai"), (false, "openrouter"), (true, "openai")]
+        {
+            let mut with_tools = json!({"tools": [{"type": "function"}]});
+            apply_controls(
+                &mut with_tools,
+                &controls(Some(false)),
+                responses_api,
+                provider,
+            );
+            assert_eq!(
+                with_tools["parallel_tool_calls"],
+                json!(false),
+                "{provider}"
+            );
+
+            let mut no_tools = json!({});
+            apply_controls(
+                &mut no_tools,
+                &controls(Some(false)),
+                responses_api,
+                provider,
+            );
+            assert!(no_tools.get("parallel_tool_calls").is_none());
+
+            for unset in [None, Some(true)] {
+                let mut body = json!({"tools": [{"type": "function"}]});
+                apply_controls(&mut body, &controls(unset), responses_api, provider);
+                assert!(body.get("parallel_tool_calls").is_none());
+            }
+        }
+    }
+
+    #[test]
     fn responses_payload_names_the_limit_max_output_tokens() {
         let controls = GenerationControls {
             temperature: None,
@@ -2900,6 +2950,7 @@ mod tests {
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: None,
+            parallel_tool_calls: None,
         };
         let mut chat = json!({});
         apply_controls(&mut chat, &controls, false, "openai");

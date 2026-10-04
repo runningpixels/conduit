@@ -1,7 +1,9 @@
 use crate::event_sink::EventSink;
 use crate::{
     agent_tools,
-    db::repository::{connectors, conversations, event_log, messages, tool_calls, usage_summary},
+    db::repository::{
+        connectors, conversations, drafts, event_log, messages, tool_calls, usage_summary,
+    },
     state::AppState,
 };
 use futures::StreamExt;
@@ -566,6 +568,82 @@ impl DeltaBuffer {
     }
 }
 
+/// Continuations a draft turn may add beyond one per outline section.
+const DRAFT_CONTINUATION_SLACK: usize = 2;
+
+/// The section a draft turn should write next when the model stopped talking,
+/// or `None` when the turn should end: the draft is not in its draft stage,
+/// every outline section has content, or the turn already used its
+/// `outline.len() + 2` continuations.
+pub fn next_draft_section(
+    stage: provider_core::schema::DraftStage,
+    outline: &[provider_core::schema::OutlineSection],
+    markdown: &str,
+    continuations_used: usize,
+) -> Option<String> {
+    if stage != provider_core::schema::DraftStage::Draft
+        || continuations_used >= outline.len() + DRAFT_CONTINUATION_SLACK
+    {
+        return None;
+    }
+    let headings: Vec<String> = outline.iter().map(|s| s.heading.clone()).collect();
+    crate::draft_blocks::unwritten_sections(markdown, &headings)
+        .into_iter()
+        .next()
+}
+
+/// The message that asks the model for the next section of a draft.
+pub fn draft_continuation_message(heading: &str) -> String {
+    format!("Next: write the section \"{heading}\" with write_section.")
+}
+
+/// Append the model's closing text (if any) and the app's request for the next
+/// section to the turn's request. The request is not saved as a chat message:
+/// it is the app talking to the model, not the user.
+pub fn push_draft_continuation(request: &mut ProviderRequest, round_text: &str, text: &str) {
+    let now = crate::time::now_iso8601();
+    let conversation_id = request.conversation_id.clone();
+    let text_message = |role: MessageRole, content: &str, metadata: Option<serde_json::Value>| {
+        let id = Uuid::new_v4().to_string();
+        Message {
+            id: id.clone(),
+            conversation_id: conversation_id.clone(),
+            role,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata,
+            parts: vec![MessagePart {
+                id: format!("{id}/text"),
+                message_id: id,
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some(content.to_string()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: now.clone(),
+            }],
+            created_at: now.clone(),
+        }
+    };
+    if !round_text.trim().is_empty() {
+        let message = text_message(MessageRole::Assistant, round_text, None);
+        request.messages.push(message);
+    }
+    let message = text_message(
+        MessageRole::User,
+        text,
+        Some(serde_json::json!({ "draftContinuation": true })),
+    );
+    request.messages.push(message);
+    request.request_id = Uuid::new_v4().to_string();
+}
+
 /// The turn time limit, measured from the last saved progress rather than from
 /// the start of the turn.
 ///
@@ -643,6 +721,8 @@ pub struct ToolRoundTally {
     pub document_writes_succeeded: u32,
     /// Calls answered with a per-turn web cap refusal instead of running.
     pub web_cap_refusals: u32,
+    /// `write_section` calls that succeeded this round.
+    pub sections_written: u32,
 }
 
 /// True when a `write_*` call is asking to create a new document (no usable
@@ -1644,6 +1724,7 @@ impl StreamManager {
         );
         let mut created_this_round = 0u32;
         let mut document_writes_succeeded = 0u32;
+        let mut sections_written = 0u32;
         let mut web_cap_refusals = 0u32;
 
         for (idx, (call, action)) in calls.iter().zip(clamp_actions.iter()).enumerate() {
@@ -1845,6 +1926,9 @@ impl StreamManager {
                             if !exec.is_error && saves_writing(&tool_name) {
                                 document_writes_succeeded += 1;
                             }
+                            if !exec.is_error && tool_name == agent_tools::WRITE_SECTION_TOOL {
+                                sections_written += 1;
+                            }
                             let size = serde_json::to_vec(&exec.output)
                                 .map(|bytes| bytes.len() as u64)
                                 .unwrap_or(0);
@@ -1898,6 +1982,9 @@ impl StreamManager {
                     if !exec.is_error && saves_writing(&tool_name) {
                         document_writes_succeeded += 1;
                     }
+                    if !exec.is_error && tool_name == agent_tools::WRITE_SECTION_TOOL {
+                        sections_written += 1;
+                    }
                     if let Some(ch) = provider_channel {
                         let _ = ch.send(ProviderEvent::ToolExecutionFinished {
                             request_id: request_id.to_string(),
@@ -1940,6 +2027,7 @@ impl StreamManager {
             documents_created: created_this_round,
             document_writes_succeeded,
             web_cap_refusals,
+            sections_written,
         }
     }
 
@@ -2475,6 +2563,30 @@ impl StreamManager {
         })
     }
 
+    /// The next section of the draft written in this chat when a draft turn
+    /// should keep going (see [`next_draft_section`]). `None` for any other
+    /// chat, and when the draft cannot be read.
+    async fn draft_section_to_continue(
+        &self,
+        state: &AppState,
+        conversation_id: &str,
+        continuations_used: usize,
+    ) -> Option<String> {
+        match drafts::load_by_conversation(&state.db, &state.encryption, conversation_id).await {
+            Ok(Some(draft)) => next_draft_section(
+                draft.stage,
+                &draft.outline,
+                &draft.markdown,
+                continuations_used,
+            ),
+            Ok(None) => None,
+            Err(e) => {
+                warn!(error = %e, "could not read the draft to continue it");
+                None
+            }
+        }
+    }
+
     /// Persist a mid-turn steering user message and append it to the in-flight
     /// provider request (t1-2). Keeps the agent turn's canonical persist id;
     /// mints a fresh HTTP `request_id` for the next provider round.
@@ -2595,6 +2707,13 @@ impl StreamManager {
         // True while the model is building a document in parts: its last
         // document call said more calls would follow.
         let mut building_document = false;
+        // Writing: sections this turn wrote, and the rounds the app added to
+        // ask for the next one after the model stopped. Each added round also
+        // adds a step, so a long draft is not cut off by the step limit for
+        // rounds the model did not ask for.
+        let mut sections_written_this_turn: u32 = 0;
+        let mut draft_continuations: usize = 0;
+        let mut step_limit = max_steps;
 
         let active_model_id = initial_request.model_id.clone();
         let mut current_request = initial_request;
@@ -2635,7 +2754,10 @@ impl StreamManager {
         // `REPEAT_READ_LIMIT`).
         let mut document_reads: HashMap<String, usize> = HashMap::new();
 
-        for step in 0..max_steps {
+        let mut next_step = 0usize;
+        while next_step < step_limit {
+            let step = next_step;
+            next_step += 1;
             if cancel.is_cancelled() {
                 break;
             }
@@ -2659,7 +2781,7 @@ impl StreamManager {
                     &text,
                     &channel,
                     (step + 1) as u32,
-                    max_steps as u32,
+                    step_limit as u32,
                 )
                 .await
                 {
@@ -2668,7 +2790,7 @@ impl StreamManager {
             }
 
             // Emit agent phase event before each provider round.
-            let total = max_steps as u32;
+            let total = step_limit as u32;
             let round_num = (step + 1) as u32;
             // A retry names itself for the whole round it starts; a label sent
             // from the retry branch was replaced by "Continuing" at once.
@@ -3008,6 +3130,7 @@ impl StreamManager {
                                 stop_sequences: None,
                                 tool_choice: None,
                                 reasoning_effort: None,
+                                parallel_tool_calls: None,
                             },
                         );
                         controls.reasoning_effort =
@@ -3083,12 +3206,39 @@ impl StreamManager {
             }
 
             if outcome.completed_tool_calls.is_empty() {
-                // No tool calls requested; the assistant produced a final answer.
+                // No tool calls requested; the assistant produced a final answer
+                // — unless it is writing a draft and stopped with sections
+                // still to write: then the app asks for the next one.
+                if sections_written_this_turn > 0
+                    && !cancel.is_cancelled()
+                    && !deadline.expired(tokio::time::Instant::now())
+                {
+                    if let Some(heading) = self
+                        .draft_section_to_continue(state, &conversation_id, draft_continuations)
+                        .await
+                    {
+                        draft_continuations += 1;
+                        step_limit += 1;
+                        info!(
+                            request_id = %request_id,
+                            step,
+                            continuation = draft_continuations,
+                            "draft turn stopped with sections unwritten; asking for the next"
+                        );
+                        push_draft_continuation(
+                            &mut current_request,
+                            &outcome.round_text,
+                            &draft_continuation_message(&heading),
+                        );
+                        next_round_label = Some("Writing the next section");
+                        continue;
+                    }
+                }
                 break;
             }
 
             // Emit executing_tools phase before executing tools.
-            let total = max_steps as u32;
+            let total = step_limit as u32;
             let round_num = (step + 1) as u32;
             let _ = channel.send(ProviderEvent::AgentPhase {
                 request_id: request_id.clone(),
@@ -3135,16 +3285,24 @@ impl StreamManager {
                 tally = tools_fut => tally,
             };
             let created_this_round = tally.documents_created;
+            sections_written_this_turn += tally.sections_written;
 
             // Saved document progress buys the turn more time: a build in parts is
             // several rounds, and the limit is for turns that stop getting
             // anywhere, not for ones saving a section a minute.
             if tally.document_writes_succeeded > 0 {
                 deadline.record_progress(tokio::time::Instant::now());
+                // A draft is still being built while outline sections remain
+                // unwritten after a section was saved.
                 building_document = outcome
                     .completed_tool_calls
                     .iter()
-                    .any(|call| saves_writing(&call.name) && call_has_more_to_write(call));
+                    .any(|call| saves_writing(&call.name) && call_has_more_to_write(call))
+                    || (tally.sections_written > 0
+                        && self
+                            .draft_section_to_continue(state, &conversation_id, 0)
+                            .await
+                            .is_some());
             }
 
             if let Some(text) = steered_during_tools {
@@ -3268,7 +3426,7 @@ impl StreamManager {
             {
                 Ok(continuation) => {
                     current_request = continuation;
-                    if step == max_steps - 1 {
+                    if step == step_limit - 1 {
                         ended_with_pending_tools = true;
                     }
                     // Continue to next iteration of the loop
@@ -3475,5 +3633,84 @@ mod local_only_tests {
             ensure_provider_allowed(&settings(false), adapter(id).as_ref(), id)
                 .unwrap_or_else(|e| panic!("{id} should be allowed: {e}"));
         }
+    }
+}
+
+#[cfg(test)]
+mod draft_continuation_tests {
+    use super::{draft_continuation_message, next_draft_section, push_draft_continuation};
+    use provider_core::schema::{DraftStage, MessageRole, OutlineSection, ProviderRequest};
+
+    fn outline(headings: &[&str]) -> Vec<OutlineSection> {
+        headings
+            .iter()
+            .map(|h| OutlineSection {
+                heading: h.to_string(),
+                intent: String::new(),
+                target_words: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_next_section_is_the_first_unwritten_one_in_the_draft_stage_only() {
+        let sections = outline(&["Intro", "Body", "End"]);
+        let md = "## Intro\n\nHello.\n\n## Body\n";
+        assert_eq!(
+            next_draft_section(DraftStage::Draft, &sections, md, 0).as_deref(),
+            Some("Body")
+        );
+        assert_eq!(
+            next_draft_section(DraftStage::Outline, &sections, md, 0),
+            None
+        );
+        let done = "## Intro\n\nA.\n\n## Body\n\nB.\n\n## End\n\nC.";
+        assert_eq!(
+            next_draft_section(DraftStage::Draft, &sections, done, 0),
+            None
+        );
+    }
+
+    #[test]
+    fn continuations_stop_at_outline_length_plus_two() {
+        let sections = outline(&["Intro", "Body", "End"]);
+        assert!(next_draft_section(DraftStage::Draft, &sections, "", 4).is_some());
+        assert_eq!(
+            next_draft_section(DraftStage::Draft, &sections, "", 5),
+            None
+        );
+    }
+
+    #[test]
+    fn a_continuation_appends_the_reply_and_the_request() {
+        let mut request = ProviderRequest {
+            request_id: "r1".into(),
+            conversation_id: "c1".into(),
+            model_id: "m".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        };
+        push_draft_continuation(
+            &mut request,
+            "Intro is done.",
+            &draft_continuation_message("Body"),
+        );
+        assert_eq!(request.messages.len(), 2);
+        assert_eq!(request.messages[0].role, MessageRole::Assistant);
+        assert_eq!(request.messages[1].role, MessageRole::User);
+        assert_eq!(
+            request.messages[1].parts[0].content.as_deref(),
+            Some("Next: write the section \"Body\" with write_section.")
+        );
+        assert_ne!(request.request_id, "r1");
+        // No reply text: only the request is added.
+        push_draft_continuation(&mut request, "  ", "Next");
+        assert_eq!(request.messages.len(), 3);
     }
 }

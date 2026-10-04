@@ -139,3 +139,28 @@ describe('selectBuiltinTurnTools intent override', () => {
     expect(tools.map((t) => t.name)).toContain('patch_document');
   });
 });
+
+describe('selectBuiltinTurnTools draft web search', () => {
+  const names = (settings: Parameters<typeof selectBuiltinTurnTools>[1], webSearch?: boolean) =>
+    selectBuiltinTurnTools('', settings, null, undefined, undefined, null, 'draft', webSearch).tools.map(
+      (t) => t.name,
+    );
+  const available = { memoryEnabled: false, webSearchEnabled: true, webSearchConsentAcknowledged: true };
+
+  it('adds the local web tools to a draft turn when its sources ask for web search', () => {
+    expect(names(available, true)).toEqual(expect.arrayContaining(['write_section', 'web_search', 'web_fetch']));
+    expect(names(available)).not.toContain('web_search');
+    expect(names(available, false)).not.toContain('web_fetch');
+  });
+
+  it('needs web search on, its notice accepted and the app not local-only', () => {
+    expect(names({ ...available, webSearchEnabled: false }, true)).not.toContain('web_search');
+    expect(names({ ...available, webSearchConsentAcknowledged: false }, true)).not.toContain('web_search');
+    expect(names({ ...available, localOnly: true }, true)).not.toContain('web_search');
+  });
+
+  it('is ignored outside a draft chat', () => {
+    const tools = selectBuiltinTurnTools('hello', available, null, undefined, undefined, null, null, true).tools;
+    expect(tools.map((t) => t.name)).not.toContain('web_search');
+  });
+});

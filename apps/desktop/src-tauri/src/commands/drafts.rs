@@ -3,8 +3,8 @@
 //! `agent_tools`).
 
 use provider_core::schema::{
-    DraftDetail, DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary, DraftStage,
-    DraftSummary, OutlineSection,
+    DraftDetail, DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary, DraftSources,
+    DraftStage, DraftSummary, OutlineSection, ResearchMaterial, ResearchReportSummary,
 };
 use tauri::State;
 
@@ -13,7 +13,7 @@ use crate::{
         conversations,
         drafts::{self, user_message as message},
     },
-    draft_export, slides_export,
+    draft_export, research, slides_export,
     state::AppState,
 };
 
@@ -182,6 +182,48 @@ pub async fn restore_draft_snapshot(
     drafts::restore_snapshot(&state.db, &state.encryption, &draft_id, &snapshot_id)
         .await
         .map_err(message)
+}
+
+/// Set what the draft may draw on: local web search in its turns, and the
+/// finished Research runs whose verified facts it writes from. (Document
+/// collections are the draft chat's own, set with
+/// `set_conversation_collections`.)
+#[tauri::command]
+pub async fn set_draft_sources(
+    state: State<'_, AppState>,
+    draft_id: String,
+    sources: DraftSources,
+) -> Result<DraftDetail, String> {
+    drafts::set_sources(&state.db, &state.encryption, &draft_id, sources)
+        .await
+        .map_err(message)
+}
+
+/// Finished Research runs a draft can be written from, newest first.
+#[tauri::command]
+pub async fn list_research_reports(
+    state: State<'_, AppState>,
+) -> Result<Vec<ResearchReportSummary>, String> {
+    research::repo::list_reports(&state.db, &state.encryption)
+        .await
+        .map_err(message)
+}
+
+/// The verified claims of the Research runs attached to a draft, numbered
+/// `R<n>.<m>` and capped, for the draft's developer prompt.
+#[tauri::command]
+pub async fn get_draft_research_material(
+    state: State<'_, AppState>,
+    draft_id: String,
+) -> Result<Vec<ResearchMaterial>, String> {
+    let draft = detail(&state, &draft_id).await?;
+    research::repo::material(
+        &state.db,
+        &state.encryption,
+        &draft.sources.research_run_ids,
+    )
+    .await
+    .map_err(message)
 }
 
 /// Save the draft as Markdown or as an HTML page through the native save

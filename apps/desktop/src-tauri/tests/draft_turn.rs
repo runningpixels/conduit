@@ -2,9 +2,10 @@
 //! (`StreamManager::run_agent_turn`) against a scripted provider, the way
 //! `tests/agent_turn.rs` drives it.
 //!
-//! outline → approve → the draft written section by section with
-//! `more_to_write` (the turn keeps going, and the finish-after-document-write
-//! guardrail never ends it mid-draft) → the user edits a paragraph (pinned) →
+//! outline → approve → the draft written section by section (the turn keeps
+//! going, and the finish-after-document-write guardrail never ends it
+//! mid-draft; a model that stops with sections unwritten is asked for the
+//! next one) → the user edits a paragraph (pinned) →
 //! `edit_blocks` on it is refused, then accepted with `release_pinned` →
 //! `replace_in_draft` counts pinned blocks → Markdown and HTML export.
 
@@ -32,7 +33,8 @@ use futures::stream::{Stream, StreamExt};
 use provider_core::schema::{
     AgentGuardrails, AppSettings, BlockOwner, ConnectorRuntimeEvent, DraftDetail,
     DraftExportFormat, DraftSnapshotCause, DraftStage, Message, MessagePart, MessagePartKind,
-    MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest, ToolDefinition,
+    MessageRole, OutlineSection, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest,
+    ToolDefinition,
 };
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
@@ -139,6 +141,41 @@ fn text_round(text: &'static str) -> Round {
     })
 }
 
+/// One response holding several tool calls, as a model that batches does.
+fn tool_calls_round(calls: Vec<(&'static str, Value)>) -> Round {
+    Arc::new(move |rid: &str| {
+        let r = rid.to_string();
+        let mut events = vec![ProviderEvent::MessageStart {
+            request_id: r.clone(),
+            index: 0,
+        }];
+        let mut index = 1;
+        for (i, (name, arguments)) in calls.iter().enumerate() {
+            let id = format!("call-{r}-{i}");
+            events.push(ProviderEvent::ToolCallStart {
+                request_id: r.clone(),
+                tool_call_id: id.clone(),
+                index,
+                tool_id: (*name).into(),
+                name: (*name).into(),
+            });
+            events.push(ProviderEvent::ToolCallComplete {
+                request_id: r.clone(),
+                tool_call_id: id,
+                index: index + 1,
+                arguments: arguments.clone(),
+            });
+            index += 2;
+        }
+        events.push(ProviderEvent::MessageComplete {
+            request_id: r,
+            index,
+            finish_reason: "tool_calls".into(),
+        });
+        events
+    })
+}
+
 fn tool_round(name: &'static str, arguments: Value) -> Round {
     Arc::new(move |rid: &str| {
         let r = rid.to_string();
@@ -216,6 +253,7 @@ struct Turn {
     events: Vec<ProviderEvent>,
     rounds_started: usize,
     request_ids: Vec<String>,
+    requests: Vec<ProviderRequest>,
 }
 
 impl Turn {
@@ -286,6 +324,39 @@ impl Studio {
             .unwrap()
     }
 
+    /// Give the draft an outline of these headings and approve it.
+    async fn approved_outline(&self, headings: &[&str]) {
+        self.set_outline(headings).await;
+        drafts::set_stage(
+            &self.pool,
+            &self.state.encryption,
+            &self.draft_id,
+            DraftStage::Draft,
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn set_outline(&self, headings: &[&str]) {
+        let outline = headings
+            .iter()
+            .map(|h| OutlineSection {
+                heading: h.to_string(),
+                intent: format!("About {h}"),
+                target_words: None,
+            })
+            .collect();
+        drafts::set_outline(
+            &self.pool,
+            &self.state.encryption,
+            &self.draft_id,
+            outline,
+            false,
+        )
+        .await
+        .unwrap();
+    }
+
     /// One user turn in the draft's chat, offered the stage's draft tools.
     async fn turn(&mut self, prompt: &str, rounds: Vec<Round>) -> Turn {
         self.turn_paced(prompt, rounds, Vec::new()).await
@@ -298,6 +369,18 @@ impl Studio {
         prompt: &str,
         rounds: Vec<Round>,
         pauses: Vec<Duration>,
+    ) -> Turn {
+        self.turn_stopped(prompt, rounds, pauses, None).await
+    }
+
+    /// [`Self::turn_paced`], pressing Stop shortly after round `stop_in`
+    /// (1-based) starts, when given.
+    async fn turn_stopped(
+        &mut self,
+        prompt: &str,
+        rounds: Vec<Round>,
+        pauses: Vec<Duration>,
+        stop_in: Option<usize>,
     ) -> Turn {
         self.turns += 1;
         let stage = self.draft().await.stage;
@@ -369,16 +452,31 @@ impl Studio {
             response_format: None,
             web_search: None,
         };
-        manager
-            .run_agent_turn(&self.state, &runtime, request, channel, runtime_channel)
-            .await
-            .expect("turn runs");
+        let turn_id = request.request_id.clone();
+        let run = manager.run_agent_turn(&self.state, &runtime, request, channel, runtime_channel);
+        let stop = async {
+            let Some(round) = stop_in else { return };
+            for _ in 0..2_000 {
+                if script.requests.lock().unwrap().len() >= round {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    manager
+                        .cancel_stream(&self.state, &turn_id, None)
+                        .await
+                        .unwrap();
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        };
+        let (result, ()) = tokio::join!(run, stop);
+        result.expect("turn runs");
         let events = events.lock().unwrap().clone();
         let requests = script.requests.lock().unwrap().clone();
         Turn {
             events,
             rounds_started: requests.len(),
-            request_ids: requests.into_iter().map(|r| r.request_id).collect(),
+            request_ids: requests.iter().map(|r| r.request_id.clone()).collect(),
+            requests,
         }
     }
 
@@ -477,6 +575,7 @@ async fn a_draft_is_outlined_written_edited_and_exported() {
                     json!({
                         "heading": "Why green tea",
                         "markdown": "Green tea is gentle and fresh.\n\nIt rewards a little care.",
+                        // Dropped from the schema; still accepted and ignored.
                         "more_to_write": true
                     }),
                 ),
@@ -484,12 +583,12 @@ async fn a_draft_is_outlined_written_edited_and_exported() {
                     WRITE_SECTION_TOOL,
                     json!({
                         "heading": "Brewing",
-                        "markdown": "## Brewing\n\nUse water at about 80C.\n\nSteep the tea for two minutes.",
-                        "more_to_write": true
+                        "markdown": "## Brewing\n\nUse water at about 80C.\n\nSteep the tea for two minutes."
                     }),
                 ),
-                // The last section, without more_to_write: the turn still
-                // gets its closing round (draft tools are not document writes).
+                // The last section: the turn still gets its closing round
+                // (draft tools are not document writes), and nothing is left
+                // to continue with.
                 tool_round(
                     WRITE_SECTION_TOOL,
                     json!({ "heading": "Serving", "markdown": "Serve it in small cups." }),
@@ -652,10 +751,14 @@ async fn a_draft_is_outlined_written_edited_and_exported() {
 
 #[tokio::test]
 async fn a_draft_written_in_parts_buys_time_and_stops_with_a_continue_code() {
-    // Limit 1s. Round 1 saves a section after 1.5s with more_to_write: saved
-    // progress, so the turn may run until 2.5s. Round 2 only reads, for 1.2s;
-    // the limit hits before round 3 while the draft is still being written.
+    // Limit 1s. Round 1 saves a section after 1.5s, with another outline
+    // section still unwritten: saved progress, so the turn may run until
+    // 2.5s. Round 2 only reads, for 1.2s; the limit hits before round 3 while
+    // the draft is still being written.
     let mut studio = Studio::with_time_limit("A field guide to moss", 1).await;
+    studio
+        .set_outline(&["Where moss grows", "How to grow it"])
+        .await;
     drafts::set_stage(
         &studio.pool,
         &studio.state.encryption,
@@ -670,7 +773,7 @@ async fn a_draft_written_in_parts_buys_time_and_stops_with_a_continue_code() {
             vec![
                 tool_round(
                     WRITE_SECTION_TOOL,
-                    json!({ "heading": "Where moss grows", "markdown": "In shade.", "more_to_write": true }),
+                    json!({ "heading": "Where moss grows", "markdown": "In shade." }),
                 ),
                 tool_round(READ_DRAFT_TOOL, json!({})),
                 text_round("never requested"),
@@ -702,4 +805,168 @@ async fn a_draft_written_in_parts_buys_time_and_stops_with_a_continue_code() {
         "got {terminal:?}"
     );
     assert!(studio.draft().await.markdown.contains("In shade."));
+}
+
+/// The text of the last message of a provider request.
+fn last_message_text(request: &ProviderRequest) -> String {
+    request
+        .messages
+        .last()
+        .and_then(|m| m.parts.first())
+        .and_then(|p| p.content.clone())
+        .unwrap_or_default()
+}
+
+fn section(heading: &str, markdown: &str) -> Value {
+    json!({ "heading": heading, "markdown": markdown })
+}
+
+#[tokio::test]
+async fn a_model_that_stops_after_each_section_is_asked_for_the_next() {
+    let mut studio = Studio::new("Houseplants for dark rooms").await;
+    studio
+        .approved_outline(&["Why light matters", "Plants that cope", "Care"])
+        .await;
+    let turn = studio
+        .turn(
+            "Write the draft from the approved outline.",
+            vec![
+                tool_round(
+                    WRITE_SECTION_TOOL,
+                    section("Why light matters", "Plants feed on light."),
+                ),
+                text_round("I wrote the first section."),
+                tool_round(
+                    WRITE_SECTION_TOOL,
+                    section("Plants that cope", "Snake plants and pothos."),
+                ),
+                text_round("Second one done."),
+                tool_round(WRITE_SECTION_TOOL, section("Care", "Water less.")),
+                text_round("The draft is written."),
+            ],
+        )
+        .await;
+    assert_eq!(turn.rounds_started, 6, "continued twice, then ended");
+    assert!(turn.ended_normally());
+    assert_eq!(
+        turn.tool_executions(),
+        vec![(WRITE_SECTION_TOOL.to_string(), false); 3]
+    );
+    // Rounds 3 and 5 were asked for the next unwritten section, after the
+    // model's own closing words.
+    assert_eq!(
+        last_message_text(&turn.requests[2]),
+        "Next: write the section \"Plants that cope\" with write_section."
+    );
+    let before = &turn.requests[2].messages[turn.requests[2].messages.len() - 2];
+    assert_eq!(before.role, MessageRole::Assistant);
+    assert_eq!(
+        last_message_text(&turn.requests[4]),
+        "Next: write the section \"Care\" with write_section."
+    );
+    let draft = studio.draft().await;
+    assert!(draft.markdown.contains("## Care\n\nWater less."));
+
+    // The tool result says what is left.
+    let outputs = studio.outputs(&turn, WRITE_SECTION_TOOL).await;
+    assert_eq!(
+        outputs
+            .iter()
+            .map(|o| o["remaining"].clone())
+            .collect::<Vec<_>>(),
+        [
+            json!(["Plants that cope", "Care"]),
+            json!(["Care"]),
+            json!([])
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_model_that_batches_sections_still_works() {
+    let mut studio = Studio::new("Houseplants for dark rooms").await;
+    studio
+        .approved_outline(&["Why light matters", "Plants that cope", "Care"])
+        .await;
+    let turn = studio
+        .turn(
+            "Write the draft from the approved outline.",
+            vec![
+                tool_calls_round(vec![
+                    (WRITE_SECTION_TOOL, section("Why light matters", "Light.")),
+                    (WRITE_SECTION_TOOL, section("Plants that cope", "Pothos.")),
+                    (WRITE_SECTION_TOOL, section("Care", "Water less.")),
+                ]),
+                text_round("All three sections are written."),
+            ],
+        )
+        .await;
+    assert_eq!(turn.rounds_started, 2);
+    assert!(turn.ended_normally());
+    assert_eq!(
+        studio.draft().await.markdown,
+        "## Why light matters\n\nLight.\n\n## Plants that cope\n\nPothos.\n\n## Care\n\nWater less.\n"
+    );
+}
+
+#[tokio::test]
+async fn continuations_are_bounded_and_need_a_section_written_this_turn() {
+    let mut studio = Studio::new("Houseplants for dark rooms").await;
+    studio
+        .approved_outline(&["Why light matters", "Plants that cope", "Care"])
+        .await;
+
+    // A reply with no section written: nothing to continue.
+    let chat = studio
+        .turn(
+            "What do you think of the outline?",
+            vec![text_round("It reads well.")],
+        )
+        .await;
+    assert_eq!(chat.rounds_started, 1);
+
+    // One section, then the model only talks: asked again at most
+    // outline.len() + 2 = 5 times, then the turn ends normally.
+    let stubborn = studio
+        .turn(
+            "Write the draft from the approved outline.",
+            vec![tool_round(
+                WRITE_SECTION_TOOL,
+                section("Why light matters", "Light."),
+            )],
+        )
+        .await;
+    assert_eq!(stubborn.rounds_started, 2 + 5);
+    assert!(stubborn.ended_normally());
+    for request in &stubborn.requests[2..] {
+        assert_eq!(
+            last_message_text(request),
+            "Next: write the section \"Plants that cope\" with write_section."
+        );
+    }
+}
+
+#[tokio::test]
+async fn stop_ends_a_draft_turn_that_would_continue() {
+    let mut studio = Studio::new("Houseplants for dark rooms").await;
+    studio
+        .approved_outline(&["Why light matters", "Plants that cope", "Care"])
+        .await;
+    // Stop arrives while round 3 (the first continuation) is writing.
+    let turn = studio
+        .turn_stopped(
+            "Write the draft from the approved outline.",
+            vec![
+                tool_round(WRITE_SECTION_TOOL, section("Why light matters", "Light.")),
+                text_round("First one done."),
+                tool_round(WRITE_SECTION_TOOL, section("Plants that cope", "Pothos.")),
+                text_round("never requested"),
+            ],
+            vec![Duration::ZERO, Duration::ZERO, Duration::from_millis(1_500)],
+            Some(3),
+        )
+        .await;
+    assert_eq!(turn.rounds_started, 3, "no round after Stop");
+    let draft = studio.draft().await;
+    assert!(!draft.markdown.contains("Pothos."), "{}", draft.markdown);
 }

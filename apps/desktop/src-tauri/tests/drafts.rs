@@ -12,9 +12,11 @@ use conduit_desktop::{
     commands::export_draft_impl,
     db::repository::{conversations, drafts},
     encryption::Encryption,
+    research,
 };
 use provider_core::schema::{
-    BlockOwner, DraftBlock, DraftDetail, DraftSnapshotCause, DraftStage, OutlineSection,
+    BlockOwner, DraftBlock, DraftDetail, DraftSnapshotCause, DraftSources, DraftStage,
+    OutlineSection,
 };
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
@@ -509,16 +511,20 @@ async fn sections_are_written_in_outline_order_and_read_back() {
     let out = h
         .ok(
             WRITE_SECTION_TOOL,
+            // `more_to_write` is no longer in the schema: accepted and ignored.
             json!({ "heading": "Next steps", "markdown": "Try oolong.", "more_to_write": true }),
         )
         .await;
-    assert_eq!(out["more_to_write"], true);
+    assert!(out.get("more_to_write").is_none());
+    assert_eq!(out["remaining"], json!(["What tea is", "Brewing"]));
     assert_eq!(out["section_blocks"].as_array().unwrap().len(), 2);
-    h.ok(
-        WRITE_SECTION_TOOL,
-        json!({ "heading": "What tea is", "markdown": "## What tea is\n\nA drink.\n\n- green\n- black" }),
-    )
-    .await;
+    let out = h
+        .ok(
+            WRITE_SECTION_TOOL,
+            json!({ "heading": "What tea is", "markdown": "## What tea is\n\nA drink.\n\n- green\n- black" }),
+        )
+        .await;
+    assert_eq!(out["remaining"], json!(["Brewing"]));
     let draft = h.draft().await;
     assert_eq!(
         draft.markdown,
@@ -690,4 +696,215 @@ async fn pinned_blocks_are_kept_unless_released_and_replace_passes_pins() {
 
 fn draft_markdown_with_steep() -> String {
     "## Brewing\n\nHeat water to 80C, not boiling.\n\nSteep it for three minutes.\n".to_string()
+}
+
+// ── Sources ─────────────────────────────────────────────────────────────────
+
+/// A research run in `status`, with sources and claims `(claim, verified,
+/// used, source index)`; source i is `https://s{i}.example/` titled `Page i`,
+/// cited (footnote) when `i` is even.
+#[allow(clippy::too_many_arguments)]
+async fn seed_run(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    id: &str,
+    question: &str,
+    status: &str,
+    finished_at: &str,
+    sources: usize,
+    claims: &[(&str, bool, bool, usize)],
+) {
+    let conversation = conversations::create(pool, None).await.unwrap();
+    let brief = json!({ "question": question, "subQuestions": ["a"] }).to_string();
+    sqlx::query(
+        "INSERT INTO research_runs (id, conversation_id, message_id, status, brief_json, depth, \
+         budget_json, progress_json, created_at, finished_at) \
+         VALUES (?, ?, 'm', ?, ?, 'standard', '{}', '{}', ?, ?)",
+    )
+    .bind(id)
+    .bind(&conversation.id)
+    .bind(status)
+    .bind(enc.encrypt(&brief).unwrap())
+    .bind(finished_at)
+    .bind(finished_at)
+    .execute(pool)
+    .await
+    .unwrap();
+    for i in 0..sources {
+        sqlx::query(
+            "INSERT INTO research_sources (id, run_id, url, title, host, fetched_at, status, footnote) \
+             VALUES (?, ?, ?, ?, 'h', 'now', 'read', ?)",
+        )
+        .bind(format!("{id}-s{i}"))
+        .bind(id)
+        .bind(format!("https://s{i}.example/"))
+        .bind(format!("Page {i}"))
+        .bind((i % 2 == 0).then_some(i as i64 + 1))
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+    for (n, (claim, verified, used, source)) in claims.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO research_claims (id, run_id, sub_question, claim, quote, source_id, verified, used) \
+             VALUES (?, ?, 0, ?, ?, ?, ?, ?)",
+        )
+        .bind(format!("{id}-c{n}"))
+        .bind(id)
+        .bind(enc.encrypt(claim).unwrap())
+        .bind(enc.encrypt("quote").unwrap())
+        .bind(format!("{id}-s{source}"))
+        .bind(*verified as i64)
+        .bind(*used as i64)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn sources_attach_finished_reports_and_their_verified_claims() {
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let draft = new_draft(&pool, &enc).await;
+    assert_eq!(draft.sources, DraftSources::default());
+
+    seed_run(
+        &pool,
+        &enc,
+        "run-old",
+        "How is tea grown?",
+        "done",
+        "2026-10-01T00:00:00Z",
+        2,
+        &[
+            ("Tea grows on hills.", true, false, 1),
+            ("Unchecked.", false, true, 0),
+        ],
+    )
+    .await;
+    seed_run(
+        &pool,
+        &enc,
+        "run-new",
+        "Where is tea from?",
+        "done",
+        "2026-10-03T00:00:00Z",
+        3,
+        &[
+            ("Tea is from China.", true, false, 1),
+            ("Assam grows tea.", true, true, 2),
+        ],
+    )
+    .await;
+    seed_run(
+        &pool,
+        &enc,
+        "run-live",
+        "Still going",
+        "running",
+        "",
+        0,
+        &[],
+    )
+    .await;
+
+    // Finished runs only, newest first, with cited sources and verified claims.
+    let reports = research::repo::list_reports(&pool, &enc).await.unwrap();
+    assert_eq!(
+        reports
+            .iter()
+            .map(|r| (
+                r.run_id.as_str(),
+                r.question.as_str(),
+                r.cited_sources,
+                r.claims
+            ))
+            .collect::<Vec<_>>(),
+        [
+            ("run-new", "Where is tea from?", 2, 2),
+            ("run-old", "How is tea grown?", 1, 1),
+        ]
+    );
+
+    let detail = drafts::set_sources(
+        &pool,
+        &enc,
+        &draft.id,
+        DraftSources {
+            web_search: true,
+            research_run_ids: vec!["run-new".into(), " run-old ".into(), "run-new".into()],
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        detail.sources,
+        DraftSources {
+            web_search: true,
+            research_run_ids: vec!["run-new".into(), "run-old".into()],
+        }
+    );
+    assert_eq!(
+        drafts::get(&pool, &enc, &draft.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .sources,
+        detail.sources
+    );
+
+    // Unfinished or missing runs are refused.
+    for (run, words) in [("run-live", "isn't finished"), ("nope", "no longer exists")] {
+        let err = drafts::set_sources(
+            &pool,
+            &enc,
+            &draft.id,
+            DraftSources {
+                web_search: false,
+                research_run_ids: vec![run.into()],
+            },
+        )
+        .await
+        .map_err(drafts::user_message)
+        .unwrap_err();
+        assert!(err.contains(words), "{err}");
+    }
+
+    // Verified claims only, cited ones first, numbered by report.
+    let material = research::repo::material(&pool, &enc, &detail.sources.research_run_ids)
+        .await
+        .unwrap();
+    assert_eq!(material.len(), 2);
+    assert_eq!(material[0].question, "Where is tea from?");
+    let first: Vec<(&str, &str, &str)> = material[0]
+        .claims
+        .iter()
+        .map(|c| (c.id.as_str(), c.claim.as_str(), c.url.as_str()))
+        .collect();
+    assert_eq!(
+        first,
+        [
+            ("R1.1", "Assam grows tea.", "https://s2.example/"),
+            ("R1.2", "Tea is from China.", "https://s1.example/"),
+        ]
+    );
+    assert_eq!(
+        material[0].claims[0].source_title.as_deref(),
+        Some("Page 2")
+    );
+    assert_eq!(material[1].claims.len(), 1);
+    assert_eq!(material[1].claims[0].id, "R2.1");
+    assert!(!material[0].truncated && !material[1].truncated);
+
+    // A run deleted since it was attached is skipped.
+    sqlx::query("DELETE FROM research_runs WHERE id = 'run-new'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let material = research::repo::material(&pool, &enc, &detail.sources.research_run_ids)
+        .await
+        .unwrap();
+    assert_eq!(material.len(), 1);
+    assert_eq!(material[0].claims[0].id, "R1.1");
 }

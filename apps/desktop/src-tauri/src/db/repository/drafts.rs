@@ -8,7 +8,8 @@
 //! sidecar with it, so the two never disagree.
 
 use provider_core::schema::{
-    DraftDetail, DraftSnapshotCause, DraftSnapshotSummary, DraftStage, DraftSummary, OutlineSection,
+    DraftDetail, DraftSnapshotCause, DraftSnapshotSummary, DraftSources, DraftStage, DraftSummary,
+    OutlineSection,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -39,6 +40,8 @@ pub const MAX_SNAPSHOTS: i64 = 200;
 pub const MAX_SNAPSHOT_LABEL_CHARS: usize = 120;
 /// Largest find or replace string.
 pub const MAX_FIND_CHARS: usize = 200;
+/// Most Research reports one draft can draw on.
+pub const MAX_RESEARCH_SOURCES: usize = 10;
 
 /// Kind of the conversation a draft is written in.
 pub const CONVERSATION_KIND: &str = "draft";
@@ -201,10 +204,11 @@ type DraftRow = (
     String,
     String,
     String,
+    String,
 );
 
 const DRAFT_COLUMNS: &str = "id, title, conversation_id, stage, brief, outline_json, markdown, \
-     blocks_json, created_at, updated_at";
+     blocks_json, created_at, updated_at, sources_json";
 
 /// A draft as loaded: everything decrypted, blocks computed.
 #[derive(Debug, Clone)]
@@ -220,6 +224,7 @@ pub struct Loaded {
     pub blocks: Vec<Block>,
     pub created_at: String,
     pub updated_at: String,
+    pub sources: DraftSources,
 }
 
 impl Loaded {
@@ -236,6 +241,7 @@ impl Loaded {
             words: draft_blocks::words_in(&self.markdown, &self.blocks),
             created_at: self.created_at.clone(),
             updated_at: self.updated_at.clone(),
+            sources: self.sources.clone(),
         }
     }
 
@@ -273,6 +279,7 @@ fn loaded_from_row(enc: &Encryption, row: DraftRow) -> Result<Loaded, DbError> {
         blocks_json,
         created_at,
         updated_at,
+        sources_json,
     ) = row;
     let markdown = enc.decrypt(&markdown)?;
     let sidecar: Sidecar = decode_json(enc, &blocks_json, "draft blocks")?;
@@ -289,6 +296,8 @@ fn loaded_from_row(enc: &Encryption, row: DraftRow) -> Result<Loaded, DbError> {
         blocks,
         created_at,
         updated_at,
+        // An unreadable value (never written by this code) reads as no sources.
+        sources: serde_json::from_str(&sources_json).unwrap_or_default(),
     })
 }
 
@@ -460,6 +469,53 @@ pub async fn set_stage(
     if done.rows_affected() == 0 {
         return Err(no_draft());
     }
+    Ok(require(pool, enc, id).await?.detail())
+}
+
+/// Set what the draft may draw on. Research runs must exist and be finished;
+/// repeats are dropped and at most [`MAX_RESEARCH_SOURCES`] are kept.
+pub async fn set_sources(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    id: &str,
+    sources: DraftSources,
+) -> Result<DraftDetail, DbError> {
+    require(pool, enc, id).await?;
+    let mut run_ids: Vec<String> = Vec::new();
+    for run_id in sources.research_run_ids {
+        let run_id = run_id.trim().to_string();
+        if run_id.is_empty() || run_ids.contains(&run_id) {
+            continue;
+        }
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM research_runs WHERE id = ?")
+                .bind(&run_id)
+                .fetch_optional(pool)
+                .await?;
+        match status.as_deref() {
+            None => return Err(invalid("That research report no longer exists.")),
+            Some("done") => {}
+            Some(_) => return Err(invalid("That research report isn't finished yet.")),
+        }
+        run_ids.push(run_id);
+    }
+    if run_ids.len() > MAX_RESEARCH_SOURCES {
+        return Err(invalid(format!(
+            "A draft can draw on {MAX_RESEARCH_SOURCES} research reports at most."
+        )));
+    }
+    let sources = DraftSources {
+        web_search: sources.web_search,
+        research_run_ids: run_ids,
+    };
+    let json = serde_json::to_string(&sources)
+        .map_err(|e| invalid(format!("encode draft sources: {e}")))?;
+    sqlx::query("UPDATE drafts SET sources_json = ?, updated_at = ? WHERE id = ?")
+        .bind(json)
+        .bind(now_iso8601())
+        .bind(id)
+        .execute(pool)
+        .await?;
     Ok(require(pool, enc, id).await?.detail())
 }
 
@@ -665,13 +721,23 @@ pub async fn model_set_outline(
 
 /// Write one section (draft stage only): replace the blocks under that
 /// heading, or add the section where the outline puts it.
+/// What one `write_section` call did.
+#[derive(Debug, Clone)]
+pub struct WrittenSection {
+    pub edit: ModelEdit,
+    /// The ids of the section's blocks after the write.
+    pub section: Vec<String>,
+    /// Outline headings still without content, in outline order.
+    pub remaining: Vec<String>,
+}
+
 pub async fn model_write_section(
     pool: &SqlitePool,
     enc: &Encryption,
     draft: &Loaded,
     heading: &str,
     markdown: &str,
-) -> Result<(ModelEdit, Vec<String>), DbError> {
+) -> Result<WrittenSection, DbError> {
     require_stage(draft, DraftStage::Draft)?;
     if heading.trim().is_empty() {
         return Err(invalid("write_section needs the section's heading."));
@@ -683,10 +749,11 @@ pub async fn model_write_section(
     let section: Vec<String> = draft_blocks::section_range(&new_md, &blocks, heading)
         .map(|r| blocks[r].iter().map(|b| b.id.clone()).collect())
         .unwrap_or_default();
-    Ok((
-        describe_edit(&draft.markdown, &draft.blocks, &new_md, &blocks),
+    Ok(WrittenSection {
+        edit: describe_edit(&draft.markdown, &draft.blocks, &new_md, &blocks),
         section,
-    ))
+        remaining: draft_blocks::unwritten_sections(&new_md, &headings),
+    })
 }
 
 /// Replace blocks by id (draft stage only). An empty replacement deletes the

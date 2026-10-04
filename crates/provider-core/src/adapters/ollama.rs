@@ -671,9 +671,12 @@ mod tests {
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: None,
+            // Ollama has no such switch; the flag must not leak into the body.
+            parallel_tool_calls: Some(false),
         });
         let body = build_payload(&NormalizedRequest { request });
         assert_eq!(body.pointer("/options/num_predict"), Some(&json!(2_048)));
+        assert!(!body.to_string().contains("parallel"));
     }
 
     #[test]

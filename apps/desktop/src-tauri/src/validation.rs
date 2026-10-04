@@ -146,6 +146,7 @@ pub fn generation_controls_is_empty(controls: &provider_core::schema::Generation
             .unwrap_or(true)
         && controls.tool_choice.is_none()
         && controls.reasoning_effort.is_none()
+        && controls.parallel_tool_calls.is_none()
 }
 
 /// Validate agent loop guardrails on save. Bounds match the Settings UI and
@@ -646,6 +647,7 @@ mod tests {
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: None,
+            parallel_tool_calls: None,
         }
     }
 
@@ -740,6 +742,7 @@ mod tests {
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: None,
+            parallel_tool_calls: None,
         };
         assert!(generation_controls_is_empty(&empty));
         assert!(!generation_controls_is_empty(&sample_controls()));

@@ -1204,6 +1204,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parallel_tool_calls_is_ignored() {
+        let request = ProviderRequest {
+            request_id: "req-par".into(),
+            conversation_id: "conv-1".into(),
+            model_id: "gemini-2.5-flash".into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![crate::schema::ToolDefinition {
+                tool_id: "write_section".into(),
+                name: "write_section".into(),
+                description: "Write a section".into(),
+                input_schema: json!({"type": "object"}),
+                kind: None,
+                host_config: None,
+                permission_level: None,
+                display_group: None,
+                tenant_scope: None,
+            }],
+            generation_controls: Some(crate::schema::GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: None,
+                reasoning_effort: None,
+                parallel_tool_calls: Some(false),
+            }),
+            response_format: None,
+            web_search: None,
+        };
+        let body = build_payload(&NormalizedRequest { request });
+        assert!(body.get("tools").is_some());
+        assert!(!body.to_string().contains("parallel"));
+    }
+
     /// 1x1 PNG, base64-encoded (same bytes the desktop crate's `vision.rs`
     /// sniff test uses).
     const ONE_PIXEL_PNG_B64: &str =

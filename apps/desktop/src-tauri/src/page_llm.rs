@@ -237,6 +237,7 @@ fn build_provider_request(
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: None,
+            parallel_tool_calls: None,
         }),
         response_format: None,
         web_search: None,

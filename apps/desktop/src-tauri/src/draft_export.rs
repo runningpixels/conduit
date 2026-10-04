@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use provider_core::schema::DraftExportFormat;
-use pulldown_cmark::{html, CowStr, Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{html, CowStr, Event, LinkType, Parser, Tag, TagEnd};
 
 use crate::draft_blocks;
 
@@ -44,12 +44,132 @@ pub fn extension(format: DraftExportFormat) -> &'static str {
     }
 }
 
-/// The file contents for a draft in `format`.
+/// The file contents for a draft in `format`, with a Sources section listing
+/// the pages it links to (see [`with_sources`]).
 pub fn render(title: &str, markdown: &str, format: DraftExportFormat) -> String {
+    let markdown = with_sources(markdown);
     match format {
-        DraftExportFormat::Markdown => markdown_file(markdown),
-        DraftExportFormat::Html => html_page(title, markdown),
+        DraftExportFormat::Markdown => markdown_file(&markdown),
+        DraftExportFormat::Html => html_page(title, &markdown),
     }
+}
+
+/// Every distinct http(s) link in the draft, in order of first appearance,
+/// with the text of its first appearance (empty for an autolink).
+pub fn web_links(markdown: &str) -> Vec<(String, String)> {
+    let body = match draft_blocks::front_matter_end(markdown) {
+        Some(end) => &markdown[end..],
+        None => markdown,
+    };
+    let mut links: Vec<(String, String)> = Vec::new();
+    // The link being read: its address, its text so far, and whether it is new.
+    let mut open: Option<(String, String, bool)> = None;
+    for event in Parser::new_ext(body, draft_blocks::markdown_options()) {
+        match event {
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                ..
+            }) => {
+                let url = dest_url.trim().to_string();
+                let lower = url.to_ascii_lowercase();
+                let web = (lower.starts_with("http://") || lower.starts_with("https://"))
+                    && url.len() > lower.find("://").unwrap_or(0) + 3;
+                let new = web && !links.iter().any(|(u, _)| *u == url);
+                if new && matches!(link_type, LinkType::Autolink) {
+                    // Its text is the address itself.
+                    links.push((url.clone(), String::new()));
+                    open = Some((url, String::new(), false));
+                } else {
+                    open = Some((url, String::new(), new));
+                }
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some((_, label, _)) = open.as_mut() {
+                    label.push_str(&text);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some((_, label, _)) = open.as_mut() {
+                    label.push(' ');
+                }
+            }
+            Event::End(TagEnd::Link) => {
+                if let Some((url, label, true)) = open.take() {
+                    links.push((url, label.split_whitespace().collect::<Vec<_>>().join(" ")));
+                }
+            }
+            _ => {}
+        }
+    }
+    links
+}
+
+/// The host of an http(s) address, without `www.`.
+fn host_of(url: &str) -> String {
+    match url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+    {
+        Some(host) => host.strip_prefix("www.").unwrap_or(&host).to_string(),
+        None => url.to_string(),
+    }
+}
+
+/// Link text with the characters that would end or break it escaped.
+fn escape_link_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '\\' | '[' | ']' | '*' | '_' | '`' | '<' | '>') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// A link target that survives Markdown: wrapped in `<…>` when it holds
+/// spaces or parentheses.
+fn link_target(url: &str) -> String {
+    if url.contains(|c: char| c.is_whitespace() || c == '(' || c == ')') {
+        format!("<{}>", url.replace('<', "%3C").replace('>', "%3E"))
+    } else {
+        url.to_string()
+    }
+}
+
+/// True when the draft's last `##` (or `#`) section is headed "Sources".
+fn ends_with_sources(markdown: &str) -> bool {
+    draft_blocks::split(markdown)
+        .iter()
+        .rev()
+        .find(|s| s.kind == draft_blocks::KIND_HEADING && s.level <= 2)
+        .is_some_and(|s| draft_blocks::heading_key(&markdown[s.range()]) == "sources")
+}
+
+/// The draft with a `## Sources` section appended listing every distinct
+/// http(s) link (first appearance order, `[link text or host](url)`), unless
+/// it links nowhere or already ends with a Sources section.
+pub fn with_sources(markdown: &str) -> String {
+    let links = web_links(markdown);
+    if links.is_empty() || ends_with_sources(markdown) {
+        return markdown.to_string();
+    }
+    let mut out = markdown.trim_end().to_string();
+    out.push_str("\n\n## Sources\n\n");
+    for (url, text) in links {
+        let label = if text.trim().is_empty() || text.trim() == url {
+            host_of(&url)
+        } else {
+            text
+        };
+        out.push_str(&format!(
+            "- [{}]({})\n",
+            escape_link_text(&label),
+            link_target(&url)
+        ));
+    }
+    out
 }
 
 /// The Markdown as written, ending with one line break.
@@ -180,6 +300,56 @@ mod tests {
         assert!(!page.contains("data:image"), "{page}");
         assert!(page.contains("<h1>Title &amp; more</h1>"));
         assert!(page.contains("@media print"));
+    }
+
+    #[test]
+    fn exports_list_every_distinct_web_link_under_sources() {
+        let md = "## Moss\n\nMoss holds [water](https://example.org/water) and \
+                  [grows](https://www.moss.example/a) slowly; see <https://www.moss.example/b>.\n\n\
+                  - Again: [same page](https://example.org/water)\n\
+                  - [local](./notes.md), [mail](mailto:a@b.c), ![pic](https://img.example/p.png)\n\n\
+                  [ref link][r]\n\n[r]: https://ref.example/x \"T\"\n";
+        let out = with_sources(md);
+        assert!(
+            out.ends_with(
+                "\n\n## Sources\n\n\
+                 - [water](https://example.org/water)\n\
+                 - [grows](https://www.moss.example/a)\n\
+                 - [moss.example](https://www.moss.example/b)\n\
+                 - [ref link](https://ref.example/x)\n"
+            ),
+            "{out}"
+        );
+        assert!(out.starts_with("## Moss\n\nMoss holds"));
+        // Both formats carry it.
+        assert!(render("T", md, DraftExportFormat::Markdown).contains("## Sources"));
+        let html = render("T", md, DraftExportFormat::Html);
+        assert!(html.contains("<h2>Sources</h2>"), "{html}");
+        assert!(html.contains("<a href=\"https://ref.example/x\">ref link</a>"));
+    }
+
+    #[test]
+    fn no_sources_section_without_links_or_when_one_ends_the_draft() {
+        let plain = "## Moss\n\nNo links here, only ![a picture](https://img.example/p.png).\n";
+        assert_eq!(with_sources(plain), plain);
+        let has =
+            "## Moss\n\nSee [a](https://a.example).\n\n## sources\n\n- [a](https://a.example)\n";
+        assert_eq!(with_sources(has), has);
+        // A Sources section earlier in the draft does not count.
+        let earlier = "## Sources\n\nTBD.\n\n## Moss\n\nSee [a](https://a.example).";
+        assert!(with_sources(earlier).ends_with("## Sources\n\n- [a](https://a.example)\n"));
+    }
+
+    #[test]
+    fn source_entries_escape_text_and_awkward_targets() {
+        let md = "See [*the* [old] page](https://a.example/x_(y)) and [](https://b.example).";
+        let out = with_sources(md);
+        assert!(
+            out.ends_with(
+                "- [the \\[old\\] page](<https://a.example/x_(y)>)\n- [b.example](https://b.example)\n"
+            ),
+            "{out}"
+        );
     }
 
     #[test]

@@ -221,6 +221,7 @@ mod tests {
                 stop_sequences: None,
                 tool_choice: Some(ToolChoice::Auto),
                 reasoning_effort: None,
+                parallel_tool_calls: None,
             }),
             response_format: None,
             web_search: None,

@@ -130,6 +130,27 @@
 /* "Show AI-written text": a faint wash behind lines the AI wrote. */
 .draft-line-ai { background: var(--ai-tint); }
 
+/* A section the assistant is still writing: dimmed, with a "Writing…" label. */
+.draft-preview { color: var(--ink-2); }
+.draft-preview-label {
+  display: inline-block;
+  margin-right: var(--sp-2);
+  padding: 0 8px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--accent-text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: 1.6;
+  vertical-align: middle;
+  animation: deck-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .draft-preview-label { animation: none; }
+}
+
 .draft-pin-gutter { width: 14px; cursor: pointer; }
 .draft-pin {
   display: block;
@@ -226,3 +247,27 @@
 }
 .draft-selection-input:focus { border-color: var(--accent); outline: none; }
 .draft-selection-note { flex: 1 0 100%; padding: 2px 8px 2px; color: var(--ink-3); font-size: var(--fs-md); }
+
+/* ── Sources tab ──────────────────────────────────────────────────────── */
+.deck-dock-panel > .draft-sources { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.draft-sources-body { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: var(--sp-4); padding: var(--sp-4); }
+.draft-sources-help { margin: 0; color: var(--ink-2); font-size: var(--fs-2xl); line-height: 1.5; }
+.draft-sources-group { display: grid; gap: 6px; }
+.draft-sources-subtitle { margin: 0; font-size: var(--fs-3xl); font-weight: 600; }
+.draft-sources-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.draft-sources-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: var(--sp-2);
+  padding: 6px var(--sp-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.draft-sources-row:hover { background: var(--card-hi); }
+.draft-sources-row[data-disabled="true"] { cursor: default; color: var(--ink-3); }
+.draft-sources-row[data-disabled="true"]:hover { background: transparent; }
+.draft-sources-row input { margin: 0; accent-color: var(--accent); }
+.draft-sources-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2xl); font-weight: 500; }
+.draft-sources-meta { grid-column: 2; color: var(--ink-3); font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.draft-sources-note { margin: 0; padding: 0 var(--sp-2); color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.5; }

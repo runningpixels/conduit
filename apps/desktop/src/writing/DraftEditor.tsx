@@ -10,6 +10,8 @@
 ///   offers "Let AI edit". AI-written blocks are faintly tinted when the
 ///   studio's "Show AI-written text" is on.
 /// - While the assistant is running the editor is read-only, with a note.
+///   A section it is still writing shows as a preview (dimmed, labelled
+///   "Writing…"); the preview is display only and is never saved.
 /// - Selecting text shows the selection toolbar.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -34,6 +36,8 @@ import {
   toEditorBlocks,
   type EditorBlock,
 } from './editorBlocks';
+import { previewField, setPreviewEffect } from './previewDecorations';
+import type { DraftPreview } from './sectionPreview';
 import { SelectionToolbar } from './SelectionToolbar';
 import type { SelectionAction, SelectionRequest } from './selectionMessage';
 
@@ -54,6 +58,8 @@ export interface DraftEditorProps {
   onUnpin: (blockId: string) => void;
   /** A selection-toolbar action: the studio sends it to the chat. */
   onSelectionRequest: (request: SelectionRequest) => void;
+  /** Sections the assistant is writing right now, shown in place (read-only turns only). */
+  preview?: DraftPreview | null;
   /** For tests. */
   saveDelayMs?: number;
 }
@@ -104,6 +110,8 @@ interface SyncState {
   queued: boolean;
   /** Bumped by a reset; a save reply from before it is ignored. */
   generation: number;
+  /** The editor shows a preview, not the draft: nothing may be saved. */
+  previewing: boolean;
 }
 
 export function DraftEditor({
@@ -114,6 +122,7 @@ export function DraftEditor({
   onSave,
   onUnpin,
   onSelectionRequest,
+  preview = null,
   saveDelayMs = DRAFT_SAVE_DELAY_MS,
 }: DraftEditorProps) {
   const t = useT();
@@ -122,7 +131,14 @@ export function DraftEditor({
   const viewRef = useRef<EditorView | null>(null);
   const tint = useRef(new Compartment());
   const editable = useRef(new Compartment());
-  const sync = useRef<SyncState>({ lastSynced: draft.markdown, timer: null, inflight: null, queued: false, generation: 0 });
+  const sync = useRef<SyncState>({
+    lastSynced: draft.markdown,
+    timer: null,
+    inflight: null,
+    queued: false,
+    generation: 0,
+    previewing: false,
+  });
   const callbacks = useRef({ onSave, onUnpin, onSelectionRequest, readOnly, saveDelayMs });
   callbacks.current = { onSave, onUnpin, onSelectionRequest, readOnly, saveDelayMs };
   const [saveState, setSaveState] = useState<SaveState>('saved');
@@ -151,7 +167,8 @@ export function DraftEditor({
       s.timer = null;
     }
     const view = viewRef.current;
-    if (!view) return Promise.resolve();
+    // Preview text is the assistant's work in progress, never the user's.
+    if (!view || s.previewing) return Promise.resolve();
     if (s.inflight) {
       s.queued = true;
       return s.inflight.done;
@@ -258,6 +275,7 @@ export function DraftEditor({
       EditorView.lineWrapping,
       blocksField.init(() => toEditorBlocks(draft.blocks, draft.markdown.length)),
       codeBlockLines,
+      previewField,
       tint.current.of(showAiText ? aiTint : []),
       editable.current.of([EditorView.editable.of(!readOnly), EditorState.readOnly.of(readOnly)]),
       pinGutter({
@@ -290,11 +308,46 @@ export function DraftEditor({
 
   // The draft changed outside the editor (a save came back, the assistant
   // wrote, a block was unpinned).
+  const previewLabel = t('writing.editor.writing');
+  const lastPreviewStart = useRef<string | null>(null);
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
     const s = sync.current;
     const doc = view.state.doc.toString();
+    if (preview) {
+      // Typing not yet saved wins; the preview waits for the next update.
+      if (!s.previewing && (doc !== s.lastSynced || s.inflight != null || s.timer != null)) return;
+      s.previewing = true;
+      s.lastSynced = draft.markdown;
+      const change = minimalChange(doc, preview.markdown);
+      // The draft's blocks, moved onto the preview text.
+      const fromDraft = minimalChange(draft.markdown, preview.markdown);
+      const blocks = toEditorBlocks(draft.blocks, draft.markdown.length);
+      view.dispatch({
+        changes: change ?? undefined,
+        effects: [
+          setBlocksEffect.of(fromDraft ? mapBlocks(blocks, ChangeSet.of(fromDraft, draft.markdown.length)) : blocks),
+          setPreviewEffect.of({ ranges: preview.ranges, label: previewLabel }),
+        ],
+        annotations: externalSync.of(true),
+      });
+      // Bring a section that has just started into view.
+      const newest = preview.ranges[preview.ranges.length - 1];
+      if (newest && newest.toolCallId !== lastPreviewStart.current) {
+        lastPreviewStart.current = newest.toolCallId;
+        view.dispatch({ effects: EditorView.scrollIntoView(Math.min(newest.from, view.state.doc.length), { y: 'nearest' }) });
+      }
+      return;
+    }
+    if (s.previewing) {
+      s.previewing = false;
+      lastPreviewStart.current = null;
+      s.lastSynced = draft.markdown;
+      view.dispatch({ effects: setPreviewEffect.of(null) });
+      applyExternal(draft.markdown, draft.blocks);
+      return;
+    }
     if (draft.markdown === doc) {
       s.lastSynced = doc;
       view.dispatch({ effects: setBlocksEffect.of(toEditorBlocks(draft.blocks, doc.length)) });
@@ -305,7 +358,7 @@ export function DraftEditor({
     if (dirty) return;
     s.lastSynced = draft.markdown;
     applyExternal(draft.markdown, draft.blocks);
-  }, [draft.markdown, draft.blocks, applyExternal]);
+  }, [draft.markdown, draft.blocks, preview, previewLabel, applyExternal]);
 
   // A restore: drop unsaved typing and take the draft as it is.
   const lastReset = useRef(resetToken);

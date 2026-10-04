@@ -39,14 +39,14 @@ describe('DraftHistory', () => {
 });
 
 describe('DraftDock', () => {
-  it('has Ask, Outline and History in the draft stage, and moves with the arrow keys', () => {
+  it('has Ask, Outline, Sources and History in the draft stage, and moves with the arrow keys', () => {
     const onTab = vi.fn();
     render(
-      <DraftDock tab="ask" onTab={onTab} showOutline outline={<p>outline</p>} history={<p>history</p>}>
+      <DraftDock tab="ask" onTab={onTab} showOutline outline={<p>outline</p>} sources={<p>sources</p>} history={<p>history</p>}>
         {null}
       </DraftDock>,
     );
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Ask', 'Outline', 'History']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Ask', 'Outline', 'Sources', 'History']);
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Ask' }), { key: 'ArrowRight' });
     expect(onTab).toHaveBeenCalledWith('outline');
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
@@ -55,11 +55,11 @@ describe('DraftDock', () => {
 
   it('leaves Outline out while the outline is the main view', () => {
     render(
-      <DraftDock tab="ask" onTab={vi.fn()} showOutline={false} outline={<p>outline</p>} history={<p>history</p>}>
+      <DraftDock tab="ask" onTab={vi.fn()} showOutline={false} outline={<p>outline</p>} sources={<p>sources</p>} history={<p>history</p>}>
         {null}
       </DraftDock>,
     );
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Ask', 'History']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Ask', 'Sources', 'History']);
     expect(screen.queryByText('outline')).toBeNull();
   });
 });

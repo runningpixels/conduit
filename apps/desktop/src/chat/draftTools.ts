@@ -19,14 +19,17 @@ type TurnToolSettings = Parameters<typeof selectBuiltinTurnTools>[1];
  * The built-in tools for one turn in a draft chat: utilities, read-only
  * workspace tools, memory, and the draft tools for the draft's stage. No
  * document, deck, image or brand tools: they would write outside the draft.
- * Never chosen by the intent regexes. With `webSearch` (the draft's Sources)
- * and web search available, the local `web_search` and `web_fetch` tools too.
+ * Never chosen by the intent regexes.
+ *
+ * `webSearch` (the draft's Sources tab) adds the local `web_search` and
+ * `web_fetch` tools when web search is available in `settings`. Never the
+ * provider-hosted search: its citations cannot be written into the draft.
  */
 export function selectDraftTurnTools(
   settings: TurnToolSettings,
   conversationRoot: string | null | undefined,
   stage: DraftStage,
-  webSearch?: boolean,
+  webSearch = false,
 ): ToolDefinition[] {
   return selectBuiltinTurnTools('', settings, conversationRoot, undefined, undefined, null, stage, webSearch)
     .tools;

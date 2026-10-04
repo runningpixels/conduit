@@ -55,6 +55,7 @@ import {
   listConnectorResources,
   readConnectorResources,
   startResearch,
+  getDraftResearchMaterial,
   type ConversationCompaction,
 } from '../ipc/client';
 import type {
@@ -154,11 +155,13 @@ import {
   selectBuiltinWebTools,
   type DocumentToolActivity,
 } from './agentTools';
-import type { DeckDetail, DraftDetail } from '../ipc/contracts';
+import type { DeckDetail, DraftDetail, ResearchMaterial } from '../ipc/contracts';
 import { appPromptLabel } from './appPrompt';
 import { deckDeveloperPrompt, deckSystemAppendix } from '../slides/deckPrompt';
-import { draftDeveloperPrompt, draftSystemAppendix } from './draftPrompt';
+import { draftDeveloperPrompt, draftSystemAppendix, type DraftPromptSources } from './draftPrompt';
 import { isDraftTool, isDraftWriteTool, selectDraftTurnTools } from './draftTools';
+import { draftSourcesOf, draftWebSearchActive } from '../writing/draftSources';
+import { sectionPreviewsFromStream, type SectionPreview } from '../writing/sectionPreview';
 import {
   activeDocumentWrite,
   documentWriteDetail,
@@ -285,6 +288,16 @@ interface ChatViewProps {
   onDraftChanged?: () => void;
   /// The draft tool the model is calling now, or null when it has finished.
   onDraftToolActivity?: (toolName: string | null) => void;
+  /// The write_section calls still being written in this turn (empty when
+  /// none): the studio previews them in the editor.
+  onDraftPreview?: (previews: SectionPreview[]) => void;
+  /// Bumps when the draft's sources changed elsewhere (its Sources tab):
+  /// the chat re-reads its attached collections.
+  draftSourcesRevision?: number;
+  /// Open the draft's Sources tab (a source chip was clicked).
+  onOpenDraftSources?: () => void;
+  /// A finished Research card's "Write from this report".
+  onWriteFromReport?: (runId: string, question: string) => void;
   /// Fired when the user requests to fork the conversation at a message.
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// t0-3 — mid-thread edit forked a new conversation; switch + pending send.
@@ -377,6 +390,10 @@ export interface ChatRequestOverrides {
   deckOverflow?: Record<string, number>;
   /** The chat's Writing draft: draft prompts replace the document ones. */
   draft?: DraftDetail | null;
+  /** The sources this draft turn uses (the prompt rules for them). */
+  draftSources?: DraftPromptSources;
+  /** Verified claims of the Research reports attached to the draft. */
+  draftResearch?: ResearchMaterial[] | null;
 }
 
 /**
@@ -534,7 +551,9 @@ export function buildProviderRequest(
     !bound && !isCreationIntent && !infoDevPrompt && followUpArtifact
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
-  const webSearchDevPrompt = !searchActive
+  // A draft teaches its own search rule (draftSystemAppendix): the chat's
+  // "answer in one or two sentences" search prompt would fight the draft.
+  const webSearchDevPrompt = !searchActive || draft
     ? undefined
     : isCreationIntent
       ? webSearchCreateDeveloperPromptFor()
@@ -552,7 +571,7 @@ export function buildProviderRequest(
     },
   );
   const deckDevPrompt = deck ? deckDeveloperPrompt(deck, chatOverrides?.deckOverflow) : undefined;
-  const draftDevPrompt = draft ? draftDeveloperPrompt(draft) : undefined;
+  const draftDevPrompt = draft ? draftDeveloperPrompt(draft, chatOverrides?.draftResearch) : undefined;
   const developerPrompt =
     [
       compactionDevPrompt,
@@ -571,7 +590,7 @@ export function buildProviderRequest(
       ...(deck
         ? [deckSystemAppendix()]
         : draft
-        ? [draftSystemAppendix()]
+        ? [draftSystemAppendix(chatOverrides?.draftSources)]
         : searchActive && !isCreationIntent
         ? []
         : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })]),
@@ -597,11 +616,24 @@ export function buildProviderRequest(
     toolDefinitions,
     webSearch,
     ...(attachmentIds.length > 0 ? { attachments: attachmentIds } : {}),
-    generationControls: mergeGenerationControls(
-      settings.generationControls,
-      chatOverrides?.generationControls,
+    generationControls: draftStageControls(
+      mergeGenerationControls(settings.generationControls, chatOverrides?.generationControls),
+      draft,
     ),
   };
+}
+
+/**
+ * A draft-stage turn writes one section per response: no parallel tool
+ * calls, so each section runs (and shows in the editor) before the next is
+ * written. Other turns keep their controls as they are.
+ */
+export function draftStageControls(
+  controls: GenerationControls | undefined,
+  draft: DraftDetail | null,
+): GenerationControls | undefined {
+  if (draft?.stage !== 'draft') return controls;
+  return { ...(controls ?? {}), parallelToolCalls: false };
 }
 
 const HTML_ESCAPES: Record<string, string> = {
@@ -681,6 +713,8 @@ function escapeHtml(s: string): string {
 
 /** Minimum gap between document-write progress updates sent to the panel. */
 const DOCUMENT_PROGRESS_INTERVAL_MS = 250;
+/** How often a streaming section's preview is handed to the studio. */
+const DRAFT_PREVIEW_INTERVAL_MS = 80;
 
 /** Derive agent loop phase from stream state and pending calls.
  *  Prefers backend-sent agent phase info when available (from ProviderEvent::AgentPhase
@@ -818,6 +852,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     draft = null,
     onDraftChanged,
     onDraftToolActivity,
+    onDraftPreview,
+    draftSourcesRevision = 0,
+    onOpenDraftSources,
+    onWriteFromReport,
     onForkConversation,
     onEditForked,
     pendingSendText = null,
@@ -848,12 +886,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const t = useT();
   const tr = useRichT();
   const fmt = useFormatters();
+  // A draft's web search: its Sources tab, when chat web search may run.
+  const draftWebOn = draft != null && !deck && draftWebSearchActive(draft, settings);
+  /** The rules for the sources a draft turn uses. */
+  const draftPromptSources = (): DraftPromptSources => ({
+    webSearch: draftWebOn,
+    documents: enabledCollectionIdsRef.current.length > 0,
+  });
   /** The tool-teaching system appendix the token estimates count. */
   const turnSystemAppendix = (tools: ToolDefinition[]) =>
     deck
       ? deckSystemAppendix()
       : draft
-      ? draftSystemAppendix()
+      ? draftSystemAppendix(draftPromptSources())
       : CONDUIT_ARTIFACT_SYSTEM_APPENDIX(tools.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) });
   /** The built-in tools for a turn. A deck or draft chat gets its own set;
    *  every other chat goes through the intent-based selection. */
@@ -864,7 +909,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     imageOverride?: boolean,
   ): ToolDefinition[] =>
     draft && !deck
-      ? selectDraftTurnTools(toolSettings, conversationWorkspaceRoot, draft.stage)
+      ? selectDraftTurnTools(toolSettings, conversationWorkspaceRoot, draft.stage, draftWebOn)
       : selectBuiltinTurnTools(text, toolSettings, conversationWorkspaceRoot, intent, imageOverride, deck?.stage).tools;
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -1029,6 +1074,44 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     null,
   );
   const pendingRuntimeCallsRef = useRef<Set<string>>(new Set());
+  /** The section previews last handed to the studio, and the pending send. */
+  const draftPreviewRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; key: string }>({
+    timer: null,
+    key: '[]',
+  });
+  const onDraftPreviewRef = useRef(onDraftPreview);
+  onDraftPreviewRef.current = onDraftPreview;
+  /**
+   * Hand the studio the write_section calls still being written, read from
+   * the live stream. Argument fragments are batched (`throttle`); structural
+   * events and the end of the turn send at once. Unchanged lists are not
+   * sent again.
+   */
+  function emitDraftPreview(throttle: boolean) {
+    const ref = draftPreviewRef.current;
+    const send = () => {
+      ref.timer = null;
+      const previews = sectionPreviewsFromStream(streamStateRef.current);
+      const key = JSON.stringify(previews);
+      if (key === ref.key) return;
+      ref.key = key;
+      onDraftPreviewRef.current?.(previews);
+    };
+    if (throttle) {
+      if (ref.timer == null) ref.timer = setTimeout(send, DRAFT_PREVIEW_INTERVAL_MS);
+      return;
+    }
+    if (ref.timer != null) clearTimeout(ref.timer);
+    send();
+  }
+  useEffect(
+    () => () => {
+      const ref = draftPreviewRef.current;
+      if (ref.timer != null) clearTimeout(ref.timer);
+      ref.timer = null;
+    },
+    [],
+  );
   const onPendingSendConsumedRef = useRef(onPendingSendConsumed);
   onPendingSendConsumedRef.current = onPendingSendConsumed;
   const onStatusRef = useRef(onStatus);
@@ -1282,7 +1365,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, settingsOpen, documentsOpen, knowledgeReloadToken]);
+  }, [conversationId, settingsOpen, documentsOpen, knowledgeReloadToken, draftSourcesRevision]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -1446,7 +1529,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     );
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
-    const webTools = searchBackend === 'local' ? selectBuiltinWebTools() : [];
+    // A draft's turn already has them from its own selection.
+    const webTools = searchBackend === 'local' && !(draft && !deck) ? selectBuiltinWebTools() : [];
     return [...builtinTools, ...webTools, ...connectorTools];
   }
 
@@ -1733,16 +1817,22 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ),
     );
 
-    const searchOn =
-      resolveWebSearchForTurn(settings, webSearchOn, trimmed) ||
-      (pickedIdea?.needs.includes('webSearch') === true && resolveWebSearchForTurn(settings, true, trimmed));
-    const searchBackend = searchOn
-      ? resolveSearchBackend(
-          settings.webSearch.mode,
-          settings.activeProvider,
-          settings.providerEndpoints,
-        )
-      : null;
+    // A draft's chat searches only through its Sources tab, and only with
+    // the local tools: hosted search citations cannot go into the draft.
+    const draftChat = draft != null && !deck;
+    const searchOn = draftChat
+      ? draftWebOn
+      : resolveWebSearchForTurn(settings, webSearchOn, trimmed) ||
+        (pickedIdea?.needs.includes('webSearch') === true && resolveWebSearchForTurn(settings, true, trimmed));
+    const searchBackend: SearchBackend | null = !searchOn
+      ? null
+      : draftChat
+        ? 'local'
+        : resolveSearchBackend(
+            settings.webSearch.mode,
+            settings.activeProvider,
+            settings.providerEndpoints,
+          );
     const toolDefinitions = await loadToolDefinitions(
       trimmed,
       searchBackend,
@@ -1762,7 +1852,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ...historyForProviderRequest(priorHistory, activeCompaction),
       userTurn,
     ];
-    const [skillBlock, memoryBlock, resourceBlock, knowledgeContext] = await Promise.all([
+    const draftRunIds = draftChat ? draftSourcesOf(draft).researchRunIds : [];
+    const [skillBlock, memoryBlock, resourceBlock, knowledgeContext, draftResearch] = await Promise.all([
       getSkillPromptBlock(enabledSkillIdsRef.current, conversationWorkspaceRoot).catch(
         () => skillPromptBlock,
       ),
@@ -1774,6 +1865,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         trimmed,
         knowledgeRefs.map((ref) => ref.documentId),
       ),
+      // The attached Research reports' verified claims, for the draft prompt.
+      // Best effort: a turn without them still writes, with [TODO]s.
+      draftChat && draft && draftRunIds.length > 0
+        ? getDraftResearchMaterial(draft.id).catch(() => [] as ResearchMaterial[])
+        : Promise.resolve([] as ResearchMaterial[]),
     ]);
     // Surface anything the gate refused or truncated, then clear the chips:
     // the content belongs to this turn only.
@@ -1813,6 +1909,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         deck,
         deckOverflow,
         draft,
+        draftSources: draftChat ? draftPromptSources() : undefined,
+        draftResearch,
       },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
@@ -1912,7 +2010,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           }
           if (isDeckTool(event.name)) onDeckToolActivity?.(event.name);
           if (isDraftTool(event.name)) onDraftToolActivity?.(event.name);
+          if (draft && !deck) emitDraftPreview(false);
         } else if (event.kind === 'toolCallDelta') {
+          if (draft && !deck) emitDraftPreview(true);
           // Every fragment re-renders the chat already; the panel lives in App
           // and does not need to. Forward a new title at once, counts at most
           // a few times a second.
@@ -1950,6 +2050,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           if (isDraftTool(event.toolName)) {
             if (!event.isError && isDraftWriteTool(event.toolName)) onDraftChanged?.();
             else onDraftToolActivity?.(null);
+            // After the refetch was asked for: the studio keeps the preview
+            // up until the written section has arrived.
+            emitDraftPreview(false);
           }
           // The document exists now. The model may keep talking for a while
           // before the turn ends; the panel should not keep a skeleton up over
@@ -1965,6 +2068,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             });
           }
         } else if (event.kind === 'toolCallComplete') {
+          if (draft && !deck) emitDraftPreview(false);
           // Phase A: tool execution is now owned by the Rust `AgentLoop` inside
           // `start_chat_stream`. The UI no longer hands off tool calls via IPC.
           // The `toolCallComplete` event is still rendered for the tool card.
@@ -2129,6 +2233,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         activeRequestRef.current = null;
       }
       streamStateRef.current = null;
+      emitDraftPreview(false);
       reportRunStatus();
       cancelStreamFrame();
       if (currentConversationIdRef.current === conversationId) {
@@ -2183,6 +2288,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (cancelledState) onChatTurnComplete?.(markInterrupted(cancelledState));
     activeRequestRef.current = null;
     streamStateRef.current = null;
+    emitDraftPreview(false);
     reportRunStatus();
     cancelStreamFrame();
     setActiveStream(null);
@@ -3156,6 +3262,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     runId={turn.researchRunId}
                     onOpenArtifact={onOpenArtifact}
                     onStatus={(message) => onStatus(makeStatus(message, 'error', 'chat'))}
+                    onWriteFromReport={draft || deck ? undefined : onWriteFromReport}
                   />
                 </article>,
               );
@@ -3509,6 +3616,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         usage={accumulatedUsage}
         contextTokens={contextTokens}
         compactThresholdPercent={compactThresholdPercent}
+        draftSources={
+          draft && !deck
+            ? {
+                webSearch: draftWebOn,
+                documents: enabledCollectionIds.length,
+                reports: draftSourcesOf(draft).researchRunIds.length,
+                onOpen: onOpenDraftSources,
+              }
+            : undefined
+        }
       />
       {threadEmpty && !compact && onOpenApp && onAllApps && (
         <YourAppsRow apps={yourApps} onOpen={onOpenApp} onAll={onAllApps} />

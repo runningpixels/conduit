@@ -5,6 +5,7 @@ import { EditorSelection } from '@codemirror/state';
 import type { DraftBlock, DraftDetail } from '../ipc/contracts';
 import { DraftEditor, type DraftEditorProps } from './DraftEditor';
 import { blocksField } from './editorBlocks';
+import { buildDraftPreview } from './sectionPreview';
 
 // jsdom has no layout: CodeMirror measures through these.
 beforeAll(() => {
@@ -242,5 +243,41 @@ describe('DraftEditor', () => {
     expect(screen.getByRole('toolbar', { name: 'Change the selected text' })).toBeInTheDocument();
     rerender(<DraftEditor {...p} readOnly />);
     expect(screen.queryByRole('toolbar', { name: 'Change the selected text' })).toBeNull();
+  });
+  it('shows a section being written as a labelled preview, never saves it, and returns to the draft when it ends', async () => {
+    const p = props({ readOnly: true });
+    const { rerender, unmount } = render(<DraftEditor {...p} />);
+    const outline = [{ heading: 'Intro', intent: '' }, { heading: 'Next', intent: '' }];
+    const preview = buildDraftPreview(MARKDOWN, outline, [{ toolCallId: 't1', heading: 'Next', markdown: 'Being writ' }])!;
+    rerender(<DraftEditor {...p} preview={preview} />);
+    expect(view().state.doc.toString()).toBe(`${MARKDOWN}\n\n## Next\n\nBeing writ\n`);
+    expect(document.querySelector('.draft-preview-label')?.textContent).toBe('Writing…');
+    const marked = [...document.querySelectorAll('.draft-preview')].map((el) => el.textContent).join('');
+    expect(marked).toBe('## NextBeing writ');
+    // The draft's own text is not dimmed.
+    expect(marked).not.toContain('First paragraph.');
+
+    // More text arrives: the preview grows in place.
+    const more = buildDraftPreview(MARKDOWN, outline, [{ toolCallId: 't1', heading: 'Next', markdown: 'Being written.' }])!;
+    rerender(<DraftEditor {...p} preview={more} />);
+    expect(view().state.doc.toString()).toContain('Being written.');
+    expect(document.querySelectorAll('.draft-preview-label')).toHaveLength(1);
+
+    // The turn ends (or the call ran): the editor shows the draft again.
+    rerender(<DraftEditor {...p} readOnly={false} preview={null} />);
+    expect(view().state.doc.toString()).toBe(MARKDOWN);
+    expect(document.querySelector('.draft-preview-label')).toBeNull();
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(p.onSave).not.toHaveBeenCalled();
+
+    // Leaving the studio mid-preview saves nothing either.
+    rerender(<DraftEditor {...p} preview={more} />);
+    unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(p.onSave).not.toHaveBeenCalled();
   });
 });

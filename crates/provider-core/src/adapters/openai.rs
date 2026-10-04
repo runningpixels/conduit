@@ -1,7 +1,7 @@
 use crate::adapter::{AdapterContext, ModelInfo, ProviderAdapter, StreamParser};
 use crate::adapters::{
-    message_text, missing_key, normalized_or_err, openai_user_content, parse_fixture_stream,
-    role_to_string, wrap_sse_stream,
+    message_reasoning, message_text, missing_key, normalized_or_err, openai_user_content,
+    parse_fixture_stream, role_to_string, wrap_sse_stream,
 };
 use crate::error::fatal;
 use crate::image_generation::{decode_generated_image, top_level_keys};
@@ -9,8 +9,8 @@ use crate::normalize::NormalizedRequest;
 use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
     ContentAnnotation, EmbeddingRequest, EmbeddingResult, GenerationControls,
-    ImageGenerationRequest, ImageGenerationResult, MessagePart, MessagePartKind, MessageRole,
-    ProviderError, ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
+    ImageGenerationRequest, ImageGenerationResult, Message, MessagePart, MessagePartKind,
+    MessageRole, ProviderError, ProviderEvent, ProviderRequest, SearchContextSize, ToolChoice,
 };
 use crate::transport::{get_json, post_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -1193,6 +1193,29 @@ fn to_responses_input(messages: Vec<Value>) -> Vec<Value> {
     input
 }
 
+/// Whether a provider needs each earlier assistant message's reasoning sent
+/// back in `reasoning_content`.
+///
+/// DeepSeek's thinking mode is on by default, and when a request carries
+/// tools, "the reasoning_content must be fully passed back to the API in all
+/// subsequent requests — even for turns where the model did not perform a tool
+/// call. If your code does not correctly pass back reasoning_content, the API
+/// will return a 400 error" (api-docs.deepseek.com/guides/thinking_mode,
+/// checked 2026-10-04). Conduit sends tools on ordinary turns, so without this
+/// a DeepSeek chat failed from its second request on. Earlier turns come back
+/// from the renderer as their answer text only, so their reasoning is sent as
+/// an empty string: the field is present, the original thinking is not.
+fn replays_reasoning(provider_id: &str) -> bool {
+    provider_id == "deepseek"
+}
+
+/// DeepSeek's chat API takes only `system`, `user`, `assistant` and `tool`
+/// messages (api-docs.deepseek.com/api/create-chat-completion); a `developer`
+/// message is folded into the system message instead.
+fn accepts_developer_role(provider_id: &str) -> bool {
+    provider_id != "deepseek"
+}
+
 fn build_payload(
     normalized: &NormalizedRequest,
     force_responses_api: bool,
@@ -1200,13 +1223,37 @@ fn build_payload(
 ) -> Value {
     let request = &normalized.request;
     let mut messages = Vec::new();
+    let replay_reasoning = replays_reasoning(provider_id);
 
-    if let Some(system) = &request.system_prompt {
-        messages.push(json!({"role": "system", "content": system}));
+    if accepts_developer_role(provider_id) {
+        if let Some(system) = &request.system_prompt {
+            messages.push(json!({"role": "system", "content": system}));
+        }
+        if let Some(developer) = &request.developer_prompt {
+            messages.push(json!({"role": "developer", "content": developer}));
+        }
+    } else {
+        // One system message carrying both, in the order the two roles would
+        // have arrived.
+        let system = [&request.system_prompt, &request.developer_prompt]
+            .into_iter()
+            .flatten()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if !system.is_empty() {
+            messages.push(json!({"role": "system", "content": system}));
+        }
     }
-    if let Some(developer) = &request.developer_prompt {
-        messages.push(json!({"role": "developer", "content": developer}));
-    }
+
+    // DeepSeek: every assistant message carries its reasoning back.
+    let with_reasoning = |mut msg: Value, message: &Message| -> Value {
+        if replay_reasoning {
+            msg["reasoning_content"] = json!(message_reasoning(message));
+        }
+        msg
+    };
 
     for message in &request.messages {
         match message.role {
@@ -1249,7 +1296,7 @@ fn build_payload(
                     } else {
                         msg["content"] = Value::Null;
                     }
-                    messages.push(msg);
+                    messages.push(with_reasoning(msg, message));
                 } else {
                     // Fallback: check metadata-based tool_calls for backward compat
                     let legacy_tc = message
@@ -1283,13 +1330,16 @@ fn build_payload(
                         } else {
                             msg["content"] = Value::Null;
                         }
-                        messages.push(msg);
+                        messages.push(with_reasoning(msg, message));
                     } else {
                         // Regular assistant text message
-                        messages.push(json!({
-                            "role": "assistant",
-                            "content": message_text(message),
-                        }));
+                        messages.push(with_reasoning(
+                            json!({
+                                "role": "assistant",
+                                "content": message_text(message),
+                            }),
+                            message,
+                        ));
                     }
                 }
             }
@@ -3393,5 +3443,165 @@ mod tests {
             "expected an image MIME type, got {}",
             result.mime_type
         );
+    }
+}
+
+#[cfg(test)]
+mod deepseek_payload_tests {
+    use super::*;
+    use crate::schema::{Message, MessagePart, MessagePartKind, MessageRole, ToolDefinition};
+
+    fn part(message_id: &str, index: u32, kind: MessagePartKind, content: &str) -> MessagePart {
+        MessagePart {
+            id: format!("{message_id}-{index}"),
+            message_id: message_id.into(),
+            index,
+            kind,
+            content: Some(content.into()),
+            mime_type: None,
+            tool_call_id: None,
+            artifact_id: None,
+            attachment_id: None,
+            blob_ref: None,
+            metadata: None,
+            created_at: "2026-10-04T00:00:00Z".into(),
+        }
+    }
+
+    fn message(id: &str, role: MessageRole, parts: Vec<MessagePart>) -> Message {
+        Message {
+            id: id.into(),
+            conversation_id: "c".into(),
+            role,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts,
+            created_at: "2026-10-04T00:00:00Z".into(),
+        }
+    }
+
+    /// A finished first turn (answer only, as the renderer re-sends it), then
+    /// a tool round in progress: the model reasoned, called a tool, and the
+    /// result came back.
+    fn request() -> ProviderRequest {
+        let mut tool_call = part(
+            "a2",
+            1,
+            MessagePartKind::ToolCall,
+            r#"{"expression":"17*23"}"#,
+        );
+        tool_call.tool_call_id = Some("call_1".into());
+        tool_call.metadata = Some(json!({"name": "calculator"}));
+        let mut tool_result = part("t1", 0, MessagePartKind::ToolResult, "391");
+        tool_result.tool_call_id = Some("call_1".into());
+
+        ProviderRequest {
+            request_id: "r".into(),
+            conversation_id: "c".into(),
+            model_id: "deepseek-flash".into(),
+            messages: vec![
+                message(
+                    "u1",
+                    MessageRole::User,
+                    vec![part("u1", 0, MessagePartKind::Text, "hi")],
+                ),
+                message(
+                    "a1",
+                    MessageRole::Assistant,
+                    vec![part("a1", 0, MessagePartKind::Text, "Hello!")],
+                ),
+                message(
+                    "u2",
+                    MessageRole::User,
+                    vec![part("u2", 0, MessagePartKind::Text, "17 x 23?")],
+                ),
+                message(
+                    "a2",
+                    MessageRole::Assistant,
+                    vec![
+                        part("a2", 0, MessagePartKind::Reasoning, "Use the calculator."),
+                        tool_call,
+                    ],
+                ),
+                message("t1", MessageRole::Tool, vec![tool_result]),
+            ],
+            system_prompt: Some("You are Conduit.".into()),
+            developer_prompt: Some("Cite sources.".into()),
+            attachments: None,
+            tool_definitions: vec![serde_json::from_value::<ToolDefinition>(json!({
+                "toolId": "calculator",
+                "name": "calculator",
+                "description": "Evaluate arithmetic",
+                "inputSchema": {"type": "object"},
+            }))
+            .expect("tool definition")],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+        }
+    }
+
+    fn messages(provider: &str) -> Vec<Value> {
+        let body = build_payload(&NormalizedRequest { request: request() }, false, provider);
+        body["messages"]
+            .as_array()
+            .expect("chat-completions messages")
+            .clone()
+    }
+
+    #[test]
+    fn deepseek_gets_reasoning_back_on_every_assistant_message() {
+        let msgs = messages("deepseek");
+        let assistants: Vec<&Value> = msgs.iter().filter(|m| m["role"] == "assistant").collect();
+        assert_eq!(assistants.len(), 2);
+        // A turn re-sent as its answer only: the field is present, and empty.
+        assert_eq!(assistants[0]["reasoning_content"], json!(""));
+        assert_eq!(assistants[0]["content"], json!("Hello!"));
+        // The tool round: its reasoning goes back in DeepSeek's field, not as text.
+        assert_eq!(
+            assistants[1]["reasoning_content"],
+            json!("Use the calculator.")
+        );
+        assert_eq!(assistants[1]["content"], Value::Null);
+        assert_eq!(
+            assistants[1]["tool_calls"][0]["function"]["name"],
+            "calculator"
+        );
+    }
+
+    #[test]
+    fn deepseek_gets_one_system_message_and_no_developer_role() {
+        let msgs = messages("deepseek");
+        assert!(msgs.iter().all(|m| m["role"] != "developer"));
+        let systems: Vec<&Value> = msgs.iter().filter(|m| m["role"] == "system").collect();
+        assert_eq!(systems.len(), 1);
+        assert_eq!(
+            systems[0]["content"],
+            json!("You are Conduit.\n\nCite sources.")
+        );
+    }
+
+    #[test]
+    fn other_providers_are_unchanged() {
+        for provider in ["openai", "openrouter", "groq", "mistral"] {
+            let msgs = messages(provider);
+            assert!(
+                msgs.iter().all(|m| m.get("reasoning_content").is_none()),
+                "{provider} must not get reasoning_content"
+            );
+            assert!(
+                msgs.iter().any(|m| m["role"] == "developer"),
+                "{provider} keeps developer"
+            );
+            // Reasoning is never replayed as visible text.
+            let tool_round = msgs
+                .iter()
+                .find(|m| m["role"] == "assistant" && m.get("tool_calls").is_some())
+                .unwrap();
+            assert_eq!(tool_round["content"], Value::Null, "{provider}");
+        }
     }
 }

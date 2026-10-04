@@ -670,6 +670,71 @@ async fn a_cloud_provider_runs_when_local_only_is_off() {
     assert_eq!(turn.rounds_started, 1);
 }
 
+/// `thought` streamed as reasoning, then `round`'s events after its
+/// `MessageStart`: a model that thinks, then calls a tool.
+fn thinking_first(thought: &'static str, round: Round) -> Round {
+    Arc::new(move |rid: &str| {
+        let mut steps = round(rid);
+        steps.insert(
+            1,
+            Step::Event(ProviderEvent::ReasoningDelta {
+                request_id: rid.to_string(),
+                block_id: "reasoning-0".into(),
+                index: 0,
+                content: thought.into(),
+            }),
+        );
+        steps
+    })
+}
+
+/// DeepSeek rejects a tool round whose earlier assistant message comes back
+/// without its reasoning (HTTP 400). The continuation must carry the round's
+/// reasoning as a reasoning part — the adapter decides whether to send it —
+/// and must never fold it into the visible text.
+#[tokio::test]
+async fn a_tool_round_carries_its_reasoning_into_the_continuation() {
+    let turn = run_turn(
+        vec![
+            thinking_first(
+                "The user wants the time; call current_time.",
+                tool_round(vec![("current_time", json!({}))], Duration::ZERO),
+            ),
+            text_round("It is noon."),
+        ],
+        guardrails(25, 300),
+    )
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    let continuation = &turn.requests[1];
+    let assistant = continuation
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == MessageRole::Assistant)
+        .expect("the continuation replays the assistant's tool round");
+    let parts_of = |kind: MessagePartKind| -> Vec<&str> {
+        assistant
+            .parts
+            .iter()
+            .filter(|p| p.kind == kind)
+            .filter_map(|p| p.content.as_deref())
+            .collect()
+    };
+    assert_eq!(
+        parts_of(MessagePartKind::Reasoning),
+        vec!["The user wants the time; call current_time."]
+    );
+    assert!(
+        parts_of(MessagePartKind::Text)
+            .iter()
+            .all(|t| !t.contains("call current_time")),
+        "reasoning must not be replayed as text"
+    );
+    assert_eq!(parts_of(MessagePartKind::ToolCall).len(), 1);
+}
+
 #[tokio::test]
 async fn a_tool_round_runs_the_tool_then_one_continuation() {
     let turn = run_turn(

@@ -40,6 +40,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and Connectors move to `Ctrl+6`–`Ctrl+9`. Memory is still on the rail,
   on Home and in the command palette.
 
+### Fixed
+
+- **DeepSeek chats no longer fail after the first reply.** DeepSeek's
+  models think before they answer, and when a request includes tools
+  DeepSeek requires each earlier reply's thinking to be sent back in its
+  own field, or it rejects the request. Conduit now sends it: the
+  thinking from each tool round goes back as thinking, never as text, and
+  earlier replies carry the field too. DeepSeek also accepts no
+  "developer" messages, so Conduit's extra instructions (web search
+  guidance, for one) now ride in the system message for DeepSeek.
+- **Earlier thinking is no longer replayed as text to other providers.**
+  When a tool round had to be rebuilt from the saved message, its
+  reasoning went back to the model as if it had said it.
+
 ## [1.0.0-rc.6] - 2026-10-03
 
 ### Added

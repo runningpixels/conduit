@@ -117,11 +117,17 @@ describe('selectDraftTurnTools', () => {
     const off = selectDraftTurnTools({ memoryEnabled: true }, null, 'draft').map((t) => t.name);
     expect(off).not.toContain('web_search');
     expect(off).not.toContain('web_fetch');
-    const on = selectDraftTurnTools({ memoryEnabled: true }, null, 'draft', true).map((t) => t.name);
+    const searchable = { memoryEnabled: true, webSearchEnabled: true, webSearchConsentAcknowledged: true };
+    const on = selectDraftTurnTools(searchable, null, 'draft', true).map((t) => t.name);
     expect(on).toContain('web_search');
     expect(on).toContain('web_fetch');
     expect(on).toContain('write_section');
     expect(new Set(on).size).toBe(on.length);
+    // The draft asks for web search, but settings don't allow it: no web tools.
+    const blocked = selectDraftTurnTools({ memoryEnabled: true }, null, 'draft', true).map((t) => t.name);
+    expect(blocked).not.toContain('web_search');
+    const localOnly = selectDraftTurnTools({ ...searchable, localOnly: true }, null, 'draft', true).map((t) => t.name);
+    expect(localOnly).not.toContain('web_search');
   });
 
   it('offers no document, deck, image or brand tools in a draft chat', () => {

@@ -1764,9 +1764,10 @@ pub struct DraftDetail {
     pub updated_at: String,
 }
 
-/// Why a draft snapshot was taken.
+/// Why a draft snapshot was taken. Kebab-case on the wire, like
+/// `DeckSnapshotCause` and the stored value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "kebab-case")]
 #[ts(
     export,
     export_to = "../packages/config-schema/src/generated/draft_snapshot_cause.ts"

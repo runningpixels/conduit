@@ -26,10 +26,13 @@ export interface AskBoxProps {
   onAsk: (text: string) => void;
   /** The Research chip: send this text as a Research run in a fresh chat. */
   onResearch: (text: string) => void;
+  /** The Write chip: start a draft from this text (Writing opens on its own
+   *  page when the box is empty). */
+  onWrite?: (text: string) => void;
   onAction: (action: HomeAction) => void;
 }
 
-export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onAction }: AskBoxProps) {
+export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onWrite, onAction }: AskBoxProps) {
   const t = useT();
   const hintId = useId();
 
@@ -58,6 +61,16 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
     if (value === '') return;
     setText('');
     onResearch(value);
+  };
+
+  const write = () => {
+    const value = text.trim();
+    if (value === '' || !onWrite) {
+      onAction('start-draft');
+      return;
+    }
+    setText('');
+    onWrite(value);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -102,6 +115,10 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
             {t(chip.labelId)}
           </button>
         ))}
+        {/* With text, Write starts a draft from it; without, it opens Writing. */}
+        <button type="button" className="home-chip" onClick={write}>
+          {t('home.ask.chip.write')}
+        </button>
         {/* Research needs a question to research, so it waits for text. */}
         <button
           type="button"

@@ -1702,14 +1702,156 @@ Production npm dependencies bundled into the renderer.
 
 | Package | Version | License |
 |---|---|---|
-| [@tauri-apps/api](https://github.com/tauri-apps/tauri#readme) | 2.11.1 | `Apache-2.0 OR MIT` |
+| [dompurify](https://github.com/cure53/DOMPurify) | 3.4.16 | `(MPL-2.0 OR Apache-2.0)` |
+| [@chevrotain/cst-dts-gen](https://github.com/Chevrotain/chevrotain#readme) | 11.1.2 | `Apache-2.0` |
+| [@chevrotain/gast](https://github.com/Chevrotain/chevrotain#readme) | 11.1.2 | `Apache-2.0` |
+| [@chevrotain/regexp-to-ast](https://github.com/Chevrotain/chevrotain#readme) | 11.1.2 | `Apache-2.0` |
+| [@chevrotain/types](https://chevrotain.io/documentation/) | 11.1.2 | `Apache-2.0` |
+| [@chevrotain/utils](https://github.com/Chevrotain/chevrotain#readme) | 11.1.2 | `Apache-2.0` |
+| [chevrotain](https://chevrotain.io/docs/) | 11.1.2 | `Apache-2.0` |
+| [@tauri-apps/api](https://github.com/tauri-apps/tauri#readme) | 2.12.0 | `Apache-2.0 OR MIT` |
+| [d3-array](https://d3js.org/d3-array/) | 2.12.1 | `BSD-3-Clause` |
+| [d3-ease](https://d3js.org/d3-ease/) | 3.0.1 | `BSD-3-Clause` |
+| [d3-path](https://d3js.org/d3-path/) | 1.0.9 | `BSD-3-Clause` |
+| [d3-sankey](https://github.com/d3/d3-sankey) | 0.12.3 | `BSD-3-Clause` |
+| [d3-shape](https://d3js.org/d3-shape/) | 1.3.7 | `BSD-3-Clause` |
+| [intl-messageformat](https://github.com/formatjs/formatjs) | 12.1.2 | `BSD-3-Clause` |
+| [react-intl](https://formatjs.github.io/docs/react-intl) | 12.1.3 | `BSD-3-Clause` |
+| [rw](https://github.com/mbostock/rw) | 1.3.3 | `BSD-3-Clause` |
+| [elkjs](https://github.com/kieler/elkjs#readme) | 0.9.3 | `EPL-2.0` |
+| [d3](https://d3js.org) | 7.9.0 | `ISC` |
+| [d3-array](https://d3js.org/d3-array/) | 3.2.4 | `ISC` |
+| [d3-axis](https://d3js.org/d3-axis/) | 3.0.0 | `ISC` |
+| [d3-brush](https://d3js.org/d3-brush/) | 3.0.0 | `ISC` |
+| [d3-chord](https://d3js.org/d3-chord/) | 3.0.1 | `ISC` |
+| [d3-color](https://d3js.org/d3-color/) | 3.1.0 | `ISC` |
+| [d3-contour](https://d3js.org/d3-contour/) | 4.0.2 | `ISC` |
+| [d3-delaunay](https://github.com/d3/d3-delaunay) | 6.0.4 | `ISC` |
+| [d3-dispatch](https://d3js.org/d3-dispatch/) | 3.0.1 | `ISC` |
+| [d3-drag](https://d3js.org/d3-drag/) | 3.0.0 | `ISC` |
+| [d3-dsv](https://d3js.org/d3-dsv/) | 3.0.1 | `ISC` |
+| [d3-fetch](https://d3js.org/d3-fetch/) | 3.0.1 | `ISC` |
+| [d3-force](https://d3js.org/d3-force/) | 3.0.0 | `ISC` |
+| [d3-format](https://d3js.org/d3-format/) | 3.1.2 | `ISC` |
+| [d3-geo](https://d3js.org/d3-geo/) | 3.1.1 | `ISC` |
+| [d3-hierarchy](https://d3js.org/d3-hierarchy/) | 3.1.2 | `ISC` |
+| [d3-interpolate](https://d3js.org/d3-interpolate/) | 3.0.1 | `ISC` |
+| [d3-path](https://d3js.org/d3-path/) | 3.1.0 | `ISC` |
+| [d3-polygon](https://d3js.org/d3-polygon/) | 3.0.1 | `ISC` |
+| [d3-quadtree](https://d3js.org/d3-quadtree/) | 3.0.1 | `ISC` |
+| [d3-random](https://d3js.org/d3-random/) | 3.0.1 | `ISC` |
+| [d3-scale](https://d3js.org/d3-scale/) | 4.0.2 | `ISC` |
+| [d3-scale-chromatic](https://d3js.org/d3-scale-chromatic/) | 3.1.0 | `ISC` |
+| [d3-selection](https://d3js.org/d3-selection/) | 3.0.0 | `ISC` |
+| [d3-shape](https://d3js.org/d3-shape/) | 3.2.0 | `ISC` |
+| [d3-time](https://d3js.org/d3-time/) | 3.1.0 | `ISC` |
+| [d3-time-format](https://d3js.org/d3-time-format/) | 4.1.0 | `ISC` |
+| [d3-timer](https://d3js.org/d3-timer/) | 3.0.1 | `ISC` |
+| [d3-transition](https://d3js.org/d3-transition/) | 3.0.1 | `ISC` |
+| [d3-zoom](https://d3js.org/d3-zoom/) | 3.0.0 | `ISC` |
+| [delaunator](https://github.com/mapbox/delaunator#readme) | 5.1.0 | `ISC` |
+| [internmap](https://github.com/mbostock/internmap/) | 1.0.1, 2.0.3 | `ISC` |
+| [@antfu/install-pkg](https://github.com/antfu-collective/install-pkg#readme) | 2.1.0 | `MIT` |
+| [@braintree/sanitize-url](https://github.com/braintree/sanitize-url#readme) | 7.1.2 | `MIT` |
+| [@codemirror/autocomplete](https://www.npmjs.com/package/@codemirror/autocomplete) | 6.20.3 | `MIT` |
+| [@codemirror/commands](https://www.npmjs.com/package/@codemirror/commands) | 6.11.1 | `MIT` |
+| [@codemirror/lang-css](https://github.com/codemirror/lang-css#readme) | 6.3.1 | `MIT` |
+| [@codemirror/lang-html](https://www.npmjs.com/package/@codemirror/lang-html) | 6.4.12 | `MIT` |
+| [@codemirror/lang-javascript](https://github.com/codemirror/lang-javascript#readme) | 6.2.5 | `MIT` |
+| [@codemirror/lang-markdown](https://www.npmjs.com/package/@codemirror/lang-markdown) | 6.5.2 | `MIT` |
+| [@codemirror/language](https://www.npmjs.com/package/@codemirror/language) | 6.12.4 | `MIT` |
+| [@codemirror/lint](https://www.npmjs.com/package/@codemirror/lint) | 6.9.7 | `MIT` |
+| [@codemirror/state](https://www.npmjs.com/package/@codemirror/state) | 6.7.6 | `MIT` |
+| [@codemirror/view](https://www.npmjs.com/package/@codemirror/view) | 6.43.13 | `MIT` |
+| [@formatjs/fast-memoize](https://github.com/formatjs/formatjs#readme) | 3.1.7 | `MIT` |
+| [@formatjs/icu-messageformat-parser](https://github.com/formatjs/formatjs#readme) | 3.5.20 | `MIT` |
+| [@formatjs/icu-skeleton-parser](https://github.com/formatjs/formatjs#readme) | 2.1.12 | `MIT` |
+| [@formatjs/intl](https://formatjs.github.io) | 6.1.2 | `MIT` |
+| [@iconify/types](https://github.com/iconify/iconify) | 2.0.0 | `MIT` |
+| [@iconify/utils](https://iconify.design/docs/libraries/utils/) | 3.1.7 | `MIT` |
+| [@lezer/common](https://www.npmjs.com/package/@lezer/common) | 1.5.3 | `MIT` |
+| [@lezer/css](https://www.npmjs.com/package/@lezer/css) | 1.3.8 | `MIT` |
+| [@lezer/highlight](https://www.npmjs.com/package/@lezer/highlight) | 1.2.5 | `MIT` |
+| [@lezer/html](https://github.com/lezer-parser/html#readme) | 1.3.13 | `MIT` |
+| [@lezer/javascript](https://www.npmjs.com/package/@lezer/javascript) | 1.5.6 | `MIT` |
+| [@lezer/lr](https://www.npmjs.com/package/@lezer/lr) | 1.4.10 | `MIT` |
+| [@lezer/markdown](https://www.npmjs.com/package/@lezer/markdown) | 1.7.2 | `MIT` |
+| [@marijn/find-cluster-break](https://code.haverbeke.berlin/marijn/find-cluster-break) | 1.0.4 | `MIT` |
+| [@mermaid-js/parser](https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme) | 2.0.0 | `MIT` |
+| [@types/d3](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3) | 7.4.3 | `MIT` |
+| [@types/d3-array](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-array) | 3.2.2 | `MIT` |
+| [@types/d3-axis](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-axis) | 3.0.6 | `MIT` |
+| [@types/d3-brush](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-brush) | 3.0.6 | `MIT` |
+| [@types/d3-chord](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-chord) | 3.0.6 | `MIT` |
+| [@types/d3-color](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-color) | 3.1.3 | `MIT` |
+| [@types/d3-contour](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-contour) | 3.0.6 | `MIT` |
+| [@types/d3-delaunay](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-delaunay) | 6.0.4 | `MIT` |
+| [@types/d3-dispatch](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-dispatch) | 3.0.7 | `MIT` |
+| [@types/d3-drag](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-drag) | 3.0.7 | `MIT` |
+| [@types/d3-dsv](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-dsv) | 3.0.7 | `MIT` |
+| [@types/d3-ease](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-ease) | 3.0.2 | `MIT` |
+| [@types/d3-fetch](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-fetch) | 3.0.7 | `MIT` |
+| [@types/d3-force](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-force) | 3.0.10 | `MIT` |
+| [@types/d3-format](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-format) | 3.0.4 | `MIT` |
+| [@types/d3-geo](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-geo) | 3.1.1 | `MIT` |
+| [@types/d3-hierarchy](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-hierarchy) | 3.1.7 | `MIT` |
+| [@types/d3-interpolate](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-interpolate) | 3.0.4 | `MIT` |
+| [@types/d3-path](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-path) | 3.1.1 | `MIT` |
+| [@types/d3-polygon](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-polygon) | 3.0.2 | `MIT` |
+| [@types/d3-quadtree](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-quadtree) | 3.0.6 | `MIT` |
+| [@types/d3-random](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-random) | 3.0.4 | `MIT` |
+| [@types/d3-scale](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale) | 4.0.9 | `MIT` |
+| [@types/d3-scale-chromatic](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale-chromatic) | 3.1.0 | `MIT` |
+| [@types/d3-selection](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-selection) | 3.0.12 | `MIT` |
+| [@types/d3-shape](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-shape) | 3.2.0 | `MIT` |
+| [@types/d3-time](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time) | 3.0.4 | `MIT` |
+| [@types/d3-time-format](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time-format) | 4.0.3 | `MIT` |
+| [@types/d3-timer](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-timer) | 3.0.2 | `MIT` |
+| [@types/d3-transition](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-transition) | 3.0.9 | `MIT` |
+| [@types/d3-zoom](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-zoom) | 3.0.8 | `MIT` |
+| [@types/geojson](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/geojson) | 7946.0.16 | `MIT` |
 | [@types/prismjs](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/prismjs) | 1.26.6 | `MIT` |
+| [@types/react](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) | 19.3.0 | `MIT` |
+| [@types/trusted-types](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/trusted-types) | 2.0.7 | `MIT` |
+| [@upsetjs/venn.js](https://github.com/upsetjs/venn.js) | 2.0.0 | `MIT` |
 | [clsx](https://github.com/lukeed/clsx#readme) | 2.1.1 | `MIT` |
+| [commander](https://github.com/tj/commander.js#readme) | 7.2.0, 8.3.0, 15.0.0 | `MIT` |
+| [cose-base](https://github.com/iVis-at-Bilkent/cose-base#readme) | 1.0.3, 2.2.0 | `MIT` |
+| [crelt](https://code.haverbeke.berlin/marijn/crelt) | 1.0.7 | `MIT` |
+| [csstype](https://github.com/frenic/csstype#readme) | 3.2.3 | `MIT` |
+| [cytoscape](http://js.cytoscape.org) | 3.34.3 | `MIT` |
+| [cytoscape-cose-bilkent](https://github.com/cytoscape/cytoscape.js-cose-bilkent) | 4.1.0 | `MIT` |
+| [cytoscape-fcose](https://github.com/iVis-at-Bilkent/cytoscape.js-fcose) | 2.2.0 | `MIT` |
+| [dagre-d3-es](https://github.com/tbo47/dagre-es#readme) | 7.0.14 | `MIT` |
+| [dayjs](https://day.js.org) | 1.11.23 | `MIT` |
+| [es-toolkit](https://es-toolkit.dev) | 1.52.0 | `MIT` |
+| [hachure-fill](https://github.com/pshihn/hachure-fill#readme) | 0.5.2 | `MIT` |
+| [iconv-lite](https://github.com/ashtuchkin/iconv-lite) | 0.6.3 | `MIT` |
+| [import-meta-resolve](https://github.com/wooorm/import-meta-resolve#readme) | 4.2.0 | `MIT` |
+| [katex](https://katex.org) | 0.16.47, 0.18.9 | `MIT` |
+| [layout-base](https://github.com/iVis-at-Bilkent/layout-base#readme) | 1.0.2, 2.0.1 | `MIT` |
+| [lodash-es](https://lodash.com/custom-builds) | 4.17.23, 4.18.1 | `MIT` |
+| [marked](https://marked.js.org) | 16.4.2 | `MIT` |
+| [mermaid](https://github.com/mermaid-js/mermaid#readme) | 12.0.0 | `MIT` |
+| [package-manager-detector](https://github.com/antfu-collective/package-manager-detector#readme) | 1.8.0 | `MIT` |
+| [path-data-parser](https://github.com/pshihn/path-data-parser#readme) | 0.1.0 | `MIT` |
+| [points-on-curve](https://github.com/pshihn/bezier-points#readme) | 0.2.0 | `MIT` |
+| [points-on-path](https://github.com/pshihn/points-on-path#readme) | 0.2.1 | `MIT` |
 | [prism-react-renderer](https://github.com/FormidableLabs/prism-react-renderer#readme) | 2.4.1 | `MIT` |
 | [prismjs](https://github.com/PrismJS/prism#readme) | 1.30.0 | `MIT` |
-| [react](https://react.dev/) | 19.2.7 | `MIT` |
-| [react-dom](https://react.dev/) | 19.2.7 | `MIT` |
-| [scheduler](https://react.dev/) | 0.27.0 | `MIT` |
+| [react](https://react.dev/) | 19.3.0 | `MIT` |
+| [react-dom](https://react.dev/) | 19.3.0 | `MIT` |
+| [roughjs](https://roughjs.com) | 4.6.6 | `MIT` |
+| [safer-buffer](https://github.com/ChALkeR/safer-buffer#readme) | 2.1.2 | `MIT` |
+| [scheduler](https://react.dev/) | 0.28.0 | `MIT` |
+| [style-mod](https://code.haverbeke.berlin/marijn/style-mod) | 4.1.4 | `MIT` |
+| [stylis](https://github.com/thysultan/stylis.js) | 4.4.0 | `MIT` |
+| [tinyexec](https://github.com/tinylibs/tinyexec#readme) | 1.3.1 | `MIT` |
+| [ts-dedent](https://github.com/tamino-martinius/node-ts-dedent#readme) | 2.3.0 | `MIT` |
+| [uuid](https://github.com/uuidjs/uuid#readme) | 14.0.2 | `MIT` |
+| [w3c-keyname](https://github.com/marijnh/w3c-keyname#readme) | 2.2.8 | `MIT` |
+| [khroma](https://github.com/fabiospampinato/khroma#readme) | 2.1.0 | `Unknown` |
+| [robust-predicates](https://github.com/mourner/robust-predicates#readme) | 3.0.3 | `Unlicense` |
 
-Total: **8 packages**.
+Total: **150 packages**.
 

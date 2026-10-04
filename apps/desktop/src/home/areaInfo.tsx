@@ -13,11 +13,12 @@ import {
   SkillIcon,
   SlidesIcon,
   WorkflowIcon,
+  WritingIcon,
 } from '../icons';
 import type { Destination } from '../shell/Rail';
 
-/// The eight areas Home counts and explains, in the order Home lists them.
-export const AREAS = ['chats', 'slides', 'apps', 'documents', 'workflows', 'library', 'connectors', 'memory'] as const;
+/// The nine areas Home counts and explains, in the order Home lists them.
+export const AREAS = ['chats', 'slides', 'writing', 'apps', 'documents', 'workflows', 'library', 'connectors', 'memory'] as const;
 export type Area = (typeof AREAS)[number];
 
 /// The things Home can ask the shell to do. The shell maps each to an
@@ -25,6 +26,7 @@ export type Area = (typeof AREAS)[number];
 export type HomeAction =
   | 'new-chat'
   | 'start-deck'
+  | 'start-draft'
   | 'add-documents'
   | 'new-workflow'
   | 'add-connector'
@@ -38,6 +40,7 @@ export type HomeTarget = { navigate: Destination } | { action: HomeAction };
 export const AREA_ICONS: Record<Area, ReactNode> = {
   chats: <ChatIcon />,
   slides: <SlidesIcon />,
+  writing: <WritingIcon />,
   apps: <AppsIcon />,
   documents: <KnowledgeIcon />,
   workflows: <WorkflowIcon />,
@@ -48,7 +51,7 @@ export const AREA_ICONS: Record<Area, ReactNode> = {
 
 /// The count a tile shows: a catalog key (plural over `{count}`) and where the
 /// number comes from.
-export type CountKey = 'chats' | 'decks' | 'apps' | 'collections' | 'workflows' | 'prompts' | 'connectors' | 'memories';
+export type CountKey = 'chats' | 'decks' | 'drafts' | 'apps' | 'collections' | 'workflows' | 'prompts' | 'connectors' | 'memories';
 
 export interface AreaInfo {
   area: Area;
@@ -65,6 +68,7 @@ export interface AreaInfo {
 export const AREA_INFO: readonly AreaInfo[] = [
   { area: 'chats', count: 'chats', tileAction: { action: 'new-chat' }, tileActionLabelId: 'home.area.chats.action', askable: true },
   { area: 'slides', count: 'decks', tileAction: { action: 'start-deck' }, tileActionLabelId: 'home.area.slides.action', askable: true },
+  { area: 'writing', count: 'drafts', tileAction: { action: 'start-draft' }, tileActionLabelId: 'home.area.writing.action', askable: false },
   { area: 'apps', count: 'apps', tileAction: { action: 'browse-apps' }, tileActionLabelId: 'home.area.apps.action', askable: true },
   { area: 'documents', count: 'collections', tileAction: { action: 'add-documents' }, tileActionLabelId: 'home.area.documents.action', askable: false },
   { area: 'workflows', count: 'workflows', tileAction: { action: 'new-workflow' }, tileActionLabelId: 'home.area.workflows.action', askable: false },
@@ -78,6 +82,7 @@ export type AreaCounts = Record<CountKey, number | null>;
 export const EMPTY_COUNTS: AreaCounts = {
   chats: null,
   decks: null,
+  drafts: null,
   apps: null,
   collections: null,
   workflows: null,

@@ -154,9 +154,11 @@ import {
   selectBuiltinWebTools,
   type DocumentToolActivity,
 } from './agentTools';
-import type { DeckDetail } from '../ipc/contracts';
+import type { DeckDetail, DraftDetail } from '../ipc/contracts';
 import { appPromptLabel } from './appPrompt';
 import { deckDeveloperPrompt, deckSystemAppendix } from '../slides/deckPrompt';
+import { draftDeveloperPrompt, draftSystemAppendix } from './draftPrompt';
+import { isDraftTool, isDraftWriteTool, selectDraftTurnTools } from './draftTools';
 import {
   activeDocumentWrite,
   documentWriteDetail,
@@ -276,6 +278,13 @@ interface ChatViewProps {
   deckOverflow?: Record<string, number>;
   /// The model turned this ordinary chat into a deck (start_deck succeeded).
   onDeckStarted?: () => void;
+  /// The Writing draft this chat is bound to. Its turns get the draft tools
+  /// and prompt instead of the document ones.
+  draft?: DraftDetail | null;
+  /// A draft tool saved a change: the studio re-reads the draft.
+  onDraftChanged?: () => void;
+  /// The draft tool the model is calling now, or null when it has finished.
+  onDraftToolActivity?: (toolName: string | null) => void;
   /// Fired when the user requests to fork the conversation at a message.
   onForkConversation?: (conversationId: string, forkMessageId: string) => void;
   /// t0-3 — mid-thread edit forked a new conversation; switch + pending send.
@@ -366,6 +375,8 @@ export interface ChatRequestOverrides {
   deck?: DeckDetail | null;
   /** Per slide id, how far its text runs off the slide (px); 0 or absent fits. */
   deckOverflow?: Record<string, number>;
+  /** The chat's Writing draft: draft prompts replace the document ones. */
+  draft?: DraftDetail | null;
 }
 
 /**
@@ -476,7 +487,11 @@ export function buildProviderRequest(
   // question turn (the original cause of the spurious "no artifact content"
   // warning).
   const deck = chatOverrides?.deck ?? null;
-  const isCreationIntent = !deck && looksLikeArtifactCreationRequest(prompt);
+  const draft = deck ? null : (chatOverrides?.draft ?? null);
+  // A chat bound to a deck or a draft: its own tools and prompts replace the
+  // document ones, and no intent regex picks anything else.
+  const bound = deck != null || draft != null;
+  const isCreationIntent = !bound && looksLikeArtifactCreationRequest(prompt);
   // Gated separately from the artifact appendix (see brandPrompt.ts's module
   // comment for why): this appendix is only worth its tokens on a turn that
   // plausibly wants `write_brand_theme`, not on every turn. Also gated on
@@ -485,7 +500,7 @@ export function buildProviderRequest(
   // apply a `write_brand_theme` result, so this appendix's tokens (and the
   // tool itself, selected below from this same flag) would be spent
   // teaching the model about a capability the app cannot let the user use.
-  const isBrandIntent = !deck && looksLikeBrandThemeRequest(prompt) && allowUserBranding;
+  const isBrandIntent = !bound && looksLikeBrandThemeRequest(prompt) && allowUserBranding;
   const searchActive = searchBackend === 'hosted' || searchBackend === 'local';
   // Hosted only: inject ProviderRequest.web_search. Local turns declare
   // web_search/web_fetch as function tools instead — never both.
@@ -514,9 +529,9 @@ export function buildProviderRequest(
         }
       : undefined;
   const infoDevPrompt =
-    !deck && !isCreationIntent && !searchActive ? informationalDeveloperPromptFor(prompt) : undefined;
+    !bound && !isCreationIntent && !searchActive ? informationalDeveloperPromptFor(prompt) : undefined;
   const editDevPrompt =
-    !deck && !isCreationIntent && !infoDevPrompt && followUpArtifact
+    !bound && !isCreationIntent && !infoDevPrompt && followUpArtifact
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
   const webSearchDevPrompt = !searchActive
@@ -537,13 +552,15 @@ export function buildProviderRequest(
     },
   );
   const deckDevPrompt = deck ? deckDeveloperPrompt(deck, chatOverrides?.deckOverflow) : undefined;
+  const draftDevPrompt = draft ? draftDeveloperPrompt(draft) : undefined;
   const developerPrompt =
     [
       compactionDevPrompt,
       infoDevPrompt,
       editDevPrompt,
-      deck ? undefined : documentWriteDevPrompt,
+      bound ? undefined : documentWriteDevPrompt,
       deckDevPrompt,
+      draftDevPrompt,
       webSearchDevPrompt,
     ]
       .filter(Boolean)
@@ -553,6 +570,8 @@ export function buildProviderRequest(
       baseSystemPrompt(),
       ...(deck
         ? [deckSystemAppendix()]
+        : draft
+        ? [draftSystemAppendix()]
         : searchActive && !isCreationIntent
         ? []
         : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })]),
@@ -796,6 +815,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onDeckToolActivity,
     deckOverflow,
     onDeckStarted,
+    draft = null,
+    onDraftChanged,
+    onDraftToolActivity,
     onForkConversation,
     onEditForked,
     pendingSendText = null,
@@ -830,7 +852,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const turnSystemAppendix = (tools: ToolDefinition[]) =>
     deck
       ? deckSystemAppendix()
+      : draft
+      ? draftSystemAppendix()
       : CONDUIT_ARTIFACT_SYSTEM_APPENDIX(tools.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) });
+  /** The built-in tools for a turn. A deck or draft chat gets its own set;
+   *  every other chat goes through the intent-based selection. */
+  const selectTurnTools = (
+    text: string,
+    toolSettings: Parameters<typeof selectBuiltinTurnTools>[1],
+    intent?: DocumentTurnIntent,
+    imageOverride?: boolean,
+  ): ToolDefinition[] =>
+    draft && !deck
+      ? selectDraftTurnTools(toolSettings, conversationWorkspaceRoot, draft.stage)
+      : selectBuiltinTurnTools(text, toolSettings, conversationWorkspaceRoot, intent, imageOverride, deck?.stage).tools;
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -1400,16 +1435,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     imageOverride?: boolean,
   ): Promise<ToolDefinition[]> {
     const connectorTools = await loadConnectorToolDefinitions();
-    const { tools: builtinTools } = selectBuiltinTurnTools(
+    const builtinTools = selectTurnTools(
       prompt,
       // t0-8 M4: override the raw persisted flag with the effective (session
       // OR persisted) consent -- `activeProvider` already comes through from
       // `settings` unchanged.
       { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
-      conversationWorkspaceRoot,
       intent,
       imageOverride,
-      deck?.stage,
     );
     // Local builtin only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name collision with hosted web_search).
@@ -1627,14 +1660,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       if (windowTokens != null && windowTokens > 0) {
         const priorForEstimate = override?.history ?? turns;
         const keptForEstimate = historyForProviderRequest(priorForEstimate, activeCompaction);
-        const { tools: estimateTools } = selectBuiltinTurnTools(
-          trimmed,
-          { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
-          conversationWorkspaceRoot,
-          undefined,
-          undefined,
-          deck?.stage,
-        );
+        const estimateTools = selectTurnTools(trimmed, {
+          ...settings,
+          imageGenerationConsentAcknowledged: imageGenerationConsented(),
+        });
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), turnSystemAppendix(estimateTools)],
           resolveUserInstructions(settings, conversationUserInstructions),
@@ -1783,6 +1812,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         extraSystemSections,
         deck,
         deckOverflow,
+        draft,
       },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
@@ -1881,6 +1911,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             onDocumentToolActivity?.({ phase: 'start', toolName: event.name });
           }
           if (isDeckTool(event.name)) onDeckToolActivity?.(event.name);
+          if (isDraftTool(event.name)) onDraftToolActivity?.(event.name);
         } else if (event.kind === 'toolCallDelta') {
           // Every fragment re-renders the chat already; the panel lives in App
           // and does not need to. Forward a new title at once, counts at most
@@ -1915,6 +1946,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             else onDeckChanged?.();
           }
           if (event.toolName === START_DECK_TOOL_NAME && !event.isError) onDeckStarted?.();
+          // A draft tool finished: the editor fills in live, section by section.
+          if (isDraftTool(event.toolName)) {
+            if (!event.isError && isDraftWriteTool(event.toolName)) onDraftChanged?.();
+            else onDraftToolActivity?.(null);
+          }
           // The document exists now. The model may keep talking for a while
           // before the turn ends; the panel should not keep a skeleton up over
           // a document that is already saved.
@@ -2059,7 +2095,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           const docToolsSucceeded = hadSuccessfulDocumentToolCalls(finalState);
           // Skip when the turn ended with an error: the turn already says why,
           // and a guess here ("No artifact content detected") contradicts it.
-          if (looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
+          // Not in a deck or draft chat: there the turn writes the deck or draft, not a document.
+          if (!deck && !draft && looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
             const failedDocTools = failedDocumentToolCalls(finalState);
             const hasFences = detectArtifactCandidates(content).length > 0;
             if (failedDocTools.length > 0) {
@@ -2613,14 +2650,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       const live = activeStream.blocks.map((b) => b.content).join('');
       if (live) historyTexts.push(live);
     }
-    const { tools: toolDefinitions } = selectBuiltinTurnTools(
-      prompt,
-      { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
-      conversationWorkspaceRoot,
-      undefined,
-      undefined,
-      deck?.stage,
-    );
+    const toolDefinitions = selectTurnTools(prompt, {
+      ...settings,
+      imageGenerationConsentAcknowledged: imageGenerationConsented(),
+    });
     const systemPrompt = composeSystemPrompt(
       [baseSystemPrompt(), turnSystemAppendix(toolDefinitions)],
       resolveUserInstructions(settings, conversationUserInstructions),
@@ -2648,6 +2681,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     skillPromptBlock,
     memoryPromptBlock,
     deck,
+    draft,
   ]);
 
   const compactThresholdPercent =
@@ -2656,6 +2690,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   // Not in a deck chat: the suggestions are about documents and artifacts.
   const showInlineSuggestions =
     !deck &&
+    !draft &&
     !compact &&
     turns.length > 0 &&
     !activeStream &&

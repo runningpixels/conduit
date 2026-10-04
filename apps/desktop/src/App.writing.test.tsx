@@ -1,23 +1,14 @@
 /**
- * App-level smoke test — does the shell actually render?
- *
- * The suite had no test that mounted `App`. Every component below it was
- * covered, so a fault *in the shell itself* — a bad import, a throw during
- * render, a hook used above every error boundary — produced a blank window with
- * 595 green tests and a clean `tsc -b`. That is precisely the failure this
- * repo already builds mockups to catch, except a blank page has no visual
- * difference to diff: there is nothing on it.
- *
- * So this asserts the least interesting thing possible, which is the point: the
- * three columns mount and the composer exists. It is a canary, not a feature
- * test — if it fails, nothing else in the suite is worth reading yet.
+ * Writing in the shell: the rail and Ctrl+5 reach the Writing page, a draft
+ * opens in its studio with the one chat as the dock, and approving the
+ * outline asks the assistant to write the draft, whose tool calls fill the
+ * editor live and leave a version in History. Every IPC call is a stub.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import type { AppSettings } from '@conduit/config-schema';
-import { I18nProvider } from './i18n';
-import deMessages from './i18n/messages/de.json';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { AppSettings, ProviderEvent, ProviderRequest } from '@conduit/config-schema';
+import type { DraftDetail, DraftSummary } from './ipc/contracts';
 
 const settings: AppSettings = {
   activeProvider: 'anthropic',
@@ -111,11 +102,36 @@ const SHAPES: Record<string, unknown> = {
   listStarterApps: [],
 };
 
-/**
- * Every export of the IPC client, stubbed. Enumerated rather than proxied
- * because vitest needs a real module object to wrap — a Proxy target fails with
- * "Cannot create proxy with a non-object as target or handler".
- */
+const markdown = '## Why\n\nForty repositories.';
+
+const outlineDraft: DraftDetail = {
+  id: 'd1',
+  title: 'One repo',
+  conversationId: 'c-draft',
+  stage: 'outline',
+  brief: 'A post for backend developers.',
+  outline: [{ heading: 'Why', intent: 'The pain', targetWords: 300 }],
+  markdown: '',
+  blocks: [],
+  words: 0,
+  createdAt: '2026-10-01T00:00:00Z',
+  updatedAt: '2026-10-01T00:00:00Z',
+};
+
+const writtenDraft: DraftDetail = {
+  ...outlineDraft,
+  stage: 'draft',
+  markdown,
+  blocks: [
+    { id: 'b1', kind: 'heading', owner: 'ai', pinned: false, start: 0, end: 6 },
+    { id: 'b2', kind: 'paragraph', owner: 'ai', pinned: false, start: 8, end: markdown.length },
+  ],
+  words: 3,
+};
+
+const summary: DraftSummary = { id: 'd1', title: 'One repo', stage: 'outline', words: 0, updatedAt: '2026-10-01T00:00:00Z' };
+
+/** The smoke test's list of stubbed IPC exports (App.smoke.test.tsx). */
 const IPC_EXPORTS = [
   'getAppPaths', 'getSettings', 'updateSettings', 'saveProviderCredential',
   'setTrayLabels', 'getStartAtLogin', 'setStartAtLogin', 'getRunningWorkflowCount', 'stopWorkflowRun',
@@ -174,11 +190,6 @@ const IPC_EXPORTS = [
   'restoreDraftSnapshot', 'exportDraft', 'draftForConversation',
 ] as const;
 
-afterEach(() => {
-  // Shared across tests by reference: the IPC mock reads it at call time.
-  settings.language = 'system';
-});
-
 vi.mock('./ipc/client', () => {
   const mod: Record<string, unknown> = {};
   for (const name of IPC_EXPORTS) {
@@ -187,94 +198,87 @@ vi.mock('./ipc/client', () => {
   return mod;
 });
 
-// Each test boots the whole app; under a loaded full-suite run that can take
-// longer than the 5s default, which failed these as timeouts, not as bugs.
-describe('App shell', { timeout: 20_000 }, () => {
-  it('mounts the three columns and the composer', async () => {
-    const { default: App } = await import('./App');
-    render(<App />);
+beforeAll(() => {
+  const proto = Range.prototype as unknown as Record<string, unknown>;
+  proto.getClientRects ??= () => [] as unknown as DOMRectList;
+  proto.getBoundingClientRect ??= () => ({ top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0 }) as DOMRect;
+});
 
-    // The composer is the deepest thing on the boot path, so its presence means
-    // the whole chain — App → body → center → ChatView → Composer — survived.
-    await waitFor(() =>
-      expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument(),
-    );
+async function boot() {
+  const { default: App } = await import('./App');
+  render(<App />);
+  await waitFor(() => expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument());
+}
 
-    expect(document.querySelector('.app'), 'the app frame').not.toBeNull();
-    expect(document.querySelector('.titlebar'), 'the caption row').not.toBeNull();
-    expect(document.querySelector('.sidebar'), 'the sidebar column').not.toBeNull();
-    expect(document.querySelector('.main-head'), 'the title strip').not.toBeNull();
+describe('Writing in the shell', { timeout: 30_000 }, () => {
+  beforeEach(async () => {
+    const ipc = await import('./ipc/client');
+    vi.mocked(ipc.listDrafts).mockResolvedValue([summary]);
+    vi.mocked(ipc.getDraft).mockResolvedValue(outlineDraft);
+    vi.mocked(ipc.draftForConversation).mockImplementation(async (id: string) => (id === 'c-draft' ? outlineDraft : null));
+    vi.mocked(ipc.setDraftStage).mockResolvedValue({ ...outlineDraft, stage: 'draft' });
+    vi.mocked(ipc.snapshotDraft).mockResolvedValue(null);
+    vi.mocked(ipc.listDraftSnapshots).mockResolvedValue([]);
   });
 
-  it('opens on Home, with the chat kept mounted underneath', async () => {
-    const { default: App } = await import('./App');
-    render(<App />);
-    await waitFor(() =>
-      expect(document.querySelector('.dest-page[data-destination="home"] .home-title')).not.toBeNull(),
-    );
-    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByLabelText('Describe what you want to do')).toBeInTheDocument();
-    // "Continue" is instant because boot still selected a conversation.
-    expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument();
-    expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('renders no React error boundary fallback on a clean boot', async () => {
-    const { default: App } = await import('./App');
-    render(<App />);
-    await waitFor(() =>
-      expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument(),
-    );
-    expect(screen.queryByText(/something went wrong/i)).toBeNull();
+  it('Ctrl+5 opens Writing; opening a draft shows its studio with the chat as the dock', async () => {
+    await boot();
+    fireEvent.keyDown(window, { key: '5', ctrlKey: true });
+    expect(await screen.findByRole('heading', { name: 'Writing' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Writing' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }));
+    // The studio: outline stage in the main view, the chat as the dock's Ask tab.
+    expect(await screen.findByRole('button', { name: 'Approve outline' })).toBeInTheDocument();
+    expect(document.querySelector('.body[data-studio]')).not.toBeNull();
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Ask', 'History']);
+    expect(document.querySelector('.center[data-dock-tab="ask"]')).not.toBeNull();
+    // Back goes to the list, the chat stays the draft's.
+    fireEvent.click(screen.getByRole('button', { name: /All drafts/ }));
+    expect(await screen.findByRole('button', { name: 'Open One repo' })).toBeInTheDocument();
   });
 
-  /* The boot loop, which shipped as a blank-looking bug: every piece of content
-   * in the window re-mounting several times a second, for as long as the app
-   * was open.
-   *
-   * App lives inside `I18nProvider`, which carries `key={locale}` so that a
-   * language change re-mounts the subtree rather than leaving formatted text
-   * frozen in somebody's `useState`. App also mirrors `AppSettings.language`
-   * back into the provider. Both are correct; together they were not, because
-   * App's `settings` starts as `defaultSettings`, whose language is `'system'`
-   * — a placeholder, not a value the user chose. So every mount announced
-   * `'system'`, which resolves somewhere other than an explicit choice, which
-   * changed the key, which re-mounted App, which reset `settings` to the
-   * placeholder and announced `'system'` again. Round and round at the speed of
-   * the boot IPC.
-   *
-   * It needed a stored language that is not `'system'`, so it stayed invisible
-   * for as long as the picker had nothing worth choosing, and appeared the day
-   * the catalogs landed.
-   *
-   * Counted through `getSettings` rather than by watching the DOM: the boot
-   * effect calls it exactly once per mount, so the call count *is* the mount
-   * count, and it cannot be satisfied by a test that merely restates the fix.
-   */
-  it('boots once when a language is stored, instead of re-mounting forever', async () => {
-    settings.language = 'de';
-    const { getSettings } = await import('./ipc/client');
-    vi.mocked(getSettings).mockClear();
+  it('Approve outline moves to the draft stage and asks the assistant to write it; the editor fills in and a version is saved', async () => {
+    const ipc = await import('./ipc/client');
+    let request: ProviderRequest | undefined;
+    let emit: ((event: ProviderEvent) => void) | undefined;
+    vi.mocked(ipc.startChatStream).mockImplementation(async (req, onEvent) => {
+      request = req;
+      emit = onEvent;
+      return { requestId: req.requestId };
+    });
+    await boot();
+    fireEvent.click(screen.getByRole('button', { name: 'Writing' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve outline' }));
 
-    const { default: App } = await import('./App');
-    render(
-      <I18nProvider initialPreference="de" initialMessages={deMessages as Record<string, string>}>
-        <App />
-      </I18nProvider>,
-    );
+    await waitFor(() => expect(ipc.setDraftStage).toHaveBeenCalledWith('d1', 'draft'));
+    await waitFor(() => expect(request).toBeDefined());
+    const sent = request!;
+    expect(sent.conversationId).toBe('c-draft');
+    const text = sent.messages.at(-1)?.parts.map((part) => part.content ?? '').join('') ?? '';
+    expect(text).toContain('Write the draft from the approved outline.');
+    expect(sent.systemPrompt).toContain('long-form piece of non-fiction');
+    expect(sent.developerPrompt).toContain('stage: draft');
 
+    // The assistant writes a section: the studio re-reads the draft at once.
+    vi.mocked(ipc.getDraft).mockResolvedValue(writtenDraft);
+    const requestId = sent.requestId;
+    const send = (event: object) => act(() => emit!({ requestId, ...event } as ProviderEvent));
+    send({ kind: 'messageStart', index: 0 });
+    send({ kind: 'toolCallStart', toolCallId: 't1', index: 1, toolId: 'write_section', name: 'write_section' });
+    send({ kind: 'toolExecutionFinished', toolCallId: 't1', toolName: 'write_section', isError: false });
+    await waitFor(() => expect(document.querySelector('.cm-content')?.textContent).toContain('Forty repositories.'));
+    // Read-only while the turn runs.
+    expect(screen.getByText('The assistant is editing…')).toBeInTheDocument();
+
+    send({ kind: 'messageComplete', index: 2, finishReason: 'stop' });
     await waitFor(() =>
-      expect(screen.getByPlaceholderText('Nachricht an Conduit…')).toBeInTheDocument(),
+      expect(ipc.snapshotDraft).toHaveBeenCalledWith('d1', 'ai-turn', 'Wrote the draft from the outline'),
     );
-    // Long enough for many round trips if the key were flapping.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    /* One boot is the settled case. Two is the legitimate ceiling: a stale
-     * localStorage mirror resolves to a different locale than Rust reports,
-     * which re-mounts once, on purpose, and then agrees with itself. */
-    expect(
-      vi.mocked(getSettings).mock.calls.length,
-      'App re-mounted — the locale key is flapping',
-    ).toBeLessThanOrEqual(2);
+    await waitFor(() => expect(screen.queryByText('The assistant is editing…')).toBeNull());
   });
 });

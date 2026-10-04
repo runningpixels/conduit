@@ -10,13 +10,14 @@ import { useT } from '../i18n';
 import {
   getConnectorRuntimeStates,
   listDecks,
+  listDrafts,
   listMemoryItems,
   listPrompts,
   listWorkflowQuestions,
   listWorkflowReviews,
   listWorkflows,
 } from '../ipc/client';
-import type { AppSummary, ConversationSummary, DeckSummary } from '../ipc/contracts';
+import type { AppSummary, ConversationSummary, DeckSummary, DraftSummary } from '../ipc/contracts';
 import type { Capabilities } from '../ideas/capabilities';
 import type { Idea } from '../ideas/catalog';
 import type { IdeaState } from '../ideas/ideaState';
@@ -42,8 +43,11 @@ export interface HomePageProps {
   onAsk: (text: string) => void;
   /** The ask box's Research chip, with the box's text. */
   onResearch: (text: string) => void;
+  /** The ask box's Write chip, with the box's text: a new draft from that brief. */
+  onWrite?: (brief: string) => void;
   onOpenChat: (conversationId: string) => void;
   onOpenDeck: (deckId: string) => void;
+  onOpenDraft?: (draftId: string) => void;
   onOpenApp: (appId: string) => void;
   onNavigate: (area: Destination) => void;
   onAction: (action: HomeAction) => void;
@@ -91,8 +95,10 @@ export function HomePage({
   collectionCount,
   onAsk,
   onResearch,
+  onWrite,
   onOpenChat,
   onOpenDeck,
+  onOpenDraft,
   onOpenApp,
   onNavigate,
   onAction,
@@ -120,6 +126,7 @@ export function HomePage({
   );
   const [placeholderId] = useState(() => PLACEHOLDERS[opens++ % PLACEHOLDERS.length]);
   const [decks, setDecks] = useState<DeckSummary[]>([]);
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [needs, setNeeds] = useState<NeedsYouState>(NO_NEEDS);
   const [lists, setLists] = useState<{ workflows: number | null; prompts: number | null; connectors: number | null; memories: number | null }>({
     workflows: null,
@@ -142,8 +149,9 @@ export function HomePage({
   }, []);
 
   const loadLists = useCallback(async () => {
-    const [d, workflows, prompts, connectors, memories] = await Promise.all([
+    const [d, dr, workflows, prompts, connectors, memories] = await Promise.all([
       listOr(listDecks),
+      listOr(listDrafts),
       listOr(listWorkflows),
       listOr(() => listPrompts()),
       listOr(getConnectorRuntimeStates),
@@ -151,6 +159,7 @@ export function HomePage({
     ]);
     return {
       decks: d ?? [],
+      drafts: dr ?? [],
       counts: {
         workflows: workflows?.length ?? null,
         prompts: prompts?.length ?? null,
@@ -173,6 +182,7 @@ export function HomePage({
       void loadLists().then((next) => {
         if (cancelled) return;
         setDecks(next.decks);
+        setDrafts(next.drafts);
         setLists(next.counts);
       });
     };
@@ -186,18 +196,22 @@ export function HomePage({
     };
   }, [loadNeeds, loadLists]);
 
-  const pickUp = useMemo(() => buildPickUp(conversations, decks, savedApps), [conversations, decks, savedApps]);
+  const pickUp = useMemo(
+    () => buildPickUp(conversations, decks, savedApps, undefined, drafts),
+    [conversations, decks, savedApps, drafts],
+  );
   const counts: AreaCounts = useMemo(
     () => ({
       ...EMPTY_COUNTS,
       // A fresh install opens on an empty chat; it is not one of yours yet.
       chats: conversations.filter(isStartedChat).length,
       decks: decks.length,
+      drafts: drafts.length,
       apps: savedApps.length,
       collections: collectionCount,
       ...lists,
     }),
-    [conversations, decks.length, savedApps.length, collectionCount, lists],
+    [conversations, decks.length, drafts.length, savedApps.length, collectionCount, lists],
   );
 
   const greeting = t(greetingId(hour ?? new Date().getHours()));
@@ -218,11 +232,18 @@ export function HomePage({
               inputRef={askRef}
               onAsk={onAsk}
               onResearch={onResearch}
+              onWrite={onWrite}
               onAction={onAction}
             />
           </header>
           {hasNeeds(needs) && <NeedsYou needs={needs} onAction={onAction} />}
-          <PickUp items={pickUp} onOpenChat={onOpenChat} onOpenDeck={onOpenDeck} onOpenApp={onOpenApp} />
+          <PickUp
+            items={pickUp}
+            onOpenChat={onOpenChat}
+            onOpenDeck={onOpenDeck}
+            onOpenDraft={onOpenDraft}
+            onOpenApp={onOpenApp}
+          />
           <Areas counts={counts} onNavigate={onNavigate} onAction={onAction} onTryExample={tryExample} />
           <TryIdeas caps={ideaCaps} state={ideaState} onTryIdea={onTryIdea} onMoreIdeas={onMoreIdeas} />
         </div>

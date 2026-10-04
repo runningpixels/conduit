@@ -30,6 +30,8 @@ interface ResearchRunCardProps {
   /** Open the report in the document panel (the same path an artifact chip uses). */
   onOpenArtifact: (artifactId: string) => void;
   onStatus?: (message: string) => void;
+  /** "Write from this report": start a Writing draft that uses this run. */
+  onWriteFromReport?: (runId: string, question: string) => void;
 }
 
 /**
@@ -38,7 +40,7 @@ interface ResearchRunCardProps {
  * or a failure. State lives in Rust; the card reads it with `useResearchRun`
  * and sends the user's decisions back as commands.
  */
-export function ResearchRunCard({ runId, onOpenArtifact, onStatus }: ResearchRunCardProps) {
+export function ResearchRunCard({ runId, onOpenArtifact, onStatus, onWriteFromReport }: ResearchRunCardProps) {
   const t = useT();
   const { run, loadError, accept, refresh } = useResearchRun(runId);
   const [busy, setBusy] = useState(false);
@@ -157,15 +159,27 @@ export function ResearchRunCard({ runId, onOpenArtifact, onStatus }: ResearchRun
             <ChatProse content={current.summary} />
           </div>
         )}
-        {current.artifactId && (
+        {(current.artifactId || (done && onWriteFromReport)) && (
           <div className="row">
-            <button
-              type="button"
-              className={done ? 'btn primary' : 'btn'}
-              onClick={() => onOpenArtifact(current.artifactId!)}
-            >
-              {t('chat.research.openReport')}
-            </button>
+            {current.artifactId && (
+              <button
+                type="button"
+                className={done ? 'btn primary' : 'btn'}
+                onClick={() => onOpenArtifact(current.artifactId!)}
+              >
+                {t('chat.research.openReport')}
+              </button>
+            )}
+            {done && onWriteFromReport && (
+              <button
+                type="button"
+                className="btn"
+                title={t('chat.research.writeFromReportHint')}
+                onClick={() => onWriteFromReport(current.id, current.brief?.question ?? '')}
+              >
+                {t('chat.research.writeFromReport')}
+              </button>
+            )}
           </div>
         )}
         {current.unverifiedDropped > 0 && (

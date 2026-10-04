@@ -25,6 +25,7 @@ import type {
   DraftSnapshotSummary,
   DraftStage,
   DraftSummary,
+  DraftSources,
   OutlineSection,
   StarterAppInfo,
   PageLlmReply,
@@ -110,6 +111,8 @@ import type {
   UsageSummaryResponse,
   ResearchBrief,
   ResearchRun,
+  ResearchMaterial,
+  ResearchReportSummary,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -1784,6 +1787,21 @@ export async function exportDraft(draftId: string, format: DraftExportFormat): P
 /** The draft a chat writes, or null for any other chat. */
 export async function draftForConversation(conversationId: string): Promise<DraftDetail | null> {
   return invokeCommand<DraftDetail | null>('draft_for_conversation', { conversationId });
+}
+
+/** Turn web search on or off for a draft and attach Research reports to it. */
+export async function setDraftSources(draftId: string, sources: DraftSources): Promise<DraftDetail> {
+  return invokeCommand<DraftDetail>('set_draft_sources', { draftId, sources });
+}
+
+/** Finished Research runs a draft can use, newest first. */
+export async function listResearchReports(): Promise<ResearchReportSummary[]> {
+  return invokeCommand<ResearchReportSummary[]>('list_research_reports');
+}
+
+/** The verified claims of the Research reports attached to a draft, numbered R<n>.<m>. */
+export async function getDraftResearchMaterial(draftId: string): Promise<ResearchMaterial[]> {
+  return invokeCommand<ResearchMaterial[]>('get_draft_research_material', { draftId });
 }
 
 /** Saved custom Slides themes, most recently used first (built-ins excluded). */

@@ -297,6 +297,29 @@ describe('ResearchRunCard', () => {
     expect(onOpenArtifact).toHaveBeenCalledWith('art-9');
   });
 
+  it('offers "Write from this report" on a finished run only', async () => {
+    vi.mocked(getResearchRun).mockResolvedValue(done);
+    const onWriteFromReport = vi.fn();
+    const { unmount } = render(
+      <ResearchRunCard runId="run-1" onOpenArtifact={vi.fn()} onWriteFromReport={onWriteFromReport} />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Write from this report' }));
+    expect(onWriteFromReport).toHaveBeenCalledWith('run-1', brief.question);
+    unmount();
+
+    vi.mocked(getResearchRun).mockResolvedValue({ ...done, status: 'stopped' });
+    render(<ResearchRunCard runId="run-1" onOpenArtifact={vi.fn()} onWriteFromReport={onWriteFromReport} />);
+    await screen.findByRole('button', { name: 'Open report' });
+    expect(screen.queryByRole('button', { name: 'Write from this report' })).toBeNull();
+  });
+
+  it('has no "Write from this report" where drafts cannot start', async () => {
+    vi.mocked(getResearchRun).mockResolvedValue(done);
+    renderCard();
+    await screen.findByRole('button', { name: 'Open report' });
+    expect(screen.queryByRole('button', { name: 'Write from this report' })).toBeNull();
+  });
+
   it('opens a source in the browser, not in the app', async () => {
     vi.mocked(getResearchRun).mockResolvedValue(done);
     vi.mocked(openExternalUrl).mockResolvedValue(undefined);

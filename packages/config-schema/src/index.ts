@@ -94,6 +94,7 @@ export type { DraftDetail } from './generated/draft_detail';
 export type { DraftSnapshotCause } from './generated/draft_snapshot_cause';
 export type { DraftSnapshotSummary } from './generated/draft_snapshot_summary';
 export type { DraftExportFormat } from './generated/draft_export_format';
+export type { DraftSources } from './generated/draft_sources';
 
 // Page model access (ADR-014)
 export type { PageLlmGrant } from './generated/page_llm_grant';
@@ -186,3 +187,6 @@ export type { ResearchSourceStatus } from './generated/research_source_status';
 export type { ResearchSource } from './generated/research_source';
 export type { ResearchRun } from './generated/research_run';
 export type { ResearchRunUpdated } from './generated/research_run_updated';
+export type { ResearchReportSummary } from './generated/research_report_summary';
+export type { ResearchMaterial } from './generated/research_material';
+export type { ResearchMaterialClaim } from './generated/research_material_claim';

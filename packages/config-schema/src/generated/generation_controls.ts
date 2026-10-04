@@ -8,4 +8,4 @@ export type GenerationControls = { temperature?: number, topP?: number, maxToken
  * it. Unset leaves the model its default. The agent loop sets `Low` to
  * retry a round whose reasoning used the whole output limit.
  */
-reasoningEffort?: ReasoningEffort, };
+reasoningEffort?: ReasoningEffort, parallelToolCalls?: boolean, };

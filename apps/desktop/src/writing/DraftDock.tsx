@@ -1,7 +1,7 @@
-/// The Writing studio's right column: tabs Ask, Outline and History. Ask
-/// holds the chat (App renders the one mounted ChatView beside it, as the
-/// Slides dock does); Outline and History are the draft's outline editor and
-/// version list. The tab is controlled. While the draft is in its outline
+/// The Writing studio's right column: tabs Ask, Outline, Sources and
+/// History. Ask holds the chat (App renders the one mounted ChatView beside
+/// it, as the Slides dock does); Outline, Sources and History are the draft's
+/// outline editor, what it may draw facts from, and its version list. The tab is controlled. While the draft is in its outline
 /// stage the outline is the studio's main view, so the dock leaves it out.
 ///
 /// Every panel stays mounted: the chat owns running streams, and an outline
@@ -10,7 +10,7 @@
 import type { KeyboardEvent, ReactNode } from 'react';
 import { useT } from '../i18n';
 
-export type DraftDockTab = 'ask' | 'outline' | 'history';
+export type DraftDockTab = 'ask' | 'outline' | 'sources' | 'history';
 
 export interface DraftDockProps {
   tab: DraftDockTab;
@@ -20,16 +20,18 @@ export interface DraftDockProps {
   /** The chat (null: App renders it as the column's next child). */
   children: ReactNode;
   outline: ReactNode;
+  sources: ReactNode;
   history: ReactNode;
 }
 
 const TABS: ReadonlyArray<{ tab: DraftDockTab; labelId: string }> = [
   { tab: 'ask', labelId: 'writing.dock.ask' },
   { tab: 'outline', labelId: 'writing.dock.outline' },
+  { tab: 'sources', labelId: 'writing.dock.sources' },
   { tab: 'history', labelId: 'writing.dock.history' },
 ];
 
-export function DraftDock({ tab, onTab, showOutline, children, outline, history }: DraftDockProps) {
+export function DraftDock({ tab, onTab, showOutline, children, outline, sources, history }: DraftDockProps) {
   const t = useT();
   const tabs = TABS.filter((x) => showOutline || x.tab !== 'outline');
 
@@ -44,6 +46,7 @@ export function DraftDock({ tab, onTab, showOutline, children, outline, history 
   const panels: ReadonlyArray<{ tab: DraftDockTab; node: ReactNode }> = [
     { tab: 'ask', node: children },
     ...(showOutline ? [{ tab: 'outline' as const, node: outline }] : []),
+    { tab: 'sources', node: sources },
     { tab: 'history', node: history },
   ];
 

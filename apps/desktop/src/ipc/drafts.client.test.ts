@@ -14,13 +14,16 @@ import {
   draftForConversation,
   exportDraft,
   getDraft,
+  getDraftResearchMaterial,
   listDrafts,
+  listResearchReports,
   listDraftSnapshots,
   renameDraft,
   restoreDraftSnapshot,
   saveDraftMarkdown,
   setBlockPinned,
   setDraftOutline,
+  setDraftSources,
   setDraftStage,
   snapshotDraft,
 } from './client';
@@ -61,5 +64,15 @@ describe('Writing IPC wrappers', () => {
     expect(invoke).toHaveBeenLastCalledWith('export_draft', { draftId: 'd1', format: 'html' });
     expect(await draftForConversation('c1')).toBeNull();
     expect(invoke).toHaveBeenLastCalledWith('draft_for_conversation', { conversationId: 'c1' });
+  });
+
+  it('send the sources commands with camelCase args', async () => {
+    const sources = { webSearch: true, researchRunIds: ['run-1'] };
+    await setDraftSources('d1', sources);
+    expect(invoke).toHaveBeenLastCalledWith('set_draft_sources', { draftId: 'd1', sources });
+    await listResearchReports();
+    expect(invoke).toHaveBeenLastCalledWith('list_research_reports');
+    await getDraftResearchMaterial('d1');
+    expect(invoke).toHaveBeenLastCalledWith('get_draft_research_material', { draftId: 'd1' });
   });
 });

@@ -164,12 +164,25 @@ import { DraftDock, type DraftDockTab } from './writing/DraftDock';
 import { DraftHistory } from './writing/DraftHistory';
 import { OutlineEditor } from './writing/OutlineEditor';
 import { selectionMessage, type SelectionRequest } from './writing/selectionMessage';
-import type { DraftDetail, DraftExportFormat, OutlineSection } from './ipc/contracts';
+import { DraftSourcesPanel } from './writing/DraftSourcesPanel';
+import { buildDraftPreview, type SectionPreview } from './writing/sectionPreview';
+import { draftSourcesOf, draftWebSearchUnavailableReasonId } from './writing/draftSources';
+import type {
+  DraftDetail,
+  DraftExportFormat,
+  KnowledgeCollection,
+  OutlineSection,
+  ResearchReportSummary,
+} from './ipc/contracts';
 import {
   createDraft,
   draftForConversation,
   exportDraft,
   getDraft,
+  listConversationCollections,
+  listResearchReports,
+  setConversationCollections,
+  setDraftSources,
   listDraftSnapshots,
   renameDraft,
   restoreDraftSnapshot,
@@ -1497,15 +1510,38 @@ export default function App() {
     [handleSelectConversation, setStatusMessage],
   );
 
-  /** The Writing start box (and Home's Write chip): a new draft whose first message is the brief. */
+  /**
+   * The Writing start box (and Home's Write chip, and a Research card's
+   * "Write from this report"): a new draft whose first message is the brief.
+   * `researchRunIds` attaches finished Research reports before it starts.
+   */
   const handleStartDraft = useCallback(
-    async (brief: string) => {
+    async (brief: string, options?: { researchRunIds?: string[] }) => {
       const draft = await createDraft(brief);
+      const runIds = options?.researchRunIds ?? [];
+      if (runIds.length > 0) {
+        try {
+          await setDraftSources(draft.id, { ...draftSourcesOf(draft), researchRunIds: runIds });
+        } catch (error) {
+          // The draft still starts; the report can be attached from Sources.
+          setStatusMessage(error instanceof Error ? error.message : String(error));
+        }
+      }
       await handleOpenDraft(draft.id);
       void refreshConversations();
       setPendingSendText(brief);
     },
-    [handleOpenDraft, refreshConversations],
+    [handleOpenDraft, refreshConversations, setStatusMessage],
+  );
+
+  /** A finished Research card's "Write from this report". */
+  const handleWriteFromReport = useCallback(
+    (runId: string, question: string) => {
+      void handleStartDraft(t('writing.fromReport.brief', { question: question.trim() }), {
+        researchRunIds: [runId],
+      }).catch((error) => setStatusMessage(error instanceof Error ? error.message : String(error)));
+    },
+    [handleStartDraft, setStatusMessage, t],
   );
 
   /** The Writing list (not a draft left open in the studio). */
@@ -1525,12 +1561,136 @@ export default function App() {
     }
   }, []);
 
+  // Sections the assistant is still writing, previewed in the editor. When a
+  // call has run, its preview stays until the re-read draft has the section,
+  // so the text never blinks out between the two.
+  const [draftPreviews, setDraftPreviews] = useState<SectionPreview[]>([]);
+  const latestDraftPreviewsRef = useRef<SectionPreview[]>([]);
+  const draftReloadRef = useRef<Promise<void> | null>(null);
+  const handleDraftPreview = useCallback((previews: SectionPreview[]) => {
+    latestDraftPreviewsRef.current = previews;
+    const reloading = draftReloadRef.current;
+    if (reloading) {
+      void reloading.then(() => setDraftPreviews(latestDraftPreviewsRef.current));
+      return;
+    }
+    setDraftPreviews(previews);
+  }, []);
+
   /** A draft tool changed the draft mid-turn: the editor fills in live. */
   const handleDraftChanged = useCallback(() => {
     draftChangedThisTurnRef.current = true;
     setDraftBusyTool(null);
-    void reloadActiveDraft();
+    const reloading: Promise<void> = reloadActiveDraft().finally(() => {
+      if (draftReloadRef.current === reloading) draftReloadRef.current = null;
+    });
+    draftReloadRef.current = reloading;
   }, [reloadActiveDraft]);
+
+  const draftPreview = useMemo(
+    () =>
+      activeDraft && activeDraft.stage === 'draft' && draftPreviews.length > 0
+        ? buildDraftPreview(activeDraft.markdown, activeDraft.outline, draftPreviews)
+        : null,
+    [activeDraft, draftPreviews],
+  );
+
+  // -- The draft's Sources tab --
+  const [sourceCollections, setSourceCollections] = useState<KnowledgeCollection[] | null>(null);
+  const [draftCollectionIds, setDraftCollectionIds] = useState<string[]>([]);
+  const [researchReports, setResearchReports] = useState<ResearchReportSummary[] | null>(null);
+  const [sourcesSaving, setSourcesSaving] = useState(false);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  // Bumps when the Sources tab changed the draft chat's collections.
+  const [draftSourcesRevision, setDraftSourcesRevision] = useState(0);
+  const studioDraftConversationId = writingStudio ? (activeDraft?.conversationId ?? null) : null;
+  const sourcesTabShown = draftDockTabShown === 'sources';
+
+  useEffect(() => {
+    setSourceCollections(null);
+    setResearchReports(null);
+    setDraftCollectionIds([]);
+    setSourcesError(null);
+  }, [studioDraftConversationId]);
+
+  // Read the lists when a draft opens and each time the tab is shown: a
+  // collection or a finished report may have appeared since.
+  useEffect(() => {
+    if (!studioDraftConversationId) return undefined;
+    let cancelled = false;
+    void Promise.all([
+      listKnowledgeCollections().catch(() => [] as KnowledgeCollection[]),
+      listConversationCollections(studioDraftConversationId).catch(() => [] as string[]),
+      listResearchReports().catch(() => [] as ResearchReportSummary[]),
+    ]).then(([collections, enabled, reports]) => {
+      if (cancelled) return;
+      setSourceCollections(collections ?? []);
+      setDraftCollectionIds(enabled ?? []);
+      setResearchReports(reports ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [studioDraftConversationId, sourcesTabShown]);
+
+  const handleToggleDraftWeb = useCallback(async (on: boolean) => {
+    const draft = activeDraftRef.current;
+    if (!draft) return;
+    setSourcesSaving(true);
+    setSourcesError(null);
+    try {
+      setActiveDraft(await setDraftSources(draft.id, { ...draftSourcesOf(draft), webSearch: on }));
+    } catch (error) {
+      setSourcesError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSourcesSaving(false);
+    }
+  }, []);
+
+  const handleToggleDraftReport = useCallback(async (runId: string, on: boolean) => {
+    const draft = activeDraftRef.current;
+    if (!draft) return;
+    const current = draftSourcesOf(draft);
+    const ids = on
+      ? [...new Set([...current.researchRunIds, runId])]
+      : current.researchRunIds.filter((id) => id !== runId);
+    setSourcesSaving(true);
+    setSourcesError(null);
+    try {
+      setActiveDraft(await setDraftSources(draft.id, { ...current, researchRunIds: ids }));
+    } catch (error) {
+      setSourcesError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSourcesSaving(false);
+    }
+  }, []);
+
+  const handleToggleDraftCollection = useCallback(
+    async (collectionId: string, on: boolean) => {
+      const conversationId = activeDraftRef.current?.conversationId;
+      if (!conversationId) return;
+      const previous = draftCollectionIds;
+      const next = on
+        ? [...new Set([...previous, collectionId])]
+        : previous.filter((id) => id !== collectionId);
+      setDraftCollectionIds(next);
+      setSourcesSaving(true);
+      setSourcesError(null);
+      try {
+        // The set actually stored, so the tab never shows one that is not attached.
+        setDraftCollectionIds(await setConversationCollections(conversationId, next));
+        setDraftSourcesRevision((n) => n + 1);
+      } catch (error) {
+        setDraftCollectionIds(previous);
+        setSourcesError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setSourcesSaving(false);
+      }
+    },
+    [draftCollectionIds],
+  );
+
+  const draftWebReasonId = draftWebSearchUnavailableReasonId(settings);
 
   // "Edited by you": one history entry per editing session, after the typing
   // pauses for a while, when the assistant is about to take a turn, or when
@@ -1581,6 +1741,8 @@ export default function App() {
   /** One history entry per AI turn that changed the draft, named by the prompt. */
   const finishDraftTurn = useCallback(async () => {
     setDraftBusyTool(null);
+    latestDraftPreviewsRef.current = [];
+    setDraftPreviews([]);
     const draft = activeDraftRef.current;
     const appLabel = nextDraftTurnLabelRef.current;
     nextDraftTurnLabelRef.current = null;
@@ -3055,6 +3217,21 @@ export default function App() {
                   onChange={(sections) => void handleSetDraftOutline(sections)}
                 />
               }
+              sources={
+                <DraftSourcesPanel
+                  webSearch={draftSourcesOf(activeDraft).webSearch}
+                  webDisabledReason={draftWebReasonId ? t(draftWebReasonId) : null}
+                  onToggleWeb={(on) => void handleToggleDraftWeb(on)}
+                  collections={sourceCollections}
+                  enabledCollectionIds={draftCollectionIds}
+                  onToggleCollection={(id, on) => void handleToggleDraftCollection(id, on)}
+                  reports={researchReports}
+                  attachedRunIds={draftSourcesOf(activeDraft).researchRunIds}
+                  onToggleReport={(id, on) => void handleToggleDraftReport(id, on)}
+                  saving={sourcesSaving}
+                  error={sourcesError}
+                />
+              }
               history={
                 <DraftHistory
                   revision={draftHistoryRevision}
@@ -3140,6 +3317,10 @@ export default function App() {
             draft={activeDraft}
             onDraftChanged={handleDraftChanged}
             onDraftToolActivity={setDraftBusyTool}
+            onDraftPreview={handleDraftPreview}
+            draftSourcesRevision={draftSourcesRevision}
+            onOpenDraftSources={() => setDraftDockTab('sources')}
+            onWriteFromReport={handleWriteFromReport}
             compact={anyStudio}
             deckOverflow={deckOverflow}
             onDocumentToolActivity={routeDocumentToolActivity}
@@ -3328,6 +3509,7 @@ export default function App() {
               onSelectionRequest={handleDraftSelection}
               onExport={(format) => void handleExportDraft(format)}
               exporting={exportingDraft}
+              preview={draftPreview}
             />
           </section>
         ) : studio && activeDeck ? (

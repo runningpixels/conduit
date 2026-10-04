@@ -33,6 +33,7 @@ describe('buildProviderRequest brand appendix on a locked build', () => {
     theme: 'system' as const,
     language: 'system' as const,
     providerEndpoints: {},
+    modelPriceOverrides: [],
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,
     artifactNetworkEnabled: true,

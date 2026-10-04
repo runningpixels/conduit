@@ -1060,6 +1060,7 @@ impl StreamManager {
             .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
         let ctx = Self::build_adapter_context(state, provider_id)?;
         let models = adapter.list_models(&ctx).await.map_err(|e| e.message)?;
+        state.record_listed_prices(provider_id, &models);
         Ok(models)
     }
 
@@ -3473,8 +3474,20 @@ impl StreamManager {
                 if let Ok(Some(message_id)) =
                     messages::get_message_id_by_request(&pool, &request_id).await
                 {
-                    let pricing = provider_core::catalog::lookup_pricing(&provider_id, &model_id);
-                    let cost = provider_core::catalog::estimate_cost_cents(&usage, &pricing);
+                    // Stored for older builds and diagnostics only: the usage
+                    // tables recompute cost from the token counts when read, so
+                    // a later price fix (or override) reaches past turns too.
+                    let cost = state
+                        .resolve_model_price(&provider_id, &model_id)
+                        .map(|resolved| {
+                            provider_core::pricing::estimate_cost_cents(
+                                &provider_id,
+                                crate::db::repository::usage_summary::token_counts(&usage),
+                                &resolved.price,
+                            )
+                        })
+                        .filter(|cents| *cents > 0.0)
+                        .map(|cents| format!("{cents:.4}"));
                     if let Err(e) = usage_summary::insert_usage_summary(
                         &pool,
                         usage_summary::UsageSummaryRow {

@@ -14,8 +14,9 @@ use std::{
 // C1: `AppSettings`, `SettingsPatch`, `ProviderEndpointConfig`, and `Theme` are
 // defined in `provider_core::schema` and codegen'd into `@conduit/config-schema`.
 // This module owns their *behavior* (validation, persistence), not their shape.
-use provider_core::schema::AppError;
+use provider_core::schema::{AppError, ModelInfo, ModelPrice, ResolvedModelPrice};
 pub use provider_core::schema::{AppSettings, SettingsPatch};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -48,9 +49,45 @@ pub struct AppState {
     /// `drop_grant` for why this exists instead of trusting any path the
     /// renderer names.
     drop_grants: Arc<Mutex<DropGrants>>,
+    /// Prices providers reported in their model listings this session, keyed by
+    /// (provider id, model id). Only OpenRouter reports any. Kept in memory: the
+    /// bundled snapshot covers the same models after a restart, and this only
+    /// adds what is newer than the snapshot.
+    live_prices: Arc<Mutex<HashMap<(String, String), ModelPrice>>>,
 }
 
 impl AppState {
+    /// Remember the prices a provider reported in its model listing.
+    pub fn record_listed_prices(&self, provider_id: &str, models: &[ModelInfo]) {
+        let Ok(mut live) = self.live_prices.lock() else {
+            return;
+        };
+        for model in models {
+            if let Some(price) = model.price {
+                live.insert((provider_id.to_string(), model.id.clone()), price);
+            }
+        }
+    }
+
+    /// The price for a model, from the user's override, the provider's own
+    /// listing, the bundled snapshot or the retired table, in that order.
+    /// `None` means unpriced, which the UI shows differently from free.
+    pub fn resolve_model_price(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+    ) -> Option<ResolvedModelPrice> {
+        let overrides = self
+            .settings
+            .lock()
+            .map(|s| s.model_price_overrides.clone())
+            .unwrap_or_default();
+        let live = self.live_prices.lock().ok().and_then(|live| {
+            live.get(&(provider_id.to_string(), model_id.to_string()))
+                .copied()
+        });
+        provider_core::pricing::resolve_price(provider_id, model_id, &overrides, live)
+    }
     /// Convenience accessor for the database pool, so callers can get a
     /// handle without a partial move of the struct field.
     pub fn db(&self) -> DbPool {
@@ -226,6 +263,7 @@ impl AppState {
             encryption: Arc::new(encryption),
             migration_recovery: Arc::new(Mutex::new(migration_recovery)),
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
+            live_prices: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -250,6 +288,7 @@ impl AppState {
             encryption: Arc::new(Encryption::off()),
             migration_recovery: Arc::new(Mutex::new(None)),
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
+            live_prices: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -354,6 +393,31 @@ impl AppState {
         // with path/query/fragment stripped to match the frontend's
         // `validateAllowedOrigin`. A single bad entry rejects the whole update
         // so the renderer never silently drops or accepts a malformed origin.
+        if let Some(overrides) = patch.model_price_overrides {
+            let mut validated: Vec<provider_core::schema::ModelPriceOverride> =
+                Vec::with_capacity(overrides.len());
+            for entry in overrides {
+                let provider_id = entry.provider_id.trim();
+                let model_id = entry.model_id.trim();
+                if provider_id.is_empty() || model_id.is_empty() {
+                    return Err("A price override needs a provider and a model"
+                        .to_string()
+                        .into());
+                }
+                if !provider_core::pricing::price_is_valid(&entry.price) {
+                    return Err(format!("Invalid price for {provider_id}/{model_id}").into());
+                }
+                // One price per model: a later entry replaces an earlier one.
+                validated.retain(|o| !(o.provider_id == provider_id && o.model_id == model_id));
+                validated.push(provider_core::schema::ModelPriceOverride {
+                    provider_id: provider_id.to_string(),
+                    model_id: model_id.to_string(),
+                    price: entry.price,
+                });
+            }
+            settings.model_price_overrides = validated;
+        }
+
         if let Some(allowlist) = patch.artifact_remote_allowlist {
             let mut validated: Vec<String> = Vec::with_capacity(allowlist.len());
             for raw in allowlist {

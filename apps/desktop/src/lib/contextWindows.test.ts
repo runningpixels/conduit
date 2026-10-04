@@ -5,7 +5,6 @@ import {
   estimateTokensFromText,
   getContextWindow,
   mergeProviderUsage,
-  sumUsageCostCents,
   sumUsageTokens,
 } from './contextWindows';
 
@@ -77,15 +76,6 @@ describe('contextWindows', () => {
         cacheTokens: null as unknown as bigint,
       }),
     ).toBe(0);
-  });
-
-  it('delegates cost estimation to the cost table', () => {
-    const cost = sumUsageCostCents(
-      { inputTokens: 100000n, outputTokens: 10000n },
-      'claude-sonnet-4',
-    );
-    expect(cost).toBeCloseTo(45, 6);
-    expect(sumUsageCostCents({ inputTokens: 10n }, 'unknown-model')).toBeNull();
   });
 
   it('merges usage records by summing tokens and keeping the later costHint', () => {

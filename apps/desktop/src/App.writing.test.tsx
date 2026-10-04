@@ -18,6 +18,7 @@ const settings: AppSettings = {
   theme: 'dark',
   language: 'system',
   providerEndpoints: {},
+  modelPriceOverrides: [],
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,

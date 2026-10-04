@@ -13,7 +13,7 @@
  * meter sits beside the %; warn styling when fill ≥ compact threshold.
  */
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
 import { providerDisplayName } from '../lib/providerIdentity';
 import {
@@ -21,6 +21,7 @@ import {
   getContextWindow,
 } from '../lib/contextWindows';
 import { estimateCostCents, formatCostCents } from '../lib/costTable';
+import { useModelPrices } from '../lib/useModelPrices';
 import { readExpandedStatus } from './uiPrefs';
 import { ContextIcon, LockIcon, ModelIcon, ShieldIcon, SpendIcon } from '../icons';
 import { useT } from '../i18n';
@@ -83,7 +84,14 @@ export function StatusLine({
       ? t('shell.statusLine.context.full', { tokens: fmt.count(tokens), window: fmt.compact(contextWindow) })
       : t('shell.statusLine.context.fullRaw', { tokens: fmt.count(tokens) });
 
-  const estimatedCents = estimateCostCents(usage, settings.activeModel);
+  const lookupPrice = useModelPrices(
+    useMemo(
+      () => [{ providerId: settings.activeProvider, modelIds: [settings.activeModel] }],
+      [settings.activeProvider, settings.activeModel],
+    ),
+  );
+  const activePrice = lookupPrice(settings.activeProvider, settings.activeModel)?.price;
+  const estimatedCents = estimateCostCents(usage, settings.activeProvider, activePrice);
   const spendLabel =
     estimatedCents != null && estimatedCents > 0
       ? formatCostCents(estimatedCents)

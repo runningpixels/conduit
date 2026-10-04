@@ -9,6 +9,7 @@ import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 import { ChatIcon, ChevronRight, FilesIcon, ModelIcon, SearchIcon } from '../icons';
 import { providerDisplayName } from '../lib/providerIdentity';
 import { formatModelPriceLabel } from '../lib/costTable';
+import { useModelPrices } from '../lib/useModelPrices';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
@@ -179,6 +180,16 @@ export function CommandPalette({
   const [searching, setSearching] = useState(false);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ModelInfo[]>>({});
+  const lookupPrice = useModelPrices(
+    useMemo(
+      () =>
+        Object.entries(modelsByProvider).map(([providerId, models]) => ({
+          providerId,
+          modelIds: models.map((m) => m.id),
+        })),
+      [modelsByProvider],
+    ),
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -310,7 +321,7 @@ export function CommandPalette({
         const tail =
           provider.credentialMode === 'none'
             ? t('workspace.commandPalette.tail.local')
-            : (formatModelPriceLabel(model.id) ?? undefined);
+            : (formatModelPriceLabel(lookupPrice(provider.id, model.id)?.price) ?? undefined);
         items.push({
           id: `model-${provider.id}-${model.id}`,
           group: providerDisplayName(provider.id),
@@ -325,7 +336,7 @@ export function CommandPalette({
       }
     }
     return items;
-  }, [providers, modelsByProvider, onSelectModel, onClose, t]);
+  }, [providers, modelsByProvider, lookupPrice, onSelectModel, onClose, t]);
 
   const items = useMemo((): PaletteItem[] => {
     if (prefix === '>') {

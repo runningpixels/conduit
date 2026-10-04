@@ -166,6 +166,7 @@ async fn settings_and_db_survive_in_place_reopen() {
         theme: None,
         language: None,
         provider_endpoints: None,
+        model_price_overrides: None,
         artifact_remote_allowlist: None,
         artifact_styled_preview: None,
         artifact_network_enabled: None,

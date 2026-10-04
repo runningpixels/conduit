@@ -4,6 +4,7 @@ import type { AgentGuardrails } from "./agent_guardrails";
 import type { GenerationControls } from "./generation_controls";
 import type { KeychainMode } from "./keychain_mode";
 import type { LanguageSetting } from "./language_setting";
+import type { ModelPriceOverride } from "./model_price_override";
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
@@ -19,6 +20,11 @@ export type AppSettings = { activeProvider: string, activeModel: string, localOn
  * than fail to deserialize.
  */
 language: LanguageSetting, providerEndpoints: { [key in string]?: ProviderEndpointConfig }, 
+/**
+ * Prices the user set per model, taking precedence over the provider's
+ * own listing and the bundled snapshot. See `pricing::resolve_price`.
+ */
+modelPriceOverrides: Array<ModelPriceOverride>, 
 /**
  * Phase 5: origins a rendered HTML/JS artifact may load passive resources
  * (images/fonts/styles) from. Default empty → fully offline artifacts

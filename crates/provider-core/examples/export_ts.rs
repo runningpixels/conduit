@@ -24,18 +24,19 @@ use provider_core::schema::{
     DraftBlock, DraftDetail, DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary,
     DraftSources, DraftStage, DraftSummary, GenerationControls, GrantScope, GrantStatus,
     KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
-    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, OutlineSection, PageLlmGrant,
-    PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry,
-    PageStorageUsage, PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError,
-    ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget,
-    ResearchDepth, ResearchMaterial, ResearchMaterialClaim, ResearchProgress,
-    ResearchReportSummary, ResearchRun, ResearchRunUpdated, ResearchSource, ResearchSourceStatus,
-    ResearchStatus, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
-    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
-    SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit, StarterAppInfo, StorylineItem,
-    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
-    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, WebSearchDefaults,
-    WebSearchFilters, WebSearchMode, WebSearchRequest,
+    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, ModelPrice, ModelPriceOverride,
+    OutlineSection, PageLlmGrant, PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState,
+    PageStorageEntry, PageStorageUsage, PermissionLevel, PriceSource, PromptArguments,
+    ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
+    ReasoningEffort, ResearchBrief, ResearchBudget, ResearchDepth, ResearchMaterial,
+    ResearchMaterialClaim, ResearchProgress, ResearchReportSummary, ResearchRun,
+    ResearchRunUpdated, ResearchSource, ResearchSourceStatus, ResearchStatus, ResolvedModelPrice,
+    ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState, ReturnTokenBudget,
+    RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource, SlideReplaceCount,
+    SlideSlot, SlideTheme, SlotEdit, StarterAppInfo, StorylineItem, SupportState, TenantConfig,
+    TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind,
+    Transport, UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
+    WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -217,6 +218,10 @@ fn main() {
         .expect("export AppSettings");
     SettingsPatch::export().expect("export SettingsPatch");
     ModelInfo::export().expect("export ModelInfo");
+    ModelPrice::export().expect("export ModelPrice");
+    PriceSource::export().expect("export PriceSource");
+    ResolvedModelPrice::export().expect("export ResolvedModelPrice");
+    ModelPriceOverride::export().expect("export ModelPriceOverride");
     CredentialRequest::export().expect("export CredentialRequest");
     CredentialSummary::export().expect("export CredentialSummary");
 

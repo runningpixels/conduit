@@ -3,6 +3,7 @@ import type { AccentOverride } from "./accent_override";
 import type { AgentGuardrails } from "./agent_guardrails";
 import type { GenerationControls } from "./generation_controls";
 import type { LanguageSetting } from "./language_setting";
+import type { ModelPriceOverride } from "./model_price_override";
 import type { ProviderEndpointConfig } from "./provider_endpoint_config";
 import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
@@ -10,6 +11,11 @@ import type { UpdatePolicy } from "./update_policy";
 import type { WebSearchDefaults } from "./web_search_defaults";
 
 export type SettingsPatch = { activeProvider?: string, activeModel?: string, localOnly?: boolean, diagnosticsEnabled?: boolean, theme?: Theme, language?: LanguageSetting, providerEndpoints?: { [key in string]?: ProviderEndpointConfig }, 
+/**
+ * Replace the per-model price overrides. Every price must pass
+ * `pricing::price_is_valid` or the whole update is rejected.
+ */
+modelPriceOverrides?: Array<ModelPriceOverride>, 
 /**
  * Replace the artifact remote allowlist. Each entry must be an absolute
  * http(s) URL or the whole update is rejected.

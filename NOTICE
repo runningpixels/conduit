@@ -34,6 +34,20 @@ feature. SQLite is in the public domain and imposes no notice obligations.
 https://www.sqlite.org/copyright.html
 
 ================================================================================
+Model prices (MIT License)
+================================================================================
+
+models.dev
+  Copyright (c) 2025 models.dev
+  https://github.com/sst/models.dev
+  License text: crates/provider-core/data/LICENSE-models.dev
+
+Conduit embeds a filtered snapshot of the models.dev price catalog
+(crates/provider-core/data/model-prices.json, refreshed by
+scripts/update-model-prices.mjs) to estimate usage costs. The app does not
+contact models.dev at runtime.
+
+================================================================================
 Design credits (adapted, no code copied)
 ================================================================================
 

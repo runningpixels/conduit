@@ -39,6 +39,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Keyboard:** `Ctrl+5` now opens Writing; Documents, Library, Workflows
   and Connectors move to `Ctrl+6`–`Ctrl+9`. Memory is still on the rail,
   on Home and in the command palette.
+- **Costs cover current models.** Prices now come from a snapshot of the
+  open [models.dev](https://models.dev) catalog bundled with each release,
+  about 790 models across every cloud provider Conduit supports, instead of
+  a hand-kept table of 11 older models. Conduit never contacts models.dev
+  itself. OpenRouter models use the price OpenRouter lists for them.
+- **Your own prices.** Settings → Usage & Cost lets you set or correct the
+  price of any model you have used, such as one behind a custom endpoint.
+  Your price comes first, and it applies to past usage too.
+- **Unpriced is not free.** A model with no known price shows *No price*
+  instead of $0, and the total says how many models it leaves out.
+
+### Fixed
+
+- **Costs were 100 times too small.** Usage costs were computed in dollars
+  and then displayed as cents. They are now right, and past usage is
+  re-priced from its stored token counts, so the history is corrected
+  too.
+- **Cached prompts were counted twice.** On OpenAI, Gemini, OpenRouter and
+  the other OpenAI-style providers, the input count already includes cache
+  hits; those tokens were billed at both the input and the cache rate.
 
 ## [1.0.0-rc.6] - 2026-10-03
 

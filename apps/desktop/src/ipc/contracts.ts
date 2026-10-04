@@ -55,9 +55,13 @@ import type {
   GrantStatus,
   Message,
   ModelInfo,
+  ModelPrice,
+  ModelPriceOverride,
   PermissionLevel,
+  PriceSource,
   ProviderEvent,
   ProviderRequest,
+  ResolvedModelPrice,
   RolloutChannel,
   SettingsPatch,
   SupportState,
@@ -266,6 +270,10 @@ export type {
   ProviderRequest,
   SettingsPatch,
   ModelInfo,
+  ModelPrice,
+  ModelPriceOverride,
+  PriceSource,
+  ResolvedModelPrice,
 };
 
 // =============================================================================
@@ -484,20 +492,31 @@ export interface ProviderUsageBreakdown {
   modelId: string;
   inputTokens: number;
   outputTokens: number;
-  costCents: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** Null when the model has no price: unpriced, which is not the same as free. */
+  costCents: number | null;
+  /** The price used and where it came from; null when unpriced. */
+  price: ResolvedModelPrice | null;
 }
 
 export interface DailyUsage {
   date: string;
+  /** Cost of the day's priced usage; unpriced models add nothing. */
   costCents: number;
   inputTokens: number;
   outputTokens: number;
 }
 
 export interface UsageSummaryResponse {
+  /** Cost of the period's priced usage, in cents. */
   totalCostCents: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  /** Models in the period with no price, so the total is a floor. */
+  unpricedModels: number;
+  /** When the bundled price snapshot was fetched, `YYYY-MM-DD`. */
+  pricesAsOf: string;
   byProvider: ProviderUsageBreakdown[];
   dailyTotals: DailyUsage[];
 }

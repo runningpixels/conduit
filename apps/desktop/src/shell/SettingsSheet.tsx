@@ -741,7 +741,7 @@ export function SettingsSheet({
               <h2 className="sheet-h">{t('shell.settingsSheet.about.heading')}</h2>
               <p className="sheet-sub">{t('shell.settingsSheet.about.intro')}</p>
               <div style={{ marginBottom: 24 }}>
-                <UsageSection />
+                <UsageSection settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
               </div>
               <div style={{ marginBottom: 24 }}>
                 <UpdatesSection settings={settings} onUpdate={save} onStatus={onStatus} />

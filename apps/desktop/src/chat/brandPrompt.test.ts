@@ -50,6 +50,7 @@ describe('buildProviderRequest brand appendix (cost gating)', () => {
     theme: 'system' as const,
     language: 'system' as const,
     providerEndpoints: {},
+    modelPriceOverrides: [],
     artifactRemoteAllowlist: [],
     artifactStyledPreview: true,
     artifactNetworkEnabled: true,

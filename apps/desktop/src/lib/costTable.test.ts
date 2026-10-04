@@ -1,53 +1,63 @@
 import { describe, expect, it } from 'vitest';
+import type { ModelPrice } from '@conduit/config-schema';
 import {
   estimateCostCents,
   formatCostCents,
   formatModelPriceLabel,
-  getModelPrices,
+  inputIncludesCacheReads,
   toTokenNumber,
 } from './costTable';
 
+const sonnet: ModelPrice = { inputPerMtok: 3, outputPerMtok: 15, cacheReadPerMtok: 0.3, cacheWritePerMtok: 3.75 };
+
+// These cases mirror `pricing::tests` in crates/provider-core: the renderer's
+// status line and the backend's usage tables must agree to the cent.
 describe('costTable', () => {
-  it('returns prices for known models', () => {
-    const sonnet = getModelPrices('claude-sonnet-4');
-    expect(sonnet).toEqual({
-      inputPerMtokCents: 300,
-      outputPerMtokCents: 1500,
-      cacheReadPerMtokCents: 30,
+  it('computes cost in real cents', () => {
+    // 1M input + 1M output at $3 / $15 = $18 = 1,800 cents.
+    const cost = estimateCostCents({ inputTokens: 1_000_000n, outputTokens: 1_000_000n }, 'anthropic', {
+      inputPerMtok: 3,
+      outputPerMtok: 15,
     });
-    expect(getModelPrices('gpt-4.1-mini')?.inputPerMtokCents).toBe(40);
+    expect(cost).toBeCloseTo(1800, 6);
   });
 
-  it('returns null for unknown or empty model ids', () => {
-    expect(getModelPrices('unknown-model')).toBeNull();
-    expect(getModelPrices('')).toBeNull();
-  });
-
-  it('estimates cost from bigint token fields', () => {
-    // 100k input + 10k output on sonnet-4:
-    // 0.1 * 300 + 0.01 * 1500 = 30 + 15 = 45 cents
-    const cost = estimateCostCents(
-      { inputTokens: 100000n, outputTokens: 10000n },
-      'claude-sonnet-4',
-    );
-    expect(cost).toBeCloseTo(45, 6);
-  });
-
-  it('prices cache-read tokens at the cache-read rate and cache-write at output rate', () => {
-    // 1M cache-read = 30 cents; 1M cache-write = 1500 cents on sonnet-4
-    const cost = estimateCostCents(
-      { cacheReadTokens: 1000000n, cacheWriteTokens: 1000000n },
-      'claude-sonnet-4',
-    );
-    expect(cost).toBeCloseTo(1530, 6);
-  });
-
-  it('returns null for unknown models even when usage exists', () => {
+  it('does not bill cache reads twice on providers that count them as input', () => {
+    const price: ModelPrice = { inputPerMtok: 2, outputPerMtok: 10, cacheReadPerMtok: 0.2, cacheWritePerMtok: 2.5 };
+    // OpenAI-style: 1M input of which 800k were cache hits.
+    // 200k uncached at $2 + 800k cached at $0.20 = $0.40 + $0.16 = 56 cents.
+    expect(estimateCostCents({ inputTokens: 1_000_000n, cacheReadTokens: 800_000n }, 'openai', price)).toBeCloseTo(56, 6);
+    // Anthropic reports input without cache reads: nothing is subtracted.
+    // $0.40 + $0.16 + 100k writes at $2.50 = 81 cents.
     expect(
-      estimateCostCents({ inputTokens: 1000n }, 'internal-llama'),
-    ).toBeNull();
-    expect(estimateCostCents(null, 'claude-sonnet-4')).toBeNull();
-    expect(estimateCostCents(undefined, 'claude-sonnet-4')).toBeNull();
+      estimateCostCents(
+        { inputTokens: 200_000n, cacheReadTokens: 800_000n, cacheWriteTokens: 100_000n },
+        'anthropic',
+        price,
+      ),
+    ).toBeCloseTo(81, 6);
+  });
+
+  it('charges cache tokens at the input price when no cache price is published', () => {
+    const cost = estimateCostCents({ cacheReadTokens: 1_000_000n, cacheWriteTokens: 1_000_000n }, 'anthropic', {
+      inputPerMtok: 1,
+      outputPerMtok: 1,
+    });
+    expect(cost).toBeCloseTo(200, 6);
+  });
+
+  it('knows which providers fold cache reads into input', () => {
+    expect(inputIncludesCacheReads('anthropic')).toBe(false);
+    for (const id of ['openai', 'gemini', 'openrouter', 'deepseek', 'zai']) {
+      expect(inputIncludesCacheReads(id)).toBe(true);
+    }
+  });
+
+  it('returns null without usage or without a price -- unpriced is not free', () => {
+    expect(estimateCostCents({ inputTokens: 1000n }, 'openai_compat', null)).toBeNull();
+    expect(estimateCostCents({ inputTokens: 1000n }, 'openai_compat', undefined)).toBeNull();
+    expect(estimateCostCents(null, 'anthropic', sonnet)).toBeNull();
+    expect(estimateCostCents(undefined, 'anthropic', sonnet)).toBeNull();
   });
 
   it('handles null token fields (IPC bridge sends null for Rust None)', () => {
@@ -58,8 +68,10 @@ describe('costTable', () => {
         cacheReadTokens: null as unknown as bigint,
         cacheWriteTokens: null as unknown as bigint,
       },
-      'claude-sonnet-4',
+      'anthropic',
+      sonnet,
     );
+    // 10k output at $15 / Mtok = $0.15 = 15 cents.
     expect(cost).toBeCloseTo(15, 6);
   });
 
@@ -72,24 +84,25 @@ describe('costTable', () => {
   });
 
   it('formats a per-Mtok price tail, trimming trailing zeros', () => {
-    expect(formatModelPriceLabel('claude-sonnet-4')).toBe('$3 / $15');
-    expect(formatModelPriceLabel('claude-opus-4')).toBe('$15 / $75');
-    // 40 / 160 cents per Mtok — the fractional case that must not read
-    // "$0.40 / $1.60" beside whole-dollar rows in the same menu.
-    expect(formatModelPriceLabel('gpt-4.1-mini')).toBe('$0.4 / $1.6');
-    expect(formatModelPriceLabel('gpt-4o-mini')).toBe('$0.15 / $0.6');
+    expect(formatModelPriceLabel(sonnet)).toBe('$3 / $15');
+    expect(formatModelPriceLabel({ inputPerMtok: 15, outputPerMtok: 75 })).toBe('$15 / $75');
+    // The fractional case that must not read "$0.40 / $1.60" beside
+    // whole-dollar rows in the same menu.
+    expect(formatModelPriceLabel({ inputPerMtok: 0.4, outputPerMtok: 1.6 })).toBe('$0.4 / $1.6');
+    expect(formatModelPriceLabel({ inputPerMtok: 0.15, outputPerMtok: 0.6 })).toBe('$0.15 / $0.6');
+    // Sub-dime prices keep a third decimal.
+    expect(formatModelPriceLabel({ inputPerMtok: 0.075, outputPerMtok: 0.3 })).toBe('$0.075 / $0.3');
   });
 
-  it('returns null for a model with no bundled price', () => {
-    // The caller falls back to a posture word from the descriptor rather than
-    // inventing a number.
-    expect(formatModelPriceLabel('internal-llama')).toBeNull();
-    expect(formatModelPriceLabel('')).toBeNull();
+  it('gives no price tail for an unpriced or a free model', () => {
+    expect(formatModelPriceLabel(null)).toBeNull();
+    expect(formatModelPriceLabel(undefined)).toBeNull();
+    expect(formatModelPriceLabel({ inputPerMtok: 0, outputPerMtok: 0 })).toBeNull();
   });
 
-  it('converts null/bigint token values to safe numbers', () => {
-    expect(toTokenNumber(10n)).toBe(10);
-    expect(toTokenNumber(10)).toBe(10);
+  it('converts bigint and null token fields', () => {
+    expect(toTokenNumber(5n)).toBe(5);
+    expect(toTokenNumber(7)).toBe(7);
     expect(toTokenNumber(null)).toBe(0);
     expect(toTokenNumber(undefined)).toBe(0);
   });

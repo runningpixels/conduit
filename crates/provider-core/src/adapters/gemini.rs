@@ -588,6 +588,7 @@ fn parse_model_list(response: &Value) -> Result<Vec<ModelInfo>, ProviderError> {
                     .get("displayName")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
+                price: None,
             })
         })
         .collect();

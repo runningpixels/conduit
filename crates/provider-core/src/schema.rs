@@ -3054,6 +3054,10 @@ pub struct AppSettings {
     pub language: LanguageSetting,
     #[serde(default)]
     pub provider_endpoints: HashMap<String, ProviderEndpointConfig>,
+    /// Prices the user set per model, taking precedence over the provider's
+    /// own listing and the bundled snapshot. See `pricing::resolve_price`.
+    #[serde(default)]
+    pub model_price_overrides: Vec<ModelPriceOverride>,
     /// Phase 5: origins a rendered HTML/JS artifact may load passive resources
     /// (images/fonts/styles) from. Default empty → fully offline artifacts
     /// (`connect-src 'none'`, no remote scripts regardless). Validated as
@@ -3235,6 +3239,7 @@ impl Default for AppSettings {
             theme: Theme::Dark,
             language: LanguageSetting::System,
             provider_endpoints: HashMap::new(),
+            model_price_overrides: Vec::new(),
             artifact_remote_allowlist: Vec::new(),
             artifact_styled_preview: true,
             artifact_network_enabled: true,
@@ -3299,6 +3304,10 @@ pub struct SettingsPatch {
     pub language: Option<LanguageSetting>,
     #[ts(optional)]
     pub provider_endpoints: Option<HashMap<String, ProviderEndpointConfig>>,
+    /// Replace the per-model price overrides. Every price must pass
+    /// `pricing::price_is_valid` or the whole update is rejected.
+    #[ts(optional)]
+    pub model_price_overrides: Option<Vec<ModelPriceOverride>>,
     /// Replace the artifact remote allowlist. Each entry must be an absolute
     /// http(s) URL or the whole update is rejected.
     #[ts(optional)]
@@ -3390,6 +3399,82 @@ pub struct ModelInfo {
     pub id: String,
     #[ts(optional)]
     pub display_name: Option<String>,
+    /// The price the provider itself reported in its model listing. Only
+    /// OpenRouter does this today; every other provider leaves it empty and
+    /// prices come from the bundled snapshot (see `pricing`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub price: Option<ModelPrice>,
+}
+
+/// What one model costs, in USD per million tokens.
+///
+/// A missing cache price means the source did not publish one; cost estimates
+/// then charge those tokens at the input price, which is the most a provider
+/// bills for them.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/model_price.ts"
+)]
+pub struct ModelPrice {
+    pub input_per_mtok: f64,
+    pub output_per_mtok: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cache_read_per_mtok: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cache_write_per_mtok: Option<f64>,
+}
+
+/// Where a resolved price came from, so the UI can say how far to trust it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/price_source.ts"
+)]
+pub enum PriceSource {
+    /// The user typed it in Settings.
+    Override,
+    /// The provider reported it in its model listing this session (OpenRouter).
+    Provider,
+    /// The models.dev snapshot bundled with this release.
+    Snapshot,
+    /// A model no longer in the snapshot, priced from Conduit's own table so
+    /// older usage keeps a cost.
+    Retired,
+    /// A local provider (Ollama, LM Studio): no per-token cost.
+    Local,
+}
+
+/// A model's price together with its source.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/resolved_model_price.ts"
+)]
+pub struct ResolvedModelPrice {
+    pub price: ModelPrice,
+    pub source: PriceSource,
+}
+
+/// A price the user set for one model, taking precedence over every other
+/// source. This is how a custom endpoint, or a model the snapshot lacks or has
+/// wrong, gets a cost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/model_price_override.ts"
+)]
+pub struct ModelPriceOverride {
+    pub provider_id: String,
+    pub model_id: String,
+    pub price: ModelPrice,
 }
 
 /// Request body for storing a provider secret in the OS keychain.

@@ -13,6 +13,7 @@ const baseSettings: AppSettings = {
   theme: 'system',
   language: 'system',
   providerEndpoints: {},
+  modelPriceOverrides: [],
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,

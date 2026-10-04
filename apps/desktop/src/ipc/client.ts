@@ -109,6 +109,7 @@ import type {
   SearchResult,
   UsagePeriod,
   UsageSummaryResponse,
+  ResolvedModelPrice,
   ResearchBrief,
   ResearchRun,
   ResearchMaterial,
@@ -1133,6 +1134,18 @@ export async function searchMessages(
 
 export async function getUsageSummary(period: UsagePeriod): Promise<UsageSummaryResponse> {
   return invokeCommand<UsageSummaryResponse>('get_usage_summary', { period });
+}
+
+/**
+ * Prices for several models of one provider, in the order asked; `null` for an
+ * unpriced model. Resolved in memory by the backend (override, the provider's
+ * own listing, the bundled snapshot), so this never reaches the network.
+ */
+export async function resolveModelPrices(
+  providerId: string,
+  modelIds: string[],
+): Promise<Array<ResolvedModelPrice | null>> {
+  return invokeCommand<Array<ResolvedModelPrice | null>>('resolve_model_prices', { providerId, modelIds });
 }
 
 // --- Retry & Fork ----------------------------------------------------------

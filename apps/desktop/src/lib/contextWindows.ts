@@ -12,7 +12,7 @@
  */
 
 import type { ProviderUsage, ToolDefinition } from '@conduit/config-schema';
-import { estimateCostCents, toTokenNumber } from './costTable';
+import { toTokenNumber } from './costTable';
 
 /** Default auto-compact threshold (percent of window). */
 export const DEFAULT_COMPACT_THRESHOLD_PERCENT = 90;
@@ -159,18 +159,6 @@ export function sumUsageTokens(usage: ProviderUsage | null | undefined): number 
   const cacheRead = toTokenNumber(usage.cacheReadTokens ?? usage.cacheTokens);
   const cacheWrite = toTokenNumber(usage.cacheWriteTokens);
   return input + output + cacheRead + cacheWrite;
-}
-
-/**
- * Estimated cost (USD cents) of a usage record under a model. Null when the
- * model is unknown (see costTable.estimateCostCents); the caller falls back
- * to the backend's `costHint` string or omits the spend segment.
- */
-export function sumUsageCostCents(
-  usage: ProviderUsage | null | undefined,
-  modelId: string,
-): number | null {
-  return estimateCostCents(usage, modelId);
 }
 
 function addTokens(

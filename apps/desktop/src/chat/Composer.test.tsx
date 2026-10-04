@@ -15,6 +15,7 @@ const baseSettings: AppSettings = {
   theme: 'system',
   language: 'system',
   providerEndpoints: {},
+  modelPriceOverrides: [],
   artifactRemoteAllowlist: [],
   artifactStyledPreview: true,
   artifactNetworkEnabled: true,
@@ -87,6 +88,12 @@ vi.mock('../ipc/client', () => ({
   // Per-provider, not one shared list: the menu groups by provider, so a mock
   // returning the same models for both would render duplicate rows and make
   // every by-name query ambiguous.
+  // The backend's price resolution, reduced to the one model these tests price.
+  resolveModelPrices: vi.fn(async (_provider: string, modelIds: string[]) =>
+    modelIds.map((id) =>
+      id === 'claude-sonnet-4' ? { price: { inputPerMtok: 3, outputPerMtok: 15 }, source: 'snapshot' } : null,
+    ),
+  ),
   listProviderModels: vi.fn().mockImplementation(async (id: string) =>
     id === 'openai'
       ? [{ id: 'gpt-4.1-mini', displayName: 'GPT-4.1 mini' }]
@@ -287,7 +294,8 @@ describe('Composer', () => {
 
     const active = await screen.findByRole('menuitem', { name: /Claude Sonnet 4/ });
     expect(active).toHaveAttribute('aria-current', 'true');
-    expect(active).toHaveTextContent('$3 / $15');
+    // Prices are resolved by the backend after the models arrive.
+    await waitFor(() => expect(active).toHaveTextContent('$3 / $15'));
   });
 
   it('keeps an unreachable provider selectable instead of hiding it', async () => {

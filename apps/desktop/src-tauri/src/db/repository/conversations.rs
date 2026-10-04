@@ -98,8 +98,8 @@ pub async fn create(pool: &SqlitePool, title: Option<&str>) -> Result<Conversati
 
 /// List all chats newest-first, with message count and a preview of the last
 /// text part for the history rail. A workflow's own conversation
-/// (`kind = 'automation'`) and a deck's chat (`kind = 'deck'`) are not chats
-/// and are left out.
+/// (`kind = 'automation'`), a deck's chat (`kind = 'deck'`) and a draft's chat
+/// (`kind = 'draft'`) are not chats and are left out.
 pub async fn list(pool: &SqlitePool) -> Result<Vec<ConversationSummary>, DbError> {
     summaries(pool, "c.kind = 'chat'", None).await
 }
@@ -596,7 +596,8 @@ pub async fn ensure_exists(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
 
 /// Mark what a conversation is: `'chat'` (the default, listed in the history
 /// rail), `'automation'` (a workflow's own conversation, not listed) or
-/// `'deck'` (the chat bound to a Slides deck, shown only in Slides).
+/// `'deck'` (the chat bound to a Slides deck, shown only in Slides) or `'draft'`
+/// (the chat a Writing draft is written in, shown only in Writing).
 pub async fn set_kind(pool: &SqlitePool, id: &str, kind: &str) -> Result<(), DbError> {
     sqlx::query("UPDATE conversations SET kind = ? WHERE id = ?")
         .bind(kind)

@@ -15,24 +15,26 @@ use provider_core::schema::{
     AppCategory, AppCreatedWith, AppDetail, AppError, AppInput, AppInputKind, AppInputTranslation,
     AppLlm, AppLlmSlot, AppManifest, AppModelChoice, AppModelSlots, AppNetwork, AppOrigin,
     AppSettings, AppSettingsView, AppStorage, AppSummary, AppUsageDay, Artifact, ArtifactKind,
-    AskUserField, Attachment, BrandBundle, BrandConfig, BrandFonts, BrandIdentity, BrandLogo,
-    BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition, ConnectorGrant,
-    ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent,
-    ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation,
-    ConversationSummary, CredentialRequest, CredentialSummary, DeckDetail, DeckReplaceResult,
-    DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary, GenerationControls,
-    GrantScope, GrantStatus, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend,
-    Message, MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, PageLlmGrant,
-    PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry,
-    PageStorageUsage, PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError,
-    ProviderEvent, ProviderRequest, ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget,
-    ResearchDepth, ResearchProgress, ResearchRun, ResearchRunUpdated, ResearchSource,
-    ResearchSourceStatus, ResearchStatus, ResourceBlock, ResourceRef, ResponseFormatHint,
-    RetentionState, ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch,
-    SkippedResource, SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit, StarterAppInfo,
-    StorylineItem, SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord,
-    ToolCallStatus, ToolChoice, ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation,
-    WebSearchDefaults, WebSearchFilters, WebSearchMode, WebSearchRequest,
+    AskUserField, Attachment, BlockOwner, BrandBundle, BrandConfig, BrandFonts, BrandIdentity,
+    BrandLogo, BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition,
+    ConnectorGrant, ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo,
+    ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation,
+    Conversation, ConversationSummary, CredentialRequest, CredentialSummary, DeckDetail,
+    DeckReplaceResult, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
+    DraftBlock, DraftDetail, DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary,
+    DraftStage, DraftSummary, GenerationControls, GrantScope, GrantStatus, KeychainMode,
+    LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart, MessagePartKind,
+    MessageRole, ModelInfo, ModelPolicy, OutlineSection, PageLlmGrant, PageLlmProviderGrant,
+    PageLlmReply, PageLlmRequest, PageLlmState, PageStorageEntry, PageStorageUsage,
+    PermissionLevel, PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent,
+    ProviderRequest, ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget, ResearchDepth,
+    ResearchProgress, ResearchRun, ResearchRunUpdated, ResearchSource, ResearchSourceStatus,
+    ResearchStatus, ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState,
+    ReturnTokenBudget, RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource,
+    SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit, StarterAppInfo, StorylineItem,
+    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, WebSearchDefaults,
+    WebSearchFilters, WebSearchMode, WebSearchRequest,
 };
 use ts_rs::TS;
 
@@ -110,6 +112,17 @@ fn main() {
     DeckSummary::export().expect("export DeckSummary");
     DeckDetail::export().expect("export DeckDetail");
     DeckSnapshotSummary::export().expect("export DeckSnapshotSummary");
+
+    // Writing
+    DraftStage::export().expect("export DraftStage");
+    BlockOwner::export().expect("export BlockOwner");
+    OutlineSection::export().expect("export OutlineSection");
+    DraftBlock::export().expect("export DraftBlock");
+    DraftSummary::export().expect("export DraftSummary");
+    DraftDetail::export().expect("export DraftDetail");
+    DraftSnapshotCause::export().expect("export DraftSnapshotCause");
+    DraftSnapshotSummary::export().expect("export DraftSnapshotSummary");
+    DraftExportFormat::export().expect("export DraftExportFormat");
 
     // Research
     ResearchDepth::export().expect("export ResearchDepth");

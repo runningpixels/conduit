@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use provider_core::{
     brand::{render_brand_md, validate as validate_brand, Severity as BrandSeverity},
     schema::{
-        BrandConfig, BrandIdentity, BrandPalette, BrandThemes, DeckDetail, DeckSlide,
-        DeckSnapshotCause, DeckStage, PermissionLevel, StorylineItem, ToolCallRecord,
-        ToolCallStatus, ToolDefinition, BRAND_SCHEMA_VERSION,
+        BlockOwner, BrandConfig, BrandIdentity, BrandPalette, BrandThemes, DeckDetail, DeckSlide,
+        DeckSnapshotCause, DeckStage, OutlineSection, PermissionLevel, StorylineItem,
+        ToolCallRecord, ToolCallStatus, ToolDefinition, BRAND_SCHEMA_VERSION,
     },
 };
 use serde::Deserialize;
@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::{
     db::repository::{
         artifacts::{self, Artifact, ArtifactContent},
-        conversations, slides, tool_calls,
+        conversations, drafts, slides, tool_calls,
     },
     encryption::Encryption,
     slide_html,
@@ -88,6 +88,25 @@ pub const REPLACE_IN_DECK_TOOL: &str = "replace_in_deck";
 pub const UPDATE_SLOTS_TOOL: &str = "update_slots";
 // Offered only in a chat that is NOT bound to a deck, on a deck-request turn.
 pub const START_DECK_TOOL: &str = "start_deck";
+
+// Draft tools (Writing; only offered in a draft's chat)
+pub const READ_DRAFT_TOOL: &str = "read_draft";
+pub const SET_OUTLINE_TOOL: &str = "set_outline";
+pub const WRITE_SECTION_TOOL: &str = "write_section";
+pub const EDIT_BLOCKS_TOOL: &str = "edit_blocks";
+pub const REPLACE_IN_DRAFT_TOOL: &str = "replace_in_draft";
+
+/// Longest `read_draft` response, in characters of block text. A longer draft
+/// comes back cut at a block boundary with a note saying where to continue.
+const READ_DRAFT_MAX_CHARS: usize = 60_000;
+
+/// True for the draft tools that change a draft (everything but `read_draft`).
+pub fn is_draft_write_tool(name: &str) -> bool {
+    matches!(
+        name,
+        SET_OUTLINE_TOOL | WRITE_SECTION_TOOL | EDIT_BLOCKS_TOOL | REPLACE_IN_DRAFT_TOOL
+    )
+}
 
 pub struct AgentToolContext<'a> {
     pub db: &'a sqlx::SqlitePool,
@@ -719,6 +738,61 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        ToolDefinition {
+            tool_id: READ_DRAFT_TOOL.to_string(),
+            name: READ_DRAFT_TOOL.to_string(),
+            description: READ_DRAFT_DESCRIPTION.to_string(),
+            input_schema: read_draft_schema(),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Writing".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: SET_OUTLINE_TOOL.to_string(),
+            name: SET_OUTLINE_TOOL.to_string(),
+            description: SET_OUTLINE_DESCRIPTION.to_string(),
+            input_schema: set_outline_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Writing".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: WRITE_SECTION_TOOL.to_string(),
+            name: WRITE_SECTION_TOOL.to_string(),
+            description: WRITE_SECTION_DESCRIPTION.to_string(),
+            input_schema: write_section_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Writing".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: EDIT_BLOCKS_TOOL.to_string(),
+            name: EDIT_BLOCKS_TOOL.to_string(),
+            description: EDIT_BLOCKS_DESCRIPTION.to_string(),
+            input_schema: edit_blocks_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Writing".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: REPLACE_IN_DRAFT_TOOL.to_string(),
+            name: REPLACE_IN_DRAFT_TOOL.to_string(),
+            description: REPLACE_IN_DRAFT_DESCRIPTION.to_string(),
+            input_schema: replace_in_draft_schema(),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Writing".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
     ]
 }
 
@@ -762,6 +836,11 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | REPLACE_IN_DECK_TOOL
             | UPDATE_SLOTS_TOOL
             | START_DECK_TOOL
+            | READ_DRAFT_TOOL
+            | SET_OUTLINE_TOOL
+            | WRITE_SECTION_TOOL
+            | EDIT_BLOCKS_TOOL
+            | REPLACE_IN_DRAFT_TOOL
     )
 }
 
@@ -1078,6 +1157,29 @@ pub async fn execute_builtin_tool(
         START_DECK_TOOL => {
             let input: StartDeckInput = parse_args(tool_name, arguments)?;
             start_deck(ctx, input).await
+        }
+        // ---------------------------------------------------------------------
+        // Draft tools
+        // ---------------------------------------------------------------------
+        READ_DRAFT_TOOL => {
+            let input: ReadDraftInput = parse_args(tool_name, arguments)?;
+            read_draft(ctx, input).await
+        }
+        SET_OUTLINE_TOOL => {
+            let input: SetOutlineInput = parse_args(tool_name, arguments)?;
+            set_outline(ctx, input).await
+        }
+        WRITE_SECTION_TOOL => {
+            let input: WriteSectionInput = parse_args(tool_name, arguments)?;
+            write_section(ctx, input).await
+        }
+        EDIT_BLOCKS_TOOL => {
+            let input: EditBlocksInput = parse_args(tool_name, arguments)?;
+            edit_blocks(ctx, input).await
+        }
+        REPLACE_IN_DRAFT_TOOL => {
+            let input: ReplaceInDraftInput = parse_args(tool_name, arguments)?;
+            replace_in_draft(ctx, input).await
         }
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
@@ -2423,6 +2525,343 @@ async fn update_slots(
     }))
 }
 
+// -----------------------------------------------------------------------------
+// Draft tools
+// -----------------------------------------------------------------------------
+
+const READ_DRAFT_DESCRIPTION: &str = "Read the draft you are writing. Returns the title, stage, brief, outline (heading, intent, target_words) and the draft's blocks in order, each with its id, kind, owner (ai, user or mixed), pinned flag and Markdown text. from_block and to_block (block ids, both included) read a range; without them the whole draft comes back, cut at about 60,000 characters with a note saying where to continue. A pinned block holds text the user wrote: keep it word for word.";
+const SET_OUTLINE_DESCRIPTION: &str = "Propose the draft's outline: 2 to 12 sections in order, each with a heading, its intent (one sentence on what the section does for the reader) and an optional target_words. Replaces the whole outline. The user reviews and edits it, and approves it before anything is written, so stop after proposing it. Pass title with the first outline: a short name for the draft (120 characters at most).";
+const WRITE_SECTION_DESCRIPTION: &str = "Write one section of the draft in Markdown. heading is the section's heading from the outline; markdown is the section (it may start with its \"## heading\" line, which is added when missing). Replaces everything under that ## heading up to the next ## heading, or adds the section where the outline puts it. Write the draft one section per call, with more_to_write: true on every call except the last. Pinned blocks (text the user wrote) inside the section must stay word for word: the call is rejected otherwise.";
+const EDIT_BLOCKS_DESCRIPTION: &str = "Replace the Markdown of blocks by id: for the user's selection actions (rewrite, shorten, expand, clarify, fix grammar) and other targeted edits. Each edit gives block_id and the block's new markdown; an empty markdown deletes the block, and markdown holding several blocks splits it. Edits to pinned blocks (text the user wrote) are rejected unless their id is in release_pinned. Pass release_pinned only for blocks the user's message asks you to change, such as a selection they chose an action on; a request to rewrite or polish the whole draft does not release them.";
+const REPLACE_IN_DRAFT_DESCRIPTION: &str = "Swap an exact word or phrase everywhere in the draft in one step. Use it only for a swap the user asked for across the draft. It also changes pinned blocks, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.";
+
+fn read_draft_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "from_block": { "type": "string", "description": "First block id to return (default the first block)." },
+            "to_block": { "type": "string", "description": "Last block id to return, included (default the last block)." },
+        },
+    })
+}
+
+fn set_outline_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "sections": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "heading": { "type": "string", "description": "The section's heading (120 characters at most)." },
+                        "intent": { "type": "string", "description": "What the section does for the reader, in one sentence." },
+                        "target_words": { "type": "integer", "description": "Planned length in words." },
+                    },
+                    "required": ["heading", "intent"],
+                },
+                "description": "2 to 12 sections, in order."
+            },
+            "title": {
+                "type": "string",
+                "description": "A short name for the draft (120 characters at most). Pass it with the first outline; it renames the draft and its chat."
+            },
+        },
+        "required": ["sections"],
+    })
+}
+
+fn write_section_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "heading": { "type": "string", "description": "The section's heading, as in the outline." },
+            "markdown": { "type": "string", "description": "The section in Markdown." },
+            "more_to_write": { "type": "boolean", "description": "true while more sections follow in this turn." },
+        },
+        "required": ["heading", "markdown"],
+    })
+}
+
+fn edit_blocks_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "edits": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "block_id": { "type": "string" },
+                        "markdown": { "type": "string", "description": "The block's new Markdown; empty deletes the block." },
+                    },
+                    "required": ["block_id", "markdown"],
+                },
+            },
+            "release_pinned": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Ids of pinned blocks you may change. Only blocks the user asked you to change."
+            },
+        },
+        "required": ["edits"],
+    })
+}
+
+fn replace_in_draft_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "find": { "type": "string", "description": "The exact word or phrase to find (200 characters at most)." },
+            "replace": { "type": "string", "description": "What to put in its place (200 characters at most)." },
+            "match_case": { "type": "boolean", "description": "Match upper and lower case exactly. Default false." },
+            "whole_word": { "type": "boolean", "description": "Only match whole words. Default false." },
+        },
+        "required": ["find", "replace"],
+    })
+}
+
+/// The draft written in this chat, or the message to give the model when none is.
+async fn draft_for_chat(ctx: &AgentToolContext<'_>) -> Result<drafts::Loaded, String> {
+    drafts::load_by_conversation(ctx.db, ctx.encryption, ctx.conversation_id)
+        .await
+        .map_err(drafts::user_message)?
+        .ok_or_else(|| "This chat isn't attached to a draft.".to_string())
+}
+
+fn block_position(draft: &drafts::Loaded, id: &str) -> Result<usize, String> {
+    draft.blocks.iter().position(|b| b.id == id).ok_or_else(|| {
+        format!("No block '{id}' in this draft. Call read_draft to see the block ids.")
+    })
+}
+
+fn owner_name(owner: BlockOwner) -> &'static str {
+    match owner {
+        BlockOwner::Ai => "ai",
+        BlockOwner::User => "user",
+        BlockOwner::Mixed => "mixed",
+    }
+}
+
+async fn read_draft(ctx: &AgentToolContext<'_>, input: ReadDraftInput) -> Result<Value, String> {
+    let draft = draft_for_chat(ctx).await?;
+    let from = match &input.from_block {
+        Some(id) => block_position(&draft, id)?,
+        None => 0,
+    };
+    let to = match &input.to_block {
+        Some(id) => block_position(&draft, id)? + 1,
+        None => draft.blocks.len(),
+    };
+    if to < from {
+        return Err("to_block comes before from_block in the draft.".to_string());
+    }
+    let mut blocks = Vec::new();
+    let mut chars = 0usize;
+    let mut cut_at: Option<&str> = None;
+    for block in &draft.blocks[from..to] {
+        let text = draft.block_text(block);
+        let len = text.chars().count();
+        if !blocks.is_empty() && chars + len > READ_DRAFT_MAX_CHARS {
+            cut_at = Some(&block.id);
+            break;
+        }
+        chars += len;
+        blocks.push(serde_json::json!({
+            "id": block.id,
+            "kind": block.kind,
+            "owner": owner_name(block.owner),
+            "pinned": block.pinned,
+            "text": text,
+        }));
+    }
+    let outline: Vec<Value> = draft
+        .outline
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "heading": s.heading,
+                "intent": s.intent,
+                "target_words": s.target_words,
+            })
+        })
+        .collect();
+    let mut out = serde_json::json!({
+        "title": draft.title,
+        "stage": draft.stage.as_str(),
+        "brief": draft.brief,
+        "outline": outline,
+        "words": draft.words(),
+        "block_count": draft.blocks.len(),
+        "blocks": blocks,
+    });
+    if let Some(id) = cut_at {
+        out["note"] = Value::String(format!(
+            "Cut before block {id} to stay under {READ_DRAFT_MAX_CHARS} characters; call read_draft with from_block: \"{id}\" to read on."
+        ));
+    }
+    Ok(out)
+}
+
+async fn set_outline(ctx: &AgentToolContext<'_>, input: SetOutlineInput) -> Result<Value, String> {
+    let draft = draft_for_chat(ctx).await?;
+    let sections: Vec<OutlineSection> = input
+        .sections
+        .into_iter()
+        .map(|s| OutlineSection {
+            heading: s.heading,
+            intent: s.intent,
+            target_words: s
+                .target_words
+                .filter(|w| w.is_finite() && *w >= 1.0)
+                .map(|w| w.round().min(f64::from(u32::MAX)) as u32),
+        })
+        .collect();
+    let detail = drafts::model_set_outline(
+        ctx.db,
+        ctx.encryption,
+        &draft,
+        sections,
+        input.title.as_deref(),
+    )
+    .await
+    .map_err(drafts::user_message)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "sections": detail.outline.len(),
+        "title": detail.title,
+    }))
+}
+
+fn model_edit_json(edit: &drafts::ModelEdit) -> Value {
+    serde_json::json!({
+        "ok": true,
+        "changed": edit.changed,
+        "added": edit.added,
+        "removed": edit.removed,
+        "kept_pinned": edit.kept_pinned,
+        "words": edit.words,
+    })
+}
+
+async fn write_section(
+    ctx: &AgentToolContext<'_>,
+    input: WriteSectionInput,
+) -> Result<Value, String> {
+    let draft = draft_for_chat(ctx).await?;
+    let (edit, section) = drafts::model_write_section(
+        ctx.db,
+        ctx.encryption,
+        &draft,
+        &input.heading,
+        &input.markdown,
+    )
+    .await
+    .map_err(drafts::user_message)?;
+    let mut out = model_edit_json(&edit);
+    out["heading"] = Value::String(input.heading.trim().to_string());
+    out["section_blocks"] = serde_json::json!(section);
+    out["more_to_write"] = Value::Bool(input.more_to_write.unwrap_or(false));
+    Ok(out)
+}
+
+async fn edit_blocks(ctx: &AgentToolContext<'_>, input: EditBlocksInput) -> Result<Value, String> {
+    let draft = draft_for_chat(ctx).await?;
+    let edits: Vec<(String, String)> = input
+        .edits
+        .into_iter()
+        .map(|e| (e.block_id, e.markdown))
+        .collect();
+    let edit = drafts::model_edit_blocks(
+        ctx.db,
+        ctx.encryption,
+        &draft,
+        &edits,
+        input.release_pinned.as_deref().unwrap_or(&[]),
+    )
+    .await
+    .map_err(drafts::user_message)?;
+    Ok(model_edit_json(&edit))
+}
+
+async fn replace_in_draft(
+    ctx: &AgentToolContext<'_>,
+    input: ReplaceInDraftInput,
+) -> Result<Value, String> {
+    let draft = draft_for_chat(ctx).await?;
+    let outcome = drafts::model_replace(
+        ctx.db,
+        ctx.encryption,
+        &draft,
+        &input.find,
+        &input.replace,
+        input.match_case.unwrap_or(false),
+        input.whole_word.unwrap_or(false),
+    )
+    .await
+    .map_err(drafts::user_message)?;
+    let blocks: Vec<Value> = outcome
+        .blocks
+        .iter()
+        .map(|(id, count)| serde_json::json!({ "block_id": id, "count": count }))
+        .collect();
+    Ok(serde_json::json!({
+        "ok": true,
+        "total": outcome.total,
+        "blocks": blocks,
+        "pinned_changed": outcome.pinned_changed,
+        "words": outcome.words,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadDraftInput {
+    from_block: Option<String>,
+    to_block: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetOutlineInput {
+    sections: Vec<OutlineSectionInput>,
+    title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OutlineSectionInput {
+    heading: String,
+    #[serde(default)]
+    intent: String,
+    target_words: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WriteSectionInput {
+    heading: String,
+    markdown: String,
+    more_to_write: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EditBlocksInput {
+    edits: Vec<BlockEditInput>,
+    release_pinned: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlockEditInput {
+    block_id: String,
+    #[serde(default)]
+    markdown: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReplaceInDraftInput {
+    find: String,
+    replace: String,
+    match_case: Option<bool>,
+    whole_word: Option<bool>,
+}
+
 #[derive(Debug, Deserialize)]
 struct ReplaceInDeckInput {
     find: String,
@@ -3141,7 +3580,47 @@ mod tests {
         // + 8 deck tools (Slides) = 34
         // + replace_in_deck + update_slots (Slides phase 2) = 36
         // + start_deck (Slides Studio) = 37
-        assert_eq!(defs.len(), 37);
+        // + 5 draft tools (Writing) = 42
+        assert_eq!(defs.len(), 42);
+    }
+
+    #[test]
+    fn draft_tools_are_a_registered_writing_group() {
+        let names = [
+            READ_DRAFT_TOOL,
+            SET_OUTLINE_TOOL,
+            WRITE_SECTION_TOOL,
+            EDIT_BLOCKS_TOOL,
+            REPLACE_IN_DRAFT_TOOL,
+        ];
+        let defs = builtin_tool_definitions();
+        for name in names {
+            assert!(is_builtin_tool_name(name), "{name} is not builtin");
+            let def = defs.iter().find(|d| d.name == name).expect(name);
+            assert_eq!(def.display_group.as_deref(), Some("Writing"), "{name}");
+            let expected = if name == READ_DRAFT_TOOL {
+                PermissionLevel::ReadOnly
+            } else {
+                PermissionLevel::SideEffectful
+            };
+            assert_eq!(def.permission_level, Some(expected), "{name}");
+            assert_eq!(is_draft_write_tool(name), name != READ_DRAFT_TOOL, "{name}");
+            // Never mistaken for a document tool by the turn loop's guardrails.
+            assert!(
+                !crate::stream_manager::is_document_content_tool(name),
+                "{name}"
+            );
+            assert!(
+                !crate::stream_manager::is_document_write_tool(name),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            defs.iter()
+                .filter(|d| d.display_group.as_deref() == Some("Writing"))
+                .count(),
+            names.len()
+        );
     }
 
     #[test]

@@ -97,6 +97,11 @@ csv = "1"
 quick-xml = "0.39"
 pdf-extract = "0.12.1"
 
+# Writing: split a draft's Markdown into blocks (with source offsets) and
+# render the HTML export. MIT. No default features: `getopts` is only for its
+# command-line binary; `html` is the renderer the export uses.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+
 # Workspace crates
 futures = "0.3"
 # Research's `ResearchIo` seam is an object-safe async trait (tests script

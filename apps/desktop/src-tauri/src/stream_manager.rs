@@ -278,6 +278,16 @@ pub fn is_document_content_tool(name: &str) -> bool {
         || name == agent_tools::PATCH_DOCUMENT_TOOL
 }
 
+/// True for the tools whose success is saved writing: document content tools
+/// and the Writing draft tools that change a draft. A round that saves writing
+/// extends the turn's time limit, and one marked `more_to_write` counts as a
+/// build in parts. Draft tools are never document content tools, so a round of
+/// them never ends the turn early (see [`round_only_wrote_documents`]): the
+/// model writes a draft section by section and then replies.
+pub fn saves_writing(name: &str) -> bool {
+    is_document_content_tool(name) || agent_tools::is_draft_write_tool(name)
+}
+
 /// True when the model marked a document call as one step of a longer build
 /// (`more_to_write: true`): a skeleton now, sections in later calls.
 pub fn call_has_more_to_write(call: &CompletedToolCall) -> bool {
@@ -1832,7 +1842,7 @@ impl StreamManager {
                                 *successful_creates_so_far =
                                     successful_creates_so_far.saturating_add(1);
                             }
-                            if !exec.is_error && is_document_content_tool(&tool_name) {
+                            if !exec.is_error && saves_writing(&tool_name) {
                                 document_writes_succeeded += 1;
                             }
                             let size = serde_json::to_vec(&exec.output)
@@ -1885,7 +1895,7 @@ impl StreamManager {
                         created_this_round += 1;
                         *successful_creates_so_far = successful_creates_so_far.saturating_add(1);
                     }
-                    if !exec.is_error && is_document_content_tool(&tool_name) {
+                    if !exec.is_error && saves_writing(&tool_name) {
                         document_writes_succeeded += 1;
                     }
                     if let Some(ch) = provider_channel {
@@ -3131,9 +3141,10 @@ impl StreamManager {
             // anywhere, not for ones saving a section a minute.
             if tally.document_writes_succeeded > 0 {
                 deadline.record_progress(tokio::time::Instant::now());
-                building_document = outcome.completed_tool_calls.iter().any(|call| {
-                    is_document_content_tool(&call.name) && call_has_more_to_write(call)
-                });
+                building_document = outcome
+                    .completed_tool_calls
+                    .iter()
+                    .any(|call| saves_writing(&call.name) && call_has_more_to_write(call));
             }
 
             if let Some(text) = steered_during_tools {

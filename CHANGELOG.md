@@ -59,6 +59,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Cached prompts were counted twice.** On OpenAI, Gemini, OpenRouter and
   the other OpenAI-style providers, the input count already includes cache
   hits; those tokens were billed at both the input and the cache rate.
+- **Approving an outline right after opening a draft could send the wrong
+  stage.** A slower load of the draft could land after the approval and put
+  it back to the outline stage, so the assistant was told it was still
+  outlining. The newer copy of the draft now wins.
 
 ## [1.0.0-rc.6] - 2026-10-03
 

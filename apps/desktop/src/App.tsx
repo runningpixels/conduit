@@ -529,7 +529,17 @@ export default function App() {
     setDraftLoading(true);
     draftForConversation(activeConversationId)
       .then((draft) => {
-        if (!cancelled) setActiveDraft(draft ?? null);
+        if (cancelled) return;
+        // Opening a draft loads it and selects its chat, which starts this
+        // fetch too. If the draft changed in between ("Approve outline" pressed
+        // the moment it appeared), this answer is older than what is already
+        // shown: keep the newer copy, or the next message describes a stage
+        // the draft has already left.
+        setActiveDraft((current) =>
+          current && draft && current.id === draft.id && current.updatedAt >= draft.updatedAt
+            ? current
+            : (draft ?? null),
+        );
       })
       .catch(() => {
         if (!cancelled) setActiveDraft(null);

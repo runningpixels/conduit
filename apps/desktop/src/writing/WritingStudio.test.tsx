@@ -22,6 +22,7 @@ function draft(over: Partial<DraftDetail> = {}): DraftDetail {
     words: 0,
     createdAt: '2026-10-01T00:00:00Z',
     updatedAt: '2026-10-01T00:00:00Z',
+    sources: { webSearch: false, researchRunIds: [] },
     ...over,
   };
 }

@@ -172,6 +172,9 @@ const IPC_EXPORTS = [
   'listDrafts', 'createDraft', 'getDraft', 'renameDraft', 'deleteDraft', 'saveDraftMarkdown',
   'setDraftOutline', 'setDraftStage', 'setBlockPinned', 'listDraftSnapshots', 'snapshotDraft',
   'restoreDraftSnapshot', 'exportDraft', 'draftForConversation',
+  'setDraftSources', 'listResearchReports', 'getDraftResearchMaterial',
+  // Writing's Sources tab reads and sets the draft chat's collections.
+  'listConversationCollections', 'setConversationCollections',
 ] as const;
 
 afterEach(() => {

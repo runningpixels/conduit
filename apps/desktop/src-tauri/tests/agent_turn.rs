@@ -553,6 +553,7 @@ async fn run_turn_with_settings(
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: None,
+            parallel_tool_calls: None,
         }),
         response_format: None,
         web_search: None,

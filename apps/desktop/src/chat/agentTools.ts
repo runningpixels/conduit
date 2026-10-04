@@ -719,13 +719,12 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'write_section',
     name: 'write_section',
     description:
-      'Write one section of the draft in Markdown. heading is the section\'s heading from the outline; markdown is the section (it may start with its "## heading" line, which is added when missing). Replaces everything under that ## heading up to the next ## heading, or adds the section where the outline puts it. Write the draft one section per call, with more_to_write: true on every call except the last. Pinned blocks (text the user wrote) inside the section must stay word for word: the call is rejected otherwise.',
+      'Write one section of the draft in Markdown. heading is the section\'s heading from the outline; markdown is the section (it may start with its "## heading" line, which is added when missing). Replaces everything under that ## heading up to the next ## heading, or adds the section where the outline puts it. Write one section per call, then stop: the result lists the sections still to write in remaining, and you will be asked for the next one. Pinned blocks (text the user wrote) inside the section must stay word for word: the call is rejected otherwise.',
     inputSchema: {
       type: 'object',
       properties: {
         heading: { type: 'string', description: "The section's heading, as in the outline." },
         markdown: { type: 'string', description: 'The section in Markdown.' },
-        more_to_write: { type: 'boolean', description: 'true while more sections follow in this turn.' },
       },
       required: ['heading', 'markdown'],
     },
@@ -1086,6 +1085,15 @@ export function selectBuiltinDraftTools(stage: DraftStage): ToolDefinition[] {
   return builtinToolDefinitions().filter((tool) => DRAFT_TOOL_NAMES.has(tool.name) && names.has(tool.name));
 }
 
+/** A draft's web search can run: web search on, its notice accepted, not local-only. */
+export function draftWebSearchAvailable(settings: {
+  webSearchEnabled?: boolean;
+  webSearchConsentAcknowledged?: boolean;
+  localOnly?: boolean;
+}): boolean {
+  return settings.webSearchEnabled === true && settings.webSearchConsentAcknowledged === true && !settings.localOnly;
+}
+
 /** Workspace tools that change files, as opposed to reading or searching them. */
 const WORKSPACE_WRITE_TOOL_NAMES = new Set(['workspace_write', 'workspace_edit']);
 
@@ -1128,6 +1136,11 @@ export function selectBuiltinTurnTools(
     /** t0-8 M4: persisted first-use consent for image generation, mirroring
      *  `workspaceToolsConsentAcknowledged`'s shape. */
     imageGenerationConsentAcknowledged?: boolean;
+    /** Web search availability, checked for a draft turn's `draftWebSearch`
+     *  (the same rule as chat web search and Research). */
+    webSearchEnabled?: boolean;
+    webSearchConsentAcknowledged?: boolean;
+    localOnly?: boolean;
   },
   conversationRoot?: string | null,
   /** Set by app-authored prompts (e.g. "Continue building") whose intent is
@@ -1143,13 +1156,22 @@ export function selectBuiltinTurnTools(
    *  stage replace the document, deck, brand and image tools. Never inferred
    *  from the prompt. */
   draftStage?: DraftStage | null,
+  /** The draft's Sources turn web search on: a draft turn also gets the
+   *  local `web_search` and `web_fetch` tools (never provider-hosted search,
+   *  whose citations cannot be written into the draft). Only when web search
+   *  is on, its notice accepted and the app is not local-only; ignored
+   *  outside a draft chat. */
+  draftWebSearch?: boolean,
 ): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
   if (draftStage) {
+    const webTools =
+      draftWebSearch === true && draftWebSearchAvailable(settings) ? selectBuiltinWebTools() : [];
     return {
       intent: 'edit',
       tools: [
         ...builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name)),
         ...selectBuiltinDraftTools(draftStage),
+        ...webTools,
         ...selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
           (tool) => !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name),
         ),

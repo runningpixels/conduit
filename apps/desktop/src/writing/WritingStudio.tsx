@@ -11,6 +11,7 @@ import { Menu } from '../workspace/Menu';
 import type { DraftDetail, DraftExportFormat, OutlineSection } from '../ipc/contracts';
 import { DraftEditor } from './DraftEditor';
 import { OutlineEditor } from './OutlineEditor';
+import type { DraftPreview } from './sectionPreview';
 import type { SelectionRequest } from './selectionMessage';
 
 export interface WritingStudioProps {
@@ -30,6 +31,8 @@ export interface WritingStudioProps {
   onSelectionRequest: (request: SelectionRequest) => void;
   onExport: (format: DraftExportFormat) => void;
   exporting?: boolean;
+  /** Sections the assistant is writing right now (shown in the editor as a preview). */
+  preview?: DraftPreview | null;
 }
 
 const SHOW_AI_KEY = 'conduit:writing-show-ai-text';
@@ -69,6 +72,7 @@ export function WritingStudio({
   onSelectionRequest,
   onExport,
   exporting = false,
+  preview = null,
 }: WritingStudioProps) {
   const t = useT();
   const [titleText, setTitleText] = useState(draft.title);
@@ -211,6 +215,7 @@ export function WritingStudio({
             readOnly={streaming}
             showAiText={showAi}
             resetToken={resetToken}
+            preview={streaming ? preview : null}
             onSave={onSave}
             onUnpin={onUnpin}
             onSelectionRequest={onSelectionRequest}

@@ -499,6 +499,16 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                 ToolChoice::Specific { tool_id } => json!({"type": "tool", "name": tool_id}),
             };
         }
+        // One tool call per response: Anthropic carries it on `tool_choice`,
+        // merged into an explicit choice (`none` takes no such flag).
+        if controls.parallel_tool_calls == Some(false) && body.get("tools").is_some() {
+            if body.get("tool_choice").is_none() {
+                body["tool_choice"] = json!({"type": "auto"});
+            }
+            if body["tool_choice"]["type"] != json!("none") {
+                body["tool_choice"]["disable_parallel_tool_use"] = json!(true);
+            }
+        }
     }
 
     body
@@ -1133,6 +1143,7 @@ mod tests {
                 stop_sequences: None,
                 tool_choice: None,
                 reasoning_effort: Some(crate::schema::ReasoningEffort::Low),
+                parallel_tool_calls: None,
             });
             build_payload(&NormalizedRequest { request })
         };
@@ -1152,6 +1163,60 @@ mod tests {
     }
 
     #[test]
+    fn parallel_tool_calls_false_disables_parallel_tool_use_only_with_tools() {
+        let controls = |choice: Option<ToolChoice>, parallel: Option<bool>| {
+            Some(crate::schema::GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: choice,
+                reasoning_effort: None,
+                parallel_tool_calls: parallel,
+            })
+        };
+        let tool = crate::schema::ToolDefinition {
+            tool_id: "write_section".into(),
+            name: "write_section".into(),
+            description: "Write a section".into(),
+            input_schema: json!({"type": "object"}),
+            kind: None,
+            host_config: None,
+            permission_level: None,
+            display_group: None,
+            tenant_scope: None,
+        };
+        let body_for = |choice: Option<ToolChoice>, parallel: Option<bool>, tools: bool| {
+            let mut request = user_request(None);
+            if tools {
+                request.tool_definitions = vec![tool.clone()];
+            }
+            request.generation_controls = controls(choice, parallel);
+            build_payload(&NormalizedRequest { request })
+        };
+
+        assert_eq!(
+            body_for(None, Some(false), true)["tool_choice"],
+            json!({"type": "auto", "disable_parallel_tool_use": true})
+        );
+        assert_eq!(
+            body_for(Some(ToolChoice::Required), Some(false), true)["tool_choice"],
+            json!({"type": "any", "disable_parallel_tool_use": true})
+        );
+        assert_eq!(
+            body_for(Some(ToolChoice::None), Some(false), true)["tool_choice"],
+            json!({"type": "none"})
+        );
+        assert!(body_for(None, Some(false), false)
+            .get("tool_choice")
+            .is_none());
+        assert!(body_for(None, Some(true), true)
+            .get("tool_choice")
+            .is_none());
+        assert!(body_for(None, None, true).get("tool_choice").is_none());
+    }
+
+    #[test]
     fn payload_uses_the_model_output_ceiling_unless_max_tokens_is_set() {
         let body = build_payload(&NormalizedRequest {
             request: user_request(None),
@@ -1166,6 +1231,7 @@ mod tests {
             stop_sequences: None,
             tool_choice: None,
             reasoning_effort: None,
+            parallel_tool_calls: None,
         });
         let body = build_payload(&NormalizedRequest { request });
         assert_eq!(body["max_tokens"], json!(2_048));

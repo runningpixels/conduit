@@ -583,6 +583,7 @@ async fn set_chat_settings_round_trips_and_clears() {
         stop_sequences: Some(vec!["END".into()]),
         tool_choice: None,
         reasoning_effort: None,
+        parallel_tool_calls: None,
     };
     conversations::set_chat_settings(
         &pool,
@@ -639,6 +640,7 @@ async fn fork_at_copies_chat_settings() {
         stop_sequences: None,
         tool_choice: None,
         reasoning_effort: None,
+        parallel_tool_calls: None,
     };
     conversations::set_chat_settings(&pool, &enc, &conv.id, Some(&controls), Some("Be brief."))
         .await

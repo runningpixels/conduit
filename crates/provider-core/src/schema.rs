@@ -317,6 +317,13 @@ pub struct GenerationControls {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub reasoning_effort: Option<ReasoningEffort>,
+    /// `Some(false)` asks the model for at most one tool call per response
+    /// (sent only when the request carries tools). Draft turns set it so each
+    /// section lands in the editor as soon as it is written. Unset or
+    /// `Some(true)` leaves the provider's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub parallel_tool_calls: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1762,6 +1769,74 @@ pub struct DraftDetail {
     pub words: u32,
     pub created_at: String,
     pub updated_at: String,
+    /// What the model may draw on while writing this draft.
+    pub sources: DraftSources,
+}
+
+/// A draft's sources beyond the user's document collections (those are the
+/// draft chat's own collections): local web search in its turns, and the
+/// Research reports whose verified facts it writes from.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/draft_sources.ts"
+)]
+pub struct DraftSources {
+    #[serde(default)]
+    pub web_search: bool,
+    #[serde(default)]
+    pub research_run_ids: Vec<String>,
+}
+
+/// A finished Research run a draft can be written from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_report_summary.ts"
+)]
+pub struct ResearchReportSummary {
+    pub run_id: String,
+    pub question: String,
+    #[ts(optional)]
+    pub finished_at: Option<String>,
+    /// Sources the report cites.
+    pub cited_sources: u32,
+    /// Verified claims.
+    pub claims: u32,
+}
+
+/// The verified facts of one Research run attached to a draft, numbered for
+/// citing (`R<n>.<m>`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_material.ts"
+)]
+pub struct ResearchMaterial {
+    pub run_id: String,
+    pub question: String,
+    pub claims: Vec<ResearchMaterialClaim>,
+    /// Some verified claims were left out to stay within the caps.
+    pub truncated: bool,
+}
+
+/// One verified claim with the page it came from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/research_material_claim.ts"
+)]
+pub struct ResearchMaterialClaim {
+    /// `R<n>.<m>`: report n (in the draft's order), claim m.
+    pub id: String,
+    pub claim: String,
+    #[ts(optional)]
+    pub source_title: Option<String>,
+    pub url: String,
 }
 
 /// Why a draft snapshot was taken. Kebab-case on the wire, like

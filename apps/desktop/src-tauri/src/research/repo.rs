@@ -7,8 +7,9 @@
 use std::collections::{HashMap, HashSet};
 
 use provider_core::schema::{
-    ResearchBrief, ResearchBudget, ResearchDepth, ResearchProgress, ResearchRun, ResearchSource,
-    ResearchSourceStatus, ResearchStatus,
+    ResearchBrief, ResearchBudget, ResearchDepth, ResearchMaterial, ResearchMaterialClaim,
+    ResearchProgress, ResearchReportSummary, ResearchRun, ResearchSource, ResearchSourceStatus,
+    ResearchStatus,
 };
 use sqlx::SqlitePool;
 
@@ -419,4 +420,205 @@ pub async fn fail_interrupted(pool: &SqlitePool) -> Result<u64, DbError> {
     .execute(pool)
     .await?;
     Ok(done.rows_affected())
+}
+
+// ---------------------------------------------------------------------------
+// Writing from a report
+// ---------------------------------------------------------------------------
+
+/// Verified claims offered per report attached to a draft.
+pub const MATERIAL_CLAIMS_PER_RUN: usize = 60;
+/// Characters of material (claims, titles and addresses) across all reports.
+pub const MATERIAL_TOTAL_CHARS: usize = 16_000;
+
+/// Run id, brief, finished at, cited sources, verified claims.
+type ReportRow = (String, Option<String>, Option<String>, i64, i64);
+
+/// Finished runs a draft can be written from, newest first.
+pub async fn list_reports(
+    pool: &SqlitePool,
+    enc: &Encryption,
+) -> Result<Vec<ResearchReportSummary>, DbError> {
+    let rows: Vec<ReportRow> = sqlx::query_as(
+        "SELECT r.id, r.brief_json, r.finished_at, \
+         (SELECT COUNT(*) FROM research_sources s WHERE s.run_id = r.id AND s.footnote IS NOT NULL), \
+         (SELECT COUNT(*) FROM research_claims c WHERE c.run_id = r.id AND c.verified = 1) \
+         FROM research_runs r WHERE r.status = ? \
+         ORDER BY COALESCE(r.finished_at, r.created_at) DESC, r.created_at DESC",
+    )
+    .bind(ResearchStatus::Done.as_str())
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|(run_id, brief_json, finished_at, cited, claims)| {
+            Ok(ResearchReportSummary {
+                run_id,
+                question: question_of(enc, brief_json.as_deref())?,
+                finished_at,
+                cited_sources: u32::try_from(cited.max(0)).unwrap_or(u32::MAX),
+                claims: u32::try_from(claims.max(0)).unwrap_or(u32::MAX),
+            })
+        })
+        .collect()
+}
+
+fn question_of(enc: &Encryption, brief_json: Option<&str>) -> Result<String, DbError> {
+    Ok(match brief_json {
+        Some(stored) => serde_json::from_str::<ResearchBrief>(&enc.decrypt(stored)?)
+            .map(|b| b.question)
+            .unwrap_or_default(),
+        None => String::new(),
+    })
+}
+
+/// One verified claim with its page, before numbering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaterialClaim {
+    pub claim: String,
+    pub source_title: Option<String>,
+    pub url: String,
+}
+
+/// The verified claims of finished runs, in the order given, numbered
+/// `R<n>.<m>` (see [`number_material`]). Runs that no longer exist or are not
+/// finished are skipped.
+pub async fn material(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_ids: &[String],
+) -> Result<Vec<ResearchMaterial>, DbError> {
+    let mut runs = Vec::new();
+    for run_id in run_ids {
+        let row: Option<(String, Option<String>)> =
+            sqlx::query_as("SELECT status, brief_json FROM research_runs WHERE id = ?")
+                .bind(run_id)
+                .fetch_optional(pool)
+                .await?;
+        let Some((status, brief_json)) = row else {
+            continue;
+        };
+        if ResearchStatus::parse(&status) != Some(ResearchStatus::Done) {
+            continue;
+        }
+        // Claims the report cites first, then the rest, in extraction order.
+        let rows: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT c.claim, s.url, s.final_url, s.title FROM research_claims c \
+             JOIN research_sources s ON s.id = c.source_id \
+             WHERE c.run_id = ? AND c.verified = 1 \
+             ORDER BY c.used DESC, s.footnote IS NULL, s.footnote, c.sub_question, c.rowid",
+        )
+        .bind(run_id)
+        .fetch_all(pool)
+        .await?;
+        let mut claims = Vec::with_capacity(rows.len());
+        for (claim, url, final_url, title) in rows {
+            claims.push(MaterialClaim {
+                claim: enc.decrypt(&claim)?,
+                source_title: title.filter(|t| !t.trim().is_empty()),
+                url: final_url.unwrap_or(url),
+            });
+        }
+        runs.push((
+            run_id.clone(),
+            question_of(enc, brief_json.as_deref())?,
+            claims,
+        ));
+    }
+    Ok(number_material(runs))
+}
+
+/// Number and cap material: report `n` (1-based, in order) keeps at most
+/// [`MATERIAL_CLAIMS_PER_RUN`] claims, numbered `R<n>.<m>`, within an even
+/// share of [`MATERIAL_TOTAL_CHARS`] (what an earlier report leaves unused
+/// goes to the later ones). `truncated` says a report lost claims.
+pub fn number_material(runs: Vec<(String, String, Vec<MaterialClaim>)>) -> Vec<ResearchMaterial> {
+    let mut left = MATERIAL_TOTAL_CHARS;
+    let count = runs.len();
+    runs.into_iter()
+        .enumerate()
+        .map(|(i, (run_id, question, claims))| {
+            let mut share = left / (count - i);
+            let total = claims.len();
+            let mut kept = Vec::new();
+            for (m, c) in claims.into_iter().enumerate() {
+                if kept.len() == MATERIAL_CLAIMS_PER_RUN {
+                    break;
+                }
+                let size = c.claim.chars().count()
+                    + c.source_title.as_deref().map_or(0, |t| t.chars().count())
+                    + c.url.chars().count();
+                if size > share {
+                    break;
+                }
+                share -= size;
+                left -= size;
+                kept.push(ResearchMaterialClaim {
+                    id: format!("R{}.{}", i + 1, m + 1),
+                    claim: c.claim,
+                    source_title: c.source_title,
+                    url: c.url,
+                });
+            }
+            ResearchMaterial {
+                run_id,
+                question,
+                truncated: kept.len() < total,
+                claims: kept,
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod material_tests {
+    use super::*;
+
+    fn claim(text: &str) -> MaterialClaim {
+        MaterialClaim {
+            claim: text.to_string(),
+            source_title: Some("Page".into()),
+            url: "https://example.com/a".into(),
+        }
+    }
+
+    #[test]
+    fn claims_are_numbered_by_report_and_capped_per_report() {
+        let many: Vec<MaterialClaim> = (0..70).map(|i| claim(&format!("Fact {i}."))).collect();
+        let material = number_material(vec![
+            (
+                "run-a".into(),
+                "Q1".into(),
+                vec![claim("One."), claim("Two.")],
+            ),
+            ("run-b".into(), "Q2".into(), many),
+        ]);
+        assert_eq!(material[0].claims[1].id, "R1.2");
+        assert!(!material[0].truncated);
+        assert_eq!(material[1].claims.len(), MATERIAL_CLAIMS_PER_RUN);
+        assert_eq!(material[1].claims[0].id, "R2.1");
+        assert!(material[1].truncated);
+    }
+
+    #[test]
+    fn the_character_budget_is_shared_between_reports() {
+        let long = "x".repeat(1_000);
+        let big: Vec<MaterialClaim> = (0..40).map(|_| claim(&long)).collect();
+        let material = number_material(vec![
+            ("run-a".into(), "Q1".into(), big.clone()),
+            ("run-b".into(), "Q2".into(), vec![claim("Short.")]),
+            ("run-c".into(), "Q3".into(), big),
+        ]);
+        let size = |m: &ResearchMaterial| {
+            m.claims
+                .iter()
+                .map(|c| c.claim.len() + 4 + c.url.len())
+                .sum::<usize>()
+        };
+        let total: usize = material.iter().map(size).sum();
+        assert!(total <= MATERIAL_TOTAL_CHARS, "{total}");
+        assert!(material[0].truncated && material[2].truncated);
+        assert!(!material[1].truncated);
+        // The short report's unused share goes to the last one.
+        assert!(material[2].claims.len() > material[0].claims.len());
+    }
 }

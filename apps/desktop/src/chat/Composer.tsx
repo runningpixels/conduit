@@ -129,6 +129,17 @@ export interface ComposerProps {
   contextTokens?: number;
   /// Auto-compact threshold percent for status warn styling.
   compactThresholdPercent?: number;
+  /// A Writing draft's chat: its sources live in the studio's Sources tab.
+  /// The "+" menu leaves out web search, Research and documents, and the
+  /// draft's active sources show as chips that open that tab.
+  draftSources?: ComposerDraftSources;
+}
+
+export interface ComposerDraftSources {
+  webSearch: boolean;
+  documents: number;
+  reports: number;
+  onOpen?: () => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -185,6 +196,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   usage,
   contextTokens = 0,
   compactThresholdPercent,
+  draftSources,
 }, ref) {
   const t = useT();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -633,8 +645,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   // Availability of each "+" item. These are the gates the separate bar
   // buttons had; only what is available is listed.
-  const webSearchAvailable = settings.webSearchEnabled && !settings.localOnly;
-  const collectionsAvailable = Boolean(onToggleCollection) && collections.length > 0;
+  const webSearchAvailable = !draftSources && settings.webSearchEnabled && !settings.localOnly;
+  const collectionsAvailable = !draftSources && Boolean(onToggleCollection) && collections.length > 0;
   const mcpPromptsAvailable = Boolean(onPickMcpPrompt) && mcpPrompts.length > 0;
   const mcpResourcesAvailable = Boolean(onToggleMcpResource) && mcpResources.length > 0;
 
@@ -673,7 +685,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
   const researchReasonId = researchUnavailableReasonId(settings);
   const researchAvailable = researchReasonId === null;
-  if (onResearchToggle) {
+  if (onResearchToggle && !draftSources) {
     plusItems.push({
       id: 'research',
       label: t('chat.composer.plus.research'),
@@ -811,7 +823,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       removeLabel: t('chat.composer.chips.removeWebSearch'),
     });
   }
-  if (onResearchToggle && researchOn && researchAvailable) {
+  if (onResearchToggle && researchOn && researchAvailable && !draftSources) {
     chips.push({
       id: 'research',
       label: t('chat.composer.chips.research'),
@@ -820,6 +832,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       onRemove: onResearchToggle,
       removeLabel: t('chat.composer.chips.removeResearch'),
     });
+  }
+  if (draftSources) {
+    const openSources = draftSources.onOpen;
+    if (draftSources.webSearch) {
+      chips.push({
+        id: 'draftWebSearch',
+        label: t('chat.composer.chips.webSearch'),
+        icon: <SearchIcon />,
+        title: t('writing.sources.chipTitle'),
+        onOpen: openSources,
+        removeLabel: '',
+      });
+    }
+    if (draftSources.documents > 0) {
+      chips.push({
+        id: 'draftDocuments',
+        label: t('writing.sources.chips.documents', { count: draftSources.documents }),
+        icon: <KnowledgeIcon />,
+        title: t('writing.sources.chipTitle'),
+        onOpen: openSources,
+        removeLabel: '',
+      });
+    }
+    if (draftSources.reports > 0) {
+      chips.push({
+        id: 'draftReports',
+        label: t('writing.sources.chips.reports', { count: draftSources.reports }),
+        icon: <ResearchIcon />,
+        title: t('writing.sources.chipTitle'),
+        onOpen: openSources,
+        removeLabel: '',
+      });
+    }
   }
   if (mcpResourcesAvailable) {
     for (const resourceRef of attachedResources) {

@@ -239,6 +239,7 @@ fn low_effort(provider: &str) -> Option<GenerationControls> {
         stop_sequences: None,
         tool_choice: None,
         reasoning_effort: Some(ReasoningEffort::Low),
+        parallel_tool_calls: None,
     })
 }
 

@@ -23,6 +23,7 @@ import type {
   DraftSnapshotSummary,
   DraftStage,
   DraftSummary,
+  DraftSources,
   BlockOwner,
   OutlineSection,
   StarterAppInfo,
@@ -240,6 +241,7 @@ export type {
   DraftSnapshotSummary,
   DraftStage,
   DraftSummary,
+  DraftSources,
   BlockOwner,
   OutlineSection,
   StarterAppInfo,
@@ -807,4 +809,7 @@ export type {
   ResearchSource,
   ResearchSourceStatus,
   ResearchStatus,
+  ResearchReportSummary,
+  ResearchMaterial,
+  ResearchMaterialClaim,
 } from '@conduit/config-schema';

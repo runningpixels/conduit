@@ -8,4 +8,11 @@ export type GenerationControls = { temperature?: number, topP?: number, maxToken
  * it. Unset leaves the model its default. The agent loop sets `Low` to
  * retry a round whose reasoning used the whole output limit.
  */
-reasoningEffort?: ReasoningEffort, };
+reasoningEffort?: ReasoningEffort, 
+/**
+ * `Some(false)` asks the model for at most one tool call per response
+ * (sent only when the request carries tools). Draft turns set it so each
+ * section lands in the editor as soon as it is written. Unset or
+ * `Some(true)` leaves the provider's default.
+ */
+parallelToolCalls?: boolean, };

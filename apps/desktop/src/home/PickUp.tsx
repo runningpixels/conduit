@@ -1,20 +1,21 @@
-/// "Pick up where you left off": recent chats, decks and apps as cards.
+/// "Pick up where you left off": recent chats, decks, drafts and apps as cards.
 
 import { useId, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { AppTile } from '../apps/AppTile';
-import { ChatIcon, SlidesIcon } from '../icons';
+import { ChatIcon, SlidesIcon, WritingIcon } from '../icons';
 import type { PickUpItem } from './pickUpItems';
 
 export interface PickUpProps {
   items: PickUpItem[];
   onOpenChat: (conversationId: string) => void;
   onOpenDeck: (deckId: string) => void;
+  onOpenDraft?: (draftId: string) => void;
   onOpenApp: (appId: string) => void;
 }
 
-export function PickUp({ items, onOpenChat, onOpenDeck, onOpenApp }: PickUpProps) {
+export function PickUp({ items, onOpenChat, onOpenDeck, onOpenDraft, onOpenApp }: PickUpProps) {
   const t = useT();
   const fmt = useFormatters();
   const labelId = useId();
@@ -44,6 +45,12 @@ export function PickUp({ items, onOpenChat, onOpenDeck, onOpenApp }: PickUpProps
             aria = item.building ? t('home.pickUp.aria.deckBuild', { title }) : t('home.pickUp.aria.deck', { title });
             tile = <SlidesIcon />;
             open = () => onOpenDeck(item.id);
+          } else if (item.kind === 'draft') {
+            eyebrow = t('home.pickUp.kind.draft', { count: item.words });
+            action = item.outlining ? t('home.pickUp.action.outline') : t('home.pickUp.action.continue');
+            aria = item.outlining ? t('home.pickUp.aria.draftOutline', { title }) : t('home.pickUp.aria.draft', { title });
+            tile = <WritingIcon />;
+            open = () => onOpenDraft?.(item.id);
           } else {
             eyebrow = t('home.pickUp.kind.app');
             action = t('home.pickUp.action.open');

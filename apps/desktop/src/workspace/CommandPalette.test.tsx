@@ -125,7 +125,7 @@ describe('CommandPalette navigation', () => {
     renderPalette({ onNavigate });
     type('>go to');
     const labels = screen.getAllByRole('option').map((o) => o.textContent ?? '');
-    for (const name of ['Home', 'Chats', 'Apps', 'Slides', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']) {
+    for (const name of ['Home', 'Chats', 'Apps', 'Slides', 'Writing', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']) {
       expect(labels.some((l) => l.includes(`Go to ${name}`)), name).toBe(true);
     }
     fireEvent.click(screen.getByRole('option', { name: /Go to Memory/ }));
@@ -136,6 +136,18 @@ describe('CommandPalette navigation', () => {
     renderPalette({ onNavigate: vi.fn() });
     type('>go to home');
     expect(screen.getByRole('option', { name: /Go to Home/ }).textContent).toMatch(/1/);
+  });
+
+  it('gives Writing Ctrl+5 and leaves Memory without a number', () => {
+    const onNavigate = vi.fn();
+    renderPalette({ onNavigate });
+    type('>go to writing');
+    const writing = screen.getByRole('option', { name: /Go to Writing/ });
+    expect(writing.textContent).toMatch(/5/);
+    fireEvent.click(writing);
+    expect(onNavigate).toHaveBeenCalledWith('writing');
+    type('>go to memory');
+    expect(screen.getByRole('option', { name: /Go to Memory/ }).textContent).not.toMatch(/\d/);
   });
 
   it('finds a destination from the plain search too', () => {
@@ -152,6 +164,15 @@ describe('CommandPalette navigation', () => {
     type('>new deck');
     fireEvent.click(screen.getByRole('option', { name: /New deck/ }));
     expect(onNewDeck).toHaveBeenCalledTimes(1);
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('offers New draft among the commands', () => {
+    const onNewDraft = vi.fn();
+    const props = renderPalette({ onNewDraft });
+    type('>new draft');
+    fireEvent.click(screen.getByRole('option', { name: /New draft/ }));
+    expect(onNewDraft).toHaveBeenCalledTimes(1);
     expect(props.onClose).toHaveBeenCalled();
   });
 

@@ -102,6 +102,7 @@ const SHAPES: Record<string, unknown> = {
   listKnowledgeCollections: [],
   // Home reads these when it opens; an empty answer is the empty state.
   listDecks: [],
+  listDrafts: [],
   listWorkflows: [],
   listWorkflowReviews: [],
   listWorkflowQuestions: [],
@@ -167,6 +168,10 @@ const IPC_EXPORTS = [
   // Slides: App.tsx asks whether the open chat is bound to a deck.
   'getDeckForConversation', 'listDecks', 'openDeck', 'undoStartDeck', 'listDeckSnapshots', 'listSlideThemes',
   'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',
+  // Writing: App.tsx asks whether the open chat is bound to a draft; Home lists drafts.
+  'listDrafts', 'createDraft', 'getDraft', 'renameDraft', 'deleteDraft', 'saveDraftMarkdown',
+  'setDraftOutline', 'setDraftStage', 'setBlockPinned', 'listDraftSnapshots', 'snapshotDraft',
+  'restoreDraftSnapshot', 'exportDraft', 'draftForConversation',
 ] as const;
 
 afterEach(() => {

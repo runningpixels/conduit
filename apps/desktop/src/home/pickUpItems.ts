@@ -1,7 +1,7 @@
 /// "Pick up where you left off": the few things most recently worked on, chats,
-/// decks and apps mixed by recency. Pure: lists in, items out.
+/// decks, drafts and apps mixed by recency. Pure: lists in, items out.
 
-import type { AppSummary, ConversationSummary, DeckSummary } from '../ipc/contracts';
+import type { AppSummary, ConversationSummary, DeckSummary, DraftSummary } from '../ipc/contracts';
 
 /// How many items Home shows.
 export const PICK_UP_LIMIT = 6;
@@ -9,6 +9,7 @@ export const PICK_UP_LIMIT = 6;
 export type PickUpItem =
   | { kind: 'chat'; id: string; title: string | null; when: string; messageCount: number }
   | { kind: 'deck'; id: string; title: string; when: string; slideCount: number; building: boolean }
+  | { kind: 'draft'; id: string; title: string; when: string; words: number; outlining: boolean }
   | { kind: 'app'; id: string; title: string; when: string; icon?: string; category: AppSummary['category'] };
 
 /// A chat someone wrote in (or named). The empty chat the app opens on is not one.
@@ -26,6 +27,7 @@ export function buildPickUp(
   decks: readonly DeckSummary[],
   apps: readonly AppSummary[],
   limit = PICK_UP_LIMIT,
+  drafts: readonly DraftSummary[] = [],
 ): PickUpItem[] {
   const items: PickUpItem[] = [];
   for (const c of conversations) {
@@ -43,6 +45,9 @@ export function buildPickUp(
       slideCount: d.slideCount,
       building: d.stage === 'storyline',
     });
+  }
+  for (const d of drafts) {
+    items.push({ kind: 'draft', id: d.id, title: d.title, when: d.updatedAt, words: d.words, outlining: d.stage === 'outline' });
   }
   for (const a of apps) {
     if (!a.lastOpenedAt) continue;

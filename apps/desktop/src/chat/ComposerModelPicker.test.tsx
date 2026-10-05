@@ -202,6 +202,116 @@ describe('ComposerModelPicker', () => {
 });
 
 /**
+ * An aggregator lists hundreds of models in its own order; scanning that by
+ * eye was the whole selection experience. These pin the order and the search.
+ */
+describe('ComposerModelPicker — ordering and search', () => {
+  beforeEach(async () => {
+    const { listProviderModels } = await mocks();
+    vi.mocked(listProviderModels).mockImplementation(async (id: string) =>
+      id === 'anthropic'
+        ? ([
+            { id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' },
+            { id: 'claude-haiku-4', displayName: 'Claude Haiku 4' },
+            { id: 'claude-opus-4', displayName: 'Claude Opus 4' },
+          ] as never)
+        : ([
+            { id: 'qwen3:14b', displayName: 'qwen3:14b' },
+            { id: 'llama3.3:70b', displayName: 'llama3.3:70b' },
+            { id: 'qwen3:8b', displayName: 'qwen3:8b' },
+          ] as never),
+    );
+  });
+
+  async function openPicker() {
+    const result = renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    await screen.findByText('Claude Opus 4');
+    return { ...result, search: screen.getByLabelText('Search models') };
+  }
+
+  const rowNames = () => screen.getAllByRole('menuitem').map((row) => row.textContent);
+
+  it('lists each group alphabetically, whatever order the provider returned', async () => {
+    await openPicker();
+    expect(rowNames()).toEqual([
+      expect.stringMatching(/^Claude Haiku 4/),
+      expect.stringMatching(/^Claude Opus 4/),
+      expect.stringMatching(/^Claude Sonnet 4/),
+      expect.stringMatching(/^llama3\.3:70b/),
+      expect.stringMatching(/^qwen3:8b/),
+      expect.stringMatching(/^qwen3:14b/),
+    ]);
+  });
+
+  it('focuses the search on open so typing narrows straight away', async () => {
+    const { search } = await openPicker();
+    expect(search).toHaveFocus();
+  });
+
+  it('narrows every group to the rows that match, hiding empty groups', async () => {
+    const { search } = await openPicker();
+    fireEvent.change(search, { target: { value: 'qwen' } });
+    expect(rowNames()).toEqual([expect.stringMatching(/^qwen3:8b/), expect.stringMatching(/^qwen3:14b/)]);
+    expect(screen.queryByText('Anthropic · keychain')).toBeNull();
+  });
+
+  it('matches the provider name as well as the model', async () => {
+    const { search } = await openPicker();
+    fireEvent.change(search, { target: { value: 'ollama 14' } });
+    expect(rowNames()).toEqual([expect.stringMatching(/^qwen3:14b/)]);
+  });
+
+  it('does not match a model family inside a provider name', async () => {
+    const { search } = await openPicker();
+    // "llama" is inside "Ollama" — only the llama model may match.
+    fireEvent.change(search, { target: { value: 'llama' } });
+    expect(rowNames()).toEqual([expect.stringMatching(/^llama3\.3:70b/)]);
+  });
+
+  it('takes the first match on Enter', async () => {
+    const { search, onSelectModel } = await openPicker();
+    fireEvent.change(search, { target: { value: 'opus' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(onSelectModel).toHaveBeenCalledWith('anthropic', 'claude-opus-4', null);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('steps from the search into the list on ArrowDown', async () => {
+    const { search } = await openPicker();
+    fireEvent.change(search, { target: { value: 'sonnet' } });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(screen.getByRole('menuitem', { name: /Claude Sonnet 4/ })).toHaveFocus();
+  });
+
+  it('says so when nothing matches', async () => {
+    const { search } = await openPicker();
+    fireEvent.change(search, { target: { value: 'gemini' } });
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(screen.getByText('No models match “gemini”')).toBeInTheDocument();
+  });
+
+  it('clears a search on Escape before closing the menu', async () => {
+    const { search } = await openPicker();
+    fireEvent.change(search, { target: { value: 'opus' } });
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(search).toHaveValue('');
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('starts each opening from the whole catalogue', async () => {
+    const { search } = await openPicker();
+    fireEvent.change(search, { target: { value: 'opus' } });
+    fireEvent.click(screen.getByTitle('Switch model'));
+    fireEvent.click(screen.getByTitle('Switch model'));
+    expect(await screen.findByLabelText('Search models')).toHaveValue('');
+    expect(screen.getAllByRole('menuitem')).toHaveLength(6);
+  });
+});
+
+/**
  * V7's popover degraded to a free-text `Model id` input whenever a provider
  * returned no models, and its provider `<select>` listed every configured
  * provider regardless of whether one answered. A menu built only from returned
@@ -223,6 +333,17 @@ describe('ComposerModelPicker — providers that list no models', () => {
     renderPicker();
     fireEvent.click(screen.getByTitle('Switch model'));
     expect(await screen.findByText('Ollama · no key needed')).toBeInTheDocument();
+  });
+
+  it('keeps the typing row reachable by searching the provider name', async () => {
+    renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    const search = await screen.findByLabelText('Search models');
+    await screen.findByLabelText('Model id for Ollama');
+    fireEvent.change(search, { target: { value: 'claude' } });
+    expect(screen.queryByLabelText('Model id for Ollama')).toBeNull();
+    fireEvent.change(search, { target: { value: 'olla' } });
+    expect(screen.getByLabelText('Model id for Ollama')).toBeInTheDocument();
   });
 
   it('accepts a typed model id and writes it with its provider', async () => {

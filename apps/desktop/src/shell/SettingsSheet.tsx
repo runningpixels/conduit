@@ -50,6 +50,7 @@ import { useFocusTrap } from './useFocusTrap';
 import { allowUserBranding } from '../brand/buildFlags';
 import { foldForSearch, searchSettings } from './settingsSearch';
 import { modKey } from '../lib/shortcuts';
+import { sortModels } from '../lib/modelOrder';
 import { useRichT, useT } from '../i18n';
 import {
   ChatIcon,
@@ -464,7 +465,7 @@ export function SettingsSheet({
                     {models.length === 0 ? (
                       <option value={settings.activeModel}>{settings.activeModel}</option>
                     ) : (
-                      models.map((m) => (
+                      sortModels(models).map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.displayName ?? m.id}
                         </option>

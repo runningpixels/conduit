@@ -1148,6 +1148,22 @@ export async function resolveModelPrices(
   return invokeCommand<Array<ResolvedModelPrice | null>>('resolve_model_prices', { providerId, modelIds });
 }
 
+/**
+ * Context windows (tokens) for several models of one provider, in the order
+ * asked, from the bundled models.dev snapshot; `null` where it has none.
+ */
+export async function resolveContextWindows(
+  providerId: string,
+  modelIds: string[],
+): Promise<Array<number | null>> {
+  return invokeCommand<Array<number | null>>('resolve_context_windows', { providerId, modelIds });
+}
+
+/** Whether image attachments reach this model (the backend's send-path rule). */
+export async function modelAcceptsImageInput(providerId: string, modelId: string): Promise<boolean> {
+  return invokeCommand<boolean>('model_accepts_image_input', { providerId, modelId });
+}
+
 // --- Retry & Fork ----------------------------------------------------------
 
 /** Remove the last assistant turn's data; returns remaining message count. */

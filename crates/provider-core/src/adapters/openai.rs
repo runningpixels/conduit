@@ -3607,4 +3607,56 @@ mod deepseek_payload_tests {
             assert_eq!(tool_round["content"], Value::Null, "{provider}");
         }
     }
+
+    /// One user message with a question and a hydrated PNG, sent to DeepSeek
+    /// the way the desktop crate does: the vision gate first, then the payload.
+    fn image_messages(model_id: &str) -> Vec<Value> {
+        let mut image = part("u1", 1, MessagePartKind::Image, "QUJD");
+        image.mime_type = Some("image/png".into());
+        image.attachment_id = Some("att-1".into());
+        let mut request = ProviderRequest {
+            model_id: model_id.into(),
+            messages: vec![message(
+                "u1",
+                MessageRole::User,
+                vec![
+                    part("u1", 0, MessagePartKind::Text, "What is in this picture?"),
+                    image,
+                ],
+            )],
+            attachments: Some(vec!["att-1".into()]),
+            ..request()
+        };
+        if !crate::vision::model_accepts_images("deepseek", model_id) {
+            crate::vision::strip_user_attachment_parts(&mut request);
+        }
+        let normalized = crate::normalize::validate(request).expect("valid");
+        build_payload(&normalized, false, "deepseek")["messages"]
+            .as_array()
+            .expect("chat-completions messages")
+            .clone()
+    }
+
+    #[test]
+    fn deepseek_vision_model_gets_an_image_url_part() {
+        let msgs = image_messages("deepseek-v4-flash");
+        let user = msgs.iter().find(|m| m["role"] == "user").expect("user");
+        let content = user["content"].as_array().expect("multimodal content");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn deepseek_text_only_model_gets_no_image() {
+        for model in ["deepseek-v4-pro", "deepseek-chat"] {
+            let msgs = image_messages(model);
+            let user = msgs.iter().find(|m| m["role"] == "user").expect("user");
+            assert!(
+                !user.to_string().contains("image_url"),
+                "{model} must stay text-only: {user}"
+            );
+            assert!(user.to_string().contains("What is in this picture?"));
+        }
+    }
 }

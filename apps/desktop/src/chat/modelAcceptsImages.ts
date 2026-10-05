@@ -1,4 +1,9 @@
-/** Mirror of provider-core `model_accepts_images` for UI warnings (t0-1). */
+/**
+ * Mirror of provider-core `model_accepts_images` for UI warnings (t0-1).
+ * ChatView asks the backend first (`modelAcceptsImageInput`); this answers only
+ * when that call fails. DeepSeek is per model there (models.dev snapshot), which
+ * this mirror cannot see, so it keeps the cautious text-only answer.
+ */
 export function modelAcceptsImages(providerId: string, modelId: string): boolean {
   const provider = providerId.trim().toLowerCase();
   const model = modelId.trim().toLowerCase();

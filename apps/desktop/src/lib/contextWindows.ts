@@ -5,6 +5,8 @@
  * Decision (implementation-plan Q2, t1-3): bundle a static map of known model
  * context windows plus prefix matching for families. When a model is unknown
  * the segment degrades to a raw token count (no percent) rather than guessing.
+ * Components read windows through `useContextWindow`, which asks the backend's
+ * models.dev snapshot first and uses this table only when it has no answer.
  *
  * Context *fill* is estimated from the prompt that would be sent next
  * (chars÷4), not from summing every turn's API usage (which double-counts
@@ -65,6 +67,8 @@ const CONTEXT_WINDOW_PREFIXES: Array<{ prefix: string; window: number }> = [
   { prefix: 'glm-4.5', window: 128_000 },
   { prefix: 'glm-4', window: 128_000 },
   { prefix: 'glm', window: 128_000 },
+  // Older DeepSeek ids only. Current ones (V4, 1M) resolve from the bundled
+  // models.dev snapshot first: see `useContextWindow`.
   { prefix: 'deepseek', window: 128_000 },
   { prefix: 'qwen', window: 128_000 },
   { prefix: 'llama-3', window: 128_000 },

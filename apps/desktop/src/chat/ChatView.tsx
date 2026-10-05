@@ -148,6 +148,7 @@ import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
   documentWritesHistoryNote,
+  webToolsHistoryNote,
   isDeckTool,
   START_DECK_TOOL_NAME,
   isDocumentContentTool,
@@ -170,6 +171,7 @@ import {
 import { markDocumentWritesHeld, readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
 import { placeholderSections } from './documentBuild';
 import {
+  classifyDocumentTurnIntent,
   documentWriteDeveloperPromptFor,
   informationalDeveloperPromptFor,
   type DocumentTurnIntent,
@@ -189,7 +191,7 @@ import type { Idea } from '../ideas/catalog';
 import { getIdeaState, noteChipOffered, noteChipUsed, noteFirstMessage, useIdeaState } from '../ideas/ideaState';
 import { ideaById } from '../ideas/catalog';
 import { capabilityChip } from '../ideas/capabilityChips';
-import { resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
+import { hasDocumentInScope, resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
 import { summarizeStreamState } from '../inspector/turnActivity';
 import { IdeaGallery } from '../ideas/IdeaGallery';
 import { YourAppsRow } from '../apps/YourAppsRow';
@@ -403,11 +405,16 @@ export interface ChatRequestOverrides {
  * with no text are dropped. A turn that ended right after writing a document
  * (the agent loop no longer spends a round on a confirmation) has no text, so
  * it would vanish and the model would not know it had written anything. Such
- * a turn contributes a short note naming what it wrote instead.
+ * a turn contributes a short note naming what it wrote instead. A turn that
+ * searched or fetched the web leads with a note saying so, so a later turn
+ * without those tools does not mistake its cited findings for invented ones.
  */
 export function historyContentForTurn(turn: ChatTurn): string {
-  if (turn.content.trim() !== '' || turn.role !== 'assistant') return turn.content;
-  return documentWritesHistoryNote(turn.streamState);
+  if (turn.role !== 'assistant') return turn.content;
+  const webNote = webToolsHistoryNote(turn.streamState);
+  const body = turn.content.trim() !== '' ? turn.content : documentWritesHistoryNote(turn.streamState);
+  if (!webNote) return body;
+  return body.trim() !== '' ? `${webNote}\n\n${body}` : webNote;
 }
 
 export function buildProviderRequest(
@@ -1527,10 +1534,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       intent,
       imageOverride,
     );
-    // Local builtin only when this turn resolved to local — never alongside
-    // ProviderRequest.web_search (same name collision with hosted web_search).
+    // Local web_search only when this turn resolved to local — never alongside
+    // ProviderRequest.web_search (same name). Hosted turns still get web_fetch.
     // A draft's turn already has them from its own selection.
-    const webTools = searchBackend === 'local' && !(draft && !deck) ? selectBuiltinWebTools() : [];
+    const webTools = searchBackend && !(draft && !deck) ? selectBuiltinWebTools(searchBackend) : [];
     return [...builtinTools, ...webTools, ...connectorTools];
   }
 
@@ -1833,10 +1840,18 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             settings.activeProvider,
             settings.providerEndpoints,
           );
+    // An edit-sounding prompt with nothing to edit ("…and add a summary" in a
+    // fresh chat) would get edit tools only, which need an existing artifact_id.
+    const toolIntent: DocumentTurnIntent | undefined =
+      turnIntent === undefined &&
+      classifyDocumentTurnIntent(trimmed) === 'edit' &&
+      !hasDocumentInScope(history.slice(0, -1), artifacts, activeArtifact?.id)
+        ? 'general'
+        : turnIntent;
     const toolDefinitions = await loadToolDefinitions(
       trimmed,
       searchBackend,
-      turnIntent,
+      toolIntent,
       pickedIdea?.needs.includes('imageGen'),
     );
     const priorHistory = history.slice(0, -1);

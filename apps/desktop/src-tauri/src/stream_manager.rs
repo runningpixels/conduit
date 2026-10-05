@@ -21,7 +21,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Who is responsible for telling the UI that the turn is over.
@@ -3038,6 +3038,18 @@ impl StreamManager {
                 &current_request.tool_definitions,
             );
             for call in &undeclared {
+                // A provider-hosted search reports itself as an undeclared
+                // `web_search` call: a record of work already done, expected on
+                // every hosted-search turn, so not worth a warning.
+                if current_request.web_search.is_some() && call.name == "web_search" {
+                    debug!(
+                        request_id = %request_id,
+                        step,
+                        tool_call_id = %call.tool_call_id,
+                        "hosted web search record; nothing to run"
+                    );
+                    continue;
+                }
                 warn!(
                     request_id = %request_id,
                     step,

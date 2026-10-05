@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import type { ChatTurn } from '../chat/conversationHydration';
 import { createAssistantStreamState, type AssistantStreamState, type ToolCallState } from '../chat/streamState';
@@ -8,9 +8,11 @@ import { SourcesView } from './SourcesView';
 import { InspectorTabs, type InspectorTab } from './InspectorTabs';
 
 const openExternalUrl = vi.fn(async (_url: string) => undefined);
+const getResearchRun = vi.fn(async (_runId: string): Promise<unknown> => null);
 vi.mock('../ipc/client', () => ({
   openExternalUrl: (url: string) => openExternalUrl(url),
   getKnowledgePassage: vi.fn(async () => null),
+  getResearchRun: (runId: string) => getResearchRun(runId),
 }));
 
 function state(over: Partial<AssistantStreamState> = {}): AssistantStreamState {
@@ -134,6 +136,31 @@ describe('SourcesView', () => {
   it('shows an empty state', () => {
     render(<SourcesView turns={[user('u1'), assistant('a1')]} />);
     expect(screen.getByText(/No sources yet/)).toBeInTheDocument();
+  });
+
+  it('lists the sources of a Research run, cited first, instead of the empty state', async () => {
+    const src = (id: string, status: string, footnote: number | null) => ({
+      id,
+      url: `https://${id}.example.com/page`,
+      title: `Title ${id}`,
+      host: `${id}.example.com`,
+      status,
+      claims: [],
+      footnote,
+    });
+    getResearchRun.mockResolvedValue({
+      id: 'run1',
+      sources: [src('failed1', 'failed', null), src('read1', 'read', null), src('cited2', 'read', 2), src('cited1', 'read', 1)],
+    });
+    const researchTurn: ChatTurn = { id: 'a1', role: 'assistant', content: '', researchRunId: 'run1' };
+    render(<SourcesView turns={[user('u1'), researchTurn]} />);
+    await waitFor(() => expect(document.querySelectorAll('.research-source')).toHaveLength(4));
+    expect(screen.queryByText(/No sources yet/)).not.toBeInTheDocument();
+    const titles = [...document.querySelectorAll('.research-source .source-link-title')].map((n) => n.textContent);
+    expect(titles).toEqual(['Title cited1', 'Title cited2', 'Title read1', 'Title failed1']);
+    expect(document.querySelector('.research-source-note')?.textContent).toBe('[1]');
+    fireEvent.click(screen.getByText('Title cited1'));
+    expect(openExternalUrl).toHaveBeenCalledWith('https://cited1.example.com/page');
   });
 
   it('lists web sources by turn, newest first, and opens them through the safe link flow', () => {

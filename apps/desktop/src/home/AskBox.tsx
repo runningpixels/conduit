@@ -29,10 +29,13 @@ export interface AskBoxProps {
   /** The Write chip: start a draft from this text (Writing opens on its own
    *  page when the box is empty). */
   onWrite?: (text: string) => void;
+  /** The deck chip: start a deck from this text (Slides opens on its list
+   *  when the box is empty). */
+  onStartDeck?: (text: string) => void;
   onAction: (action: HomeAction) => void;
 }
 
-export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onWrite, onAction }: AskBoxProps) {
+export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onWrite, onStartDeck, onAction }: AskBoxProps) {
   const t = useT();
   const hintId = useId();
 
@@ -73,6 +76,16 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
     onWrite(value);
   };
 
+  const startDeck = () => {
+    const value = text.trim();
+    if (value === '' || !onStartDeck) {
+      onAction('start-deck');
+      return;
+    }
+    setText('');
+    onStartDeck(value);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -111,7 +124,7 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
       </form>
       <div className="home-chips" role="group" aria-label={t('home.ask.chipsAria')}>
         {CHIPS.map((chip) => (
-          <button key={chip.action} type="button" className="home-chip" onClick={() => onAction(chip.action)}>
+          <button key={chip.action} type="button" className="home-chip" onClick={() => (chip.action === 'start-deck' ? startDeck() : onAction(chip.action))}>
             {t(chip.labelId)}
           </button>
         ))}

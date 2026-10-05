@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import type { ChatTurn } from '../chat/conversationHydration';
-import type { KnowledgeCitation } from '../ipc/contracts';
+import type { KnowledgeCitation, ResearchSource } from '../ipc/contracts';
 import { openExternalUrl } from '../ipc/client';
 import { KnowledgeCitations } from '../chat/KnowledgeCitations';
 import { hostOf } from '../chat/citationUtils';
+import { ResearchSourceList } from '../chat/research/ResearchSources';
+import { useResearchRun } from '../chat/research/useResearchRun';
 import { useT } from '../i18n';
 import { isHttpUrl, searchSourceEntry } from './turnActivity';
 
@@ -26,6 +28,8 @@ interface SourceGroup {
   index: number;
   web: WebSource[];
   knowledge: KnowledgeCitation[];
+  /** Set for a Research turn: its sources live on the run, not in a stream. */
+  researchRunId?: string;
 }
 
 /** Web sources a turn surfaced: search results first, then URL citations, one row per URL. */
@@ -58,6 +62,22 @@ function webSourcesOf(turn: ChatTurn): WebSource[] {
   return [...byUrl.values()];
 }
 
+const READ_ORDER: Record<ResearchSource['status'], number> = { read: 0, empty: 1, failed: 2, skipped: 3 };
+
+/** Cited sources first (by footnote), then the rest of the pages read, then those that gave nothing. */
+function orderResearchSources(sources: ResearchSource[]): ResearchSource[] {
+  const rank = (s: ResearchSource) => (s.footnote != null ? -1 : READ_ORDER[s.status]);
+  return [...sources].sort((a, b) => rank(a) - rank(b) || (a.footnote ?? 0) - (b.footnote ?? 0));
+}
+
+/** A Research turn's sources, read from the run the same way the chat card does. */
+function ResearchTurnSources({ runId, onStatus }: { runId: string; onStatus?: (message: string) => void }) {
+  const { run } = useResearchRun(runId);
+  const sources = useMemo(() => orderResearchSources(run?.sources ?? []), [run]);
+  if (sources.length === 0) return null;
+  return <ResearchSourceList sources={sources} onError={onStatus} />;
+}
+
 /** Inspector → Sources: web sources and document citations for the whole chat, newest turn first. */
 export function SourcesView({ turns, knowledgeCitations = {}, onStatus }: SourcesViewProps) {
   const t = useT();
@@ -73,8 +93,8 @@ export function SourcesView({ turns, knowledgeCitations = {}, onStatus }: Source
       }
       index += 1;
       const web = webSourcesOf(turn);
-      if (web.length > 0 || pendingKnowledge.length > 0) {
-        out.push({ id: turn.id, index, web, knowledge: pendingKnowledge });
+      if (web.length > 0 || pendingKnowledge.length > 0 || turn.researchRunId) {
+        out.push({ id: turn.id, index, web, knowledge: pendingKnowledge, researchRunId: turn.researchRunId });
       }
       pendingKnowledge = [];
     }
@@ -106,6 +126,7 @@ export function SourcesView({ turns, knowledgeCitations = {}, onStatus }: Source
       {groups.map((group) => (
         <div key={group.id} className="inspector-section">
           <h3 className="inspector-heading">{t('inspector.turnLabel', { index: group.index })}</h3>
+          {group.researchRunId && <ResearchTurnSources runId={group.researchRunId} onStatus={onStatus} />}
           {group.web.length > 0 && (
             <ul className="inspector-list">
               {group.web.map((src, i) => {

@@ -63,6 +63,10 @@ describe('selectBuiltinWebTools', () => {
     const names = selectBuiltinWebTools().map((t) => t.name).sort();
     expect(names).toEqual(['web_fetch', 'web_search']);
   });
+
+  it('gives a hosted-search turn web_fetch alone, so it can read what it finds', () => {
+    expect(selectBuiltinWebTools('hosted').map((t) => t.name)).toEqual(['web_fetch']);
+  });
 });
 
 describe('buildProviderRequest web search prompts', () => {

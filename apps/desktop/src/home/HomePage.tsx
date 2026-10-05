@@ -45,6 +45,8 @@ export interface HomePageProps {
   onResearch: (text: string) => void;
   /** The ask box's Write chip, with the box's text: a new draft from that brief. */
   onWrite?: (brief: string) => void;
+  /** The deck chip with text: start a deck from it. */
+  onStartDeck?: (text: string) => void;
   onOpenChat: (conversationId: string) => void;
   onOpenDeck: (deckId: string) => void;
   onOpenDraft?: (draftId: string) => void;
@@ -96,6 +98,7 @@ export function HomePage({
   onAsk,
   onResearch,
   onWrite,
+  onStartDeck,
   onOpenChat,
   onOpenDeck,
   onOpenDraft,
@@ -233,6 +236,7 @@ export function HomePage({
               onAsk={onAsk}
               onResearch={onResearch}
               onWrite={onWrite}
+              onStartDeck={onStartDeck}
               onAction={onAction}
             />
           </header>

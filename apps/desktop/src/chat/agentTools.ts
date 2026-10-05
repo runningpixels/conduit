@@ -857,10 +857,14 @@ export const WORKSPACE_TOOL_NAMES = new Set(
     .map((tool) => tool.name),
 );
 
-/** Local `web_search` + `web_fetch`. Only offer when the turn
- *  resolved to the local search backend — never alongside hosted search. */
-export function selectBuiltinWebTools(): ToolDefinition[] {
-  return builtinToolDefinitions().filter((t) => WEB_TOOL_NAMES.has(t.name));
+/** Local `web_search` + `web_fetch` when the turn resolved to the local
+ *  search backend. A hosted-search turn gets `web_fetch` alone: the hosted
+ *  tool shares the `web_search` name, but without a fetch the model can find
+ *  pages yet never read them. */
+export function selectBuiltinWebTools(backend: 'local' | 'hosted' = 'local'): ToolDefinition[] {
+  return builtinToolDefinitions().filter((t) =>
+    backend === 'local' ? WEB_TOOL_NAMES.has(t.name) : t.name === 'web_fetch',
+  );
 }
 
 /** Resolve the active workspace root for a turn (conversation bind wins). */
@@ -1249,6 +1253,28 @@ export function documentWritesHistoryNote(state: AssistantStreamState | undefine
       return `[${verb} ${kind} document${title} with ${tc.name}.]`;
     })
     .join('\n');
+}
+
+/**
+ * A line saying a past turn used the web, for the history the next request
+ * carries. Tool calls never reach history, so a later turn without search
+ * read an earlier, cited answer as unsourced and told the user it had made the
+ * findings up. Hosted searches count too: they arrive as `web_search` records.
+ */
+export function webToolsHistoryNote(state: AssistantStreamState | undefined): string {
+  if (!state) return '';
+  const done = (name: string) =>
+    state.toolCalls.filter(
+      (tc) => tc.name === name && tc.complete && tc.status !== 'failed' && tc.status !== 'cancelled',
+    ).length;
+  const searches = done('web_search');
+  const fetches = done('web_fetch');
+  if (searches === 0 && fetches === 0) return '';
+  const parts = [
+    searches > 0 ? `searched the web ${searches} time${searches === 1 ? '' : 's'}` : '',
+    fetches > 0 ? `read ${fetches} page${fetches === 1 ? '' : 's'} with web_fetch` : '',
+  ].filter(Boolean);
+  return `[This reply ${parts.join(' and ')}; its findings and links came from those real results.]`;
 }
 
 /** Document calls that changed a document. Reads and exports used to count,

@@ -2800,6 +2800,16 @@ export default function App() {
     },
     [handleStartDeck, openFreshChat, setStatusMessage],
   );
+  /** Home's deck chip: a new deck from the box text, opening on its storyline. */
+  const handleHomeStartDeck = useCallback(
+    (text: string) => {
+      const theme = STARTER_THEMES[0];
+      void handleStartDeck(text, theme.name, theme.css).catch((error) =>
+        setStatusMessage(error instanceof Error ? error.message : String(error)),
+      );
+    },
+    [handleStartDeck, setStatusMessage],
+  );
   /** Home's Write chip: a new draft from the box text. */
   const handleHomeWrite = useCallback(
     (brief: string) => {
@@ -3377,6 +3387,7 @@ export default function App() {
                 onAsk={handleHomeAsk}
                 onResearch={handleHomeResearch}
                 onWrite={handleHomeWrite}
+                onStartDeck={handleHomeStartDeck}
                 onOpenChat={handleHomeOpenChat}
                 onOpenDeck={(id) => void handleOpenDeck(id)}
                 onOpenDraft={(id) => void handleOpenDraft(id)}

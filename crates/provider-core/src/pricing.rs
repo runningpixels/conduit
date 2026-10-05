@@ -296,7 +296,9 @@ pub struct TokenCounts {
 }
 
 /// Whether this provider's reported input count already includes cache reads.
-/// True for everything except Anthropic's native Messages API.
+/// True for everything except Anthropic's native Messages API. (OpenCode Zen
+/// routes Claude over that API too; its adapter folds cache reads into input so
+/// that this per-provider rule holds.) Cache writes are never part of input.
 pub fn input_includes_cache_reads(provider_id: &str) -> bool {
     provider_id != "anthropic"
 }
@@ -536,6 +538,44 @@ mod tests {
         };
         // $0.40 + $0.16 + 100k writes at $2.50 = $0.81.
         assert!((estimate_cost_usd("anthropic", anthropic, &p) - 0.81).abs() < 1e-9);
+    }
+
+    #[test]
+    fn anthropic_cached_turn_is_priced_at_cache_rates() {
+        // Snapshot prices for Claude carry both cache rates (0.1x read, 1.25x
+        // write), so a cached turn is not billed as plain input.
+        let p = resolve_price("anthropic", "claude-sonnet-4-5", &[], None)
+            .unwrap()
+            .price;
+        let (read, write) = (
+            p.cache_read_per_mtok.expect("snapshot cache read price"),
+            p.cache_write_per_mtok.expect("snapshot cache write price"),
+        );
+        assert!(read < p.input_per_mtok && write > p.input_per_mtok);
+        // As Anthropic reports it: 50 uncached input tokens on top of a 90k
+        // cached prefix, 10k of it newly written this turn.
+        let tokens = TokenCounts {
+            input: 50,
+            output: 500,
+            cache_read: 80_000,
+            cache_write: 10_000,
+        };
+        let expected = (50.0 * p.input_per_mtok
+            + 500.0 * p.output_per_mtok
+            + 80_000.0 * read
+            + 10_000.0 * write)
+            / 1_000_000.0;
+        assert!((estimate_cost_usd("anthropic", tokens, &p) - expected).abs() < 1e-12);
+        // Far cheaper than the same 90,050 input tokens uncached.
+        let uncached = TokenCounts {
+            input: 90_050,
+            output: 500,
+            ..Default::default()
+        };
+        assert!(
+            estimate_cost_usd("anthropic", tokens, &p)
+                < estimate_cost_usd("anthropic", uncached, &p) / 2.0
+        );
     }
 
     #[test]

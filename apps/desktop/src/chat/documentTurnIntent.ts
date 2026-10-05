@@ -3,8 +3,14 @@ import { looksLikeArtifactCreationRequest } from './artifactPrompt';
 /** How the current user turn relates to document artifact tools. */
 export type DocumentTurnIntent = 'info' | 'create' | 'edit' | 'general';
 
+/* Imperative revisions too: "Two fixes: clear the error banner…, put the
+ * cards in one row" matched none of the verbs before and, being a general
+ * turn, got no edit tools, so the model pasted a whole new page and the
+ * original's site permissions stayed behind on the old one. Code verbs
+ * (rename, move, replace) stay out: "rename the helper in utils" is a
+ * workspace edit, not a document one. */
 const EDIT_FOLLOW_UP_REGEX =
-  /\b(edit|update|change|modify|revise|rewrite|adjust|improve|fix|tweak|dark\s*mode|light\s*mode|add|remove|make\s+it|turn\s+it|convert)\b/i;
+  /\b(edit|update|change|modify|revise|rewrite|adjust|improve|fix(es|ed)?|tweak|dark\s*mode|light\s*mode|add|remove|make\s+it|turn\s+it|convert|clear|put|shorten|tighten|enlarge|shrink|increase|decrease|reduce|hide|align|cent(er|re)|resize|recolou?r|give\s+(it|the))\b/i;
 
 const INFORMATIONAL_PREFIX_REGEX =
   /^(what|which|how|why|when|where|who|can you|could you|do you|does|are|is|tell me about)\b/i;

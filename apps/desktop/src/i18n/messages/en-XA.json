@@ -568,6 +568,7 @@
   "chat.toolCall.consent.rememberAlways": "[Àļŵàýš àļļöŵ ťĥîš ťööļ —————— ———]",
   "chat.toolCall.consent.rememberChat": "[Ŕéḿéḿḅéŕ ḟöŕ ťĥîš çĥàť —————— ———]",
   "chat.toolCall.consent.safetyNote": "[{appName} ñéṽéŕ ŕüñš à šîḍé-éḟḟéçťîñĝ ťööļ ŵîťĥöüť ýöüŕ àṕṕŕöṽàļ. Ťööļ öüťṕüť îš šàñḍḅöẍéḍ àñḍ ñéṽéŕ ŕé-îñĵéçťéḍ îñťö ťĥé ṕŕöḿṕť. —————— —————— —————— —————— —————— —————— —————— ——————]",
+  "chat.toolCall.consent.waiting": "[Ŵàîťîñĝ ḟöŕ ýöüŕ àṕṕŕöṽàļ àḅöṽé —————— —————— —]",
   "chat.toolCall.deniedNotice": "[<strong>Ḍéñîéḍ.</strong> Ťĥé ťööļ çàļļ ŵàš ñöť éẍéçüťéḍ. —————— —————— ————]",
   "chat.toolCall.document.action": "[{action, select, create {Çŕéàťé} edit {Éḍîť} read {Ŕéàḍ} other {Ḍöçüḿéñť}} —————— ———]",
   "chat.toolCall.document.cancelled": "[Ḍöçüḿéñť ťööļ çàñçéļļéḍ. —————— ————]",

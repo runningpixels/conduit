@@ -1321,6 +1321,24 @@ fn saved_progress_extends_the_deadline_up_to_the_ceiling() {
     assert!(!deadline.expired(start + Duration::from_secs(299)));
 }
 
+#[test]
+fn time_waiting_for_the_user_extends_the_deadline_and_the_ceiling() {
+    use conduit_desktop::stream_manager::TurnDeadline;
+    let start = tokio::time::Instant::now();
+    let mut deadline = TurnDeadline::new(start, Duration::from_secs(100));
+
+    // A nine-minute approval wait does not count against the 100s limit.
+    deadline.pause(Duration::from_secs(540));
+    assert!(!deadline.expired(start + Duration::from_secs(639)));
+    assert!(deadline.expired(start + Duration::from_secs(641)));
+
+    // The progress ceiling moves out by the same amount: progress at 600s
+    // buys a full window (ceiling would have been 300s unpaused).
+    deadline.record_progress(start + Duration::from_secs(600));
+    assert!(!deadline.expired(start + Duration::from_secs(699)));
+    assert!(deadline.expired(start + Duration::from_secs(701)));
+}
+
 #[tokio::test]
 async fn a_build_in_parts_gets_more_time_and_stops_with_a_continue_code() {
     // Limit 1s. Round 1 saves a skeleton after 1.5s — progress, so the turn

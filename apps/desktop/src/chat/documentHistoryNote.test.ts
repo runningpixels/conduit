@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentWritesHistoryNote } from './agentTools';
+import { documentWritesHistoryNote, webToolsHistoryNote } from './agentTools';
 import { historyContentForTurn } from './ChatView';
 import { applyProviderEvent, createAssistantStreamState, type AssistantStreamState } from './streamState';
 import type { ChatTurn } from './conversationHydration';
@@ -57,7 +57,34 @@ describe('documentWritesHistoryNote', () => {
   });
 });
 
+describe('webToolsHistoryNote', () => {
+  it('says a turn searched or fetched the web, and stays empty otherwise', () => {
+    expect(webToolsHistoryNote(writeTurn('web_search', { query: 'tauri release' }))).toBe(
+      '[This reply searched the web 1 time; its findings and links came from those real results.]',
+    );
+    expect(webToolsHistoryNote(writeTurn('web_fetch', { url: 'https://example.com' }))).toContain(
+      'read 1 page with web_fetch',
+    );
+    expect(webToolsHistoryNote(writeTurn('web_search', { query: 'x' }, 'failed'))).toBe('');
+    expect(webToolsHistoryNote(writeTurn('current_time', {}))).toBe('');
+    expect(webToolsHistoryNote(undefined)).toBe('');
+  });
+});
+
 describe('historyContentForTurn', () => {
+  it('leads a searched turn with a note, so a later turn does not call its findings invented', () => {
+    const turn: ChatTurn = {
+      id: 'm-3',
+      role: 'assistant',
+      content: 'tauri 2.12.1 is the latest release [1].',
+      streamState: writeTurn('web_search', { query: 'tauri latest release' }),
+    };
+    expect(historyContentForTurn(turn)).toBe(
+      '[This reply searched the web 1 time; its findings and links came from those real results.]\n\ntauri 2.12.1 is the latest release [1].',
+    );
+    expect(historyContentForTurn({ ...turn, role: 'user' })).toBe(turn.content);
+  });
+
   it('keeps a document-only assistant turn in history as a note', () => {
     const turn: ChatTurn = {
       id: 'm-2',

@@ -365,6 +365,8 @@ export function AssistantMessage({
   const tokenCount = Math.round((text.length + argumentChars + reasoningChars) / 4);
   // `elapsed` ticks every second while streaming, so this re-evaluates on its own.
   const stalled = state.streaming && streamStalled(state.lastEventAt, Date.now());
+  const awaitingApproval = state.toolCalls.some((tc) => tc.sideEffecting && tc.consent === 'pending');
+  const waitingOnReader = Boolean(state.askUser) || awaitingApproval;
 
   const producingText = state.blocks.some(
     (b) =>
@@ -690,9 +692,16 @@ export function AssistantMessage({
             // read "Running 1 tool… still working · 301s — some models send long
             // responses all at once" under the form, for as long as nobody
             // answered.
-            message={state.askUser ? t('chat.askUser.waiting') : undefined}
-            phase={state.askUser ? undefined : state.agentPhase}
-            lastActivityAt={state.askUser ? undefined : state.lastEventAt}
+            // The same goes for a tool waiting on its approval card.
+            message={
+              state.askUser
+                ? t('chat.askUser.waiting')
+                : awaitingApproval
+                  ? t('chat.toolCall.consent.waiting')
+                  : undefined
+            }
+            phase={waitingOnReader ? undefined : state.agentPhase}
+            lastActivityAt={waitingOnReader ? undefined : state.lastEventAt}
             heldDocument={documentWriteHeld}
             // Prose earlier in the turn must not hide the one signal that work
             // is still happening: while a document is written into a tool

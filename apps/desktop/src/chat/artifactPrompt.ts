@@ -89,7 +89,7 @@ const INTENT_REGEX =
  * ("write a poem", "draft an email") stay general.
  */
 const DOCUMENT_CREATION_REGEX =
-  /\b(create|make|build|generate|write|draft|design|produce|put\s+together|turn\b.*\binto)\b.*\b(documents?|web\s?pages?|landing\s+pages?|html\s+pages?|one[- ]pagers?|reports?|guides?|cheat\s?sheets?|infographics?|brochures?|flyers?|newsletters?|html|markdown|dashboards?|(web\s?)?apps?|games?|calculators?|converters?|timers?|trackers?|viewers?|explorers?|monitors?|checkers?|finders?|lookups?|tickers?|quiz(zes)?|flash\s?cards?|visuali[sz]ations?|simulators?|animations?|spinners?|widgets?|kanban|sortable\s+tables?|interactive\s+\w+|pitch\s+decks?|slide\s?decks?|presentations?|templates?|websites?|forms?)\b/i;
+  /\b(create|make|build|generate|write|draft|design|produce|put\s+together|turn\b.*\binto)\b.*\b(documents?|web\s?pages?|landing\s+pages?|html\s+pages?|one[- ]pagers?|pages?|reports?|guides?|cheat\s?sheets?|infographics?|brochures?|flyers?|newsletters?|html|markdown|dashboards?|(web\s?)?apps?|games?|calculators?|converters?|timers?|trackers?|viewers?|explorers?|monitors?|checkers?|finders?|lookups?|tickers?|quiz(zes)?|flash\s?cards?|visuali[sz]ations?|simulators?|animations?|spinners?|widgets?|kanban|sortable\s+tables?|interactive\s+\w+|pitch\s+decks?|slide\s?decks?|presentations?|templates?|websites?|forms?)\b/i;
 /* The second half used to stop at document nouns. "Make a weather dashboard",
  * "make this a sortable table" and "make me a CSS-only loading spinner" were
  * then general turns without document tools, and GLM called one anyway — a

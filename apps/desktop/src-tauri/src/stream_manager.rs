@@ -21,7 +21,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Who is responsible for telling the UI that the turn is over.
@@ -677,6 +677,14 @@ impl TurnDeadline {
     /// ceiling. Never moves the deadline earlier.
     pub fn record_progress(&mut self, now: tokio::time::Instant) {
         self.deadline = self.deadline.max((now + self.window).min(self.ceiling));
+    }
+
+    /// Time the turn spent waiting for the user (a tool approval or an
+    /// `ask_user` form) is not the agent's time: push the deadline and the
+    /// ceiling out by it.
+    pub fn pause(&mut self, waited: std::time::Duration) {
+        self.deadline += waited;
+        self.ceiling += waited;
     }
 
     pub fn expired(&self, now: tokio::time::Instant) -> bool {
@@ -1633,6 +1641,7 @@ impl StreamManager {
         web_fetch_so_far: &mut u32,
         rejected: &HashMap<String, String>,
         cancel: &CancellationToken,
+        user_wait_ms: &std::sync::atomic::AtomicU64,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -1829,6 +1838,7 @@ impl StreamManager {
                             &call.arguments,
                             provider_channel,
                             cancel,
+                            user_wait_ms,
                         )
                         .await;
                     if let Some(channel) = runtime_channel {
@@ -2029,9 +2039,14 @@ impl StreamManager {
             let sink = sink
                 .clone()
                 .unwrap_or_else(|| std::sync::Arc::new(|_| {}) as _);
-            let _ =
-                crate::connector_runtime::execution::execute_tool_call(state, runtime, &req, &sink)
-                    .await;
+            let _ = crate::connector_runtime::execution::execute_tool_call_timed(
+                state,
+                runtime,
+                &req,
+                &sink,
+                Some(user_wait_ms),
+            )
+            .await;
         }
 
         ToolRoundTally {
@@ -2042,7 +2057,9 @@ impl StreamManager {
         }
     }
 
-    /// Pause the agent loop for a native `ask_user` form (t1-2).
+    /// Pause the agent loop for a native `ask_user` form (t1-2). The time spent
+    /// waiting for the answer is added to `user_wait_ms`.
+    #[allow(clippy::too_many_arguments)]
     async fn execute_ask_user_tool(
         &self,
         state: &AppState,
@@ -2051,6 +2068,7 @@ impl StreamManager {
         arguments: &serde_json::Value,
         provider_channel: Option<&EventSink<ProviderEvent>>,
         cancel: &CancellationToken,
+        user_wait_ms: &std::sync::atomic::AtomicU64,
     ) -> Result<agent_tools::AgentToolExecution, String> {
         let title = arguments
             .get("title")
@@ -2107,6 +2125,7 @@ impl StreamManager {
             guard.insert(tool_call_id.to_string(), tx);
         }
 
+        let waiting_since = std::time::Instant::now();
         let answers = tokio::select! {
             biased;
             _ = cancel.cancelled() => {
@@ -2117,6 +2136,10 @@ impl StreamManager {
                 result.map_err(|_| "ask_user request was dropped".to_string())?
             }
         };
+        user_wait_ms.fetch_add(
+            waiting_since.elapsed().as_millis() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
 
         if answers
             .get("cancelled")
@@ -3038,6 +3061,18 @@ impl StreamManager {
                 &current_request.tool_definitions,
             );
             for call in &undeclared {
+                // A provider-hosted search reports itself as an undeclared
+                // `web_search` call: a record of work already done, expected on
+                // every hosted-search turn, so not worth a warning.
+                if current_request.web_search.is_some() && call.name == "web_search" {
+                    debug!(
+                        request_id = %request_id,
+                        step,
+                        tool_call_id = %call.tool_call_id,
+                        "hosted web search record; nothing to run"
+                    );
+                    continue;
+                }
                 warn!(
                     request_id = %request_id,
                     step,
@@ -3290,6 +3325,7 @@ impl StreamManager {
             });
 
             let tools_cancel = cancel.child_token();
+            let user_wait_ms = std::sync::atomic::AtomicU64::new(0);
             let tools_fut = self.execute_resolved_tool_calls(
                 state,
                 runtime,
@@ -3303,6 +3339,7 @@ impl StreamManager {
                 &mut web_fetch_calls,
                 &rejected_calls,
                 &tools_cancel,
+                &user_wait_ms,
             );
             let mut steered_during_tools: Option<String> = None;
             let tally = tokio::select! {
@@ -3317,6 +3354,10 @@ impl StreamManager {
                 }
                 tally = tools_fut => tally,
             };
+            // Waiting for the user's approval or answer is not the agent's time.
+            deadline.pause(std::time::Duration::from_millis(
+                user_wait_ms.load(std::sync::atomic::Ordering::Relaxed),
+            ));
             let created_this_round = tally.documents_created;
             sections_written_this_turn += tally.sections_written;
 

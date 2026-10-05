@@ -354,6 +354,21 @@ describe('HomePage Writing', () => {
     expect(p.onAsk).not.toHaveBeenCalled();
     expect(box).toHaveValue('');
   });
+
+  it('the deck chip starts a deck from the box text, or opens Slides when it is empty', async () => {
+    const onStartDeck = vi.fn();
+    const { p } = await renderHome({ onStartDeck });
+    const chip = within(screen.getByRole('group', { name: 'Quick starts' })).getByRole('button', { name: 'Start a deck' });
+    fireEvent.click(chip);
+    expect(p.onAction).toHaveBeenCalledWith('start-deck');
+    expect(onStartDeck).not.toHaveBeenCalled();
+    const box = screen.getByLabelText('Describe what you want to do');
+    fireEvent.change(box, { target: { value: ' Ferry 1.0: how sync works ' } });
+    fireEvent.click(chip);
+    expect(onStartDeck).toHaveBeenCalledWith('Ferry 1.0: how sync works');
+    expect(p.onAsk).not.toHaveBeenCalled();
+    expect(box).toHaveValue('');
+  });
 });
 
 describe('HomePage ask draft', () => {

@@ -138,6 +138,20 @@ export function resolveRecentDocumentArtifactId(
   return doc?.id;
 }
 
+/** Whether this conversation has a document an edit turn could act on: one
+ *  open in the panel, one written in an earlier turn or listed for the chat, or
+ *  an inline document in a recent reply. */
+export function hasDocumentInScope(
+  history: ChatTurnForContext[],
+  listed: Artifact[],
+  preferredArtifactId?: string | null,
+): boolean {
+  return (
+    resolveRecentDocumentArtifactId(history, listed, preferredArtifactId) != null ||
+    resolveInlineDocumentFromHistory(history) != null
+  );
+}
+
 export function shouldIncludeArtifactFollowUpContext(
   prompt: string,
   history: ChatTurnForContext[],

@@ -1286,6 +1286,33 @@ mod tests {
     }
 
     #[test]
+    fn each_reasoning_effort_level_maps_to_output_config_effort() {
+        use crate::schema::ReasoningEffort;
+        for (effort, name) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+        ] {
+            let mut request = user_request(None);
+            request.model_id = "claude-sonnet-4-6".into();
+            request.generation_controls = Some(crate::schema::GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: None,
+                reasoning_effort: Some(effort),
+                parallel_tool_calls: None,
+            });
+            let body = build_payload(&NormalizedRequest { request });
+            assert_eq!(body["output_config"], json!({ "effort": name }));
+            // Effort never switches on a thinking budget: older models need
+            // signed thinking blocks echoed back, which this adapter does not do.
+            assert!(body.get("thinking").is_none());
+        }
+    }
+
+    #[test]
     fn reasoning_effort_is_sent_only_to_models_that_accept_it() {
         let with_effort = |model: &str| {
             let mut request = user_request(None);

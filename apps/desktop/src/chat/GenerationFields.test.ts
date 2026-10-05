@@ -49,4 +49,11 @@ describe('draftFromControls', () => {
     });
     expect(parsed.userInstructions).toBe('Hello');
   });
+
+  it('round-trips a reasoning effort, and Auto sends none', () => {
+    const draft = draftFromControls({ reasoningEffort: 'medium' });
+    expect(draft.reasoningEffort).toBe('medium');
+    expect(parseGenerationDraft(draft).controls).toEqual({ reasoningEffort: 'medium' });
+    expect(parseGenerationDraft({ ...draft, reasoningEffort: '' }).controls).toBeNull();
+  });
 });

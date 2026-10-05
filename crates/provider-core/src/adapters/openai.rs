@@ -1521,10 +1521,55 @@ fn build_payload(
     }
 
     if let Some(controls) = &request.generation_controls {
-        apply_controls(&mut body, controls, responses_api, provider_id);
+        apply_controls(
+            &mut body,
+            controls,
+            responses_api,
+            provider_id,
+            &request.model_id,
+        );
     }
 
     body
+}
+
+/// Whether a model behind an OpenAI-style endpoint accepts a reasoning effort
+/// of `low`, `medium` and `high`. OpenAI returns an error for the field on
+/// models without reasoning (`gpt-4o`, `gpt-5-chat-latest`), on `o1-mini` and
+/// `o1-preview`, and for anything but `high` on the `-pro` models; other
+/// vendors' endpoints either reject unknown fields or ignore them. So the
+/// field goes only to OpenAI's reasoning families — o1/o3/o4, GPT-5 and later,
+/// `codex-mini` — and the open-weight `gpt-oss` models, whichever endpoint
+/// serves them (Groq, Together, LM Studio and vLLM take it for those).
+/// OpenRouter is decided separately: it drops the field for models without
+/// reasoning.
+pub fn openai_model_takes_reasoning_effort(model_id: &str) -> bool {
+    let model = model_id.trim().to_ascii_lowercase();
+    // Gateway ids carry a vendor prefix (`openai/gpt-5`).
+    let model = model.rsplit('/').next().unwrap_or(&model);
+    if model.contains("-chat") || model.contains("search") || model.contains("deep-research") {
+        return false;
+    }
+    if model.starts_with("gpt-oss") || model.starts_with("codex-mini") {
+        return true;
+    }
+    if let Some(rest) = model.strip_prefix("gpt-") {
+        let major = rest
+            .split(['-', '.'])
+            .next()
+            .and_then(|m| m.parse::<u32>().ok());
+        // `gpt-5-pro` accepts only `high`.
+        return major.is_some_and(|m| m >= 5) && !rest.contains("-pro");
+    }
+    if let Some(rest) = model.strip_prefix('o') {
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        return match digits.parse::<u32>() {
+            Ok(1) => !(rest.starts_with("1-mini") || rest.starts_with("1-preview")),
+            Ok(n) => n >= 3,
+            Err(_) => false,
+        };
+    }
+    false
 }
 
 /// Prompt caching for Claude models on OpenRouter. Anthropic only caches at
@@ -1579,8 +1624,12 @@ fn apply_controls(
     controls: &GenerationControls,
     responses_api: bool,
     provider_id: &str,
+    model_id: &str,
 ) {
-    if let Some(effort) = controls.reasoning_effort {
+    let effort = controls
+        .reasoning_effort
+        .filter(|_| provider_id == "openrouter" || openai_model_takes_reasoning_effort(model_id));
+    if let Some(effort) = effort {
         // The Responses API and OpenRouter take a `reasoning` object;
         // chat-completions endpoints use the flat `reasoning_effort`.
         if responses_api || provider_id == "openrouter" {
@@ -2987,18 +3036,131 @@ mod tests {
             parallel_tool_calls: None,
         };
         let mut chat = json!({});
-        apply_controls(&mut chat, &controls, false, "openai");
+        apply_controls(&mut chat, &controls, false, "openai", "gpt-5");
         assert_eq!(chat["reasoning_effort"], json!("low"));
         assert!(chat.get("reasoning").is_none());
 
         let mut openrouter = json!({});
-        apply_controls(&mut openrouter, &controls, false, "openrouter");
+        apply_controls(&mut openrouter, &controls, false, "openrouter", "gpt-5");
         assert_eq!(openrouter.pointer("/reasoning/effort"), Some(&json!("low")));
         assert!(openrouter.get("reasoning_effort").is_none());
 
         let mut responses = json!({});
-        apply_controls(&mut responses, &controls, true, "openai");
+        apply_controls(&mut responses, &controls, true, "openai", "gpt-5");
         assert_eq!(responses.pointer("/reasoning/effort"), Some(&json!("low")));
+    }
+
+    #[test]
+    fn each_reasoning_effort_level_serializes_by_name() {
+        use crate::schema::ReasoningEffort;
+        for (effort, name) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+        ] {
+            let controls = GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: None,
+                reasoning_effort: Some(effort),
+                parallel_tool_calls: None,
+            };
+            let mut chat = json!({});
+            apply_controls(&mut chat, &controls, false, "openai", "o4-mini");
+            assert_eq!(chat["reasoning_effort"], json!(name));
+            let mut responses = json!({});
+            apply_controls(&mut responses, &controls, true, "openai", "gpt-5.1");
+            assert_eq!(responses.pointer("/reasoning/effort"), Some(&json!(name)));
+        }
+    }
+
+    #[test]
+    fn reasoning_effort_is_withheld_from_models_that_reject_it() {
+        let controls = GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            tool_choice: None,
+            reasoning_effort: Some(crate::schema::ReasoningEffort::High),
+            parallel_tool_calls: None,
+        };
+        for (provider, model) in [
+            ("openai", "gpt-4o"),
+            ("openai", "gpt-4.1-mini"),
+            ("openai", "gpt-5-chat-latest"),
+            ("openai", "gpt-5-pro"),
+            ("openai", "o1-mini"),
+            ("openai", "o1-preview"),
+            ("openai", "gpt-4o-search-preview"),
+            ("groq", "llama-3.3-70b-versatile"),
+            ("deepseek", "deepseek-reasoner"),
+            ("mistral", "magistral-medium-latest"),
+            ("xai", "grok-4"),
+            ("openai_compat", "qwen3-32b"),
+        ] {
+            for responses_api in [false, true] {
+                let mut body = json!({});
+                apply_controls(&mut body, &controls, responses_api, provider, model);
+                assert!(body.get("reasoning_effort").is_none(), "{provider}/{model}");
+                assert!(body.get("reasoning").is_none(), "{provider}/{model}");
+            }
+        }
+        // OpenRouter drops the field itself for models without reasoning.
+        let mut openrouter = json!({});
+        apply_controls(
+            &mut openrouter,
+            &controls,
+            false,
+            "openrouter",
+            "meta-llama/llama-3.3-70b",
+        );
+        assert_eq!(
+            openrouter.pointer("/reasoning/effort"),
+            Some(&json!("high"))
+        );
+    }
+
+    #[test]
+    fn openai_reasoning_models_are_recognised() {
+        for model in [
+            "o1",
+            "o1-2024-12-17",
+            "o3",
+            "o3-mini",
+            "o3-pro",
+            "o4-mini",
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-nano",
+            "gpt-5.1",
+            "gpt-5.2-codex",
+            "gpt-6",
+            "openai/gpt-5",
+            "codex-mini-latest",
+            "gpt-oss-120b",
+            "openai/gpt-oss-20b",
+        ] {
+            assert!(openai_model_takes_reasoning_effort(model), "{model}");
+        }
+        for model in [
+            "gpt-4o",
+            "gpt-4.1",
+            "gpt-3.5-turbo",
+            "gpt-5-chat-latest",
+            "gpt-5.1-chat-latest",
+            "gpt-5-pro",
+            "o1-mini",
+            "o1-preview",
+            "o3-deep-research",
+            "omni-moderation-latest",
+            "llama3.1",
+            "",
+        ] {
+            assert!(!openai_model_takes_reasoning_effort(model), "{model}");
+        }
     }
 
     #[test]
@@ -3021,6 +3183,7 @@ mod tests {
                 &controls(Some(false)),
                 responses_api,
                 provider,
+                "gpt-5",
             );
             assert_eq!(
                 with_tools["parallel_tool_calls"],
@@ -3034,12 +3197,19 @@ mod tests {
                 &controls(Some(false)),
                 responses_api,
                 provider,
+                "gpt-5",
             );
             assert!(no_tools.get("parallel_tool_calls").is_none());
 
             for unset in [None, Some(true)] {
                 let mut body = json!({"tools": [{"type": "function"}]});
-                apply_controls(&mut body, &controls(unset), responses_api, provider);
+                apply_controls(
+                    &mut body,
+                    &controls(unset),
+                    responses_api,
+                    provider,
+                    "gpt-5",
+                );
                 assert!(body.get("parallel_tool_calls").is_none());
             }
         }
@@ -3057,12 +3227,12 @@ mod tests {
             parallel_tool_calls: None,
         };
         let mut chat = json!({});
-        apply_controls(&mut chat, &controls, false, "openai");
+        apply_controls(&mut chat, &controls, false, "openai", "gpt-5");
         assert_eq!(chat["max_tokens"], json!(1_000));
         assert!(chat.get("max_output_tokens").is_none());
 
         let mut responses = json!({});
-        apply_controls(&mut responses, &controls, true, "openai");
+        apply_controls(&mut responses, &controls, true, "openai", "gpt-5");
         assert_eq!(responses["max_output_tokens"], json!(1_000));
         assert!(responses.get("max_tokens").is_none());
     }

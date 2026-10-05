@@ -688,13 +688,15 @@ function UsageSection({
   const limit = settings ? (settings.dailyTokenCap ?? settings.defaultDailyTokenCap) : 0;
   const [draft, setDraft] = useState('');
   const [capError, setCapError] = useState<string | null>(null);
-  // Reset the field only when the saved limit changes. Keyed on the settings
-  // object, a reload of unchanged settings (usage refreshes, for one) landing
-  // just after the user typed threw the typed value away.
+  // Follow the saved limit in the render it arrives in, not in an effect: an
+  // effect runs after the field is on screen, so typing that lands first was
+  // overwritten when it ran (and the field reset on any settings reload).
   const savedCap = settings ? (settings.dailyTokenCap ?? settings.defaultDailyTokenCap) : null;
-  useEffect(() => {
+  const [syncedCap, setSyncedCap] = useState<number | null>(null);
+  if (savedCap !== syncedCap) {
+    setSyncedCap(savedCap);
     if (savedCap !== null) setDraft(String(savedCap));
-  }, [savedCap]);
+  }
 
   const range = { min: fmt.count(MIN_DAILY_TOKEN_CAP), max: fmt.count(MAX_DAILY_TOKEN_CAP) };
   const save = async () => {

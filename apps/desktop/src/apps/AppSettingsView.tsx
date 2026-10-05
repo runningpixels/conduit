@@ -688,9 +688,13 @@ function UsageSection({
   const limit = settings ? (settings.dailyTokenCap ?? settings.defaultDailyTokenCap) : 0;
   const [draft, setDraft] = useState('');
   const [capError, setCapError] = useState<string | null>(null);
+  // Reset the field only when the saved limit changes. Keyed on the settings
+  // object, a reload of unchanged settings (usage refreshes, for one) landing
+  // just after the user typed threw the typed value away.
+  const savedCap = settings ? (settings.dailyTokenCap ?? settings.defaultDailyTokenCap) : null;
   useEffect(() => {
-    if (settings) setDraft(String(settings.dailyTokenCap ?? settings.defaultDailyTokenCap));
-  }, [settings]);
+    if (savedCap !== null) setDraft(String(savedCap));
+  }, [savedCap]);
 
   const range = { min: fmt.count(MIN_DAILY_TOKEN_CAP), max: fmt.count(MAX_DAILY_TOKEN_CAP) };
   const save = async () => {

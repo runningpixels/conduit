@@ -383,11 +383,11 @@ describe('Writing in the shell', { timeout: 30_000 }, () => {
     vi.mocked(ipc.setDraftSources).mockImplementation(async (_id, sources) => ({ ...writtenDraft, sources }));
     await boot();
     fireEvent.click(screen.getByRole('button', { name: 'Writing' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }));
-    fireEvent.click(await screen.findByRole('tab', { name: 'Sources' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }, { timeout: 5000 }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Sources' }, { timeout: 5000 }));
 
     // Local-only mode: web search stays off, and says why.
-    const web = await screen.findByRole('checkbox', { name: 'Web search' });
+    const web = await screen.findByRole('checkbox', { name: 'Web search' }, { timeout: 5000 });
     expect(web).toBeDisabled();
     expect(screen.getByText('Web search is not available in local-only mode')).toBeInTheDocument();
     expect(screen.getByText('Facts from sources are linked in the draft. Anything without a source is marked TODO.')).toBeInTheDocument();

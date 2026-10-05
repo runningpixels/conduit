@@ -30,9 +30,11 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
 } from 'react';
 import type { AppSettings, ModelInfo, ModelPrice, ProviderDescriptor } from '../ipc/contracts';
@@ -53,6 +55,9 @@ import { Menu } from '../workspace/Menu';
  * will hold a menu open.
  */
 const MODEL_FETCH_TIMEOUT_MS = 2500;
+
+/** Room the upward menu leaves: its 8px gap to the trigger plus 8px below the title bar. */
+const MENU_EDGE_ROOM = 16;
 
 interface ComposerModelPickerProps {
   settings: AppSettings;
@@ -219,6 +224,24 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
 
     const closeMenu = useCallback(() => setOpen(false), []);
 
+    // The menu opens upward, so its height is capped by the room above the
+    // trigger. On Home the composer sits mid-window, where a fixed 52vh ran
+    // the menu's top — and the search with it — under the title bar, which
+    // paints over the top of the page.
+    const [roomAbove, setRoomAbove] = useState<number | null>(null);
+    useLayoutEffect(() => {
+      if (!open) return;
+      const measure = () => {
+        const top = triggerRef.current?.getBoundingClientRect().top;
+        if (top === undefined) return;
+        const ceiling = document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0;
+        setRoomAbove(Math.max(160, Math.floor(top - ceiling - MENU_EDGE_ROOM)));
+      };
+      measure();
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }, [open]);
+
     function pick(descriptor: ProviderDescriptor, modelId: string) {
       setOpen(false);
       onSelectModel(descriptor.id, modelId, descriptor.defaultBaseUrl);
@@ -272,7 +295,10 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
     }
 
     return (
-      <div className="composer-model-picker">
+      <div
+        className="composer-model-picker"
+        style={roomAbove === null ? undefined : ({ '--model-menu-room': `${roomAbove}px` } as CSSProperties)}
+      >
         <button
           ref={triggerRef}
           className="cbtn model"

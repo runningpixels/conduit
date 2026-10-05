@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Daily spend alert.** Settings → Usage & Cost can alert you when today's
+  estimated spend passes an amount you set. After a chat turn that crosses it,
+  a notice shows the estimate and opens Usage & Cost; it appears once a day
+  and never stops anything. Off by default. Days follow the usage chart (UTC).
+
 ## [1.0.0-rc.7] - 2026-10-05
 
 ### Added

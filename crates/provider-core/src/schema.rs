@@ -3200,6 +3200,26 @@ pub struct AppSettings {
     /// the design's own accent (coral in dark, indigo in light).
     #[serde(default)]
     pub accent: AccentOverride,
+    /// Daily spend alert, in US dollars. Once today's estimated cost (the
+    /// "Today" figure in Settings → Usage & Cost) passes this amount after a
+    /// turn, the app shows one notice for the day. It never blocks or cancels
+    /// anything. `None` — the default, and what every settings file written
+    /// before this field reads as — means off. Validated by
+    /// [`daily_spend_alert_is_valid`] on write.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub daily_spend_alert_usd: Option<f64>,
+}
+
+/// The largest daily spend alert accepted, in US dollars. A typo guard (an
+/// extra zero or two), not a rule about how much anyone may spend.
+pub const MAX_DAILY_SPEND_ALERT_USD: f64 = 100_000.0;
+
+/// A daily spend alert is a finite amount above zero and at most
+/// [`MAX_DAILY_SPEND_ALERT_USD`]. Zero is not "alert on any spend": an alert
+/// that fires on the first cent is noise, and off is expressed as `None`.
+pub fn daily_spend_alert_is_valid(usd: f64) -> bool {
+    usd.is_finite() && usd > 0.0 && usd <= MAX_DAILY_SPEND_ALERT_USD
 }
 
 /// ADR-011: a main-colour override per mode, as `#rrggbb`. Each mode is
@@ -3267,6 +3287,7 @@ impl Default for AppSettings {
             context_compact_threshold_percent: 90,
             memory_enabled: true,
             accent: AccentOverride::default(),
+            daily_spend_alert_usd: None,
         }
     }
 }
@@ -3386,6 +3407,11 @@ pub struct SettingsPatch {
     #[ts(optional)]
     #[serde(default)]
     pub accent: Option<AccentOverride>,
+    /// Set or clear the daily spend alert (US dollars). `Some(None)` — a JSON
+    /// `null` — turns it off; a value must pass `daily_spend_alert_is_valid`.
+    #[ts(optional)]
+    #[serde(default, deserialize_with = "clearable")]
+    pub daily_spend_alert_usd: Option<Option<f64>>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

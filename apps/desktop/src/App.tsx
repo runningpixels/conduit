@@ -4,6 +4,7 @@ import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
 import { useUpdateScheduler } from './updates/useUpdateScheduler';
 import { ToastStack } from './workspace/ToastStack';
+import { useSpendAlert } from './workspace/useSpendAlert';
 import { makeStatus, fromString, STATUS_DISMISS_MS, TOAST_DISMISS_MS, TOAST_STATUS_KINDS } from './chat/statusTypes';
 import {
   checkArtifactFileState,
@@ -778,10 +779,11 @@ export default function App() {
     };
   }, [status]);
 
-  // Auto-dismiss warning/success toasts; errors stay until dismissed.
+  // Auto-dismiss warning/success toasts; errors stay until dismissed, and so
+  // does a toast that offers an action (see `StatusState.action`).
   useEffect(() => {
     const timers = toasts
-      .filter((t) => TOAST_DISMISS_MS[t.kind] != null)
+      .filter((t) => TOAST_DISMISS_MS[t.kind] != null && !t.action)
       .map((t) =>
         window.setTimeout(() => dismissToast(t.timestamp), TOAST_DISMISS_MS[t.kind]!),
       );
@@ -2641,6 +2643,17 @@ export default function App() {
     setDestination('settings');
   }, []);
 
+  // Daily spend alert: checked after every chat turn, shown at most once a day.
+  const pushToast = useCallback((toast: StatusState) => {
+    setToasts((current) => [...current.slice(-4), toast]);
+  }, []);
+  const openUsageSettings = useCallback(() => openSettings('about'), [openSettings]);
+  const checkSpendAlert = useSpendAlert({
+    thresholdUsd: settings.dailySpendAlertUsd,
+    onToast: pushToast,
+    onOpenUsage: openUsageSettings,
+  });
+
   const openDocuments = useCallback(() => setDestination('documents'), []);
 
   // ── Ideas ────────────────────────────────────────────────────────────────
@@ -3326,6 +3339,7 @@ export default function App() {
             onOpenArtifact={(id) => void handleOpenArtifact(id)}
             onChatTurnComplete={(streamState) => {
               void handleChatTurnComplete(streamState);
+              checkSpendAlert();
               void finishDeckTurn();
               void finishDraftTurn();
             }}

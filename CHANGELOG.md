@@ -14,6 +14,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   faster and costs less on thinking models; Auto leaves the model's default.
   It is sent only to models that accept it, mapped for OpenAI, OpenRouter,
   Anthropic and Gemini.
+- **Daily spend alert.** Settings → Usage & Cost can alert you when today's
+  estimated spend passes an amount you set. After a chat turn that crosses it,
+  a notice shows the estimate and opens Usage & Cost; it appears once a day
+  and never stops anything. Off by default. Days follow the usage chart (UTC).
 
 ### Changed
 

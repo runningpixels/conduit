@@ -582,6 +582,9 @@ impl AppState {
                 light: normalize("light", accent.light)?,
             };
         }
+        if let Some(value) = patch.daily_spend_alert_usd {
+            settings.daily_spend_alert_usd = normalize_daily_spend_alert(value)?;
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())
@@ -610,6 +613,28 @@ impl AppState {
     /// Idempotent: re-acknowledging just rewrites `true`.
     pub fn acknowledge_diagnostics_disclosure(&self) -> Result<(), String> {
         write_raw_settings_flag(&self.paths, "diagnosticsDisclosureAcknowledged", true)
+    }
+}
+
+/// Validate a daily spend alert from a settings patch. `None` turns it off; a
+/// value must pass `daily_spend_alert_is_valid` and is stored in whole cents,
+/// since the alert is compared with, and shown next to, a cost in cents.
+fn normalize_daily_spend_alert(value: Option<f64>) -> Result<Option<f64>, String> {
+    match value {
+        None => Ok(None),
+        Some(usd) if provider_core::schema::daily_spend_alert_is_valid(usd) => {
+            let cents = (usd * 100.0).round() / 100.0;
+            // Rounding can only reach zero from below a half cent.
+            if cents > 0.0 {
+                Ok(Some(cents))
+            } else {
+                Err("daily_spend_alert_usd must be at least $0.01".to_string())
+            }
+        }
+        Some(_) => Err(format!(
+            "daily_spend_alert_usd must be above 0 and at most {}",
+            provider_core::schema::MAX_DAILY_SPEND_ALERT_USD
+        )),
     }
 }
 
@@ -762,5 +787,79 @@ mod tests {
         .unwrap();
         let settings = read_settings(&paths).unwrap();
         assert!(settings.artifact_remote_allowlist.is_empty());
+        // The same older file has no spend alert either: off, not $0.
+        assert_eq!(settings.daily_spend_alert_usd, None);
+    }
+
+    #[test]
+    fn daily_spend_alert_defaults_off() {
+        assert_eq!(AppSettings::default().daily_spend_alert_usd, None);
+        let value = serde_json::to_value(AppSettings::default()).unwrap();
+        assert_eq!(
+            value.get("dailySpendAlertUsd"),
+            Some(&serde_json::Value::Null),
+            "serialized as null, so clearing it overwrites an older value on disk"
+        );
+    }
+
+    #[test]
+    fn daily_spend_alert_round_trips_through_the_settings_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(dir.path());
+        let settings = AppSettings {
+            daily_spend_alert_usd: Some(12.5),
+            ..AppSettings::default()
+        };
+        write_settings(&paths, &settings).unwrap();
+        assert_eq!(
+            read_settings(&paths).unwrap().daily_spend_alert_usd,
+            Some(12.5)
+        );
+
+        // Turning it off must replace the stored value, not leave it behind:
+        // `write_settings` merges into the raw file, so a skipped key would.
+        let cleared = AppSettings {
+            daily_spend_alert_usd: None,
+            ..settings
+        };
+        write_settings(&paths, &cleared).unwrap();
+        assert_eq!(read_settings(&paths).unwrap().daily_spend_alert_usd, None);
+    }
+
+    #[test]
+    fn daily_spend_alert_patch_distinguishes_absent_from_null() {
+        let absent: SettingsPatch = serde_json::from_str("{}").unwrap();
+        assert_eq!(absent.daily_spend_alert_usd, None);
+        let cleared: SettingsPatch =
+            serde_json::from_str(r#"{"dailySpendAlertUsd":null}"#).unwrap();
+        assert_eq!(cleared.daily_spend_alert_usd, Some(None));
+        let set: SettingsPatch = serde_json::from_str(r#"{"dailySpendAlertUsd":5}"#).unwrap();
+        assert_eq!(set.daily_spend_alert_usd, Some(Some(5.0)));
+    }
+
+    #[test]
+    fn daily_spend_alert_validation() {
+        assert_eq!(normalize_daily_spend_alert(None), Ok(None));
+        assert_eq!(normalize_daily_spend_alert(Some(10.0)), Ok(Some(10.0)));
+        assert_eq!(normalize_daily_spend_alert(Some(0.01)), Ok(Some(0.01)));
+        assert_eq!(normalize_daily_spend_alert(Some(2.345)), Ok(Some(2.35)));
+        assert_eq!(
+            normalize_daily_spend_alert(Some(100_000.0)),
+            Ok(Some(100_000.0))
+        );
+        for bad in [
+            0.0,
+            -1.0,
+            0.001,
+            100_000.01,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
+            assert!(
+                normalize_daily_spend_alert(Some(bad)).is_err(),
+                "{bad} must be rejected"
+            );
+        }
     }
 }

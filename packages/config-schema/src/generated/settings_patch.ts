@@ -82,4 +82,9 @@ memoryEnabled?: boolean,
 /**
  * ADR-011: replace the main-colour override (both modes at once).
  */
-accent?: AccentOverride, };
+accent?: AccentOverride, 
+/**
+ * Set or clear the daily spend alert (US dollars). `Some(None)` — a JSON
+ * `null` — turns it off; a value must pass `daily_spend_alert_is_valid`.
+ */
+dailySpendAlertUsd?: number | null, };

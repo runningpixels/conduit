@@ -113,3 +113,62 @@ describe('UsageSection', () => {
     expect(updateSettings).not.toHaveBeenCalled();
   });
 });
+
+describe('UsageSection spend alert', () => {
+  beforeEach(() => {
+    vi.mocked(getUsageSummary).mockClear();
+    vi.mocked(updateSettings).mockClear();
+  });
+
+  it('saves a valid amount as dollars and reports it', async () => {
+    const { onSettingsChange, onStatus } = renderSection();
+    const input = await screen.findByLabelText("Alert me when today's estimated spend passes");
+    expect((input as HTMLInputElement).value).toBe('');
+    fireEvent.change(input, { target: { value: '$12,50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save alert' }));
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ dailySpendAlertUsd: 12.5 }));
+    await waitFor(() => expect(onSettingsChange).toHaveBeenCalled());
+    expect(onStatus).toHaveBeenCalledWith('Spend alert saved: $12.50 a day.');
+  });
+
+  it('refuses an invalid amount without saving', async () => {
+    renderSection();
+    const input = await screen.findByLabelText("Alert me when today's estimated spend passes");
+    for (const bad of ['0', '-3', 'ten', '1,000', '100001']) {
+      fireEvent.change(input, { target: { value: bad } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save alert' }));
+      expect(await screen.findByRole('alert')).not.toBeNull();
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+    }
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('turns a saved alert off with null', async () => {
+    render(
+      <UsageSection
+        settings={{ ...settings, dailySpendAlertUsd: 10 } as AppSettings}
+        onSettingsChange={vi.fn()}
+        onStatus={vi.fn()}
+      />,
+    );
+    const input = await screen.findByLabelText("Alert me when today's estimated spend passes");
+    expect((input as HTMLInputElement).value).toBe('10');
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ dailySpendAlertUsd: null }));
+  });
+
+  it('can be set before there is any usage', async () => {
+    vi.mocked(getUsageSummary).mockResolvedValueOnce({
+      ...mockData,
+      totalCostCents: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      unpricedModels: 0,
+      byProvider: [],
+      dailyTotals: [],
+    } as never);
+    renderSection();
+    expect(await screen.findByText('No usage data yet. Start chatting to see analytics.')).not.toBeNull();
+    expect(screen.getByLabelText("Alert me when today's estimated spend passes")).not.toBeNull();
+  });
+});

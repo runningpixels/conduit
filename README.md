@@ -122,6 +122,19 @@ sources, with every finding cited. Page text only ever reaches a model call that
 has no tools, so a page that tries to give instructions can't make it search,
 fetch or save anything.
 
+### Writing
+
+**Writing** is for long pieces: blog posts, technical docs, reports and
+newsletters. Describe what you're writing and the assistant proposes an
+outline (the sections, what each must say, a target length) that you edit and
+approve. Then it writes the draft section by section into a Markdown editor
+beside the chat. It can draw on the web, your document collections or a
+finished Research report, linking each fact to its source and marking anything
+it can't source as a TODO instead of making it up. Ask for a change and only
+that part is rewritten, or select text for Rewrite, Shorter, Clearer and more.
+Text you write yourself stays word for word, History keeps every version, and
+a draft exports as Markdown or HTML.
+
 ## Things that run for you
 
 ### Workflows
@@ -278,7 +291,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.6 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.7 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -301,6 +314,7 @@ left is checking it on real installs before calling it final.
 | Web search (hosted OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Working |
 | Knowledge base — document collections with hybrid retrieval and citations | Working |
 | Research — approved brief, reads web pages and PDFs, quote-checked claims, cited report | Working |
+| Writing — approved outline, section-by-section drafts, sourced facts, your text kept, history, Markdown/HTML export | Working |
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
 | One design in dark and light, with a main-colour setting | Working |
@@ -310,7 +324,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.6 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.7 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

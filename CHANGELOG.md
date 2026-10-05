@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.7] - 2026-10-05
+
 ### Added
 
 - **Writing.** A new area on the rail (`Ctrl+5`) for long pieces: blog
@@ -63,9 +65,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   stage.** A slower load of the draft could land after the approval and put
   it back to the outline stage, so the assistant was told it was still
   outlining. The newer copy of the draft now wins.
-
-### Fixed
-
 - **DeepSeek chats no longer fail after the first reply.** DeepSeek's
   models think before they answer, and when a request includes tools
   DeepSeek requires each earlier reply's thinking to be sent back in its
@@ -77,6 +76,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Earlier thinking is no longer replayed as text to other providers.**
   When a tool round had to be rebuilt from the saved message, its
   reasoning went back to the model as if it had said it.
+- **Hosted search can read the pages it finds.** With OpenRouter, OpenAI or
+  Anthropic search, the model could find pages but not open them; it now
+  gets the page-reading tool alongside the provider's search.
+- **A later reply no longer calls earlier search results made up.** A reply
+  that searched or read the web now says so in the history the next turn
+  sees, so a follow-up without search doesn't mistake its cited findings
+  for invented ones.
+- **Asking to fix a page updates that page.** Requests like "clear the
+  banner and put the cards in one row" now revise the existing page instead
+  of writing a new one that lost the original's site permissions. "Build a
+  one-page plan" now counts as making a document.
+- **Home's Start a deck chip uses what you typed.** It starts a deck from
+  the text in the ask box instead of opening an empty Slides page.
+- **The inspector lists Research sources.** Its Sources tab shows a
+  Research run's sources, cited ones first, instead of "No sources yet".
+- **Waiting for you no longer uses up a turn's time.** Time spent on a tool
+  approval or a question form doesn't count toward the turn time limit, so
+  approving after a break carries on instead of ending the turn. While it
+  waits, the status says "Waiting for your approval above" instead of
+  "still working".
 
 ## [1.0.0-rc.6] - 2026-10-03
 
@@ -821,7 +840,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.6...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.7...HEAD
+[1.0.0-rc.7]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.6...v1.0.0-rc.7
 [1.0.0-rc.6]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.5...v1.0.0-rc.6
 [1.0.0-rc.5]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.4...v1.0.0-rc.5
 [1.0.0-rc.4]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.3...v1.0.0-rc.4

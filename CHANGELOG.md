@@ -15,6 +15,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   pays full input price for its history on every turn. Cache reads and writes
   are priced at their own rates in Usage & Cost.
 
+### Fixed
+
+- **DeepSeek models that read images now get them.** DeepSeek V4 Flash and its
+  vision variant receive attached images instead of having them dropped;
+  text-only DeepSeek models stay text-only.
+- **The context gauge knows more models.** It now takes each model's context
+  window from the bundled model catalog, so DeepSeek V4 shows its 1M window
+  instead of 128K, and other catalog models show their real size too.
+
 ## [1.0.0-rc.7] - 2026-10-05
 
 ### Added

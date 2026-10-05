@@ -13,6 +13,12 @@
 // cache read, cache write. Long-context tiers are dropped on purpose: usage is
 // stored per turn with tokens summed across agent rounds, so a per-request tier
 // cannot be applied honestly (see the pricing module's docs).
+//
+// Two model facts ride along with each priced model, when models.dev has them:
+// `c`, the context window in tokens (`limit.context`), and `img`, whether the
+// model takes image input (`modalities.input` includes "image"). The status
+// line's context gauge and the image-attachment gate read them (see
+// `pricing::snapshot_context_window` and `pricing::snapshot_accepts_images`).
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const SOURCE = 'https://models.dev/api.json';
@@ -81,6 +87,10 @@ for (const [conduitId, key] of Object.entries(PROVIDER_KEYS)) {
     const cacheWrite = price(cost.cache_write);
     if (cacheRead !== undefined) entry.cr = cacheRead;
     if (cacheWrite !== undefined) entry.cw = cacheWrite;
+    const context = models[id].limit?.context;
+    if (Number.isInteger(context) && context > 0) entry.c = context;
+    const inputs = models[id].modalities?.input;
+    if (Array.isArray(inputs)) entry.img = inputs.includes('image');
     entries[id] = entry;
     modelCount += 1;
   }
@@ -91,7 +101,9 @@ const snapshot = {
   source: SOURCE,
   license: 'MIT (models.dev)',
   fetchedAt: new Date().toISOString().slice(0, 10),
-  units: 'USD per million tokens; i=input, o=output, cr=cache read, cw=cache write',
+  units:
+    'USD per million tokens; i=input, o=output, cr=cache read, cw=cache write; ' +
+    'c=context window in tokens, img=takes image input',
   providers,
 };
 

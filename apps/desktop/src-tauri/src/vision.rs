@@ -10,6 +10,7 @@ use std::path::Path;
 use base64::Engine;
 use provider_core::model_accepts_images;
 use provider_core::schema::{MessagePart, MessagePartKind, MessageRole, ProviderRequest};
+use provider_core::vision::strip_user_attachment_parts;
 use sqlx::SqlitePool;
 use tracing::warn;
 
@@ -68,23 +69,7 @@ pub async fn hydrate_request_for_vision(
                 "dropping image attachments — model is treated as text-only"
             );
         }
-        for message in &mut hydrated.messages {
-            if message.role != MessageRole::User {
-                continue;
-            }
-            message.parts.retain(|p| {
-                !matches!(
-                    p.kind,
-                    MessagePartKind::AttachmentReference
-                        | MessagePartKind::Image
-                        | MessagePartKind::File
-                )
-            });
-            // Re-index after retain.
-            for (i, part) in message.parts.iter_mut().enumerate() {
-                part.index = i as u32;
-            }
-        }
+        strip_user_attachment_parts(&mut hydrated);
         return (hydrated, report);
     }
 

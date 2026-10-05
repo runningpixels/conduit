@@ -29,6 +29,13 @@
 //! stored per turn with tokens summed across agent rounds, so the size of any one
 //! request is gone by the time a cost is computed. Base prices are used for every
 //! request; the snapshot generator drops tier data for that reason.
+//!
+//! ## Model facts
+//!
+//! The snapshot also carries two facts per model from models.dev: its context
+//! window ([`snapshot_context_window`], for the status line's context gauge) and
+//! whether it takes image input ([`snapshot_accepts_images`], for the vision
+//! gate in `vision.rs`). Only priced models are in the snapshot.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -75,11 +82,25 @@ struct SnapshotEntry {
     cr: Option<f64>,
     #[serde(default)]
     cw: Option<f64>,
+    /// Context window in tokens (models.dev `limit.context`).
+    #[serde(default)]
+    c: Option<u64>,
+    /// Whether the model takes image input (models.dev `modalities.input`).
+    /// Absent when models.dev does not say.
+    #[serde(default)]
+    img: Option<bool>,
+}
+
+/// One snapshot model: its price plus the facts models.dev publishes about it.
+struct SnapshotModel {
+    price: ModelPrice,
+    context_window: Option<u64>,
+    image_input: Option<bool>,
 }
 
 struct Snapshot {
     fetched_at: String,
-    providers: HashMap<String, HashMap<String, ModelPrice>>,
+    providers: HashMap<String, HashMap<String, SnapshotModel>>,
 }
 
 fn snapshot() -> &'static Snapshot {
@@ -106,11 +127,15 @@ fn snapshot() -> &'static Snapshot {
                     .map(|(id, e)| {
                         (
                             id,
-                            ModelPrice {
-                                input_per_mtok: e.i,
-                                output_per_mtok: e.o,
-                                cache_read_per_mtok: e.cr,
-                                cache_write_per_mtok: e.cw,
+                            SnapshotModel {
+                                price: ModelPrice {
+                                    input_per_mtok: e.i,
+                                    output_per_mtok: e.o,
+                                    cache_read_per_mtok: e.cr,
+                                    cache_write_per_mtok: e.cw,
+                                },
+                                context_window: e.c.filter(|&c| c > 0),
+                                image_input: e.img,
                             },
                         )
                     })
@@ -168,26 +193,42 @@ fn strip_date_suffix(id: &str) -> Option<&str> {
     None
 }
 
-fn snapshot_price(provider_id: &str, model_id: &str) -> Option<ModelPrice> {
+fn snapshot_model(provider_id: &str, model_id: &str) -> Option<&'static SnapshotModel> {
     let models = snapshot().providers.get(provider_id)?;
     let candidates = candidate_ids(model_id);
     for candidate in &candidates {
-        if let Some(price) = models.get(candidate) {
-            return Some(*price);
+        if let Some(model) = models.get(candidate) {
+            return Some(model);
         }
     }
     // Ids are case-sensitive on the wire, but a listing and the catalog can
     // disagree on case (Together's `Qwen/…`), and a case-only difference never
     // names a different model.
     for candidate in &candidates {
-        if let Some((_, price)) = models
+        if let Some((_, model)) = models
             .iter()
             .find(|(id, _)| id.eq_ignore_ascii_case(candidate))
         {
-            return Some(*price);
+            return Some(model);
         }
     }
     None
+}
+
+fn snapshot_price(provider_id: &str, model_id: &str) -> Option<ModelPrice> {
+    snapshot_model(provider_id, model_id).map(|m| m.price)
+}
+
+/// The model's context window in tokens per the bundled models.dev snapshot,
+/// or `None` when the snapshot does not know the model or its window.
+pub fn snapshot_context_window(provider_id: &str, model_id: &str) -> Option<u64> {
+    snapshot_model(provider_id, model_id)?.context_window
+}
+
+/// Whether the model takes image input per the bundled models.dev snapshot:
+/// `None` when the snapshot does not know the model or its input modalities.
+pub fn snapshot_accepts_images(provider_id: &str, model_id: &str) -> Option<bool> {
+    snapshot_model(provider_id, model_id)?.image_input
 }
 
 fn retired_price(provider_id: &str, model_id: &str) -> Option<ModelPrice> {
@@ -363,6 +404,39 @@ mod tests {
             assert_eq!(resolved.source, PriceSource::Snapshot);
             assert!(resolved.price.output_per_mtok > resolved.price.input_per_mtok);
         }
+    }
+
+    #[test]
+    fn deepseek_context_windows_come_from_the_snapshot() {
+        // models.dev lists every current DeepSeek API model at 1M tokens.
+        for model in ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-flash"] {
+            assert_eq!(
+                snapshot_context_window("deepseek", model),
+                Some(1_000_000),
+                "{model}"
+            );
+        }
+        // OpenRouter's own listing of the same family reports 1,048,576.
+        assert_eq!(
+            snapshot_context_window("openrouter", "deepseek/deepseek-v4-pro"),
+            Some(1_048_576)
+        );
+        // Unknown model, unknown provider: no guess.
+        assert_eq!(snapshot_context_window("deepseek", "deepseek-nope"), None);
+        assert_eq!(snapshot_context_window("nope", "deepseek-v4-pro"), None);
+    }
+
+    #[test]
+    fn image_input_comes_from_the_snapshot() {
+        assert_eq!(
+            snapshot_accepts_images("deepseek", "deepseek-v4-flash"),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot_accepts_images("deepseek", "deepseek-v4-pro"),
+            Some(false)
+        );
+        assert_eq!(snapshot_accepts_images("deepseek", "deepseek-nope"), None);
     }
 
     #[test]

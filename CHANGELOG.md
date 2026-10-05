@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **Claude prompts are cached.** Requests to Anthropic (and Claude models on
+  OpenRouter and OpenCode Zen) mark the tools, the system prompt and the
+  conversation so far for Anthropic's prompt cache, so a long chat no longer
+  pays full input price for its history on every turn. Cache reads and writes
+  are priced at their own rates in Usage & Cost.
+
 ## [1.0.0-rc.7] - 2026-10-05
 
 ### Added

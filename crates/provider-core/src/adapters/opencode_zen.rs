@@ -276,11 +276,12 @@ impl ProviderAdapter for OpenCodeZenAdapter {
                     .stream_chat(request, Self::delegate_ctx(ZEN_V1_BASE, &ctx), cancel)
                     .await?
             }
-            ZenProtocol::Messages => {
+            ZenProtocol::Messages => Box::pin(
                 AnthropicAdapter
                     .stream_chat(request, Self::delegate_ctx(ZEN_ROOT, &ctx), cancel)
                     .await?
-            }
+                    .map(count_cache_reads_as_input),
+            ),
             ZenProtocol::Gemini => {
                 GeminiAdapter
                     .stream_chat(request, Self::delegate_ctx(ZEN_V1_BASE, &ctx), cancel)
@@ -304,9 +305,82 @@ impl ProviderAdapter for OpenCodeZenAdapter {
     }
 }
 
+/// Usage is priced per provider, and `pricing` takes every provider but
+/// `anthropic` to report input *including* cache reads. Anthropic's Messages
+/// API reports it without them, so a Zen model on that protocol has its cache
+/// reads folded into input here; cache writes stay separate, as they are
+/// everywhere else.
+fn count_cache_reads_as_input(event: ProviderEvent) -> ProviderEvent {
+    match event {
+        ProviderEvent::Usage {
+            request_id,
+            mut usage,
+        } => {
+            if let Some(read) = usage.cache_read_tokens.filter(|n| *n > 0) {
+                usage.input_tokens = Some(usage.input_tokens.unwrap_or(0) + read);
+            }
+            ProviderEvent::Usage { request_id, usage }
+        }
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zen_messages_usage_includes_cache_reads_in_input() {
+        let usage = |input, read| crate::schema::ProviderUsage {
+            input_tokens: input,
+            output_tokens: Some(7),
+            cache_tokens: read,
+            cache_read_tokens: read,
+            cache_write_tokens: Some(100),
+            cost_hint: None,
+        };
+        let event = |input, read| ProviderEvent::Usage {
+            request_id: "req".into(),
+            usage: usage(input, read),
+        };
+        let ProviderEvent::Usage { usage: out, .. } =
+            count_cache_reads_as_input(event(Some(20), Some(9000)))
+        else {
+            panic!("usage stays usage");
+        };
+        assert_eq!(out.input_tokens, Some(9020));
+        assert_eq!(out.cache_read_tokens, Some(9000));
+        assert_eq!(out.cache_write_tokens, Some(100));
+
+        // Priced as an inclusive provider, the total matches the same usage
+        // priced as Anthropic's own exclusive report.
+        let price = crate::schema::ModelPrice {
+            input_per_mtok: 3.0,
+            output_per_mtok: 15.0,
+            cache_read_per_mtok: Some(0.3),
+            cache_write_per_mtok: Some(3.75),
+        };
+        let counts = |u: &crate::schema::ProviderUsage| crate::pricing::TokenCounts {
+            input: u.input_tokens.unwrap_or(0),
+            output: u.output_tokens.unwrap_or(0),
+            cache_read: u.cache_read_tokens.unwrap_or(0),
+            cache_write: u.cache_write_tokens.unwrap_or(0),
+        };
+        let zen = crate::pricing::estimate_cost_usd("opencode_zen", counts(&out), &price);
+        let direct = crate::pricing::estimate_cost_usd(
+            "anthropic",
+            counts(&usage(Some(20), Some(9000))),
+            &price,
+        );
+        assert!((zen - direct).abs() < 1e-12, "{zen} vs {direct}");
+
+        let ProviderEvent::Usage { usage: out, .. } =
+            count_cache_reads_as_input(event(Some(20), None))
+        else {
+            panic!("usage stays usage");
+        };
+        assert_eq!(out.input_tokens, Some(20));
+    }
 
     #[test]
     fn parse_zen_models_from_fixture() {

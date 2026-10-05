@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import { useT, type Translate } from '../i18n';
 import { useFormatters, type Formatters } from '../i18n/formatters';
 import { withTimeout } from '../chat/ComposerModelPicker';
+import { sortModels } from '../lib/modelOrder';
 import { ChevronLeft, DownloadIcon, FilesIcon, GlobeIcon, ModelIcon, TrashIcon } from '../icons';
 import {
   appPrincipal,
@@ -577,7 +578,7 @@ function SlotRow({
     }
   }, [draftProvider, models, onChange, slot]);
 
-  const modelOptions = models ?? [];
+  const modelOptions = sortModels(models ?? []);
   const current = choice && choice.providerId === providerId ? choice.model : '';
   const typedModel = draftModel ?? current;
   const showSelect = providerId !== '' && modelOptions.length > 0;

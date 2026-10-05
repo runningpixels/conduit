@@ -30,6 +30,11 @@ export interface MenuProps {
    * the bottom or right edge does not open a menu half off-screen.
    */
   anchorPoint?: { x: number; y: number };
+  /**
+   * Focused on open instead of the first item — a menu that leads with a
+   * search field (the model picker) wants typing to land there.
+   */
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 /** Gap kept between a point-anchored menu and the viewport edge. */
@@ -58,6 +63,7 @@ export function Menu({
   label,
   dismissOnOutsidePress = false,
   anchorPoint,
+  initialFocusRef,
 }: MenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const labelId = useId();
@@ -66,7 +72,7 @@ export function Menu({
     if (!open) return;
     const menu = menuRef.current;
     const items = menu?.querySelectorAll<HTMLElement>(ITEM_SELECTOR);
-    items?.[0]?.focus();
+    (initialFocusRef?.current ?? items?.[0])?.focus();
     const trigger = triggerRef.current;
     return () => {
       // Reclaim focus only from inside the menu (or from nowhere): an item
@@ -74,7 +80,7 @@ export function Menu({
       const active = document.activeElement;
       if (!active || active === document.body || menu?.contains(active)) trigger?.focus();
     };
-  }, [open, triggerRef]);
+  }, [open, triggerRef, initialFocusRef]);
 
   useEffect(() => {
     if (!open) return;

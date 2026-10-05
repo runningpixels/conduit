@@ -1238,11 +1238,36 @@
   right: 0;
   bottom: calc(100% + 8px);
   min-width: 260px;
-  max-height: min(420px, 52vh);
+  max-height: min(420px, var(--model-menu-room, 52vh));
   overflow-y: auto;
 }
 .model-menu .menu-item .pdot { width: 7px; height: 7px; background: var(--provider-hue); }
 .model-menu .menu-item[aria-current="true"] { background: var(--card-hi); color: var(--ink); }
+/* The search leads the menu and stays put while the groups scroll under it.
+ * The negative margins pull it over .menu's 5px padding so nothing scrolls
+ * through the gap above or beside it; `top` matches, because a sticky offset
+ * is measured inside the scroller's padding. */
+.model-menu-search {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  margin: -5px -5px 4px;
+  padding: 5px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.model-menu-search input {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: none;
+  outline: none;
+  font-size: var(--fs-3xl);
+  color: var(--ink);
+}
+.model-menu-search input:focus { border-color: var(--line-hi); }
+.model-menu-search input::placeholder { color: var(--ink-3); }
 .menu-empty { padding: 14px 11px; font-size: var(--fs-2xl); color: var(--ink-3); text-align: center; }
 
 /* The free-text row a provider gets when it lists no models. V7's popover

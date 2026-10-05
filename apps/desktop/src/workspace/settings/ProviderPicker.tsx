@@ -10,6 +10,7 @@ import {
 } from '../../ipc/client';
 import { useT } from '../../i18n';
 import { readLastModel, writeLastModel } from '../../shell/uiPrefs';
+import { sortModels } from '../../lib/modelOrder';
 import { useFormatters } from '../../i18n/formatters';
 
 /**
@@ -284,7 +285,7 @@ export function ProviderPicker({
             onChange={(e) => onSettingsChange({ ...settings, activeModel: e.target.value })}
             style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', padding: '10px 12px' }}
           >
-            {models.map((m) => (
+            {sortModels(models).map((m) => (
               <option key={m.id} value={m.id}>{m.displayName ?? m.id}</option>
             ))}
           </select>

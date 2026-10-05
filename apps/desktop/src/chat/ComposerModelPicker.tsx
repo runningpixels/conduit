@@ -18,6 +18,11 @@
  * an unreachable self-hosted endpoint) should not be probed on every app start.
  * The fan-out is parallel with a per-provider timeout, so one unreachable
  * provider costs its group's rows and nothing else — never the whole menu.
+ *
+ * An aggregator like OpenRouter lists hundreds of models in its own order, so
+ * each group is alphabetical and the menu leads with a search field that takes
+ * focus on open: type to narrow every group at once, ↓ to walk the matches,
+ * Enter to take the first one.
  */
 
 import {
@@ -25,13 +30,17 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type KeyboardEvent,
 } from 'react';
 import type { AppSettings, ModelInfo, ModelPrice, ProviderDescriptor } from '../ipc/contracts';
 import { listProviderDescriptors, listProviderModels } from '../ipc/client';
 import { formatModelPriceLabel } from '../lib/costTable';
+import { matchesModel, matchesProvider, modelLabel, queryTerms, sortModels } from '../lib/modelOrder';
 import { useModelPrices } from '../lib/useModelPrices';
 import { providerHueId } from '../lib/providerIdentity';
 import { ChevronDown } from '../icons';
@@ -46,6 +55,9 @@ import { Menu } from '../workspace/Menu';
  * will hold a menu open.
  */
 const MODEL_FETCH_TIMEOUT_MS = 2500;
+
+/** Room the upward menu leaves: its 8px gap to the trigger plus 8px below the title bar. */
+const MENU_EDGE_ROOM = 16;
 
 interface ComposerModelPickerProps {
   settings: AppSettings;
@@ -164,7 +176,10 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
       ),
     );
     const [loading, setLoading] = useState(false);
+    const [query, setQuery] = useState('');
     const triggerRef = useRef<HTMLButtonElement>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
     /** Session cache: the menu is opened repeatedly, the catalogue is stable. */
     const loadedRef = useRef(false);
 
@@ -203,24 +218,87 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
 
     useEffect(() => {
       if (open) void load();
+      // Each opening starts from the whole catalogue, not the last search.
+      else setQuery('');
     }, [open, load]);
 
     const closeMenu = useCallback(() => setOpen(false), []);
+
+    // The menu opens upward, so its height is capped by the room above the
+    // trigger. On Home the composer sits mid-window, where a fixed 52vh ran
+    // the menu's top — and the search with it — under the title bar, which
+    // paints over the top of the page.
+    const [roomAbove, setRoomAbove] = useState<number | null>(null);
+    useLayoutEffect(() => {
+      if (!open) return;
+      const measure = () => {
+        const top = triggerRef.current?.getBoundingClientRect().top;
+        if (top === undefined) return;
+        const ceiling = document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0;
+        setRoomAbove(Math.max(160, Math.floor(top - ceiling - MENU_EDGE_ROOM)));
+      };
+      measure();
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }, [open]);
 
     function pick(descriptor: ProviderDescriptor, modelId: string) {
       setOpen(false);
       onSelectModel(descriptor.id, modelId, descriptor.defaultBaseUrl);
     }
 
-    const sortedProviders = [...providers].sort(
-      (a, b) => a.tier - b.tier || fmt.compare(a.displayName, b.displayName),
+    const sortedProviders = useMemo(
+      () =>
+        [...providers]
+          .sort((a, b) => a.tier - b.tier || fmt.compare(a.displayName, b.displayName))
+          .map((provider) => ({
+            provider,
+            models: sortModels(modelsByProvider[provider.id] ?? []),
+          })),
+      [providers, modelsByProvider, fmt],
     );
+
     // Every configured provider gets a group, including ones that listed no
     // models — filtering those out would make them unselectable from here.
+    // A search narrows that: a group shows only its matching rows, and a
+    // no-models group (the typing row) only when its provider name matches.
+    const terms = queryTerms(query);
+    const groups = sortedProviders
+      .map(({ provider, models }) => ({
+        provider,
+        listed: models.length > 0,
+        models: models.filter((model) => matchesModel(terms, provider.displayName, model)),
+      }))
+      .filter(
+        ({ provider, listed, models }) =>
+          models.length > 0 ||
+          (!listed && terms.every((term) => matchesProvider(term, provider.displayName))),
+      );
     const settled = !loading && providers.length > 0;
 
+    function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+      if (event.key === 'ArrowDown') {
+        // The menu's own arrow keys stand down inside a text field, so the
+        // step from the search into the list is taken here.
+        event.preventDefault();
+        listRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const first = groups.find((group) => group.models.length > 0);
+        if (first) pick(first.provider, first.models[0]!.id);
+      } else if (event.key === 'Escape' && query) {
+        // Esc clears a search before it closes the menu.
+        event.preventDefault();
+        event.stopPropagation();
+        setQuery('');
+      }
+    }
+
     return (
-      <div className="composer-model-picker">
+      <div
+        className="composer-model-picker"
+        style={roomAbove === null ? undefined : ({ '--model-menu-room': `${roomAbove}px` } as CSSProperties)}
+      >
         <button
           ref={triggerRef}
           className="cbtn model"
@@ -243,51 +321,72 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
           className="menu model-menu"
           label={t('chat.modelPicker.switchModel')}
           dismissOnOutsidePress
+          initialFocusRef={searchRef}
         >
-          {settled &&
-            sortedProviders.map((provider) => {
-              const models = modelsByProvider[provider.id] ?? [];
-              return (
-                <div key={provider.id} data-provider={providerHueId(provider.id)}>
-                  <div
-                    className="menu-label"
-                    title={`${provider.displayName} · ${keyPosture(provider, t)}`}
-                  >
-                    {provider.displayName} · {keyPosture(provider, t)}
+          <div className="model-menu-search">
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              placeholder={t('chat.modelPicker.searchPlaceholder')}
+              aria-label={t('chat.modelPicker.searchPlaceholder')}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onSearchKeyDown}
+            />
+          </div>
+
+          {settled && (
+            <div ref={listRef}>
+              {groups.map(({ provider, listed, models }) => {
+                return (
+                  <div key={provider.id} data-provider={providerHueId(provider.id)}>
+                    <div
+                      className="menu-label"
+                      title={`${provider.displayName} · ${keyPosture(provider, t)}`}
+                    >
+                      {provider.displayName} · {keyPosture(provider, t)}
+                    </div>
+                    {listed ? (
+                      models.map((model) => {
+                        const active =
+                          provider.id === settings.activeProvider &&
+                          model.id === settings.activeModel;
+                        const tail = modelTail(provider, lookupPrice(provider.id, model.id)?.price, t);
+                        return (
+                          <button
+                            key={model.id}
+                            type="button"
+                            role="menuitem"
+                            className="menu-item"
+                            aria-current={active || undefined}
+                            onClick={() => pick(provider, model.id)}
+                          >
+                            <i className="pdot" aria-hidden="true" />
+                            {modelLabel(model)}
+                            {tail && <span className="tail">{tail}</span>}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <ModelIdRow
+                        provider={provider}
+                        initial={
+                          provider.id === settings.activeProvider ? settings.activeModel : ''
+                        }
+                        onCommit={pick}
+                      />
+                    )}
                   </div>
-                  {models.length > 0 ? (
-                    models.map((model) => {
-                      const active =
-                        provider.id === settings.activeProvider &&
-                        model.id === settings.activeModel;
-                      const tail = modelTail(provider, lookupPrice(provider.id, model.id)?.price, t);
-                      return (
-                        <button
-                          key={model.id}
-                          type="button"
-                          role="menuitem"
-                          className="menu-item"
-                          aria-current={active || undefined}
-                          onClick={() => pick(provider, model.id)}
-                        >
-                          <i className="pdot" aria-hidden="true" />
-                          {model.displayName ?? model.id}
-                          {tail && <span className="tail">{tail}</span>}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <ModelIdRow
-                      provider={provider}
-                      initial={
-                        provider.id === settings.activeProvider ? settings.activeModel : ''
-                      }
-                      onCommit={pick}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          )}
+
+          {settled && groups.length === 0 && (
+            <div className="menu-empty">{t('chat.modelPicker.noMatches', { query: query.trim() })}</div>
+          )}
 
           {!settled && (
             <div className="menu-empty">

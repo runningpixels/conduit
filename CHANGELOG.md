@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Reasoning effort.** Chat settings (and Settings → Chat defaults) have a
+  Reasoning effort choice: Auto, Low, Medium or High. Lower effort answers
+  faster and costs less on thinking models; Auto leaves the model's default.
+  It is sent only to models that accept it, mapped for OpenAI, OpenRouter,
+  Anthropic and Gemini.
+
 ## [1.0.0-rc.7] - 2026-10-05
 
 ### Added

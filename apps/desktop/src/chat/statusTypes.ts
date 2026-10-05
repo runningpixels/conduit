@@ -18,6 +18,15 @@ export interface StatusState {
   source?: StatusSource;
   /** Timestamp for ordering / dedup. */
   timestamp: number;
+  /** One follow-up a toast can offer (a link to a settings page, say). A toast
+   *  that carries one stays until dismissed: an action that vanishes after six
+   *  seconds is one most people never get to press. */
+  action?: StatusAction;
+}
+
+export interface StatusAction {
+  label: string;
+  run: () => void;
 }
 
 /** Auto-dismiss timeout for panel-head status by kind (ms). */

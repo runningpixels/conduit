@@ -14,6 +14,11 @@ import { useT, type Translate } from '../../i18n';
 import { providerDisplayName } from '../../lib/providerIdentity';
 import { notifyModelPricesChanged } from '../../lib/useModelPrices';
 import { useFormatters } from '../../i18n/formatters';
+import {
+  MAX_DAILY_SPEND_ALERT_USD,
+  parseSpendAlertInput,
+  spendAlertInputValue,
+} from '../../lib/spendAlert';
 
 interface UsageSectionProps {
   settings: AppSettings;
@@ -160,6 +165,97 @@ function PriceEditor({
   );
 }
 
+/**
+ * "Alert me when today's estimated spend passes $X". Empty is off. Saving
+ * validates here first (the backend validates again) so a typo never reaches
+ * the settings file.
+ */
+export function SpendAlertField({
+  value,
+  onSave,
+}: {
+  value: number | null | undefined;
+  /** Persist the alert (`null` = off). Resolves false when the save failed. */
+  onSave: (usd: number | null) => Promise<boolean>;
+}) {
+  const t = useT();
+  const fmt = useFormatters();
+  const [draft, setDraft] = useState(() => spendAlertInputValue(value));
+  const [invalid, setInvalid] = useState(false);
+
+  // Follow the saved value when it changes underneath the field.
+  useEffect(() => {
+    setDraft(spendAlertInputValue(value));
+    setInvalid(false);
+  }, [value]);
+
+  return (
+    <form
+      aria-label={t('settings.usage.spendAlert.ariaLabel')}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const parsed = parseSpendAlertInput(draft);
+        if (parsed === 'invalid') {
+          setInvalid(true);
+          return;
+        }
+        void onSave(parsed);
+      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '4px 0 12px' }}
+    >
+      <label htmlFor="usage-spend-alert-input" style={{ fontSize: 'var(--fs-3xl)', color: 'var(--ink)' }}>
+        {t('settings.usage.spendAlert.label')}
+      </label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <span aria-hidden="true" style={{ color: 'var(--ink-2)' }}>
+          $
+        </span>
+        <input
+          id="usage-spend-alert-input"
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          value={draft}
+          placeholder={t('settings.usage.spendAlert.placeholder')}
+          aria-invalid={invalid ? true : undefined}
+          aria-describedby="usage-spend-alert-help"
+          onChange={(e) => {
+            setInvalid(false);
+            setDraft(e.target.value);
+          }}
+          style={{
+            width: 110,
+            padding: '4px 6px',
+            borderRadius: 'var(--r-sm)',
+            border: '1px solid var(--line)',
+            background: 'var(--card)',
+            color: 'var(--ink)',
+          }}
+        />
+        <button type="submit" className="btn">
+          {t('settings.usage.spendAlert.save')}
+        </button>
+        {value != null && (
+          <button type="button" className="btn ghost" onClick={() => void onSave(null)}>
+            {t('settings.usage.spendAlert.turnOff')}
+          </button>
+        )}
+      </div>
+      <small id="usage-spend-alert-help" style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)' }}>
+        {t('settings.usage.spendAlert.help')}
+      </small>
+      {invalid && (
+        <p role="alert" style={{ margin: 0, fontSize: 'var(--fs-md)', color: 'var(--err)' }}>
+          {t('settings.usage.spendAlert.invalid', {
+            min: fmt.money(1),
+            max: fmt.money(MAX_DAILY_SPEND_ALERT_USD * 100),
+          })}
+        </p>
+      )}
+    </form>
+  );
+}
+
 export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSectionProps) {
   const t = useT();
   const fmt = useFormatters();
@@ -198,6 +294,27 @@ export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSect
     [onSettingsChange, onStatus, t],
   );
 
+  const saveSpendAlert = useCallback(
+    async (usd: number | null) => {
+      try {
+        const persisted = await updateSettings({ dailySpendAlertUsd: usd });
+        onSettingsChange(persisted);
+        const saved = persisted.dailySpendAlertUsd;
+        onStatus(
+          saved != null
+            ? t('settings.usage.spendAlert.saved', { amount: formatCents(saved * 100) })
+            : t('settings.usage.spendAlert.cleared'),
+        );
+        return true;
+      } catch (e) {
+        onStatus(t('settings.autoSave.failed', { error: translateError(e, t) }));
+        return false;
+      }
+    },
+    [onSettingsChange, onStatus, t, formatCents],
+  );
+  const spendAlert = <SpendAlertField value={settings.dailySpendAlertUsd} onSave={saveSpendAlert} />;
+
   if (loading && !data) {
     return (
       <div className="settings-section">
@@ -218,6 +335,7 @@ export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSect
         <p style={{ fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', padding: '12px 0' }}>
           {t('settings.usage.empty')}
         </p>
+        {spendAlert}
       </div>
     );
   }
@@ -438,6 +556,8 @@ export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSect
           ))}
         </div>
       )}
+
+      {spendAlert}
 
       <p style={{ fontSize: 'var(--fs-md)', color: 'var(--ink-3)', marginTop: 8 }}>
         {t('settings.usage.footer', { date: data.pricesAsOf })}

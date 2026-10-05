@@ -1497,6 +1497,10 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.toast-action {
+  justify-self: start;
+  margin-top: 4px;
+}
 .toast-dismiss {
   border: 0;
   background: transparent;

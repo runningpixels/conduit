@@ -193,4 +193,13 @@ memoryEnabled: boolean,
  * ADR-011: the user's main colour (accent), one per mode. Absent means
  * the design's own accent (coral in dark, indigo in light).
  */
-accent: AccentOverride, };
+accent: AccentOverride, 
+/**
+ * Daily spend alert, in US dollars. Once today's estimated cost (the
+ * "Today" figure in Settings → Usage & Cost) passes this amount after a
+ * turn, the app shows one notice for the day. It never blocks or cancels
+ * anything. `None` — the default, and what every settings file written
+ * before this field reads as — means off. Validated by
+ * [`daily_spend_alert_is_valid`] on write.
+ */
+dailySpendAlertUsd?: number | null, };

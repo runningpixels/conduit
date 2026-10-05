@@ -49,6 +49,18 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
           <div className="toast-body">
             <strong className="toast-brief">{toast.brief}</strong>
             {toast.detail && <span className="toast-detail">{toast.detail}</span>}
+            {toast.action && (
+              <button
+                type="button"
+                className="btn toast-action"
+                onClick={() => {
+                  toast.action?.run();
+                  requestDismiss(toast.timestamp);
+                }}
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
           <button
             className="toast-dismiss"

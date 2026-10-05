@@ -1379,6 +1379,10 @@ fn build_payload(
     let openrouter_search = web_search_intent && provider_id == "openrouter";
     let responses_api = (web_search_intent && !openrouter_search) || force_responses_api;
 
+    if !responses_api && provider_id == "openrouter" && request.model_id.starts_with("anthropic/") {
+        mark_openrouter_anthropic_cache(&mut messages);
+    }
+
     let mut body = json!({
       "model": request.model_id,
       "stream": true,
@@ -1566,6 +1570,53 @@ pub fn openai_model_takes_reasoning_effort(model_id: &str) -> bool {
         };
     }
     false
+}
+
+/// Prompt caching for Claude models on OpenRouter. Anthropic only caches at
+/// explicit `cache_control` breakpoints, and OpenRouter passes them through on
+/// chat-completions text parts (openrouter.ai/docs prompt caching guide); other
+/// upstreams cache automatically and never see this. Marks, at most three of
+/// Anthropic's four: the system message, the last user message (so the next
+/// request reads the history back), and the user message before it (where the
+/// previous request put its own mark).
+fn mark_openrouter_anthropic_cache(messages: &mut [Value]) {
+    let role_is = |m: &Value, role: &str| m.get("role").and_then(Value::as_str) == Some(role);
+    if let Some(system) = messages.iter_mut().find(|m| role_is(m, "system")) {
+        mark_openrouter_text(system);
+    }
+    let users: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| role_is(m, "user"))
+        .map(|(i, _)| i)
+        .collect();
+    for &index in users.iter().rev().take(2) {
+        mark_openrouter_text(&mut messages[index]);
+    }
+}
+
+/// Put `cache_control` on a message's last non-empty text part, turning plain
+/// string content into the one-part array form.
+fn mark_openrouter_text(message: &mut Value) {
+    let cache_control = json!({ "type": "ephemeral" });
+    match message.get_mut("content") {
+        Some(Value::String(text)) if !text.is_empty() => {
+            let text = std::mem::take(text);
+            message["content"] =
+                json!([{ "type": "text", "text": text, "cache_control": cache_control }]);
+        }
+        Some(Value::Array(parts)) => {
+            if let Some(part) = parts.iter_mut().rev().find(|p| {
+                p.get("type").and_then(Value::as_str) == Some("text")
+                    && p.get("text")
+                        .and_then(Value::as_str)
+                        .is_some_and(|t| !t.is_empty())
+            }) {
+                part["cache_control"] = cache_control;
+            }
+        }
+        _ => {}
+    }
 }
 
 fn apply_controls(
@@ -3775,6 +3826,99 @@ mod deepseek_payload_tests {
                 .find(|m| m["role"] == "assistant" && m.get("tool_calls").is_some())
                 .unwrap();
             assert_eq!(tool_round["content"], Value::Null, "{provider}");
+        }
+    }
+
+    /// One user message with a question and a hydrated PNG, sent to DeepSeek
+    /// the way the desktop crate does: the vision gate first, then the payload.
+    fn image_messages(model_id: &str) -> Vec<Value> {
+        let mut image = part("u1", 1, MessagePartKind::Image, "QUJD");
+        image.mime_type = Some("image/png".into());
+        image.attachment_id = Some("att-1".into());
+        let mut request = ProviderRequest {
+            model_id: model_id.into(),
+            messages: vec![message(
+                "u1",
+                MessageRole::User,
+                vec![
+                    part("u1", 0, MessagePartKind::Text, "What is in this picture?"),
+                    image,
+                ],
+            )],
+            attachments: Some(vec!["att-1".into()]),
+            ..request()
+        };
+        if !crate::vision::model_accepts_images("deepseek", model_id) {
+            crate::vision::strip_user_attachment_parts(&mut request);
+        }
+        let normalized = crate::normalize::validate(request).expect("valid");
+        build_payload(&normalized, false, "deepseek")["messages"]
+            .as_array()
+            .expect("chat-completions messages")
+            .clone()
+    }
+
+    #[test]
+    fn deepseek_vision_model_gets_an_image_url_part() {
+        let msgs = image_messages("deepseek-v4-flash");
+        let user = msgs.iter().find(|m| m["role"] == "user").expect("user");
+        let content = user["content"].as_array().expect("multimodal content");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn deepseek_text_only_model_gets_no_image() {
+        for model in ["deepseek-v4-pro", "deepseek-chat"] {
+            let msgs = image_messages(model);
+            let user = msgs.iter().find(|m| m["role"] == "user").expect("user");
+            assert!(
+                !user.to_string().contains("image_url"),
+                "{model} must stay text-only: {user}"
+            );
+            assert!(user.to_string().contains("What is in this picture?"));
+        }
+    }
+
+    fn cache_marks(body: &Value) -> usize {
+        body.to_string().matches("cache_control").count()
+    }
+
+    #[test]
+    fn openrouter_claude_gets_cache_breakpoints() {
+        let mut request = request();
+        request.model_id = "anthropic/claude-sonnet-4.5".into();
+        let body = build_payload(&NormalizedRequest { request }, false, "openrouter");
+        let msgs = body["messages"].as_array().unwrap();
+        assert_eq!(
+            msgs[0]["content"],
+            json!([{"type": "text", "text": "You are Conduit.", "cache_control": {"type": "ephemeral"}}])
+        );
+        let users: Vec<&Value> = msgs.iter().filter(|m| m["role"] == "user").collect();
+        assert_eq!(users.len(), 2);
+        for user in users {
+            assert_eq!(
+                user["content"][0]["cache_control"],
+                json!({"type": "ephemeral"})
+            );
+        }
+        assert_eq!(cache_marks(&body), 3);
+        assert!(cache_marks(&body) <= 4);
+    }
+
+    #[test]
+    fn cache_breakpoints_are_only_for_claude_on_openrouter() {
+        for (provider, model) in [
+            ("openrouter", "openai/gpt-5"),
+            ("openai", "anthropic/claude-sonnet-4.5"),
+            ("openai", "gpt-5"),
+            ("deepseek", "deepseek-flash"),
+        ] {
+            let mut request = request();
+            request.model_id = model.into();
+            let body = build_payload(&NormalizedRequest { request }, false, provider);
+            assert_eq!(cache_marks(&body), 0, "{provider}/{model}: {body}");
         }
     }
 }

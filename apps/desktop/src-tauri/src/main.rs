@@ -284,6 +284,8 @@ fn main() {
             // Competitive Feature: usage analytics
             get_usage_summary,
             resolve_model_prices,
+            resolve_context_windows,
+            model_accepts_image_input,
             // Competitive Feature: built-in agent tools
             // (tool definitions built into agent_tools.rs, no new commands needed)
             // Competitive Feature: retry & fork

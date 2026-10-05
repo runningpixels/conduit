@@ -56,6 +56,7 @@ import {
   readConnectorResources,
   startResearch,
   getDraftResearchMaterial,
+  modelAcceptsImageInput,
   type ConversationCompaction,
 } from '../ipc/client';
 import type {
@@ -112,7 +113,8 @@ import {
   upsertAssistantTurn,
   type ChatTurn,
 } from './conversationHydration';
-import { mergeProviderUsage, estimatePromptTokens, DEFAULT_COMPACT_THRESHOLD_PERCENT, getContextWindow } from '../lib/contextWindows';
+import { mergeProviderUsage, estimatePromptTokens, DEFAULT_COMPACT_THRESHOLD_PERCENT } from '../lib/contextWindows';
+import { useContextWindow } from '../lib/useContextWindow';
 import {
   formatCompactionDeveloperPrompt,
   historyForProviderRequest,
@@ -893,6 +895,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const t = useT();
   const tr = useRichT();
   const fmt = useFormatters();
+  const activeContextWindow = useContextWindow(settings.activeProvider, settings.activeModel);
   // A draft's web search: its Sources tab, when chat web search may run.
   const draftWebOn = draft != null && !deck && draftWebSearchActive(draft, settings);
   /** The rules for the sources a draft turn uses. */
@@ -1745,7 +1748,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // Compaction reads DB messages only — never the in-flight composer turn.
     let activeCompaction = compactionRef.current;
     if (settings.contextCompactEnabled) {
-      const windowTokens = getContextWindow(settings.activeModel);
+      const windowTokens = activeContextWindow;
       const threshold =
         settings.contextCompactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT;
       if (windowTokens != null && windowTokens > 0) {
@@ -1811,9 +1814,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (!override && turns.length === 0) noteFirstMessage();
     setTurns(history);
     if (!override) setPrompt('');
+    // Ask the backend, whose rule decides what is sent (DeepSeek's answer is
+    // per model, from the bundled models.dev snapshot); the TS mirror only
+    // answers when the backend cannot.
     const imagesDropped =
       attachments.length > 0 &&
-      !modelAcceptsImages(settings.activeProvider, settings.activeModel);
+      !(await modelAcceptsImageInput(settings.activeProvider, settings.activeModel).catch(() =>
+        modelAcceptsImages(settings.activeProvider, settings.activeModel),
+      ));
     onStatus(
       makeStatus(
         imagesDropped

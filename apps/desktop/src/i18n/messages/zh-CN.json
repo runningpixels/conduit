@@ -568,6 +568,7 @@
   "chat.toolCall.consent.rememberAlways": "始终允许这个工具",
   "chat.toolCall.consent.rememberChat": "在本次聊天中记住",
   "chat.toolCall.consent.safetyNote": "未经你批准，{appName} 绝不会运行有副作用的工具。工具输出是隔离的，绝不会被重新注入提示词。",
+  "chat.toolCall.consent.waiting": "正在等待你批准上面的操作",
   "chat.toolCall.deniedNotice": "<strong>已拒绝。</strong>该工具调用未被执行。",
   "chat.toolCall.document.action": "{action, select, create {创建} edit {编辑} read {读取} other {文档}}",
   "chat.toolCall.document.cancelled": "文档工具已取消。",

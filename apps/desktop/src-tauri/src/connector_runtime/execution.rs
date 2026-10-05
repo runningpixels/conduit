@@ -23,6 +23,7 @@
 //! must call; this module runs it best-effort to warn on injection-shaped
 //! output, but never lets the content reach prompt construction.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use mcp_runtime::{redact, validate_reinjection, ErrorCategory, ToolOutput};
@@ -79,6 +80,19 @@ pub async fn execute_tool_call(
     req: &ToolCallRequest<'_>,
     sink: &EventSink,
 ) -> Result<ExecutionOutcome, String> {
+    execute_tool_call_timed(state, mgr, req, sink, None).await
+}
+
+/// [`execute_tool_call`] that adds the milliseconds spent waiting for the
+/// user's consent decision to `user_wait_ms`, so the agent turn's time limit
+/// can leave that time out.
+pub async fn execute_tool_call_timed(
+    state: &AppState,
+    mgr: &ConnectorRuntimeManager,
+    req: &ToolCallRequest<'_>,
+    sink: &EventSink,
+    user_wait_ms: Option<&AtomicU64>,
+) -> Result<ExecutionOutcome, String> {
     let connector_version_id = req.connector_version_id;
     let tool_call_id = req.tool_call_id;
     let request_id = req.request_id;
@@ -130,7 +144,15 @@ pub async fn execute_tool_call(
         ConsentRequirement::Auto { .. } => ConsentDecision::Approved,
         ConsentRequirement::Prompt { prompt, decision } => {
             sink(ConnectorRuntimeEvent::ConsentRequested { prompt: *prompt });
-            match decision.await {
+            let waiting_since = std::time::Instant::now();
+            let decided = decision.await;
+            if let Some(total) = user_wait_ms {
+                total.fetch_add(
+                    waiting_since.elapsed().as_millis() as u64,
+                    Ordering::Relaxed,
+                );
+            }
+            match decided {
                 Ok(d) => d,
                 // The waiting request was dropped (connector stopped / app
                 // exit). Treat as a cancellation, not a denial.

@@ -332,6 +332,25 @@ describe('AssistantMessage chronological timeline', () => {
     expect(indicator?.textContent).not.toMatch(/still working|Running/);
   });
 
+  // Live: a connector tool under its approval card read "Running 1 tool… still
+  // working · 540s — some models send long responses all at once".
+  it('says it is waiting for approval while a tool consent card is pending', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          toolCalls: [{ ...toolCall('c1', 'ask_wiki_question'), sideEffecting: true, consent: 'pending' }],
+          segments: [{ kind: 'tool', toolCallId: 'c1' }],
+          agentPhase: inAgentLoop,
+          lastEventAt: Date.now() - 540_000,
+        })}
+        provider="openai"
+      />,
+    );
+    const indicator = document.querySelector('.thinking-indicator');
+    expect(indicator?.textContent).toContain('Waiting for your approval above');
+    expect(indicator?.textContent).not.toMatch(/still working|Running/);
+  });
+
   it('places the live tail after the timeline end, not above later cards', () => {
     render(
       <AssistantMessage

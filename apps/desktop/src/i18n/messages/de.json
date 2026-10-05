@@ -568,6 +568,7 @@
   "chat.toolCall.consent.rememberAlways": "Dieses Tool immer zulassen",
   "chat.toolCall.consent.rememberChat": "Für diesen Chat merken",
   "chat.toolCall.consent.safetyNote": "{appName} führt nie ein Tool mit Seiteneffekten ohne deine Zustimmung aus. Tool-Ausgaben laufen in einer Sandbox und werden nie wieder in den Prompt eingespeist.",
+  "chat.toolCall.consent.waiting": "Wartet auf deine Genehmigung oben",
   "chat.toolCall.deniedNotice": "<strong>Abgelehnt.</strong> Der Tool-Aufruf wurde nicht ausgeführt.",
   "chat.toolCall.document.action": "{action, select, create {Erstellen} edit {Bearbeiten} read {Lesen} other {Dokument}}",
   "chat.toolCall.document.cancelled": "Dokument-Tool abgebrochen.",

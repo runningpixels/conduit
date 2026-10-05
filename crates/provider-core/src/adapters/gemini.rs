@@ -9,7 +9,7 @@ use crate::output_limits::FINISH_REASON_LENGTH;
 use crate::schema::{
     ContentAnnotation, EmbeddingRequest, EmbeddingResult, ImageGenerationRequest,
     ImageGenerationResult, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
-    ProviderRequest, ToolChoice, ToolKind,
+    ProviderRequest, ReasoningEffort, ToolChoice, ToolKind,
 };
 use crate::transport::{gemini_api_key_header, get_json, post_json, post_sse, SseRequest};
 use async_trait::async_trait;
@@ -338,6 +338,46 @@ fn normalize_model_id(model_id: &str) -> String {
         .to_string()
 }
 
+/// `generationConfig.thinkingConfig` for a reasoning effort, or `None` where
+/// the model has no setting for it.
+///
+/// - Gemini 3 and later take `thinkingLevel`. Flash models accept `low`,
+///   `medium` and `high`; Pro models only `low` and `high`, so `medium` is
+///   left at the model's default (dynamic thinking) there.
+/// - Gemini 2.5 takes a token `thinkingBudget`. The values sit inside every
+///   2.5 model's accepted range (Pro 128–32,768, Flash 0–24,576, Flash-Lite
+///   512–24,576).
+/// - Older models and unversioned aliases (`gemini-flash-latest`) get
+///   nothing: 2.0 and earlier reject a thinking config, and an alias's model
+///   is not known here.
+pub fn gemini_thinking_config(model_id: &str, effort: ReasoningEffort) -> Option<Value> {
+    let model = model_id.trim().to_ascii_lowercase();
+    // `models/gemini-2.5-pro`, or a gateway's `google/gemini-2.5-pro`.
+    let model = model.rsplit('/').next().unwrap_or(&model);
+    let version = model.strip_prefix("gemini-")?;
+    let mut numbers = version.split(['-', '.']);
+    let major = numbers.next()?.parse::<u32>().ok()?;
+    if major >= 3 {
+        let level = match effort {
+            ReasoningEffort::Low => "low",
+            ReasoningEffort::Medium if model.contains("flash") => "medium",
+            ReasoningEffort::Medium => return None,
+            ReasoningEffort::High => "high",
+        };
+        return Some(json!({ "thinkingLevel": level }));
+    }
+    let minor = numbers.next().and_then(|m| m.parse::<u32>().ok());
+    if major == 2 && minor == Some(5) {
+        let budget = match effort {
+            ReasoningEffort::Low => 1_024,
+            ReasoningEffort::Medium => 8_192,
+            ReasoningEffort::High => 24_576,
+        };
+        return Some(json!({ "thinkingBudget": budget }));
+    }
+    None
+}
+
 fn build_payload(normalized: &NormalizedRequest) -> Value {
     let request = &normalized.request;
     let mut contents = Vec::new();
@@ -471,6 +511,12 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         }
         if let Some(stops) = &controls.stop_sequences {
             generation_config.insert("stopSequences".to_string(), json!(stops));
+        }
+        if let Some(thinking) = controls
+            .reasoning_effort
+            .and_then(|effort| gemini_thinking_config(&request.model_id, effort))
+        {
+            generation_config.insert("thinkingConfig".to_string(), thinking);
         }
     }
     // No `maxOutputTokens` unless the user set one: the API then allows the
@@ -1241,6 +1287,99 @@ mod tests {
         let body = build_payload(&NormalizedRequest { request });
         assert!(body.get("tools").is_some());
         assert!(!body.to_string().contains("parallel"));
+    }
+
+    fn payload_with_effort(model: &str, effort: Option<ReasoningEffort>) -> Value {
+        let request = ProviderRequest {
+            request_id: "req-effort".into(),
+            conversation_id: "conv-1".into(),
+            model_id: model.into(),
+            messages: vec![],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: Some(crate::schema::GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: None,
+                reasoning_effort: effort,
+                parallel_tool_calls: None,
+            }),
+            response_format: None,
+            web_search: None,
+        };
+        build_payload(&NormalizedRequest { request })
+    }
+
+    #[test]
+    fn reasoning_effort_sets_a_thinking_budget_on_gemini_2_5() {
+        for (effort, budget) in [
+            (ReasoningEffort::Low, 1_024),
+            (ReasoningEffort::Medium, 8_192),
+            (ReasoningEffort::High, 24_576),
+        ] {
+            for model in [
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "models/gemini-2.5-flash-lite",
+            ] {
+                let body = payload_with_effort(model, Some(effort));
+                assert_eq!(
+                    body.pointer("/generationConfig/thinkingConfig"),
+                    Some(&json!({ "thinkingBudget": budget })),
+                    "{model}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reasoning_effort_sets_a_thinking_level_on_gemini_3() {
+        let level = |model: &str, effort| {
+            payload_with_effort(model, Some(effort))
+                .pointer("/generationConfig/thinkingConfig/thinkingLevel")
+                .cloned()
+        };
+        assert_eq!(
+            level("gemini-3-pro-preview", ReasoningEffort::Low),
+            Some(json!("low"))
+        );
+        assert_eq!(
+            level("gemini-3-pro-preview", ReasoningEffort::High),
+            Some(json!("high"))
+        );
+        assert_eq!(
+            level("gemini-3-flash-preview", ReasoningEffort::Medium),
+            Some(json!("medium"))
+        );
+        // Pro takes only low and high: medium stays the model's default.
+        assert!(
+            payload_with_effort("gemini-3-pro-preview", Some(ReasoningEffort::Medium))
+                .pointer("/generationConfig/thinkingConfig")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn reasoning_effort_is_withheld_from_gemini_models_without_thinking() {
+        for model in [
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+            "gemini-flash-latest",
+            "gemma-3-27b-it",
+        ] {
+            let body = payload_with_effort(model, Some(ReasoningEffort::High));
+            assert!(
+                body.pointer("/generationConfig/thinkingConfig").is_none(),
+                "{model}"
+            );
+        }
+        assert!(payload_with_effort("gemini-2.5-pro", None)
+            .pointer("/generationConfig/thinkingConfig")
+            .is_none());
     }
 
     /// 1x1 PNG, base64-encoded (same bytes the desktop crate's `vision.rs`

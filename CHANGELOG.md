@@ -9,10 +9,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Reasoning effort.** Chat settings (and Settings → Chat defaults) have a
+  Reasoning effort choice: Auto, Low, Medium or High. Lower effort answers
+  faster and costs less on thinking models; Auto leaves the model's default.
+  It is sent only to models that accept it, mapped for OpenAI, OpenRouter,
+  Anthropic and Gemini.
 - **Daily spend alert.** Settings → Usage & Cost can alert you when today's
   estimated spend passes an amount you set. After a chat turn that crosses it,
   a notice shows the estimate and opens Usage & Cost; it appears once a day
   and never stops anything. Off by default. Days follow the usage chart (UTC).
+
+### Changed
+
+- **Claude prompts are cached.** Requests to Anthropic (and Claude models on
+  OpenRouter and OpenCode Zen) mark the tools, the system prompt and the
+  conversation so far for Anthropic's prompt cache, so a long chat no longer
+  pays full input price for its history on every turn. Cache reads and writes
+  are priced at their own rates in Usage & Cost.
+
+### Fixed
+
+- **DeepSeek models that read images now get them.** DeepSeek V4 Flash and its
+  vision variant receive attached images instead of having them dropped;
+  text-only DeepSeek models stay text-only.
+- **The context gauge knows more models.** It now takes each model's context
+  window from the bundled model catalog, so DeepSeek V4 shows its 1M window
+  instead of 128K, and other catalog models show their real size too.
 
 ## [1.0.0-rc.7] - 2026-10-05
 

@@ -645,6 +645,31 @@ pub async fn resolve_model_prices(
         .collect())
 }
 
+/// Whether image attachments reach this model, by the same rule the send path
+/// uses (`provider_core::model_accepts_images`), so the renderer's "images not
+/// sent" warning cannot disagree with what is actually sent.
+#[tauri::command]
+pub async fn model_accepts_image_input(
+    provider_id: String,
+    model_id: String,
+) -> Result<bool, String> {
+    Ok(provider_core::model_accepts_images(&provider_id, &model_id))
+}
+
+/// Context windows (tokens) for several models of one provider, in the order
+/// asked, from the bundled models.dev snapshot; `None` where it does not know.
+/// The renderer falls back to its own family table for those.
+#[tauri::command]
+pub async fn resolve_context_windows(
+    provider_id: String,
+    model_ids: Vec<String>,
+) -> Result<Vec<Option<u64>>, String> {
+    Ok(model_ids
+        .iter()
+        .map(|model_id| provider_core::pricing::snapshot_context_window(&provider_id, model_id))
+        .collect())
+}
+
 // ---------------------------------------------------------------------------
 // Retry & Fork (Competitive Feature)
 // ---------------------------------------------------------------------------

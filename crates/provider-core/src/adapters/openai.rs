@@ -1379,6 +1379,10 @@ fn build_payload(
     let openrouter_search = web_search_intent && provider_id == "openrouter";
     let responses_api = (web_search_intent && !openrouter_search) || force_responses_api;
 
+    if !responses_api && provider_id == "openrouter" && request.model_id.starts_with("anthropic/") {
+        mark_openrouter_anthropic_cache(&mut messages);
+    }
+
     let mut body = json!({
       "model": request.model_id,
       "stream": true,
@@ -1517,10 +1521,102 @@ fn build_payload(
     }
 
     if let Some(controls) = &request.generation_controls {
-        apply_controls(&mut body, controls, responses_api, provider_id);
+        apply_controls(
+            &mut body,
+            controls,
+            responses_api,
+            provider_id,
+            &request.model_id,
+        );
     }
 
     body
+}
+
+/// Whether a model behind an OpenAI-style endpoint accepts a reasoning effort
+/// of `low`, `medium` and `high`. OpenAI returns an error for the field on
+/// models without reasoning (`gpt-4o`, `gpt-5-chat-latest`), on `o1-mini` and
+/// `o1-preview`, and for anything but `high` on the `-pro` models; other
+/// vendors' endpoints either reject unknown fields or ignore them. So the
+/// field goes only to OpenAI's reasoning families — o1/o3/o4, GPT-5 and later,
+/// `codex-mini` — and the open-weight `gpt-oss` models, whichever endpoint
+/// serves them (Groq, Together, LM Studio and vLLM take it for those).
+/// OpenRouter is decided separately: it drops the field for models without
+/// reasoning.
+pub fn openai_model_takes_reasoning_effort(model_id: &str) -> bool {
+    let model = model_id.trim().to_ascii_lowercase();
+    // Gateway ids carry a vendor prefix (`openai/gpt-5`).
+    let model = model.rsplit('/').next().unwrap_or(&model);
+    if model.contains("-chat") || model.contains("search") || model.contains("deep-research") {
+        return false;
+    }
+    if model.starts_with("gpt-oss") || model.starts_with("codex-mini") {
+        return true;
+    }
+    if let Some(rest) = model.strip_prefix("gpt-") {
+        let major = rest
+            .split(['-', '.'])
+            .next()
+            .and_then(|m| m.parse::<u32>().ok());
+        // `gpt-5-pro` accepts only `high`.
+        return major.is_some_and(|m| m >= 5) && !rest.contains("-pro");
+    }
+    if let Some(rest) = model.strip_prefix('o') {
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        return match digits.parse::<u32>() {
+            Ok(1) => !(rest.starts_with("1-mini") || rest.starts_with("1-preview")),
+            Ok(n) => n >= 3,
+            Err(_) => false,
+        };
+    }
+    false
+}
+
+/// Prompt caching for Claude models on OpenRouter. Anthropic only caches at
+/// explicit `cache_control` breakpoints, and OpenRouter passes them through on
+/// chat-completions text parts (openrouter.ai/docs prompt caching guide); other
+/// upstreams cache automatically and never see this. Marks, at most three of
+/// Anthropic's four: the system message, the last user message (so the next
+/// request reads the history back), and the user message before it (where the
+/// previous request put its own mark).
+fn mark_openrouter_anthropic_cache(messages: &mut [Value]) {
+    let role_is = |m: &Value, role: &str| m.get("role").and_then(Value::as_str) == Some(role);
+    if let Some(system) = messages.iter_mut().find(|m| role_is(m, "system")) {
+        mark_openrouter_text(system);
+    }
+    let users: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| role_is(m, "user"))
+        .map(|(i, _)| i)
+        .collect();
+    for &index in users.iter().rev().take(2) {
+        mark_openrouter_text(&mut messages[index]);
+    }
+}
+
+/// Put `cache_control` on a message's last non-empty text part, turning plain
+/// string content into the one-part array form.
+fn mark_openrouter_text(message: &mut Value) {
+    let cache_control = json!({ "type": "ephemeral" });
+    match message.get_mut("content") {
+        Some(Value::String(text)) if !text.is_empty() => {
+            let text = std::mem::take(text);
+            message["content"] =
+                json!([{ "type": "text", "text": text, "cache_control": cache_control }]);
+        }
+        Some(Value::Array(parts)) => {
+            if let Some(part) = parts.iter_mut().rev().find(|p| {
+                p.get("type").and_then(Value::as_str) == Some("text")
+                    && p.get("text")
+                        .and_then(Value::as_str)
+                        .is_some_and(|t| !t.is_empty())
+            }) {
+                part["cache_control"] = cache_control;
+            }
+        }
+        _ => {}
+    }
 }
 
 fn apply_controls(
@@ -1528,8 +1624,12 @@ fn apply_controls(
     controls: &GenerationControls,
     responses_api: bool,
     provider_id: &str,
+    model_id: &str,
 ) {
-    if let Some(effort) = controls.reasoning_effort {
+    let effort = controls
+        .reasoning_effort
+        .filter(|_| provider_id == "openrouter" || openai_model_takes_reasoning_effort(model_id));
+    if let Some(effort) = effort {
         // The Responses API and OpenRouter take a `reasoning` object;
         // chat-completions endpoints use the flat `reasoning_effort`.
         if responses_api || provider_id == "openrouter" {
@@ -2936,18 +3036,131 @@ mod tests {
             parallel_tool_calls: None,
         };
         let mut chat = json!({});
-        apply_controls(&mut chat, &controls, false, "openai");
+        apply_controls(&mut chat, &controls, false, "openai", "gpt-5");
         assert_eq!(chat["reasoning_effort"], json!("low"));
         assert!(chat.get("reasoning").is_none());
 
         let mut openrouter = json!({});
-        apply_controls(&mut openrouter, &controls, false, "openrouter");
+        apply_controls(&mut openrouter, &controls, false, "openrouter", "gpt-5");
         assert_eq!(openrouter.pointer("/reasoning/effort"), Some(&json!("low")));
         assert!(openrouter.get("reasoning_effort").is_none());
 
         let mut responses = json!({});
-        apply_controls(&mut responses, &controls, true, "openai");
+        apply_controls(&mut responses, &controls, true, "openai", "gpt-5");
         assert_eq!(responses.pointer("/reasoning/effort"), Some(&json!("low")));
+    }
+
+    #[test]
+    fn each_reasoning_effort_level_serializes_by_name() {
+        use crate::schema::ReasoningEffort;
+        for (effort, name) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+        ] {
+            let controls = GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: None,
+                reasoning_effort: Some(effort),
+                parallel_tool_calls: None,
+            };
+            let mut chat = json!({});
+            apply_controls(&mut chat, &controls, false, "openai", "o4-mini");
+            assert_eq!(chat["reasoning_effort"], json!(name));
+            let mut responses = json!({});
+            apply_controls(&mut responses, &controls, true, "openai", "gpt-5.1");
+            assert_eq!(responses.pointer("/reasoning/effort"), Some(&json!(name)));
+        }
+    }
+
+    #[test]
+    fn reasoning_effort_is_withheld_from_models_that_reject_it() {
+        let controls = GenerationControls {
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            tool_choice: None,
+            reasoning_effort: Some(crate::schema::ReasoningEffort::High),
+            parallel_tool_calls: None,
+        };
+        for (provider, model) in [
+            ("openai", "gpt-4o"),
+            ("openai", "gpt-4.1-mini"),
+            ("openai", "gpt-5-chat-latest"),
+            ("openai", "gpt-5-pro"),
+            ("openai", "o1-mini"),
+            ("openai", "o1-preview"),
+            ("openai", "gpt-4o-search-preview"),
+            ("groq", "llama-3.3-70b-versatile"),
+            ("deepseek", "deepseek-reasoner"),
+            ("mistral", "magistral-medium-latest"),
+            ("xai", "grok-4"),
+            ("openai_compat", "qwen3-32b"),
+        ] {
+            for responses_api in [false, true] {
+                let mut body = json!({});
+                apply_controls(&mut body, &controls, responses_api, provider, model);
+                assert!(body.get("reasoning_effort").is_none(), "{provider}/{model}");
+                assert!(body.get("reasoning").is_none(), "{provider}/{model}");
+            }
+        }
+        // OpenRouter drops the field itself for models without reasoning.
+        let mut openrouter = json!({});
+        apply_controls(
+            &mut openrouter,
+            &controls,
+            false,
+            "openrouter",
+            "meta-llama/llama-3.3-70b",
+        );
+        assert_eq!(
+            openrouter.pointer("/reasoning/effort"),
+            Some(&json!("high"))
+        );
+    }
+
+    #[test]
+    fn openai_reasoning_models_are_recognised() {
+        for model in [
+            "o1",
+            "o1-2024-12-17",
+            "o3",
+            "o3-mini",
+            "o3-pro",
+            "o4-mini",
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-nano",
+            "gpt-5.1",
+            "gpt-5.2-codex",
+            "gpt-6",
+            "openai/gpt-5",
+            "codex-mini-latest",
+            "gpt-oss-120b",
+            "openai/gpt-oss-20b",
+        ] {
+            assert!(openai_model_takes_reasoning_effort(model), "{model}");
+        }
+        for model in [
+            "gpt-4o",
+            "gpt-4.1",
+            "gpt-3.5-turbo",
+            "gpt-5-chat-latest",
+            "gpt-5.1-chat-latest",
+            "gpt-5-pro",
+            "o1-mini",
+            "o1-preview",
+            "o3-deep-research",
+            "omni-moderation-latest",
+            "llama3.1",
+            "",
+        ] {
+            assert!(!openai_model_takes_reasoning_effort(model), "{model}");
+        }
     }
 
     #[test]
@@ -2970,6 +3183,7 @@ mod tests {
                 &controls(Some(false)),
                 responses_api,
                 provider,
+                "gpt-5",
             );
             assert_eq!(
                 with_tools["parallel_tool_calls"],
@@ -2983,12 +3197,19 @@ mod tests {
                 &controls(Some(false)),
                 responses_api,
                 provider,
+                "gpt-5",
             );
             assert!(no_tools.get("parallel_tool_calls").is_none());
 
             for unset in [None, Some(true)] {
                 let mut body = json!({"tools": [{"type": "function"}]});
-                apply_controls(&mut body, &controls(unset), responses_api, provider);
+                apply_controls(
+                    &mut body,
+                    &controls(unset),
+                    responses_api,
+                    provider,
+                    "gpt-5",
+                );
                 assert!(body.get("parallel_tool_calls").is_none());
             }
         }
@@ -3006,12 +3227,12 @@ mod tests {
             parallel_tool_calls: None,
         };
         let mut chat = json!({});
-        apply_controls(&mut chat, &controls, false, "openai");
+        apply_controls(&mut chat, &controls, false, "openai", "gpt-5");
         assert_eq!(chat["max_tokens"], json!(1_000));
         assert!(chat.get("max_output_tokens").is_none());
 
         let mut responses = json!({});
-        apply_controls(&mut responses, &controls, true, "openai");
+        apply_controls(&mut responses, &controls, true, "openai", "gpt-5");
         assert_eq!(responses["max_output_tokens"], json!(1_000));
         assert!(responses.get("max_tokens").is_none());
     }
@@ -3605,6 +3826,99 @@ mod deepseek_payload_tests {
                 .find(|m| m["role"] == "assistant" && m.get("tool_calls").is_some())
                 .unwrap();
             assert_eq!(tool_round["content"], Value::Null, "{provider}");
+        }
+    }
+
+    /// One user message with a question and a hydrated PNG, sent to DeepSeek
+    /// the way the desktop crate does: the vision gate first, then the payload.
+    fn image_messages(model_id: &str) -> Vec<Value> {
+        let mut image = part("u1", 1, MessagePartKind::Image, "QUJD");
+        image.mime_type = Some("image/png".into());
+        image.attachment_id = Some("att-1".into());
+        let mut request = ProviderRequest {
+            model_id: model_id.into(),
+            messages: vec![message(
+                "u1",
+                MessageRole::User,
+                vec![
+                    part("u1", 0, MessagePartKind::Text, "What is in this picture?"),
+                    image,
+                ],
+            )],
+            attachments: Some(vec!["att-1".into()]),
+            ..request()
+        };
+        if !crate::vision::model_accepts_images("deepseek", model_id) {
+            crate::vision::strip_user_attachment_parts(&mut request);
+        }
+        let normalized = crate::normalize::validate(request).expect("valid");
+        build_payload(&normalized, false, "deepseek")["messages"]
+            .as_array()
+            .expect("chat-completions messages")
+            .clone()
+    }
+
+    #[test]
+    fn deepseek_vision_model_gets_an_image_url_part() {
+        let msgs = image_messages("deepseek-v4-flash");
+        let user = msgs.iter().find(|m| m["role"] == "user").expect("user");
+        let content = user["content"].as_array().expect("multimodal content");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn deepseek_text_only_model_gets_no_image() {
+        for model in ["deepseek-v4-pro", "deepseek-chat"] {
+            let msgs = image_messages(model);
+            let user = msgs.iter().find(|m| m["role"] == "user").expect("user");
+            assert!(
+                !user.to_string().contains("image_url"),
+                "{model} must stay text-only: {user}"
+            );
+            assert!(user.to_string().contains("What is in this picture?"));
+        }
+    }
+
+    fn cache_marks(body: &Value) -> usize {
+        body.to_string().matches("cache_control").count()
+    }
+
+    #[test]
+    fn openrouter_claude_gets_cache_breakpoints() {
+        let mut request = request();
+        request.model_id = "anthropic/claude-sonnet-4.5".into();
+        let body = build_payload(&NormalizedRequest { request }, false, "openrouter");
+        let msgs = body["messages"].as_array().unwrap();
+        assert_eq!(
+            msgs[0]["content"],
+            json!([{"type": "text", "text": "You are Conduit.", "cache_control": {"type": "ephemeral"}}])
+        );
+        let users: Vec<&Value> = msgs.iter().filter(|m| m["role"] == "user").collect();
+        assert_eq!(users.len(), 2);
+        for user in users {
+            assert_eq!(
+                user["content"][0]["cache_control"],
+                json!({"type": "ephemeral"})
+            );
+        }
+        assert_eq!(cache_marks(&body), 3);
+        assert!(cache_marks(&body) <= 4);
+    }
+
+    #[test]
+    fn cache_breakpoints_are_only_for_claude_on_openrouter() {
+        for (provider, model) in [
+            ("openrouter", "openai/gpt-5"),
+            ("openai", "anthropic/claude-sonnet-4.5"),
+            ("openai", "gpt-5"),
+            ("deepseek", "deepseek-flash"),
+        ] {
+            let mut request = request();
+            request.model_id = model.into();
+            let body = build_payload(&NormalizedRequest { request }, false, provider);
+            assert_eq!(cache_marks(&body), 0, "{provider}/{model}: {body}");
         }
     }
 }

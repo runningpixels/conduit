@@ -16,10 +16,8 @@
 import { useMemo, useRef, useState } from 'react';
 import type { AppSettings, ProviderUsage } from '@conduit/config-schema';
 import { providerDisplayName } from '../lib/providerIdentity';
-import {
-  DEFAULT_COMPACT_THRESHOLD_PERCENT,
-  getContextWindow,
-} from '../lib/contextWindows';
+import { DEFAULT_COMPACT_THRESHOLD_PERCENT } from '../lib/contextWindows';
+import { useContextWindow } from '../lib/useContextWindow';
 import { estimateCostCents, formatCostCents } from '../lib/costTable';
 import { useModelPrices } from '../lib/useModelPrices';
 import { readExpandedStatus } from './uiPrefs';
@@ -68,7 +66,7 @@ export function StatusLine({
   const close = () => setOpen(false);
 
   const tokens = Math.max(0, contextTokens);
-  const contextWindow = getContextWindow(settings.activeModel);
+  const contextWindow = useContextWindow(settings.activeProvider, settings.activeModel);
   const percent = contextWindow != null ? Math.round((tokens / contextWindow) * 100) : null;
   const nearLimit = percent != null && percent >= compactThresholdPercent;
   const meterFill = percent != null ? Math.min(100, Math.max(0, percent)) : 0;

@@ -29,6 +29,11 @@ struct AnthropicParser {
     /// Set from `message_delta.delta.stop_reason` when the response ran out of
     /// output tokens.
     finish_reason: Option<&'static str>,
+    /// `message_start.message.usage`: the input-side counts (uncached input,
+    /// cache writes, cache reads). `message_delta` carries the cumulative
+    /// totals on the first-party API, but compatible endpoints may send only
+    /// `output_tokens` there, so the two are merged into one `Usage` event.
+    start_usage: Option<Value>,
 }
 
 impl AnthropicParser {
@@ -38,6 +43,23 @@ impl AnthropicParser {
             tool_calls: HashMap::new(),
             search_result_blocks: HashSet::new(),
             finish_reason: None,
+            start_usage: None,
+        }
+    }
+
+    /// One usage figure, from `message_delta` or, failing that, from
+    /// `message_start`. Counts are cumulative, so the larger one wins when
+    /// both are present.
+    fn usage_count(&self, delta: &Value, key: &str) -> Option<u64> {
+        let from_delta = delta.get(key).and_then(Value::as_u64);
+        let from_start = self
+            .start_usage
+            .as_ref()
+            .and_then(|u| u.get(key))
+            .and_then(Value::as_u64);
+        match (from_delta, from_start) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, b) => a.or(b),
         }
     }
 }
@@ -57,6 +79,9 @@ impl StreamParser for AnthropicParser {
         let mut events = Vec::new();
 
         match event_type {
+            "message_start" => {
+                self.start_usage = value.pointer("/message/usage").cloned();
+            }
             "content_block_start" => {
                 let block_index = value
                     .pointer("/index")
@@ -225,20 +250,18 @@ impl StreamParser for AnthropicParser {
                     self.finish_reason = Some(FINISH_REASON_LENGTH);
                 }
                 if let Some(usage) = value.pointer("/usage") {
+                    // Anthropic's `input_tokens` excludes both cache reads and
+                    // cache writes; `pricing` knows that for this wire format.
+                    let cache_read = self.usage_count(usage, "cache_read_input_tokens");
                     events.push(ProviderEvent::Usage {
                         request_id: request_id.to_string(),
                         usage: crate::schema::ProviderUsage {
-                            input_tokens: usage.get("input_tokens").and_then(|v| v.as_u64()),
+                            input_tokens: self.usage_count(usage, "input_tokens"),
                             output_tokens: usage.get("output_tokens").and_then(|v| v.as_u64()),
-                            cache_tokens: usage
-                                .get("cache_read_input_tokens")
-                                .and_then(|v| v.as_u64()),
-                            cache_read_tokens: usage
-                                .get("cache_read_input_tokens")
-                                .and_then(|v| v.as_u64()),
-                            cache_write_tokens: usage
-                                .get("cache_creation_input_tokens")
-                                .and_then(|v| v.as_u64()),
+                            cache_tokens: cache_read,
+                            cache_read_tokens: cache_read,
+                            cache_write_tokens: self
+                                .usage_count(usage, "cache_creation_input_tokens"),
                             cost_hint: None,
                         },
                     });
@@ -511,7 +534,137 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
         }
     }
 
+    apply_cache_breakpoints(&mut body);
     body
+}
+
+/// Anthropic accepts at most four `cache_control` breakpoints per request.
+const MAX_CACHE_BREAKPOINTS: usize = 4;
+
+fn ephemeral() -> Value {
+    json!({ "type": "ephemeral" })
+}
+
+/// Mark the stable prefix of the request for Anthropic prompt caching.
+///
+/// The prompt renders as `tools` → `system` → `messages`, and a breakpoint
+/// caches everything before it. Breakpoints, most valuable first:
+///
+/// 1. the last system block (caches tools + system);
+/// 2. the last block of the last message, so the next request — this one plus
+///    the reply and the next user or tool-result turn — reads the whole history
+///    back from cache;
+/// 3. the last tool definition, so a changed system prompt still reuses the
+///    tools;
+/// 4. the last block of the previous user-role message, which is exactly where
+///    the previous request in this conversation put breakpoint 2. That
+///    guarantees a hit even when a turn adds more than the 20 blocks the API
+///    looks back over.
+///
+/// A prefix below the model's minimum cacheable length (512–4096 tokens) is
+/// simply not cached; the marker is harmless there. Reads cost a tenth of the
+/// input price and writes 1.25×, so a conversation that sends a second request
+/// within five minutes comes out ahead.
+fn apply_cache_breakpoints(body: &mut Value) {
+    let mut budget = MAX_CACHE_BREAKPOINTS;
+    let mut spend = |marked: bool| {
+        if marked {
+            budget -= 1;
+        }
+        budget > 0
+    };
+
+    if !spend(mark_system(body)) {
+        return;
+    }
+
+    let messages_len = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let last = messages_len.checked_sub(1);
+    if let Some(last) = last {
+        if !spend(mark_message(&mut body["messages"][last])) {
+            return;
+        }
+    }
+
+    let tool_marked = body
+        .get_mut("tools")
+        .and_then(Value::as_array_mut)
+        .and_then(|tools| tools.last_mut())
+        .is_some_and(|tool| {
+            tool["cache_control"] = ephemeral();
+            true
+        });
+    if !spend(tool_marked) {
+        return;
+    }
+
+    if let Some(last) = last {
+        let previous_user = body["messages"].as_array().and_then(|messages| {
+            messages[..last]
+                .iter()
+                .rposition(|m| m.get("role").and_then(Value::as_str) == Some("user"))
+        });
+        if let Some(index) = previous_user {
+            spend(mark_message(&mut body["messages"][index]));
+        }
+    }
+}
+
+/// Put a breakpoint on the system prompt, turning a plain string into the
+/// one-block array form `cache_control` needs. An empty prompt is left alone:
+/// the API rejects `cache_control` on an empty text block.
+fn mark_system(body: &mut Value) -> bool {
+    match body.get_mut("system") {
+        Some(Value::String(text)) if !text.is_empty() => {
+            let text = std::mem::take(text);
+            body["system"] =
+                json!([{ "type": "text", "text": text, "cache_control": ephemeral() }]);
+            true
+        }
+        Some(Value::Array(blocks)) => mark_last_block(blocks),
+        _ => false,
+    }
+}
+
+/// Put a breakpoint on a message's last cacheable content block.
+fn mark_message(message: &mut Value) -> bool {
+    match message.get_mut("content") {
+        Some(Value::String(text)) if !text.is_empty() => {
+            let text = std::mem::take(text);
+            message["content"] =
+                json!([{ "type": "text", "text": text, "cache_control": ephemeral() }]);
+            true
+        }
+        Some(Value::Array(blocks)) => mark_last_block(blocks),
+        _ => false,
+    }
+}
+
+/// Mark the last block that can carry `cache_control`. Empty text blocks
+/// cannot (the API returns a 400), and neither can thinking blocks.
+fn mark_last_block(blocks: &mut [Value]) -> bool {
+    let eligible =
+        blocks
+            .iter_mut()
+            .rev()
+            .find(|block| match block.get("type").and_then(Value::as_str) {
+                Some("text") => block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .is_some_and(|t| !t.is_empty()),
+                Some("thinking" | "redacted_thinking") | None => false,
+                Some(_) => true,
+            });
+    match eligible {
+        Some(block) => {
+            block["cache_control"] = ephemeral();
+            true
+        }
+        None => false,
+    }
 }
 
 /// The adapter appends `/v1/...` itself. A user-entered base URL is accepted
@@ -1133,6 +1286,33 @@ mod tests {
     }
 
     #[test]
+    fn each_reasoning_effort_level_maps_to_output_config_effort() {
+        use crate::schema::ReasoningEffort;
+        for (effort, name) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+        ] {
+            let mut request = user_request(None);
+            request.model_id = "claude-sonnet-4-6".into();
+            request.generation_controls = Some(crate::schema::GenerationControls {
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stop_sequences: None,
+                tool_choice: None,
+                reasoning_effort: Some(effort),
+                parallel_tool_calls: None,
+            });
+            let body = build_payload(&NormalizedRequest { request });
+            assert_eq!(body["output_config"], json!({ "effort": name }));
+            // Effort never switches on a thinking budget: older models need
+            // signed thinking blocks echoed back, which this adapter does not do.
+            assert!(body.get("thinking").is_none());
+        }
+    }
+
+    #[test]
     fn reasoning_effort_is_sent_only_to_models_that_accept_it() {
         let with_effort = |model: &str| {
             let mut request = user_request(None);
@@ -1266,6 +1446,239 @@ mod tests {
             http: crate::transport::HttpClient::new(),
             local_only: false,
         })
+    }
+
+    fn text_message(id: &str, role: MessageRole, text: &str) -> crate::schema::Message {
+        crate::schema::Message {
+            id: id.into(),
+            conversation_id: "conv-1".into(),
+            role,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts: vec![MessagePart {
+                id: format!("{id}-p"),
+                message_id: id.into(),
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some(text.into()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: "now".into(),
+            }],
+            created_at: "now".into(),
+        }
+    }
+
+    fn tool(name: &str) -> crate::schema::ToolDefinition {
+        crate::schema::ToolDefinition {
+            tool_id: name.into(),
+            name: name.into(),
+            description: format!("{name} tool"),
+            input_schema: json!({"type": "object"}),
+            kind: None,
+            host_config: None,
+            permission_level: None,
+            display_group: None,
+            tenant_scope: None,
+        }
+    }
+
+    /// Every `cache_control` marker in the body, as JSON pointers.
+    fn breakpoints(body: &Value) -> Vec<String> {
+        fn walk(value: &Value, path: String, out: &mut Vec<String>) {
+            match value {
+                Value::Object(map) => {
+                    if map.contains_key("cache_control") {
+                        out.push(path.clone());
+                    }
+                    for (key, child) in map {
+                        walk(child, format!("{path}/{key}"), out);
+                    }
+                }
+                Value::Array(items) => {
+                    for (i, child) in items.iter().enumerate() {
+                        walk(child, format!("{path}/{i}"), out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk(body, String::new(), &mut out);
+        out
+    }
+
+    fn conversation_request() -> ProviderRequest {
+        let mut request = user_request(None);
+        request.system_prompt = Some("You are Conduit.".into());
+        request.tool_definitions = vec![tool("read_file"), tool("write_file")];
+        request.messages = vec![
+            text_message("m1", MessageRole::User, "first question"),
+            text_message("m2", MessageRole::Assistant, "first answer"),
+            text_message("m3", MessageRole::User, "second question"),
+            text_message("m4", MessageRole::Assistant, "second answer"),
+            text_message("m5", MessageRole::User, "third question"),
+        ];
+        request
+    }
+
+    #[test]
+    fn cache_breakpoints_cover_tools_system_and_history() {
+        let body = build_payload(&NormalizedRequest {
+            request: conversation_request(),
+        });
+        let mut marks = breakpoints(&body);
+        marks.sort();
+        assert_eq!(
+            marks,
+            vec![
+                "/messages/2/content/0", // previous user turn (last request's tail)
+                "/messages/4/content/0", // the new message
+                "/system/0",
+                "/tools/1",
+            ]
+        );
+        assert_eq!(body["system"][0]["text"], json!("You are Conduit."));
+        assert_eq!(
+            body["system"][0]["cache_control"],
+            json!({"type": "ephemeral"})
+        );
+        assert_eq!(
+            body["messages"][4]["content"][0]["text"],
+            json!("third question")
+        );
+        // Untouched messages keep their plain-string form.
+        assert_eq!(body["messages"][0]["content"], json!("first question"));
+        assert_eq!(body["messages"][3]["content"], json!("second answer"));
+    }
+
+    #[test]
+    fn cache_breakpoints_never_exceed_four() {
+        let mut request = conversation_request();
+        request.web_search = search_on();
+        for extra in 0..30 {
+            let role = if extra % 2 == 0 {
+                MessageRole::Assistant
+            } else {
+                MessageRole::User
+            };
+            request
+                .messages
+                .push(text_message(&format!("x{extra}"), role, "more"));
+        }
+        let body = build_payload(&NormalizedRequest { request });
+        assert_eq!(breakpoints(&body).len(), MAX_CACHE_BREAKPOINTS);
+        // The hosted search tool is last, and it takes the tools breakpoint.
+        let tools = body["tools"].as_array().unwrap();
+        assert!(tools.last().unwrap().get("cache_control").is_some());
+    }
+
+    #[test]
+    fn single_turn_without_system_or_tools_marks_only_the_message() {
+        let body = build_payload(&NormalizedRequest {
+            request: user_request(None),
+        });
+        assert_eq!(breakpoints(&body), vec!["/messages/0/content/0"]);
+        assert!(body.get("system").is_none());
+    }
+
+    #[test]
+    fn empty_text_and_tool_only_turns_get_valid_markers() {
+        // An agent loop: the last message is a tool result, the assistant turn
+        // before it is a tool call with no text.
+        let mut request = conversation_request();
+        request.system_prompt = Some(String::new());
+        let mut call = text_message("m6", MessageRole::Assistant, "x");
+        call.parts[0].kind = MessagePartKind::ToolCall;
+        call.parts[0].content = Some("{\"path\":\"a\"}".into());
+        call.parts[0].tool_call_id = Some("toolu_1".into());
+        call.parts[0].metadata = Some(json!({"name": "read_file"}));
+        let mut result = text_message("m7", MessageRole::Tool, "x");
+        result.parts[0].kind = MessagePartKind::ToolResult;
+        result.parts[0].content = Some("file contents".into());
+        result.parts[0].tool_call_id = Some("toolu_1".into());
+        request.messages.extend([call, result]);
+
+        let body = build_payload(&NormalizedRequest { request });
+        let mut marks = breakpoints(&body);
+        marks.sort();
+        assert_eq!(
+            marks,
+            vec![
+                "/messages/4/content/0", // previous user-role message
+                "/messages/6/content/0", // the tool_result block
+                "/tools/1",
+            ],
+            "an empty system prompt takes no marker: {body}"
+        );
+        assert_eq!(
+            body["messages"][6]["content"][0]["type"],
+            json!("tool_result")
+        );
+        // An empty text block never carries a marker.
+        assert!(!mark_last_block(&mut [json!({"type": "text", "text": ""})]));
+        assert!(!mark_last_block(&mut [
+            json!({"type": "thinking", "thinking": "hm"})
+        ]));
+    }
+
+    #[test]
+    fn usage_merges_message_start_cache_counts() {
+        // A compatible endpoint that reports input-side counts only at
+        // message_start, and output at message_delta.
+        let fixture = [
+            r#"data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":12,"cache_creation_input_tokens":3000,"cache_read_input_tokens":9000,"output_tokens":1}}}"#,
+            r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#,
+            r#"data: {"type":"content_block_stop","index":0}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":40}}"#,
+            r#"data: {"type":"message_stop"}"#,
+        ]
+        .join("\n");
+        let events = parse_fixture("req", &fixture);
+        let usages: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::Usage { usage, .. } => Some(usage.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(usages.len(), 1, "one usage event per response: {events:?}");
+        let usage = &usages[0];
+        assert_eq!(usage.input_tokens, Some(12));
+        assert_eq!(usage.output_tokens, Some(40));
+        assert_eq!(usage.cache_read_tokens, Some(9000));
+        assert_eq!(usage.cache_write_tokens, Some(3000));
+    }
+
+    #[test]
+    fn usage_prefers_cumulative_message_delta_counts() {
+        let mut parser = AnthropicParser::new();
+        let mut index = 0;
+        parser.parse_chunk(
+            "req",
+            r#"{"type":"message_start","message":{"usage":{"input_tokens":5,"cache_read_input_tokens":0,"output_tokens":1}}}"#,
+            &mut index,
+        );
+        let events = parser.parse_chunk(
+            "req",
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":2048,"output_tokens":9}}"#,
+            &mut index,
+        );
+        let Some(ProviderEvent::Usage { usage, .. }) = events.first() else {
+            panic!("expected usage, got {events:?}");
+        };
+        assert_eq!(usage.input_tokens, Some(5));
+        assert_eq!(usage.cache_read_tokens, Some(2048));
+        assert_eq!(usage.cache_write_tokens, Some(0));
+        assert_eq!(usage.output_tokens, Some(9));
     }
 
     #[test]

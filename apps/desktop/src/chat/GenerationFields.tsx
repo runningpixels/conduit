@@ -1,4 +1,4 @@
-import type { GenerationControls } from '@conduit/config-schema';
+import type { GenerationControls, ReasoningEffort } from '@conduit/config-schema';
 import { useRef } from 'react';
 import { useT } from '../i18n';
 
@@ -7,7 +7,22 @@ export interface GenerationFieldDraft {
   topP: string;
   maxTokens: string;
   stopSequences: string;
+  /** `''` is Auto: nothing is sent and the model keeps its own default. */
+  reasoningEffort: '' | ReasoningEffort;
   userInstructions: string;
+}
+
+/** Levels the provider adapters map (`ReasoningEffort` in provider-core). */
+export const REASONING_EFFORT_LEVELS: readonly ReasoningEffort[] = ['low', 'medium', 'high'];
+
+const REASONING_EFFORT_LABEL_IDS: Record<ReasoningEffort, string> = {
+  low: 'chat.generation.reasoningEffort.low',
+  medium: 'chat.generation.reasoningEffort.medium',
+  high: 'chat.generation.reasoningEffort.high',
+};
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return (REASONING_EFFORT_LEVELS as readonly unknown[]).includes(value);
 }
 
 export function emptyGenerationDraft(): GenerationFieldDraft {
@@ -16,6 +31,7 @@ export function emptyGenerationDraft(): GenerationFieldDraft {
     topP: '',
     maxTokens: '',
     stopSequences: '',
+    reasoningEffort: '',
     userInstructions: '',
   };
 }
@@ -29,6 +45,7 @@ export function draftFromControls(
     topP: controls?.topP != null ? String(controls.topP) : '',
     maxTokens: controls?.maxTokens != null ? String(controls.maxTokens) : '',
     stopSequences: (controls?.stopSequences ?? []).join('\n'),
+    reasoningEffort: isReasoningEffort(controls?.reasoningEffort) ? controls.reasoningEffort : '',
     userInstructions: userInstructions ?? '',
   };
 }
@@ -104,13 +121,15 @@ export function parseGenerationDraft(draft: GenerationFieldDraft): {
     };
   }
   if (stopSequences.length > 0) controls.stopSequences = stopSequences;
+  if (isReasoningEffort(draft.reasoningEffort)) controls.reasoningEffort = draft.reasoningEffort;
 
   const userInstructions = draft.userInstructions.trim() || null;
   const hasControls =
     controls.temperature != null ||
     controls.topP != null ||
     controls.maxTokens != null ||
-    (controls.stopSequences?.length ?? 0) > 0;
+    (controls.stopSequences?.length ?? 0) > 0 ||
+    controls.reasoningEffort != null;
   return {
     controls: hasControls ? controls : null,
     userInstructions,
@@ -125,7 +144,7 @@ interface GenerationFieldsProps {
   idPrefix: string;
 }
 
-/** Shared temperature / top-p / max-tokens / stops / instructions fields. */
+/** Shared temperature / top-p / max-tokens / stops / reasoning effort / instructions fields. */
 export function GenerationFields({ draft, onChange, onCommit, idPrefix }: GenerationFieldsProps) {
   const t = useT();
   const draftRef = useRef(draft);
@@ -198,6 +217,27 @@ export function GenerationFields({ draft, onChange, onCommit, idPrefix }: Genera
           onBlur={commit}
         />
         <span className="gen-hint">{t('chat.generation.stopSequences.hint')}</span>
+      </label>
+      <label htmlFor={`${idPrefix}-effort`}>
+        {t('chat.generation.reasoningEffort.label')}
+        <select
+          id={`${idPrefix}-effort`}
+          value={draft.reasoningEffort}
+          onChange={(e) => {
+            const value = e.target.value;
+            patch({ reasoningEffort: isReasoningEffort(value) ? value : '' });
+            // A choice is complete on change; there is no blur to wait for.
+            commit();
+          }}
+        >
+          <option value="">{t('chat.generation.reasoningEffort.auto')}</option>
+          {REASONING_EFFORT_LEVELS.map((level) => (
+            <option key={level} value={level}>
+              {t(REASONING_EFFORT_LABEL_IDS[level])}
+            </option>
+          ))}
+        </select>
+        <span className="gen-hint">{t('chat.generation.reasoningEffort.hint')}</span>
       </label>
       <label htmlFor={`${idPrefix}-instr`}>
         {t('chat.generation.userInstructions.label')}

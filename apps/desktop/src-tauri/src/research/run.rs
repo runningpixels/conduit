@@ -29,8 +29,11 @@ use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use super::claims::SourceRating;
 use super::report::{self, Draft, Labelled, Rendered, ReportInput};
-use super::{ask_json, claims, clip, one_line, urls, verify, FetchedPage, ResearchIo, SearchHit};
+use super::{
+    ask_json, claims, clip, one_line, today, urls, verify, FetchedPage, ResearchIo, SearchHit,
+};
 use crate::time::now_iso8601;
 use crate::workflows::extract;
 
@@ -64,6 +67,12 @@ pub struct SourceRecord {
     /// Readable text (empty unless read).
     pub text: String,
     pub content_hash: Option<String>,
+    /// The extractor's rating of the page (medium unless it said otherwise).
+    /// Kept in memory only: the report shows it, the database doesn't.
+    pub rating: SourceRating,
+    /// The sub-question (0-based) whose search chose the page, so an
+    /// unanswered one can name the pages it lost. In memory only.
+    pub sub_question: Option<usize>,
 }
 
 impl SourceRecord {
@@ -121,7 +130,8 @@ pub struct Engine<'a> {
     pub on_progress: Option<&'a (dyn Fn(&ResearchProgress) + Send + Sync)>,
     /// Waits before retrying a rate-limited search; tests shorten them.
     pub rate_limit_waits: [Duration; 2],
-    /// The report's date (`YYYY-MM-DD`); today when `None`.
+    /// The run's date (`YYYY-MM-DD`): the report's, and the "today" the gap
+    /// checker, writer and reviewer are told. Today when `None`.
     pub date: Option<String>,
 }
 
@@ -182,6 +192,8 @@ impl ResearchIo for Metered<'_> {
 struct Work<'b> {
     brief: &'b ResearchBrief,
     started: Instant,
+    /// The run's date, `YYYY-MM-DD`.
+    today: String,
     progress: ResearchProgress,
     sources: Vec<SourceRecord>,
     claims: Vec<ClaimRecord>,
@@ -216,6 +228,7 @@ impl Engine<'_> {
         let mut work = Work {
             brief,
             started: Instant::now(),
+            today: self.date.clone().unwrap_or_else(today),
             progress: ResearchProgress {
                 phase: "searching".to_string(),
                 searches_limit: self.budget.searches,
@@ -256,35 +269,41 @@ impl Engine<'_> {
                 stop,
                 Some(StopReason::User | StopReason::Tokens | StopReason::Time)
             );
-            let draft = if model_spent || error.is_some() || labelled.is_empty() {
-                report::fallback_draft(brief.sub_questions.len(), &labelled)
+            let today = work.today.as_str();
+            let written = if model_spent || error.is_some() || labelled.is_empty() {
+                None
             } else {
                 self.set_phase(&mut work.progress, &metered, "writing", None);
                 match self
-                    .guarded(work.started, report::write(&metered, brief, &labelled))
+                    .guarded(
+                        work.started,
+                        report::write(&metered, brief, &labelled, today),
+                    )
                     .await
                 {
-                    Ok(Ok(Some(draft))) => draft,
-                    Ok(Ok(None)) => report::fallback_draft(brief.sub_questions.len(), &labelled),
+                    Ok(Ok(draft)) => draft,
                     Ok(Err(e)) => {
                         tracing::warn!(error = %e, "research: the writer failed; writing the report from the claims");
-                        report::fallback_draft(brief.sub_questions.len(), &labelled)
+                        None
                     }
                     Err(reason) => {
                         stop.get_or_insert(reason);
-                        report::fallback_draft(brief.sub_questions.len(), &labelled)
+                        None
                     }
                 }
             };
             self.set_phase(&mut work.progress, &metered, "verifying", None);
+            let draft = match written {
+                Some(draft) => {
+                    self.review(&metered, work.started, brief, draft, &labelled, today)
+                        .await
+                }
+                None => report::fallback_draft(brief.sub_questions.len(), &labelled),
+            };
             let note = note_for(stop, error.as_deref(), &self.budget);
-            let date = self
-                .date
-                .clone()
-                .unwrap_or_else(|| now_iso8601()[..10].to_string());
             Some(render_report(
                 brief,
-                &date,
+                today,
                 &draft,
                 &labelled,
                 &work.sources,
@@ -330,9 +349,10 @@ impl Engine<'_> {
             .collect();
 
         for round in 0..MAX_ROUNDS {
-            let mut pending: Vec<String> = Vec::new();
+            // Each page with the sub-question whose search chose it.
+            let mut pending: Vec<(usize, String)> = Vec::new();
             let mut halt: Option<StopReason> = None;
-            for (_, query) in std::mem::take(&mut queue) {
+            for (sub_question, query) in std::mem::take(&mut queue) {
                 if let Some(reason) = self.halted(work, io) {
                     return (Some(reason), None);
                 }
@@ -363,7 +383,7 @@ impl Engine<'_> {
                         .per_host
                         .entry(urls::host(&url).unwrap_or_default())
                         .or_default() += 1;
-                    pending.push(url);
+                    pending.push((sub_question, url));
                 }
             }
             match self.read_all(io, work, pending).await {
@@ -410,7 +430,7 @@ impl Engine<'_> {
         &self,
         io: &Metered<'_>,
         work: &mut Work<'_>,
-        urls: Vec<String>,
+        urls: Vec<(usize, String)>,
     ) -> Result<(), Fail> {
         let mut rest = urls.as_slice();
         while !rest.is_empty() {
@@ -432,7 +452,7 @@ impl Engine<'_> {
             let pages = futures::future::join_all(
                 batch
                     .iter()
-                    .map(|url| self.read_page(io, started, subs, url, &shared)),
+                    .map(|(sub, url)| self.read_page(io, started, subs, *sub, url, &shared)),
             )
             .await;
             work.progress = shared.into_inner().unwrap_or_else(|e| e.into_inner());
@@ -459,6 +479,7 @@ impl Engine<'_> {
         io: &Metered<'_>,
         started: Instant,
         sub_questions: &[String],
+        chosen_for: usize,
         url: &str,
         progress: &Mutex<ResearchProgress>,
     ) -> PageRead {
@@ -478,6 +499,8 @@ impl Engine<'_> {
             status: ResearchSourceStatus::Failed,
             text: String::new(),
             content_hash: None,
+            rating: SourceRating::default(),
+            sub_question: Some(chosen_for),
         };
         let fetched = match self.guarded(started, io.fetch(url)).await {
             Ok(fetched) => fetched,
@@ -531,7 +554,10 @@ impl Engine<'_> {
             )
             .await
         {
-            Ok(Ok(claims)) => Ok(claims),
+            Ok(Ok(found)) => {
+                source.rating = found.rating;
+                Ok(found.claims)
+            }
             Ok(Err(e)) => Err(Fail::Error(e)),
             Err(reason) => Err(Fail::Halt(reason)),
         };
@@ -640,15 +666,66 @@ impl Engine<'_> {
 
     /// Why the run must stop now (user, time or tokens), if it must.
     fn halted(&self, work: &mut Work<'_>, io: &Metered<'_>) -> Option<StopReason> {
+        work.progress.tokens_used = clamp_u32(io.tokens());
+        self.halt_reason(work.started, io)
+    }
+
+    /// [`halted`](Self::halted) without recording the tokens used.
+    fn halt_reason(&self, started: Instant, io: &Metered<'_>) -> Option<StopReason> {
         if self.stop.is_cancelled() {
             return Some(StopReason::User);
         }
-        if self.time_left(work.started).is_zero() {
+        if self.time_left(started).is_zero() {
             return Some(StopReason::Time);
         }
-        let tokens = io.tokens();
-        work.progress.tokens_used = clamp_u32(tokens);
-        (tokens >= u64::from(self.budget.tokens)).then_some(StopReason::Tokens)
+        (io.tokens() >= u64::from(self.budget.tokens)).then_some(StopReason::Tokens)
+    }
+
+    /// The citation review: one call checks the writer's sentences against
+    /// the claims they cite and the rest of the draft; code applies its fixes
+    /// ([`report::apply_fixes`]). Skipped when the user stopped or the time
+    /// or tokens are spent; a failed or unreadable review keeps the draft as
+    /// written — the review must never cost the run its report.
+    async fn review(
+        &self,
+        io: &Metered<'_>,
+        started: Instant,
+        brief: &ResearchBrief,
+        mut draft: Draft,
+        labelled: &[Labelled<'_>],
+        today: &str,
+    ) -> Draft {
+        if let Some(reason) = self.halt_reason(started, io) {
+            tracing::info!(
+                ?reason,
+                "research: no budget left to review the draft; it stands"
+            );
+            return draft;
+        }
+        let call = report::review(io, brief, &draft, labelled, today);
+        match self.guarded(started, call).await {
+            Ok(Ok(Some(fixes))) => {
+                let applied = report::apply_fixes(&mut draft, &fixes, labelled);
+                tracing::info!(
+                    offered = fixes.len(),
+                    applied,
+                    "research: reviewed the draft"
+                );
+            }
+            Ok(Ok(None)) => {
+                tracing::info!("research: the review reply could not be read; the draft stands");
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "research: the review failed; the draft stands");
+            }
+            Err(reason) => {
+                tracing::info!(
+                    ?reason,
+                    "research: the review was cut off; the draft stands"
+                );
+            }
+        }
+        draft
     }
 
     fn set_phase(
@@ -815,11 +892,13 @@ async fn gap_check(
     }
     let searched = work.searched.iter().cloned().collect::<Vec<_>>().join("; ");
     let prompt = format!(
-        "Question: {question}\n\nWhat has been found so far, by sub-question:\n{found}\n\
-For each sub-question, decide whether the facts found answer it. List the numbers of the \
-answered ones in \"answered\". For each one not answered, suggest up to {MAX_FOLLOW_UPS} new \
-web search queries likely to find the answer, different from these searches already made: \
+        "Today is {today}.\nQuestion: {question}\n\nWhat has been found so far, by sub-question:\n\
+{found}\n\
+For each sub-question, decide whether the facts found answer it as of today. List the numbers \
+of the answered ones in \"answered\". For each one not answered, suggest up to {MAX_FOLLOW_UPS} \
+new web search queries likely to find the answer, different from these searches already made: \
 {searched}",
+        today = work.today,
         question = brief.question
     );
     let Some(data) = ask_json(io, GAP_SYSTEM, &prompt, &gap_schema()).await? else {

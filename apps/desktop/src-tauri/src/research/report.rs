@@ -195,8 +195,9 @@ Facts, each checked against its page, with the page's site and credibility:\n{fa
 Write the report from these facts only.\n\
 summary: 5 to 8 sentences that answer the question. End every sentence with the ids of the \
 facts it rests on, like [C2] or [C1, C4].\n\
-findings: for each sub-question that has facts, a short paragraph or a few \"- \" bullets, ids \
-after every sentence, using only facts that answer that sub-question. Leave out sub-questions \
+findings: for each sub-question that has facts, a short paragraph or at most 6 \"- \" bullets, \
+ids after every sentence, using only facts that answer that sub-question. Merge facts that say \
+the same thing into one sentence with all their ids. Leave out sub-questions \
 with no facts (they are listed separately); never write that something was not found.\n\
 disagreements: only facts that really conflict, both sides with their ids; else null. Figures \
 that differ by date, edition or version, by definition (effective vs nominal rate), by units or \

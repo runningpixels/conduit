@@ -179,6 +179,43 @@ pub fn parse_rating(data: &Value) -> SourceRating {
     }
 }
 
+/// Domain endings of governments, public bodies and universities. A model
+/// reading a bare official page (an undated list, a table with no author) can
+/// rate it low for looking like a content farm; the domain says otherwise.
+const INSTITUTIONAL_SUFFIXES: &[&str] = &[".gov", ".mil", ".edu", ".int", "europa.eu", ".gc.ca"];
+const INSTITUTIONAL_LABELS: &[&str] = &["gov", "gob", "gouv", "govt", "mil", "edu", "ac"];
+
+/// True for a host that belongs to a government, a public body or a
+/// university: `nj.gov`, `bergencountynj.gov`, `ec.europa.eu`, `ox.ac.uk`,
+/// `gov.uk`, `service-public.gouv.fr`.
+pub fn is_institutional_host(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    if INSTITUTIONAL_SUFFIXES
+        .iter()
+        .any(|s| host == s.trim_start_matches('.') || host.ends_with(s))
+    {
+        return true;
+    }
+    // A second-level label under a country code: `gov.uk`, `ac.jp`, `gob.mx`.
+    let labels: Vec<&str> = host.split('.').collect();
+    labels.len() >= 2
+        && labels[labels.len() - 1].len() == 2
+        && INSTITUTIONAL_LABELS.contains(&labels[labels.len() - 2])
+}
+
+/// The model's rating, never below medium for an institutional host.
+pub fn floor_rating(rating: SourceRating, host: &str) -> SourceRating {
+    if rating.credibility == Credibility::Low && is_institutional_host(host) {
+        SourceRating {
+            credibility: Credibility::Medium,
+            reason: String::new(),
+            ..rating
+        }
+    } else {
+        rating
+    }
+}
+
 /// Phrases that mark text as instructions to a model rather than facts. A
 /// claim or quote containing one is dropped even if the page really says it.
 const INSTRUCTION_MARKERS: &[&str] = &[
@@ -446,6 +483,55 @@ fn blocks(text: &str, max: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn institutional_hosts_are_recognised() {
+        for host in [
+            "nj.gov",
+            "bergencountynj.gov",
+            "www.ssa.gov",
+            "ec.europa.eu",
+            "europa.eu",
+            "who.int",
+            "mit.edu",
+            "ox.ac.uk",
+            "gov.uk",
+            "www.service-public.gouv.fr",
+            "sat.gob.mx",
+            "canada.gc.ca",
+        ] {
+            assert!(is_institutional_host(host), "{host}");
+        }
+        for host in [
+            "clawrxiv.io",
+            "mrsellers.homes",
+            "governance.example.com",
+            "education.com",
+            "gov.example.com",
+            "academia.edu.fake.com",
+        ] {
+            assert!(!is_institutional_host(host), "{host}");
+        }
+    }
+
+    #[test]
+    fn an_institutional_page_is_never_rated_low() {
+        let low = SourceRating {
+            kind: "unknown",
+            credibility: Credibility::Low,
+            reason: "undated, unattributed list".into(),
+        };
+        let floored = floor_rating(low.clone(), "bergencountynj.gov");
+        assert_eq!(floored.credibility, Credibility::Medium);
+        assert!(floored.reason.is_empty());
+        // Anywhere else the model's rating stands.
+        assert_eq!(floor_rating(low.clone(), "clawrxiv.io"), low);
+        let high = SourceRating {
+            credibility: Credibility::High,
+            ..low
+        };
+        assert_eq!(floor_rating(high.clone(), "nj.gov"), high);
+    }
 
     #[test]
     fn a_page_that_fits_is_shown_whole() {

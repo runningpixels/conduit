@@ -555,7 +555,7 @@ impl Engine<'_> {
             .await
         {
             Ok(Ok(found)) => {
-                source.rating = found.rating;
+                source.rating = claims::floor_rating(found.rating, &source.host);
                 Ok(found.claims)
             }
             Ok(Err(e)) => Err(Fail::Error(e)),

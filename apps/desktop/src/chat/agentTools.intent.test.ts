@@ -148,6 +148,32 @@ describe('start_deck gating', () => {
   });
 });
 
+describe('deck chat tools', () => {
+  const settings = {
+    workspaceToolsEnabled: true,
+    workspaceRoot: '/w',
+    workspaceToolsConsentAcknowledged: true,
+    memoryEnabled: true,
+  };
+
+  it('leaves out calculator, uuid and random but keeps the other utility, workspace and memory tools', () => {
+    for (const stage of ['storyline', 'slides'] as const) {
+      const tools = selectBuiltinTurnTools('build it', settings, '/w', undefined, undefined, stage).tools.map(
+        (t) => t.name,
+      );
+      for (const name of ['calculator', 'uuid', 'random']) expect(tools, `${stage} ${name}`).not.toContain(name);
+      expect(tools).toEqual(
+        expect.arrayContaining(['current_time', 'ask_user', 'workspace_read', 'workspace_glob', 'workspace_grep', 'remember']),
+      );
+    }
+  });
+
+  it('other chats still get them', () => {
+    const tools = selectBuiltinTurnTools('what is 2+2', settings, '/w').tools.map((t) => t.name);
+    expect(tools).toEqual(expect.arrayContaining(['calculator', 'uuid', 'random']));
+  });
+});
+
 describe('draft tools (Writing)', () => {
   const settings = {
     workspaceToolsEnabled: true,

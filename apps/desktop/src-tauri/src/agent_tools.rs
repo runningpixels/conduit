@@ -100,6 +100,24 @@ pub const REPLACE_IN_DRAFT_TOOL: &str = "replace_in_draft";
 /// comes back cut at a block boundary with a note saying where to continue.
 const READ_DRAFT_MAX_CHARS: usize = 60_000;
 
+/// True for the deck tools that change a deck's content (everything but
+/// `read_deck` and `start_deck`). A deck build is a dozen or more `add_slide`
+/// calls; each one that succeeds is progress for the turn's time limit.
+pub fn is_deck_write_tool(name: &str) -> bool {
+    matches!(
+        name,
+        SET_STORYLINE_TOOL
+            | ADD_SLIDE_TOOL
+            | UPDATE_SLIDE_TOOL
+            | PATCH_SLIDE_TOOL
+            | MOVE_SLIDE_TOOL
+            | DELETE_SLIDE_TOOL
+            | SET_THEME_TOOL
+            | REPLACE_IN_DECK_TOOL
+            | UPDATE_SLOTS_TOOL
+    )
+}
+
 /// True for the draft tools that change a draft (everything but `read_draft`).
 pub fn is_draft_write_tool(name: &str) -> bool {
     matches!(

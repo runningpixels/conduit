@@ -5,6 +5,8 @@ use super::path_policy::{
     WorkspaceRoot,
 };
 use super::secret_redact::redact_json;
+use crate::attachment_documents::{sniff_document, DocumentKind};
+use crate::knowledge::extract::{extract_document_bytes, ExtractFailure, MAX_DOCUMENT_BYTES};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fs;
@@ -80,11 +82,13 @@ fn ok_redacted(value: Value) -> Value {
     v
 }
 
-fn looks_binary(bytes: &[u8]) -> bool {
+/// A NUL byte in the first 8 KiB: the cheap "is this binary?" test shared by
+/// the workspace tools and attachment sniffing (`attachment_documents`).
+pub(crate) fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8_192).any(|&b| b == 0)
 }
 
-pub fn execute_workspace_read(
+pub async fn execute_workspace_read(
     config: &WorkspaceToolConfig,
     input: ReadInput,
 ) -> Result<Value, Value> {
@@ -94,6 +98,17 @@ pub fn execute_workspace_read(
         return Err(err_json(PolicyError::NotAFile));
     }
     let meta = fs::metadata(&path).map_err(|e| err_json(PolicyError::Io(e.to_string())))?;
+    // PDF and DOCX before the size and binary checks: both are binary and most
+    // are over the text cap, yet they are exactly what people keep in an
+    // attached folder and ask about.
+    if meta.len() <= MAX_DOCUMENT_BYTES && starts_like_document(&path) {
+        let bytes = fs::read(&path).map_err(|e| err_json(PolicyError::Io(e.to_string())))?;
+        if let Some(kind) = sniff_document(&bytes, None, None)
+            .filter(|k| matches!(k, DocumentKind::Pdf | DocumentKind::Docx))
+        {
+            return read_extracted_document(root.path(), &path, bytes, kind, &input).await;
+        }
+    }
     let max = input
         .limit
         .unwrap_or(DEFAULT_READ_MAX_BYTES)
@@ -127,6 +142,81 @@ pub fn execute_workspace_read(
         "bytes": slice.len(),
         "truncated": truncated,
         "total_bytes": bytes.len(),
+    })))
+}
+
+/// The first bytes of a PDF (`%PDF-`) or of a zip archive (`PK\x03\x04`, which
+/// a DOCX is). Read before the whole file, so an ordinary file costs 5 bytes.
+fn starts_like_document(path: &Path) -> bool {
+    let mut head = [0u8; 5];
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let Ok(()) = file.read_exact(&mut head) else {
+        return false;
+    };
+    head.starts_with(b"%PDF-") || head.starts_with(b"PK\x03\x04")
+}
+
+/// `workspace_read` of a PDF or DOCX: its extracted text, paged by
+/// `offset`/`limit` in **characters** (a byte offset into extracted text means
+/// nothing to the model). The result names the source format and the total
+/// length so the model knows it is reading extracted text and can page on.
+async fn read_extracted_document(
+    root: &Path,
+    path: &Path,
+    bytes: Vec<u8>,
+    kind: DocumentKind,
+    input: &ReadInput,
+) -> Result<Value, Value> {
+    let label = if kind == DocumentKind::Pdf {
+        "PDF"
+    } else {
+        "DOCX"
+    };
+    let text = match extract_document_bytes(bytes, kind.extension()).await {
+        Ok(extracted) => extracted.text,
+        Err(ExtractFailure::NoTextLayer) if kind == DocumentKind::Pdf => {
+            return Err(json!({
+                "ok": false,
+                "error": "no text layer: a scanned PDF (its pages are images, so there is no text to read)",
+                "code": "no_text_layer",
+            }));
+        }
+        Err(ExtractFailure::NoTextLayer) => {
+            return Err(json!({
+                "ok": false,
+                "error": "this DOCX has no text",
+                "code": "no_text_layer",
+            }));
+        }
+        Err(err) => {
+            return Err(json!({
+                "ok": false,
+                "error": format!("could not read this {label}: {err}"),
+                "code": "unreadable",
+            }));
+        }
+    };
+    let total_chars = text.chars().count();
+    let offset = input.offset.unwrap_or(0) as usize;
+    let limit = input
+        .limit
+        .unwrap_or(DEFAULT_READ_MAX_BYTES)
+        .min(DEFAULT_READ_MAX_BYTES) as usize;
+    let content: String = text.chars().skip(offset).take(limit).collect();
+    let shown = content.chars().count();
+    let truncated = offset.saturating_add(shown) < total_chars;
+    Ok(ok_redacted(json!({
+        "path": rel_display(root, path),
+        "content": content,
+        "extracted_from": label,
+        "chars": shown,
+        "truncated": truncated,
+        "total_chars": total_chars,
+        "note": format!(
+            "Text extracted from a {label} ({total_chars} characters in all). offset and limit count characters for this file, not bytes."
+        ),
     })))
 }
 
@@ -435,8 +525,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn read_write_round_trip() {
+    #[tokio::test]
+    async fn read_write_round_trip() {
         let dir = tempdir().unwrap();
         let c = cfg(dir.path());
         let w = execute_workspace_write(
@@ -457,8 +547,105 @@ mod tests {
                 limit: None,
             },
         )
+        .await
         .unwrap();
         assert_eq!(r["content"], "hello world");
+    }
+
+    fn read_input(path: &str, offset: Option<u64>, limit: Option<u64>) -> ReadInput {
+        ReadInput {
+            path: path.into(),
+            offset,
+            limit,
+        }
+    }
+
+    #[tokio::test]
+    async fn reads_a_pdf_as_extracted_text_paged_in_characters() {
+        use crate::attachment_documents::test_fixtures::tiny_pdf;
+        let dir = tempdir().unwrap();
+        // Named without an extension: the bytes decide.
+        fs::write(
+            dir.path().join("statement"),
+            tiny_pdf(Some("Balance due 42 dollars")),
+        )
+        .unwrap();
+        let c = cfg(dir.path());
+
+        let whole = execute_workspace_read(&c, read_input("statement", None, None))
+            .await
+            .unwrap();
+        assert_eq!(whole["extracted_from"], "PDF");
+        let content = whole["content"].as_str().unwrap();
+        assert!(content.contains("Balance due 42 dollars"), "{content}");
+        let total = whole["total_chars"].as_u64().unwrap();
+        assert_eq!(total as usize, content.chars().count());
+        assert_eq!(whole["truncated"], false);
+
+        let start = content.find("Balance").unwrap();
+        let start_chars = content[..start].chars().count() as u64;
+        let page =
+            execute_workspace_read(&c, read_input("statement", Some(start_chars + 8), Some(3)))
+                .await
+                .unwrap();
+        assert_eq!(page["content"], "due");
+        assert_eq!(page["chars"], 3);
+        assert_eq!(page["truncated"], true);
+        assert_eq!(page["total_chars"], total);
+    }
+
+    #[tokio::test]
+    async fn reads_a_docx_as_extracted_text() {
+        use crate::attachment_documents::test_fixtures::tiny_docx;
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("brief.docx"),
+            tiny_docx(&["Scope", "Timeline"]),
+        )
+        .unwrap();
+        let c = cfg(dir.path());
+        let out = execute_workspace_read(&c, read_input("brief.docx", None, None))
+            .await
+            .unwrap();
+        assert_eq!(out["extracted_from"], "DOCX");
+        let content = out["content"].as_str().unwrap();
+        assert!(
+            content.contains("Scope") && content.contains("Timeline"),
+            "{content}"
+        );
+        assert!(out["note"].as_str().unwrap().contains("characters"));
+    }
+
+    #[tokio::test]
+    async fn a_scanned_pdf_is_a_clear_error() {
+        use crate::attachment_documents::test_fixtures::tiny_pdf;
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("scan.pdf"), tiny_pdf(None)).unwrap();
+        let c = cfg(dir.path());
+        let err = execute_workspace_read(&c, read_input("scan.pdf", None, None))
+            .await
+            .unwrap_err();
+        assert_eq!(err["code"], "no_text_layer");
+        assert!(err["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("no text layer: a scanned PDF"));
+    }
+
+    #[tokio::test]
+    async fn other_zips_are_still_binary() {
+        use crate::attachment_documents::test_fixtures::zip_with;
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("book.xlsx"),
+            zip_with(&[("xl/workbook.xml", "<workbook/>")]),
+        )
+        .unwrap();
+        let c = cfg(dir.path());
+        let err = execute_workspace_read(&c, read_input("book.xlsx", None, None))
+            .await
+            .unwrap_err();
+        assert_eq!(err["code"], "binary");
     }
 
     #[test]
@@ -521,8 +708,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn blocks_env_read() {
+    #[tokio::test]
+    async fn blocks_env_read() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join(".env"), "API_KEY=abc").unwrap();
         let c = cfg(dir.path());
@@ -534,6 +721,7 @@ mod tests {
                 limit: None,
             },
         )
+        .await
         .unwrap_err();
         assert_eq!(err["code"], "denied_path");
     }

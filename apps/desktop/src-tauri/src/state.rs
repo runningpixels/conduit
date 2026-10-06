@@ -54,9 +54,46 @@ pub struct AppState {
     /// bundled snapshot covers the same models after a restart, and this only
     /// adds what is newer than the snapshot.
     live_prices: Arc<Mutex<HashMap<(String, String), ModelPrice>>>,
+    /// Whether a model takes file (PDF) input, as the provider's own listing
+    /// said this session, keyed like `live_prices`. Only OpenRouter reports
+    /// it. Kept in memory like the prices: until the model picker lists
+    /// OpenRouter's models again after a restart, its PDFs go as extracted
+    /// text, which every model reads.
+    listed_file_input: Arc<Mutex<HashMap<(String, String), bool>>>,
 }
 
 impl AppState {
+    /// Remember which models a provider's listing says take file input.
+    pub fn record_listed_file_input(&self, provider_id: &str, models: &[ModelInfo]) {
+        let Ok(mut listed) = self.listed_file_input.lock() else {
+            return;
+        };
+        for model in models {
+            if let Some(accepts) = model.accepts_file_input {
+                listed.insert((provider_id.to_string(), model.id.clone()), accepts);
+            }
+        }
+    }
+
+    /// Whether a PDF attachment goes to this model as the PDF itself, by the
+    /// rule both the send path and the composer's chip use: OpenRouter by its
+    /// own listing, everything else by `provider_core::model_accepts_pdf`.
+    pub fn model_accepts_pdf(&self, provider_id: &str, model_id: &str) -> bool {
+        if provider_id.trim().eq_ignore_ascii_case("openrouter") {
+            return self
+                .listed_file_input
+                .lock()
+                .ok()
+                .and_then(|listed| {
+                    listed
+                        .get(&("openrouter".to_string(), model_id.trim().to_string()))
+                        .copied()
+                })
+                .unwrap_or(false);
+        }
+        provider_core::model_accepts_pdf(provider_id, model_id)
+    }
+
     /// Remember the prices a provider reported in its model listing.
     pub fn record_listed_prices(&self, provider_id: &str, models: &[ModelInfo]) {
         let Ok(mut live) = self.live_prices.lock() else {
@@ -264,6 +301,7 @@ impl AppState {
             migration_recovery: Arc::new(Mutex::new(migration_recovery)),
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
             live_prices: Arc::new(Mutex::new(HashMap::new())),
+            listed_file_input: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -289,6 +327,7 @@ impl AppState {
             migration_recovery: Arc::new(Mutex::new(None)),
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
             live_prices: Arc::new(Mutex::new(HashMap::new())),
+            listed_file_input: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

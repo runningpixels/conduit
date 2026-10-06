@@ -471,6 +471,7 @@ impl ProviderAdapter for OllamaAdapter {
                             id: id.clone(),
                             display_name: Some(id),
                             price: None,
+                            accepts_file_input: None,
                         })
                     })
                     .collect()

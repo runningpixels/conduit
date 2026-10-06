@@ -15,30 +15,46 @@ export function knowledgeDropPaths(paths: string[]): string[] {
   });
 }
 
-/** A drop on the composer means "attach to this message", which the composer
- *  already owns, so the knowledge base must leave it alone. */
-function landsOnComposer(position: { x: number; y: number }): boolean {
+/** Where a native drop landed, as far as routing cares. */
+export type DropZone = 'composer' | 'chat' | 'elsewhere';
+
+/**
+ * Does a drop in this zone attach to the message being written? The composer
+ * always does (it is the one place that says "attach"). The rest of the chat
+ * column -- the thread above it -- does too, but only when the Chats
+ * destination is showing a chat (`chatAttaches`): the same ChatView is the dock
+ * in Slides and Writing, and the Documents page's whole job is importing, so
+ * there a drop outside the composer keeps going to Documents.
+ */
+export function dropAttaches(zone: DropZone, chatAttaches: boolean): boolean {
+  return zone === 'composer' || (zone === 'chat' && chatAttaches);
+}
+
+/** Where the pointer is, by what is under it. */
+function dropZoneAt(position: { x: number; y: number }): DropZone {
   // The native event reports physical pixels; the DOM works in CSS pixels.
   const scale = window.devicePixelRatio || 1;
   const el = document.elementFromPoint(position.x / scale, position.y / scale);
-  return !!el?.closest('.composer');
+  if (el?.closest('.composer')) return 'composer';
+  if (el?.closest('.tab-pane[data-pane="chat"]')) return 'chat';
+  return 'elsewhere';
 }
 
 /**
- * Route one native window drop (t1-8 M1, D13): a drop on the composer attaches
- * to the message, exactly as-is (no `knowledgeDropPaths` filter -- the
- * composer takes any file, the way its own HTML5 handler already does), and a
- * drop anywhere else goes to Documents (filtered to what the knowledge base
- * can read, as today). Exported so the routing decision itself is unit
- * tested directly, without a Tauri window to drive it through.
+ * Route one native window drop (t1-8 M1, D13): a drop that `attaches` (see
+ * `dropAttaches`) goes to the message, exactly as-is (no `knowledgeDropPaths`
+ * filter -- the composer takes any file and says, per chip, what it will do
+ * with it), and a drop anywhere else goes to Documents (filtered to what the
+ * knowledge base can read, as today). Exported so the routing decision itself
+ * is unit tested directly, without a Tauri window to drive it through.
  */
 export function routeNativeDrop(
   paths: string[],
-  onComposer: boolean,
+  attaches: boolean,
   onDrop: (paths: string[]) => void,
   onComposerDrop?: (paths: string[]) => void,
 ): void {
-  if (onComposer) {
+  if (attaches) {
     if (paths.length > 0) onComposerDrop?.(paths);
     return;
   }
@@ -49,8 +65,9 @@ export function routeNativeDrop(
 /**
  * Files dragged onto the window from the OS -- one router for both
  * destinations (t1-8 M1, D13). `onDrop` is Documents, as before; `onComposerDrop`
- * (new) is a drop that lands on the composer, which attaches to the message
- * being written instead.
+ * is a drop that attaches to the message being written instead: one on the
+ * composer, or -- when `chatAttaches` (Chats showing a chat) -- anywhere over
+ * the chat column.
  *
  * Uses Tauri's native drag-drop event rather than HTML5 `dataTransfer`,
  * because only the native event carries real filesystem paths — a browser
@@ -60,14 +77,20 @@ export function routeNativeDrop(
  * the composer's own HTML5 handler needs this native path too, and whichever
  * of the two fires first for one physical drop wins (the composer dedupes).
  *
- * Returns whether a droppable file is currently hovering, for the overlay
- * (Documents only -- hovering over the composer shows no overlay of its own).
+ * Returns what the hovering drag will do, for the highlight: `hovering` is a
+ * droppable file about to go to Documents (the window-wide overlay), and
+ * `attachHovering` is a file about to attach to the message (the composer
+ * lights up; the composer's own HTML5 drag-over never fires on Windows).
  */
 export function useKnowledgeDrop(
   onDrop: (paths: string[]) => void,
   onComposerDrop?: (paths: string[]) => void,
-): boolean {
+  chatAttaches = false,
+): { hovering: boolean; attachHovering: boolean } {
   const [hovering, setHovering] = useState(false);
+  const [attachHovering, setAttachHovering] = useState(false);
+  const chatAttachesRef = useRef(chatAttaches);
+  chatAttachesRef.current = chatAttaches;
   const onDropRef = useRef(onDrop);
   onDropRef.current = onDrop;
   const onComposerDropRef = useRef(onComposerDrop);
@@ -80,6 +103,15 @@ export function useKnowledgeDrop(
     let cancelled = false;
     // Whether the drag carries anything readable; known only on `enter`.
     let readable = false;
+    // Whether the drag carries any file at all (the composer takes any).
+    let anyFile = false;
+    // One place for what the pointer position means for the highlights.
+    const hover = (position: { x: number; y: number }) => {
+      const attaches = dropAttaches(dropZoneAt(position), chatAttachesRef.current);
+      // Over a spot that attaches, "add to Documents" would be a hint that lies.
+      setHovering(readable && !attaches);
+      setAttachHovering(anyFile && attaches);
+    };
 
     void import('@tauri-apps/api/webview')
       .then(({ getCurrentWebview }) =>
@@ -87,24 +119,28 @@ export function useKnowledgeDrop(
           switch (payload.type) {
             case 'enter':
               readable = knowledgeDropPaths(payload.paths).length > 0;
-              setHovering(readable && !landsOnComposer(payload.position));
+              anyFile = payload.paths.length > 0;
+              hover(payload.position);
               break;
             case 'over':
-              // Re-checked as the pointer moves: over the composer the drop
-              // will be left to attachments, so promising "add to Documents"
-              // there would be a hint that lies.
-              setHovering(readable && !landsOnComposer(payload.position));
+              // Re-checked as the pointer moves between the composer, the
+              // thread and the rest of the window.
+              hover(payload.position);
               break;
             case 'leave':
               readable = false;
+              anyFile = false;
               setHovering(false);
+              setAttachHovering(false);
               break;
             case 'drop': {
               readable = false;
+              anyFile = false;
               setHovering(false);
+              setAttachHovering(false);
               routeNativeDrop(
                 payload.paths,
-                landsOnComposer(payload.position),
+                dropAttaches(dropZoneAt(payload.position), chatAttachesRef.current),
                 onDropRef.current,
                 onComposerDropRef.current,
               );
@@ -127,5 +163,5 @@ export function useKnowledgeDrop(
     };
   }, []);
 
-  return hovering;
+  return { hovering, attachHovering };
 }

@@ -42,6 +42,7 @@ import type {
   ArtifactContent,
   ArtifactExportResult,
   Attachment,
+  AttachmentDelivery,
   BrandConfig,
   CancelChatStreamRequest,
   SteerChatStreamRequest,
@@ -1162,6 +1163,15 @@ export async function resolveContextWindows(
 /** Whether image attachments reach this model (the backend's send-path rule). */
 export async function modelAcceptsImageInput(providerId: string, modelId: string): Promise<boolean> {
   return invokeCommand<boolean>('model_accepts_image_input', { providerId, modelId });
+}
+
+/** How one stored attachment would reach this model, by the same rule the send path uses. */
+export async function attachmentDelivery(
+  providerId: string,
+  modelId: string,
+  attachmentId: string,
+): Promise<AttachmentDelivery> {
+  return invokeCommand<AttachmentDelivery>('attachment_delivery', { providerId, modelId, attachmentId });
 }
 
 // --- Retry & Fork ----------------------------------------------------------

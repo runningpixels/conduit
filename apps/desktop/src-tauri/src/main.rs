@@ -286,6 +286,7 @@ fn main() {
             resolve_model_prices,
             resolve_context_windows,
             model_accepts_image_input,
+            attachment_delivery,
             // Competitive Feature: built-in agent tools
             // (tool definitions built into agent_tools.rs, no new commands needed)
             // Competitive Feature: retry & fork

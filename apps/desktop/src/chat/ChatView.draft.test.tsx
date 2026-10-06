@@ -118,6 +118,7 @@ vi.mock('../ipc/client', () => ({
     unavailableCollections: [],
   }),
   saveDroppedAttachment: vi.fn(),
+  attachmentDelivery: vi.fn().mockResolvedValue({ kind: 'text' }),
   prepareMessageEdit: vi.fn(),
   removeLastTurn: vi.fn().mockResolvedValue(1),
   startResearch: vi.fn(),

@@ -243,6 +243,7 @@ impl ProviderAdapter for OpenCodeZenAdapter {
                 id: model.id,
                 display_name: model.display_name,
                 price: None,
+                accepts_file_input: None,
             })
             .collect())
     }

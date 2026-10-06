@@ -257,6 +257,10 @@ interface ChatViewProps {
   /// Active conversation id (owned by App; the history rail drives selection).
   /// `null` only briefly during boot before App ensures a conversation exists.
   conversationId: string | null;
+  /** A file from the OS is hovering over a spot that will attach it to this
+   *  chat's message (the native drag-drop never fires the composer's own
+   *  drag-over on Windows, so the shell tells the composer to light up). */
+  attachDropActive?: boolean;
   /// M2: the conversation's artifacts, for in-chat reference chips + promote
   /// affordances at the end of each assistant turn.
   artifacts: Artifact[];
@@ -846,6 +850,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onSelectModel,
     onStatus,
     conversationId,
+    attachDropActive = false,
     artifacts,
     activeArtifact = null,
     fileStateMap,
@@ -3555,6 +3560,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         settings={settings}
         onSelectModel={onSelectModel}
         conversationId={conversationId}
+        attachDropActive={attachDropActive}
         prompt={prompt}
         onPromptChange={setPrompt}
         onSend={(attachments) => void handleSend(undefined, attachments)}

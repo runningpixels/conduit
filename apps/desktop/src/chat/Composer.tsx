@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { AppSettings, GenerationControls, ProviderUsage } from '@conduit/config-schema';
 import {
+  attachmentDelivery,
   deleteAttachment,
   listKnowledgeDocuments,
   listProviderDescriptors,
@@ -12,14 +13,16 @@ import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, Knowl
 import { researchUnavailableReasonId } from './researchAvailability';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
-import type { ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
+import type { AttachmentDelivery, ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
 import { brand } from '../brand';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
 import {
   ATTACHMENT_INLINE_CAP_BYTES,
-  COMPOSER_IMAGE_ACCEPT,
-  isForwardableImageMime,
+  COMPOSER_ATTACH_ACCEPT,
+  attachmentChipState,
+  deliveryKeyFor,
+  deliveryPending,
   turnAttachmentsFromPending,
   type KnowledgeRef,
   type PendingAttachment,
@@ -66,6 +69,8 @@ export interface ComposerProps {
    *  rather than a general settings setter. */
   onSelectModel: (providerId: string, modelId: string, defaultBaseUrl?: string | null) => void;
   conversationId: string | null;
+  /** The shell's native drag-drop says a file hovering over the chat will attach here. */
+  attachDropActive?: boolean;
   prompt: string;
   onPromptChange: (value: string) => void;
   onSend: (attachments?: TurnAttachment[]) => void;
@@ -156,6 +161,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   settings,
   onSelectModel,
   conversationId,
+  attachDropActive = false,
   prompt,
   onPromptChange,
   onSend,
@@ -228,6 +234,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // t1-8 M1 (D13): whichever of an HTML5 drop and a native composer drop
   // fires first for one physical drop wins; the other is ignored.
   const lastDropAtRef = useRef(0);
+  const deliveryQueriesRef = useRef<Set<string>>(new Set());
+  const deliveryKey = deliveryKeyFor(settings.activeProvider, settings.activeModel);
 
   useComposerAutosize(textareaRef, prompt);
 
@@ -258,9 +266,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setPendingAttachments((current) => [...current, pending]);
     try {
       const attachment = await saveDroppedAttachment(conversationId, path);
-      const note = isForwardableImageMime(attachment.mimeType)
-        ? undefined
-        : t('chat.composer.attachment.notSentNote');
       setPendingAttachments((current) =>
         current.map((item) =>
           item.localId === localId
@@ -270,7 +275,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 attachment,
                 mimeType: attachment.mimeType,
                 sizeBytes: attachment.sizeBytes,
-                error: note,
               }
             : item,
         ),
@@ -400,6 +404,32 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setHashTrigger(null);
   }, [conversationId]);
 
+  // What each uploaded attachment will do with the active model. The answer
+  // depends on the model (native PDF, vision), so it is asked again when the
+  // model changes; `deliveryQueriesRef` keeps one query per attachment+model
+  // in flight however often pendingAttachments changes.
+  useEffect(() => {
+    for (const item of pendingAttachments) {
+      const id = item.attachment?.id;
+      if (item.status !== 'uploaded' || !id || item.deliveryKey === deliveryKey) continue;
+      const queryKey = `${id}|${deliveryKey}`;
+      if (deliveryQueriesRef.current.has(queryKey)) continue;
+      deliveryQueriesRef.current.add(queryKey);
+      const settle = (delivery: AttachmentDelivery | undefined) => {
+        deliveryQueriesRef.current.delete(queryKey);
+        setPendingAttachments((current) =>
+          current.map((entry) =>
+            entry.attachment?.id === id ? { ...entry, delivery, deliveryKey } : entry,
+          ),
+        );
+      };
+      // `Promise.resolve().then` so a synchronous throw is a failed query too.
+      void Promise.resolve()
+        .then(() => attachmentDelivery(settings.activeProvider, settings.activeModel, id))
+        .then(settle, () => settle(undefined));
+    }
+  }, [pendingAttachments, deliveryKey, settings.activeProvider, settings.activeModel]);
+
   useEffect(() => {
     if (skillRemovalQueue.length === 0) return;
     const [head, ...rest] = skillRemovalQueue;
@@ -472,9 +502,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       const bytes = await fileToBytes(file);
       const attachment = await saveAttachment(conversationId, bytes, mimeType, file.name);
-      const note = isForwardableImageMime(mimeType)
-        ? undefined
-        : t('chat.composer.attachment.notSentNote');
       setPendingAttachments((current) =>
         current.map((item) =>
           item.localId === localId
@@ -482,7 +509,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ...item,
                 status: 'uploaded',
                 attachment,
-                error: note,
                 file: undefined,
               }
             : item,
@@ -500,7 +526,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function sendWithAttachments() {
     if (pendingAttachments.some((item) => item.status === 'uploading')) return;
-    const attachments = turnAttachmentsFromPending(pendingAttachments);
+    // Sending before the active model's answer arrives could drop a document.
+    if (deliveryPending(pendingAttachments, deliveryKey)) return;
+    const attachments = turnAttachmentsFromPending(pendingAttachments, deliveryKey);
     setPendingAttachments([]);
     onSend(attachments.length > 0 ? attachments : undefined);
   }
@@ -635,11 +663,47 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     for (const file of files) void uploadAttachment(file);
   }
 
+  /** The chip's words for what will happen to an uploaded attachment. */
+  function deliveryChipLabel(state: ReturnType<typeof attachmentChipState>): { text: string; title: string } {
+    switch (state.kind) {
+      case 'image':
+        return { text: t('chat.composer.attachment.status.ready'), title: t('chat.composer.attachment.readyTitle') };
+      case 'pdf':
+        return {
+          text: t('chat.composer.attachment.status.sentAsPdf'),
+          title: t('chat.composer.attachment.title.sentAsPdf'),
+        };
+      case 'text':
+        return {
+          text: t('chat.composer.attachment.status.sentAsText'),
+          title: t('chat.composer.attachment.title.sentAsText'),
+        };
+      case 'unsupported': {
+        const text = state.reason
+          ? t('chat.composer.attachment.status.notSentType', { reason: state.reason })
+          : t('chat.composer.attachment.status.notSentUnknownType');
+        return { text, title: text };
+      }
+      case 'unknown':
+        return {
+          text: t('chat.composer.attachment.status.notSent'),
+          title: t('chat.composer.attachment.title.unknown'),
+        };
+      default:
+        return {
+          text: t('chat.composer.attachment.status.checking'),
+          title: t('chat.composer.attachment.status.checking'),
+        };
+    }
+  }
+
   const attachDisabled = !conversationId || streaming;
-  const hasForwardableImages = turnAttachmentsFromPending(pendingAttachments).length > 0;
-  const uploading = pendingAttachments.some((item) => item.status === 'uploading');
+  const hasForwardableAttachments = turnAttachmentsFromPending(pendingAttachments, deliveryKey).length > 0;
+  const uploading =
+    pendingAttachments.some((item) => item.status === 'uploading') ||
+    deliveryPending(pendingAttachments, deliveryKey);
   const canSend =
-    !uploading && (prompt.trim().length > 0 || hasForwardableImages);
+    !uploading && (prompt.trim().length > 0 || hasForwardableAttachments);
 
   const queueCount = queuedMessages.length;
 
@@ -929,7 +993,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </div>
       )}
       <div
-        className={`composer${dropActive ? ' drop-active' : ''}`}
+        className={`composer${dropActive || (attachDropActive && !attachDisabled) ? ' drop-active' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -937,16 +1001,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <ComposerContextChips chips={chips} disabled={streaming} />
         {pendingAttachments.length > 0 && (
           <div className="composer-attachments" aria-label={t('chat.composer.attachments.ariaLabel')}>
-            {pendingAttachments.map((item) => (
+            {pendingAttachments.map((item) => {
+              const delivery = item.status === 'uploaded' ? attachmentChipState(item, deliveryKey) : null;
+              const deliveryLabel = delivery ? deliveryChipLabel(delivery) : null;
+              return (
               <div
                 key={item.localId}
                 className="composer-attachment-chip"
                 data-status={item.status}
-                title={
-                  item.status === 'uploaded'
-                    ? item.error ?? t('chat.composer.attachment.readyTitle')
-                    : item.error
-                }
+                data-delivery={delivery?.kind}
+                title={item.status === 'uploaded' ? deliveryLabel?.title : item.error}
               >
                 <FilePlainIcon />
                 <span className="composer-attachment-name">{item.fileName}</span>
@@ -956,9 +1020,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     : item.status === 'failed'
                       ? t('chat.composer.attachment.status.failed')
                       : item.status === 'uploaded'
-                        ? isForwardableImageMime(item.mimeType)
-                          ? t('chat.composer.attachment.status.ready')
-                          : t('chat.composer.attachment.status.notSent')
+                        ? deliveryLabel?.text
                         : formatBytes(item.sizeBytes)}
                 </span>
                 {item.status === 'failed' && item.file ? (
@@ -980,7 +1042,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   ×
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {/* A brand tagline is the brand's own copy and is shown verbatim.
@@ -1029,7 +1092,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             multiple
             hidden
             aria-hidden
-            accept={COMPOSER_IMAGE_ACCEPT}
+            accept={COMPOSER_ATTACH_ACCEPT}
             onChange={(event) => void handleFileInputChange(event)}
           />
           {/* Every popover opens upward from the "+" button, whichever of the

@@ -833,6 +833,7 @@ fn parse_model_list(response: &serde_json::Value) -> Result<Vec<ModelInfo>, Prov
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
                 price: None,
+                accepts_file_input: None,
             })
         })
         .collect();

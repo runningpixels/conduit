@@ -3431,6 +3431,17 @@ pub struct ModelInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub price: Option<ModelPrice>,
+    /// Whether the provider's own listing says this model takes file (PDF)
+    /// input. Only OpenRouter reports it (`file` in the model's
+    /// `architecture.input_modalities`), and its catalogue is the only way to
+    /// know: it fronts hundreds of models whose ids say nothing about PDF
+    /// support. `None` for every other provider, whose PDF support is a static
+    /// table (`vision::model_accepts_pdf`). Kept in-process only (the desktop
+    /// crate records it next to the listed prices); the renderer never needs
+    /// it, so it is not part of the IPC shape.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub accepts_file_input: Option<bool>,
 }
 
 /// What one model costs, in USD per million tokens.

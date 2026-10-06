@@ -1,7 +1,8 @@
 use crate::adapter::StreamParser;
 use crate::error::fatal;
 use crate::schema::{
-    Message, MessagePartKind, MessageRole, ProviderError, ProviderEvent, ProviderRequest,
+    Message, MessagePart, MessagePartKind, MessageRole, ProviderError, ProviderEvent,
+    ProviderRequest,
 };
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
@@ -47,10 +48,42 @@ pub fn message_has_images(message: &Message) -> bool {
     })
 }
 
-/// OpenAI chat-completions multimodal `content` array (text + image_url data URIs).
+/// True when a user message carries hydrated image or document parts, i.e.
+/// when it has to be sent as a content array rather than a plain string.
+pub fn message_has_media(message: &Message) -> bool {
+    message_has_images(message) || message.parts.iter().any(|p| hydrated_document(p).is_some())
+}
+
+/// A hydrated document part as `(mime, base64 data, filename)`.
+///
+/// The desktop crate only builds these (`MessagePartKind::File`, base64 in
+/// `content`, the original file name in `metadata.filename`) for a PDF and a
+/// model `vision::model_accepts_pdf` says reads PDFs; every other document
+/// reaches the model as extracted text. A `File` part with no bytes (a
+/// persisted reference that was never hydrated) is `None` and is dropped, as
+/// before. OpenAI's `file` part requires a file name, so a missing one falls
+/// back to a generic name rather than dropping the document.
+pub fn hydrated_document(part: &MessagePart) -> Option<(&str, &str, &str)> {
+    if part.kind != MessagePartKind::File {
+        return None;
+    }
+    let mime = part.mime_type.as_deref().filter(|m| !m.is_empty())?;
+    let data = part.content.as_deref().filter(|d| !d.is_empty())?;
+    let filename = part
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("filename"))
+        .and_then(|f| f.as_str())
+        .filter(|f| !f.trim().is_empty())
+        .unwrap_or("document.pdf");
+    Some((mime, data, filename))
+}
+
+/// OpenAI chat-completions multimodal `content` array (text + image_url data
+/// URIs + `file` parts). OpenRouter takes the same `file` shape.
 pub fn openai_user_content(message: &Message) -> serde_json::Value {
     use serde_json::json;
-    if !message_has_images(message) {
+    if !message_has_media(message) {
         return json!(message_text(message));
     }
     let mut parts = Vec::new();
@@ -73,6 +106,17 @@ pub fn openai_user_content(message: &Message) -> serde_json::Value {
                     }
                 }
             }
+            MessagePartKind::File => {
+                if let Some((mime, data, filename)) = hydrated_document(part) {
+                    parts.push(json!({
+                        "type": "file",
+                        "file": {
+                            "filename": filename,
+                            "file_data": format!("data:{mime};base64,{data}"),
+                        }
+                    }));
+                }
+            }
             _ => {}
         }
     }
@@ -83,10 +127,10 @@ pub fn openai_user_content(message: &Message) -> serde_json::Value {
     }
 }
 
-/// Anthropic user `content` blocks (text + base64 image sources).
+/// Anthropic user `content` blocks (text + base64 image and document sources).
 pub fn anthropic_user_content(message: &Message) -> serde_json::Value {
     use serde_json::json;
-    if !message_has_images(message) {
+    if !message_has_media(message) {
         return json!(message_text(message));
     }
     let mut blocks = Vec::new();
@@ -111,6 +155,18 @@ pub fn anthropic_user_content(message: &Message) -> serde_json::Value {
                     }
                 }
             }
+            MessagePartKind::File => {
+                if let Some((mime, data, _filename)) = hydrated_document(part) {
+                    blocks.push(json!({
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": data,
+                        }
+                    }));
+                }
+            }
             _ => {}
         }
     }
@@ -121,10 +177,10 @@ pub fn anthropic_user_content(message: &Message) -> serde_json::Value {
     }
 }
 
-/// Gemini user `parts` (text + inlineData).
+/// Gemini user `parts` (text + inlineData for images and PDFs alike).
 pub fn gemini_user_parts(message: &Message) -> Vec<serde_json::Value> {
     use serde_json::json;
-    if !message_has_images(message) {
+    if !message_has_media(message) {
         return vec![json!({ "text": message_text(message) })];
     }
     let mut parts = Vec::new();
@@ -145,6 +201,16 @@ pub fn gemini_user_parts(message: &Message) -> Vec<serde_json::Value> {
                             }
                         }));
                     }
+                }
+            }
+            MessagePartKind::File => {
+                if let Some((mime, data, _filename)) = hydrated_document(part) {
+                    parts.push(json!({
+                        "inlineData": {
+                            "mimeType": mime,
+                            "data": data,
+                        }
+                    }));
                 }
             }
             _ => {}
@@ -552,6 +618,120 @@ mod knowledge_reference_drop_tests {
         let message = message_with_reference();
         let rendered = ollama_user_message(&message).to_string();
         assert_no_reference_trace(&rendered);
+    }
+}
+
+#[cfg(test)]
+mod document_part_tests {
+    //! A hydrated PDF (`MessagePartKind::File`, base64 in `content`) is encoded
+    //! in each provider's own document shape, and only a hydrated one is.
+    use super::*;
+    use crate::schema::{Message, MessagePart, MessageRole};
+    use serde_json::json;
+
+    fn part(index: u32, kind: MessagePartKind, content: Option<&str>) -> MessagePart {
+        MessagePart {
+            id: format!("p{index}"),
+            message_id: "m1".into(),
+            index,
+            kind,
+            content: content.map(str::to_string),
+            mime_type: None,
+            tool_call_id: None,
+            artifact_id: None,
+            attachment_id: None,
+            blob_ref: None,
+            metadata: None,
+            created_at: "2026-01-01T00:00:00Z".into(),
+        }
+    }
+
+    fn message_with_pdf(hydrated: bool) -> Message {
+        let mut pdf = part(1, MessagePartKind::File, hydrated.then_some("JVBERi0="));
+        pdf.mime_type = Some("application/pdf".into());
+        pdf.attachment_id = Some("att-1".into());
+        pdf.metadata = Some(json!({ "filename": "report.pdf" }));
+        Message {
+            id: "m1".into(),
+            conversation_id: "c1".into(),
+            role: MessageRole::User,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts: vec![part(0, MessagePartKind::Text, Some("Summarise this")), pdf],
+            created_at: "2026-01-01T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn openai_chat_gets_a_file_part() {
+        let content = openai_user_content(&message_with_pdf(true));
+        assert_eq!(
+            content[0],
+            json!({ "type": "text", "text": "Summarise this" })
+        );
+        assert_eq!(
+            content[1],
+            json!({
+                "type": "file",
+                "file": {
+                    "filename": "report.pdf",
+                    "file_data": "data:application/pdf;base64,JVBERi0=",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn anthropic_gets_a_document_block() {
+        let content = anthropic_user_content(&message_with_pdf(true));
+        assert_eq!(
+            content[1],
+            json!({
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": "JVBERi0=",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn gemini_gets_inline_data() {
+        let parts = gemini_user_parts(&message_with_pdf(true));
+        assert_eq!(
+            parts[1],
+            json!({ "inlineData": { "mimeType": "application/pdf", "data": "JVBERi0=" } })
+        );
+    }
+
+    #[test]
+    fn a_missing_filename_falls_back_rather_than_dropping_the_pdf() {
+        let mut message = message_with_pdf(true);
+        message.parts[1].metadata = None;
+        let content = openai_user_content(&message);
+        assert_eq!(content[1]["file"]["filename"], "document.pdf");
+    }
+
+    #[test]
+    fn an_unhydrated_file_part_is_dropped_and_the_message_stays_plain_text() {
+        let message = message_with_pdf(false);
+        assert_eq!(openai_user_content(&message), json!("Summarise this"));
+        assert_eq!(anthropic_user_content(&message), json!("Summarise this"));
+        assert_eq!(
+            gemini_user_parts(&message),
+            vec![json!({ "text": "Summarise this" })]
+        );
+    }
+
+    #[test]
+    fn ollama_never_receives_a_document() {
+        let rendered = ollama_user_message(&message_with_pdf(true)).to_string();
+        assert!(!rendered.contains("JVBERi0="), "{rendered}");
     }
 }
 

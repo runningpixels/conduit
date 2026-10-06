@@ -1812,3 +1812,108 @@ async fn a_model_that_keeps_searching_past_the_cap_gets_a_visible_error() {
         other => panic!("expected an error, got {other:?}"),
     }
 }
+
+// ── Usage persistence ────────────────────────────────────────────────────────
+
+/// Runs one turn (agent loop when `with_tools`, the single-round path when
+/// not) whose provider reports 2,720 in / 640 out tokens, and returns every
+/// `usage_summary` row as (provider, model, input, output).
+async fn usage_rows_after_turn(with_tools: bool) -> Vec<(String, String, i64, i64)> {
+    let pool = common::setup_pool().await;
+    let conversation = conversations::create(&pool, None).await.unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let settings = AppSettings {
+        active_provider: "ollama".into(),
+        active_model: "scripted".into(),
+        agent: guardrails(25, 300),
+        ..AppSettings::default()
+    };
+    let state =
+        AppState::test_instance_with_settings(pool.clone(), test_paths(dir.path()), settings);
+    let runtime =
+        ConnectorRuntimeManager::new_with(Duration::from_millis(80), Duration::from_millis(800));
+    let script = Script::new(vec![using_output_tokens(text_round("done"), 640)]);
+    let resolver_script = script.clone();
+    let manager = StreamManager::with_adapter_resolver(Arc::new(move |_id: &str| {
+        Some(Box::new(ScriptedAdapter(resolver_script.clone())) as Box<dyn ProviderAdapter>)
+    }));
+    let channel: Channel<ProviderEvent> = Channel::new(|_| Ok(()));
+    let runtime_channel: Channel<ConnectorRuntimeEvent> = Channel::new(|_| Ok(()));
+
+    let request = ProviderRequest {
+        request_id: "usage-1".into(),
+        conversation_id: conversation.id.clone(),
+        model_id: "scripted".into(),
+        messages: vec![Message {
+            id: "user-1".into(),
+            conversation_id: conversation.id.clone(),
+            role: MessageRole::User,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts: vec![MessagePart {
+                id: "user-1/p0".into(),
+                message_id: "user-1".into(),
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some("hello".into()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: "2026-09-14T00:00:00Z".into(),
+            }],
+            created_at: "2026-09-14T00:00:00Z".into(),
+        }],
+        system_prompt: None,
+        developer_prompt: None,
+        attachments: None,
+        tool_definitions: if with_tools {
+            vec![tool("current_time", "Utilities")]
+        } else {
+            Vec::new()
+        },
+        generation_controls: None,
+        response_format: None,
+        web_search: None,
+    };
+
+    if with_tools {
+        manager
+            .run_agent_turn(&state, &runtime, request, channel, runtime_channel)
+            .await
+            .expect("agent turn runs");
+    } else {
+        manager
+            .start_chat_stream(&state, request, channel)
+            .await
+            .expect("tool-less stream runs");
+    }
+
+    sqlx::query_as("SELECT provider_id, model_id, input_tokens, output_tokens FROM usage_summary")
+        .fetch_all(&pool)
+        .await
+        .expect("usage rows read")
+}
+
+#[tokio::test]
+async fn a_tool_less_stream_records_exactly_one_usage_row() {
+    let rows = usage_rows_after_turn(false).await;
+    assert_eq!(
+        rows,
+        vec![("ollama".to_string(), "scripted".to_string(), 2_720, 640)]
+    );
+}
+
+#[tokio::test]
+async fn an_agent_turn_still_records_exactly_one_usage_row() {
+    let rows = usage_rows_after_turn(true).await;
+    assert_eq!(
+        rows,
+        vec![("ollama".to_string(), "scripted".to_string(), 2_720, 640)]
+    );
+}

@@ -1092,6 +1092,7 @@ impl StreamManager {
         let settings = state.settings()?;
         let provider_id = settings.active_provider.clone();
         let conversation_id = request.conversation_id.clone();
+        let model_id = request.model_id.clone();
         let request_id = if request.request_id.trim().is_empty() {
             uuid::Uuid::new_v4().to_string()
         } else {
@@ -1156,6 +1157,21 @@ impl StreamManager {
                 },
             )
             .await;
+
+        // Tool-less calls (Research, workflows, the chat command without
+        // tools) never reach the agent loop, so record their usage here.
+        if let Some(usage) = &outcome.usage {
+            persist_usage(
+                state,
+                &pool,
+                &request_id,
+                &conversation_id,
+                &provider_id,
+                &model_id,
+                usage,
+            )
+            .await;
+        }
 
         if let Some(err) = outcome.error_message {
             return Err(err);
@@ -3548,51 +3564,17 @@ impl StreamManager {
                 usage: usage.clone(),
             });
 
-            // Persist usage for analytics. Best-effort: analytics must never
-            // break a chat turn, so failures are logged and swallowed.
             if let Ok(settings) = state.settings() {
-                let provider_id = settings.active_provider;
-                let model_id = active_model_id.clone();
-                if let Ok(Some(message_id)) =
-                    messages::get_message_id_by_request(&pool, &request_id).await
-                {
-                    // Stored for older builds and diagnostics only: the usage
-                    // tables recompute cost from the token counts when read, so
-                    // a later price fix (or override) reaches past turns too.
-                    let cost = state
-                        .resolve_model_price(&provider_id, &model_id)
-                        .map(|resolved| {
-                            provider_core::pricing::estimate_cost_cents(
-                                &provider_id,
-                                crate::db::repository::usage_summary::token_counts(&usage),
-                                &resolved.price,
-                            )
-                        })
-                        .filter(|cents| *cents > 0.0)
-                        .map(|cents| format!("{cents:.4}"));
-                    if let Err(e) = usage_summary::insert_usage_summary(
-                        &pool,
-                        usage_summary::UsageSummaryRow {
-                            message_id: &message_id,
-                            conversation_id: &conversation_id,
-                            provider_id: &provider_id,
-                            model_id: &model_id,
-                            input_tokens: usage.input_tokens.unwrap_or(0) as i64,
-                            output_tokens: usage.output_tokens.unwrap_or(0) as i64,
-                            cache_read_tokens: usage.cache_read_tokens.unwrap_or(0) as i64,
-                            cache_write_tokens: usage.cache_write_tokens.unwrap_or(0) as i64,
-                            cost_estimate: cost.as_deref(),
-                        },
-                    )
-                    .await
-                    {
-                        warn!(
-                            request_id = %request_id,
-                            error = %e,
-                            "usage analytics persistence failed (non-fatal)"
-                        );
-                    }
-                }
+                persist_usage(
+                    state,
+                    &pool,
+                    &request_id,
+                    &conversation_id,
+                    &settings.active_provider,
+                    &active_model_id,
+                    &usage,
+                )
+                .await;
             }
         }
 
@@ -3681,6 +3663,60 @@ async fn build_connector_tool_catalog(
         &snapshots,
         &capabilities_by_version,
     ))
+}
+
+/// Persist one `usage_summary` row for a request, keyed by the assistant
+/// message the request produced. Best-effort: analytics must never break a
+/// chat turn, so failures are logged and swallowed. Both the agent loop and the
+/// tool-less single-round path call this, exactly once per request.
+async fn persist_usage(
+    state: &AppState,
+    pool: &sqlx::SqlitePool,
+    request_id: &str,
+    conversation_id: &str,
+    provider_id: &str,
+    model_id: &str,
+    usage: &provider_core::schema::ProviderUsage,
+) {
+    let Ok(Some(message_id)) = messages::get_message_id_by_request(pool, request_id).await else {
+        return;
+    };
+    // Stored for older builds and diagnostics only: the usage tables recompute
+    // cost from the token counts when read, so a later price fix (or override)
+    // reaches past turns too.
+    let cost = state
+        .resolve_model_price(provider_id, model_id)
+        .map(|resolved| {
+            provider_core::pricing::estimate_cost_cents(
+                provider_id,
+                crate::db::repository::usage_summary::token_counts(usage),
+                &resolved.price,
+            )
+        })
+        .filter(|cents| *cents > 0.0)
+        .map(|cents| format!("{cents:.4}"));
+    if let Err(e) = usage_summary::insert_usage_summary(
+        pool,
+        usage_summary::UsageSummaryRow {
+            message_id: &message_id,
+            conversation_id,
+            provider_id,
+            model_id,
+            input_tokens: usage.input_tokens.unwrap_or(0) as i64,
+            output_tokens: usage.output_tokens.unwrap_or(0) as i64,
+            cache_read_tokens: usage.cache_read_tokens.unwrap_or(0) as i64,
+            cache_write_tokens: usage.cache_write_tokens.unwrap_or(0) as i64,
+            cost_estimate: cost.as_deref(),
+        },
+    )
+    .await
+    {
+        warn!(
+            request_id = %request_id,
+            error = %e,
+            "usage analytics persistence failed (non-fatal)"
+        );
+    }
 }
 
 impl Default for StreamManager {

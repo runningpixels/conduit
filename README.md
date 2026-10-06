@@ -94,11 +94,16 @@ studio with the slide large in the middle and the chat beside it.
 ### Answers from your own documents
 
 **Documents** holds collections of your files (plain text, Markdown, CSV, Word
-and PDF), or drop files anywhere on the window. Attach a collection to a chat
-and the assistant searches it while it answers; the documents it drew on are
-named with the reply, and clicking one shows the exact passage. Retrieval is
+and PDF), or drop files on the window outside a chat. Attach a collection to a
+chat and the assistant searches it while it answers; the documents it drew on
+are named with the reply, and clicking one shows the exact passage. Retrieval is
 hybrid: semantic search for passages that mean the same thing, keyword search
 for exact terms like error codes and names.
+
+For one file, attach it to the message instead: drop a PDF, Word, text or CSV
+file on the chat, or pick it with **+**. Every model reads its text; models that
+read PDFs themselves (Claude, OpenAI, Gemini) get the PDF, charts and scans
+included.
 
 ![A chat with the Ferry docs attached, explaining from the auth design notes why the client retries twice: a normal token expiry, then a refresh race](./docs/assets/screenshot-documents.png)
 
@@ -291,7 +296,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.7 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.8 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -324,7 +329,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.7 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.8 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

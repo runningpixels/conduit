@@ -7,8 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.8] - 2026-10-06
+
 ### Added
 
+- **Attach documents to a message.** Drop a PDF, Word, text, Markdown or CSV
+  file on a chat, paste it, or pick it with **+**, and the model reads it.
+  Every model gets the document's text, extracted on your machine; models that
+  read PDFs themselves (Claude, OpenAI, Gemini, and OpenRouter models that list
+  file input) get the PDF, so charts and scanned pages come through too. Each
+  attachment says how it will be sent, or why it won't be. In Chats, a drop
+  anywhere on the chat attaches; elsewhere a drop still adds to Documents.
+- **The assistant can read PDFs and Word files in an attached folder.**
+  `workspace_read` used to refuse them as too large or binary; it now reads
+  their text, a page of characters at a time.
+- **Search in the model picker.** The model menu opens with a search field:
+  type to narrow every provider's list, Enter takes the first match. Each
+  provider's models are listed alphabetically, and the menu fits between the
+  title bar and the composer however tall the list is.
 - **Reasoning effort.** Chat settings (and Settings → Chat defaults) have a
   Reasoning effort choice: Auto, Low, Medium or High. Lower effort answers
   faster and costs less on thinking models; Auto leaves the model's default.
@@ -27,8 +43,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   pays full input price for its history on every turn. Cache reads and writes
   are priced at their own rates in Usage & Cost.
 
+- **Slides fit their text.** The slide themes shrink what doesn't fit, a step
+  at a time down to a readable size, instead of letting it overlap or run off
+  the slide: big stat numbers fit their column, long words fit their box, and
+  a full slide eases its text and drawings until it fits. Exported HTML and PDF
+  match what you see. A new full-width chart layout gives charts the whole
+  slide.
+- **Deck chats have fewer tools.** The calculator, UUID and random tools are no
+  longer offered while editing a deck.
+
 ### Fixed
 
+- **Slide headlines no longer get cut off at the top**, and a diagram beside
+  the text no longer fills the whole slide height: the image-left layout keeps
+  its drawing in its own column at its own shape.
+- **Big decks finish building.** Adding slides now counts as progress against
+  the turn's time limit, so a long build from a slower model is no longer cut
+  off partway; and if a build still ends short, it continues once on its own
+  with the slides that are missing.
+- **New decks are titled "Untitled deck"** instead of an internal key, which
+  the assistant was also shown as the deck's name.
 - **DeepSeek models that read images now get them.** DeepSeek V4 Flash and its
   vision variant receive attached images instead of having them dropped;
   text-only DeepSeek models stay text-only.
@@ -869,7 +903,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.7...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.8...HEAD
+[1.0.0-rc.8]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.7...v1.0.0-rc.8
 [1.0.0-rc.7]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.6...v1.0.0-rc.7
 [1.0.0-rc.6]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.5...v1.0.0-rc.6
 [1.0.0-rc.5]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.4...v1.0.0-rc.5

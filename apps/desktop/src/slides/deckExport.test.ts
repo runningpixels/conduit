@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EXPORT_CSP, buildDeckHtmlExport, buildDeckPrintHtml } from './deckExport';
+import { DECK_FIT_SCRIPT } from './deckFit';
+import { EXPORT_CSP, buildDeckHtmlExport, buildDeckPrintHtml, printCsp } from './deckExport';
 
 const deck = {
   title: 'Q3 <platform> & "migration"',
@@ -65,27 +66,48 @@ describe('buildDeckHtmlExport', () => {
     expect(script).toContain('requestFullscreen');
     expect(script).toContain('contextmenu');
   });
+
+  it("auto-fits its slides with the stage's fit source", () => {
+    const script = /<script>([\s\S]*)<\/script>/.exec(html)![1];
+    expect(script.startsWith(DECK_FIT_SCRIPT)).toBe(true);
+    expect(script).toContain('conduitFit.fitSlide(slide)');
+  });
 });
 
 describe('buildDeckPrintHtml', () => {
-  const html = buildDeckPrintHtml(deck);
+  const nonce = 'TestNonce_0123456789-ab';
+  const html = buildDeckPrintHtml(deck, nonce);
 
   it('sets the page to 1920x1080 with no margin and prints backgrounds', () => {
     expect(html).toContain('@page { size: 1920px 1080px; margin: 0; }');
     expect(html).toContain('print-color-adjust: exact');
   });
 
-  it('has one page-break rule and one section per slide, and no script', () => {
+  it('has one page-break rule and one section per slide, and no slide script', () => {
     expect(html).toContain('break-after: page');
     expect(html.match(/<section class="slide"/g)).toHaveLength(3);
-    expect(html).not.toContain('<script');
     expect(html).not.toContain('alert(1)');
     expect(html).not.toContain('onclick');
     expect(html).not.toMatch(/https?:\/\//);
   });
 
-  it('is served under a policy that allows no script', () => {
+  it('runs only the auto-fit, allowed by a nonce; no inline script or handler can run', () => {
+    expect(html).toContain(`http-equiv="Content-Security-Policy" content="${printCsp(nonce)}"`);
     expect(html).toContain("default-src 'none'");
-    expect(html).not.toContain("script-src");
+    expect(html).toContain(`script-src 'nonce-${nonce}'`);
+    expect(printCsp(nonce)).not.toMatch(/script-src[^;]*unsafe/);
+    const scripts = html.match(/<script[^>]*>/g) ?? [];
+    expect(scripts).toEqual([`<script nonce="${nonce}">`]);
+    const script = /<script[^>]*>([\s\S]*)<\/script>/.exec(html)![1];
+    expect(script.startsWith(DECK_FIT_SCRIPT)).toBe(true);
+    expect(() => new Function(script)).not.toThrow();
+  });
+
+  it('uses a fresh nonce per document and refuses one that could break the policy', () => {
+    const a = /'nonce-([^']+)'/.exec(buildDeckPrintHtml(deck))![1];
+    const b = /'nonce-([^']+)'/.exec(buildDeckPrintHtml(deck))![1];
+    expect(a).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(a).not.toBe(b);
+    expect(() => buildDeckPrintHtml(deck, "x'; script-src *")).toThrow();
   });
 });

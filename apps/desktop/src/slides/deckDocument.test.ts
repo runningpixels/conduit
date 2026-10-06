@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DECK_FRAME_HTML, cleanInlineHtml, deckMessage, parseDeckEvent } from './deckDocument';
+import { DECK_FIT_SCRIPT } from './deckFit';
 import { STARTER_THEMES, THEME_CONTRACT } from './themes';
 
 const deck = {
@@ -70,6 +71,16 @@ describe('DECK_FRAME_HTML', () => {
     expect(DECK_FRAME_HTML).toContain('conduit-deck-event');
   });
 
+  it('auto-fits with the shared fit source and never posts fitted sizes', () => {
+    const script = DECK_FRAME_HTML.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
+    expect(script).toContain(DECK_FIT_SCRIPT);
+    expect(script).toContain('conduitFit.fitSlide');
+    expect(script).toContain('conduitFit.overflow');
+    // A committed slot is read through cleanSlotHtml, never raw innerHTML.
+    expect(script).toContain('var html = conduitFit.cleanSlotHtml(e.el);');
+    expect(script).not.toMatch(/html: e\.el\.innerHTML|var html = e\.el\.innerHTML/);
+  });
+
   it('is a script that parses', () => {
     const script = DECK_FRAME_HTML.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
     expect(script.length).toBeGreaterThan(100);
@@ -117,7 +128,7 @@ describe('parseDeckEvent', () => {
 });
 
 describe('starter themes', () => {
-  const vocabulary = ['title', 'statement', 'bullets', 'stat-row', 'two-col', 'quote', 'section', 'image-left'];
+  const vocabulary = ['title', 'statement', 'bullets', 'stat-row', 'two-col', 'quote', 'section', 'image-left', 'chart'];
   const components = ['.kicker', '.headline', '.sub', '.body', 'ul.bullets', '.stat', '.quote', '.cite', '.col', '.footnote', '.accent'];
   const tokens = ['--bg', '--ink', '--ink-2', '--accent', '--surface', '--font-display', '--font-body', '--font-mono'];
 
@@ -136,6 +147,50 @@ describe('starter themes', () => {
   it('uses system fonts only and no external URLs', () => {
     for (const theme of STARTER_THEMES) {
       expect(theme.css).not.toMatch(/@import|url\(|https?:/);
+    }
+  });
+
+  it('never clips at the top: centred and end-aligned layouts are safe', () => {
+    for (const theme of STARTER_THEMES) {
+      expect(theme.css).not.toMatch(/(justify|align)-content:\s*(center|flex-end)/);
+      expect(theme.css).toContain('justify-content: safe center');
+      expect(theme.css).toContain('.slide[data-layout="title"] { justify-content: safe flex-end;');
+      expect(theme.css).toContain('.slide[data-layout="section"] { justify-content: safe flex-end;');
+    }
+  });
+
+  it('places the image-left visual in its own column, in a box the theme owns', () => {
+    for (const theme of STARTER_THEMES) {
+      expect(theme.css).not.toContain('grid-row: 1 / span 12');
+      const rule = /\.slide\[data-layout="image-left"\] > \.image \{([^}]*)\}/.exec(theme.css)?.[1] ?? '';
+      expect(rule).toContain('position: absolute');
+      expect(rule).toContain('left: 120px');
+      expect(rule).toContain('width: 820px !important');
+      expect(rule).toContain('height: auto !important');
+      expect(rule).toContain('max-height: 840px !important');
+      expect(theme.css).toContain('padding-left: 1036px');
+    }
+  });
+
+  it('draws a chart full width in a theme-owned box, and other top-level svgs at their aspect ratio', () => {
+    for (const theme of STARTER_THEMES) {
+      const rule = /\.slide\[data-layout="chart"\] > figure \{([^}]*)\}/.exec(theme.css)?.[1] ?? '';
+      expect(rule).toContain('width: 1680px !important');
+      expect(rule).toContain('height: auto !important');
+      expect(rule).toContain('max-height: 640px !important');
+      expect(theme.css).toContain('.slide[data-layout="chart"] .headline { font-size: 80px; }');
+      expect(theme.css).toContain('.slide > svg, .slide > figure > svg { width: 100%; height: auto; max-height: 600px;');
+    }
+    expect(THEME_CONTRACT).toContain(
+      '- chart: .headline, one <svg> chart or diagram drawn full width (1680 x up to 640), optional .footnote.',
+    );
+  });
+
+  it('keeps stat labels off spans inside the value, and the value inside its column', () => {
+    for (const theme of STARTER_THEMES) {
+      expect(theme.css).toContain('.slide .stat > span {');
+      expect(theme.css).not.toMatch(/\.stat span/);
+      expect(theme.css).toMatch(/\.slide \.stat \{[^}]*grid-template-columns: minmax\(0, 1fr\);/);
     }
   });
 });

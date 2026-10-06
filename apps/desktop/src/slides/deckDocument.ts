@@ -12,10 +12,13 @@
 /// {slides:[{id,px}]}` (stage only, only when the measurement changed).
 /// Parent to frame: `deckMessage(...)`. The frame validates the shape, strips
 /// scripts and inline handlers again (the sandbox is the boundary, this is
-/// depth), and rebuilds only the slides whose HTML or layout changed.
+/// depth), and rebuilds only the slides whose HTML or layout changed. Each
+/// built slide is auto-fitted (`deckFit.ts`) in every mode; fitted sizes stay
+/// in the frame and never reach a `slot-edit`.
 
 import { withoutScripts } from '../artifacts/LiveDocumentPreview';
 import type { DeckDetail } from '../ipc/contracts';
+import { DECK_FIT_SCRIPT } from './deckFit';
 
 export const DECK_MESSAGE_TYPE = 'conduit-deck';
 export const DECK_EVENT_TYPE = 'conduit-deck-event';
@@ -222,7 +225,7 @@ const FRAME_SCRIPT = `
     el.setAttribute('data-layout', slide.layout);
     el.innerHTML = slide.html;
     scrub(el);
-    return { el: el, layout: slide.layout, html: slide.html, px: null };
+    return { el: el, layout: slide.layout, html: slide.html, px: null, fitted: false };
   }
 
   // Slots in document order; a slot inside another slot does not count.
@@ -258,43 +261,88 @@ const FRAME_SCRIPT = `
     return e;
   }
 
+  // Slot HTML is read without fitted sizes (they never leave the frame), and
+  // the slide is fitted again once its text is final.
   function cancelEdit() {
     var e = endEdit();
-    if (e) e.el.innerHTML = e.original;
+    if (!e) return;
+    e.el.innerHTML = e.original;
+    refit(nodes[e.slideId]);
   }
 
   function commitEdit() {
     var e = endEdit();
     if (!e) return;
-    var html = e.el.innerHTML;
-    if (html === e.original) return;
-    post({ event: 'slot-edit', slideId: e.slideId, index: e.index, name: e.name, html: html });
+    var html = conduitFit.cleanSlotHtml(e.el);
+    if (html !== e.original) post({ event: 'slot-edit', slideId: e.slideId, index: e.index, name: e.name, html: html });
+    refit(nodes[e.slideId]);
+    reportOverflow();
   }
 
   function startEdit(slot) {
     if (editing && editing.el === slot.el) return;
     if (editing) commitEdit();
-    editing = { slideId: slot.slideId, index: slot.index, name: slot.name, el: slot.el, original: slot.el.innerHTML };
+    editing = { slideId: slot.slideId, index: slot.index, name: slot.name, el: slot.el, original: conduitFit.cleanSlotHtml(slot.el) };
     slot.el.setAttribute('contenteditable', 'true');
     slot.el.focus();
   }
 
-  // Overflow: how far a slide's content runs past 1920x1080. Hidden slides are
-  // measured in place (hidden, but laid out) and restored, so nothing flashes.
-  // The measuring class lifts the hide rule, so the slide is laid out with
-  // the theme's own display (grid, flex...); forcing display:block instead
-  // stacks grid layouts and reports overflow that is not there. A few pixels
-  // over (descenders, outlines) is not worth a warning.
-  var OVERFLOW_TOLERANCE = 16;
-  function measure(node) {
+  // Hidden slides are laid out in place (hidden, but laid out) and restored,
+  // so nothing flashes. The measuring class lifts the hide rule, so the slide
+  // is laid out with the theme's own display (grid, flex...); forcing
+  // display:block instead stacks grid layouts and reports overflow that is
+  // not there.
+  function laidOut(node, run) {
     var el = node.el;
     var saved = el.getAttribute('style');
     el.classList.add('is-measuring');
     el.style.setProperty('visibility', 'hidden', 'important');
-    var over = Math.max(el.scrollHeight - H, el.scrollWidth - W, 0);
-    el.classList.remove('is-measuring');
-    if (saved === null) el.removeAttribute('style'); else el.setAttribute('style', saved);
-    return over > OVERFLOW_TOLERANCE ? over : 0;
+    try { return run(el); } finally {
+      el.classList.remove('is-measuring');
+      if (saved === null) el.removeAttribute('style'); else el.setAttribute('style', saved);
+    }
+  }
+
+  // Overflow: how far a slide's content runs past 1920x1080, on any side
+  // (see conduitFit.overflow).
+  function measure(node) {
+    return laidOut(node, conduitFit.overflow);
+  }
+
+  // Auto-fit once per built slide, in every mode, so thumbnails and the
+  // presenter match the stage. A frame that is not laid out yet (zero size)
+  // leaves the node unfitted; the next render or resize tries again.
+  function fitNode(node) {
+    if (!node || node.fitted) return;
+    var done = false;
+    try { done = laidOut(node, conduitFit.fitSlide); } catch (e) { /* never block rendering */ }
+    if (done) { node.fitted = true; node.px = null; }
+  }
+
+  function refit(node) {
+    if (!node) return;
+    conduitFit.unfit(node.el);
+    node.fitted = false;
+    fitNode(node);
+  }
+
+  function fitAll(again) {
+    for (var i = 0; i < order.length; i++) {
+      if (again) refit(nodes[order[i]]); else fitNode(nodes[order[i]]);
+    }
+  }
+
+  // System fonts need no loading, but a theme may carry data: fonts; once
+  // they arrive the fitted sizes are stale.
+  var fontsPending = false;
+  function refitWhenFontsLoad() {
+    if (fontsPending || !document.fonts || document.fonts.status === 'loaded') return;
+    fontsPending = true;
+    document.fonts.ready.then(function () {
+      fontsPending = false;
+      fitAll(true);
+      reportOverflow();
+    });
   }
 
   function reportOverflow() {
@@ -355,6 +403,9 @@ const FRAME_SCRIPT = `
     }
     nodes = next;
     order = ids;
+    // A new theme changes every size: clear what was fitted and fit again.
+    fitAll(themeChanged);
+    refitWhenFontsLoad();
 
     index = Math.max(0, Math.min(order.length - 1, Math.floor(m.view.index)));
     for (var q = 0; q < order.length; q++) {
@@ -370,7 +421,12 @@ const FRAME_SCRIPT = `
     if (!valid(event.data)) return;
     apply(event.data);
   });
-  window.addEventListener('resize', fit);
+  window.addEventListener('resize', function () {
+    fit();
+    // A frame first laid out at zero size fits its slides now.
+    fitAll(false);
+    reportOverflow();
+  });
   deck.addEventListener('click', function (event) {
     var t = event.target;
     var slide = t && t.closest ? t.closest('.slide') : null;
@@ -426,4 +482,4 @@ const FRAME_SCRIPT = `
 export const DECK_FRAME_HTML =
   `<style>${FRAME_STYLE}</style>` +
   `<div class="deck-viewport"><div class="deck" id="deck"></div></div>` +
-  `<script>${FRAME_SCRIPT}</script>`;
+  `<script>${DECK_FIT_SCRIPT}${FRAME_SCRIPT}</script>`;

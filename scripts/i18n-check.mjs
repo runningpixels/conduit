@@ -76,11 +76,18 @@ const RUST_ROOTS = [
 ];
 const EN_PATH = join(SRC_ROOT, 'i18n/messages/en.json');
 
-/** Mirrors the feature-area list `catalogs.test.ts` enforces for every en.json key (D3). */
+/**
+ * Mirrors the feature-area list `catalogs.test.ts` enforces for every en.json key (D3).
+ *
+ * It has to track that list: a key under an area missing here is invisible to
+ * the scan, so `t('slides.new.defaultTitle')` shipped with no catalog entry and
+ * decks were created titled with the raw key. `i18n-check.test.ts` compares the
+ * two lists so they cannot drift again.
+ */
 export const FEATURE_AREAS = [
   'chat', 'common', 'consent', 'error', 'onboarding',
   'recovery', 'settings', 'shell', 'workspace', 'artifacts', 'app', 'home',
-  'writing',
+  'writing', 'ideas', 'apps', 'slides', 'inspector',
 ];
 
 /** A catalog key: `<known feature area>(.<alphanumeric segment>)+`. See module comment for why the first segment is restricted. */

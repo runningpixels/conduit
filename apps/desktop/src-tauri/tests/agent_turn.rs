@@ -1322,6 +1322,35 @@ fn saved_progress_extends_the_deadline_up_to_the_ceiling() {
 }
 
 #[test]
+fn successful_slide_writes_count_as_saved_progress() {
+    use conduit_desktop::stream_manager::saves_writing;
+    // A deck build is a dozen `add_slide` calls; each one buys the turn time.
+    for name in [
+        "add_slide",
+        "update_slide",
+        "patch_slide",
+        "update_slots",
+        "replace_in_deck",
+        "move_slide",
+        "delete_slide",
+        "set_storyline",
+        "set_theme",
+    ] {
+        assert!(saves_writing(name), "{name}");
+    }
+    // Reading the deck, starting one, and unrelated tools are not progress.
+    for name in [
+        "read_deck",
+        "start_deck",
+        "calculator",
+        "workspace_read",
+        "web_search",
+    ] {
+        assert!(!saves_writing(name), "{name}");
+    }
+}
+
+#[test]
 fn time_waiting_for_the_user_extends_the_deadline_and_the_ceiling() {
     use conduit_desktop::stream_manager::TurnDeadline;
     let start = tokio::time::Instant::now();

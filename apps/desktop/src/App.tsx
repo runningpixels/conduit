@@ -138,6 +138,7 @@ import { STARTER_THEMES } from './slides/themes';
 import { DeckDock, type DockTab } from './slides/DeckDock';
 import { ScriptPanel, type ScriptFocusRequest } from './slides/ScriptPanel';
 import { DeckHistory } from './slides/DeckHistory';
+import { deckContinuationMessage, deckTurnEnd, type DeckBuildPhase } from './slides/buildContinuation';
 import { appPrompt, appPromptLabel } from './chat/appPrompt';
 import type { DeckDetail, SlideTheme, SlotEdit, StorylineItem } from './ipc/contracts';
 import {
@@ -484,10 +485,14 @@ export default function App() {
   // The history label for the next AI turn when the app sent its prompt (the
   // "Build slides" button), rather than the user typing one.
   const nextDeckTurnLabelRef = useRef<string | null>(null);
+  // Which app-sent build turn is running: "Build slides", then at most one
+  // automatic continuation. Null for every ordinary turn.
+  const deckBuildPhaseRef = useRef<DeckBuildPhase | null>(null);
   useEffect(() => {
     let cancelled = false;
     setDeckBusyTool(null);
     deckChangedThisTurnRef.current = false;
+    deckBuildPhaseRef.current = null;
     if (!activeConversationId) {
       setActiveDeck(null);
       return;
@@ -1262,32 +1267,64 @@ export default function App() {
   }, [reloadActiveDeck]);
 
   /** One history entry per AI turn that changed the deck, named by the prompt. */
-  const finishDeckTurn = useCallback(async () => {
-    setDeckBusyTool(null);
-    if (startedDeckThisTurnRef.current) {
-      startedDeckThisTurnRef.current = false;
-      deckChangedThisTurnRef.current = false;
-      await openDeckStartedInChat();
-      return;
-    }
-    const deck = activeDeckRef.current;
-    const appLabel = nextDeckTurnLabelRef.current;
-    nextDeckTurnLabelRef.current = null;
-    if (!deck || !deckChangedThisTurnRef.current) return;
-    deckChangedThisTurnRef.current = false;
-    const lastPrompt = [...transcriptRef.current.turns].reverse().find((turn) => turn.role === 'user');
-    const content = lastPrompt?.content ?? '';
-    const text = (appPromptLabel(content) ?? content).replace(/\s+/g, ' ').trim();
-    const label =
-      appLabel ?? (text.length > 80 ? `${text.slice(0, 79)}…` : text || t('slides.history.aiTurn'));
-    try {
-      await snapshotDeck(deck.id, 'ai-turn', label);
-      setDeckHistoryRevision((n) => n + 1);
-    } catch {
-      // History is best effort; the deck itself is already saved.
-    }
-    await reloadActiveDeck();
-  }, [reloadActiveDeck, openDeckStartedInChat, t]);
+  const finishDeckTurn = useCallback(
+    async (state: AssistantStreamState) => {
+      setDeckBusyTool(null);
+      if (startedDeckThisTurnRef.current) {
+        startedDeckThisTurnRef.current = false;
+        deckChangedThisTurnRef.current = false;
+        await openDeckStartedInChat();
+        return;
+      }
+      const deck = activeDeckRef.current;
+      const appLabel = nextDeckTurnLabelRef.current;
+      nextDeckTurnLabelRef.current = null;
+      const buildPhase = deckBuildPhaseRef.current;
+      deckBuildPhaseRef.current = null;
+      if (deck && deckChangedThisTurnRef.current) {
+        deckChangedThisTurnRef.current = false;
+        const lastPrompt = [...transcriptRef.current.turns].reverse().find((turn) => turn.role === 'user');
+        const content = lastPrompt?.content ?? '';
+        const text = (appPromptLabel(content) ?? content).replace(/\s+/g, ' ').trim();
+        const label =
+          appLabel ?? (text.length > 80 ? `${text.slice(0, 79)}…` : text || t('slides.history.aiTurn'));
+        try {
+          await snapshotDeck(deck.id, 'ai-turn', label);
+          setDeckHistoryRevision((n) => n + 1);
+        } catch {
+          // History is best effort; the deck itself is already saved.
+        }
+        await reloadActiveDeck();
+      }
+      // A build that ended short (a model that stops after a few slides, or a
+      // turn that hit its time limit) is picked up once, here, rather than
+      // leaving the user to find out and ask. Read the deck again: the one in
+      // hand may predate the turn's last slides.
+      const deckConversationId = deck?.conversationId;
+      if (!deckConversationId || buildPhase !== 'build') return;
+      try {
+        const fresh = await getDeckForConversation(deckConversationId);
+        if (!fresh || activeDeckRef.current?.conversationId !== deckConversationId) return;
+        const message = deckContinuationMessage(
+          {
+            phase: buildPhase,
+            stage: fresh.stage,
+            storyline: fresh.storyline,
+            slideCount: fresh.slides.length,
+            turnEnd: deckTurnEnd(state),
+          },
+          (lines) => t('slides.prompt.continueBuild', { lines }),
+        );
+        if (message === null) return;
+        deckBuildPhaseRef.current = 'continuation';
+        nextDeckTurnLabelRef.current = t('slides.history.built');
+        setPendingSendText(appPrompt(t('slides.note.continueBuild'), message));
+      } catch {
+        // The deck stays as it is; the user can ask for the rest.
+      }
+    },
+    [reloadActiveDeck, openDeckStartedInChat, t],
+  );
 
   // Export: the documents are built here, Rust asks for the path and writes
   // the file. Nothing happens on cancel.
@@ -1373,6 +1410,7 @@ export default function App() {
     try {
       setActiveDeck(await setDeckStage(deck.id, 'slides'));
       nextDeckTurnLabelRef.current = t('slides.history.built');
+      deckBuildPhaseRef.current = 'build';
       setPendingSendText(appPrompt(t('slides.note.build'), t('slides.prompt.build')));
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : String(error));
@@ -3340,7 +3378,7 @@ export default function App() {
             onChatTurnComplete={(streamState) => {
               void handleChatTurnComplete(streamState);
               checkSpendAlert();
-              void finishDeckTurn();
+              void finishDeckTurn(streamState);
               void finishDraftTurn();
             }}
             deck={activeDeck}

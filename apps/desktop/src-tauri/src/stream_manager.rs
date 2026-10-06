@@ -285,14 +285,18 @@ pub fn is_document_content_tool(name: &str) -> bool {
         || name == agent_tools::PATCH_DOCUMENT_TOOL
 }
 
-/// True for the tools whose success is saved writing: document content tools
-/// and the Writing draft tools that change a draft. A round that saves writing
-/// extends the turn's time limit, and one marked `more_to_write` counts as a
-/// build in parts. Draft tools are never document content tools, so a round of
-/// them never ends the turn early (see [`round_only_wrote_documents`]): the
-/// model writes a draft section by section and then replies.
+/// True for the tools whose success is saved writing: document content tools,
+/// the Writing draft tools that change a draft, and the Slides tools that
+/// change a deck. A round that saves writing extends the turn's time limit, and
+/// one marked `more_to_write` counts as a build in parts. Draft and deck tools
+/// are never document content tools, so a round of them never ends the turn
+/// early (see [`round_only_wrote_documents`]): the model writes a draft section
+/// by section, or a deck slide by slide, and then replies. A deck build of a
+/// dozen slides from a slow model outruns one window without this.
 pub fn saves_writing(name: &str) -> bool {
-    is_document_content_tool(name) || agent_tools::is_draft_write_tool(name)
+    is_document_content_tool(name)
+        || agent_tools::is_draft_write_tool(name)
+        || agent_tools::is_deck_write_tool(name)
 }
 
 /// True when the model marked a document call as one step of a longer build

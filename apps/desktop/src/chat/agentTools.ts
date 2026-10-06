@@ -848,6 +848,10 @@ export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
 }
 
 const UTILITY_TOOL_NAMES = new Set(['current_time', 'uuid', 'random', 'calculator', 'ask_user']);
+/** Utility tools a deck chat does not get: weak models wander into them
+ *  mid-build (a deck build burned turns on calculator errors) and a slide never
+ *  needs them. `current_time` and `ask_user` stay. */
+const DECK_CHAT_OMITTED_UTILITY_TOOL_NAMES = new Set(['uuid', 'random', 'calculator']);
 const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch']);
 const WORKSPACE_TOOL_GROUP = 'Workspace';
 
@@ -1187,7 +1191,9 @@ export function selectBuiltinTurnTools(
     return {
       intent: 'edit',
       tools: [
-        ...builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name)),
+        ...builtinToolDefinitions().filter(
+          (t) => UTILITY_TOOL_NAMES.has(t.name) && !DECK_CHAT_OMITTED_UTILITY_TOOL_NAMES.has(t.name),
+        ),
         ...selectBuiltinDeckTools(deckStage),
         ...selectBuiltinWorkspaceTools(settings, conversationRoot).filter(
           (tool) => !WORKSPACE_WRITE_TOOL_NAMES.has(tool.name),

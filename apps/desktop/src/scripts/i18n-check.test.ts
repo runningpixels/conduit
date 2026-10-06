@@ -8,7 +8,8 @@ import { join } from 'node:path';
 // `tsc -b` (`pnpm check`) quiet about the missing declaration, the same
 // precedent as generate-update-manifest.test.ts.
 // @ts-ignore
-import { crossReference, findKeyReferences, KEY_SHAPE, REPO_ROOT } from '../../../../scripts/i18n-check.mjs';
+import { crossReference, FEATURE_AREAS, findKeyReferences, KEY_SHAPE, REPO_ROOT } from '../../../../scripts/i18n-check.mjs';
+import enMessages from '../i18n/messages/en.json';
 
 const repoRoot: string = REPO_ROOT;
 const scriptPath = join(repoRoot, 'scripts', 'i18n-check.mjs');
@@ -16,6 +17,30 @@ const scriptPath = join(repoRoot, 'scripts', 'i18n-check.mjs');
 describe('i18n-check: on the real, current tree', () => {
   it('`node scripts/i18n-check.mjs` exits 0 — every referenced key is defined', () => {
     expect(() => execFileSync('node', [scriptPath], { cwd: repoRoot, stdio: 'pipe' })).not.toThrow();
+  });
+});
+
+describe('i18n-check: the scan sees every feature area the catalog has', () => {
+  // The scan only recognises keys under a listed area. `slides`, `apps`, `ideas`
+  // and `inspector` were missing, so `t('slides.new.defaultTitle')` with no
+  // catalog entry passed this check and shipped as a raw key in the UI.
+  it('lists the first segment of every en.json key', () => {
+    const areas = new Set(Object.keys(enMessages).map((key) => key.split('.')[0]));
+    expect([...areas].filter((area) => !FEATURE_AREAS.includes(area))).toEqual([]);
+  });
+
+  it('flags a t() reference under a newer area that en.json lacks', () => {
+    const source = `const title = t('slides.new.noSuchKey');
+`;
+    const dir = mkdtempSync(join(tmpdir(), 'conduit-i18n-check-'));
+    const file = join(dir, 'Fixture.tsx');
+    writeFileSync(file, source);
+    try {
+      const { usedButUndefined } = crossReference(enMessages, findKeyReferences([file]));
+      expect([...usedButUndefined.keys()]).toEqual(['slides.new.noSuchKey']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -359,7 +359,7 @@
   "chat.composer.knowledgeRef.pickerAriaLabel": "引用文档",
   "chat.composer.placeholder": "给 {appName} 发消息…",
   "chat.composer.plus.ariaLabel": "添加到此消息",
-  "chat.composer.plus.attach": "附加图片…",
+  "chat.composer.plus.attach": "附加文件…",
   "chat.composer.plus.chatSettings": "聊天设置…",
   "chat.composer.plus.connectorPrompts": "连接器提示词…",
   "chat.composer.plus.connectorResources": "连接器资源…",

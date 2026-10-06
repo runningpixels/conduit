@@ -359,7 +359,7 @@
   "chat.composer.knowledgeRef.pickerAriaLabel": "ドキュメントを参照",
   "chat.composer.placeholder": "{appName} にメッセージを送る…",
   "chat.composer.plus.ariaLabel": "このメッセージに追加",
-  "chat.composer.plus.attach": "画像を添付…",
+  "chat.composer.plus.attach": "ファイルを添付…",
   "chat.composer.plus.chatSettings": "チャット設定…",
   "chat.composer.plus.connectorPrompts": "コネクタのプロンプト…",
   "chat.composer.plus.connectorResources": "コネクタのリソース…",

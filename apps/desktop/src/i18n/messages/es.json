@@ -359,7 +359,7 @@
   "chat.composer.knowledgeRef.pickerAriaLabel": "Referenciar un documento",
   "chat.composer.placeholder": "Mensaje a {appName}…",
   "chat.composer.plus.ariaLabel": "Añadir a este mensaje",
-  "chat.composer.plus.attach": "Adjuntar imágenes…",
+  "chat.composer.plus.attach": "Adjuntar archivos…",
   "chat.composer.plus.chatSettings": "Ajustes del chat…",
   "chat.composer.plus.connectorPrompts": "Prompts del conector…",
   "chat.composer.plus.connectorResources": "Recursos del conector…",

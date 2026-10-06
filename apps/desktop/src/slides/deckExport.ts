@@ -5,9 +5,14 @@
 /// slide stacked, one 1920x1080 page each, which Rust prints to a PDF.
 /// Slide HTML goes through `withoutScripts` (scripts and inline handlers), the
 /// same as the stage; the deck's theme CSS is the one the stage uses.
+///
+/// Both documents carry the stage's auto-fit (`DECK_FIT_SCRIPT`, one shared
+/// source) so they look like the stage. The print document allows exactly
+/// that script, by a fresh nonce; slide content can run nothing.
 
 import { withoutScripts } from '../artifacts/LiveDocumentPreview';
 import type { DeckDetail } from '../ipc/contracts';
+import { DECK_FIT_SCRIPT } from './deckFit';
 
 type ExportDeck = Pick<DeckDetail, 'title' | 'themeCss'> & {
   slides: ReadonlyArray<Pick<DeckDetail['slides'][number], 'layout' | 'html' | 'notes'>>;
@@ -23,8 +28,19 @@ export interface DeckHtmlOptions {
 /** The export's own policy: inline style and script, data images and fonts, nothing else. */
 export const EXPORT_CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
-/** Same, without script: the print document runs none. */
-const PRINT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'";
+/**
+ * The print document's policy: only the script carrying this nonce runs (the
+ * auto-fit); no inline script or handler from slide content can.
+ */
+export const printCsp = (nonce: string) =>
+  `default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'`;
+
+/** 128 random bits, base64url: unguessable by content written before the export. */
+function freshNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 const LANG_REGEX = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$/;
 
@@ -155,8 +171,45 @@ const HTML_SCRIPT = `
   window.addEventListener('resize', fit);
   window.addEventListener('hashchange', fromLocation);
 
+  // Auto-fit every slide, as the stage does: each cell is laid out hidden
+  // for the measurement. Again once any theme fonts have loaded.
+  function fitSlides(again) {
+    for (var i = 0; i < n; i++) {
+      var slide = cells[i].querySelector('.slide');
+      if (!slide) continue;
+      var saved = cells[i].getAttribute('style');
+      cells[i].style.display = 'block';
+      cells[i].style.visibility = 'hidden';
+      try {
+        if (again) conduitFit.unfit(slide);
+        conduitFit.fitSlide(slide);
+      } catch (e) { /* never block presenting */ }
+      if (saved === null) cells[i].removeAttribute('style'); else cells[i].setAttribute('style', saved);
+    }
+  }
+
   fit();
+  fitSlides(false);
+  if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(function () { fitSlides(true); });
   fromLocation();
+})();
+`;
+
+/// The print document fits its slides once laid out; the window waits for
+/// the load event and a settle delay before printing.
+const PRINT_FIT_SCRIPT = `
+(function () {
+  function fitSlides(again) {
+    var slides = document.querySelectorAll('.deck > .slide');
+    for (var i = 0; i < slides.length; i++) {
+      try {
+        if (again) conduitFit.unfit(slides[i]);
+        conduitFit.fitSlide(slides[i]);
+      } catch (e) { /* print what there is */ }
+    }
+  }
+  fitSlides(false);
+  if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(function () { fitSlides(true); });
 })();
 `;
 
@@ -192,7 +245,7 @@ export function buildDeckHtmlExport(deck: ExportDeck, options: DeckHtmlOptions):
     `<div class="deck-viewport" id="viewport"><div class="deck" id="deck">${cells}</div></div>` +
     `<div class="deck-counter" id="counter" aria-hidden="true"></div>` +
     `<div class="deck-notes" id="notes"></div>` +
-    `<script>${HTML_SCRIPT}</script>` +
+    `<script>${DECK_FIT_SCRIPT}${HTML_SCRIPT}</script>` +
     `</body></html>`
   );
 }
@@ -208,19 +261,25 @@ html, body { margin: 0; padding: 0; width: 1920px; background: #fff;
 .deck > .slide:last-child { break-after: auto; page-break-after: auto; }
 `;
 
-/** Every slide stacked, each exactly one page. No script. */
-export function buildDeckPrintHtml(deck: ExportDeck): string {
+/**
+ * Every slide stacked, each exactly one page. The only script is the auto-fit,
+ * allowed by `nonce` (fresh per document unless a test passes one).
+ */
+export function buildDeckPrintHtml(deck: ExportDeck, nonce: string = freshNonce()): string {
+  if (!/^[A-Za-z0-9_-]{16,}$/.test(nonce)) throw new Error('print nonce must be 16+ base64url characters');
   const slides = deck.slides
     .map((slide) => `<section class="slide" data-layout="${escAttr(slide.layout)}">${slideInner(slide.html)}</section>`)
     .join('');
   return (
     `<!doctype html><html><head>` +
-    `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">` +
+    `<meta http-equiv="Content-Security-Policy" content="${printCsp(nonce)}">` +
     `<meta charset="utf-8">` +
     `<title>${escText(deck.title)}</title>` +
     `<style>${BASE_CSS}</style>` +
     themeStyle(deck.themeCss) +
     `<style>${PRINT_CSS}</style>` +
-    `</head><body><div class="deck">${slides}</div></body></html>`
+    `</head><body><div class="deck">${slides}</div>` +
+    `<script nonce="${escAttr(nonce)}">${DECK_FIT_SCRIPT}${PRINT_FIT_SCRIPT}</script>` +
+    `</body></html>`
   );
 }

@@ -49,7 +49,8 @@ function structure(p: Palette): string {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  /* safe: content that does not fit runs off the bottom, never the top. */
+  justify-content: safe center;
   gap: 36px;
   background: var(--bg);
   color: var(--ink);
@@ -61,6 +62,8 @@ function structure(p: Palette): string {
 .slide *, .slide *::before, .slide *::after { box-sizing: border-box; }
 .slide :where(h1, h2, h3, p, ul, ol, figure, blockquote) { margin: 0; padding: 0; }
 .slide svg, .slide img { display: block; max-width: 100%; max-height: 100%; }
+/* A drawing at its own aspect ratio, inside a box the theme owns. */
+.slide > svg, .slide > figure > svg { width: 100%; height: auto; max-height: 600px; flex: 0 0 auto; }
 
 /* Components */
 .slide .kicker {
@@ -121,6 +124,8 @@ function structure(p: Palette): string {
 }
 .slide .stat {
   display: grid;
+  /* The value cannot widen its column, so a value too wide shows as overflow. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-content: start;
   min-width: 0;
@@ -134,7 +139,7 @@ function structure(p: Palette): string {
   letter-spacing: -0.03em;
   color: var(--accent);
 }
-.slide .stat span {
+.slide .stat > span {
   display: block;
   font-size: 36px;
   line-height: 1.3;
@@ -179,7 +184,7 @@ function structure(p: Palette): string {
 }
 
 /* Layouts */
-.slide[data-layout="title"] { justify-content: flex-end; padding-bottom: 160px; gap: 40px; }
+.slide[data-layout="title"] { justify-content: safe flex-end; padding-bottom: 160px; gap: 40px; }
 .slide[data-layout="title"] .headline { font-size: 132px; max-width: 1500px; }
 .slide[data-layout="title"] .sub { max-width: 1200px; }
 .slide[data-layout="title"]::before {
@@ -193,13 +198,13 @@ function structure(p: Palette): string {
   background: var(--accent);
 }
 
-.slide[data-layout="statement"] { justify-content: center; }
+.slide[data-layout="statement"] { justify-content: safe center; }
 .slide[data-layout="statement"] .headline { font-size: 120px; max-width: 1600px; }
 
 .slide[data-layout="bullets"] { justify-content: flex-start; padding-top: 140px; gap: 32px; }
 .slide[data-layout="bullets"] .headline { font-size: 80px; margin-bottom: 24px; }
 
-.slide[data-layout="stat-row"] { justify-content: center; gap: 48px; }
+.slide[data-layout="stat-row"] { justify-content: safe center; gap: 48px; }
 .slide[data-layout="stat-row"] .headline { font-size: 80px; }
 .slide[data-layout="stat-row"] .stats,
 .slide[data-layout="stat-row"] .row {
@@ -207,22 +212,22 @@ function structure(p: Palette): string {
   gap: 96px;
   align-items: flex-start;
 }
-.slide[data-layout="stat-row"]:not(:has(.stats, .row)) { flex-flow: row wrap; align-content: center; column-gap: 112px; row-gap: 56px; }
+.slide[data-layout="stat-row"]:not(:has(.stats, .row)) { flex-flow: row wrap; align-content: safe center; column-gap: 112px; row-gap: 56px; }
 .slide[data-layout="stat-row"]:not(:has(.stats, .row)) > :not(.stat) { flex: 0 0 100%; }
 .slide[data-layout="stat-row"] .stat { flex: 1 1 0; }
 
 .slide[data-layout="two-col"] {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-auto-rows: min-content;
-  align-content: center;
+  align-content: safe center;
   column-gap: 64px;
   row-gap: 40px;
 }
 .slide[data-layout="two-col"] > :not(.col) { grid-column: 1 / -1; }
 .slide[data-layout="two-col"] .headline { font-size: 80px; }
 
-.slide[data-layout="quote"] { justify-content: center; gap: 48px; padding-left: 200px; }
+.slide[data-layout="quote"] { justify-content: safe center; gap: 48px; padding-left: 200px; }
 .slide[data-layout="quote"]::before {
   content: "\\201C";
   position: absolute;
@@ -235,7 +240,7 @@ function structure(p: Palette): string {
   opacity: 0.9;
 }
 
-.slide[data-layout="section"] { justify-content: flex-end; padding-bottom: 180px; gap: 28px; }
+.slide[data-layout="section"] { justify-content: safe flex-end; padding-bottom: 180px; gap: 28px; }
 .slide[data-layout="section"] .headline { font-size: 136px; max-width: 1500px; }
 .slide[data-layout="section"] .kicker { font-size: 40px; }
 .slide[data-layout="section"]::after {
@@ -248,30 +253,40 @@ function structure(p: Palette): string {
   background: var(--accent);
 }
 
-.slide[data-layout="image-left"] {
-  display: grid;
-  grid-template-columns: 820px 1fr;
-  grid-auto-rows: min-content;
-  align-content: center;
-  column-gap: 96px;
-  row-gap: 28px;
-}
+/* The text column flows normally, padded clear of the visual column; the
+   visual sits in that column at its own aspect ratio, so it can neither
+   stretch a grid (implicit rows and their gaps add phantom height) nor push
+   the headline off the slide. The theme owns the visual's box. */
+.slide[data-layout="image-left"] { justify-content: safe center; gap: 28px; padding-left: 1036px; }
 .slide[data-layout="image-left"] > svg,
 .slide[data-layout="image-left"] > img,
 .slide[data-layout="image-left"] > figure,
 .slide[data-layout="image-left"] > .image {
-  grid-column: 1;
-  grid-row: 1 / span 12;
-  align-self: stretch;
-  justify-self: stretch;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  position: absolute;
+  left: 120px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 820px !important;
+  height: auto !important;
+  max-height: 840px !important;
+  object-fit: contain;
   border-radius: 24px;
   background: var(--surface);
 }
-.slide[data-layout="image-left"] > :not(svg):not(img):not(figure):not(.image) { grid-column: 2; }
+.slide[data-layout="image-left"] > figure > svg { max-height: 840px; }
 .slide[data-layout="image-left"] .headline { font-size: 80px; }
+
+/* One chart or diagram, full width, under a headline. */
+.slide[data-layout="chart"] { justify-content: safe center; gap: 40px; }
+.slide[data-layout="chart"] .headline { font-size: 80px; }
+.slide[data-layout="chart"] > svg,
+.slide[data-layout="chart"] > figure {
+  width: 1680px !important;
+  height: auto !important;
+  max-height: 640px !important;
+  flex: 0 0 auto;
+}
+.slide[data-layout="chart"] > figure > svg { max-height: 640px; }
 `;
 }
 
@@ -369,6 +384,7 @@ Layouts (set with the layout argument; the section's data-layout):
 - quote: .quote, then .cite for the source.
 - section: .kicker (for example "Part 2") and a .headline.
 - image-left: an inline <svg> or <img src="data:..."> first, then .headline and .body or ul.bullets.
+- chart: .headline, one <svg> chart or diagram drawn full width (1680 x up to 640), optional .footnote.
 
 Components:
 - .kicker: small uppercase label above a headline.

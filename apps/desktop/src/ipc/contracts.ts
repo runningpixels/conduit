@@ -92,6 +92,16 @@ export interface DiagnosticsExport {
   redactedFields: string[];
 }
 
+/**
+ * How an attachment reaches the model (`attachment_delivery`): an image as
+ * today; a PDF sent as a document to a model that reads PDFs; a document whose
+ * text is extracted locally; or not sent, with `reason` naming the file kind.
+ */
+export interface AttachmentDelivery {
+  kind: 'image' | 'pdf_native' | 'text' | 'unsupported';
+  reason?: string;
+}
+
 export type ConversationExportFormat = 'markdown' | 'json';
 export interface ConversationExportResult {
   exportedTo: string;

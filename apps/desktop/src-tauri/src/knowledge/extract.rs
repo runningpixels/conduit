@@ -1,6 +1,8 @@
 //! Document text extraction for the local knowledge base (t1-6 M6).
 //!
-//! [`extract_document`] turns a file on disk into indexable plain text.
+//! [`extract_document`] turns a file on disk into indexable plain text;
+//! [`extract_document_bytes`] does the same for a document already in memory
+//! (a chat attachment, or a workspace file `workspace_read` sniffed).
 //! Dispatch is by lowercased extension: `txt|md|markdown|mdown|text` (read as
 //! UTF-8, lossy), `csv`, `docx`, `pdf`. Anything else is
 //! [`ExtractFailure::UnsupportedFormat`].
@@ -129,8 +131,45 @@ pub async fn extract_document(path: &Path) -> Result<Extracted, ExtractFailure> 
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_ascii_lowercase())
         .unwrap_or_default();
+    let format = format_for_extension(&extension)?;
 
-    let format = match extension.as_str() {
+    // Mitigation 2: the actual parse runs off the async runtime, bounded by
+    // a timeout, so a pathological file can only ever stall this one call.
+    let path_owned: PathBuf = path.to_path_buf();
+    run_parse(move || {
+        let bytes =
+            std::fs::read(&path_owned).map_err(|e| ExtractFailure::Unreadable(e.to_string()))?;
+        parse_sync(&bytes, format)
+    })
+    .await
+}
+
+/// Extracts plain text from a document already in memory: a chat attachment
+/// (decrypted out of the blob store, so there is no plaintext file on disk to
+/// hand [`extract_document`]) or a workspace file whose bytes were sniffed.
+///
+/// `extension` picks the parser exactly as a file name's extension would
+/// (`pdf`, `docx`, `csv`, `txt`, `md`, …); callers that sniffed the bytes
+/// pass the extension of the format they found, not the one the file
+/// claimed. Every mitigation [`extract_document`] applies applies here too:
+/// the size cap (on the buffer instead of a stat), the off-runtime parse with
+/// a timeout, the caught panic, and `NoTextLayer` for an empty result.
+pub async fn extract_document_bytes(
+    bytes: Vec<u8>,
+    extension: &str,
+) -> Result<Extracted, ExtractFailure> {
+    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
+        return Err(ExtractFailure::TooLarge {
+            bytes: bytes.len() as u64,
+            cap: MAX_DOCUMENT_BYTES,
+        });
+    }
+    let format = format_for_extension(&extension.to_ascii_lowercase())?;
+    run_parse(move || parse_sync(&bytes, format)).await
+}
+
+fn format_for_extension(extension: &str) -> Result<Format, ExtractFailure> {
+    Ok(match extension {
         "txt" | "text" => Format::PlainText { mime: "text/plain" },
         "md" | "markdown" | "mdown" => Format::PlainText {
             mime: "text/markdown",
@@ -139,14 +178,18 @@ pub async fn extract_document(path: &Path) -> Result<Extracted, ExtractFailure> 
         "docx" => Format::Docx,
         "pdf" => Format::Pdf,
         other => return Err(ExtractFailure::UnsupportedFormat(other.to_string())),
-    };
+    })
+}
 
-    // Mitigation 2: the actual parse runs off the async runtime, bounded by
-    // a timeout, so a pathological file can only ever stall this one call.
-    let path_owned: PathBuf = path.to_path_buf();
+/// Mitigations 2–4 around one blocking parse: off the runtime, under
+/// [`EXTRACT_TIMEOUT`], panics caught, and an empty result is `NoTextLayer`.
+async fn run_parse<F>(parse: F) -> Result<Extracted, ExtractFailure>
+where
+    F: FnOnce() -> Result<Extracted, ExtractFailure> + Send + 'static,
+{
     let join_result = tokio::time::timeout(
         EXTRACT_TIMEOUT,
-        tokio::task::spawn_blocking(move || parse_blocking(&path_owned, format)),
+        tokio::task::spawn_blocking(move || parse_blocking(parse)),
     )
     .await
     .map_err(|_elapsed| ExtractFailure::TimedOut)?;
@@ -170,8 +213,11 @@ pub async fn extract_document(path: &Path) -> Result<Extracted, ExtractFailure> 
 /// Runs the format-specific parser under `catch_unwind` (mitigation 3).
 /// Everything below this point is synchronous, blocking work — must only be
 /// called from inside `spawn_blocking`.
-fn parse_blocking(path: &Path, format: Format) -> Result<Extracted, ExtractFailure> {
-    match std::panic::catch_unwind(AssertUnwindSafe(|| parse_sync(path, format))) {
+fn parse_blocking<F>(parse: F) -> Result<Extracted, ExtractFailure>
+where
+    F: FnOnce() -> Result<Extracted, ExtractFailure>,
+{
+    match std::panic::catch_unwind(AssertUnwindSafe(parse)) {
         Ok(result) => result,
         Err(panic) => Err(ExtractFailure::Unreadable(format!(
             "extraction panicked: {}",
@@ -190,18 +236,20 @@ fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
-fn parse_sync(path: &Path, format: Format) -> Result<Extracted, ExtractFailure> {
+/// Every parser works on the whole document in memory: the size cap has
+/// already bounded it, and one code path serves both files on disk and
+/// attachments decrypted out of the blob store.
+fn parse_sync(bytes: &[u8], format: Format) -> Result<Extracted, ExtractFailure> {
     match format {
-        Format::PlainText { mime } => extract_plain_text(path, mime),
-        Format::Csv => extract_csv(path),
-        Format::Docx => extract_docx(path),
-        Format::Pdf => extract_pdf(path),
+        Format::PlainText { mime } => extract_plain_text(bytes, mime),
+        Format::Csv => extract_csv(bytes),
+        Format::Docx => extract_docx(bytes),
+        Format::Pdf => extract_pdf(bytes),
     }
 }
 
-fn extract_plain_text(path: &Path, mime: &str) -> Result<Extracted, ExtractFailure> {
-    let bytes = std::fs::read(path).map_err(|e| ExtractFailure::Unreadable(e.to_string()))?;
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+fn extract_plain_text(bytes: &[u8], mime: &str) -> Result<Extracted, ExtractFailure> {
+    let text = String::from_utf8_lossy(bytes).into_owned();
     Ok(Extracted {
         text,
         mime_type: Some(mime.to_string()),
@@ -214,12 +262,11 @@ fn extract_plain_text(path: &Path, mime: &str) -> Result<Extracted, ExtractFailu
 /// does not) stays a single coherent retrieval unit. The header row is kept
 /// (`has_headers(false)`, so it comes through `records()` like any other
 /// row) — it's what makes a bare cell value meaningful.
-fn extract_csv(path: &Path) -> Result<Extracted, ExtractFailure> {
-    let file = std::fs::File::open(path).map_err(|e| ExtractFailure::Unreadable(e.to_string()))?;
+fn extract_csv(bytes: &[u8]) -> Result<Extracted, ExtractFailure> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
-        .from_reader(file);
+        .from_reader(bytes);
 
     let mut lines: Vec<String> = Vec::new();
     for record in reader.records() {
@@ -240,9 +287,8 @@ fn extract_csv(path: &Path) -> Result<Extracted, ExtractFailure> {
 /// fail to match a search for the literal `&` the user actually wrote).
 /// `<w:p>` (paragraph) boundaries become newlines so paragraphs don't run
 /// together; only text inside `<w:t>` is collected.
-fn extract_docx(path: &Path) -> Result<Extracted, ExtractFailure> {
-    let file = std::fs::File::open(path).map_err(|e| ExtractFailure::Unreadable(e.to_string()))?;
-    let mut archive = zip::ZipArchive::new(file)
+fn extract_docx(bytes: &[u8]) -> Result<Extracted, ExtractFailure> {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ExtractFailure::Unreadable(format!("not a valid docx/zip archive: {e}")))?;
     let mut entry = archive.by_name("word/document.xml").map_err(|_| {
         ExtractFailure::Unreadable("docx archive has no word/document.xml".to_string())
@@ -343,8 +389,8 @@ fn extract_text_from_docx_xml(xml: &str) -> Result<String, ExtractFailure> {
 /// (it has no layout/table model — it emits glyphs roughly in the order the
 /// PDF's content stream draws them). This is a known, accepted limitation
 /// recorded in the t1-6 plan, not something this function works around.
-fn extract_pdf(path: &Path) -> Result<Extracted, ExtractFailure> {
-    let text = pdf_extract::extract_text(path)
+fn extract_pdf(bytes: &[u8]) -> Result<Extracted, ExtractFailure> {
+    let text = pdf_extract::extract_text_from_mem(bytes)
         .map_err(|e| ExtractFailure::Unreadable(format!("pdf: {e}")))?;
     Ok(Extracted {
         text,

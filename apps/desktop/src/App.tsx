@@ -2776,14 +2776,16 @@ export default function App() {
     [openDocuments],
   );
 
-  const dropHovering = useKnowledgeDrop(
+  const { hovering: dropHovering, attachHovering: attachDropHovering } = useKnowledgeDrop(
     (paths) => {
       setDroppedPaths(paths);
       setDestination('documents');
     },
-    // t1-8 M1 (D13): a native drop that landed on the composer attaches to
-    // the message instead of going to Documents.
+    // t1-8 M1 (D13): a native drop that attaches to the message being written
+    // instead of going to Documents: one on the composer, or -- while Chats
+    // shows a chat -- one anywhere over the chat column (the thread too).
     (paths) => chatViewRef.current?.handleComposerDrop(paths),
+    destination === 'chats' && activeConversationId != null,
   );
   const rememberSettingsSection = useCallback((section: SettingsSection) => {
     lastSettingsSectionRef.current = section;
@@ -3370,6 +3372,7 @@ export default function App() {
             onSelectModel={handleSelectModel}
             onStatus={setStatusMessage}
             conversationId={activeConversationId}
+            attachDropActive={attachDropHovering}
             artifacts={artifacts}
             activeArtifact={activeArtifact}
             fileStateMap={fileStateMap}

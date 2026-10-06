@@ -656,6 +656,38 @@ pub async fn model_accepts_image_input(
     Ok(provider_core::model_accepts_images(&provider_id, &model_id))
 }
 
+/// How one stored attachment reaches this model: as an image, as a PDF the
+/// model reads itself, as extracted text, or not at all (with a short English
+/// `reason` such as "xlsx files" that the renderer builds its translated
+/// sentence around). Decided from the stored bytes by the same rule
+/// `vision::hydrate_request_for_vision` applies on send, so the composer's
+/// chip cannot promise something the send path does not do.
+#[tauri::command]
+pub async fn attachment_delivery(
+    state: State<'_, AppState>,
+    provider_id: String,
+    model_id: String,
+    attachment_id: String,
+) -> Result<crate::attachment_documents::AttachmentDelivery, String> {
+    let att = crate::db::repository::attachments::get(&state.db, &attachment_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Attachment not found".to_string())?;
+    let bytes = crate::db::repository::attachments::read_bytes(
+        &state.paths.attachments,
+        &state.encryption,
+        &att.path,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(crate::attachment_documents::decide_delivery(
+        &bytes,
+        att.origin.as_deref(),
+        Some(&att.mime_type),
+        provider_core::model_accepts_images(&provider_id, &model_id),
+        state.model_accepts_pdf(&provider_id, &model_id),
+    ))
+}
+
 /// Context windows (tokens) for several models of one provider, in the order
 /// asked, from the bundled models.dev snapshot; `None` where it does not know.
 /// The renderer falls back to its own family table for those.

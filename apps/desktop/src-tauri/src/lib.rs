@@ -12,6 +12,7 @@
 pub mod agent_tools;
 pub mod artifact_frames;
 pub mod artifact_network;
+pub mod attachment_documents;
 pub mod brand;
 pub mod branding;
 pub mod commands;

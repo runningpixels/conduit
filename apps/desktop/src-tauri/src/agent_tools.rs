@@ -563,7 +563,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: WORKSPACE_READ_TOOL.to_string(),
             name: WORKSPACE_READ_TOOL.to_string(),
-            description: "Read a text file under the workspace folder. Path must be relative to the workspace root. Optional offset/limit in bytes.".to_string(),
+            description: "Read a text file under the workspace folder. PDF and DOCX files are read as text (extracted, so offset/limit count characters for them). Path must be relative to the workspace root. Optional offset/limit in bytes for text files.".to_string(),
             input_schema: json_schema(&[
                 ("path", "string", true),
                 ("offset", "integer", false),
@@ -1088,7 +1088,9 @@ pub async fn execute_builtin_tool(
             let ws = ctx
                 .workspace
                 .ok_or_else(|| "Workspace tools are disabled or no folder is set".to_string())?;
-            Ok(crate::workspace_tools::execute_workspace_read(ws, input).unwrap_or_else(|e| e))
+            Ok(crate::workspace_tools::execute_workspace_read(ws, input)
+                .await
+                .unwrap_or_else(|e| e))
         }
         WORKSPACE_WRITE_TOOL => {
             let input: crate::workspace_tools::tools::WriteInput =

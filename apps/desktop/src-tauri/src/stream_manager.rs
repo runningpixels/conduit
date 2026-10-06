@@ -1078,6 +1078,7 @@ impl StreamManager {
         let ctx = Self::build_adapter_context(state, provider_id)?;
         let models = adapter.list_models(&ctx).await.map_err(|e| e.message)?;
         state.record_listed_prices(provider_id, &models);
+        state.record_listed_file_input(provider_id, &models);
         Ok(models)
     }
 
@@ -1355,13 +1356,16 @@ impl StreamManager {
         let release_active = bind.release_active;
         let pool = state.db.clone();
 
-        // t0-1: hydrate a clone with image bytes. The long-lived agent-loop
-        // request keeps AttachmentReference parts only.
+        // t0-1: hydrate a clone with image bytes, PDFs for a model that reads
+        // them, and the extracted text of every other document. The long-lived
+        // agent-loop request keeps AttachmentReference parts only.
+        let pdf_native = state.model_accepts_pdf(&provider_id, &request.model_id);
         let (hydrated_request, vision_report) = crate::vision::hydrate_request_for_vision(
             &pool,
             &state.paths.attachments,
             &state.encryption,
             &provider_id,
+            pdf_native,
             &request,
         )
         .await;

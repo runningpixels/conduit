@@ -146,6 +146,7 @@ async fn a_listed_price_beats_the_snapshot_but_not_an_override() {
             id: model.into(),
             display_name: None,
             price: Some(price(0.2, 0.8)),
+            accepts_file_input: None,
         }],
     );
     let resolved = state.resolve_model_price("openrouter", model).unwrap();

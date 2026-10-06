@@ -32,6 +32,7 @@ pub async fn save_attachment(
             ATTACHMENT_INLINE_CAP_BYTES
         ));
     }
+    let mime_type = stored_mime(&bytes, origin.as_deref(), mime_type);
     attachments::save(
         &state.db,
         &state.paths.attachments,
@@ -43,6 +44,15 @@ pub async fn save_attachment(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+/// The MIME type stored for an attachment: the sniffed document type when
+/// the bytes are a document the send path reads (a browser reports `.csv` as
+/// an Excel type and `.md` as nothing), else what the caller determined.
+fn stored_mime(bytes: &[u8], origin: Option<&str>, claimed: String) -> String {
+    crate::attachment_documents::sniff_document(bytes, origin, Some(&claimed))
+        .map(|kind| kind.mime().to_string())
+        .unwrap_or(claimed)
 }
 
 /// Best-effort MIME from a file extension, for the (common) case where
@@ -143,6 +153,7 @@ pub async fn save_dropped_attachment(
     let origin = path_buf
         .file_name()
         .map(|name| name.to_string_lossy().into_owned());
+    let mime_type = stored_mime(&bytes, origin.as_deref(), mime_type);
 
     attachments::save(
         &state.db,

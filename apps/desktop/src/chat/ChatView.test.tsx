@@ -115,6 +115,7 @@ vi.mock('../ipc/client', () => ({
     unavailableCollections: [],
   }),
   saveDroppedAttachment: vi.fn(),
+  attachmentDelivery: vi.fn().mockResolvedValue({ kind: 'text' }),
   prepareMessageEdit: vi.fn(),
   removeLastTurn: vi.fn().mockResolvedValue(1),
   startResearch: vi.fn(),
@@ -696,6 +697,32 @@ describe('ChatView M1: native window drop routes through the composer (D13)', ()
 
     expect(await screen.findByText('dropped.txt')).toBeInTheDocument();
     expect(saveDroppedAttachment).toHaveBeenCalledWith('conv-1', 'C:\\notes\\dropped.txt');
+  });
+
+  /** A brand-new chat: a conversation exists (App creates one eagerly) but has
+   *  no turns. A dropped document attaches there and says how it will be sent. */
+  it('attaches a dropped document in an empty chat and shows how it will be sent', async () => {
+    const { saveDroppedAttachment, attachmentDelivery } = await import('../ipc/client');
+    vi.mocked(saveDroppedAttachment).mockResolvedValue({
+      id: 'att-pdf-1',
+      conversationId: 'conv-1',
+      path: 'ab/pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 3,
+      retentionState: 'active',
+      createdAt: '2026-01-01T00:00:00Z',
+      origin: 'report.pdf',
+    });
+    vi.mocked(attachmentDelivery).mockResolvedValue({ kind: 'pdf_native' });
+    const ref = createRef<ChatViewHandle>();
+    renderChatView({ ref });
+    await screen.findByLabelText('Message the active provider');
+    expect(ref.current?.isEmpty()).toBe(true);
+
+    act(() => ref.current?.handleComposerDrop(['C:\\docs\\report.pdf']));
+
+    expect(await screen.findByText('report.pdf')).toBeInTheDocument();
+    expect(await screen.findByText('Sent as PDF')).toBeInTheDocument();
   });
 });
 

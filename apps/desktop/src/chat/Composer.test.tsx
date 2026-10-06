@@ -114,6 +114,7 @@ vi.mock('../ipc/client', () => ({
     origin: 'notes.txt',
   }),
   deleteAttachment: vi.fn().mockResolvedValue(undefined),
+  attachmentDelivery: vi.fn().mockResolvedValue({ kind: 'text' }),
   saveDroppedAttachment: vi.fn().mockResolvedValue({
     id: 'att-dropped-1',
     conversationId: 'conv-1',
@@ -1003,5 +1004,108 @@ describe('Composer Research item', () => {
     openPlusMenu();
     expect(screen.getByRole('menuitemcheckbox', { name: /Research/ })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Turn off Research' })).toBeNull();
+  });
+});
+
+describe('Composer document attachments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function attach(name: string, type: string) {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], name, { type })] } });
+    await screen.findByText(name);
+  }
+
+  it('offers documents as well as images in the picker', () => {
+    renderComposer();
+    const accept = (document.querySelector('input[type="file"]') as HTMLInputElement).accept;
+    for (const wanted of ['image/png', '.pdf', '.docx', '.txt', '.md', '.csv']) {
+      expect(accept).toContain(wanted);
+    }
+  });
+
+  it('says a text document is sent as text, and forwards it with the turn', async () => {
+    const { attachmentDelivery } = await import('../ipc/client');
+    vi.mocked(attachmentDelivery).mockResolvedValueOnce({ kind: 'text' });
+    const { onSend } = renderComposer();
+    await attach('notes.txt', 'text/plain');
+
+    expect(await screen.findByText('Sent as text')).toBeInTheDocument();
+    expect(attachmentDelivery).toHaveBeenCalledWith('anthropic', 'claude-sonnet-4', 'att-1');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onSend).toHaveBeenCalledWith([{ id: 'att-1', mimeType: 'text/plain', fileName: 'notes.txt' }]);
+  });
+
+  it('says a PDF is sent as PDF when the model takes it natively', async () => {
+    const { attachmentDelivery } = await import('../ipc/client');
+    vi.mocked(attachmentDelivery).mockResolvedValueOnce({ kind: 'pdf_native' });
+    renderComposer();
+    await attach('report.pdf', 'application/pdf');
+    expect(await screen.findByText('Sent as PDF')).toBeInTheDocument();
+  });
+
+  it('says why an unsupported file is not sent and forwards nothing for it', async () => {
+    const { attachmentDelivery } = await import('../ipc/client');
+    vi.mocked(attachmentDelivery).mockResolvedValueOnce({ kind: 'unsupported', reason: 'xlsx files' });
+    const { onSend } = renderComposer({ prompt: 'hello' });
+    await attach('sheet.xlsx', 'application/octet-stream');
+
+    expect(await screen.findByText("Not sent: xlsx files aren't supported yet")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onSend).toHaveBeenCalledWith(undefined);
+  });
+
+  it('asks again when the active model changes', async () => {
+    const { attachmentDelivery } = await import('../ipc/client');
+    vi.mocked(attachmentDelivery)
+      .mockResolvedValueOnce({ kind: 'text' })
+      .mockResolvedValueOnce({ kind: 'pdf_native' });
+    const props = {
+      onSelectModel: vi.fn(),
+      conversationId: 'conv-1',
+      prompt: '',
+      onPromptChange: vi.fn(),
+      onSend: vi.fn(),
+      onStop: vi.fn(),
+      streaming: false,
+      webSearchOn: false,
+      onWebSearchToggle: vi.fn(),
+    };
+    const { rerender } = render(<Composer settings={baseSettings} {...props} />);
+    await attach('report.pdf', 'application/pdf');
+    expect(await screen.findByText('Sent as text')).toBeInTheDocument();
+
+    rerender(<Composer settings={{ ...baseSettings, activeModel: 'claude-opus-4' }} {...props} />);
+    expect(await screen.findByText('Sent as PDF')).toBeInTheDocument();
+    expect(attachmentDelivery).toHaveBeenLastCalledWith('anthropic', 'claude-opus-4', 'att-1');
+  });
+
+  it('still lets an image through when the delivery query fails', async () => {
+    const { attachmentDelivery, saveAttachment } = await import('../ipc/client');
+    vi.mocked(attachmentDelivery).mockRejectedValueOnce(new Error('no command'));
+    vi.mocked(saveAttachment).mockResolvedValueOnce({
+      id: 'att-img',
+      conversationId: 'conv-1',
+      path: 'ab/img',
+      mimeType: 'image/png',
+      sizeBytes: 5,
+      retentionState: 'active',
+      createdAt: '2026-01-01T00:00:00Z',
+      origin: 'pic.png',
+    });
+    const { onSend } = renderComposer();
+    await attach('pic.png', 'image/png');
+    expect(await screen.findByText('Ready')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onSend).toHaveBeenCalledWith([{ id: 'att-img', mimeType: 'image/png', fileName: 'pic.png' }]);
+  });
+
+  it('lights up the composer while the shell says a hovering file will attach', () => {
+    renderComposer({ attachDropActive: true });
+    expect(document.querySelector('.composer')).toHaveClass('drop-active');
   });
 });

@@ -1148,13 +1148,14 @@ fn to_responses_input(messages: Vec<Value>) -> Vec<Value> {
             continue;
         }
 
-        // Multimodal chat-completions content arrays use `text` / `image_url`.
-        // Responses API wants `input_text` / `input_image` instead.
+        // Multimodal chat-completions content arrays use `text` / `image_url` /
+        // `file`. Responses API wants `input_text` / `input_image` /
+        // `input_file` instead, with the file's fields flattened onto the part.
         if let Some(parts) = message.get("content").and_then(|v| v.as_array()) {
             if parts.iter().any(|p| {
                 matches!(
                     p.get("type").and_then(|t| t.as_str()),
-                    Some("text" | "image_url")
+                    Some("text" | "image_url" | "file")
                 )
             }) {
                 let converted: Vec<Value> = parts
@@ -1174,6 +1175,19 @@ fn to_responses_input(messages: Vec<Value>) -> Vec<Value> {
                                 Some(json!({
                                     "type": "input_image",
                                     "image_url": url,
+                                }))
+                            }
+                            "file" => {
+                                let field = |name: &str| {
+                                    p.pointer(&format!("/file/{name}"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string()
+                                };
+                                Some(json!({
+                                    "type": "input_file",
+                                    "filename": field("filename"),
+                                    "file_data": field("file_data"),
                                 }))
                             }
                             _ => None,
@@ -1740,6 +1754,7 @@ impl ProviderAdapter for OpenAiAdapter {
                             price: item
                                 .get("pricing")
                                 .and_then(crate::pricing::parse_openrouter_pricing),
+                            accepts_file_input: crate::vision::listed_file_input(item),
                         })
                     })
                     .collect()
@@ -3451,6 +3466,29 @@ mod tests {
         assert_eq!(
             input[0]["content"][1]["image_url"],
             "data:image/png;base64,QUJD"
+        );
+    }
+
+    #[test]
+    fn to_responses_input_converts_file_parts_to_input_file() {
+        let input = to_responses_input(vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "summarise" },
+                { "type": "file", "file": {
+                    "filename": "report.pdf",
+                    "file_data": "data:application/pdf;base64,JVBERi0="
+                } }
+            ]
+        })]);
+        assert_eq!(input[0]["content"][0]["type"], "input_text");
+        assert_eq!(
+            input[0]["content"][1],
+            json!({
+                "type": "input_file",
+                "filename": "report.pdf",
+                "file_data": "data:application/pdf;base64,JVBERi0=",
+            })
         );
     }
 

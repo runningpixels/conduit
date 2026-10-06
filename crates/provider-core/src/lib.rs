@@ -28,7 +28,7 @@ pub use embeddings::{default_embedding_dimensions, default_embedding_model};
 pub use image_generation::{default_image_model, model_generates_images};
 pub use normalize::{validate, NormalizedRequest};
 pub use schema::*;
-pub use vision::model_accepts_images;
+pub use vision::{model_accepts_images, model_accepts_pdf};
 
 pub fn crate_name() -> &'static str {
     "provider-core"

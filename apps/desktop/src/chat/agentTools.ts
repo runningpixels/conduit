@@ -382,7 +382,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'workspace_read',
     name: 'workspace_read',
     description:
-      'Read a text file under the workspace folder. Path must be relative to the workspace root. Optional offset/limit in bytes.',
+      'Read a text file under the workspace folder. PDF and DOCX files are read as text (extracted, so offset/limit count characters for them). Path must be relative to the workspace root. Optional offset/limit in bytes for text files.',
     inputSchema: schema([
       { name: 'path', type: 'string', required: true },
       { name: 'offset', type: 'integer' },

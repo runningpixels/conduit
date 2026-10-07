@@ -107,14 +107,15 @@ for exact terms like error codes and names.
 For one file, attach it to the message instead: drop a PDF, Word, text or CSV
 file on the chat, or pick it with **+**. Every model reads its text; models that
 read PDFs themselves (Claude, OpenAI, Gemini) get the PDF, charts and scans
-included.
+included. The document's text, or the PDF, goes to the chat's provider with the
+message.
 
 ![A chat with the Ferry docs attached, explaining from the auth design notes why the client retries twice: a normal token expiry, then a refresh race](./docs/assets/screenshot-documents.png)
 
-PDFs are read on your machine. Indexing sends a document's text to the provider
-that embeds the collection, so you are asked before the first document goes to
-each provider, and you can withdraw that consent at any time. With local-only
-mode on, a collection needs a local provider such as Ollama.
+A collection's PDFs are read on your machine. Indexing sends a document's text
+to the provider that embeds the collection, so you are asked before the first
+document goes to each provider, and you can withdraw that consent at any time.
+With local-only mode on, a collection needs a local provider such as Ollama.
 
 ### Research
 
@@ -206,9 +207,9 @@ narrow it, and sources show with the answer and in the inspector.
 
 ![A web search answer about Rust 1.90 with a search row (6 sources) and inline citations, tied back to Ferry through memory](./docs/assets/screenshot-search.png)
 
-The **+** in the composer adds images, web search, a workspace folder the
-assistant can read and edit, document collections, skills and connector
-prompts. While a turn runs you can queue a follow-up or interrupt and steer it.
+The **+** in the composer attaches files (images and documents) and adds web
+search, a workspace folder the assistant can read and edit, document
+collections, skills and connector prompts. While a turn runs you can queue a follow-up or interrupt and steer it.
 Tool calls, searches and sites appear in the inspector's **Activity** tab with
 timings, and what an answer drew on in **Sources**.
 
@@ -272,6 +273,10 @@ dates, numbers and file sizes follow the language you pick.
 - **Conversations** can be pinned, archived, filed in folders and exported; the
   chat list shows which chat is running or needs you.
 - **Vision attachments, Mermaid diagrams and KaTeX maths** in replies.
+- **Usage & Cost** counts every model call, priced from a bundled catalog,
+  OpenRouter's listed prices and your own overrides, with an optional daily
+  spend alert. A per-chat **reasoning effort** setting, and a model menu you
+  can search.
 - **Settings search** and a keyboard shortcuts sheet (`Ctrl+/`, `⌘/` on macOS).
 - **White-label branding**: a name, mark and colours from a `brand.md`.
 
@@ -321,17 +326,18 @@ left is checking it on real installs before calling it final.
 | Context gauge with automatic compaction | Working |
 | Skills (`SKILL.md`) and user-approved encrypted memory | Working |
 | Conversation pin, archive and folders | Working |
-| Vision attachments, Mermaid/KaTeX, conversation export | Working |
+| Image and document attachments (PDF, Word, text, Markdown, CSV), Mermaid/KaTeX, conversation export | Working |
+| Usage & Cost — every model call, catalog and listed prices with overrides, daily spend alert | Working |
 | Web search (hosted OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Working |
 | Knowledge base — document collections with hybrid retrieval and citations | Working |
-| Research — approved brief, reads web pages and PDFs, quote-checked claims, cited report | Working |
+| Research — approved brief, reads web pages and PDFs, quote-checked claims, rated sources, reviewed and cited report | Working |
 | Writing — approved outline, section-by-section drafts, sourced facts, your text kept, history, Markdown/HTML export | Working |
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
 | One design in dark and light, with a main-colour setting | Working |
 | Workflows — ready-made and custom, run now or on a schedule, with approval | Working |
 | Personal apps — save a page, eight starter apps, per-app storage, settings, model access and usage limits | Working |
-| Slides — storyline, one live deck, Script, history, themes, present with a presenter window | Working |
+| Slides — storyline, one live deck built from layout parts, charts drawn from data, a layout check after each change, Script, history, themes, presenter window | Working |
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |

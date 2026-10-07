@@ -78,6 +78,10 @@ studio with the slide large in the middle and the chat beside it.
 - **Targeted changes.** Ask for a change and the assistant edits one slide, or
   swaps a word across the deck. **History** keeps a version for every change,
   labelled by your request.
+- **Built to fit.** The assistant fills in each layout's parts and the app lays
+  them out, drawing charts from the numbers, so text fits the slide and axes and
+  labels are right. After each change it checks the slides it touched and fixes
+  what doesn't fit.
 - **Script** shows every word of the deck as one document. Type there, or
   double-click text on a slide; text you write is kept when the assistant
   rewrites a slide, unless you ask it to change that text.
@@ -123,7 +127,9 @@ facts, each with the exact words that support it. A fact counts only if those
 words are really on the page; the app checks that, not the model. It searches
 again for what is still unanswered, then writes a report into the chat's
 documents: a summary, findings per sub-question, open questions, and numbered
-sources, with every finding cited. Page text only ever reaches a model call that
+sources, with every finding cited. Each source is rated for credibility, and a
+weak one is flagged rather than presented as established fact. Page text only
+ever reaches a model call that
 has no tools, so a page that tries to give instructions can't make it search,
 fetch or save anything.
 
@@ -296,7 +302,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.8 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.9 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -329,7 +335,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.8 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.9 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

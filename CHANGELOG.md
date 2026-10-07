@@ -7,6 +7,65 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.9] - 2026-10-07
+
+### Added
+
+- **Slides are built from their parts.** The assistant no longer writes a
+  slide's HTML: it picks a layout and fills in its parts (headline, points,
+  numbers with their labels, columns, a quote) and the app lays the slide out
+  in the theme. Text that is too long for its place is sent back to the
+  assistant with what to shorten, before the slide is made. A free-form layout
+  remains for slides no layout fits.
+- **Charts drawn from the numbers.** Bar, line and funnel charts are drawn by
+  the app from the data the assistant gives: axes that start at zero, bars in
+  proportion, labels that never collide, sizes readable from across a room.
+  Diagrams the assistant draws itself are checked for tiny labels.
+- **A layout check after each change.** After the assistant changes slides,
+  the app looks at how they render. If text runs off, overlaps, crowds the
+  footnote, or a diagram is unreadable, the assistant gets one round to fix
+  exactly that; anything left is shown to you as a note. Text you wrote
+  yourself is never changed by it.
+- **Research rates its sources.** Each page is rated for credibility; a weak
+  source is marked in the report's sources and its claims are attributed
+  ("an unreviewed preprint claims…") or left out, never presented as
+  established fact. Official, public-body and university sites are never
+  rated low.
+- **Research checks its own report.** A review pass checks every sentence
+  against the facts it cites and the rest of the report, and corrects or
+  removes what they don't support.
+
+### Changed
+
+- **Research knows today's date**, so "current" means now, and earlier events
+  read as past. Figures that differ by year, edition, definition or units are
+  explained rather than reported as disagreements; findings are shorter and
+  say each point once; the brief's sub-questions don't overlap; an unanswered
+  sub-question names the sites whose pages could not be read.
+- **Usage & Cost counts every model call.** Research runs, workflow steps and
+  chat turns without tools were missing from Usage & Cost and from the daily
+  spend alert; they now count.
+- The **+** menu says **Attach files…**, since documents attach too.
+
+### Fixed
+
+- **Tool calls run in the order the model wrote them.** With OpenAI-compatible
+  providers (OpenAI, OpenRouter, DeepSeek, Groq and others), several tool
+  calls in one reply ran in a random order: slides landed out of order and the
+  assistant spent many extra steps moving them back.
+- **Sent documents show as a file chip**, with their name and type, instead of
+  a broken image in your message.
+- A slide no longer shows the word "null" where the assistant meant to remove
+  a label.
+- A slide rejected for being too long keeps its place in the deck when the
+  assistant retries it.
+
+### Security
+
+- Patched `lodash-es` (bundled with the diagram renderer) and `undici` (test
+  tooling only) for the advisories Dependabot reported, including three rated
+  high.
+
 ## [1.0.0-rc.8] - 2026-10-06
 
 ### Added
@@ -903,7 +962,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.8...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.9...HEAD
+[1.0.0-rc.9]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.8...v1.0.0-rc.9
 [1.0.0-rc.8]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.7...v1.0.0-rc.8
 [1.0.0-rc.7]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.6...v1.0.0-rc.7
 [1.0.0-rc.6]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.5...v1.0.0-rc.6

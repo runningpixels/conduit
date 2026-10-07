@@ -84,6 +84,7 @@ describe('slideProblems', () => {
         { kind: 'svg-small-text', px: 11, viewBox: '0 0 1640 600', width: 820, height: 600, scale: 0.5 },
         { kind: 'svg-empty', pct: 12, width: 1680, height: 640 },
         { kind: 'svg-clipped', by: 30 },
+        { kind: 'footnote-crowded', px: 6 },
       ],
     };
     expect(slideProblems(report, t)).toEqual([
@@ -93,6 +94,7 @@ describe('slideProblems', () => {
       "the diagram's smallest labels render at 11px, too small to read from across a room: its viewBox (0 0 1640 600) is drawn into a 820x600px box, so every font-size is scaled by 0.5. Redraw it with a viewBox about 820 wide and no font-size below 24.",
       "the diagram fills only 12% of its 1680x640px box. Use a viewBox that matches the box's shape.",
       'the diagram is cut off at the slide edge.',
+      "the text above the footnote runs into it (6px apart). Cut a line or move the footnote's note into the body.",
     ]);
   });
 

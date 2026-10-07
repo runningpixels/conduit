@@ -16,7 +16,9 @@
 ///   smallest label in a drawing renders below 18px;
 /// - `{kind:'svg-empty', pct, width, height}`: a large drawing box is mostly
 ///   empty (its viewBox does not match the box's shape);
-/// - `{kind:'svg-clipped', by}`: a drawing runs past the slide edge.
+/// - `{kind:'svg-clipped', by}`: a drawing runs past the slide edge;
+/// - `{kind:'footnote-crowded', px}`: the lowest body text ends less than 16px
+///   above the footnote without overlapping it (px = the gap).
 
 export const DECK_LAYOUT_SCRIPT = `
 var conduitLayout = (function () {
@@ -29,6 +31,8 @@ var conduitLayout = (function () {
   var SVG_MIN_TEXT = 18;
   var SVG_MIN_FILL = 20;
   var SVG_BIG_BOX = 0.15 * W * H;
+  // Body text closer than this to the footnote reads as touching it.
+  var FOOTNOTE_GAP = 16;
 
   // --- Decisions (pure) ---
 
@@ -70,6 +74,17 @@ var conduitLayout = (function () {
   // Only a drawing given a large box is worth a line when mostly empty.
   function svgMostlyEmpty(drawingPct, box) {
     return box.w * box.h > SVG_BIG_BOX && drawingPct < SVG_MIN_FILL;
+  }
+
+  // The gap in px between the bottom of the lowest body text and the top of
+  // the footnote when it is under FOOTNOTE_GAP; null when there is room, when
+  // the two overlap (that is an 'overlap' issue) or when they do not share
+  // any horizontal extent.
+  function footnoteGap(text, note) {
+    if (overlaps(text, note)) return null;
+    if (Math.min(text.x + text.w, note.x + note.w) - Math.max(text.x, note.x) <= 0) return null;
+    var gap = note.y - (text.y + text.h);
+    return gap < FOOTNOTE_GAP ? Math.max(0, Math.round(gap)) : null;
   }
 
   function dense(rounds) { return rounds >= DENSE_ROUNDS; }
@@ -119,6 +134,19 @@ var conduitLayout = (function () {
         issues.push({ kind: 'overlap', slots: [a.name, b.name] });
       }
     }
+    var note = slide.querySelector('.footnote');
+    if (note) {
+      var nb = box(note.getBoundingClientRect());
+      var lowest = null;
+      for (i = 0; i < texts.length; i++) {
+        var tx = texts[i];
+        if (tx.inSvg || note.contains(tx.el) || tx.el.contains(note)) continue;
+        if (tx.box.y > nb.y + nb.h) continue;
+        if (!lowest || tx.box.y + tx.box.h > lowest.y + lowest.h) lowest = tx.box;
+      }
+      var gapPx = lowest ? footnoteGap(lowest, nb) : null;
+      if (gapPx !== null) issues.push({ kind: 'footnote-crowded', px: gapPx });
+    }
     var svgs = slide.querySelectorAll('svg');
     for (i = 0; i < svgs.length; i++) {
       var s = svgs[i];
@@ -157,6 +185,7 @@ var conduitLayout = (function () {
     svgScale: svgScale,
     svgTextTooSmall: svgTextTooSmall,
     svgMostlyEmpty: svgMostlyEmpty,
+    footnoteGap: footnoteGap,
     dense: dense,
     check: check
   };

@@ -18,7 +18,8 @@ export type LayoutIssue =
   | { kind: 'clipped'; slot: string; by: number }
   | { kind: 'svg-small-text'; px: number; viewBox: string; width: number; height: number; scale: number }
   | { kind: 'svg-empty'; pct: number; width: number; height: number }
-  | { kind: 'svg-clipped'; by: number };
+  | { kind: 'svg-clipped'; by: number }
+  | { kind: 'footnote-crowded'; px: number };
 
 /** One slide's measurements, as the stage frame reports them. */
 export interface SlideLayout {
@@ -72,6 +73,8 @@ function parseIssue(value: unknown): LayoutIssue | null {
         : null;
     case 'svg-clipped':
       return num(v.by) ? { kind: 'svg-clipped', by: Math.round(v.by) } : null;
+    case 'footnote-crowded':
+      return num(v.px) ? { kind: 'footnote-crowded', px: Math.max(0, Math.round(v.px)) } : null;
     default:
       return null;
   }
@@ -133,6 +136,9 @@ export function slideProblems(slide: SlideLayout, t: Translate): string[] {
         break;
       case 'svg-clipped':
         out.push(t('slides.layout.problem.svgClipped'));
+        break;
+      case 'footnote-crowded':
+        out.push(t('slides.layout.problem.footnoteCrowded', { px: issue.px }));
         break;
     }
   }
@@ -260,5 +266,6 @@ function noteItem(slide: SlideLayout, n: number, t: Translate): string {
   if (slide.px > 0 || slide.dense) return t('slides.layout.noteItem.tooFull', { n });
   if (slide.issues.some((issue) => issue.kind === 'overlap')) return t('slides.layout.noteItem.overlap', { n });
   if (slide.issues.some((issue) => issue.kind === 'clipped')) return t('slides.layout.noteItem.clipped', { n });
+  if (slide.issues.some((issue) => issue.kind === 'footnote-crowded')) return t('slides.layout.noteItem.footnoteCrowded', { n });
   return t('slides.layout.noteItem.diagram', { n });
 }

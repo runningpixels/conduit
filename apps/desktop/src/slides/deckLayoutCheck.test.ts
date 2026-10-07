@@ -10,6 +10,7 @@ interface ConduitLayout {
   svgScale(box: Box, viewBox: { w: number; h: number } | null): number;
   svgTextTooSmall(px: number): boolean;
   svgMostlyEmpty(drawingPct: number, box: Box): boolean;
+  footnoteGap(text: Box, note: Box): number | null;
   dense(rounds: number): boolean;
   check(slide: HTMLElement): { dense: boolean; minFont: number; issues: Array<Record<string, unknown>> } | null;
 }
@@ -54,6 +55,17 @@ describe('layout decisions', () => {
     expect(layout.svgMostlyEmpty(12, { x: 0, y: 0, w: 1680, h: 640 })).toBe(true);
     expect(layout.svgMostlyEmpty(25, { x: 0, y: 0, w: 1680, h: 640 })).toBe(false);
     expect(layout.svgMostlyEmpty(5, { x: 0, y: 0, w: 300, h: 200 })).toBe(false);
+  });
+
+  it('measures the gap above the footnote, only under 16px and only without an overlap', () => {
+    const note = { x: 120, y: 980, w: 800, h: 40 };
+    expect(layout.footnoteGap({ x: 120, y: 900, w: 600, h: 80 }, note)).toBe(0);
+    expect(layout.footnoteGap({ x: 120, y: 880, w: 600, h: 90 }, note)).toBe(10);
+    expect(layout.footnoteGap({ x: 120, y: 860, w: 600, h: 90 }, note)).toBeNull();
+    // Overlapping is the overlap issue's business.
+    expect(layout.footnoteGap({ x: 120, y: 900, w: 600, h: 120 }, note)).toBeNull();
+    // Beside the footnote, not above it.
+    expect(layout.footnoteGap({ x: 1000, y: 900, w: 600, h: 80 }, note)).toBeNull();
   });
 
   it('calls a slide dense from three whole-slide shrink rounds', () => {
@@ -119,6 +131,27 @@ describe('check', () => {
       ],
     });
     slide.remove();
+  });
+
+  it('reports body text that runs up to the footnote, not text with room or inside a drawing', () => {
+    const html =
+      '<h1 data-text="headline" style="font-size: 80px">Scores</h1>' +
+      '<p data-text="body" style="font-size: 34px">0.4%</p>' +
+      '<p class="footnote" data-text="footnote" style="font-size: 24px">Source: lab</p>';
+    const crowded = slideWith(html, {
+      '[data-text="headline"]': { x: 120, y: 100, w: 600, h: 100 },
+      '[data-text="body"]': { x: 120, y: 880, w: 600, h: 90 },
+      '.footnote': { x: 120, y: 980, w: 600, h: 40 },
+    });
+    expect(layout.check(crowded)?.issues).toEqual([{ kind: 'footnote-crowded', px: 10 }]);
+    crowded.remove();
+    const roomy = slideWith(html, {
+      '[data-text="headline"]': { x: 120, y: 100, w: 600, h: 100 },
+      '[data-text="body"]': { x: 120, y: 700, w: 600, h: 90 },
+      '.footnote': { x: 120, y: 980, w: 600, h: 40 },
+    });
+    expect(layout.check(roomy)?.issues).toEqual([]);
+    roomy.remove();
   });
 
   it('reports nothing for a slide that renders clean, and null before layout', () => {

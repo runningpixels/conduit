@@ -92,6 +92,15 @@ describe('deckSystemAppendix', () => {
     expect(text).toContain('"Layout check" message: fix only what it lists');
   });
 
+  it('says honestly how to make something bigger, and to use only real figures', () => {
+    expect(text).toContain('The theme sets every size: text, numbers and charts cannot be made bigger directly.');
+    expect(text).toContain('remove what competes with it');
+    expect(text).toContain('and if nothing could change, say so.');
+    expect(text).toContain('Use only figures the user gave you or that came from a source in this chat.');
+    expect(text).toContain('mark the numbers as placeholders in the footnote');
+    expect(text).toContain('a score is not "M"');
+  });
+
   it('stays compact: a local model reads it every turn', () => {
     expect(text.length).toBeLessThan(6500);
   });

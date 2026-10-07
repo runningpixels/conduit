@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import {
   allStepIds,
+  conditionNeedsText,
+  stepTypesFor,
+  withConditionTest,
+  withOnlyIfChanged,
   insertReference,
   insertStep,
   listSourcesAt,
@@ -167,5 +171,44 @@ describe('model choices', () => {
     expect(describeStep({ ...base, model: glm } as WorkflowStep, t)).toContain(
       'workspace.workflows.step.usingModel|{"model":"z-ai/glm-5.3-flash"}',
     );
+  });
+});
+
+describe('condition steps', () => {
+  const t = ((key: string, vars?: Record<string, unknown>) => `${key}|${JSON.stringify(vars ?? {})}`) as never;
+
+  it('starts as "changed", and is offered at the top level only', () => {
+    expect(newStep('condition', new Set())).toEqual({ id: 'check', type: 'condition', value: '', is: 'changed' });
+    expect(stepTypesFor(false)).toContain('condition');
+    expect(stepTypesFor(true)).not.toContain('condition');
+    expect(stepTypesFor(true)).toContain('for_each');
+  });
+
+  it('keeps `text` only for the tests that compare with one', () => {
+    const base: WorkflowStep = { id: 'c', type: 'condition', value: '{{inputs.a}}', is: 'changed' };
+    const contains = withConditionTest(base, 'contains');
+    expect(contains).toMatchObject({ is: 'contains', text: '' });
+    expect(conditionNeedsText('equals')).toBe(true);
+    expect(conditionNeedsText('empty')).toBe(false);
+    expect('text' in withConditionTest({ ...contains, text: 'x' } as WorkflowStep, 'not_empty')).toBe(false);
+  });
+
+  it('toggles onlyIfChanged on notify and save, and leaves other steps alone', () => {
+    const note: WorkflowStep = { id: 'n', type: 'notify', title: 'x' };
+    expect(withOnlyIfChanged(note, true)).toMatchObject({ onlyIfChanged: true });
+    expect('onlyIfChanged' in withOnlyIfChanged(withOnlyIfChanged(note, true), false)).toBe(false);
+    const tpl: WorkflowStep = { id: 't', type: 'template', template: '' };
+    expect(withOnlyIfChanged(tpl, true)).toBe(tpl);
+  });
+
+  it('describes them', () => {
+    const step: WorkflowStep = { id: 'c', type: 'condition', value: '{{steps.fetch.text}}', is: 'changed' };
+    expect(describeStep(step, t)).toContain('workspace.workflows.step.condition.changed|');
+    expect(describeStep({ ...step, is: 'contains', text: 'release' } as WorkflowStep, t)).toContain(
+      'workspace.workflows.step.condition.contains|{"value":"{{steps.fetch.text}}","text":"release"}',
+    );
+    const note: WorkflowStep = { id: 'n', type: 'notify', title: 'x', onlyIfChanged: true };
+    expect(describeStep(note, t)).toContain('workspace.workflows.step.onlyIfChanged');
+    expect(describeStep({ ...note, onlyIfChanged: undefined } as WorkflowStep, t)).not.toContain('onlyIfChanged');
   });
 });

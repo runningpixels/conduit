@@ -33,6 +33,10 @@ describe('notificationFor', () => {
     });
   });
 
+  it('stays quiet when a watch found nothing new', () => {
+    expect(notificationFor({ ...base, outcome: 'nothing_new' }, t)).toBeNull();
+  });
+
   it('marks a catch-up run and stays quiet for a skipped slot or a stopped run', () => {
     expect(notificationFor({ ...base, trigger: 'catch_up' }, t)?.title).toBe('caughtUpTitle {"name":"Morning briefing"}');
     expect(notificationFor({ ...base, status: 'skipped' }, t)).toBeNull();

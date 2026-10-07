@@ -339,9 +339,11 @@ mod tests {
             validate_workflow(wrong_case),
             vec!["Step \"fetch\": unknown setting \"on_error\" \u{2014} did you mean \"onError\"?"]
         );
-        let bad_type = json!({ "steps": [{ "id": "a", "type": "condition" }] });
+        let bad_type = json!({ "steps": [{ "id": "a", "type": "launch_rockets" }] });
         let problems = validate_workflow(bad_type);
-        assert!(problems[0].contains("\"condition\" isn't a step type. Use one of: fetch_page"));
+        assert!(
+            problems[0].contains("\"launch_rockets\" isn't a step type. Use one of: fetch_page")
+        );
         let escaped =
             json!({ "steps": [{ "id": "a", "type": "template", "template": "{{ \"x\" }}" }] });
         assert!(validate_workflow(escaped)[0].contains("put a backslash before it"));

@@ -90,6 +90,33 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
     },
   },
   {
+    id: 'watch-page',
+    nameKey: 'workspace.workflows.starter.watchPage.name',
+    blurbKey: 'workspace.workflows.starter.watchPage.blurb',
+    definition: {
+      inputs: [{ id: 'url', label: 'Page', default: 'https://news.ycombinator.com' }],
+      steps: [
+        { id: 'fetch', type: 'fetch_page', urls: ['{{inputs.url}}'] },
+        // Compares the fetched text (deterministic), not a model summary, which differs every run.
+        { id: 'check', type: 'condition', value: '{{steps.fetch.text}}', is: 'changed' },
+        {
+          id: 'summary',
+          type: 'summarize',
+          prompt: "What's on this page now, and what likely changed",
+          input: '{{steps.fetch.text}}',
+        },
+        {
+          id: 'save',
+          type: 'save_artifact',
+          title: 'Page watch',
+          content: '{{steps.summary.text}}\n\nSource: {{inputs.url}}',
+          mode: 'update',
+        },
+        { id: 'notify', type: 'notify', title: 'This page changed', body: '{{inputs.url}}' },
+      ],
+    },
+  },
+  {
     id: 'topic-watch',
     nameKey: 'workspace.workflows.starter.topicWatch.name',
     blurbKey: 'workspace.workflows.starter.topicWatch.blurb',

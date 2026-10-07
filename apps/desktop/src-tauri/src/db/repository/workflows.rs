@@ -48,8 +48,23 @@ pub struct WorkflowRun {
     pub trigger: String,
     pub status: String,
     pub error: Option<String>,
+    /// How a `completed` run ended when it didn't run to the last step:
+    /// `nothing_new` (a condition stopped it). `None` for an ordinary run.
+    pub outcome: Option<String>,
+    /// The step the outcome came from (the condition that stopped the run).
+    pub outcome_step: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,
+}
+
+/// The run outcome of a run stopped by a condition. Kept in the run's `error`
+/// column, which a completed run never otherwise uses, so no migration is
+/// needed (an older build reading the row sees a completed run); read back
+/// through [`WorkflowRun::outcome`], never as an error.
+pub const NOTHING_NEW: &str = "nothing_new";
+
+fn outcome_marker(kind: &str, step_id: &str) -> String {
+    format!("outcome:{kind}:{step_id}")
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -268,6 +283,8 @@ pub async fn start_run(
         trigger: trigger.to_string(),
         status: "running".to_string(),
         error: None,
+        outcome: None,
+        outcome_step: None,
         started_at: now_iso8601(),
         finished_at: None,
     };
@@ -299,6 +316,46 @@ pub async fn finish_run(
         .execute(pool)
         .await?;
     Ok(())
+}
+
+/// End a run as `completed` with an outcome (`kind` is [`NOTHING_NEW`]) from
+/// `step_id`.
+pub async fn finish_run_with_outcome(
+    pool: &SqlitePool,
+    run_id: &str,
+    kind: &str,
+    step_id: &str,
+) -> Result<(), DbError> {
+    finish_run(
+        pool,
+        run_id,
+        "completed",
+        Some(&outcome_marker(kind, step_id)),
+    )
+    .await
+}
+
+/// The output of `step_id`'s most recent top-level row that `completed` (not
+/// `reused`, not skipped or failed) in a run of `workflow_id` other than
+/// `run_id`, in a run that itself completed: the baseline a "has it
+/// changed?" check compares with. A run that failed after its check passed
+/// doesn't count, so the change is reported again on the next run.
+pub async fn last_completed_output(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    workflow_id: &str,
+    step_id: &str,
+    run_id: &str,
+) -> Result<Option<Value>, DbError> {
+    let stored: Option<Option<String>> = sqlx::query_scalar(
+        "SELECT s.output_json FROM workflow_run_steps s          JOIN workflow_runs r ON r.id = s.run_id          WHERE r.workflow_id = ? AND s.step_id = ? AND s.iteration IS NULL            AND s.status = 'completed' AND r.status = 'completed' AND s.run_id != ?          ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1",
+    )
+    .bind(workflow_id)
+    .bind(step_id)
+    .bind(run_id)
+    .fetch_optional(pool)
+    .await?;
+    stored.flatten().map(|s| decrypt_json(enc, &s)).transpose()
 }
 
 /// Mark runs (and their steps) still `running` or `paused` as failed: at
@@ -393,6 +450,16 @@ type RunRow = (
 
 fn run_from(row: RunRow) -> WorkflowRun {
     let (id, workflow_id, version, trigger, status, error, started_at, finished_at) = row;
+    let marker = error
+        .as_deref()
+        .filter(|_| status == "completed")
+        .and_then(|e| e.strip_prefix("outcome:"))
+        .and_then(|rest| rest.split_once(':'))
+        .map(|(kind, step)| (kind.to_string(), step.to_string()));
+    let (outcome, outcome_step, error) = match marker {
+        Some((kind, step)) => (Some(kind), Some(step), None),
+        None => (None, None, error),
+    };
     WorkflowRun {
         id,
         workflow_id,
@@ -400,6 +467,8 @@ fn run_from(row: RunRow) -> WorkflowRun {
         trigger,
         status,
         error,
+        outcome,
+        outcome_step,
         started_at,
         finished_at,
     }

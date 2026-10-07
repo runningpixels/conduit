@@ -1,7 +1,7 @@
 /// One plain-English line per step, so a workflow reads as a list of what it
 /// does rather than as JSON.
 
-import type { WorkflowStep } from '../ipc/contracts';
+import type { ConditionTest, WorkflowStep } from '../ipc/contracts';
 import type { Translate } from '../i18n';
 
 /// Longest quoted text (a prompt, a query) shown in a step's line.
@@ -18,12 +18,25 @@ function quote(text: string, labels: InputLabels = {}): string {
   return flat.length > MAX_QUOTE ? `${flat.slice(0, MAX_QUOTE - 1)}…` : flat;
 }
 
+const CONDITION_STEP_KEY: Record<ConditionTest, string> = {
+  changed: 'workspace.workflows.step.condition.changed',
+  not_empty: 'workspace.workflows.step.condition.notEmpty',
+  empty: 'workspace.workflows.step.condition.empty',
+  contains: 'workspace.workflows.step.condition.contains',
+  not_contains: 'workspace.workflows.step.condition.notContains',
+  equals: 'workspace.workflows.step.condition.equals',
+};
+
 /// The step's line, with a brief mention of its own model when it has one.
 export function describeStep(step: WorkflowStep, t: Translate, labels: InputLabels = {}): string {
   const line = describeKind(step, t, labels);
+  const only =
+    (step.type === 'notify' || step.type === 'save_artifact') && step.onlyIfChanged
+      ? `${line} (${t('workspace.workflows.step.onlyIfChanged')})`
+      : line;
   return (step.type === 'summarize' || step.type === 'agent') && step.model
     ? `${line} ${t('workspace.workflows.step.usingModel', { model: step.model.model })}`
-    : line;
+    : only;
 }
 
 function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): string {
@@ -54,5 +67,7 @@ function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): st
       return t('workspace.workflows.step.ask', { question: q(step.question) });
     case 'notify':
       return t('workspace.workflows.step.notify', { title: q(step.title) });
+    case 'condition':
+      return t(CONDITION_STEP_KEY[step.is], { value: q(step.value), text: q(step.text ?? '') });
   }
 }

@@ -308,6 +308,45 @@ describe('WorkflowsPage', () => {
     expect(detail).toHaveTextContent('There was nothing to summarize');
   });
 
+  it('reads "Nothing new" in the run list and detail for a run a condition stopped', async () => {
+    const done: WorkflowRunDetail = {
+      run: { ...finishedRun.run, status: 'completed', error: null, outcome: 'nothing_new', outcomeStep: 'check' },
+      steps: [
+        {
+          ...finishedRun.steps[0],
+          stepId: 'check',
+          status: 'completed',
+          error: null,
+          output: { passed: false, is: 'changed', text: 'Same as the last run.' },
+        },
+      ],
+    };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Nothing new/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(detail).toHaveTextContent('Nothing new — stopped at check');
+    expect(detail).toHaveTextContent('Same as the last run.');
+  });
+
+  it('finds the stopping condition from the steps when the run has no outcome field', async () => {
+    const done: WorkflowRunDetail = {
+      run: { ...finishedRun.run, status: 'completed', error: null },
+      steps: [
+        { ...finishedRun.steps[0], stepId: 'check', status: 'completed', error: null, output: { passed: false, text: 'x' } },
+      ],
+    };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Finished/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(detail).toHaveTextContent('Nothing new — stopped at check');
+  });
+
   it('answers a question with a choice, or with typed text', async () => {
     const base = {
       runId: 'r7',

@@ -73,6 +73,8 @@ export function useWorkflowReviewEvents(onPaused: (review: WorkflowReview) => vo
 /// stopped).
 export function notificationFor(event: WorkflowRunFinished, t: Translate): { title: string; body: string } | null {
   if (event.status === 'skipped' || event.status === 'stopped') return null;
+  // A watch that found nothing new stays quiet.
+  if (event.outcome === 'nothing_new') return null;
   const name = event.workflowName || t('workspace.workflows.notify.unnamed');
   const title = event.trigger === 'catch_up' ? t('workspace.workflows.notify.caughtUpTitle', { name }) : name;
   if (event.status === 'failed') {

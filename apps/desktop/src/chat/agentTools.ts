@@ -642,7 +642,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       '- image-left: headline (≤10), body (≤30) or bullets (2-3 items, each ≤12), and chart or svg for the picture.\n' +
       '- chart: headline (≤12), chart or svg, kicker.\n' +
       '- custom: html only, when no other layout fits; its layout is checked after the turn.\n' +
-      'kicker is always ≤4. Every layout except title, section and custom also takes footnote (≤20). Text fields are plain text plus span, em, strong, b, i, u, br, sub, sup, small and mark tags. For numbers prefer chart: the app draws it from your data. Use svg only for a diagram. A call that breaks a limit is rejected with every problem listed: fix them all and call again. notes is optional speaker notes.',
+      'kicker is always ≤4. Every layout except title, section and custom also takes footnote (≤20). Text fields are plain text plus span, em, strong, b, i, u, br, sub, sup, small and mark tags. For numbers prefer chart: the app draws it from your data. Use svg only for a diagram. A call that breaks a limit is rejected with every problem listed: fix them all and call again with the same after_slide_id, so the slide keeps its place. notes is optional speaker notes.',
     inputSchema: {
       type: 'object',
       properties: {

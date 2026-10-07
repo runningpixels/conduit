@@ -491,7 +491,11 @@ impl StreamParser for OpenAiParser {
                     if let Some(done) = self.complete_openrouter_search(request_id, &[], index) {
                         events.push(done);
                     }
-                    let completed: Vec<_> = self.tool_calls.drain().collect();
+                    // In the order the model wrote them: a map drains in hash
+                    // order, which ran a turn's add_slide calls (and any other
+                    // calls that build on each other) in a random order.
+                    let mut completed: Vec<_> = self.tool_calls.drain().collect();
+                    completed.sort_by_key(|(position, _)| *position);
                     for (_, (tool_call_id, _, _, args)) in completed {
                         let arguments =
                             serde_json::from_str(&args).unwrap_or_else(|_| json!({ "raw": args }));
@@ -3037,6 +3041,31 @@ mod tests {
         let fixture = include_str!("../../tests/fixtures/openai/tool_call_single.sse");
         let events = parse_fixture("req-tc", fixture);
         assert_eq!(last_finish_reason(&events), Some("stop"));
+    }
+
+    #[test]
+    fn parallel_tool_calls_complete_in_the_order_the_model_wrote_them() {
+        // Enough calls that a hash-ordered drain would all but never come out
+        // in order: a deck build writes a dozen add_slide calls in one round.
+        let mut fixture = String::new();
+        for i in 0..24 {
+            fixture.push_str(&format!(
+                "data: {{\"choices\":[{{\"index\":0,\"delta\":{{\"tool_calls\":[{{\"index\":{i},\"id\":\"call_{i}\",\"function\":{{\"name\":\"add_slide\",\"arguments\":\"{{\\\"n\\\":{i}}}\"}}}}]}}}}]}}\n\n"
+            ));
+        }
+        fixture.push_str(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        );
+        let events = parse_fixture("req-order", &fixture);
+        let ids: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolCallComplete { tool_call_id, .. } => Some(tool_call_id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let expected: Vec<String> = (0..24).map(|i| format!("call_{i}")).collect();
+        assert_eq!(ids, expected.iter().map(String::as_str).collect::<Vec<_>>());
     }
 
     #[test]

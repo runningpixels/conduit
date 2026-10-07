@@ -20,6 +20,8 @@ import type { WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/con
 import {
   AGENT_TOOLS,
   allStepIds,
+  CONDITION_TESTS,
+  conditionNeedsText,
   defaultRetries,
   insertStep,
   listSourcesAt,
@@ -29,8 +31,10 @@ import {
   newInput,
   newStep,
   removeStep,
-  STEP_TYPES,
+  stepTypesFor,
   updateStep,
+  withConditionTest,
+  withOnlyIfChanged,
   withStepModel,
   withWorkflowModel,
   valuesAt,
@@ -57,7 +61,17 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   notify: 'workspace.workflows.editor.type.notify',
   ask: 'workspace.workflows.editor.type.ask',
   agent: 'workspace.workflows.editor.type.agent',
+  condition: 'workspace.workflows.editor.type.condition',
 };
+
+const CONDITION_TEST_KEY = {
+  changed: 'workspace.workflows.editor.condition.changed',
+  not_empty: 'workspace.workflows.editor.condition.notEmpty',
+  empty: 'workspace.workflows.editor.condition.empty',
+  contains: 'workspace.workflows.editor.condition.contains',
+  not_contains: 'workspace.workflows.editor.condition.notContains',
+  equals: 'workspace.workflows.editor.condition.equals',
+} as const;
 
 /// Readable names for step outputs and item fields in the "Insert value" menu.
 const FIELD_KEY: Record<string, string> = {
@@ -223,7 +237,7 @@ function StepListEditor({
         }}
       >
         <option value="">{parent.length ? t('workspace.workflows.editor.addInside') : t('workspace.workflows.editor.add')}</option>
-        {STEP_TYPES.map((type) => (
+        {stepTypesFor(parent.length > 0).map((type) => (
           <option key={type} value={type}>
             {t(STEP_TYPE_KEY[type])}
           </option>
@@ -253,6 +267,19 @@ function StepCard({
   const update = (fn: (s: WorkflowStep) => WorkflowStep) => setSteps(updateStep(def.steps, path, fn));
   const refs = valuesAt(def, path);
   const typeName = t(STEP_TYPE_KEY[step.type]);
+
+  // Only top-level steps may skip when nothing changed (a loop's body repeats).
+  const onlyIfChanged =
+    path.length === 1 && (step.type === 'notify' || step.type === 'save_artifact') ? (
+      <label className="wf-check">
+        <input
+          type="checkbox"
+          checked={step.onlyIfChanged === true}
+          onChange={(e) => update((s) => withOnlyIfChanged(s, e.target.checked))}
+        />
+        {t('workspace.workflows.editor.onlyIfChanged')}
+      </label>
+    ) : null;
 
   let body: ReactNode;
   switch (step.type) {
@@ -428,6 +455,7 @@ function StepCard({
               </select>
             </label>
           </div>
+          {onlyIfChanged}
         </>
       );
       break;
@@ -533,6 +561,43 @@ function StepCard({
             refs={refs}
             onChange={(v) => update((s) => (s.type === 'notify' ? { ...s, body: v } : s))}
           />
+          {onlyIfChanged}
+        </>
+      );
+      break;
+    case 'condition':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.condition.value')}
+            value={step.value}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'condition' ? { ...s, value: v } : s))}
+          />
+          <label className="wf-field">
+            <span>{t('workspace.workflows.editor.condition.is')}</span>
+            <select
+              className="sel"
+              value={step.is}
+              onChange={(e) =>
+                update((s) => withConditionTest(s, e.target.value as (typeof CONDITION_TESTS)[number]))
+              }
+            >
+              {CONDITION_TESTS.map((test) => (
+                <option key={test} value={test}>
+                  {t(CONDITION_TEST_KEY[test])}
+                </option>
+              ))}
+            </select>
+          </label>
+          {conditionNeedsText(step.is) ? (
+            <TextField
+              label={t('workspace.workflows.editor.condition.text')}
+              value={step.text ?? ''}
+              refs={refs}
+              onChange={(v) => update((s) => (s.type === 'condition' ? { ...s, text: v } : s))}
+            />
+          ) : null}
         </>
       );
       break;

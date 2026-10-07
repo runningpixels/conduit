@@ -2393,3 +2393,409 @@ async fn an_agent_step_runs_every_round_on_its_own_model() {
     assert!(!rows.is_empty());
     assert!(rows.iter().all(|r| *r == pair("lmstudio", "agent-model")));
 }
+
+// ── Only when something changed ──────────────────────────────────────────────
+
+/// Serves one page at `/p` whose body is whatever `body` holds right now.
+async fn serve_changing(body: Arc<Mutex<String>>) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let body = body.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let _ = socket.read(&mut buf).await;
+                let html = format!(
+                    "<html><head><title>Watched</title></head><body><main>{}</main></body></html>",
+                    body.lock().unwrap()
+                );
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}",
+                    html.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+    format!("http://{addr}")
+}
+
+fn watching(base: &str) -> Value {
+    json!({ "steps": [
+        { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/p")] },
+        { "id": "check", "type": "condition", "value": "{{steps.fetch.text}}", "is": "changed" },
+        { "id": "sum", "type": "summarize", "prompt": "What changed?", "input": "{{steps.fetch.text}}" },
+        { "id": "doc", "type": "template", "template": "Now: {{steps.sum.text}}" },
+    ]})
+}
+
+fn step_ids(run: &repo::WorkflowRunDetail) -> Vec<&str> {
+    run.steps.iter().map(|s| s.step_id.as_str()).collect()
+}
+
+#[tokio::test]
+async fn changed_passes_once_then_stops_the_run_until_the_page_changes() {
+    let page = Arc::new(Mutex::new("<p>Version one</p>".to_string()));
+    let base = serve_changing(page.clone()).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(watching(&base)).await;
+    let asked = || h.model.requests.lock().unwrap().len();
+
+    let first = h.run(&id).await;
+    assert_eq!(first.run.status, "completed", "{:?}", first.run.error);
+    assert_eq!(first.run.outcome, None);
+    assert_eq!(step_ids(&first), ["fetch", "check", "sum", "doc"]);
+    let check = step(&first, "check", None);
+    let out = check.output.as_ref().unwrap();
+    assert_eq!(
+        (out["passed"].clone(), out["changed"].clone()),
+        (json!(true), json!(true))
+    );
+    assert_eq!(out["previousHash"], Value::Null);
+    assert_eq!(out["text"], "First run \u{2014} nothing to compare yet.");
+    assert_eq!(out["hash"].as_str().unwrap().len(), 64);
+    // The page itself isn't kept in the condition's record.
+    assert!(!out.to_string().contains("Version one"));
+    assert_eq!(asked(), 1);
+
+    // The same page again: completed, "nothing new", nothing after the check ran.
+    let second = h.run(&id).await;
+    assert_eq!(second.run.status, "completed");
+    assert_eq!(second.run.error, None);
+    assert_eq!(second.run.outcome.as_deref(), Some("nothing_new"));
+    assert_eq!(second.run.outcome_step.as_deref(), Some("check"));
+    assert_eq!(step_ids(&second), ["fetch", "check"]);
+    let out = step(&second, "check", None).output.clone().unwrap();
+    assert_eq!(out["passed"], json!(false));
+    assert_eq!(
+        out["previousHash"],
+        step(&first, "check", None).output.as_ref().unwrap()["hash"]
+    );
+    assert_eq!(out["text"], "Same as the last run.");
+    assert_eq!(asked(), 1, "no model call when nothing changed");
+    // The run list carries the outcome too.
+    let listed = repo::list_runs(&h.state.db, &id, 10).await.unwrap();
+    assert_eq!(listed[0].outcome.as_deref(), Some("nothing_new"));
+    assert_eq!(listed[0].status, "completed");
+
+    // Only whitespace moved: still nothing new.
+    *page.lock().unwrap() = "<p>Version   one</p>\n\n".to_string();
+    let third = h.run(&id).await;
+    assert_eq!(third.run.outcome.as_deref(), Some("nothing_new"));
+
+    // The page changes: the run carries on.
+    *page.lock().unwrap() = "<p>Version two</p>".to_string();
+    let fourth = h.run(&id).await;
+    assert_eq!(fourth.run.outcome, None);
+    assert_eq!(step_ids(&fourth), ["fetch", "check", "sum", "doc"]);
+    assert_eq!(asked(), 2);
+}
+
+#[tokio::test]
+async fn a_change_is_reported_again_when_the_run_that_saw_it_failed_later() {
+    let page = Arc::new(Mutex::new("<p>Version one</p>".to_string()));
+    let base = serve_changing(page.clone()).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/p")] },
+            { "id": "check", "type": "condition", "value": "{{steps.fetch.text}}", "is": "changed" },
+            // Fails after the check passed: no such field on a page.
+            { "id": "doc", "type": "template", "template": "{{steps.fetch.pages.0.nothing_here}}" },
+        ]}))
+        .await;
+
+    let first = h.run(&id).await;
+    assert_eq!(first.run.status, "failed");
+    assert_eq!(
+        step(&first, "check", None).output.as_ref().unwrap()["passed"],
+        json!(true)
+    );
+
+    // Same page, but the run that saw it never finished: it is still news.
+    let second = h.run(&id).await;
+    assert_eq!(second.run.outcome, None);
+    let out = step(&second, "check", None).output.clone().unwrap();
+    assert_eq!(out["passed"], json!(true));
+    assert_eq!(out["previousHash"], Value::Null);
+}
+
+#[tokio::test]
+async fn a_run_that_stops_at_a_condition_is_not_a_failure_even_with_later_steps_unrun() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "src", "type": "template", "template": "  " },
+            { "id": "check", "type": "condition", "value": "{{steps.src.text}}", "is": "not_empty" },
+            { "id": "doc", "type": "template", "template": "never" },
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed");
+    assert_eq!(run.run.outcome.as_deref(), Some("nothing_new"));
+    assert_eq!(step_ids(&run), ["src", "check"]);
+    assert_eq!(step(&run, "check", None).status, "completed");
+}
+
+#[tokio::test]
+async fn each_condition_test_passes_or_stops() {
+    let h = Harness::new(EchoModel::default()).await;
+    let cases = [
+        ("not_empty", "  hello ", None, true),
+        ("not_empty", "  \n ", None, false),
+        ("empty", "   ", None, true),
+        ("empty", "x", None, false),
+        ("contains", "A new Release is out", Some("release"), true),
+        ("contains", "nothing here", Some("release"), false),
+        ("not_contains", "nothing here", Some("release"), true),
+        ("not_contains", "Release", Some(" RELEASE "), false),
+        ("equals", "  Yes ", Some("yes"), true),
+        ("equals", "yes please", Some("yes"), false),
+    ];
+    for (is, value, text, passes) in cases {
+        let mut check = json!({
+            "id": "check", "type": "condition", "value": "{{steps.src.text}}", "is": is
+        });
+        if let Some(text) = text {
+            check["text"] = json!(text);
+        }
+        let id = h
+            .save(json!({ "steps": [
+                { "id": "src", "type": "template", "template": value },
+                check,
+                { "id": "after", "type": "template", "template": "ran" },
+            ] }))
+            .await;
+        let run = h.run(&id).await;
+        assert_eq!(run.run.status, "completed", "{is} {value:?}");
+        assert_eq!(
+            step_ids(&run).contains(&"after"),
+            passes,
+            "{is} {value:?} {text:?}"
+        );
+        assert_eq!(run.run.outcome.is_some(), !passes, "{is} {value:?}");
+        let out = step(&run, "check", None).output.as_ref().unwrap();
+        assert_eq!(out["passed"], json!(passes));
+        assert_eq!(out["changed"], Value::Null);
+        assert!(!out["text"].as_str().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_condition_on_a_missing_value_fails_like_any_step_unless_it_may_skip() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "check", "type": "condition", "value": "{{inputs.nope}}", "is": "changed" },
+        ]}))
+        .await;
+    // Rejected before it starts: the path doesn't exist.
+    assert!(h
+        .manual_runner()
+        .run(&id, &HashMap::new(), "manual")
+        .await
+        .is_err());
+    // A path that exists at validation but renders no value fails the step.
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "template", "template": "x" },
+            { "id": "check", "type": "condition", "value": "{{steps.fetch.nothing}}", "is": "changed", "onError": "skip" },
+            { "id": "after", "type": "template", "template": "ran" },
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed");
+    assert_eq!(step(&run, "check", None).status, "skipped");
+    assert_eq!(step(&run, "after", None).status, "completed");
+    assert_eq!(run.run.outcome, None);
+}
+
+fn message_workflow(only_if_changed: bool) -> Value {
+    json!({
+        "inputs": [{ "id": "msg", "label": "Message" }],
+        "steps": [
+            { "id": "ping", "type": "notify", "title": "Update {{run.date}}", "body": "{{inputs.msg}}",
+              "onlyIfChanged": only_if_changed },
+            { "id": "save", "type": "save_artifact", "title": "Dated {{run.date}}", "content": "{{inputs.msg}}",
+              "onlyIfChanged": only_if_changed },
+        ]
+    })
+}
+
+async fn run_with(
+    h: &Harness,
+    id: &str,
+    msg: &str,
+    notify: &(dyn Fn(&str, &str) -> Result<(), String> + Sync),
+) -> repo::WorkflowRunDetail {
+    let runner = Runner {
+        notify: Some(notify),
+        ..h.manual_runner()
+    };
+    runner
+        .run(
+            id,
+            &HashMap::from([("msg".to_string(), msg.to_string())]),
+            "manual",
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn only_if_changed_skips_a_notification_and_a_save_that_say_the_same() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(message_workflow(true)).await;
+    let shown = Mutex::new(Vec::new());
+    let notify = |title: &str, body: &str| {
+        shown
+            .lock()
+            .unwrap()
+            .push((title.to_string(), body.to_string()));
+        Ok(())
+    };
+
+    let first = run_with(&h, &id, "3 new posts", &notify).await;
+    assert_eq!(first.run.status, "completed", "{:?}", first.run.error);
+    assert_eq!(shown.lock().unwrap().len(), 1);
+    let sent = step(&first, "ping", None).output.clone().unwrap();
+    assert_eq!(sent["sent"], json!(true));
+    assert!(sent["hash"].as_str().unwrap().len() == 64);
+    let saved = step(&first, "save", None).output.clone().unwrap();
+    let artifact_id = saved["artifactId"].as_str().unwrap().to_string();
+    assert!(saved["hash"].is_string());
+    let before = artifacts::get(&h.state.db, &h.state.encryption, &artifact_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    let second = run_with(&h, &id, "3 new posts", &notify).await;
+    assert_eq!(second.run.status, "completed");
+    assert_eq!(second.run.outcome, None, "skipping isn't stopping");
+    assert_eq!(
+        shown.lock().unwrap().len(),
+        1,
+        "nothing sent the second time"
+    );
+    assert_eq!(
+        step(&second, "ping", None).output.clone().unwrap()["unchanged"],
+        json!(true)
+    );
+    assert_eq!(
+        step(&second, "ping", None).output.clone().unwrap()["sent"],
+        json!(false)
+    );
+    let again = step(&second, "save", None).output.clone().unwrap();
+    assert_eq!(again["unchanged"], json!(true));
+    assert_eq!(again["artifactId"], json!(artifact_id));
+    assert_eq!(again["hash"], saved["hash"]);
+    // Nothing written: the artifact is exactly as it was.
+    let after = artifacts::get(&h.state.db, &h.state.encryption, &artifact_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.updated_at, before.updated_at);
+    assert_eq!(after.content_hash, before.content_hash);
+
+    // New content: both go ahead.
+    let third = run_with(&h, &id, "4 new posts", &notify).await;
+    assert_eq!(shown.lock().unwrap().len(), 2);
+    assert_eq!(
+        step(&third, "ping", None).output.clone().unwrap()["sent"],
+        json!(true)
+    );
+    assert!(step(&third, "save", None).output.clone().unwrap()["unchanged"].is_null());
+    let after = artifacts::get(&h.state.db, &h.state.encryption, &artifact_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(after.content_hash, before.content_hash);
+
+    // Without the setting, an identical run notifies again.
+    let plain = h.save(message_workflow(false)).await;
+    run_with(&h, &plain, "same", &notify).await;
+    run_with(&h, &plain, "same", &notify).await;
+    assert_eq!(shown.lock().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn a_save_is_made_again_when_the_unchanged_document_is_gone() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "save", "type": "save_artifact", "title": "Doc", "content": "same", "onlyIfChanged": true },
+        ]}))
+        .await;
+    let first = h.run(&id).await;
+    let artifact_id = step(&first, "save", None).output.clone().unwrap()["artifactId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    sqlx::query("DELETE FROM artifacts WHERE id = ?")
+        .bind(&artifact_id)
+        .execute(&h.state.db)
+        .await
+        .unwrap();
+    let second = h.run(&id).await;
+    let out = step(&second, "save", None).output.clone().unwrap();
+    assert!(out["unchanged"].is_null());
+    assert_ne!(out["artifactId"], json!(artifact_id));
+}
+
+#[tokio::test]
+async fn a_reused_condition_row_is_not_the_baseline_for_the_next_run() {
+    let page = Arc::new(Mutex::new("<p>One</p>".to_string()));
+    let base = serve_changing(page.clone()).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(watching(&base)).await;
+    let first = h.run(&id).await;
+    *page.lock().unwrap() = "<p>Two</p>".to_string();
+    let second = h.run(&id).await;
+    assert_eq!(second.run.outcome, None);
+
+    // A rerun of the FIRST run reuses its fetch and check (page "One").
+    let rerun = h.rerun(&first, "doc").await.unwrap();
+    assert_eq!(rerun.run.status, "completed");
+    assert_eq!(step(&rerun, "check", None).status, "reused");
+
+    // The baseline is still the second run's "Two", so "Two" again is nothing new.
+    let fourth = h.run(&id).await;
+    assert_eq!(fourth.run.outcome.as_deref(), Some("nothing_new"));
+    assert_eq!(
+        step(&fourth, "check", None).output.as_ref().unwrap()["previousHash"],
+        step(&second, "check", None).output.as_ref().unwrap()["hash"]
+    );
+}
+
+#[tokio::test]
+async fn a_scheduled_run_with_nothing_new_is_reported_as_such_and_has_no_documents() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "doc", "type": "template", "template": "same every day" },
+            { "id": "check", "type": "condition", "value": "{{steps.doc.text}}", "is": "changed" },
+            { "id": "save", "type": "save_artifact", "title": "Daily", "content": "{{steps.doc.text}}" },
+        ]}))
+        .await;
+    h.schedule(
+        &id,
+        json!({ "kind": "daily", "time": "08:00" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = std::sync::Arc::new(RunningWorkflows::default());
+    let first = h.tick(&running, "2026-09-29T06:00:30Z").await;
+    assert_eq!(first[0].status, "completed");
+    assert_eq!(first[0].outcome, None);
+    assert_eq!(first[0].documents.len(), 1);
+
+    let second = h.tick(&running, "2026-09-30T06:00:30Z").await;
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0].status, "completed");
+    assert_eq!(second[0].error, None);
+    assert_eq!(second[0].outcome.as_deref(), Some("nothing_new"));
+    assert!(second[0].documents.is_empty());
+}

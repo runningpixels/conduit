@@ -18,6 +18,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   step uses the chat model and says so; in local-only mode a step set to a
   cloud provider stops with a plain message. A scheduled workflow asks again
   before sending to a provider it hasn't been approved for.
+- **Workflows that only speak up when something changed.** A new "Continue
+  only if…" step checks a value and ends the run quietly when the check
+  fails: has it changed since the last run, is it empty, does it contain or
+  equal some text. A scheduled run that finds nothing new sends no
+  notification and shows "Nothing new" in the run list; a run that failed
+  after seeing a change reports it again next time. Notify and save steps can
+  also skip themselves when what they would send or save is the same as last
+  time. A new "Watch a page" starter puts it together.
 
 ### Fixed
 

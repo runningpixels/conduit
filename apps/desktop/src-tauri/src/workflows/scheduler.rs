@@ -187,6 +187,10 @@ pub struct RunFinished {
     /// `completed`, `failed`, `stopped`, or `skipped` (still running from before).
     pub status: String,
     pub error: Option<String>,
+    /// `nothing_new` when a condition stopped the run: it ended `completed`
+    /// but has nothing to report, so no "finished" notification is shown.
+    /// `None` for every other run.
+    pub outcome: Option<String>,
     /// `schedule`, or `catch_up` for a run that was due while Conduit was closed.
     pub trigger: String,
     pub documents: Vec<SavedDocument>,
@@ -368,6 +372,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         run_id: None,
         status: status.into(),
         error,
+        outcome: None,
         trigger: trigger.clone(),
         documents: Vec::new(),
     };
@@ -403,6 +408,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
             run_id: Some(detail.run.id.clone()),
             status: detail.run.status.clone(),
             error: detail.run.error.clone(),
+            outcome: detail.run.outcome.clone(),
             documents: saved_documents(&detail),
             ..finished("", None)
         },
@@ -468,6 +474,11 @@ pub async fn scheduler_loop(app: AppHandle) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let announce = |event: &RunFinished| {
+                    // A run with nothing new is silent: the renderer turns
+                    // this event into the "finished" notification.
+                    if event.outcome.as_deref() == Some(repo::NOTHING_NEW) {
+                        return;
+                    }
                     if let Err(e) = app.emit(RUN_FINISHED_EVENT, event) {
                         tracing::warn!(error = %e, "could not announce a finished workflow run");
                     }

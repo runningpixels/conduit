@@ -48,6 +48,7 @@ import { describeStep, type InputLabels } from '../workflows/describeStep';
 import { newStep } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
+import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
 import { WorkflowEditor, type WorkflowDraft } from '../workflows/WorkflowEditor';
@@ -769,7 +770,9 @@ export function WorkflowsPage({
                       aria-current={openRun?.run.id === r.id ? 'true' : undefined}
                       onClick={() => void openRunDetail(r.id)}
                     >
-                      <span className={STATUS_CLASS[r.status] ?? 'wf-status'}>{statusLabel(r.status)}</span>
+                      <span className={STATUS_CLASS[r.status] ?? 'wf-status'}>
+                        {isNothingNew(r) ? t('workspace.workflows.run.nothingNew') : statusLabel(r.status)}
+                      </span>
                       <span>{fmt.timeAgo(r.startedAt)}</span>
                       {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
                     </button>
@@ -1014,11 +1017,22 @@ function RunDetail({
   const fmt = useFormatters();
   const started = useMemo(() => fmt.timeAgo(detail.run.startedAt), [fmt, detail.run.startedAt]);
   const docs = savedDocuments(detail);
+  const nothingNew = nothingNewStop(detail);
   return (
     <section className="grp wf-run-detail" aria-label={t('workspace.workflows.runDetail.title')}>
       <div className="grp-label">
-        {t('workspace.workflows.runDetail.heading', { status: statusLabel(detail.run.status), when: started })}
+        {t('workspace.workflows.runDetail.heading', {
+          status: nothingNew ? t('workspace.workflows.run.nothingNew') : statusLabel(detail.run.status),
+          when: started,
+        })}
       </div>
+      {nothingNew ? (
+        <p className="wf-muted" role="status">
+          {nothingNew.stepId
+            ? t('workspace.workflows.runDetail.nothingNewAt', { step: nothingNew.stepId })
+            : t('workspace.workflows.run.nothingNew')}
+        </p>
+      ) : null}
       {/* A stop is the user's choice, not an error; the heading already says it. */}
       {detail.run.error && detail.run.status !== 'stopped' ? (
         <p className="wf-error" role="status">
@@ -1081,6 +1095,9 @@ function RunStepRow({
           <span className={STATUS_CLASS[step.status] ?? 'wf-status'}>{statusLabel(step.status)}</span>
           <span className="wf-step-name">{name}</span>
           {usedModelId(step.output) ? <span className="wf-muted wf-step-model">{usedModelId(step.output)}</span> : null}
+          {conditionText(step) ? (
+            <span className="wf-muted wf-step-reason">{conditionText(step)}</span>
+          ) : null}
           {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
         </summary>
         {step.error ? <p className="wf-error">{step.error}</p> : null}
@@ -1119,6 +1136,14 @@ function usedModelId(output: unknown): string | null {
   if (!used || typeof used !== 'object') return null;
   const model = (used as Record<string, unknown>).model;
   return typeof model === 'string' && model ? model : null;
+}
+
+/** A condition step's one-line reason (`output.text`), e.g. "Same as the last run.". */
+function conditionText(step: WorkflowRunStep): string | null {
+  const out = step.output;
+  if (!out || typeof out !== 'object') return null;
+  const record = out as Record<string, unknown>;
+  return typeof record.passed === 'boolean' && typeof record.text === 'string' && record.text ? record.text : null;
 }
 
 function StepModelLine({ output }: { output: unknown }) {

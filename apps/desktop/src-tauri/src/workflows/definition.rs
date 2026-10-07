@@ -91,7 +91,9 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 /// - `for_each`: `items`, one object per element holding that iteration's step
 ///   outputs by step id
 /// - `save_artifact`: `artifactId`
-/// - `notify`: `delivered`
+/// - `notify`: `delivered` (or `sent`, `unchanged` and `hash` with `onlyIfChanged`)
+/// - `condition`: `passed`, `is`, `hash`, `previousHash`, `changed` and `text`
+///   (why it passed or stopped the run)
 /// - `ask`: `answer`
 /// - `agent`: `text` (its answer) and `toolCalls` (the tools it called)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -134,6 +136,9 @@ pub enum StepAction {
         format: ArtifactFormat,
         #[serde(default)]
         mode: SaveMode,
+        /// Skip the save when the content is the same as the last run's.
+        #[serde(default, skip_serializing_if = "is_false")]
+        only_if_changed: bool,
     },
     /// A model turn that may use a few read-only tools before answering.
     Agent {
@@ -161,7 +166,43 @@ pub enum StepAction {
         title: String,
         #[serde(default)]
         body: String,
+        /// Skip the notification when it reads the same as the last run's.
+        #[serde(default, skip_serializing_if = "is_false")]
+        only_if_changed: bool,
     },
+    /// Carry on only if a test on `value` passes; otherwise the run ends,
+    /// completed, as "nothing new". Top-level steps only.
+    Condition {
+        /// A template: the text to test.
+        value: String,
+        /// One of [`CONDITION_TESTS`]. Kept as text so a wrong one is reported
+        /// in plain words by [`validate`] rather than as a parse error.
+        #[serde(default)]
+        is: String,
+        /// What `contains`, `not_contains` and `equals` compare with (a
+        /// template); not allowed with the other tests.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+    },
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// The tests a `condition` step offers.
+pub const CONDITION_TESTS: &[&str] = &[
+    "changed",
+    "not_empty",
+    "empty",
+    "contains",
+    "not_contains",
+    "equals",
+];
+
+/// Whether a condition test compares with `text`.
+pub fn condition_needs_text(is: &str) -> bool {
+    matches!(is, "contains" | "not_contains" | "equals")
 }
 
 impl StepAction {
@@ -234,6 +275,22 @@ fn plain_parse_error(message: &str) -> String {
             return format!("\"{name}\" isn't a step type. Use one of: {list}");
         }
     }
+    if let Some(rest) = message.strip_prefix("missing field `") {
+        if let Some(name) = rest.strip_suffix('`') {
+            return format!("A step is missing its \"{name}\" setting.");
+        }
+    }
+    if let Some(rest) = message.strip_prefix("invalid type: ") {
+        if let Some((found, expected)) = rest.split_once(", expected ") {
+            let expected = match expected {
+                "a boolean" => "true or false",
+                "a string" => "text in quotes",
+                "a sequence" => "a list in [ ]",
+                other => other,
+            };
+            return format!("A setting has {found} where it needs {expected}.");
+        }
+    }
     message.to_string()
 }
 
@@ -250,10 +307,11 @@ fn action_keys(step_type: &str) -> &'static [&'static str] {
         "summarize" => &["prompt", "input", "schema", "model"],
         "template" => &["template"],
         "for_each" => &["items", "steps"],
-        "save_artifact" => &["title", "content", "format", "mode"],
+        "save_artifact" => &["title", "content", "format", "mode", "onlyIfChanged"],
         "agent" => &["prompt", "input", "tools", "model"],
         "ask" => &["question", "choices", "default"],
-        "notify" => &["title", "body"],
+        "notify" => &["title", "body", "onlyIfChanged"],
+        "condition" => &["value", "is", "text"],
         _ => &[],
     }
 }
@@ -482,9 +540,17 @@ fn check_steps(
                 texts.push(input);
             }
             StepAction::Template { template } => texts.push(template),
-            StepAction::SaveArtifact { title, content, .. } => {
+            StepAction::SaveArtifact {
+                title,
+                content,
+                only_if_changed,
+                ..
+            } => {
                 if title.trim().is_empty() {
                     problems.push(format!("Step \"{name}\" needs a title for the artifact."));
+                }
+                if *only_if_changed && scope.in_loop {
+                    problems.push(only_if_changed_in_loop(name));
                 }
                 texts.push(title);
                 texts.push(content);
@@ -540,14 +606,56 @@ fn check_steps(
                 }
                 texts.push(question);
             }
-            StepAction::Notify { title, body } => {
+            StepAction::Notify {
+                title,
+                body,
+                only_if_changed,
+            } => {
                 if title.trim().is_empty() {
                     problems.push(format!(
                         "Step \"{name}\" needs a title for the notification."
                     ));
                 }
+                if *only_if_changed && scope.in_loop {
+                    problems.push(only_if_changed_in_loop(name));
+                }
                 texts.push(title);
                 texts.push(body);
+            }
+            StepAction::Condition { value, is, text } => {
+                if scope.in_loop {
+                    problems.push(format!(
+                        "Step \"{name}\" is a condition inside a repeated step; conditions only work on the steps at the top level."
+                    ));
+                }
+                if value.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs something to check."));
+                }
+                if is.is_empty() {
+                    problems.push(format!(
+                        "Step \"{name}\" needs a test (one of: {}).",
+                        CONDITION_TESTS.join(", ")
+                    ));
+                } else if !CONDITION_TESTS.contains(&is.as_str()) {
+                    problems.push(format!(
+                        "Step \"{name}\": \"{is}\" isn't a test. Use one of: {}.",
+                        CONDITION_TESTS.join(", ")
+                    ));
+                } else if condition_needs_text(is) {
+                    if text.as_deref().is_none_or(|t| t.trim().is_empty()) {
+                        problems.push(format!(
+                            "Step \"{name}\": \"{is}\" needs some text to compare with."
+                        ));
+                    }
+                } else if text.is_some() {
+                    problems.push(format!(
+                        "Step \"{name}\": \"{is}\" doesn't compare with any text, so remove the text."
+                    ));
+                }
+                texts.push(value);
+                if let Some(text) = text {
+                    texts.push(text);
+                }
             }
             StepAction::ForEach { items, steps: body } => {
                 check_path(items, &scope, name, problems);
@@ -573,6 +681,12 @@ fn check_steps(
         }
         scope.steps.push(step.id.clone());
     }
+}
+
+fn only_if_changed_in_loop(name: &str) -> String {
+    format!(
+        "Step \"{name}\" asks to run only if something changed, which only works on the steps at the top level, not inside a repeated step."
+    )
 }
 
 fn check_model(model: &ModelChoice, whose: &str, problems: &mut Vec<String>) {
@@ -837,14 +951,31 @@ mod tests {
 
     #[test]
     fn an_unknown_step_type_is_explained_in_plain_text() {
-        let err = parse(r#"{"steps":[{"id":"a","type":"condition"}]}"#).unwrap_err();
+        let err = parse(r#"{"steps":[{"id":"a","type":"launch_rockets"}]}"#).unwrap_err();
         assert!(
             err.starts_with(
-                "The workflow definition can't be read: \"condition\" isn't a step type. Use one of: fetch_page, web_search,"
+                "The workflow definition can't be read: \"launch_rockets\" isn't a step type. Use one of: fetch_page, web_search,"
             ),
             "{err}"
         );
         assert!(!err.contains('`') && !err.contains("line 1"), "{err}");
+    }
+
+    #[test]
+    fn a_missing_or_mistyped_setting_is_explained_in_plain_text() {
+        let err = parse(r#"{"steps":[{"id":"c","type":"condition","is":"changed"}]}"#).unwrap_err();
+        assert!(
+            err.ends_with("A step is missing its \"value\" setting."),
+            "{err}"
+        );
+        let err = parse(
+            r#"{"steps":[{"id":"n","type":"notify","title":"T","body":"B","onlyIfChanged":"yes"}]}"#,
+        )
+        .unwrap_err();
+        assert!(
+            err.ends_with("A setting has string \"yes\" where it needs true or false."),
+            "{err}"
+        );
     }
 
     #[test]
@@ -922,6 +1053,142 @@ mod tests {
             unknown_settings(&raw),
             vec!["Unknown setting \"Provider\" in the workflow's model \u{2014} did you mean \"provider\"?"
                 .to_string()]
+        );
+    }
+
+    fn with_condition(condition: Value) -> Value {
+        json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": ["https://example.com"] },
+            condition,
+        ]})
+    }
+
+    fn problems_of(raw: Value) -> Vec<String> {
+        validate(&def(raw)).unwrap_err()
+    }
+
+    #[test]
+    fn conditions_and_only_if_changed_validate() {
+        for condition in [
+            json!({ "id": "c", "type": "condition", "value": "{{steps.fetch.text}}", "is": "changed" }),
+            json!({ "id": "c", "type": "condition", "value": "{{steps.fetch.text}}", "is": "not_empty" }),
+            json!({ "id": "c", "type": "condition", "value": "{{steps.fetch.text}}", "is": "empty" }),
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "contains", "text": "{{steps.fetch.text}}" }),
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "not_contains", "text": "a" }),
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "equals", "text": "a" }),
+        ] {
+            assert_eq!(
+                validate(&def(with_condition(condition.clone()))),
+                Ok(()),
+                "{condition}"
+            );
+            assert!(unknown_settings(&with_condition(condition)).is_empty());
+        }
+        let raw = json!({ "steps": [
+            { "id": "n", "type": "notify", "title": "t", "onlyIfChanged": true },
+            { "id": "s", "type": "save_artifact", "title": "t", "content": "c", "onlyIfChanged": true },
+        ]});
+        assert_eq!(validate(&def(raw.clone())), Ok(()));
+        assert!(unknown_settings(&raw).is_empty());
+        // It round-trips, and stays out of the stored JSON when off.
+        let stored = serde_json::to_value(def(raw)).unwrap();
+        assert_eq!(stored["steps"][0]["onlyIfChanged"], json!(true));
+        let off = def(json!({ "steps": [{ "id": "n", "type": "notify", "title": "t" }] }));
+        assert!(serde_json::to_value(off).unwrap()["steps"][0]
+            .get("onlyIfChanged")
+            .is_none());
+    }
+
+    #[test]
+    fn a_condition_needs_its_text_only_where_it_compares() {
+        let problems = problems_of(with_condition(
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "contains" }),
+        ));
+        assert_eq!(
+            problems,
+            vec!["Step \"c\": \"contains\" needs some text to compare with."]
+        );
+        let problems = problems_of(with_condition(
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "equals", "text": "  " }),
+        ));
+        assert_eq!(problems.len(), 1);
+        let problems = problems_of(with_condition(
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "changed", "text": "a" }),
+        ));
+        assert_eq!(
+            problems,
+            vec!["Step \"c\": \"changed\" doesn't compare with any text, so remove the text."]
+        );
+    }
+
+    #[test]
+    fn a_condition_needs_a_value_and_a_known_test() {
+        let problems = problems_of(with_condition(
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "bigger" }),
+        ));
+        assert_eq!(
+            problems,
+            vec!["Step \"c\": \"bigger\" isn't a test. Use one of: changed, not_empty, empty, contains, not_contains, equals."]
+        );
+        let problems = problems_of(with_condition(
+            json!({ "id": "c", "type": "condition", "value": "x" }),
+        ));
+        assert!(
+            problems[0].starts_with("Step \"c\" needs a test"),
+            "{problems:?}"
+        );
+        let problems = problems_of(with_condition(
+            json!({ "id": "c", "type": "condition", "value": " ", "is": "empty" }),
+        ));
+        assert_eq!(problems, vec!["Step \"c\" needs something to check."]);
+        // The value is a template: a step that doesn't exist yet is caught.
+        let problems = problems_of(json!({ "steps": [
+            { "id": "c", "type": "condition", "value": "{{steps.later.text}}", "is": "changed" },
+            { "id": "later", "type": "template", "template": "x" },
+        ]}));
+        assert!(problems[0].contains("steps.later.text"), "{problems:?}");
+    }
+
+    #[test]
+    fn conditions_and_only_if_changed_are_refused_inside_a_for_each() {
+        let inside = |step: Value| {
+            json!({ "steps": [
+                { "id": "fetch", "type": "fetch_page", "urls": ["https://example.com"] },
+                { "id": "each", "type": "for_each", "items": "steps.fetch.pages", "steps": [step] },
+            ]})
+        };
+        let problems = problems_of(inside(
+            json!({ "id": "c", "type": "condition", "value": "{{item.text}}", "is": "not_empty" }),
+        ));
+        assert_eq!(
+            problems,
+            vec!["Step \"c\" is a condition inside a repeated step; conditions only work on the steps at the top level."]
+        );
+        for step in [
+            json!({ "id": "n", "type": "notify", "title": "t", "onlyIfChanged": true }),
+            json!({ "id": "s", "type": "save_artifact", "title": "t", "content": "c", "onlyIfChanged": true }),
+        ] {
+            let problems = problems_of(inside(step));
+            assert!(
+                problems[0].contains("which only works on the steps at the top level"),
+                "{problems:?}"
+            );
+        }
+        // Off, they are fine in a loop.
+        let fine = inside(json!({ "id": "n", "type": "notify", "title": "t" }));
+        assert_eq!(validate(&def(fine)), Ok(()));
+    }
+
+    #[test]
+    fn a_condition_setting_misspelt_is_reported() {
+        let raw = with_condition(
+            json!({ "id": "c", "type": "condition", "value": "x", "is": "empty", "Text": "a" }),
+        );
+        assert_eq!(
+            unknown_settings(&raw),
+            vec![
+                "Step \"c\": unknown setting \"Text\" \u{2014} did you mean \"text\"?".to_string()
+            ]
         );
     }
 }

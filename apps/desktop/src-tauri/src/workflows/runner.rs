@@ -29,6 +29,10 @@
 //!   chosen one aren't run again; their outputs come from an earlier run and
 //!   are recorded as `reused`, so fixing a template doesn't re-fetch pages or
 //!   ask the model again.
+//! - A `condition` step that doesn't pass ends the run as `completed` with the
+//!   outcome "nothing new" (`Flow::Stop`), and `onlyIfChanged` on `notify` and
+//!   `save_artifact` skips the step; both compare a hash with the one the same
+//!   step recorded the last time it `completed` (never a reused row).
 //! - Every run has a budget (`RunBudget`): time spent running (not waiting
 //!   for an answer) and model tokens. Going over fails the run with the
 //!   reason, whatever the steps' `on_error` says; it never truncates quietly.
@@ -43,6 +47,7 @@ use provider_core::schema::{
     Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
 };
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -259,8 +264,17 @@ impl Runner<'_> {
         }
         let result = exec.steps(&def.steps[start..], &mut ctx, None).await;
         let over_budget = exec.over_budget();
+        if let Ok(Flow::Stop(step_id)) = &result {
+            repo::finish_run_with_outcome(pool, &run.id, repo::NOTHING_NEW, step_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            return repo::get_run(pool, enc, &run.id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "The run record is missing.".to_string());
+        }
         let (status, error) = match (&result, &over_budget) {
-            (Ok(()), _) => ("completed", None),
+            (Ok(_), _) => ("completed", None),
             (Err(_), _) if self.stop.is_cancelled() => ("stopped", Some(STOPPED)),
             (Err(_), Some(reason)) => ("failed", Some(reason.as_str())),
             (Err(e), None) => ("failed", Some(e.as_str())),
@@ -318,7 +332,14 @@ struct Exec<'a> {
     over_budget: Mutex<Option<String>>,
 }
 
-type StepFuture<'f> = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'f>>;
+/// What a step tells the steps after it.
+enum Flow {
+    Continue,
+    /// A condition didn't pass: the run ends here, completed, as "nothing new".
+    Stop(String),
+}
+
+type StepFuture<'f> = Pin<Box<dyn Future<Output = Result<Flow, String>> + Send + 'f>>;
 
 impl Exec<'_> {
     /// Run `steps` in order against `ctx`, recording each. `iteration` is the
@@ -337,9 +358,11 @@ impl Exec<'_> {
                 if let Some(reason) = self.check_time() {
                     return Err(reason);
                 }
-                self.step(step, ctx, iteration).await?;
+                if let Flow::Stop(at) = self.step(step, ctx, iteration).await? {
+                    return Ok(Flow::Stop(at));
+                }
             }
-            Ok(())
+            Ok(Flow::Continue)
         })
     }
 
@@ -348,12 +371,12 @@ impl Exec<'_> {
         step: &Step,
         ctx: &mut Value,
         iteration: Option<i64>,
-    ) -> Result<(), String> {
+    ) -> Result<Flow, String> {
         let pool = &self.runner.state.db;
         let enc = &self.runner.state.encryption;
         let filled = fill(&step.action, ctx);
         let input = match &filled {
-            Ok(v) => v.clone(),
+            Ok(v) => recorded_input(&step.action, v),
             Err(_) => json!({ "type": step_type(&step.action) }),
         };
         let row = repo::start_step(pool, enc, self.run_id, &step.id, iteration, &input)
@@ -369,8 +392,14 @@ impl Exec<'_> {
                 repo::finish_step(pool, enc, &row, "completed", Some(&output), None)
                     .await
                     .map_err(|e| e.to_string())?;
+                let stops = matches!(step.action, StepAction::Condition { .. })
+                    && output["passed"] == json!(false);
                 set_step_output(ctx, &step.id, output);
-                Ok(())
+                Ok(if stops {
+                    Flow::Stop(step.id.clone())
+                } else {
+                    Flow::Continue
+                })
             }
             Err(_) if self.runner.stop.is_cancelled() => {
                 repo::finish_step(pool, enc, &row, "stopped", None, Some(STOPPED))
@@ -399,7 +428,7 @@ impl Exec<'_> {
                 match step.on_error {
                     OnError::Skip => {
                         set_step_output(ctx, &step.id, skipped_output(&error));
-                        Ok(())
+                        Ok(Flow::Continue)
                     }
                     OnError::Fail => Err(format!("Step \"{}\" failed: {error}", step.id)),
                 }
@@ -490,12 +519,40 @@ impl Exec<'_> {
                 Ok(with_model(output, &model))
             }
             StepAction::Template { .. } => Ok(json!({ "text": filled["template"] })),
-            StepAction::SaveArtifact { format, mode, .. } => {
+            StepAction::SaveArtifact {
+                format,
+                mode,
+                only_if_changed,
+                ..
+            } => {
                 self.allow(&step.id, Permission::SaveDocuments, None)
                     .await?;
                 let title = filled["title"].as_str().unwrap_or_default().trim();
                 let content = filled["content"].as_str().unwrap_or_default();
-                self.save_artifact(title, content, *format, *mode).await
+                if !*only_if_changed {
+                    return self.save_artifact(title, content, *format, *mode).await;
+                }
+                let hash = hash_of(content);
+                let previous = self.previous_output(&step.id).await?;
+                let unchanged = previous
+                    .as_ref()
+                    .is_some_and(|p| p["hash"].as_str() == Some(hash.as_str()));
+                // The artifact it wrote last time, if it is still there.
+                let kept = match previous.as_ref().and_then(|p| p["artifactId"].as_str()) {
+                    Some(id) if unchanged => {
+                        let existing = artifacts::list(&self.runner.state.db, self.conversation_id)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        existing.iter().any(|a| a.id == id).then(|| id.to_string())
+                    }
+                    _ => None,
+                };
+                if let Some(id) = kept {
+                    return Ok(json!({ "artifactId": id, "unchanged": true, "hash": hash }));
+                }
+                let mut output = self.save_artifact(title, content, *format, *mode).await?;
+                output["hash"] = json!(hash);
+                Ok(output)
             }
             StepAction::Agent { tools, .. } => {
                 let model = self.resolve_model(step)?;
@@ -531,7 +588,9 @@ impl Exec<'_> {
                     .await?;
                 Ok(json!({ "answer": answer }))
             }
-            StepAction::Notify { .. } => {
+            StepAction::Notify {
+                only_if_changed, ..
+            } => {
                 let clip = |s: &str, max: usize| s.trim().chars().take(max).collect::<String>();
                 let title = clip(
                     filled["title"].as_str().unwrap_or_default(),
@@ -545,8 +604,32 @@ impl Exec<'_> {
                     .runner
                     .notify
                     .ok_or("Notifications aren't available here.")?;
+                if !*only_if_changed {
+                    notify(&title, &body)?;
+                    return Ok(json!({ "delivered": true }));
+                }
+                let hash = hash_of(&format!("{title}\n{body}"));
+                let previous = self.previous_output(&step.id).await?;
+                if previous
+                    .as_ref()
+                    .is_some_and(|p| p["hash"].as_str() == Some(hash.as_str()))
+                {
+                    return Ok(json!({ "sent": false, "unchanged": true, "hash": hash }));
+                }
                 notify(&title, &body)?;
-                Ok(json!({ "delivered": true }))
+                Ok(json!({ "delivered": true, "sent": true, "hash": hash }))
+            }
+            StepAction::Condition { is, .. } => {
+                let value = filled["value"].as_str().unwrap_or_default();
+                let text = filled["text"].as_str().unwrap_or_default();
+                let previous = if is == "changed" {
+                    self.previous_output(&step.id)
+                        .await?
+                        .and_then(|p| p["hash"].as_str().map(str::to_string))
+                } else {
+                    None
+                };
+                Ok(evaluate_condition(is, value, text, previous.as_deref()))
             }
             StepAction::ForEach { items, steps } => {
                 let list = lookup(ctx, items)
@@ -564,6 +647,8 @@ impl Exec<'_> {
                     let mut inner = ctx.clone();
                     inner["item"] = item;
                     inner["index"] = json!(index);
+                    // Conditions are refused inside a repeated step (see
+                    // `definition::validate`), so a body never stops the run.
                     self.steps(steps, &mut inner, Some(index as i64)).await?;
                     let mut outputs = Map::new();
                     for body_step in steps {
@@ -576,6 +661,20 @@ impl Exec<'_> {
                 Ok(json!({ "items": results }))
             }
         }
+    }
+
+    /// What `step_id` recorded the last time it completed in an earlier run
+    /// of this workflow: the baseline for "has it changed?".
+    async fn previous_output(&self, step_id: &str) -> Result<Option<Value>, String> {
+        repo::last_completed_output(
+            &self.runner.state.db,
+            &self.runner.state.encryption,
+            self.workflow_id,
+            step_id,
+            self.run_id,
+        )
+        .await
+        .map_err(|e| e.to_string())
     }
 
     /// The model `step` calls: its own, the workflow's, or the active one
@@ -1268,9 +1367,10 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             content,
             format,
             mode,
+            only_if_changed,
         } => json!({
             "type": "save_artifact", "title": render(title)?, "content": render(content)?,
-            "format": format, "mode": mode,
+            "format": format, "mode": mode, "onlyIfChanged": only_if_changed,
         }),
         StepAction::ForEach { items, .. } => json!({ "type": "for_each", "items": items }),
         StepAction::Agent {
@@ -1290,9 +1390,100 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
         } => json!({
             "type": "ask", "question": render(question)?, "choices": choices, "default": default,
         }),
-        StepAction::Notify { title, body } => json!({
+        StepAction::Notify {
+            title,
+            body,
+            only_if_changed,
+        } => json!({
             "type": "notify", "title": render(title)?, "body": render(body)?,
+            "onlyIfChanged": only_if_changed,
         }),
+        StepAction::Condition { value, is, text } => json!({
+            "type": "condition", "value": render(value)?, "is": is,
+            "text": text.as_deref().map(render).transpose()?,
+        }),
+    })
+}
+
+/// Most characters of a condition's value kept in the run record: the
+/// recorded step keeps the hash, not the page.
+const MAX_RECORDED_CONDITION_CHARS: usize = 200;
+
+/// What the run record keeps as a step's input: what it ran with, except a
+/// condition's value, which can be a whole page, is cut short.
+fn recorded_input(action: &StepAction, filled: &Value) -> Value {
+    let mut input = filled.clone();
+    if matches!(action, StepAction::Condition { .. }) {
+        if let Some(value) = filled["value"].as_str() {
+            input["value"] = json!(cap_text(value, MAX_RECORDED_CONDITION_CHARS));
+        }
+    }
+    input
+}
+
+/// SHA-256 as lowercase hex.
+fn hash_of(text: &str) -> String {
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Trim and collapse every run of whitespace to one space, so a page that
+/// only re-flowed doesn't count as changed.
+fn normalise_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A condition's output. `previous_hash` is the baseline for `changed` (none
+/// on a first run, which counts as changed). The value itself isn't kept.
+fn evaluate_condition(is: &str, value: &str, text: &str, previous_hash: Option<&str>) -> Value {
+    let value = normalise_whitespace(value);
+    let hash = hash_of(&value);
+    let shown = text.trim();
+    let wanted = normalise_whitespace(text).to_lowercase();
+    let lowered = value.to_lowercase();
+    let mut changed = None;
+    let (passed, reason) = match is {
+        "changed" => {
+            let (differs, reason) = match previous_hash {
+                None => (true, "First run \u{2014} nothing to compare yet."),
+                Some(p) if p != hash => (true, "Changed since the last run."),
+                Some(_) => (false, "Same as the last run."),
+            };
+            changed = Some(differs);
+            (differs, reason.to_string())
+        }
+        "not_empty" if value.is_empty() => (false, "It's empty.".to_string()),
+        "not_empty" => (true, "It isn't empty.".to_string()),
+        "empty" if value.is_empty() => (true, "It's empty.".to_string()),
+        "empty" => (false, "It isn't empty.".to_string()),
+        "contains" | "not_contains" => {
+            let has = lowered.contains(&wanted);
+            let reason = if has {
+                format!("It contains \u{201c}{shown}\u{201d}.")
+            } else {
+                format!("It doesn't contain \u{201c}{shown}\u{201d}.")
+            };
+            (has == (is == "contains"), reason)
+        }
+        _ => {
+            let same = lowered == wanted;
+            let reason = if same {
+                format!("It is \u{201c}{shown}\u{201d}.")
+            } else {
+                format!("It isn't \u{201c}{shown}\u{201d}.")
+            };
+            (same, reason)
+        }
+    };
+    json!({
+        "passed": passed,
+        "is": is,
+        "hash": hash,
+        "previousHash": previous_hash,
+        "changed": changed,
+        "text": reason,
     })
 }
 
@@ -1369,6 +1560,7 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Agent { .. } => "agent",
         StepAction::Ask { .. } => "ask",
         StepAction::Notify { .. } => "notify",
+        StepAction::Condition { .. } => "condition",
     }
 }
 
@@ -1574,6 +1766,69 @@ mod tests {
             "dns error: No such host is known."
         );
         assert_eq!(plain_error("plain"), "plain");
+    }
+
+    #[test]
+    fn changed_compares_whitespace_normalised_hashes_and_first_run_passes() {
+        let first = evaluate_condition("changed", "a  b\n c", "", None);
+        assert_eq!(first["passed"], json!(true));
+        assert_eq!(first["changed"], json!(true));
+        assert_eq!(first["previousHash"], Value::Null);
+        let hash = first["hash"].as_str().unwrap().to_string();
+        assert_eq!(hash, hash_of("a b c"));
+        // Same words, different whitespace: not changed.
+        let same = evaluate_condition("changed", "  a b\tc \n", "", Some(&hash));
+        assert_eq!(same["passed"], json!(false));
+        assert_eq!(same["changed"], json!(false));
+        assert_eq!(same["text"], "Same as the last run.");
+        let different = evaluate_condition("changed", "a b d", "", Some(&hash));
+        assert_eq!(different["passed"], json!(true));
+        assert_eq!(different["text"], "Changed since the last run.");
+        assert_eq!(different["previousHash"], json!(hash));
+    }
+
+    #[test]
+    fn a_condition_describes_why_in_plain_words() {
+        let text = |is, value, wanted| {
+            evaluate_condition(is, value, wanted, None)["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(text("empty", " ", ""), "It's empty.");
+        assert_eq!(text("not_empty", "", ""), "It's empty.");
+        assert_eq!(
+            text("contains", "a release", "release"),
+            "It contains \u{201c}release\u{201d}."
+        );
+        assert_eq!(
+            text("contains", "a", "release"),
+            "It doesn't contain \u{201c}release\u{201d}."
+        );
+        assert_eq!(text("equals", "No", "yes"), "It isn't \u{201c}yes\u{201d}.");
+        // The value itself is never in the output.
+        let out = evaluate_condition("contains", "secret page text", "page", None);
+        assert!(!out.to_string().contains("secret"));
+    }
+
+    #[test]
+    fn a_conditions_recorded_input_cuts_the_value_but_keeps_the_rest() {
+        let action = StepAction::Condition {
+            value: "{{x}}".into(),
+            is: "empty".into(),
+            text: None,
+        };
+        let filled =
+            json!({ "type": "condition", "value": "z".repeat(500), "is": "empty", "text": null });
+        let recorded = recorded_input(&action, &filled);
+        assert!(recorded["value"].as_str().unwrap().chars().count() < 300);
+        assert_eq!(recorded["is"], "empty");
+        // Other steps are recorded whole.
+        let note = StepAction::Template {
+            template: String::new(),
+        };
+        let whole = json!({ "type": "template", "template": "z".repeat(500) });
+        assert_eq!(recorded_input(&note, &whole), whole);
     }
 
     #[test]

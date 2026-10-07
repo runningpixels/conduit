@@ -39,4 +39,20 @@ describe('starters', () => {
     expect(text).toContain('{{item.heading.text}}{{item.summary.text}}\n\n{{/each}}');
     expect(text).not.toContain('\n\n\n');
   });
+
+  it('watch-a-page compares the fetched text and notifies only after the check', () => {
+    const watch = STARTER_WORKFLOWS.find((s) => s.id === 'watch-page')!;
+    const steps = watch.definition.steps;
+    expect(steps.map((s) => s.type)).toEqual(['fetch_page', 'condition', 'summarize', 'save_artifact', 'notify']);
+    expect(steps[1]).toEqual({ id: 'check', type: 'condition', value: '{{steps.fetch.text}}', is: 'changed' });
+    // Every reference points at an input or an earlier step.
+    const ids = new Set<string>();
+    for (const step of steps) {
+      for (const m of JSON.stringify(step).matchAll(/steps\.([a-z_]+)\./g)) expect(ids.has(m[1])).toBe(true);
+      for (const m of JSON.stringify(step).matchAll(/inputs\.([a-z_]+)/g)) {
+        expect(watch.definition.inputs?.some((i) => i.id === m[1])).toBe(true);
+      }
+      ids.add(step.id);
+    }
+  });
 });

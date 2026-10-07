@@ -289,3 +289,59 @@ describe('WorkflowEditor', () => {
     });
   });
 });
+
+describe('WorkflowEditor: only if something changed', () => {
+  it('adds a condition, shows its text field only when needed, and writes the JSON', () => {
+    const out = renderEditor({ steps: [{ id: 'fetch', type: 'fetch_page', urls: ['https://example.com'] }] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'condition' } });
+    const check = card(/^2\. Continue only if…/);
+    expect(out.draft.definition.steps[1]).toEqual({ id: 'check', type: 'condition', value: '', is: 'changed' });
+    expect(within(check).queryByRole('textbox', { name: 'Text' })).toBeNull();
+
+    fireEvent.change(within(check).getByRole('combobox', { name: 'Insert a value into Value to check' }), {
+      target: { value: 'steps.fetch.text' },
+    });
+    fireEvent.change(within(check).getByRole('combobox', { name: 'Continue only if it' }), { target: { value: 'contains' } });
+    typeInto(within(check).getByRole('textbox', { name: 'Text' }), 'release');
+    expect(out.draft.definition.steps[1]).toEqual({
+      id: 'check',
+      type: 'condition',
+      value: '{{steps.fetch.text}}',
+      is: 'contains',
+      text: 'release',
+    });
+
+    fireEvent.change(within(check).getByRole('combobox', { name: 'Continue only if it' }), { target: { value: 'empty' } });
+    expect(within(check).queryByRole('textbox', { name: 'Text' })).toBeNull();
+    expect(out.draft.definition.steps[1]).not.toHaveProperty('text');
+  });
+
+  it('does not offer a condition inside a loop', () => {
+    renderEditor({ steps: [{ id: 'each', type: 'for_each', items: '', steps: [] }] });
+    const inside = screen.getByRole('combobox', { name: 'Add a step to repeat…' });
+    expect(within(inside).queryByRole('option', { name: 'Continue only if…' })).toBeNull();
+    const top = screen.getByRole('combobox', { name: 'Add a step…' });
+    expect(within(top).getByRole('option', { name: 'Continue only if…' })).toBeInTheDocument();
+  });
+
+  it('toggles "only if it changed" on notify and save, at the top level only', () => {
+    const out = renderEditor({
+      steps: [
+        { id: 'notify', type: 'notify', title: 'Hi' },
+        { id: 'save', type: 'save_artifact', title: 'T', content: 'c' },
+        { id: 'each', type: 'for_each', items: '', steps: [{ id: 'inner', type: 'notify', title: 'In' }] },
+      ],
+    });
+    // The loop's own first step has the same name; the outer card comes first.
+    const outerNotify = () => screen.getAllByRole('listitem', { name: /^1\. Show a notification/ })[0] as HTMLElement;
+    const box = (c: HTMLElement) => within(c).getByRole('checkbox', { name: 'Only if it changed since the last run' });
+    fireEvent.click(box(outerNotify()));
+    fireEvent.click(box(card(/^2\. Save a document/)));
+    expect(out.draft.definition.steps[0]).toMatchObject({ onlyIfChanged: true });
+    expect(out.draft.definition.steps[1]).toMatchObject({ onlyIfChanged: true });
+    fireEvent.click(box(outerNotify()));
+    expect(out.draft.definition.steps[0]).not.toHaveProperty('onlyIfChanged');
+    const inner = screen.getAllByRole('listitem', { name: /^1\. Show a notification/ })[1];
+    expect(within(inner).queryByRole('checkbox', { name: 'Only if it changed since the last run' })).toBeNull();
+  });
+});

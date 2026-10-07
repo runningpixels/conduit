@@ -198,8 +198,12 @@ fn collect(
                     provider: ctx.provider_for(workflow_model, step),
                 });
             }
-            // Notifications stay on this computer.
-            StepAction::Template { .. } | StepAction::Notify { .. } | StepAction::Ask { .. } => {}
+            // Notifications stay on this computer; a condition only reads
+            // what earlier steps produced.
+            StepAction::Template { .. }
+            | StepAction::Notify { .. }
+            | StepAction::Ask { .. }
+            | StepAction::Condition { .. } => {}
             StepAction::Agent { tools, .. } => {
                 set.insert(Permission::Model {
                     provider: ctx.provider_for(workflow_model, step),

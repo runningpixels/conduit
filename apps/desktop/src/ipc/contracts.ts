@@ -718,6 +718,8 @@ export interface WorkflowRunFinished {
   error: string | null;
   trigger: 'schedule' | 'catch_up';
   documents: { artifactId: string; conversationId: string; title: string }[];
+  /** `nothing_new` when a condition stopped the run. */
+  outcome?: string | null;
 }
 
 /** A provider and one of its models; absent means "follow the chat model" (or the workflow's). */
@@ -739,6 +741,9 @@ export interface WorkflowInput {
   default?: string | null;
 }
 
+/** What a `condition` step checks (Rust `workflows::definition`). */
+export type ConditionTest = 'changed' | 'not_empty' | 'empty' | 'contains' | 'not_contains' | 'equals';
+
 export type WorkflowStep = {
   id: string;
   onError?: 'fail' | 'skip';
@@ -750,8 +755,9 @@ export type WorkflowStep = {
   | { type: 'summarize'; prompt: string; input: string; schema?: Record<string, unknown> | null; model?: WorkflowModel }
   | { type: 'template'; template: string }
   | { type: 'for_each'; items: string; steps: WorkflowStep[] }
-  | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
-  | { type: 'notify'; title: string; body?: string }
+  | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create'; onlyIfChanged?: boolean }
+  | { type: 'notify'; title: string; body?: string; onlyIfChanged?: boolean }
+  | { type: 'condition'; value: string; is: ConditionTest; text?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
   | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel }
 );
@@ -767,6 +773,10 @@ export interface WorkflowRun {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+  /** Set to `nothing_new` when a condition stopped the run (the field name may change; read it through `runOutcome.ts`). */
+  outcome?: string | null;
+  /** The step id the run stopped at, when `outcome` says so. */
+  outcomeStep?: string | null;
 }
 
 export interface WorkflowRunStep {

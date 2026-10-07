@@ -25,7 +25,36 @@ export const STEP_TYPES: readonly StepType[] = [
   'save_artifact',
   'ask',
   'notify',
+  'condition',
 ];
+
+/// The kinds offered in a list: a condition (like `onlyIfChanged`) only works
+/// at the top level, so a loop's body doesn't offer it.
+export function stepTypesFor(nested: boolean): readonly StepType[] {
+  return nested ? STEP_TYPES.filter((type) => type !== 'condition') : STEP_TYPES;
+}
+
+/// The tests a condition step offers, in menu order.
+export const CONDITION_TESTS = ['changed', 'not_empty', 'empty', 'contains', 'not_contains', 'equals'] as const;
+
+/// Tests that compare against a text of their own.
+export function conditionNeedsText(is: string): boolean {
+  return is === 'contains' || is === 'not_contains' || is === 'equals';
+}
+
+/// `step` with its test set to `is`: the `text` goes when the new test has no use for it.
+export function withConditionTest(step: WorkflowStep, is: (typeof CONDITION_TESTS)[number]): WorkflowStep {
+  if (step.type !== 'condition') return step;
+  const { text, ...rest } = step;
+  return conditionNeedsText(is) ? { ...rest, is, text: text ?? '' } : { ...rest, is };
+}
+
+/// `step` with `onlyIfChanged` on or off (off removes the key). Only notify and save steps have it.
+export function withOnlyIfChanged(step: WorkflowStep, on: boolean): WorkflowStep {
+  if (step.type !== 'notify' && step.type !== 'save_artifact') return step;
+  const { onlyIfChanged: _drop, ...rest } = step;
+  return (on ? { ...rest, onlyIfChanged: true } : rest) as WorkflowStep;
+}
 
 /// Tools an agent step may use (the backend's `AGENT_TOOLS`): read-only, and
 /// none stops to ask for approval.
@@ -83,6 +112,7 @@ const ID_PREFIX: Record<StepType, string> = {
   agent: 'agent',
   ask: 'ask',
   notify: 'notify',
+  condition: 'check',
 };
 
 /// Every step id in the definition, nested ones included.
@@ -126,6 +156,8 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, question: '', choices: [] };
     case 'notify':
       return { id, type, title: '', body: '' };
+    case 'condition':
+      return { id, type, value: '', is: 'changed' };
   }
 }
 
@@ -277,6 +309,7 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
     case 'ask':
       return [{ field: 'answer', list: false }];
     case 'notify':
+    case 'condition':
       return [];
   }
 }

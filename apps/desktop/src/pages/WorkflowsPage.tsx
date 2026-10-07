@@ -21,6 +21,7 @@ import {
   answerWorkflowReview,
   listWorkflowQuestions,
   listWorkflowReviews,
+  listProviderDescriptors,
   listWorkflowRuns,
   listWorkflows,
   rerunWorkflowFrom,
@@ -30,6 +31,7 @@ import {
   validateWorkflow,
 } from '../ipc/client';
 import type {
+  ProviderDescriptor,
   WorkflowDefinition,
   WorkflowRecord,
   WorkflowRun,
@@ -1078,9 +1080,11 @@ function RunStepRow({
         <summary>
           <span className={STATUS_CLASS[step.status] ?? 'wf-status'}>{statusLabel(step.status)}</span>
           <span className="wf-step-name">{name}</span>
+          {usedModelId(step.output) ? <span className="wf-muted wf-step-model">{usedModelId(step.output)}</span> : null}
           {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
         </summary>
         {step.error ? <p className="wf-error">{step.error}</p> : null}
+        <StepModelLine output={step.output} />
         {onRerun ? (
           <button
             type="button"
@@ -1102,5 +1106,49 @@ function RunStepRow({
         ) : null}
       </details>
     </li>
+  );
+}
+
+/** The model a summarize/agent step used, from its recorded output
+ *  (`output.model`), and why it differs from the choice when it fell back
+ *  (`output.modelNote`). Nothing for steps that recorded neither. */
+/// The model id a summarize/agent step recorded, shown on the collapsed row.
+function usedModelId(output: unknown): string | null {
+  if (!output || typeof output !== 'object') return null;
+  const used = (output as Record<string, unknown>).model;
+  if (!used || typeof used !== 'object') return null;
+  const model = (used as Record<string, unknown>).model;
+  return typeof model === 'string' && model ? model : null;
+}
+
+function StepModelLine({ output }: { output: unknown }) {
+  const t = useT();
+  const [names, setNames] = useState<ProviderDescriptor[]>([]);
+  const record = output && typeof output === 'object' ? (output as Record<string, unknown>) : null;
+  const used = record?.model && typeof record.model === 'object' ? (record.model as Record<string, unknown>) : null;
+  const provider = typeof used?.provider === 'string' ? used.provider : null;
+  const model = typeof used?.model === 'string' ? used.model : null;
+  const note = typeof record?.modelNote === 'string' && record.modelNote ? record.modelNote : null;
+  const wantNames = provider !== null;
+  useEffect(() => {
+    if (!wantNames) return;
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => listProviderDescriptors())
+      .then((list) => {
+        if (!cancelled) setNames(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [wantNames]);
+  if (!provider || !model) return null;
+  const label = names.find((p) => p.id === provider)?.displayName ?? provider;
+  return (
+    <p className="wf-muted wf-model-used">
+      {t('workspace.workflows.runDetail.model', { model, provider: label })}
+      {note ? ` ${note}` : null}
+    </p>
   );
 }

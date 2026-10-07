@@ -28,6 +28,7 @@ const ipc = vi.hoisted(() => ({
   rerunWorkflowFrom: vi.fn(),
   listWorkflowQuestions: vi.fn(),
   answerWorkflowQuestion: vi.fn(),
+  listProviderDescriptors: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -119,6 +120,7 @@ describe('WorkflowsPage', () => {
     ipc.getWorkflowRun.mockResolvedValue(finishedRun);
     ipc.validateWorkflow.mockResolvedValue([]);
     ipc.getWorkflowSchedule.mockResolvedValue(null);
+    ipc.listProviderDescriptors.mockResolvedValue([{ id: 'openrouter', displayName: 'OpenRouter' }]);
   });
 
   afterEach(() => {
@@ -256,6 +258,38 @@ describe('WorkflowsPage', () => {
     await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Morning briefing finished'));
     const after = await screen.findByRole('region', { name: 'What this run did' });
     expect(within(after).getByText('Reused')).toBeInTheDocument();
+  });
+
+  it('shows the model a step used, and why it was not the chosen one', async () => {
+    const done: WorkflowRunDetail = {
+      run: { ...finishedRun.run, status: 'completed', error: null },
+      steps: [
+        {
+          ...finishedRun.steps[1],
+          iteration: null,
+          output: {
+            text: 'Three stories',
+            model: { provider: 'openrouter', model: 'deepseek/flash' },
+            modelNote: "Anthropic isn't set up any more, so the chat model was used.",
+          },
+        },
+        { ...finishedRun.steps[0], id: 's3', status: 'completed', error: null, output: { text: 'page' } },
+      ],
+    };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Finished/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    await waitFor(() => expect(detail).toHaveTextContent('Used deepseek/flash (OpenRouter).'));
+    expect(detail).toHaveTextContent("Anthropic isn't set up any more, so the chat model was used.");
+    // Steps that recorded no model show no model line.
+    expect(detail.querySelectorAll('.wf-model-used')).toHaveLength(1);
+    // The model also shows on the collapsed step row.
+    const chips = detail.querySelectorAll('.wf-step-model');
+    expect(chips).toHaveLength(1);
+    expect(chips[0]).toHaveTextContent('deepseek/flash');
   });
 
   it('calls a step that was allowed to fail "Skipped", not "Failed"', async () => {

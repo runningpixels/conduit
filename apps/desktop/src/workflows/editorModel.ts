@@ -10,7 +10,7 @@
 /// item's fields. It mirrors the backend's validation (`workflows::definition`),
 /// so anything offered here is accepted on save.
 
-import type { WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/contracts';
+import type { WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep } from '../ipc/contracts';
 
 export type StepType = WorkflowStep['type'];
 export type StepPath = readonly number[];
@@ -47,6 +47,27 @@ export function defaultRetries(type: StepType): number | null {
     default:
       return null;
   }
+}
+
+/// Step kinds that call a model, and so may pick their own (the backend only
+/// accepts `model` on these).
+export function stepTakesModel(type: StepType): boolean {
+  return type === 'summarize' || type === 'agent';
+}
+
+/// `def` with its default model set to `model`; `null` removes the key, so a
+/// workflow that follows the chat model stores nothing.
+export function withWorkflowModel(def: WorkflowDefinition, model: WorkflowModel | null): WorkflowDefinition {
+  const { model: _drop, ...rest } = def;
+  return model ? { ...rest, model } : rest;
+}
+
+/// `step` with its own model set to `model`; `null` removes the key. Other
+/// step kinds come back unchanged.
+export function withStepModel(step: WorkflowStep, model: WorkflowModel | null): WorkflowStep {
+  if (step.type !== 'summarize' && step.type !== 'agent') return step;
+  const { model: _drop, ...rest } = step;
+  return (model ? { ...rest, model } : rest) as WorkflowStep;
 }
 
 /// Most pages one fetch step may list (the backend's `MAX_URLS_PER_FETCH`).

@@ -27,7 +27,19 @@ pub struct WorkflowDefinition {
     /// Values asked for when the workflow is run, read as `{{inputs.<id>}}`.
     #[serde(default)]
     pub inputs: Vec<InputDef>,
+    /// The model every `summarize` and `agent` step uses unless it names its
+    /// own; without one, the chat's active model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelChoice>,
     pub steps: Vec<Step>,
+}
+
+/// A provider and one of its models, chosen for a workflow or a step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelChoice {
+    pub provider: String,
+    pub model: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -52,6 +64,10 @@ pub struct Step {
     /// default ([`StepAction::default_retries`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retries: Option<u32>,
+    /// The model this step uses, on `summarize` and `agent` steps only;
+    /// without one, the workflow's (or the chat's active) model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelChoice>,
 }
 
 /// Most retries a step may ask for.
@@ -221,7 +237,8 @@ fn plain_parse_error(message: &str) -> String {
     message.to_string()
 }
 
-const DEFINITION_KEYS: &[&str] = &["inputs", "steps"];
+const DEFINITION_KEYS: &[&str] = &["inputs", "model", "steps"];
+const MODEL_KEYS: &[&str] = &["provider", "model"];
 const INPUT_KEYS: &[&str] = &["id", "label", "default"];
 const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries"];
 
@@ -230,11 +247,11 @@ fn action_keys(step_type: &str) -> &'static [&'static str] {
     match step_type {
         "fetch_page" => &["urls"],
         "web_search" => &["query", "maxResults"],
-        "summarize" => &["prompt", "input", "schema"],
+        "summarize" => &["prompt", "input", "schema", "model"],
         "template" => &["template"],
         "for_each" => &["items", "steps"],
         "save_artifact" => &["title", "content", "format", "mode"],
-        "agent" => &["prompt", "input", "tools"],
+        "agent" => &["prompt", "input", "tools", "model"],
         "ask" => &["question", "choices", "default"],
         "notify" => &["title", "body"],
         _ => &[],
@@ -279,8 +296,23 @@ pub fn unknown_settings(raw: &Value) -> Vec<String> {
             }
         }
     }
+    unknown_model_settings(def.get("model"), "the workflow's model", &mut problems);
     unknown_step_settings(def.get("steps"), &mut problems);
     problems
+}
+
+fn unknown_model_settings(model: Option<&Value>, whose: &str, problems: &mut Vec<String>) {
+    let Some(model) = model.and_then(Value::as_object) else {
+        return;
+    };
+    for key in model.keys() {
+        if !MODEL_KEYS.contains(&key.as_str()) {
+            problems.push(format!(
+                "Unknown setting \"{key}\" in {whose}{}",
+                suggestion(key, MODEL_KEYS)
+            ));
+        }
+    }
 }
 
 fn unknown_step_settings(steps: Option<&Value>, problems: &mut Vec<String>) {
@@ -304,6 +336,11 @@ fn unknown_step_settings(steps: Option<&Value>, problems: &mut Vec<String>) {
                 ));
             }
         }
+        unknown_model_settings(
+            step.get("model"),
+            &format!("step \"{id}\"'s model"),
+            problems,
+        );
         unknown_step_settings(step.get("steps"), problems);
     }
 }
@@ -329,6 +366,9 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
     let mut problems = Vec::new();
     if def.steps.is_empty() {
         problems.push("A workflow needs at least one step.".to_string());
+    }
+    if let Some(model) = &def.model {
+        check_model(model, "The workflow's model", &mut problems);
     }
     let mut input_ids = HashSet::new();
     for input in &def.inputs {
@@ -398,6 +438,17 @@ fn check_steps(
             problems.push(format!(
                 "Step \"{name}\" retries too often; the limit is {MAX_RETRIES}."
             ));
+        }
+        if let Some(model) = &step.model {
+            if !matches!(
+                step.action,
+                StepAction::Summarize { .. } | StepAction::Agent { .. }
+            ) {
+                problems.push(format!(
+                    "Step \"{name}\" can't choose a model: only summarize and agent steps use one."
+                ));
+            }
+            check_model(model, &format!("Step \"{name}\"'s model"), problems);
         }
         let mut texts: Vec<&str> = Vec::new();
         match &step.action {
@@ -521,6 +572,12 @@ fn check_steps(
             }
         }
         scope.steps.push(step.id.clone());
+    }
+}
+
+fn check_model(model: &ModelChoice, whose: &str, problems: &mut Vec<String>) {
+    if model.provider.trim().is_empty() || model.model.trim().is_empty() {
+        problems.push(format!("{whose} needs both a provider and a model."));
     }
 }
 
@@ -793,5 +850,78 @@ mod tests {
     #[test]
     fn an_unknown_step_type_does_not_parse() {
         assert!(parse(r#"{"steps":[{"id":"a","type":"launch_rockets"}]}"#).is_err());
+    }
+
+    fn with_models() -> Value {
+        json!({
+            "model": { "provider": "openrouter", "model": "z-ai/glm" },
+            "steps": [
+                { "id": "sum", "type": "summarize", "prompt": "P", "input": "x",
+                  "model": { "provider": "openrouter", "model": "deepseek" } },
+                { "id": "ag", "type": "agent", "prompt": "P",
+                  "model": { "provider": "ollama", "model": "llama" } },
+            ]
+        })
+    }
+
+    #[test]
+    fn a_workflow_and_its_llm_steps_may_choose_a_model() {
+        let raw = with_models();
+        assert!(unknown_settings(&raw).is_empty());
+        let d = def(raw);
+        assert_eq!(validate(&d), Ok(()));
+        assert_eq!(d.model.as_ref().unwrap().model, "z-ai/glm");
+        assert_eq!(d.steps[1].model.as_ref().unwrap().provider, "ollama");
+        // Round-trips, and a definition without models stores none.
+        assert_eq!(parse(&serde_json::to_string(&d).unwrap()).unwrap(), d);
+        let plain = serde_json::to_value(def(briefing())).unwrap();
+        assert!(plain.get("model").is_none());
+        assert!(plain["steps"][0].get("model").is_none());
+    }
+
+    #[test]
+    fn a_model_on_a_step_that_calls_no_model_is_rejected() {
+        let raw = json!({ "steps": [
+            { "id": "t", "type": "template", "template": "x",
+              "model": { "provider": "ollama", "model": "m" } },
+        ]});
+        let problems = validate(&def(raw.clone())).unwrap_err();
+        assert_eq!(
+            problems,
+            vec!["Step \"t\" can't choose a model: only summarize and agent steps use one."]
+        );
+        // And the editor's unknown-setting check names it too.
+        assert_eq!(
+            unknown_settings(&raw),
+            vec!["Step \"t\": unknown setting \"model\".".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_model_needs_both_a_provider_and_a_model() {
+        let mut raw = with_models();
+        raw["model"]["model"] = json!("  ");
+        raw["steps"][0]["model"]["provider"] = json!("");
+        let problems = validate(&def(raw)).unwrap_err();
+        assert_eq!(
+            problems,
+            vec![
+                "The workflow's model needs both a provider and a model.",
+                "Step \"sum\"'s model needs both a provider and a model.",
+            ]
+        );
+        // A half-written model doesn't load at all.
+        assert!(parse(r#"{"model":{"provider":"x"},"steps":[]}"#).is_err());
+    }
+
+    #[test]
+    fn a_misspelt_model_setting_is_reported() {
+        let mut raw = with_models();
+        raw["model"]["Provider"] = json!("x");
+        assert_eq!(
+            unknown_settings(&raw),
+            vec!["Unknown setting \"Provider\" in the workflow's model \u{2014} did you mean \"provider\"?"
+                .to_string()]
+        );
     }
 }

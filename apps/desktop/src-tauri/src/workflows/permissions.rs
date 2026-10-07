@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::definition::{Step, StepAction, WorkflowDefinition};
+use super::definition::{ModelChoice, Step, StepAction, WorkflowDefinition};
 use super::waiting::{Pending, Waiting};
 
 /// One thing a workflow may do unattended.
@@ -105,7 +105,27 @@ pub fn view(permission: Permission) -> PermissionView {
 /// depend on them.
 pub struct Context<'a> {
     pub search_backend: &'a str,
+    /// The active provider (what a step without its own model uses).
     pub provider: &'a str,
+    /// The active model, recorded nowhere but needed to resolve a choice.
+    pub model: &'a str,
+    /// Whether a provider can be called; `None` takes every provider as set up.
+    pub configured: Option<&'a dyn Fn(&str) -> bool>,
+}
+
+impl Context<'_> {
+    /// The provider a step (or, in `collect`, its workflow) resolves to.
+    fn provider_for(&self, workflow: Option<&ModelChoice>, step: &Step) -> String {
+        let all = |_: &str| true;
+        super::models::resolve(
+            step.model.as_ref(),
+            workflow,
+            self.provider,
+            self.model,
+            self.configured.unwrap_or(&all),
+        )
+        .provider
+    }
 }
 
 /// The host a URL template names, when it is written out rather than filled
@@ -146,11 +166,16 @@ pub fn for_fetch(step_id: &str, template: &str, url: &str) -> Permission {
 /// Everything `def` needs to run, given today's settings, sorted.
 pub fn required(def: &WorkflowDefinition, ctx: &Context) -> Vec<Permission> {
     let mut set = BTreeSet::new();
-    collect(&def.steps, ctx, &mut set);
+    collect(&def.steps, def.model.as_ref(), ctx, &mut set);
     set.into_iter().collect()
 }
 
-fn collect(steps: &[Step], ctx: &Context, set: &mut BTreeSet<Permission>) {
+fn collect(
+    steps: &[Step],
+    workflow_model: Option<&ModelChoice>,
+    ctx: &Context,
+    set: &mut BTreeSet<Permission>,
+) {
     for step in steps {
         match &step.action {
             StepAction::FetchPage { urls } => {
@@ -170,14 +195,14 @@ fn collect(steps: &[Step], ctx: &Context, set: &mut BTreeSet<Permission>) {
             }
             StepAction::Summarize { .. } => {
                 set.insert(Permission::Model {
-                    provider: ctx.provider.to_string(),
+                    provider: ctx.provider_for(workflow_model, step),
                 });
             }
             // Notifications stay on this computer.
             StepAction::Template { .. } | StepAction::Notify { .. } | StepAction::Ask { .. } => {}
             StepAction::Agent { tools, .. } => {
                 set.insert(Permission::Model {
-                    provider: ctx.provider.to_string(),
+                    provider: ctx.provider_for(workflow_model, step),
                 });
                 if !tools.is_empty() {
                     set.insert(Permission::AgentTools {
@@ -189,7 +214,7 @@ fn collect(steps: &[Step], ctx: &Context, set: &mut BTreeSet<Permission>) {
             StepAction::SaveArtifact { .. } => {
                 set.insert(Permission::SaveDocuments);
             }
-            StepAction::ForEach { steps, .. } => collect(steps, ctx, set),
+            StepAction::ForEach { steps, .. } => collect(steps, workflow_model, ctx, set),
         }
     }
 }
@@ -251,6 +276,8 @@ mod tests {
     const CTX: Context = Context {
         search_backend: "duckduckgo",
         provider: "ollama",
+        model: "m",
+        configured: None,
     };
 
     #[test]
@@ -401,5 +428,35 @@ mod tests {
         assert_eq!(rx.await.unwrap(), Decision::AlwaysAllow);
         assert!(reviews.list().is_empty());
         assert!(!reviews.answer("r1", Decision::Deny), "only once");
+    }
+
+    #[test]
+    fn each_model_step_needs_the_provider_it_resolves_to() {
+        let d: WorkflowDefinition = serde_json::from_value(json!({
+            "model": { "provider": "groq", "model": "w" },
+            "steps": [
+                { "id": "a", "type": "summarize", "prompt": "P", "input": "x" },
+                { "id": "b", "type": "summarize", "prompt": "P", "input": "x",
+                  "model": { "provider": "openai", "model": "s" } },
+                { "id": "c", "type": "agent", "prompt": "P",
+                  "model": { "provider": "openrouter", "model": "gone" } },
+            ]
+        }))
+        .unwrap();
+        let configured = |id: &str| id != "openrouter";
+        let ctx = Context {
+            configured: Some(&configured),
+            ..CTX
+        };
+        let providers: Vec<String> = required(&d, &ctx)
+            .into_iter()
+            .filter_map(|p| match p {
+                Permission::Model { provider } => Some(provider),
+                _ => None,
+            })
+            .collect();
+        // a: the workflow's groq; b: its own openai; c: openrouter isn't set
+        // up, so the active ollama.
+        assert_eq!(providers, ["groq", "ollama", "openai"]);
     }
 }

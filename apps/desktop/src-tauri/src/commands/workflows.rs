@@ -369,11 +369,19 @@ async fn workflow_permissions(state: &AppState, id: &str) -> Result<WorkflowPerm
         .map_err(|e| format!("The workflow definition can't be read: {e}"))?;
     let settings = state.settings()?;
     let backend = search_backend(&settings);
+    // The live provider registry, as a run uses it: a step whose chosen
+    // provider isn't set up counts as using the active one.
+    let configured = |provider: &str| {
+        provider_core::get_adapter(provider).is_some()
+            && StreamManager::build_adapter_context(state, provider).is_ok()
+    };
     let required = permissions::required(
         &def,
         &permissions::Context {
             search_backend: &backend,
             provider: &settings.active_provider,
+            model: &settings.active_model,
+            configured: Some(&configured),
         },
     );
     let stored = repo::get_permissions(&state.db, &state.encryption, id)

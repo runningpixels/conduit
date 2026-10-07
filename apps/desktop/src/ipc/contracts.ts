@@ -720,7 +720,15 @@ export interface WorkflowRunFinished {
   documents: { artifactId: string; conversationId: string; title: string }[];
 }
 
+/** A provider and one of its models; absent means "follow the chat model" (or the workflow's). */
+export interface WorkflowModel {
+  provider: string;
+  model: string;
+}
+
 export interface WorkflowDefinition {
+  /** The workflow's default model for steps that use one. */
+  model?: WorkflowModel;
   inputs?: WorkflowInput[];
   steps: WorkflowStep[];
 }
@@ -739,13 +747,13 @@ export type WorkflowStep = {
 } & (
   | { type: 'fetch_page'; urls: string[] }
   | { type: 'web_search'; query: string; maxResults?: number | null }
-  | { type: 'summarize'; prompt: string; input: string; schema?: Record<string, unknown> | null }
+  | { type: 'summarize'; prompt: string; input: string; schema?: Record<string, unknown> | null; model?: WorkflowModel }
   | { type: 'template'; template: string }
   | { type: 'for_each'; items: string; steps: WorkflowStep[] }
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create' }
   | { type: 'notify'; title: string; body?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
-  | { type: 'agent'; prompt: string; input?: string; tools?: string[] }
+  | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel }
 );
 
 export type WorkflowRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';

@@ -1,8 +1,41 @@
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import { WorkflowEditor, type WorkflowDraft } from './WorkflowEditor';
+
+const ipc = vi.hoisted(() => ({
+  listProviderDescriptors: vi.fn(),
+  listConfiguredProviders: vi.fn(),
+  listProviderModels: vi.fn(),
+  getSettings: vi.fn(),
+}));
+vi.mock('../ipc/client', () => ipc);
+
+const descriptor = (id: string, displayName: string, tier: number) => ({
+  id,
+  displayName,
+  defaultBaseUrl: null,
+  credentialMode: 'required',
+  isLocal: false,
+  showBaseUrlField: false,
+  tier,
+  description: null,
+});
+
+beforeEach(() => {
+  ipc.listProviderDescriptors.mockResolvedValue([
+    descriptor('openrouter', 'OpenRouter', 1),
+    descriptor('anthropic', 'Anthropic', 1),
+    descriptor('gone', 'Gone Cloud', 2),
+  ]);
+  // `gone` has no key any more.
+  ipc.listConfiguredProviders.mockResolvedValue(['openrouter', 'anthropic']);
+  ipc.listProviderModels.mockImplementation(async (id: string) =>
+    id === 'openrouter' ? [{ id: 'glm-flash' }, { id: 'deepseek-flash' }] : [],
+  );
+  ipc.getSettings.mockResolvedValue({ activeProvider: 'anthropic', activeModel: 'claude-x' });
+});
 
 /// Renders the editor with real state, and exposes the latest draft.
 function renderEditor(definition: WorkflowDefinition) {
@@ -203,5 +236,56 @@ describe('WorkflowEditor', () => {
     expect(screen.getByText(/Change the shape of that data in the JSON view/)).toBeInTheDocument();
     typeInto(screen.getByRole('textbox', { name: 'Instruction' }), 'new prompt');
     expect(out.draft.definition.steps[0]).toMatchObject({ prompt: 'new prompt', schema });
+  });
+
+  describe('models', () => {
+    it('writes the workflow default only when a provider and model are chosen, and clears it', async () => {
+      const out = renderEditor({ steps: [] });
+      const picker = await screen.findByRole('combobox', { name: 'Model provider' });
+      await waitFor(() => expect(within(picker).getAllByRole('option')).toHaveLength(3));
+      // Only configured providers are offered.
+      const offered = within(picker).getAllByRole('option').map((o) => o.textContent);
+      expect(offered).toEqual(['Follow the chat model', 'Anthropic', 'OpenRouter']);
+      expect('model' in out.draft.definition).toBe(false);
+
+      fireEvent.change(picker, { target: { value: 'openrouter' } });
+      await waitFor(() => expect(out.draft.definition.model).toEqual({ provider: 'openrouter', model: 'glm-flash' }));
+      fireEvent.change(await screen.findByRole('combobox', { name: 'Model model' }), { target: { value: 'deepseek-flash' } });
+      expect(out.draft.definition.model).toEqual({ provider: 'openrouter', model: 'deepseek-flash' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Use default' }));
+      expect('model' in out.draft.definition).toBe(false);
+    });
+
+    it("offers a step's own model on summarize and agent steps only", async () => {
+      const out = renderEditor({
+        steps: [
+          { id: 's', type: 'summarize', prompt: 'p', input: 'i' },
+          { id: 'a', type: 'agent', prompt: 'p' },
+          { id: 'n', type: 'notify', title: 't' },
+        ],
+      });
+      const name = 'Model for this step provider';
+      const picker = within(card(/^1\./)).getByRole('combobox', { name });
+      await waitFor(() => expect(within(picker).getAllByRole('option')).toHaveLength(3));
+      expect(within(card(/^2\./)).getByRole('combobox', { name })).toBeInTheDocument();
+      expect(within(card(/^3\./)).queryByRole('combobox', { name })).toBeNull();
+
+      expect(within(picker).getAllByRole('option')[0]).toHaveTextContent("Use the workflow's model");
+      fireEvent.change(picker, { target: { value: 'openrouter' } });
+      await waitFor(() =>
+        expect(out.draft.definition.steps[0]).toMatchObject({ model: { provider: 'openrouter', model: 'glm-flash' } }),
+      );
+      expect('model' in out.draft.definition.steps[1]).toBe(false);
+      expect('model' in out.draft.definition).toBe(false);
+
+      fireEvent.click(within(card(/^1\./)).getByRole('button', { name: 'Use default' }));
+      expect('model' in out.draft.definition.steps[0]).toBe(false);
+    });
+
+    it("keeps a saved choice whose provider isn't set up, and says so", async () => {
+      renderEditor({ model: { provider: 'gone', model: 'old-model' }, steps: [] });
+      expect(await screen.findByText("old-model — Gone Cloud isn't set up")).toBeInTheDocument();
+    });
   });
 });

@@ -9,6 +9,7 @@ const ipc = vi.hoisted(() => ({
   listConfiguredProviders: vi.fn(),
   listProviderModels: vi.fn(),
   getSettings: vi.fn(),
+  pickWorkspaceFolder: vi.fn(),
 }));
 vi.mock('../ipc/client', () => ipc);
 
@@ -343,5 +344,46 @@ describe('WorkflowEditor: only if something changed', () => {
     expect(out.draft.definition.steps[0]).not.toHaveProperty('onlyIfChanged');
     const inner = screen.getAllByRole('listitem', { name: /^1\. Show a notification/ })[1];
     expect(within(inner).queryByRole('checkbox', { name: 'Only if it changed since the last run' })).toBeNull();
+  });
+});
+
+describe('data steps and folder', () => {
+  it('sets and clears the folder with the picker', async () => {
+    const out = renderEditor({ steps: [] });
+    ipc.pickWorkspaceFolder.mockResolvedValueOnce('C:\\Reports');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose folder…' }));
+    await waitFor(() => expect(out.draft.definition.folder).toBe('C:\\Reports'));
+    expect(screen.getByText('C:\\Reports')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear folder' }));
+    expect(out.draft.definition).not.toHaveProperty('folder');
+    // Cancelling the dialog changes nothing.
+    ipc.pickWorkspaceFolder.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Choose folder…' }));
+    await waitFor(() => expect(ipc.pickWorkspaceFolder).toHaveBeenCalledTimes(2));
+    expect(out.draft.definition).not.toHaveProperty('folder');
+  });
+
+  it('writes a read_file path and hints when there is no folder', () => {
+    const out = renderEditor({ steps: [] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'read_file' } });
+    const c = card(/^1\. Read a file/);
+    expect(within(c).getByText(/Choose the workflow's folder above/)).toBeTruthy();
+    typeInto(within(c).getByRole('textbox', { name: 'File path (inside the folder)' }), 'reports/metrics.csv');
+    expect(out.draft.definition.steps[0]).toEqual({ id: 'file', type: 'read_file', path: 'reports/metrics.csv' });
+  });
+
+  it('writes a parse_data input and format, and offers the file text to insert', () => {
+    const out = renderEditor({
+      folder: 'C:\\Reports',
+      steps: [{ id: 'file', type: 'read_file', path: 'a.csv' }],
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'parse_data' } });
+    const c = card(/^2\. Turn text into a table/);
+    fireEvent.change(within(c).getByRole('combobox', { name: 'Insert a value into Text to turn into a table' }), {
+      target: { value: 'steps.file.text' },
+    });
+    fireEvent.change(within(c).getByRole('combobox', { name: 'Format' }), { target: { value: 'tsv' } });
+    expect(out.draft.definition.steps[1]).toEqual({ id: 'data', type: 'parse_data', input: '{{steps.file.text}}', format: 'tsv' });
+    expect(screen.queryByText(/Choose the workflow's folder above/)).toBeNull();
   });
 });

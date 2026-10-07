@@ -46,6 +46,25 @@ pub enum Permission {
     /// Let an agent step use these tools (sorted). Reading pages this way
     /// goes wherever the model decides, so it's approved as a whole.
     AgentTools { step_id: String, tools: Vec<String> },
+    /// Read files inside this folder (the workflow's own folder).
+    ReadFolder { path: String },
+}
+
+/// The permission to read files in `folder`: the folder as written, without
+/// surrounding spaces or a trailing separator, so the two spellings of one
+/// folder are one permission.
+pub fn read_folder(folder: &str) -> Permission {
+    let trimmed = folder.trim();
+    let shortened = trimmed.trim_end_matches(['/', '\\']);
+    // A drive or filesystem root ("C:\", "/") keeps its separator.
+    let path = if shortened.is_empty() || shortened.ends_with(':') {
+        trimmed
+    } else {
+        shortened
+    };
+    Permission::ReadFolder {
+        path: path.to_string(),
+    }
 }
 
 /// `tools`, sorted, as an `AgentTools` permission lists them.
@@ -166,13 +185,15 @@ pub fn for_fetch(step_id: &str, template: &str, url: &str) -> Permission {
 /// Everything `def` needs to run, given today's settings, sorted.
 pub fn required(def: &WorkflowDefinition, ctx: &Context) -> Vec<Permission> {
     let mut set = BTreeSet::new();
-    collect(&def.steps, def.model.as_ref(), ctx, &mut set);
+    let folder = def.folder.as_deref().filter(|f| !f.trim().is_empty());
+    collect(&def.steps, def.model.as_ref(), folder, ctx, &mut set);
     set.into_iter().collect()
 }
 
 fn collect(
     steps: &[Step],
     workflow_model: Option<&ModelChoice>,
+    folder: Option<&str>,
     ctx: &Context,
     set: &mut BTreeSet<Permission>,
 ) {
@@ -198,9 +219,15 @@ fn collect(
                     provider: ctx.provider_for(workflow_model, step),
                 });
             }
-            // Notifications stay on this computer; a condition only reads
-            // what earlier steps produced.
+            StepAction::ReadFile { .. } => {
+                if let Some(folder) = folder {
+                    set.insert(read_folder(folder));
+                }
+            }
+            // Notifications stay on this computer; a condition or a parse only
+            // reads what earlier steps produced.
             StepAction::Template { .. }
+            | StepAction::ParseData { .. }
             | StepAction::Notify { .. }
             | StepAction::Ask { .. }
             | StepAction::Condition { .. } => {}
@@ -218,7 +245,7 @@ fn collect(
             StepAction::SaveArtifact { .. } => {
                 set.insert(Permission::SaveDocuments);
             }
-            StepAction::ForEach { steps, .. } => collect(steps, workflow_model, ctx, set),
+            StepAction::ForEach { steps, .. } => collect(steps, workflow_model, folder, ctx, set),
         }
     }
 }
@@ -340,6 +367,31 @@ mod tests {
     }
 
     #[test]
+    fn reading_files_needs_the_folder_once() {
+        let d: WorkflowDefinition = serde_json::from_value(json!({
+            "folder": "/data/reports/",
+            "steps": [
+                { "id": "a", "type": "read_file", "path": "a.csv" },
+                { "id": "each", "type": "for_each", "items": "steps.a.text", "steps": [
+                    { "id": "b", "type": "read_file", "path": "{{item}}" },
+                ]},
+                { "id": "p", "type": "parse_data", "input": "{{steps.a.text}}", "format": "csv" },
+            ]
+        }))
+        .unwrap();
+        assert_eq!(
+            required(&d, &CTX),
+            vec![Permission::ReadFolder {
+                path: "/data/reports".into()
+            }]
+        );
+        assert_eq!(
+            read_folder("/"),
+            Permission::ReadFolder { path: "/".into() }
+        );
+    }
+
+    #[test]
     fn missing_is_what_an_edit_added_and_narrowing_needs_nothing() {
         let approved: BTreeSet<Permission> = [
             Permission::Host {
@@ -394,6 +446,10 @@ mod tests {
         assert_eq!(
             serde_json::to_value(Permission::SaveDocuments).unwrap(),
             json!({ "kind": "saveDocuments" })
+        );
+        assert_eq!(
+            serde_json::to_value(read_folder("C:\\Reports\\")).unwrap(),
+            json!({ "kind": "readFolder", "path": "C:\\Reports" })
         );
         let back: Permission =
             serde_json::from_value(json!({ "kind": "host", "host": "bbc.com" })).unwrap();

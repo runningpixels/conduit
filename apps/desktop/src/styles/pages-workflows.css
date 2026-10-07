@@ -236,3 +236,4 @@
 }
 .wf-steps > li:last-child::after { display: none; }
 .wf-steps .wf-steps { margin-top: var(--sp-3); }
+.wf-folder-path { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink-2); }

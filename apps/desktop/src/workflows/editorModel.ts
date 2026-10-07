@@ -18,6 +18,8 @@ export type StepPath = readonly number[];
 export const STEP_TYPES: readonly StepType[] = [
   'fetch_page',
   'web_search',
+  'read_file',
+  'parse_data',
   'summarize',
   'agent',
   'template',
@@ -99,12 +101,23 @@ export function withStepModel(step: WorkflowStep, model: WorkflowModel | null): 
   return (model ? { ...rest, model } : rest) as WorkflowStep;
 }
 
+/// Formats a `parse_data` step reads, in menu order.
+export const DATA_FORMATS = ['csv', 'tsv', 'json'] as const;
+
+/// `def` with its folder set to `folder`; `null` (or blank) removes the key.
+export function withFolder(def: WorkflowDefinition, folder: string | null): WorkflowDefinition {
+  const { folder: _drop, ...rest } = def;
+  return folder && folder.trim() ? { ...rest, folder } : rest;
+}
+
 /// Most pages one fetch step may list (the backend's `MAX_URLS_PER_FETCH`).
 export const MAX_URLS = 10;
 
 const ID_PREFIX: Record<StepType, string> = {
   fetch_page: 'fetch',
   web_search: 'search',
+  read_file: 'file',
+  parse_data: 'data',
   summarize: 'summary',
   template: 'text',
   for_each: 'each',
@@ -142,6 +155,10 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, urls: [''] };
     case 'web_search':
       return { id, type, query: '', maxResults: 5 };
+    case 'read_file':
+      return { id, type, path: '' };
+    case 'parse_data':
+      return { id, type, input: '', format: 'csv' };
     case 'summarize':
       return { id, type, prompt: '', input: '' };
     case 'template':
@@ -293,6 +310,18 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       ];
     case 'web_search':
       return [{ field: 'results', list: true }];
+    case 'read_file':
+      return [
+        { field: 'text', list: false },
+        { field: 'name', list: false },
+      ];
+    case 'parse_data':
+      return [
+        { field: 'rows', list: true },
+        { field: 'count', list: false },
+        { field: 'text', list: false },
+        { field: 'columns', list: true },
+      ];
     case 'summarize':
       return step.schema ? [{ field: 'text', list: false }, { field: 'data', list: true }] : [{ field: 'text', list: false }];
     case 'template':

@@ -52,6 +52,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::ask::{PendingQuestion, Questions};
+use super::data;
 use super::definition::{self, ArtifactFormat, ModelChoice, OnError, SaveMode, Step, StepAction};
 use super::models::{self, Resolved};
 use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
@@ -243,6 +244,7 @@ impl Runner<'_> {
             workflow_name: &workflow.name,
             conversation_id: &conversation_id,
             workflow_model: def.model.as_ref(),
+            folder: def.folder.as_deref(),
             started: Instant::now(),
             waited: Mutex::new(Duration::ZERO),
             tokens: Mutex::new(0),
@@ -324,6 +326,8 @@ struct Exec<'a> {
     conversation_id: &'a str,
     /// The workflow's default model for its summarize and agent steps.
     workflow_model: Option<&'a ModelChoice>,
+    /// The workflow's folder for `read_file` steps.
+    folder: Option<&'a str>,
     started: Instant,
     /// Time spent waiting for the user, which the budget doesn't count.
     waited: Mutex<Duration>,
@@ -618,6 +622,30 @@ impl Exec<'_> {
                 }
                 notify(&title, &body)?;
                 Ok(json!({ "delivered": true, "sent": true, "hash": hash }))
+            }
+            StepAction::ReadFile { .. } => {
+                // The folder is checked first so a missing one reads plainly
+                // even before anyone is asked about it.
+                let folder = self
+                    .folder
+                    .filter(|f| !f.trim().is_empty())
+                    .ok_or("This workflow has no folder to read files from. Choose one first.")?;
+                self.allow(&step.id, permissions::read_folder(folder), None)
+                    .await?;
+                let path = filled["path"].as_str().unwrap_or_default();
+                let file = data::read_file(Some(folder), path).await?;
+                let mut output = file.into_value();
+                let text = output["text"].as_str().unwrap_or_default().to_string();
+                let capped = cap_text(&text, MAX_MODEL_TEXT_CHARS);
+                if capped.len() != text.len() {
+                    output["text"] = json!(capped);
+                    output["truncated"] = json!(true);
+                }
+                Ok(output)
+            }
+            StepAction::ParseData { format, .. } => {
+                let input = filled["input"].as_str().unwrap_or_default();
+                data::parse_data(input, format)
             }
             StepAction::Condition { is, .. } => {
                 let value = filled["value"].as_str().unwrap_or_default();
@@ -945,7 +973,7 @@ impl Exec<'_> {
                     failures.push(format!("{url}: {error}"));
                     pages.push(json!({
                         "url": url, "title": null, "text": "", "links": [],
-                        "lookedEmpty": true, "error": error,
+                        "lookedEmpty": true, "contentType": null, "error": error,
                     }));
                 }
             }
@@ -982,6 +1010,7 @@ impl Exec<'_> {
             "lookedEmpty": extract::looked_empty(&page.text),
             "text": page.text,
             "links": page.links,
+            "contentType": page.content_type,
             "error": null,
         }))
     }
@@ -1398,6 +1427,10 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "type": "notify", "title": render(title)?, "body": render(body)?,
             "onlyIfChanged": only_if_changed,
         }),
+        StepAction::ReadFile { path } => json!({ "type": "read_file", "path": render(path)? }),
+        StepAction::ParseData { input, format } => {
+            json!({ "type": "parse_data", "input": render(input)?, "format": format })
+        }
         StepAction::Condition { value, is, text } => json!({
             "type": "condition", "value": render(value)?, "is": is,
             "text": text.as_deref().map(render).transpose()?,
@@ -1409,6 +1442,9 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
 /// recorded step keeps the hash, not the page.
 const MAX_RECORDED_CONDITION_CHARS: usize = 200;
 
+/// Most characters of a `parse_data` step's input kept in the run record.
+const MAX_RECORDED_DATA_CHARS: usize = 500;
+
 /// What the run record keeps as a step's input: what it ran with, except a
 /// condition's value, which can be a whole page, is cut short.
 fn recorded_input(action: &StepAction, filled: &Value) -> Value {
@@ -1416,6 +1452,12 @@ fn recorded_input(action: &StepAction, filled: &Value) -> Value {
     if matches!(action, StepAction::Condition { .. }) {
         if let Some(value) = filled["value"].as_str() {
             input["value"] = json!(cap_text(value, MAX_RECORDED_CONDITION_CHARS));
+        }
+    }
+    // The data being parsed is already in the step that produced it.
+    if matches!(action, StepAction::ParseData { .. }) {
+        if let Some(value) = filled["input"].as_str() {
+            input["input"] = json!(cap_text(value, MAX_RECORDED_DATA_CHARS));
         }
     }
     input
@@ -1561,6 +1603,8 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Ask { .. } => "ask",
         StepAction::Notify { .. } => "notify",
         StepAction::Condition { .. } => "condition",
+        StepAction::ReadFile { .. } => "read_file",
+        StepAction::ParseData { .. } => "parse_data",
     }
 }
 

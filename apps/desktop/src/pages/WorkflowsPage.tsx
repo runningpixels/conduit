@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+import { dataStepSummary } from '../workflows/stepSummary';
 import {
   createWorkflow,
   deleteWorkflow,
@@ -1088,6 +1089,7 @@ function RunStepRow({
     step.iteration != null
       ? t('workspace.workflows.runDetail.iteration', { step: step.stepId, n: step.iteration + 1 })
       : step.stepId;
+  const dataSummary = dataStepSummary(step, t, (bytes) => fmt.size(bytes));
   return (
     <li className={step.iteration != null ? 'wf-run-step wf-run-step-nested' : 'wf-run-step'}>
       <details>
@@ -1098,6 +1100,7 @@ function RunStepRow({
           {conditionText(step) ? (
             <span className="wf-muted wf-step-reason">{conditionText(step)}</span>
           ) : null}
+          {dataSummary ? <span className="wf-muted wf-step-reason">{dataSummary}</span> : null}
           {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
         </summary>
         {step.error ? <p className="wf-error">{step.error}</p> : null}

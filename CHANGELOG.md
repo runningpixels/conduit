@@ -26,6 +26,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   after seeing a change reports it again next time. Notify and save steps can
   also skip themselves when what they would send or save is the same as last
   time. A new "Watch a page" starter puts it together.
+- **Workflows read your data.** A workflow can have its own folder, and a
+  "Read a file" step reads text, CSV, JSON, Markdown, PDF or Word files from
+  it, never from anywhere else; a scheduled run asks before reading a folder
+  it hasn't been approved for. A "Turn text into a table" step reads CSV, TSV
+  or JSON into rows and columns that later steps can use or loop over. Web
+  addresses that return CSV, JSON or plain text are now kept as they are
+  instead of being read like an article.
 
 ### Fixed
 

@@ -49,6 +49,10 @@ function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): st
       });
     case 'web_search':
       return t('workspace.workflows.step.webSearch', { query: q(step.query) });
+    case 'read_file':
+      return t('workspace.workflows.step.readFile', { path: q(step.path) });
+    case 'parse_data':
+      return t('workspace.workflows.step.parseData', { format: step.format.toUpperCase() });
     case 'summarize':
       return step.schema
         ? t('workspace.workflows.step.summarizeData', { prompt: q(step.prompt) })

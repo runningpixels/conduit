@@ -2799,3 +2799,231 @@ async fn a_scheduled_run_with_nothing_new_is_reported_as_such_and_has_no_documen
     assert_eq!(second[0].outcome.as_deref(), Some("nothing_new"));
     assert!(second[0].documents.is_empty());
 }
+
+// ── Data in: fetched data, a workflow folder, parsing ───────────────────────
+
+/// Serves (path, content type, body) on loopback; anything else is a 404.
+async fn serve_typed(files: Vec<(&'static str, &'static str, &'static str)>) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let files = Arc::new(files);
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let files = files.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]);
+                let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+                let found = files.iter().find(|(p, _, _)| *p == path);
+                let (status, content_type, body) = match found {
+                    Some((_, ct, body)) => ("200 OK", *ct, *body),
+                    None => ("404 Not Found", "text/plain", "missing"),
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+    format!("http://{addr}")
+}
+
+const SALES_CSV: &str = "Week,Revenue\n1,100\n2,250\n";
+const SALES_JSON: &str = r#"{"weeks": [{"Week": 1, "Revenue": 100}, {"Week": 2, "Revenue": 250}]}"#;
+
+#[tokio::test]
+async fn fetched_csv_and_json_arrive_as_they_are_and_html_is_still_read() {
+    let base = serve_typed(vec![
+        ("/sales.csv", "text/csv; charset=utf-8", SALES_CSV),
+        ("/sales.json", "application/json", SALES_JSON),
+        ("/download.csv", "application/octet-stream", SALES_CSV),
+        ("/page", "text/html; charset=utf-8", PAGE_A),
+    ])
+    .await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [
+                format!("{base}/sales.csv"), format!("{base}/sales.json"),
+                format!("{base}/download.csv"), format!("{base}/page"),
+            ]},
+            { "id": "table", "type": "parse_data", "input": "{{steps.fetch.pages.0.text}}", "format": "csv" },
+            { "id": "cell", "type": "template", "template": "{{steps.table.rows.1.Revenue}}" },
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let pages = &step(&run, "fetch", None).output.as_ref().unwrap()["pages"];
+    assert_eq!(pages[0]["text"], SALES_CSV);
+    assert_eq!(pages[0]["contentType"], "text/csv");
+    assert_eq!(pages[0]["title"], Value::Null);
+    assert_eq!(pages[1]["text"], SALES_JSON);
+    assert_eq!(pages[1]["contentType"], "application/json");
+    assert_eq!(pages[2]["text"], SALES_CSV, "a .csv address is data");
+    assert_eq!(pages[2]["contentType"], "application/octet-stream");
+    assert_eq!(pages[3]["title"], "Rust news");
+    assert_eq!(pages[3]["contentType"], "text/html");
+    assert!(!pages[3]["text"].as_str().unwrap().contains("track()"));
+
+    let table = step(&run, "table", None).output.as_ref().unwrap();
+    assert_eq!(table["count"], 2);
+    assert_eq!(table["columns"], json!(["Week", "Revenue"]));
+    assert_eq!(
+        step(&run, "cell", None).output.as_ref().unwrap()["text"],
+        "250"
+    );
+}
+
+fn folder_workflow(folder: &Path, steps: Value) -> Value {
+    json!({ "folder": folder.to_str().unwrap(), "steps": steps })
+}
+
+#[tokio::test]
+async fn read_file_and_parse_data_feed_a_loop() {
+    let data = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(data.path().join("reports")).unwrap();
+    let csv = "Region,Revenue\nNorth,\"1,200\"\nSouth,300\n";
+    std::fs::write(data.path().join("reports").join("metrics.csv"), csv).unwrap();
+    let h = Harness::new(EchoModel::default()).await;
+    let mut definition = folder_workflow(
+        data.path(),
+        json!([
+            { "id": "f", "type": "read_file", "path": "reports/{{inputs.name}}" },
+            { "id": "d", "type": "parse_data", "input": "{{steps.f.text}}", "format": "csv" },
+            { "id": "each", "type": "for_each", "items": "steps.d.rows", "steps": [
+                { "id": "line", "type": "template", "template": "{{item.Region}}={{item.Revenue}}" }
+            ]},
+        ]),
+    );
+    definition["inputs"] = json!([{ "id": "name", "label": "File", "default": "metrics.csv" }]);
+    let id = h.save(definition).await;
+
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let file = step(&run, "f", None).output.as_ref().unwrap();
+    assert_eq!(file["path"], "reports/metrics.csv");
+    assert_eq!(file["name"], "metrics.csv");
+    assert_eq!(file["bytes"], csv.len());
+    assert_eq!(file["text"], csv);
+    assert!(file["modified"].as_str().unwrap().contains('T'));
+    let lines: Vec<&str> = run
+        .steps
+        .iter()
+        .filter(|s| s.step_id == "line")
+        .map(|s| s.output.as_ref().unwrap()["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(lines, ["North=1,200", "South=300"]);
+    let recorded = step(&run, "d", None).input.as_ref().unwrap();
+    assert_eq!(recorded["format"], "csv");
+}
+
+#[tokio::test]
+async fn read_file_refusals_fail_the_step_in_plain_words() {
+    let data = tempfile::tempdir().unwrap();
+    std::fs::write(data.path().join("a.txt"), "hello").unwrap();
+    let h = Harness::new(EchoModel::default()).await;
+    for (path, expected) in [
+        ("../a.txt", "no \"..\""),
+        ("C:\\Windows\\win.ini", "not a full path"),
+        ("/etc/passwd", "not a full path"),
+        ("missing.txt", "no file called"),
+    ] {
+        let id = h
+            .save(folder_workflow(
+                data.path(),
+                json!([{ "id": "f", "type": "read_file", "path": path }]),
+            ))
+            .await;
+        let run = h.run(&id).await;
+        assert_eq!(run.run.status, "failed", "{path}");
+        let error = step(&run, "f", None).error.clone().unwrap();
+        assert!(error.contains(expected), "{path}: {error}");
+    }
+    // A folder that has gone is reported at run time.
+    let gone = data.path().join("not-here");
+    let id = h
+        .save(folder_workflow(
+            &gone,
+            json!([{ "id": "f", "type": "read_file", "path": "a.txt" }]),
+        ))
+        .await;
+    let run = h.run(&id).await;
+    let error = step(&run, "f", None).error.clone().unwrap();
+    assert!(error.contains("folder can't be opened"), "{error}");
+
+    // No folder at all is caught before a run starts.
+    let id = h
+        .save(json!({ "steps": [{ "id": "f", "type": "read_file", "path": "a.txt" }] }))
+        .await;
+    let runner = Runner {
+        state: &h.state,
+        streams: &h.streams,
+        fetch_policy: AddressPolicy { public_only: false },
+        stop: Default::default(),
+        unattended: None,
+        budget: RunBudget::default(),
+        notify: None,
+        questions: None,
+        connectors: None,
+    };
+    let error = runner
+        .run(&id, &HashMap::new(), "manual")
+        .await
+        .unwrap_err();
+    assert!(
+        error.contains("Step \"f\" reads a file, so choose the workflow's folder first."),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn a_scheduled_run_pauses_for_a_new_folder() {
+    let data = tempfile::tempdir().unwrap();
+    std::fs::write(data.path().join("a.txt"), "hello").unwrap();
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(folder_workflow(
+            data.path(),
+            json!([{ "id": "f", "type": "read_file", "path": "a.txt" }]),
+        ))
+        .await;
+    let folder = permissions::read_folder(data.path().to_str().unwrap());
+    assert_eq!(h.required(&id).await, vec![folder.clone()]);
+    let shown = serde_json::to_value(permissions::view(folder.clone())).unwrap();
+    assert_eq!(shown["kind"], "readFolder");
+    assert_eq!(shown["path"], data.path().to_str().unwrap());
+
+    // Approved for it: asks nothing.
+    let detail = h
+        .unattended_runner(vec![folder.clone()], CancellationToken::new())
+        .run(&id, &HashMap::new(), "schedule")
+        .await
+        .unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert!(h.reviews.list().is_empty());
+
+    // Not approved: it pauses and asks, and "Don't allow" fails the step.
+    let runner = h.unattended_runner(vec![], CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.step_id, "f");
+        assert_eq!(review.permission.permission, folder);
+        assert_eq!(review.url, None);
+        assert!(h.reviews.answer(&review.run_id, Decision::Deny));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.steps[0].error.as_deref(),
+        Some("You didn't allow this.")
+    );
+}

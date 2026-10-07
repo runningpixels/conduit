@@ -732,6 +732,8 @@ export interface WorkflowDefinition {
   /** The workflow's default model for steps that use one. */
   model?: WorkflowModel;
   inputs?: WorkflowInput[];
+  /** Absolute directory that `read_file` steps read from (relative paths only). */
+  folder?: string;
   steps: WorkflowStep[];
 }
 
@@ -743,6 +745,9 @@ export interface WorkflowInput {
 
 /** What a `condition` step checks (Rust `workflows::definition`). */
 export type ConditionTest = 'changed' | 'not_empty' | 'empty' | 'contains' | 'not_contains' | 'equals';
+
+/** How a `parse_data` step reads its text (Rust `workflows::definition`). */
+export type DataFormat = 'csv' | 'tsv' | 'json';
 
 export type WorkflowStep = {
   id: string;
@@ -760,6 +765,8 @@ export type WorkflowStep = {
   | { type: 'condition'; value: string; is: ConditionTest; text?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
   | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel }
+  | { type: 'read_file'; path: string }
+  | { type: 'parse_data'; input: string; format: DataFormat }
 );
 
 export type WorkflowRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
@@ -804,6 +811,7 @@ export type WorkflowPermission =
   | { kind: 'webSearch'; backend: string }
   | { kind: 'model'; provider: string }
   | { kind: 'saveDocuments' }
+  | { kind: 'readFolder'; path: string }
   | { kind: 'agentTools'; stepId: string; tools: string[] };
 
 /** A permission with its display name (provider, search backend) and, for a model, where it runs. */

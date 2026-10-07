@@ -13,15 +13,17 @@
 /// A summarize step's JSON schema is only editable in the JSON view; the
 /// visual editor keeps it as is.
 
-import { useId, useRef, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { ChipField, type ChipFieldHandle } from './ChipField';
 import { useT, type Translate } from '../i18n';
-import type { WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/contracts';
+import { pickWorkspaceFolder } from '../ipc/client';
+import type { DataFormat, WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/contracts';
 import {
   AGENT_TOOLS,
   allStepIds,
   CONDITION_TESTS,
   conditionNeedsText,
+  DATA_FORMATS,
   defaultRetries,
   insertStep,
   listSourcesAt,
@@ -34,6 +36,7 @@ import {
   stepTypesFor,
   updateStep,
   withConditionTest,
+  withFolder,
   withOnlyIfChanged,
   withStepModel,
   withWorkflowModel,
@@ -54,6 +57,8 @@ export interface WorkflowDraft {
 const STEP_TYPE_KEY: Record<StepType, string> = {
   fetch_page: 'workspace.workflows.editor.type.fetchPage',
   web_search: 'workspace.workflows.editor.type.webSearch',
+  read_file: 'workspace.workflows.editor.type.readFile',
+  parse_data: 'workspace.workflows.editor.type.parseData',
   summarize: 'workspace.workflows.editor.type.summarize',
   template: 'workspace.workflows.editor.type.template',
   for_each: 'workspace.workflows.editor.type.forEach',
@@ -62,6 +67,12 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   ask: 'workspace.workflows.editor.type.ask',
   agent: 'workspace.workflows.editor.type.agent',
   condition: 'workspace.workflows.editor.type.condition',
+};
+
+const DATA_FORMAT_KEY: Record<DataFormat, string> = {
+  csv: 'workspace.workflows.editor.parseData.csv',
+  tsv: 'workspace.workflows.editor.parseData.tsv',
+  json: 'workspace.workflows.editor.parseData.json',
 };
 
 const CONDITION_TEST_KEY = {
@@ -92,6 +103,10 @@ const FIELD_KEY: Record<string, string> = {
   date: 'workspace.workflows.editor.field.date',
   answer: 'workspace.workflows.editor.field.answer',
   toolCalls: 'workspace.workflows.editor.field.toolCalls',
+  name: 'workspace.workflows.editor.field.fileName',
+  rows: 'workspace.workflows.editor.field.rows',
+  count: 'workspace.workflows.editor.field.rowCount',
+  columns: 'workspace.workflows.editor.field.columns',
 };
 
 export function refLabel(ref: ValueRef, t: Translate): string {
@@ -152,6 +167,8 @@ export function WorkflowEditor({
         />
       </section>
 
+      <FolderRow folder={def.folder} onChange={(folder) => setDefinition(withFolder(def, folder))} />
+
       <section className="grp" aria-label={t('workspace.workflows.editor.inputs.title')}>
         <div className="grp-label">{t('workspace.workflows.editor.inputs.title')}</div>
         <p className="wf-muted">{t('workspace.workflows.editor.inputs.hint')}</p>
@@ -196,6 +213,40 @@ export function WorkflowEditor({
       </section>
     </div>
     </ProviderModelsProvider>
+  );
+}
+
+/// The folder `read_file` steps read from: shown as a path, picked with the
+/// system folder dialog, and clearable.
+function FolderRow({ folder, onChange }: { folder: string | undefined; onChange: (folder: string | null) => void }) {
+  const t = useT();
+  const [error, setError] = useState<string | null>(null);
+  const choose = async () => {
+    setError(null);
+    try {
+      const picked = await pickWorkspaceFolder();
+      if (picked) onChange(picked);
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : t('workspace.workflows.folder.pickFailed'));
+    }
+  };
+  return (
+    <section className="grp" aria-label={t('workspace.workflows.folder.label')}>
+      <div className="grp-label">{t('workspace.workflows.folder.label')}</div>
+      <p className="wf-muted">{t('workspace.workflows.folder.hint')}</p>
+      <div className="wf-input-row">
+        <code className="wf-folder-path">{folder || t('workspace.workflows.folder.none')}</code>
+        <button type="button" className="btn ghost" onClick={() => void choose()}>
+          {folder ? t('workspace.workflows.folder.change') : t('workspace.workflows.folder.choose')}
+        </button>
+        {folder ? (
+          <button type="button" className="btn ghost" onClick={() => onChange(null)}>
+            {t('workspace.workflows.folder.clear')}
+          </button>
+        ) : null}
+      </div>
+      {error ? <p className="wf-error">{error}</p> : null}
+    </section>
   );
 }
 
@@ -341,6 +392,48 @@ function StepCard({
                 )
               }
             />
+          </label>
+        </>
+      );
+      break;
+    case 'read_file':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.readFile.path')}
+            value={step.path}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'read_file' ? { ...s, path: v } : s))}
+          />
+          {def.folder ? null : <p className="wf-muted">{t('workspace.workflows.editor.readFile.noFolder')}</p>}
+        </>
+      );
+      break;
+    case 'parse_data':
+      body = (
+        <>
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.parseData.input')}
+            value={step.input}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'parse_data' ? { ...s, input: v } : s))}
+          />
+          <label className="wf-field wf-narrow">
+            <span>{t('workspace.workflows.editor.parseData.format')}</span>
+            <select
+              className="sel"
+              value={step.format}
+              onChange={(e) =>
+                update((s) => (s.type === 'parse_data' ? { ...s, format: e.target.value as DataFormat } : s))
+              }
+            >
+              {DATA_FORMATS.map((format) => (
+                <option key={format} value={format}>
+                  {t(DATA_FORMAT_KEY[format])}
+                </option>
+              ))}
+            </select>
           </label>
         </>
       );
